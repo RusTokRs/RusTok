@@ -245,36 +245,33 @@ proptest! {
 }
 
 // ============================================================================
-// Comment Status Property Tests
+// Comment Status Tests
 // ============================================================================
 
-proptest! {
-    /// Test: Comment visibility is correct for each status
-    #[test]
-    fn comment_visibility_is_correct(
-        status in prop_oneof![
-            Just(CommentStatus::Pending),
-            Just(CommentStatus::Approved),
-            Just(CommentStatus::Spam),
-            Just(CommentStatus::Trash),
-        ]
-    ) {
+#[test]
+fn comment_visibility_is_correct() {
+    let statuses = [
+        CommentStatus::Pending,
+        CommentStatus::Approved,
+        CommentStatus::Spam,
+        CommentStatus::Trash,
+    ];
+
+    for status in statuses {
         let is_visible = status.is_visible();
-        prop_assert_eq!(is_visible, status == CommentStatus::Approved);
+        assert_eq!(is_visible, status == CommentStatus::Approved);
     }
+}
 
-    /// Test: Approved comments remain approved after approve()
-    #[test]
-    fn approved_stays_approved_on_approve() {
-        let status = CommentStatus::Approved;
-        prop_assert_eq!(status.approve(), CommentStatus::Approved);
-    }
+#[test]
+fn approved_stays_approved_on_approve() {
+    let status = CommentStatus::Approved;
+    assert_eq!(status.approve(), CommentStatus::Approved);
+}
 
-    /// Test: Trash is terminal
-    #[test]
-    fn trash_is_terminal() {
-        let status = CommentStatus::Trash;
-        prop_assert_eq!(status.approve(), CommentStatus::Trash);
-        prop_assert_eq!(status.mark_spam(), CommentStatus::Trash);
-    }
+#[test]
+fn trash_is_terminal() {
+    let status = CommentStatus::Trash;
+    assert_eq!(status.approve(), CommentStatus::Trash);
+    assert_eq!(status.mark_spam(), CommentStatus::Trash);
 }

@@ -175,8 +175,6 @@ mod tests {
     use rustok_rbac::RbacModule;
     use rustok_tenant::TenantModule;
 
-    use super::*;
-
     fn build_test_registry() -> ModuleRegistry {
         ModuleRegistry::new()
             .register(IndexModule)

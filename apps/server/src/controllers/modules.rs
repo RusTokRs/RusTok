@@ -4,6 +4,7 @@ use axum::Json;
 use loco_rs::prelude::*;
 use rustok_core::ModuleRegistry;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::context::TenantContext;
 use crate::extractors::rbac::{RequireSettingsRead, RequireSettingsUpdate};
@@ -26,7 +27,7 @@ pub struct ModulesListResponse {
     pub modules: Vec<ModuleInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ToggleModuleInput {
     pub enabled: bool,
 }
