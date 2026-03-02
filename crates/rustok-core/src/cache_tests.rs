@@ -1,7 +1,8 @@
 #[cfg(all(test, feature = "redis-cache"))]
 mod redis_circuit_breaker_tests {
     use super::super::*;
-    use crate::circuit_breaker::CircuitBreakerConfig;
+    use crate::context::CacheBackend;
+    use crate::resilience::CircuitBreakerConfig;
     use std::time::Duration;
 
     #[tokio::test]
@@ -16,9 +17,10 @@ mod redis_circuit_breaker_tests {
                 failure_threshold: 3,
                 success_threshold: 2,
                 timeout: Duration::from_secs(5),
-                half_open_max_requests: 2,
+                half_open_max_requests: Some(2),
             },
-        );
+        )
+        .await;
 
         if cache_result.is_err() {
             println!("Skipping test: Redis not available");
@@ -49,9 +51,10 @@ mod redis_circuit_breaker_tests {
                 failure_threshold: 2,
                 success_threshold: 2,
                 timeout: Duration::from_millis(100),
-                half_open_max_requests: 1,
+                half_open_max_requests: Some(1),
             },
         )
+        .await
         .unwrap();
 
         // First failure
@@ -64,7 +67,7 @@ mod redis_circuit_breaker_tests {
 
         // Check circuit breaker state
         let breaker = cache.circuit_breaker();
-        assert_eq!(breaker.failure_count(), 2);
+        assert_eq!(breaker.stats().await.failure_count, 2);
 
         // Third attempt might be rejected by open circuit
         let result3 = cache.get("key3").await;
@@ -79,15 +82,15 @@ mod redis_circuit_breaker_tests {
             Duration::from_secs(300),
             CircuitBreakerConfig::default(),
         )
+        .await
         .unwrap();
 
         let breaker = cache.circuit_breaker();
 
         // Initially closed
-        use crate::circuit_breaker::State;
-        let state = breaker.get_state();
+        let _state = breaker.get_state().await;
         // State is not public, but we can check failure count
-        assert_eq!(breaker.failure_count(), 0);
+        assert_eq!(breaker.stats().await.failure_count, 0);
     }
 }
 

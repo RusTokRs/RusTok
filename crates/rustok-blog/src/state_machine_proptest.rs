@@ -11,7 +11,7 @@ use uuid::Uuid;
 // ============================================================================
 
 fn uuid_strategy() -> impl Strategy<Value = Uuid> {
-    (any::<[u8; 16]>()).prop_map(|bytes| Uuid::from_bytes(bytes))
+    (any::<[u8; 16]>()).prop_map(Uuid::from_bytes)
 }
 
 fn non_empty_string_strategy() -> impl Strategy<Value = String> {
