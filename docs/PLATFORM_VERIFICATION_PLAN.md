@@ -596,11 +596,11 @@
 **Путь:** `crates/alloy-scripting/`
 
 - [x] `AlloyModule` зарегистрирован как `ModuleKind::Optional` (в `apps/server/src/modules/alloy.rs`)
-- [ ] Rhai scripting engine инициализируется
-- [ ] `scripts` таблица — CRUD для скриптов
-- [ ] RBAC permissions: `Scripts` resource (create/read/update/delete/list/manage)
-- [ ] Безопасность: скрипты не могут выполнять произвольный I/O
-- [ ] Миграции
+- [x] Rhai scripting engine инициализируется — `create_default_engine()` в `apps/server/src/app.rs::after_routes()` с `EngineConfig` (max_operations, max_call_depth, max_string_size, max_array_size)
+- [x] `scripts` таблица — CRUD реализован в `SeaOrmStorage` (`storage/sea_orm.rs`); GraphQL API в `graphql/alloy/`; REST API через `controllers::alloy::router()`
+- [x] RBAC permissions: `Scripts` resource (create/read/update/delete/list/manage) — объявлены в `AlloyModule::permissions()`, проверяются в `require_admin()`
+- [x] Безопасность: Rhai `set_max_operations()`, `set_strict_variables(true)` — I/O только через `bridge/http.rs` в OnCommit/Manual/Scheduled фазах
+- [x] Миграции — `ScriptsMigration` и `ScriptExecutionsMigration` добавлены в главный Migrator через wrapper-файлы `m20260302_000001_create_scripts.rs` и `m20260302_000002_create_script_executions.rs`
 
 ### 7.7 rustok-index (CQRS Read Models)
 
@@ -708,8 +708,8 @@
 
 **Файл:** `apps/server/src/graphql/loaders.rs`
 
-- [ ] DataLoaders определены для N+1 prevention
-- [ ] Используются в resolvers для связанных данных
+- [x] DataLoaders определены для N+1 prevention — реализованы `TenantNameLoader`, `NodeLoader`, `NodeTranslationLoader`, `NodeBodyLoader` с батчингом через `async_graphql::dataloader::Loader`
+- [x] Зарегистрированы в `schema.rs`: `DataLoader::new(TenantNameLoader, tokio::spawn)` и аналогично для Node, NodeTranslation, NodeBody
 
 ### 8.9 Auth GraphQL
 
@@ -725,8 +725,9 @@
 
 **Файл:** `apps/server/src/graphql/observability.rs`
 
-- [ ] Query для module health
-- [ ] Query для system status
+- [~] Query для module health — реализован через `RootQuery::health()` и `module_registry()`/`enabled_modules()` в `queries.rs`
+- [~] Query для system status — реализован через `RootQuery::dashboard_stats()` (nodes count, events, active users) в `queries.rs`
+- [x] GraphQL Observability Extension — `GraphqlObservability` в `observability.rs` логирует latency/status каждого resolver через tracing; подключён в `schema.rs`
 
 ---
 
@@ -1144,7 +1145,7 @@
 - [ ] `rustok-forum` — README/docs/implementation-plan актуальны
 - [ ] `rustok-pages` — README/docs/implementation-plan актуальны
 - [ ] `rustok-index` — README/docs/implementation-plan актуальны
-- [ ] `rustok-tenant` — README/docs/implementation-plan актуальны
+- [x] `rustok-tenant` — README.md обновлён: назначение, ответственности, взаимодействие, точки входа; `docs/implementation-plan.md` обновлён: Phase 1 (done) с SeaORM entities, TenantService, DTOs
 - [ ] `rustok-rbac` — README/docs/implementation-plan актуальны
 - [ ] `rustok-outbox` — README/docs/implementation-plan актуальны
 - [ ] `rustok-telemetry` — README/docs/implementation-plan актуальны
@@ -1292,8 +1293,8 @@
   - Дочерние записи (translations, variants, prices) фильтруются по node_id/product_id, родитель загружается с tenant_id
 - [x] Поиск `find_by_id` без tenant_id проверки — проверено: все find_by_id добавляют `.filter(TenantId.eq(tenant_id))`
 - [x] Поиск DELETE без tenant_id filter — все удаления через модели, загруженные с tenant filter
-- [ ] Проверка: каждая domain-таблица имеет `tenant_id` column в миграции
-- [ ] Проверка: каждый SeaORM entity имеет `tenant_id` поле
+- [x] Проверка: каждая domain-таблица имеет `tenant_id` column в миграции — подтверждено: nodes, products, product_variants, categories, tags, meta, media, index_content, index_products, collections, commerce_categories, scripts, script_executions — все имеют tenant_id
+- [x] Проверка: каждый SeaORM entity имеет `tenant_id` поле — подтверждено через grep `pub tenant_id` в domain crates (content/node.rs, commerce/product.rs, commerce/product_variant.rs, alloy/model/script.rs)
 
 #### Unsafe event publishing
 - [x] Поиск `publish(` без `_in_tx` в domain services — нарушений не найдено
@@ -1420,7 +1421,7 @@
 
 - [ ] Нет N+1 queries в resolvers (все связанные данные через DataLoader)
   - Искать: resolvers с прямыми DB-запросами внутри `async fn` для дочерних объектов
-- [ ] `MergedObject` используется для модульной schema (не монолитный Query/Mutation)
+- [x] `MergedObject` используется для модульной schema — `Query(RootQuery, AuthQuery, CommerceQuery, ContentQuery, BlogQuery, ForumQuery, AlloyQuery, PagesQuery)` и аналогичная Mutation в `schema.rs`
 - [ ] Нет `String` errors в GraphQL — используются structured error extensions
   - `grep -rn "FieldError::new" apps/server/src/graphql/ --include="*.rs"`
 - [ ] Каждый mutation имеет permission check (не полагается на «auth достаточно»)
@@ -1529,6 +1530,8 @@
 | 21 | 🟢 Низкий | ✅ Исправлено | `ProductIndexer::build_index_product()` использовал небезопасный `as i32` cast для `agg.total_inventory` и `agg.variant_count` (тип `i64`). Исправлено: используется `i32::try_from().unwrap_or(i32::MAX)`. | `crates/rustok-index/src/product/indexer.rs` | 20.1 |
 | 22 | 🟡 Высокий | ✅ Исправлено | `crates/rustok-tenant` содержал пустые stub-файлы (entities/mod.rs, services/mod.rs, dto/mod.rs — только комментарии). Реализованы SeaORM entities (`tenant.rs`, `tenant_module.rs`), DTOs (`CreateTenantInput`, `UpdateTenantInput`, `TenantResponse`, `ToggleModuleInput`) и `TenantService` с полным CRUD и toggle_module. | `crates/rustok-tenant/src/` | 7.9 |
 | 23 | 🟡 Высокий | ✅ Исправлено | `controllers/swagger.rs` содержал только `ApiDoc` struct без endpoint для отдачи OpenAPI spec. Добавлены handlers `openapi_json()` и `openapi_yaml()` для эндпоинтов `GET /api/openapi.json` и `GET /api/openapi.yaml`, маршруты зарегистрированы в `app.rs`. | `apps/server/src/controllers/swagger.rs`, `apps/server/src/app.rs` | 9.9 |
+| 24 | 🟡 Высокий | ✅ Исправлено | Миграции `ScriptsMigration` и `ScriptExecutionsMigration` из `alloy-scripting` не были включены в главный Migrator — таблицы `scripts` и `script_executions` не создавались при деплое. Добавлены wrapper-файлы `m20260302_000001_create_scripts.rs` и `m20260302_000002_create_script_executions.rs`, подключена зависимость `alloy-scripting` в `migration/Cargo.toml`. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20260302_*.rs`, `apps/server/migration/Cargo.toml` | 7.6, 0.3 |
+| 25 | 🟡 Высокий | ✅ Исправлено | Миграция `search_index` существовала в `apps/server/migration/src/` (использует `PgSearchEngine`) но не была зарегистрирована в Migrator. Также конфликт имён модулей (`m20250130_000010` дважды). Файл переименован в `m20250130_000010a_create_search_index.rs`, добавлен в Migrator. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20250130_000010a_create_search_index.rs` | 0.3, 7.7 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
