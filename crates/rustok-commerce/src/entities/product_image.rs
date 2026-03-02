@@ -7,9 +7,11 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub product_id: Uuid,
-    pub media_id: Uuid,
+    pub media_id: Option<Uuid>,
+    pub url: String,
     pub position: i32,
-    pub alt_text: Option<String>,
+    pub metadata: Json,
+    pub created_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -1,3 +1,4 @@
+use chrono::Utc;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sea_orm::{
@@ -72,12 +73,19 @@ impl PricingService {
                 price_active.update(&txn).await?;
             }
             None => {
+                let now = Utc::now().fixed_offset();
                 let price = entities::price::ActiveModel {
                     id: Set(generate_id()),
                     variant_id: Set(variant_id),
+                    price_list_id: Set(None),
                     currency_code: Set(currency_code.to_string()),
+                    region_id: Set(None),
                     amount: Set(amount),
                     compare_at_amount: Set(compare_at_amount),
+                    min_quantity: Set(None),
+                    max_quantity: Set(None),
+                    created_at: Set(now),
+                    updated_at: Set(now),
                 };
                 price.insert(&txn).await?;
             }
@@ -153,12 +161,19 @@ impl PricingService {
                     price_active.update(&txn).await?;
                 }
                 None => {
+                    let now = Utc::now().fixed_offset();
                     let price = entities::price::ActiveModel {
                         id: Set(generate_id()),
                         variant_id: Set(variant_id),
+                        price_list_id: Set(None),
                         currency_code: Set(price_input.currency_code.clone()),
+                        region_id: Set(None),
                         amount: Set(price_input.amount),
                         compare_at_amount: Set(price_input.compare_at_amount),
+                        min_quantity: Set(None),
+                        max_quantity: Set(None),
+                        created_at: Set(now),
+                        updated_at: Set(now),
                     };
                     price.insert(&txn).await?;
                 }

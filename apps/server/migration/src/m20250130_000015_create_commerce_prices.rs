@@ -72,8 +72,8 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Prices::RegionId).uuid())
-                    .col(ColumnDef::new(Prices::Amount).big_integer().not_null())
-                    .col(ColumnDef::new(Prices::CompareAtAmount).big_integer())
+                    .col(ColumnDef::new(Prices::Amount).decimal_len(19, 4).not_null())
+                    .col(ColumnDef::new(Prices::CompareAtAmount).decimal_len(19, 4))
                     .col(ColumnDef::new(Prices::MinQuantity).integer())
                     .col(ColumnDef::new(Prices::MaxQuantity).integer())
                     .col(

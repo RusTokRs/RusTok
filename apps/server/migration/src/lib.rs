@@ -34,15 +34,21 @@ pub struct Migrator;
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
+            // Foundation: tenants, users, auth
             Box::new(m20250101_000001_create_tenants::Migration),
             Box::new(m20250101_000002_create_users::Migration),
             Box::new(m20250101_000003_create_tenant_modules::Migration),
+            Box::new(m20250101_000004_create_sessions::Migration),
+            Box::new(m20250101_000005_create_roles_and_permissions::Migration),
+            Box::new(m20250101_000006_add_metadata_to_tenants_and_users::Migration),
+            // Content infrastructure
             Box::new(m20250130_000004_create_tenant_locales::Migration),
             Box::new(m20250130_000005_create_nodes::Migration),
             Box::new(m20250130_000006_create_categories::Migration),
             Box::new(m20250130_000007_create_tags::Migration),
             Box::new(m20250130_000008_create_meta::Migration),
             Box::new(m20250130_000009_create_media::Migration),
+            // Commerce
             Box::new(m20250130_000012_create_commerce_products::Migration),
             Box::new(m20250130_000013_create_commerce_options::Migration),
             Box::new(m20250130_000014_create_commerce_variants::Migration),
@@ -50,11 +56,13 @@ impl MigratorTrait for Migrator {
             Box::new(m20250130_000016_create_commerce_inventory::Migration),
             Box::new(m20250130_000017_create_commerce_collections::Migration),
             Box::new(m20250130_000018_create_commerce_categories::Migration),
+            // CQRS index read models
             Box::new(m20250130_000010_create_index_content::Migration),
             Box::new(m20250130_000011_create_index_products::Migration),
-            Box::new(m20250101_000004_create_sessions::Migration),
-            Box::new(m20250101_000005_create_roles_and_permissions::Migration),
-            Box::new(m20250101_000006_add_metadata_to_tenants_and_users::Migration),
+            // Alloy scripting
+            Box::new(alloy_scripting::ScriptsMigration),
+            Box::new(alloy_scripting::ScriptExecutionsMigration),
+            // Schema evolution and infrastructure
             Box::new(m20250201_000001_alter_status_to_enums::Migration),
             Box::new(m20260211_000001_add_event_versioning::Migration),
             Box::new(m20250212_000001_create_builds_and_releases::Migration),

@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 rustok-core.workspace = true
+rustok-content.workspace = true
 
 # Database
 sea-orm.workspace = true
@@ -23,6 +24,7 @@ serde_json.workspace = true
 # Types
 uuid.workspace = true
 chrono.workspace = true
+rust_decimal.workspace = true
 
 # Logging
 tracing.workspace = true

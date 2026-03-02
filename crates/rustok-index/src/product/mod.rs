@@ -1,3 +1,4 @@
+pub(crate) mod entity;
 mod indexer;
 mod model;
 mod query;

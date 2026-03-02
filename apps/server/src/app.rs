@@ -22,7 +22,7 @@ use crate::middleware::rate_limit::{cleanup_task, RateLimitConfig, RateLimiter};
 use crate::modules;
 use crate::seeds;
 use crate::services::event_transport_factory::{
-    build_event_runtime, spawn_outbox_relay_worker, EventRuntime,
+    build_event_dispatcher, build_event_runtime, spawn_outbox_relay_worker, EventRuntime,
 };
 use crate::tasks;
 use loco_rs::prelude::Queue;
@@ -72,6 +72,14 @@ impl Hooks for App {
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let event_runtime = build_event_runtime(ctx).await?;
         ctx.shared_store.insert(event_runtime.transport.clone());
+
+        let index_handlers: Vec<Arc<dyn rustok_core::events::EventHandler>> = vec![
+            Arc::new(rustok_index::content::ContentIndexer::new(ctx.db.clone())),
+            Arc::new(rustok_index::product::ProductIndexer::new(ctx.db.clone())),
+        ];
+        let dispatcher = build_event_dispatcher(event_runtime.event_bus.clone(), index_handlers);
+        ctx.shared_store.insert(Arc::new(dispatcher));
+
         ctx.shared_store.insert(Arc::new(event_runtime));
         let registry = modules::build_registry();
         modules::validate_registry_vs_manifest(&registry)?;
@@ -159,6 +167,7 @@ impl Hooks for App {
             });
 
         Ok(router
+            .merge(controllers::swagger::swagger_router())
             .nest("/api/alloy", alloy_rest_router)
             .layer(Extension(registry))
             .layer(Extension(alloy_state))

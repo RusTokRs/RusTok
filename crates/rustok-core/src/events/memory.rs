@@ -24,12 +24,20 @@ impl MemoryTransport {
         }
     }
 
+    pub fn with_bus(bus: EventBus) -> Self {
+        Self { bus }
+    }
+
     pub fn stats(&self) -> Arc<EventBusStats> {
         self.bus.stats()
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<EventEnvelope> {
         self.bus.subscribe()
+    }
+
+    pub fn bus(&self) -> &EventBus {
+        &self.bus
     }
 }
 

@@ -22,26 +22,8 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("draft"),
                     )
-                    .col(
-                        ColumnDef::new(Products::IsGiftCard)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .col(
-                        ColumnDef::new(Products::Discountable)
-                            .boolean()
-                            .not_null()
-                            .default(true),
-                    )
-                    .col(ColumnDef::new(Products::Weight).integer())
-                    .col(ColumnDef::new(Products::Length).integer())
-                    .col(ColumnDef::new(Products::Height).integer())
-                    .col(ColumnDef::new(Products::Width).integer())
-                    .col(ColumnDef::new(Products::HsCode).string_len(20))
-                    .col(ColumnDef::new(Products::OriginCountry).string_len(2))
-                    .col(ColumnDef::new(Products::MidCode).string_len(50))
-                    .col(ColumnDef::new(Products::ExternalId).string_len(100))
+                    .col(ColumnDef::new(Products::Vendor).string_len(255))
+                    .col(ColumnDef::new(Products::ProductType).string_len(255))
                     .col(
                         ColumnDef::new(Products::Metadata)
                             .json_binary()
@@ -61,7 +43,6 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .col(ColumnDef::new(Products::PublishedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(Products::DeletedAt).timestamp_with_time_zone())
                     .foreign_key(
                         ForeignKey::create()
                             .from(Products::Table, Products::TenantId)
@@ -98,14 +79,14 @@ impl MigrationTrait for Migration {
                             .string_len(255)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(ProductTranslations::Subtitle).string_len(255))
                     .col(
                         ColumnDef::new(ProductTranslations::Handle)
                             .string_len(255)
                             .not_null(),
                     )
                     .col(ColumnDef::new(ProductTranslations::Description).text())
-                    .col(ColumnDef::new(ProductTranslations::Material).string_len(255))
+                    .col(ColumnDef::new(ProductTranslations::MetaTitle).string_len(255))
+                    .col(ColumnDef::new(ProductTranslations::MetaDescription).string_len(500))
                     .foreign_key(
                         ForeignKey::create()
                             .from(ProductTranslations::Table, ProductTranslations::ProductId)
@@ -216,17 +197,6 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_products_external")
-                    .table(Products::Table)
-                    .col(Products::TenantId)
-                    .col(Products::ExternalId)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
                     .name("idx_product_trans_unique")
                     .table(ProductTranslations::Table)
                     .col(ProductTranslations::ProductId)
@@ -298,21 +268,12 @@ enum Products {
     Id,
     TenantId,
     Status,
-    IsGiftCard,
-    Discountable,
-    Weight,
-    Length,
-    Height,
-    Width,
-    HsCode,
-    OriginCountry,
-    MidCode,
-    ExternalId,
+    Vendor,
+    ProductType,
     Metadata,
     CreatedAt,
     UpdatedAt,
     PublishedAt,
-    DeletedAt,
 }
 
 #[derive(Iden)]
@@ -322,10 +283,10 @@ enum ProductTranslations {
     ProductId,
     Locale,
     Title,
-    Subtitle,
     Handle,
     Description,
-    Material,
+    MetaTitle,
+    MetaDescription,
 }
 
 #[derive(Iden)]

@@ -1,4 +1,5 @@
 use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -185,4 +186,10 @@ impl utoipa::Modify for SecurityAddon {
             )
         }
     }
+}
+
+pub fn swagger_router() -> axum::Router {
+    SwaggerUi::new("/swagger-ui")
+        .url("/api-docs/openapi.json", ApiDoc::openapi())
+        .into()
 }

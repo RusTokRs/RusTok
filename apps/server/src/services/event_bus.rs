@@ -6,6 +6,8 @@ use rustok_core::EventBus;
 use rustok_outbox::TransactionalEventBus;
 use tokio::task::JoinHandle;
 
+use crate::services::event_transport_factory::EventRuntime;
+
 #[derive(Clone)]
 pub struct SharedEventBus(pub Arc<EventBus>);
 
@@ -19,6 +21,13 @@ pub struct EventForwarderHandle {
 pub fn event_bus_from_context(ctx: &AppContext) -> EventBus {
     if let Some(shared) = ctx.shared_store.get::<SharedEventBus>() {
         return (*shared.0).clone();
+    }
+
+    if let Some(runtime) = ctx.shared_store.get::<Arc<EventRuntime>>() {
+        let bus = runtime.event_bus.clone();
+        ctx.shared_store
+            .insert(SharedEventBus(Arc::new(bus.clone())));
+        return bus;
     }
 
     let bus = Arc::new(EventBus::default());

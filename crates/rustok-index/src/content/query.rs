@@ -1,7 +1,11 @@
-use sea_orm::DatabaseConnection;
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::entity::{self as index_content_entity, Column};
 use super::model::IndexContentModel;
 use crate::error::IndexResult;
 
@@ -116,6 +120,62 @@ impl ContentQueryBuilder {
     }
 }
 
+fn sort_column(sort_by: &ContentSortBy) -> Column {
+    match sort_by {
+        ContentSortBy::PublishedAt => Column::PublishedAt,
+        ContentSortBy::CreatedAt => Column::CreatedAt,
+        ContentSortBy::UpdatedAt => Column::UpdatedAt,
+        ContentSortBy::Title => Column::Title,
+        ContentSortBy::Position => Column::Position,
+        ContentSortBy::ViewCount => Column::ViewCount,
+        ContentSortBy::ReplyCount => Column::ReplyCount,
+    }
+}
+
+fn sort_order(order: &SortOrder) -> Order {
+    match order {
+        SortOrder::Asc => Order::Asc,
+        SortOrder::Desc => Order::Desc,
+    }
+}
+
+fn row_to_model(row: index_content_entity::Model) -> IndexContentModel {
+    use chrono::DateTime;
+    IndexContentModel {
+        id: row.id,
+        tenant_id: row.tenant_id,
+        node_id: row.node_id,
+        locale: row.locale,
+        kind: row.kind,
+        status: row.status,
+        title: row.title,
+        slug: row.slug,
+        excerpt: row.excerpt,
+        body: row.body,
+        body_format: row.body_format,
+        author_id: row.author_id,
+        author_name: row.author_name,
+        author_avatar: row.author_avatar,
+        category_id: row.category_id,
+        category_name: row.category_name,
+        category_slug: row.category_slug,
+        tags: serde_json::from_value(row.tags).unwrap_or_default(),
+        meta_title: row.meta_title,
+        meta_description: row.meta_description,
+        og_image: row.og_image,
+        featured_image_url: row.featured_image_url,
+        featured_image_alt: row.featured_image_alt,
+        parent_id: row.parent_id,
+        depth: row.depth,
+        position: row.position,
+        reply_count: row.reply_count,
+        view_count: row.view_count,
+        published_at: row.published_at.map(|dt| DateTime::from(dt)),
+        created_at: DateTime::from(row.created_at),
+        updated_at: DateTime::from(row.updated_at),
+    }
+}
+
 /// Query service for content index
 pub struct ContentQueryService {
     db: DatabaseConnection,
@@ -126,39 +186,102 @@ impl ContentQueryService {
         Self { db }
     }
 
-    fn db(&self) -> &DatabaseConnection {
-        &self.db
-    }
+    pub async fn find(&self, query: ContentQuery) -> IndexResult<Vec<IndexContentModel>> {
+        let mut select = index_content_entity::Entity::find()
+            .filter(Column::TenantId.eq(query.tenant_id))
+            .filter(Column::Locale.eq(&query.locale));
 
-    pub async fn find(&self, _query: ContentQuery) -> IndexResult<Vec<IndexContentModel>> {
-        let _ = self.db();
-        Ok(vec![])
+        if let Some(kind) = &query.kind {
+            select = select.filter(Column::Kind.eq(kind));
+        }
+        if let Some(status) = &query.status {
+            select = select.filter(Column::Status.eq(status));
+        }
+        if let Some(category_id) = query.category_id {
+            select = select.filter(Column::CategoryId.eq(category_id));
+        }
+        if let Some(author_id) = query.author_id {
+            select = select.filter(Column::AuthorId.eq(author_id));
+        }
+        if let Some(parent_id) = query.parent_id {
+            select = select.filter(Column::ParentId.eq(parent_id));
+        }
+
+        let col = sort_column(&query.sort_by);
+        let ord = sort_order(&query.sort_order);
+        select = select.order_by(col, ord);
+        select = select.limit(query.limit).offset(query.offset);
+
+        let rows = select.all(&self.db).await?;
+        Ok(rows.into_iter().map(row_to_model).collect())
     }
 
     pub async fn find_by_slug(
         &self,
-        _tenant_id: Uuid,
-        _locale: &str,
-        _kind: &str,
-        _slug: &str,
+        tenant_id: Uuid,
+        locale: &str,
+        kind: &str,
+        slug: &str,
     ) -> IndexResult<Option<IndexContentModel>> {
-        let _ = self.db();
-        Ok(None)
+        let row = index_content_entity::Entity::find()
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::Locale.eq(locale))
+            .filter(Column::Kind.eq(kind))
+            .filter(Column::Slug.eq(slug))
+            .one(&self.db)
+            .await?;
+        Ok(row.map(row_to_model))
     }
 
-    pub async fn count(&self, _query: ContentQuery) -> IndexResult<u64> {
-        let _ = self.db();
-        Ok(0)
+    pub async fn count(&self, query: ContentQuery) -> IndexResult<u64> {
+        let mut select = index_content_entity::Entity::find()
+            .filter(Column::TenantId.eq(query.tenant_id))
+            .filter(Column::Locale.eq(&query.locale));
+
+        if let Some(kind) = &query.kind {
+            select = select.filter(Column::Kind.eq(kind));
+        }
+        if let Some(status) = &query.status {
+            select = select.filter(Column::Status.eq(status));
+        }
+        if let Some(category_id) = query.category_id {
+            select = select.filter(Column::CategoryId.eq(category_id));
+        }
+        if let Some(author_id) = query.author_id {
+            select = select.filter(Column::AuthorId.eq(author_id));
+        }
+        if let Some(parent_id) = query.parent_id {
+            select = select.filter(Column::ParentId.eq(parent_id));
+        }
+
+        let count = select.count(&self.db).await?;
+        Ok(count)
     }
 
     pub async fn search(
         &self,
-        _tenant_id: Uuid,
-        _locale: &str,
-        _q: &str,
-        _limit: u64,
+        tenant_id: Uuid,
+        locale: &str,
+        q: &str,
+        limit: u64,
     ) -> IndexResult<Vec<IndexContentModel>> {
-        let _ = self.db();
-        Ok(vec![])
+        use sea_orm::sea_query::Expr;
+
+        let q_escaped = q.replace('\'', "''");
+        let tsquery = format!("plainto_tsquery('simple', '{}')", q_escaped);
+        let rank_expr = format!("ts_rank(search_vector, {})", tsquery);
+        let match_expr = format!("search_vector @@ {}", tsquery);
+
+        let rows = index_content_entity::Entity::find()
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::Locale.eq(locale))
+            .filter(Column::Status.eq("published"))
+            .filter(Expr::cust(match_expr))
+            .order_by(Expr::cust(rank_expr), Order::Desc)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+
+        Ok(rows.into_iter().map(row_to_model).collect())
     }
 }

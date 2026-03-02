@@ -18,40 +18,39 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(ProductVariants::ProductId).uuid().not_null())
+                    .col(ColumnDef::new(ProductVariants::TenantId).uuid().not_null())
                     .col(ColumnDef::new(ProductVariants::Sku).string_len(100))
                     .col(ColumnDef::new(ProductVariants::Barcode).string_len(100))
                     .col(ColumnDef::new(ProductVariants::Ean).string_len(20))
                     .col(ColumnDef::new(ProductVariants::Upc).string_len(20))
-                    .col(ColumnDef::new(ProductVariants::Weight).integer())
-                    .col(ColumnDef::new(ProductVariants::Length).integer())
-                    .col(ColumnDef::new(ProductVariants::Height).integer())
-                    .col(ColumnDef::new(ProductVariants::Width).integer())
-                    .col(ColumnDef::new(ProductVariants::HsCode).string_len(20))
-                    .col(ColumnDef::new(ProductVariants::OriginCountry).string_len(2))
-                    .col(ColumnDef::new(ProductVariants::MidCode).string_len(50))
                     .col(
-                        ColumnDef::new(ProductVariants::ManageInventory)
-                            .boolean()
+                        ColumnDef::new(ProductVariants::InventoryPolicy)
+                            .string_len(32)
                             .not_null()
-                            .default(true),
+                            .default("deny"),
                     )
                     .col(
-                        ColumnDef::new(ProductVariants::AllowBackorder)
-                            .boolean()
+                        ColumnDef::new(ProductVariants::InventoryManagement)
+                            .string_len(32)
                             .not_null()
-                            .default(false),
+                            .default("rustok"),
                     )
                     .col(
-                        ColumnDef::new(ProductVariants::VariantRank)
+                        ColumnDef::new(ProductVariants::InventoryQuantity)
                             .integer()
                             .not_null()
                             .default(0),
                     )
+                    .col(ColumnDef::new(ProductVariants::Weight).decimal_len(10, 3))
+                    .col(ColumnDef::new(ProductVariants::WeightUnit).string_len(8))
+                    .col(ColumnDef::new(ProductVariants::Option1).string_len(255))
+                    .col(ColumnDef::new(ProductVariants::Option2).string_len(255))
+                    .col(ColumnDef::new(ProductVariants::Option3).string_len(255))
                     .col(
-                        ColumnDef::new(ProductVariants::Metadata)
-                            .json_binary()
+                        ColumnDef::new(ProductVariants::Position)
+                            .integer()
                             .not_null()
-                            .default("{}"),
+                            .default(0),
                     )
                     .col(
                         ColumnDef::new(ProductVariants::CreatedAt)
@@ -65,7 +64,6 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(ColumnDef::new(ProductVariants::DeletedAt).timestamp_with_time_zone())
                     .foreign_key(
                         ForeignKey::create()
                             .from(ProductVariants::Table, ProductVariants::ProductId)
@@ -112,45 +110,6 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .create_table(
-                Table::create()
-                    .table(VariantOptionValues::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(VariantOptionValues::VariantId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(VariantOptionValues::OptionValueId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .primary_key(
-                        Index::create()
-                            .col(VariantOptionValues::VariantId)
-                            .col(VariantOptionValues::OptionValueId),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .from(VariantOptionValues::Table, VariantOptionValues::VariantId)
-                            .to(ProductVariants::Table, ProductVariants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .from(
-                                VariantOptionValues::Table,
-                                VariantOptionValues::OptionValueId,
-                            )
-                            .to(ProductOptionValues::Table, ProductOptionValues::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
             .create_index(
                 Index::create()
                     .name("idx_variants_product")
@@ -159,6 +118,17 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_variants_tenant")
+                    .table(ProductVariants::Table)
+                    .col(ProductVariants::TenantId)
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .create_index(
                 Index::create()
@@ -168,6 +138,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
         manager
             .create_index(
                 Index::create()
@@ -177,6 +148,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
         manager
             .create_index(
                 Index::create()
@@ -193,9 +165,6 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(VariantOptionValues::Table).to_owned())
-            .await?;
         manager
             .drop_table(
                 Table::drop()
@@ -215,24 +184,22 @@ enum ProductVariants {
     Table,
     Id,
     ProductId,
+    TenantId,
     Sku,
     Barcode,
     Ean,
     Upc,
+    InventoryPolicy,
+    InventoryManagement,
+    InventoryQuantity,
     Weight,
-    Length,
-    Height,
-    Width,
-    HsCode,
-    OriginCountry,
-    MidCode,
-    ManageInventory,
-    AllowBackorder,
-    VariantRank,
-    Metadata,
+    WeightUnit,
+    Option1,
+    Option2,
+    Option3,
+    Position,
     CreatedAt,
     UpdatedAt,
-    DeletedAt,
 }
 
 #[derive(Iden)]
@@ -245,20 +212,7 @@ enum ProductVariantTranslations {
 }
 
 #[derive(Iden)]
-enum VariantOptionValues {
-    Table,
-    VariantId,
-    OptionValueId,
-}
-
-#[derive(Iden)]
 enum Products {
-    Table,
-    Id,
-}
-
-#[derive(Iden)]
-enum ProductOptionValues {
     Table,
     Id,
 }

@@ -8,9 +8,15 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub variant_id: Uuid,
+    pub price_list_id: Option<Uuid>,
     pub currency_code: String,
+    pub region_id: Option<Uuid>,
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,
+    pub min_quantity: Option<i32>,
+    pub max_quantity: Option<i32>,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
