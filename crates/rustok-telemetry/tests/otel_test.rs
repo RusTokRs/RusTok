@@ -2,7 +2,7 @@
 ///
 /// These tests verify OpenTelemetry initialization and configuration.
 /// Note: Full tracing tests require a running OTLP collector (Jaeger/Tempo).
-use rustok_telemetry::otel::{init_tracing, OtelConfig, OtelError};
+use rustok_telemetry::otel::{init_tracing, OtelConfig};
 
 #[test]
 fn test_otel_config_builder() {

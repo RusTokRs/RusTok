@@ -177,8 +177,8 @@ mod tests {
         let engine = create_default_engine();
         let ctx = ExecutionContext::new(ExecutionPhase::Manual);
 
-        engine.execute("script1", "1", &ctx).unwrap();
-        engine.execute("script2", "2", &ctx).unwrap();
+        let _ = engine.execute("script1", "1", &ctx).unwrap();
+        let _ = engine.execute("script2", "2", &ctx).unwrap();
 
         engine.invalidate_all();
 
