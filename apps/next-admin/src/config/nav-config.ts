@@ -1,6 +1,7 @@
 import { NavItem } from '@/types';
+import { getAdminNavItems } from '@/modules';
 
-export const navItems: NavItem[] = [
+const coreNavItems: NavItem[] = [
   {
     title: 'Dashboard',
     url: '/dashboard/overview',
@@ -48,4 +49,9 @@ export const navItems: NavItem[] = [
       }
     ]
   }
+];
+
+export const navItems: NavItem[] = [
+  ...coreNavItems,
+  ...getAdminNavItems()
 ];

@@ -1,0 +1,10 @@
+{
+  "name": "@rustok/blog-admin",
+  "private": true,
+  "version": "0.0.1",
+  "main": "index.ts",
+  "peerDependencies": {
+    "react": ">=19",
+    "next": ">=16"
+  }
+}
