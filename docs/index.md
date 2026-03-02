@@ -212,6 +212,7 @@ graph TD
 - [packages/leptos-auth](../packages/leptos-auth/README.md)
 - [packages/leptos-graphql](../packages/leptos-graphql/README.md) — shared GraphQL helpers for all frontends
 - [packages/leptos-hook-form](../packages/leptos-hook-form/README.md)
+- [packages/leptos-table](../packages/leptos-table/README.md)
 - [packages/leptos-zod](../packages/leptos-zod/README.md)
 - [packages/leptos-zustand](../packages/leptos-zustand/README.md)
 

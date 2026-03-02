@@ -1,13 +1,16 @@
-# Storefront (Leptos SSR + Next.js)
+# Витрина (Leptos SSR + Next.js)
 
-RusToK storefront ships in two flavors:
-- **Leptos SSR** (`apps/storefront`) for a Rust-first, SSR application styled with Tailwind.
-- **Next.js App Router** (`apps/next-frontend`) for teams that want a React-based storefront.
+В RusToK витрина реализована в двух вариантах:
+- **Leptos SSR** (`apps/storefront`) — Rust-first SSR приложение на Tailwind.
+- **Next.js App Router** (`apps/next-frontend`) — React/Next.js реализация витрины.
 
-Both variants start with a minimal landing layout that can be extended with
-product listings, content blocks, and checkout flows.
+Обе реализации выравниваются по тем же принципам, что и параллельные админки:
 
-## Run locally
+- FSD-границы между `app / modules / shared`;
+- единые внутренние frontend-библиотеки (`leptos-*`) для API/Auth/State-контрактов;
+- паритет UI-контрактов через `UI/docs/api-contracts.md`.
+
+## Локальный запуск
 
 ```bash
 # Leptos SSR
@@ -19,14 +22,30 @@ npm install
 npm run dev
 ```
 
-The Leptos SSR server listens on `http://localhost:3100`. The Next.js app runs on
-`http://localhost:3000` by default.
+Leptos SSR сервер слушает `http://localhost:3100`. Next.js приложение — `http://localhost:3000`.
 
-## Tailwind styles
+## Контракты паритета фронтендов
 
-The Leptos storefront ships with Tailwind-only styling. The CSS pipeline uses
-`tailwind-rs` for the WASM-first, type-safe build. For offline or customized
-themes, build the CSS bundle:
+### Next.js storefront (`apps/next-frontend`)
+
+- GraphQL-контракт подключается через `leptos-graphql/next`.
+- Auth/session контракт подключается через `leptos-auth/next`.
+- FSD-gateway для интеграций расположен в `src/shared/lib/`:
+  - `shared/lib/graphql.ts` (`storefrontGraphql`, re-export констант и типов)
+  - `shared/lib/auth.ts` (re-export auth типов и хелперов)
+
+Такой слой устраняет разрозненные ad-hoc реализации fetch/auth и удерживает витрину
+в том же контрактном поле, что и админки.
+
+### Leptos storefront (`apps/storefront`)
+
+- Использует workspace-крейты `leptos-auth`, `leptos-graphql`, `leptos-table`.
+- Остаётся Rust-first вариантом витрины с тем же backend-контуром доменных модулей.
+
+## Стили Tailwind
+
+Leptos storefront использует Tailwind-only стили. CSS-пайплайн построен на `tailwind-rs`.
+Для оффлайн-сборки или кастомной темы:
 
 ```bash
 cd apps/storefront
@@ -34,17 +53,13 @@ npm install
 npm run build:css
 ```
 
-This writes `apps/storefront/static/app.css`, which the SSR server serves from
-`/assets/app.css`.
+Собранный файл `apps/storefront/static/app.css` раздаётся SSR-сервером по `/assets/app.css`.
 
-## Localization
+## Локализация
 
-The storefront currently supports English and Russian strings. Switch language
-with the `lang` query parameter:
+Витрина поддерживает English и Russian. Переключение языка через query-параметр `lang`:
 
 - English: `http://localhost:3100?lang=en`
 - Russian: `http://localhost:3100?lang=ru`
 
-Add more locales by extending the `locale_strings` mapping in
-`apps/storefront/src/main.rs`.
-
+Для новых языков расширяйте `locale_strings` в `apps/storefront/src/main.rs`.

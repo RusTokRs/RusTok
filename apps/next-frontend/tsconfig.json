@@ -17,6 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@/components/*": ["src/components/*"],
+      "@/shared/*": ["src/shared/*"],
       "@/modules": ["src/modules/index.ts"],
       "@/modules/*": ["src/modules/*"],
       "@/styles/*": ["src/styles/*"]

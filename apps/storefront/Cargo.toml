@@ -14,7 +14,7 @@ leptos-auth = { workspace = true }
 leptos-graphql = { workspace = true }
 leptos-hook-form = { workspace = true }
 leptos-zod = { workspace = true }
-leptos-struct-table = { workspace = true }
+leptos-table = { workspace = true }
 leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
@@ -28,7 +28,7 @@ normal = [
   "leptos-auth",
   "leptos-graphql",
   "leptos-hook-form",
-  "leptos-struct-table",
+  "leptos-table",
   "leptos-zod",
   "leptos-zustand",
   "leptos-shadcn-pagination",

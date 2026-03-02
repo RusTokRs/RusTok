@@ -88,6 +88,7 @@ iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/leptos-ui" }
 leptos-forms = { path = "crates/leptos-forms" }
 leptos-hook-form = { path = "crates/leptos-hook-form" }
+leptos-table = { path = "crates/leptos-table" }
 leptos-zod = { path = "crates/leptos-zod" }
 leptos-struct-table = "0.18.0"
 leptos-zustand = { path = "crates/leptos-zustand" }
