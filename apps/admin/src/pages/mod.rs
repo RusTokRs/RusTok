@@ -1,5 +1,6 @@
 pub mod dashboard;
 pub mod login;
+pub mod modules;
 pub mod not_found;
 pub mod profile;
 pub mod register;

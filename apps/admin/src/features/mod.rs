@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod modules;
 pub mod profile;
 pub mod users;
 

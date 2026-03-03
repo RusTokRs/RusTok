@@ -37,6 +37,9 @@ pub fn Sidebar() -> impl IntoView {
                                 <NavLink href="/users" icon="users">
                                     {move || translate("app.nav.users")}
                                 </NavLink>
+                                <NavLink href="/modules" icon="package">
+                                    {move || translate("app.nav.modules")}
+                                </NavLink>
                             </div>
                         }.into_any()
                     } else {
@@ -111,6 +114,7 @@ fn NavIcon(icon: &'static str) -> impl IntoView {
         "users" => "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
         "user" => "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
         "lock" => "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",
+        "package" => "M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12",
         _ => "M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0",
     };
 
