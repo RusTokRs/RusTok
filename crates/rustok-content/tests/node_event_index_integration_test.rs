@@ -16,17 +16,26 @@ use uuid::Uuid;
 
 fn run_async_test<F, Fut>(f: F)
 where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = ()>,
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
 {
-    // Execute on the test harness thread to avoid custom spawned-thread stack limits
-    // in coverage/instrumented CI environments.
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime");
+    // Execute each async test on a dedicated thread with an explicit larger stack.
+    // This avoids stack overflows in llvm-cov/instrumented CI where async futures
+    // can require deeper stacks than the default test-harness thread provides.
+    std::thread::Builder::new()
+        .name("node-event-index-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build tokio runtime");
 
-    runtime.block_on(f());
+            runtime.block_on(f());
+        })
+        .expect("failed to spawn async test thread")
+        .join()
+        .expect("async test thread panicked");
 }
 
 async fn setup_content_test_db() -> DatabaseConnection {
