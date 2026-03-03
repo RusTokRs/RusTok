@@ -788,8 +788,21 @@ mod tests {
         let connector = RemoteConnector::new();
         let config = ConnectorConfig::default();
 
-        let result = connector.connect(&config).await;
-        tracing::debug!("Connect result: {:?}", result);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            connector.connect(&config),
+        )
+        .await;
+
+        assert!(
+            matches!(
+                result,
+                Err(_) | Ok(Ok(())) | Ok(Err(ConnectorError::Connection(_))) | Ok(Err(ConnectorError::Timeout(_)))
+            ),
+            "unexpected remote connect result: {:?}",
+            result
+        );
+        tracing::debug!("Connect result (bounded by timeout): {:?}", result);
     }
 
     #[tokio::test]
