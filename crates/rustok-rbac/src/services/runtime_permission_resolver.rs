@@ -102,7 +102,11 @@ where
         self.assignment_store
             .assign_role_permissions(tenant_id, user_id, role)
             .await
-            .map_err(Into::into)
+            .map_err(Into::into)?;
+
+        self.cache.invalidate(tenant_id, user_id).await;
+
+        Ok(())
     }
 
     async fn replace_user_role(
@@ -114,7 +118,11 @@ where
         self.assignment_store
             .replace_user_role(tenant_id, user_id, role)
             .await
-            .map_err(Into::into)
+            .map_err(Into::into)?;
+
+        self.cache.invalidate(tenant_id, user_id).await;
+
+        Ok(())
     }
 
     async fn remove_tenant_role_assignments(
@@ -125,7 +133,11 @@ where
         self.assignment_store
             .remove_tenant_role_assignments(tenant_id, user_id)
             .await
-            .map_err(Into::into)
+            .map_err(Into::into)?;
+
+        self.cache.invalidate(tenant_id, user_id).await;
+
+        Ok(())
     }
 
     async fn remove_user_role_assignment(
@@ -137,7 +149,11 @@ where
         self.assignment_store
             .remove_user_role_assignment(tenant_id, user_id, role)
             .await
-            .map_err(Into::into)
+            .map_err(Into::into)?;
+
+        self.cache.invalidate(tenant_id, user_id).await;
+
+        Ok(())
     }
 }
 

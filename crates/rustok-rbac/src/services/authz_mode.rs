@@ -63,27 +63,24 @@ fn env_flag_enabled(name: &str) -> bool {
 mod tests {
     use super::{RbacAuthzMode, AUTHZ_MODE_ENV, RELATION_DUAL_READ_FLAG_ALIASES};
     use crate::error::RbacError;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
 
     struct EnvVarGuard {
-        _lock: MutexGuard<'static, ()>,
         name: &'static str,
         previous: Option<String>,
     }
 
     impl EnvVarGuard {
-        fn lock(name: &'static str) -> Self {
-            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-            let lock = LOCK
-                .get_or_init(|| Mutex::new(()))
-                .lock()
-                .expect("env lock");
+        fn capture(name: &'static str) -> Self {
             let previous = std::env::var(name).ok();
-            Self {
-                _lock: lock,
-                name,
-                previous,
-            }
+            Self { name, previous }
         }
 
         fn set(&self, value: &str) {
@@ -165,11 +162,12 @@ mod tests {
 
     #[test]
     fn from_env_supports_all_legacy_dual_read_flag_aliases() {
-        let mode_env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
         mode_env.remove();
 
         for name in RELATION_DUAL_READ_FLAG_ALIASES {
-            let alias = EnvVarGuard::lock(name);
+            let alias = EnvVarGuard::capture(name);
             alias.set("true");
             assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::DualRead);
         }
@@ -177,11 +175,12 @@ mod tests {
 
     #[test]
     fn authz_mode_env_has_priority_over_legacy_flag_aliases() {
-        let mode_env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
         mode_env.set("relation_only");
 
         for name in RELATION_DUAL_READ_FLAG_ALIASES {
-            let alias = EnvVarGuard::lock(name);
+            let alias = EnvVarGuard::capture(name);
             alias.set("true");
             assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::RelationOnly);
         }

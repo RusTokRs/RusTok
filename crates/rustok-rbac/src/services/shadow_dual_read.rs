@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn returns_compared_when_legacy_role_present() {
-        let required = permission(Resource::Users, Action::Read);
+        let required = permission(Resource::BlogPosts, Action::Read);
 
         let outcome = evaluate_dual_read(
             Some(&UserRole::Manager),
