@@ -1,5 +1,4 @@
 [advisories]
-db-path = "$CARGO_HOME/advisory-dbs"
 db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "workspace"
 unsound = "workspace"
