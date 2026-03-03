@@ -25,11 +25,17 @@ pub fn build_publish_request(
 }
 
 fn determine_topic(envelope: &EventEnvelope) -> String {
-    if envelope.event_type.starts_with("system.") {
+    if is_system_event(&envelope.event_type) {
         "system".to_string()
     } else {
         "domain".to_string()
     }
+}
+
+fn is_system_event(event_type: &str) -> bool {
+    ["index.", "build."]
+        .iter()
+        .any(|prefix| event_type.starts_with(prefix))
 }
 
 #[cfg(test)]
@@ -40,7 +46,7 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_envelope(event_type: &str) -> EventEnvelope {
-        let event = if event_type.starts_with("system.") {
+        let event = if is_system_event(event_type) {
             DomainEvent::ReindexRequested {
                 target_type: "test".to_string(),
                 target_id: None,
@@ -79,7 +85,18 @@ mod tests {
 
     #[test]
     fn determine_topic_routes_system_events() {
-        let envelope = create_test_envelope("system.reindex");
+        let envelope = create_test_envelope("index.reindex_requested");
+        assert_eq!(determine_topic(&envelope), "system");
+    }
+
+    #[test]
+    fn determine_topic_routes_build_events_as_system() {
+        let event = DomainEvent::BuildRequested {
+            build_id: Uuid::new_v4(),
+            requested_by: "manual".to_string(),
+        };
+        let envelope = EventEnvelope::new(Uuid::new_v4(), Some(Uuid::new_v4()), event);
+
         assert_eq!(determine_topic(&envelope), "system");
     }
 
