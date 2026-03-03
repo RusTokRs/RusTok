@@ -747,6 +747,7 @@ mod tests {
             .insert(&db)
             .await
             .expect("failed to create user");
+        let user_id = user.id;
 
         let now = Utc::now();
         sessions::ActiveModel::new(
@@ -772,8 +773,6 @@ mod tests {
         .await
         .expect("failed to create session b");
 
-        let metrics_before = AuthLifecycleService::metrics_snapshot();
-
         AuthLifecycleService::reset_password_and_revoke_sessions(
             &db,
             tenant.id,
@@ -783,6 +782,18 @@ mod tests {
         )
         .await
         .expect("first password reset should succeed");
+
+        let revoked_after_first_call = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user_id))
+            .filter(sessions::Column::RevokedAt.is_not_null())
+            .count(&db)
+            .await
+            .expect("failed to query revoked sessions after first call");
+        assert_eq!(
+            revoked_after_first_call, 2,
+            "first call should revoke all active sessions"
+        );
 
         AuthLifecycleService::reset_password_and_revoke_sessions(
             &db,
@@ -794,10 +805,15 @@ mod tests {
         .await
         .expect("second password reset should succeed");
 
-        let metrics_after = AuthLifecycleService::metrics_snapshot();
+        let revoked_after_second_call = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user_id))
+            .filter(sessions::Column::RevokedAt.is_not_null())
+            .count(&db)
+            .await
+            .expect("failed to query revoked sessions after second call");
         assert_eq!(
-            metrics_after.password_reset_sessions_revoked_total,
-            metrics_before.password_reset_sessions_revoked_total + 2,
+            revoked_after_second_call, revoked_after_first_call,
             "second call should revoke zero additional sessions"
         );
     }
