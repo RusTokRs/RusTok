@@ -20,14 +20,15 @@ import {
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { PostSummary } from '../../api/posts';
+import type { PostSummary, GqlOpts } from '../../api/posts';
 import { deletePost, publishPost, unpublishPost } from '../../api/posts';
 
 interface CellActionProps {
   data: PostSummary;
+  gqlOpts?: GqlOpts;
 }
 
-export const CellAction: React.FC<CellActionProps> = ({ data }) => {
+export const CellAction: React.FC<CellActionProps> = ({ data, gqlOpts = {} }) => {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -35,7 +36,7 @@ export const CellAction: React.FC<CellActionProps> = ({ data }) => {
   const onDelete = async () => {
     try {
       setLoading(true);
-      await deletePost(data.id);
+      await deletePost(data.id, gqlOpts);
       toast.success('Post deleted');
       router.refresh();
     } catch {
@@ -48,11 +49,11 @@ export const CellAction: React.FC<CellActionProps> = ({ data }) => {
 
   const onTogglePublish = async () => {
     try {
-      if (data.status === 'Published') {
-        await unpublishPost(data.id);
+      if (data.status === 'PUBLISHED') {
+        await unpublishPost(data.id, gqlOpts);
         toast.success('Post unpublished');
       } else {
-        await publishPost(data.id);
+        await publishPost(data.id, gqlOpts);
         toast.success('Post published');
       }
       router.refresh();
@@ -84,7 +85,7 @@ export const CellAction: React.FC<CellActionProps> = ({ data }) => {
             <IconEdit className='mr-2 h-4 w-4' /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onTogglePublish}>
-            {data.status === 'Published' ? (
+            {data.status === 'PUBLISHED' ? (
               <>
                 <IconWorldOff className='mr-2 h-4 w-4' /> Unpublish
               </>

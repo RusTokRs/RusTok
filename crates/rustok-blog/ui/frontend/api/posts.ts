@@ -1,44 +1,96 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+import { graphqlRequest } from '@/lib/graphql';
+
+// ---------- Types (matches GraphQL schema, camelCase) ----------
 
 export interface PublicPostSummary {
   id: string;
   title: string;
-  slug: string;
+  slug: string | null;
   excerpt: string | null;
-  featured_image_url: string | null;
-  author_name: string | null;
+  featuredImageUrl: string | null;
+  authorId: string | null;
   tags: string[];
-  published_at: string | null;
+  publishedAt: string | null;
 }
 
 export interface PublicPostListResponse {
   items: PublicPostSummary[];
   total: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
 }
+
+// ---------- GraphQL ----------
+
+const PUBLISHED_POSTS_QUERY = `
+query PublishedPosts($tenantId: UUID!, $filter: PostsFilter) {
+  posts(tenantId: $tenantId, filter: $filter) {
+    items {
+      id
+      title
+      slug
+      excerpt
+      status
+      authorId
+      createdAt
+      publishedAt
+    }
+    total
+  }
+}
+`;
+
+interface PostsQueryResponse {
+  posts: {
+    items: Array<{
+      id: string;
+      title: string;
+      slug: string | null;
+      excerpt: string | null;
+      authorId: string | null;
+      publishedAt: string | null;
+    }>;
+    total: number;
+  };
+}
+
+// ---------- Env-based tenant resolution ----------
+
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? '';
+const TENANT_SLUG = process.env.NEXT_PUBLIC_TENANT_SLUG ?? '';
+
+// ---------- API ----------
 
 export async function fetchPublishedPosts(
   page = 1,
-  perPage = 6,
-  tenantSlug?: string
+  perPage = 6
 ): Promise<PublicPostListResponse> {
-  const params = new URLSearchParams({
-    status: 'Published',
-    page: String(page),
-    per_page: String(perPage),
-    sort_by: 'published_at',
-    sort_order: 'desc'
-  });
+  const data = await graphqlRequest<
+    { tenantId: string; filter: { status: string; page: number; perPage: number } },
+    PostsQueryResponse
+  >(
+    PUBLISHED_POSTS_QUERY,
+    {
+      tenantId: TENANT_ID,
+      filter: {
+        status: 'PUBLISHED',
+        page,
+        perPage
+      }
+    },
+    undefined,
+    TENANT_SLUG || undefined
+  );
 
-  const headers: Record<string, string> = {};
-  if (tenantSlug) headers['X-Tenant-Slug'] = tenantSlug;
-
-  const res = await fetch(`${API_URL}/api/blog/posts?${params}`, {
-    headers,
-    next: { revalidate: 60 }
-  });
-  if (!res.ok) throw new Error(`fetchPublishedPosts failed: ${res.status}`);
-  return res.json();
+  return {
+    items: data.posts.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      slug: item.slug,
+      excerpt: item.excerpt,
+      featuredImageUrl: null,
+      authorId: item.authorId,
+      tags: [],
+      publishedAt: item.publishedAt
+    })),
+    total: data.posts.total
+  };
 }

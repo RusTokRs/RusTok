@@ -7,6 +7,7 @@ declare module 'next-auth' {
       role: string;
       status: string;
       tenantSlug: string | null;
+      tenantId: string | null;
       rustokToken: string;
     } & DefaultSession['user'];
   }
@@ -15,6 +16,7 @@ declare module 'next-auth' {
     role: string;
     status: string;
     tenantSlug: string | null;
+    tenantId: string | null;
     rustokToken: string;
   }
 }
@@ -25,6 +27,7 @@ declare module 'next-auth/jwt' {
     role: string;
     status: string;
     tenantSlug: string | null;
+    tenantId: string | null;
     rustokToken: string;
   }
 }

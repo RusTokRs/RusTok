@@ -1,28 +1,39 @@
 import { getPost } from '../api/posts';
-import type { PostResponse } from '../api/posts';
+import type { PostResponse, GqlOpts } from '../api/posts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface PostDetailPageProps {
   postId: string;
-  locale?: string;
   token?: string | null;
   tenantSlug?: string | null;
+  tenantId?: string | null;
 }
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  Published: 'default',
-  Draft: 'secondary',
-  Archived: 'outline'
+  PUBLISHED: 'default',
+  DRAFT: 'secondary',
+  ARCHIVED: 'outline'
+};
+
+const statusLabel: Record<string, string> = {
+  DRAFT: 'Draft',
+  PUBLISHED: 'Published',
+  ARCHIVED: 'Archived'
 };
 
 export default async function PostDetailPage({
   postId,
-  locale = 'en',
   token,
-  tenantSlug
+  tenantSlug,
+  tenantId
 }: PostDetailPageProps) {
-  const post: PostResponse = await getPost(postId, locale, { token, tenantSlug });
+  const opts: GqlOpts = { token, tenantSlug, tenantId };
+  const post: PostResponse | null = await getPost(postId, opts);
+
+  if (!post) {
+    return <p>Post not found.</p>;
+  }
 
   return (
     <Card>
@@ -30,13 +41,13 @@ export default async function PostDetailPage({
         <div className='flex items-center gap-3'>
           <CardTitle className='text-2xl'>{post.title}</CardTitle>
           <Badge variant={statusVariant[post.status] ?? 'outline'}>
-            {post.status}
+            {statusLabel[post.status] ?? post.status}
           </Badge>
         </div>
         <p className='text-muted-foreground text-sm'>
-          {post.slug} &middot; {post.locale}
-          {post.published_at && (
-            <> &middot; Published {new Date(post.published_at).toLocaleDateString()}</>
+          {post.slug}
+          {post.publishedAt && (
+            <> &middot; Published {new Date(post.publishedAt).toLocaleDateString()}</>
           )}
         </p>
       </CardHeader>

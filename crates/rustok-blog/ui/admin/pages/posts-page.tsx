@@ -1,4 +1,4 @@
-import type { PostSummary } from '../api/posts';
+import type { PostSummary, GqlOpts, BlogPostStatus } from '../api/posts';
 import { listPosts } from '../api/posts';
 import { PostTable } from '../components/post-table';
 import { columns } from '../components/post-table/columns';
@@ -12,22 +12,21 @@ interface PostsPageProps {
   };
   token?: string | null;
   tenantSlug?: string | null;
+  tenantId?: string | null;
 }
 
 export default async function PostsPage({
   searchParams,
   token,
-  tenantSlug
+  tenantSlug,
+  tenantId
 }: PostsPageProps) {
   const page = Number(searchParams.page) || 1;
   const perPage = Number(searchParams.perPage) || 20;
-  const search = searchParams.title || undefined;
-  const status = searchParams.status as 'Draft' | 'Published' | 'Archived' | undefined;
+  const status = searchParams.status as BlogPostStatus | undefined;
 
-  const data = await listPosts(
-    { page, per_page: perPage, search, status },
-    { token, tenantSlug }
-  );
+  const opts: GqlOpts = { token, tenantSlug, tenantId };
+  const data = await listPosts({ page, perPage, status }, opts);
 
   const posts: PostSummary[] = data.items;
 

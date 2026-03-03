@@ -1,3 +1,4 @@
+import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { ModulesList } from '@/features/modules/components/modules-list';
 import { listModules } from '@/features/modules/api';
@@ -8,7 +9,10 @@ export const metadata = {
 };
 
 async function ModulesContent() {
-  const data = await listModules();
+  const session = await auth();
+  const token = session?.user?.rustokToken;
+  const tenantSlug = session?.user?.tenantSlug;
+  const data = await listModules({ token, tenantSlug });
   return <ModulesList modules={data.modules} />;
 }
 

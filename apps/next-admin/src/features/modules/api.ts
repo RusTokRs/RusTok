@@ -1,7 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+import { graphqlRequest } from '@/lib/graphql';
 
 export interface ModuleInfo {
-  slug: string;
+  moduleSlug: string;
   name: string;
   description: string;
   version: string;
@@ -10,46 +10,89 @@ export interface ModuleInfo {
   enabled: boolean;
 }
 
-export interface ModulesListResponse {
-  modules: ModuleInfo[];
-}
-
-interface FetchOptions {
+interface GqlOpts {
   token?: string | null;
   tenantSlug?: string | null;
 }
 
-function buildHeaders(opts: FetchOptions): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
-  if (opts.tenantSlug) headers['X-Tenant-Slug'] = opts.tenantSlug;
-  return headers;
+// ---------- GraphQL ----------
+
+const MODULE_REGISTRY_QUERY = `
+query ModuleRegistry {
+  moduleRegistry {
+    moduleSlug
+    name
+    description
+    version
+    kind
+    dependencies
+    enabled
+  }
+}
+`;
+
+const TOGGLE_MODULE_MUTATION = `
+mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) {
+  toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) {
+    moduleSlug
+    enabled
+    settings
+  }
+}
+`;
+
+// ---------- Response types ----------
+
+interface ModuleRegistryResponse {
+  moduleRegistry: ModuleInfo[];
 }
 
+interface ToggleModuleResponse {
+  toggleModule: {
+    moduleSlug: string;
+    enabled: boolean;
+    settings: string;
+  };
+}
+
+// ---------- API ----------
+
 export async function listModules(
-  opts: FetchOptions = {}
-): Promise<ModulesListResponse> {
-  const res = await fetch(`${API_URL}/api/modules`, {
-    headers: buildHeaders(opts),
-    cache: 'no-store'
-  });
-  if (!res.ok) throw new Error(`listModules failed: ${res.status}`);
-  return res.json();
+  opts: GqlOpts = {}
+): Promise<{ modules: ModuleInfo[] }> {
+  const data = await graphqlRequest<undefined, ModuleRegistryResponse>(
+    MODULE_REGISTRY_QUERY,
+    undefined,
+    opts.token,
+    opts.tenantSlug
+  );
+  return { modules: data.moduleRegistry };
 }
 
 export async function toggleModule(
   slug: string,
   enabled: boolean,
-  opts: FetchOptions = {}
+  opts: GqlOpts = {}
 ): Promise<ModuleInfo> {
-  const res = await fetch(`${API_URL}/api/modules/${slug}/toggle`, {
-    method: 'PUT',
-    headers: buildHeaders(opts),
-    body: JSON.stringify({ enabled })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `toggleModule failed: ${res.status}`);
-  }
-  return res.json();
+  const data = await graphqlRequest<
+    { moduleSlug: string; enabled: boolean },
+    ToggleModuleResponse
+  >(
+    TOGGLE_MODULE_MUTATION,
+    { moduleSlug: slug, enabled },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  // Return a ModuleInfo-compatible object with the toggled state
+  // The full module info comes from the registry query; here we get the toggle result
+  return {
+    moduleSlug: data.toggleModule.moduleSlug,
+    name: data.toggleModule.moduleSlug,
+    description: '',
+    version: '',
+    kind: 'optional',
+    dependencies: [],
+    enabled: data.toggleModule.enabled
+  };
 }

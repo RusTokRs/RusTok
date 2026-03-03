@@ -1,15 +1,15 @@
 import type { PublicPostSummary } from '../api/posts';
 
 export function PostCard({ post }: { post: PublicPostSummary }) {
-  const date = post.published_at
-    ? new Date(post.published_at).toLocaleDateString()
+  const date = post.publishedAt
+    ? new Date(post.publishedAt).toLocaleDateString()
     : null;
 
   return (
     <article className='rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md'>
-      {post.featured_image_url && (
+      {post.featuredImageUrl && (
         <img
-          src={post.featured_image_url}
+          src={post.featuredImageUrl}
           alt={post.title}
           className='mb-4 aspect-video w-full rounded-lg object-cover'
         />
@@ -23,13 +23,7 @@ export function PostCard({ post }: { post: PublicPostSummary }) {
         </p>
       )}
       <div className='mt-3 flex items-center gap-2 text-xs text-muted-foreground'>
-        {post.author_name && <span>{post.author_name}</span>}
-        {date && (
-          <>
-            <span>&middot;</span>
-            <span>{date}</span>
-          </>
-        )}
+        {date && <span>{date}</span>}
       </div>
       {post.tags.length > 0 && (
         <div className='mt-3 flex flex-wrap gap-1.5'>

@@ -1,3 +1,4 @@
+import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { PostFormPage } from '@rustok/blog-admin';
 import { Suspense } from 'react';
@@ -6,11 +7,20 @@ export const metadata = {
   title: 'Dashboard: New Post'
 };
 
-export default function Page() {
+export default async function Page() {
+  const session = await auth();
+  const token = session?.user?.rustokToken ?? null;
+  const tenantSlug = session?.user?.tenantSlug ?? null;
+  const tenantId = session?.user?.tenantId ?? null;
+
   return (
     <PageContainer scrollable pageTitle='Create Post'>
       <Suspense fallback={<div>Loading form...</div>}>
-        <PostFormPage />
+        <PostFormPage
+          token={token}
+          tenantSlug={tenantSlug}
+          tenantId={tenantId}
+        />
       </Suspense>
     </PageContainer>
   );

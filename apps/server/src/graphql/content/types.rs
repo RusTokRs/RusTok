@@ -4,6 +4,7 @@ use uuid::Uuid;
 use rustok_content::dto;
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
 pub enum GqlContentStatus {
     Draft,
     Published,

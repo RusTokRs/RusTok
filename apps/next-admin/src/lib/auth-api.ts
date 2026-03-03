@@ -20,6 +20,12 @@ export interface AuthSession {
   tenantSlug: string | null;
 }
 
+export interface TenantInfo {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 // Mutations
 
 const SIGN_IN_MUTATION = `
@@ -78,6 +84,16 @@ query Me {
 }
 `;
 
+const CURRENT_TENANT_QUERY = `
+query CurrentTenant {
+  currentTenant {
+    id
+    name
+    slug
+  }
+}
+`;
+
 const REFRESH_TOKEN_MUTATION = `
 mutation RefreshToken($input: RefreshTokenInput!) {
   refreshToken(input: $input) {
@@ -116,6 +132,10 @@ interface SignUpResponse {
 
 interface MeResponse {
   me: AuthUser | null;
+}
+
+interface CurrentTenantResponse {
+  currentTenant: TenantInfo;
 }
 
 interface RefreshTokenResponse {
@@ -177,6 +197,23 @@ export async function fetchCurrentUser(
       tenantSlug
     );
     return data.me;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchCurrentTenant(
+  token: string,
+  tenantSlug?: string | null
+): Promise<TenantInfo | null> {
+  try {
+    const data = await graphqlRequest<undefined, CurrentTenantResponse>(
+      CURRENT_TENANT_QUERY,
+      undefined,
+      token,
+      tenantSlug
+    );
+    return data.currentTenant;
   } catch {
     return null;
   }

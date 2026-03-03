@@ -9,9 +9,15 @@ import { STATUS_OPTIONS } from './options';
 import type { PostSummary } from '../../api/posts';
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  Published: 'default',
-  Draft: 'secondary',
-  Archived: 'outline'
+  PUBLISHED: 'default',
+  DRAFT: 'secondary',
+  ARCHIVED: 'outline'
+};
+
+const statusLabel: Record<string, string> = {
+  DRAFT: 'Draft',
+  PUBLISHED: 'Published',
+  ARCHIVED: 'Archived'
 };
 
 export const columns: ColumnDef<PostSummary>[] = [
@@ -45,7 +51,7 @@ export const columns: ColumnDef<PostSummary>[] = [
       return (
         <Badge variant={statusVariant[status] ?? 'outline'} className='capitalize'>
           <CircleDot className='mr-1 h-3 w-3' />
-          {status}
+          {statusLabel[status] ?? status}
         </Badge>
       );
     },
@@ -57,15 +63,11 @@ export const columns: ColumnDef<PostSummary>[] = [
     }
   },
   {
-    accessorKey: 'author_name',
+    accessorKey: 'authorId',
     header: 'Author'
   },
   {
-    accessorKey: 'category_name',
-    header: 'Category'
-  },
-  {
-    accessorKey: 'created_at',
+    accessorKey: 'createdAt',
     header: 'Created',
     cell: ({ cell }) => {
       const raw = cell.getValue<string>();
@@ -74,7 +76,7 @@ export const columns: ColumnDef<PostSummary>[] = [
     }
   },
   {
-    accessorKey: 'published_at',
+    accessorKey: 'publishedAt',
     header: 'Published',
     cell: ({ cell }) => {
       const raw = cell.getValue<string | null>();

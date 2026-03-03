@@ -21,7 +21,8 @@
       "@/shared/*": ["src/shared/*"],
       "@/modules": ["src/modules/index.ts"],
       "@/modules/*": ["src/modules/*"],
-      "@/styles/*": ["src/styles/*"]
+      "@/styles/*": ["src/styles/*"],
+      "@/lib/*": ["src/lib/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],

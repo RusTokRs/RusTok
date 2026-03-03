@@ -1,3 +1,4 @@
+import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { buttonVariants } from '@/components/ui/button';
 import { DataTableSkeleton } from '@/widgets/data-table';
@@ -18,6 +19,10 @@ type PageProps = {
 
 export default async function Page(props: PageProps) {
   const searchParams = await props.searchParams;
+  const session = await auth();
+  const token = session?.user?.rustokToken ?? null;
+  const tenantSlug = session?.user?.tenantSlug ?? null;
+  const tenantId = session?.user?.tenantId ?? null;
 
   return (
     <PageContainer
@@ -45,6 +50,9 @@ export default async function Page(props: PageProps) {
             title: searchParams.title as string | undefined,
             status: searchParams.status as string | undefined
           }}
+          token={token}
+          tenantSlug={tenantSlug}
+          tenantId={tenantId}
         />
       </Suspense>
     </PageContainer>

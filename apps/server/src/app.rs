@@ -69,7 +69,6 @@ impl Hooks for App {
             .add_route(controllers::blog::routes())
             .add_route(controllers::forum::routes())
             .add_route(controllers::pages::routes())
-            .add_route(controllers::modules::routes())
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {

@@ -39,7 +39,7 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
     try {
       const updated = await toggleModule(slug, enabled);
       setModules((prev) =>
-        prev.map((m) => (m.slug === slug ? { ...m, enabled: updated.enabled } : m))
+        prev.map((m) => (m.moduleSlug === slug ? { ...m, enabled: updated.enabled } : m))
       );
       toast.success(
         `${updated.name} ${updated.enabled ? 'enabled' : 'disabled'}`
@@ -68,9 +68,9 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
         <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
           {coreModules.map((mod) => (
             <ModuleCard
-              key={mod.slug}
+              key={mod.moduleSlug}
               module={mod}
-              loading={loading === mod.slug}
+              loading={loading === mod.moduleSlug}
             />
           ))}
         </div>
@@ -85,9 +85,9 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
         <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
           {optionalModules.map((mod) => (
             <ModuleCard
-              key={mod.slug}
+              key={mod.moduleSlug}
               module={mod}
-              loading={loading === mod.slug}
+              loading={loading === mod.moduleSlug}
               onToggle={handleToggle}
             />
           ))}
@@ -157,7 +157,7 @@ function ModuleCard({
                 checked={module.enabled}
                 disabled={loading}
                 onCheckedChange={(checked) =>
-                  onToggle?.(module.slug, checked)
+                  onToggle?.(module.moduleSlug, checked)
                 }
               />
             </div>
