@@ -13,6 +13,14 @@ impl MigrationTrait for Migration {
                     .add_column_if_not_exists(
                         ColumnDef::new(Nodes::DeletedAt).timestamp_with_time_zone(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Nodes::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(Nodes::Version)
                             .integer()
@@ -51,6 +59,14 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Nodes::Table)
                     .drop_column(Nodes::DeletedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Nodes::Table)
                     .drop_column(Nodes::Version)
                     .to_owned(),
             )

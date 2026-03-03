@@ -552,7 +552,7 @@ impl AuthService {
     ) -> Result<()> {
         let role_model = Self::get_or_create_role(db, tenant_id, &role).await?;
 
-        user_roles::Entity::insert(user_roles::ActiveModel {
+        match user_roles::Entity::insert(user_roles::ActiveModel {
             id: ActiveValue::Set(rustok_core::generate_id()),
             user_id: ActiveValue::Set(*user_id),
             role_id: ActiveValue::Set(role_model.id),
@@ -563,13 +563,17 @@ impl AuthService {
                 .to_owned(),
         )
         .exec(db)
-        .await?;
+        .await
+        {
+            Ok(_) | Err(sea_orm::DbErr::RecordNotInserted) => {}
+            Err(err) => return Err(err.into()),
+        }
 
         for permission in Rbac::permissions_for_role(&role).iter() {
             let permission_model =
                 Self::get_or_create_permission(db, tenant_id, permission).await?;
 
-            role_permissions::Entity::insert(role_permissions::ActiveModel {
+            match role_permissions::Entity::insert(role_permissions::ActiveModel {
                 id: ActiveValue::Set(rustok_core::generate_id()),
                 role_id: ActiveValue::Set(role_model.id),
                 permission_id: ActiveValue::Set(permission_model.id),
@@ -583,7 +587,11 @@ impl AuthService {
                 .to_owned(),
             )
             .exec(db)
-            .await?;
+            .await
+            {
+                Ok(_) | Err(sea_orm::DbErr::RecordNotInserted) => {}
+                Err(err) => return Err(err.into()),
+            }
         }
 
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;

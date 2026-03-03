@@ -11,36 +11,92 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(ProductVariants::Table)
                     .add_column_if_not_exists(ColumnDef::new(ProductVariants::TenantId).uuid())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::InventoryPolicy)
                             .string_len(32)
                             .not_null()
                             .default("deny"),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::InventoryManagement)
                             .string_len(32)
                             .not_null()
                             .default("rustok"),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::InventoryQuantity)
                             .integer()
                             .not_null()
                             .default(0),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::WeightUnit).string_len(16),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::Option1).string_len(255),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::Option2).string_len(255),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::Option3).string_len(255),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::Position)
                             .integer()
@@ -70,13 +126,69 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(ProductVariants::Table)
                     .drop_column(ProductVariants::TenantId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::InventoryPolicy)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::InventoryManagement)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::InventoryQuantity)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::WeightUnit)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::Option1)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::Option2)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::Option3)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProductVariants::Table)
                     .drop_column(ProductVariants::Position)
                     .to_owned(),
             )

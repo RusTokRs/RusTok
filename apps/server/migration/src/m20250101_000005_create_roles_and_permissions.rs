@@ -44,14 +44,18 @@ impl MigrationTrait for Migration {
                             .to(Tenants::Table, Tenants::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .unique()
-                            .name("idx_roles_tenant_slug")
-                            .table(Roles::Table)
-                            .col(Roles::TenantId)
-                            .col(Roles::Slug),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_roles_tenant_slug")
+                    .table(Roles::Table)
+                    .col(Roles::TenantId)
+                    .col(Roles::Slug)
+                    .unique()
                     .to_owned(),
             )
             .await?;
@@ -92,21 +96,29 @@ impl MigrationTrait for Migration {
                             .to(Tenants::Table, Tenants::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .unique()
-                            .name("idx_permissions_unique")
-                            .table(Permissions::Table)
-                            .col(Permissions::TenantId)
-                            .col(Permissions::Resource)
-                            .col(Permissions::Action),
-                    )
-                    .index(
-                        Index::create()
-                            .name("idx_permissions_resource")
-                            .table(Permissions::Table)
-                            .col(Permissions::Resource),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_permissions_unique")
+                    .table(Permissions::Table)
+                    .col(Permissions::TenantId)
+                    .col(Permissions::Resource)
+                    .col(Permissions::Action)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_permissions_resource")
+                    .table(Permissions::Table)
+                    .col(Permissions::Resource)
                     .to_owned(),
             )
             .await?;
@@ -138,14 +150,18 @@ impl MigrationTrait for Migration {
                             .to(Roles::Table, Roles::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .unique()
-                            .name("idx_user_roles_unique")
-                            .table(UserRoles::Table)
-                            .col(UserRoles::UserId)
-                            .col(UserRoles::RoleId),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_user_roles_unique")
+                    .table(UserRoles::Table)
+                    .col(UserRoles::UserId)
+                    .col(UserRoles::RoleId)
+                    .unique()
                     .to_owned(),
             )
             .await?;
@@ -181,14 +197,18 @@ impl MigrationTrait for Migration {
                             .to(Permissions::Table, Permissions::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .unique()
-                            .name("idx_role_permissions_unique")
-                            .table(RolePermissions::Table)
-                            .col(RolePermissions::RoleId)
-                            .col(RolePermissions::PermissionId),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_role_permissions_unique")
+                    .table(RolePermissions::Table)
+                    .col(RolePermissions::RoleId)
+                    .col(RolePermissions::PermissionId)
+                    .unique()
                     .to_owned(),
             )
             .await
