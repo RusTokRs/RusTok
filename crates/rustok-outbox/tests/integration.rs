@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -57,6 +58,8 @@ type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 
 #[tokio::test]
 async fn relay_delivers_successfully() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+
     let Some(db) = setup_db().await? else {
         return Ok(());
     };
@@ -86,6 +89,8 @@ async fn relay_delivers_successfully() -> TestResult<()> {
 
 #[tokio::test]
 async fn relay_retries_then_succeeds() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+
     let Some(db) = setup_db().await? else {
         return Ok(());
     };
@@ -130,6 +135,8 @@ async fn relay_retries_then_succeeds() -> TestResult<()> {
 
 #[tokio::test]
 async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+
     let Some(db) = setup_db().await? else {
         return Ok(());
     };
@@ -217,4 +224,9 @@ async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
     model.insert(db).await?;
 
     Ok(envelope)
+}
+
+fn test_lock() -> &'static Mutex<()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
 }
