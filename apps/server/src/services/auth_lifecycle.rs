@@ -206,7 +206,22 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
 
-        let user = users::Entity::find_by_email(&ctx.db, tenant_id, email)
+        Self::login_with_config(
+            &ctx.db, &config, tenant_id, email, password, ip_address, user_agent,
+        )
+        .await
+    }
+
+    async fn login_with_config(
+        db: &DatabaseConnection,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        email: &str,
+        password: &str,
+        ip_address: Option<String>,
+        user_agent: Option<String>,
+    ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
+        let user = users::Entity::find_by_email(db, tenant_id, email)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
@@ -224,13 +239,14 @@ impl AuthLifecycleService {
         let mut user_active: users::ActiveModel = user.clone().into();
         user_active.last_login_at = Set(Some(now.into()));
         let user = user_active
-            .update(&ctx.db)
+            .update(db)
             .await
             .map_err(AuthLifecycleError::from)?;
 
-        let tokens =
-            Self::create_session_and_tokens(ctx, tenant_id, &user, ip_address, user_agent, &config)
-                .await?;
+        let tokens = Self::create_session_and_tokens_db(
+            db, config, tenant_id, &user, ip_address, user_agent,
+        )
+        .await?;
 
         Ok((user, tokens))
     }
@@ -298,19 +314,29 @@ impl AuthLifecycleService {
         password: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
-        let claims = decode_password_reset_token(&config, token)
+        Self::confirm_password_reset_with_config(&ctx.db, &config, tenant_id, token, password).await
+    }
+
+    async fn confirm_password_reset_with_config(
+        db: &DatabaseConnection,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        token: &str,
+        password: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let claims = decode_password_reset_token(config, token)
             .map_err(|_| AuthLifecycleError::InvalidResetToken)?;
 
         if claims.tenant_id != tenant_id {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
 
-        let user = users::Entity::find_by_email(&ctx.db, tenant_id, &claims.sub)
+        let user = users::Entity::find_by_email(db, tenant_id, &claims.sub)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidResetToken)?;
 
-        Self::reset_password_and_revoke_sessions(&ctx.db, tenant_id, user, password, None).await?;
+        Self::reset_password_and_revoke_sessions(db, tenant_id, user, password, None).await?;
 
         Ok(())
     }
@@ -382,6 +408,18 @@ impl AuthLifecycleService {
         user_agent: Option<String>,
         config: &AuthConfig,
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
+        Self::create_session_and_tokens_db(&ctx.db, config, tenant_id, user, ip_address, user_agent)
+            .await
+    }
+
+    async fn create_session_and_tokens_db(
+        db: &DatabaseConnection,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        user: &users::Model,
+        ip_address: Option<String>,
+        user_agent: Option<String>,
+    ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
         let now = Utc::now();
         let refresh_token = generate_refresh_token();
         let token_hash = hash_refresh_token(&refresh_token);
@@ -390,7 +428,7 @@ impl AuthLifecycleService {
         let session = sessions::ActiveModel::new(
             tenant_id, user.id, token_hash, expires_at, ip_address, user_agent,
         )
-        .insert(&ctx.db)
+        .insert(db)
         .await
         .map_err(AuthLifecycleError::from)?;
 
@@ -442,11 +480,13 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
     };
+    use crate::auth::{hash_password, AuthConfig};
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
     use crate::services::auth::AuthService;
     use chrono::{Duration, Utc};
     use migration::Migrator;
+    use rustok_core::UserStatus;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
     use std::sync::atomic::Ordering;
@@ -657,6 +697,122 @@ mod tests {
             !resolved_permissions.contains(&rustok_core::Permission::USERS_MANAGE),
             "manager role should not get admin-only permissions"
         );
+    }
+
+    #[tokio::test]
+    async fn create_user_rejects_duplicate_email_with_stable_error_contract() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Duplicate Email Tenant", "duplicate-email-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        AuthLifecycleService::create_user_db(
+            &db,
+            tenant.id,
+            "dup@example.com",
+            "Password123!",
+            Some("First User".to_string()),
+            rustok_core::UserRole::Customer,
+            None,
+        )
+        .await
+        .expect("first create_user should succeed");
+
+        let result = AuthLifecycleService::create_user_db(
+            &db,
+            tenant.id,
+            "dup@example.com",
+            "Password123!",
+            Some("Second User".to_string()),
+            rustok_core::UserRole::Customer,
+            None,
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::EmailAlreadyExists)
+        ));
+    }
+
+    #[tokio::test]
+    async fn login_rejects_inactive_user_and_increments_metric() {
+        AuthLifecycleService::reset_metrics_for_tests();
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Inactive tenant", "inactive-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let password_hash = hash_password("Password123!").expect("failed to hash password");
+        let mut user = users::ActiveModel::new(tenant.id, "inactive@example.com", &password_hash);
+        user.status = sea_orm::Set(UserStatus::Inactive);
+        user.insert(&db)
+            .await
+            .expect("failed to create inactive user");
+
+        let config = AuthConfig {
+            secret: "test-secret".to_string(),
+            access_expiration: 3600,
+            refresh_expiration: 3600,
+            issuer: "rustok-test".to_string(),
+            audience: "rustok-test".to_string(),
+        };
+
+        let metrics_before = AuthLifecycleService::metrics_snapshot();
+        let result = AuthLifecycleService::login_with_config(
+            &db,
+            &config,
+            tenant.id,
+            "inactive@example.com",
+            "Password123!",
+            None,
+            None,
+        )
+        .await;
+        assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
+
+        let metrics_after = AuthLifecycleService::metrics_snapshot();
+        assert_eq!(
+            metrics_after.login_inactive_user_attempt_total,
+            metrics_before.login_inactive_user_attempt_total + 1
+        );
+    }
+
+    #[tokio::test]
+    async fn confirm_password_reset_rejects_invalid_token_payload() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant A", "tenant-a")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant A");
+
+        let password_hash = hash_password("OldPassword123!").expect("failed to hash password");
+        users::ActiveModel::new(tenant.id, "tenant-a-user@example.com", &password_hash)
+            .insert(&db)
+            .await
+            .expect("failed to create user");
+
+        let config = AuthConfig {
+            secret: "reset-secret".to_string(),
+            access_expiration: 3600,
+            refresh_expiration: 7200,
+            issuer: "rustok-test".to_string(),
+            audience: "rustok-test".to_string(),
+        };
+
+        let err = AuthLifecycleService::confirm_password_reset_with_config(
+            &db,
+            &config,
+            tenant.id,
+            "not-a-jwt",
+            "NewPassword123!",
+        )
+        .await
+        .expect_err("invalid token payload must be rejected");
+
+        assert!(matches!(err, AuthLifecycleError::InvalidResetToken));
     }
 
     #[tokio::test]

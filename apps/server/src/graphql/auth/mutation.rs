@@ -278,6 +278,18 @@ mod tests {
     }
 
     #[test]
+    fn maps_user_inactive_message() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::UserInactive);
+        assert!(err.message.contains("User is inactive"));
+    }
+
+    #[test]
+    fn maps_invalid_reset_token_message() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidResetToken);
+        assert!(err.message.contains("Invalid reset token"));
+    }
+
+    #[test]
     fn maps_internal_to_internal_graphql_error() {
         let err = map_auth_lifecycle_error(AuthLifecycleError::Internal(
             loco_rs::prelude::Error::InternalServerError,

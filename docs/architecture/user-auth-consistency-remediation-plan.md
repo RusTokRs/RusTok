@@ -1,7 +1,7 @@
 # План устранения косяков в user/auth логике (без миграции RBAC)
 
-- Дата: 2026-02-26
-- Статус: In progress (Phase D rollout controls documented; verification gates pending environment-ready run)
+- Дата: 2026-02-26 (актуализировано: 2026-03-04)
+- Статус: In progress (Phase D: локальный integration gate пройден, staging parity + security sign-off остаются открытыми)
 - Область: `apps/server` (REST + GraphQL auth), `apps/server/docs`, `docs/architecture/*`
 - Граница плана: этот документ **не дублирует RBAC migration** и не заменяет `rbac-relation-migration-plan.md`. Здесь фиксируем только косяки user/auth потоков, которые нужно закрыть до/параллельно RBAC cutover.
 
@@ -10,7 +10,7 @@
 ## 1. Что именно исправляем
 
 > Ниже перечислены **исторические исходные проблемы**, с которых стартовал remediation-поток.
-> Актуальный статус выполнения фиксируется в разделах 5 и 8 (Phases A-C закрыты, Phase D — rollout/gate verification).
+> Актуальный статус выполнения фиксируется в разделах 5 и 8 (Phases A-C закрыты, Phase D — rollout/gate verification; локальный integration прогон выполнен).
 
 ### 1.1 Несогласованная логика создания пользователя
 
@@ -219,7 +219,7 @@ Gate перед выкладкой:
 
 | Гейт | Артефакт | Статус | Подтверждение | Ответственный | Дата |
 | --- | --- | --- | --- | --- | --- |
-| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | Pending | Ссылка на job/лог прогона | Platform foundation | YYYY-MM-DD |
+| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | In progress | Локально пройдено: `cargo test -p rustok-server auth_lifecycle` (2026-03-04); CI/staging report pending | Platform foundation | 2026-03-04 |
 | REST/GraphQL parity | staging report (`create_user`, `confirm_reset`/`reset_password`, `change_password`) | Pending | Ссылка на parity report | Platform foundation | YYYY-MM-DD |
 | Security review | checklist по reset/change-password + inactive-user bypass | Pending | Ссылка на checklist/sign-off | Platform foundation + security reviewer | YYYY-MM-DD |
 
@@ -234,12 +234,22 @@ Gate перед выкладкой:
 - Кодовые и документационные задачи Phases A-C завершены (см. раздел 5).
 - Rollout controls и rollback-инструкция добавлены в `apps/server/docs/README.md`.
 - Метрики rollout-периода из раздела 7 (`auth_password_reset_sessions_revoked_total`, `auth_change_password_sessions_revoked_total`, `auth_flow_inconsistency_total`, `auth_login_inactive_user_attempt_total`) публикуются через `/metrics`.
+- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (15/15), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
 - Unit coverage для инварианта из раздела 6 (повторный reset на уже отозванных сессиях) расширено: повторный вызов не добавляет новых revoked session.
 - Добавлены unit-checks для transport error contracts `UserInactive` и `InvalidResetToken` (единый mapping в unauthorized), чтобы удерживать parity REST/GraphQL по негативным auth-сценариям.
+- Добавлены service-level тесты для негативных auth-сценариев: `login` для inactive user инкрементирует `auth_login_inactive_user_attempt_total`, `confirm_password_reset` отвергает невалидный token payload как `InvalidResetToken`.
+- Добавлен service-level тест на стабильный error contract для duplicate email: повторный `create_user` в рамках tenant возвращает `EmailAlreadyExists` (без transport-зависимой вариативности).
+- Расширены transport-level проверки GraphQL mapping для негативных auth-кейсов: `UserInactive` и `InvalidResetToken` стабильно маппятся в согласованные сообщения ошибок.
 - `GraphQL create_user` переведён на общий `AuthLifecycleService::create_user` (единая транзакция создания пользователя + назначения RBAC-связей, без отдельной бизнес-ветки в transport-слое).
 - `REST invite/accept` переведён на общий `AuthLifecycleService::create_user`, чтобы убрать последний transport-level bypass для user-creation flow и удерживать единый контракт назначения RBAC-связей.
 - Для `create_user` добавлена защита от race-condition по `tenant+email`: конкурентный insert теперь нормализуется в `EmailAlreadyExists`, чтобы REST/GraphQL сохраняли стабильный transport-контракт на дубликат email.
 - Phase D остаётся открытой до фиксации результатов integration/staging/security проверок.
+
+Открытый operational tail для продолжения реализации:
+
+1. Поднять/обновить auth integration suite до уровня release-gate evidence (не только выборка `auth_lifecycle`, но и полный прогон auth-сценариев из раздела 6).
+2. Зафиксировать staging parity report по REST/GraphQL для `create_user`, `confirm_reset`/`reset_password`, `change_password`.
+3. Закрыть security checklist/sign-off и проставить финальные статусы в таблице gate.
 
 Stop-the-line условия:
 
