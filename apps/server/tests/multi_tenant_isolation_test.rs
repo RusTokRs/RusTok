@@ -4,10 +4,7 @@ use migration::Migrator;
 use rustok_content::dto::{BodyInput, CreateNodeInput, ListNodesFilter, NodeTranslationInput};
 use rustok_content::services::NodeService;
 use rustok_core::{SecurityContext, UserRole};
-use rustok_test_utils::{
-    db::setup_test_db_with_migrations,
-    events::mock_transactional_event_bus,
-};
+use rustok_test_utils::{db::setup_test_db_with_migrations, events::mock_transactional_event_bus};
 use uuid::Uuid;
 
 fn build_post_input(title: &str, slug: &str) -> CreateNodeInput {
