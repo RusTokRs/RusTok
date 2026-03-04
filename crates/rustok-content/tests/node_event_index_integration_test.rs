@@ -8,7 +8,9 @@ use rustok_core::events::DomainEvent;
 use rustok_core::{SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_test_utils::MockEventTransport;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use std::future::Future;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -113,8 +115,8 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
         )"
         .to_string(),
     ))
-        .await
-        .expect("failed to create content bodies test table");
+    .await
+    .expect("failed to create content bodies test table");
 }
 
 #[test]

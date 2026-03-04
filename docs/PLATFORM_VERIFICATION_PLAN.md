@@ -71,10 +71,10 @@
 
 ### 0.1 Workspace-level сборка
 
-- [ ] `cargo check --workspace` — весь workspace компилируется без ошибок
-- [ ] `cargo check --workspace --all-features` — компиляция со всеми features
-- [ ] `cargo clippy --workspace -- -D warnings` — нет warnings от clippy
-- [ ] `cargo fmt --all -- --check` — код форматирован
+- [!] `cargo check --workspace` — невозможно в текущей среде: нет C linker (ни MSVC `link.exe`, ни MinGW `dlltool.exe`). Требуется установка Visual Studio Build Tools или MinGW.
+- [!] `cargo check --workspace --all-features` — аналогично, нет C linker
+- [!] `cargo clippy --workspace -- -D warnings` — аналогично, нет C linker
+- [x] `cargo fmt --all -- --check` — код форматирован (исправлены 2 файла: `apps/server/src/app.rs` и `crates/rustok-content/tests/node_event_index_integration_test.rs`)
 
 ### 0.2 Отдельные targets
 

@@ -18,7 +18,9 @@ use sea_orm::EntityTrait;
 use crate::controllers;
 use crate::initializers;
 use crate::middleware;
-use crate::middleware::rate_limit::{cleanup_task, rate_limit_for_paths, RateLimitConfig, RateLimiter};
+use crate::middleware::rate_limit::{
+    cleanup_task, rate_limit_for_paths, RateLimitConfig, RateLimiter,
+};
 use crate::modules;
 use crate::seeds;
 use crate::services::event_transport_factory::{
