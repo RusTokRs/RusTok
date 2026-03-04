@@ -3,6 +3,15 @@
 /// These tests verify OpenTelemetry initialization and configuration.
 /// Note: Full tracing tests require a running OTLP collector (Jaeger/Tempo).
 use rustok_telemetry::otel::{init_tracing, OtelConfig};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("env lock poisoned")
+}
 
 #[test]
 fn test_otel_config_builder() {
@@ -36,6 +45,8 @@ async fn test_init_tracing_disabled() {
 
 #[test]
 fn test_config_from_env_defaults() {
+    let _guard = env_lock();
+
     // Clear any existing env vars
     std::env::remove_var("OTEL_SERVICE_NAME");
     std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
@@ -54,6 +65,8 @@ fn test_config_from_env_defaults() {
 
 #[test]
 fn test_config_from_env_custom() {
+    let _guard = env_lock();
+
     std::env::set_var("OTEL_SERVICE_NAME", "custom-service");
     std::env::set_var("OTEL_SERVICE_VERSION", "2.0.0");
     std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://custom:4317");
@@ -81,6 +94,8 @@ fn test_config_from_env_custom() {
 
 #[test]
 fn test_config_disabled_via_env() {
+    let _guard = env_lock();
+
     std::env::set_var("OTEL_ENABLED", "false");
     let config = OtelConfig::from_env();
     assert!(!config.enabled);
