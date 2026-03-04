@@ -148,3 +148,11 @@ rustok-rbac = { path = "crates/rustok-rbac" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 alloy-scripting = { path = "crates/alloy-scripting" }
+
+[profile.test]
+# CI frequently runs out of disk while compiling all test targets in workspace mode.
+# Dropping debuginfo for test builds significantly reduces target/ size while keeping
+# assertions and test behavior unchanged.
+debug = 0
+strip = "debuginfo"
+incremental = false
