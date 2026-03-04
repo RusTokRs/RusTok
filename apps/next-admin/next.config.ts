@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
+import path from 'path';
+
 // Define the base Next.js configuration
 const baseConfig: NextConfig = {
   images: {
@@ -12,7 +14,33 @@ const baseConfig: NextConfig = {
       }
     ]
   },
-  transpilePackages: ['geist', '@rustok/blog-admin']
+  transpilePackages: ['geist', '@rustok/blog-admin'],
+  // Turbopack configuration: set workspace root so local crate packages
+  // (e.g. @rustok/blog-admin at file:../../crates/...) can resolve node_modules
+  // from the workspace junction at the repo root.
+  turbopack: {
+    root: path.resolve(__dirname, '../..'),
+  },
+  webpack(config) {
+    // Allow @rustok/blog-admin (and other local crate UI packages) to resolve
+    // the host application's path aliases (@/*, @/shared/*, etc.) so they can
+    // import shared UI components without duplicating them in each package.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, 'src'),
+      '@/shared': path.resolve(__dirname, 'src/shared'),
+      '@/entities': path.resolve(__dirname, 'src/entities'),
+      '@/widgets': path.resolve(__dirname, 'src/widgets'),
+      '@/modules': path.resolve(__dirname, 'src/modules'),
+      '@/types': path.resolve(__dirname, 'src/types'),
+      '@/lib': path.resolve(__dirname, 'src/lib'),
+      '@/components': path.resolve(__dirname, 'src/components'),
+      '@/config': path.resolve(__dirname, 'src/config'),
+      '@/constants': path.resolve(__dirname, 'src/constants'),
+      '@/hooks': path.resolve(__dirname, 'src/hooks'),
+    };
+    return config;
+  }
 };
 
 let configWithPlugins = baseConfig;
