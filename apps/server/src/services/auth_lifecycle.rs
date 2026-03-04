@@ -257,9 +257,18 @@ impl AuthLifecycleService {
         refresh_token: &str,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        Self::refresh_with_config_db(&ctx.db, &config, tenant_id, refresh_token).await
+    }
+
+    async fn refresh_with_config_db(
+        db: &DatabaseConnection,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        refresh_token: &str,
+    ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let token_hash = hash_refresh_token(refresh_token);
 
-        let session = sessions::Entity::find_by_token_hash(&ctx.db, tenant_id, &token_hash)
+        let session = sessions::Entity::find_by_token_hash(db, tenant_id, &token_hash)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
@@ -269,7 +278,7 @@ impl AuthLifecycleService {
         }
 
         let user = users::Entity::find_by_id(session.user_id)
-            .one(&ctx.db)
+            .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::UserNotFound)?;
@@ -289,12 +298,12 @@ impl AuthLifecycleService {
         session_model.expires_at = Set(expires_at.into());
         session_model.last_used_at = Set(Some(now.into()));
         session_model
-            .update(&ctx.db)
+            .update(db)
             .await
             .map_err(AuthLifecycleError::from)?;
 
         let access_token =
-            encode_access_token(&config, user.id, tenant_id, user.role.clone(), session_id)
+            encode_access_token(config, user.id, tenant_id, user.role.clone(), session_id)
                 .map_err(AuthLifecycleError::from)?;
 
         Ok((
@@ -478,7 +487,7 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
     };
-    use crate::auth::{hash_password, verify_password, AuthConfig};
+    use crate::auth::{hash_password, hash_refresh_token, verify_password, AuthConfig};
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
     use crate::services::auth::AuthService;
@@ -875,6 +884,51 @@ mod tests {
             metrics_after.login_inactive_user_attempt_total
                 > metrics_before.login_inactive_user_attempt_total
         );
+    }
+
+    #[tokio::test]
+    async fn refresh_rejects_expired_or_revoked_session() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Expired session tenant", "expired-session-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let password_hash = hash_password("Password123!").expect("failed to hash password");
+        let user =
+            users::ActiveModel::new(tenant.id, "expired-session@example.com", &password_hash)
+                .insert(&db)
+                .await
+                .expect("failed to create user");
+
+        let expired_token = "expired-refresh-token";
+        let mut expired_session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(expired_token),
+            Utc::now() - Duration::minutes(5),
+            None,
+            None,
+        );
+        expired_session.revoked_at = Set(Some(Utc::now().into()));
+        expired_session
+            .insert(&db)
+            .await
+            .expect("failed to create expired/revoked session");
+
+        let config = AuthConfig {
+            secret: "refresh-secret".to_string(),
+            access_expiration: 600,
+            refresh_expiration: 3600,
+            issuer: "rustok-test".to_string(),
+            audience: "rustok-test".to_string(),
+        };
+
+        let result =
+            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, expired_token)
+                .await;
+
+        assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
     }
 
     #[tokio::test]

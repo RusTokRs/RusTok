@@ -247,6 +247,7 @@ Gate перед выкладкой:
 - Добавлен service-level parity-тест users-permissions для одной роли (`Manager`) между двумя путями создания пользователя (через `AuthLifecycleService::create_user` и legacy insert + `AuthService::replace_user_role`): итоговый набор разрешений совпадает.
 - Добавлен service-level тест tenant/user scoping для revoke сессий: `revoke_user_sessions` отзывает только сессии целевого `tenant+user` и не затрагивает соседний tenant.
 - Добавлен service-level тест для ветки `except_session_id` в revoke-механизме: при `revoke_user_sessions` активной остаётся только явно исключённая текущая сессия пользователя.
+- Добавлен service-level тест refresh-flow на стабильный отказ для revoked/expired сессии: `refresh` отклоняется как `SessionExpired`.
 - Расширены transport-level проверки GraphQL mapping для негативных auth-кейсов: `UserInactive` и `InvalidResetToken` стабильно маппятся в согласованные сообщения ошибок.
 - `GraphQL create_user` переведён на общий `AuthLifecycleService::create_user` (единая транзакция создания пользователя + назначения RBAC-связей, без отдельной бизнес-ветки в transport-слое).
 - `REST invite/accept` переведён на общий `AuthLifecycleService::create_user`, чтобы убрать последний transport-level bypass для user-creation flow и удерживать единый контракт назначения RBAC-связей.
