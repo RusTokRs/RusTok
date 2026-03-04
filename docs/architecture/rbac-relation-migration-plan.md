@@ -535,11 +535,11 @@
 Используется как короткий операционный статус до завершения relation-only cutover.
 
 - [ ] **MVP-блокер 1 (Фаза 4):** staged rehearsal завершён (dry-run/backfill/rollback) + приложен отчёт по инвариантам.
-  - Артефакты: `artifacts/rbac-staging/*`, stage-report markdown, pre/post JSON consistency reports.
+  - Артефакты: `artifacts/rbac-staging/*`, stage-report markdown, pre/post JSON consistency reports; проверка проходит по runbook-последовательности из раздела 13.1/13.5.
 - [ ] **MVP-блокер 2 (Фаза 5 prep):** ADR final cutover согласован с явным rollback-gate и stop-the-line условиями.
   - Артефакты: ADR в `DECISIONS/` + ссылка в этом плане.
 - [ ] **MVP-блокер 3 (Фаза 5):** production dual-read окно наблюдения завершено, baseline зафиксирован, принято go/no-go решение для relation-only.
-  - Артефакты: baseline report/json из `artifacts/rbac-cutover/*`, запись решения (go/no-go) в release-notes/runbook.
+  - Артефакты: baseline report/json из `artifacts/rbac-cutover/*`, запись решения (go/no-go) в release-notes/runbook; gate проверяется по разделам 13.2/13.3/13.5.
 
 Правило обновления: после каждого merge меняется только статус соответствующего блокера и ссылка на артефакт; scope этапа не расширяется.
 
@@ -572,3 +572,96 @@
   - denied/error rate
   - latency p95/p99
   - tenant-specific anomalies
+
+---
+
+## 13. Операционный runbook MVP-cutover (фазы 4–5)
+
+Раздел фиксирует минимально необходимый, повторяемый сценарий для staged rehearsal и production cutover.
+
+### 13.1 Staging rehearsal (обязателен перед go-live)
+
+1. Подготовить директорию артефактов (пример: `artifacts/rbac-staging/<date>`).
+2. Прогнать полный цикл:
+   - dry-run backfill,
+   - apply backfill,
+   - post-check целостности,
+   - rollback dry-run,
+   - rollback apply (на тестовых данных/снэпшоте).
+3. На каждом этапе требовать наличие JSON-отчёта (`--require-report-artifacts`).
+4. Сформировать stage-report (markdown) с итоговыми инвариантами.
+
+Критерий прохождения rehearsal:
+
+- все шаги завершены без fail-fast по артефактам,
+- нет роста `orphan_*` и `users_without_roles_total` после apply,
+- rollback-цикл подтверждён на staging (в том же rehearsal-окне).
+
+### 13.2 Production dual-read baseline
+
+1. Включить dual-read в production с feature-flag.
+2. Выдержать окно наблюдения (минимум 24 часа, целевое 72 часа+).
+3. Снять baseline helper-скриптом и сохранить json/markdown артефакты в `artifacts/rbac-cutover/<date>`.
+4. Проверить gate:
+   - `mismatch_delta == 0` в целевом окне,
+   - decision volume не ниже порога (`--min-decision-delta`),
+   - нет аномального роста 401/403 и latency p95/p99.
+
+### 13.3 Go / No-Go решение для relation-only
+
+Решение принимается только при выполнении всех условий:
+
+- MVP-блокер 1 закрыт (staged rehearsal complete + отчёты).
+- MVP-блокер 2 закрыт (ADR final cutover согласован).
+- MVP-блокер 3 закрыт (dual-read baseline complete).
+- QA и on-call подтверждают readiness по runbook.
+
+Если хотя бы одно условие не выполнено — фиксируется **No-Go**, переключение relation-only откладывается.
+
+### 13.4 Обязательная структура cutover-отчёта
+
+Каждый релизный цикл cutover должен завершаться единым отчётом (release-notes/runbook append) с 5 блоками:
+
+1. **Scope:** tenant-охват, версия, feature-flag state.
+2. **Data health:** значения `users_without_roles_total`, `orphan_user_roles_total`, `orphan_role_permissions_total` до/после.
+3. **Decision health:** mismatch trend, deny/error trend, latency p95/p99.
+4. **Инциденты:** любые отклонения, ручные интервенции, rollback-шаги (если были).
+5. **Решение:** Go/No-Go + ответственные и timestamp.
+
+### 13.5 Минимальный набор команд и артефактов (операционный baseline)
+
+Для снижения вариативности между дежурными сменами используем стандартный каркас команд (параметры окружения подставляются release-менеджером):
+
+1. **Staging rehearsal:** `scripts/rbac_relation_staging.sh --require-report-artifacts`.
+2. **Production baseline:** `scripts/rbac_cutover_baseline.sh <...параметры окна наблюдения...>`.
+3. **Auth gate перед переключением:** `scripts/auth_release_gate.sh --require-all-gates`.
+
+Минимальный набор артефактов, который должен быть приложен к go/no-go решению:
+
+- stage-report markdown из rehearsal-цикла,
+- dry-run/apply/rollback JSON-отчёты backfill-циклов,
+- baseline json/markdown для dual-read окна,
+- финальная запись решения (go/no-go) в release-notes/runbook.
+
+Если хотя бы один обязательный артефакт отсутствует, решение автоматически трактуется как **No-Go**.
+
+### 13.6 Режим rollback: приоритеты и SLA реакции
+
+При срабатывании stop-the-line условий из раздела 12.2:
+
+1. **Приоритет P0:** вернуть предыдущий enforcement-режим (отключить relation-only, восстановить предыдущее состояние флага).
+2. **SLA реакции:** начало rollback-операции не позднее 15 минут с момента подтверждения инцидента on-call инженером.
+3. **Коммуникация:** инцидент фиксируется в on-call канале и в release-notes с указанием tenant scope и impact.
+4. **Post-incident:** в течение 24 часов оформляется краткий RCA и решение о повторном окне cutover.
+
+---
+
+## 14. Post-MVP backlog (вне текущего cutover scope)
+
+Ниже — задачи, которые не блокируют relation-only switch, но должны быть запланированы после стабилизации:
+
+1. Укрепить module boundary: завершить перенос policy/use-case API в `crates/rustok-rbac` и упростить server adapters.
+2. Сократить временные feature-flags и удалить fallback-код после окна наблюдения.
+3. Уточнить долгосрочную судьбу `users.role` отдельным ADR (удаление vs derived-only).
+4. Консолидировать observability dashboard (RBAC migration + steady-state RBAC ops).
+5. Обновить onboarding docs для backend/on-call с финальной relation-only моделью.
