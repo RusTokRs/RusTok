@@ -945,6 +945,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revoke_user_sessions_with_except_session_id_keeps_only_requested_session_active() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Except Session Tenant", "except-session-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let user = users::ActiveModel::new(tenant.id, "user@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("failed to create user");
+
+        let now = Utc::now();
+        let keep_session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "keep-token".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create keep session");
+
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "revoke-token".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create revoke session");
+
+        let revoked = AuthLifecycleService::revoke_user_sessions_db(
+            &db,
+            tenant.id,
+            user.id,
+            Some(keep_session.id),
+        )
+        .await
+        .expect("revoke_user_sessions should succeed");
+
+        assert_eq!(revoked, 1);
+
+        let active_sessions = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .all(&db)
+            .await
+            .expect("failed to query active sessions");
+
+        assert_eq!(active_sessions.len(), 1);
+        assert_eq!(active_sessions[0].id, keep_session.id);
+    }
+
+    #[tokio::test]
     async fn reset_password_revoke_sessions_can_keep_current_session() {
         AuthLifecycleService::reset_metrics_for_tests();
         let db = setup_test_db_with_migrations::<Migrator>().await;
