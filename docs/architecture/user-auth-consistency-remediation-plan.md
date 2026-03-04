@@ -219,7 +219,7 @@ Gate перед выкладкой:
 
 | Гейт | Артефакт | Статус | Подтверждение | Ответственный | Дата |
 | --- | --- | --- | --- | --- | --- |
-| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | In progress | Локально пройдено: `cargo test -p rustok-server auth_lifecycle` (2026-03-04); `cargo test -p rustok-server auth` (43/43), CI/staging report pending | Platform foundation | 2026-03-04 |
+| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | In progress | Локально пройдено: `cargo test -p rustok-server auth_lifecycle` (2026-03-04); `cargo test -p rustok-server auth` (46/46), CI/staging report pending | Platform foundation | 2026-03-04 |
 | REST/GraphQL parity | staging report (`create_user`, `confirm_reset`/`reset_password`, `change_password`) | Pending | Ссылка на parity report | Platform foundation | YYYY-MM-DD |
 | Security review | checklist по reset/change-password + inactive-user bypass | Pending | Ссылка на checklist/sign-off | Platform foundation + security reviewer | YYYY-MM-DD |
 
@@ -234,8 +234,8 @@ Gate перед выкладкой:
 - Кодовые и документационные задачи Phases A-C завершены (см. раздел 5).
 - Rollout controls и rollback-инструкция добавлены в `apps/server/docs/README.md`.
 - Метрики rollout-периода из раздела 7 (`auth_password_reset_sessions_revoked_total`, `auth_change_password_sessions_revoked_total`, `auth_flow_inconsistency_total`, `auth_login_inactive_user_attempt_total`) публикуются через `/metrics`.
-- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (23/23), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
-- Расширенный локальный auth-срез также пройден: `cargo test -p rustok-server auth` (43/43), включая transport mappings и service-level инварианты.
+- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (26/26), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
+- Расширенный локальный auth-срез также пройден: `cargo test -p rustok-server auth` (46/46), включая transport mappings и service-level инварианты.
 - Unit coverage для инварианта из раздела 6 (повторный reset на уже отозванных сессиях) расширено: повторный вызов не добавляет новых revoked session.
 - Добавлен service-level тест на idempotency revoke-механизма: повторный `revoke_user_sessions` для того же `tenant+user` возвращает `0` новых revoke и не меняет уже отозванные сессии.
 - Добавлен service-level тест позитивного reset use-case: `reset_password_and_revoke_sessions` обновляет пароль, отзывает все активные сессии пользователя и увеличивает `auth_password_reset_sessions_revoked_total` на число реально отозванных сессий.
