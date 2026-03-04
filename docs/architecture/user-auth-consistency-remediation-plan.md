@@ -234,9 +234,10 @@ Gate перед выкладкой:
 - Кодовые и документационные задачи Phases A-C завершены (см. раздел 5).
 - Rollout controls и rollback-инструкция добавлены в `apps/server/docs/README.md`.
 - Метрики rollout-периода из раздела 7 (`auth_password_reset_sessions_revoked_total`, `auth_change_password_sessions_revoked_total`, `auth_flow_inconsistency_total`, `auth_login_inactive_user_attempt_total`) публикуются через `/metrics`.
-- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (22/22), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
+- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (23/23), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
 - Unit coverage для инварианта из раздела 6 (повторный reset на уже отозванных сессиях) расширено: повторный вызов не добавляет новых revoked session.
 - Добавлен service-level тест на idempotency revoke-механизма: повторный `revoke_user_sessions` для того же `tenant+user` возвращает `0` новых revoke и не меняет уже отозванные сессии.
+- Добавлен service-level тест позитивного `confirm_password_reset`: пароль обновляется, все активные сессии пользователя отзываются, метрика `auth_password_reset_sessions_revoked_total` увеличивается на число реально отозванных сессий.
 - Добавлены unit-checks для transport error contracts `UserInactive` и `InvalidResetToken` (единый mapping в unauthorized), чтобы удерживать parity REST/GraphQL по негативным auth-сценариям.
 - Добавлены service-level тесты для негативных auth-сценариев: `login` для inactive user инкрементирует `auth_login_inactive_user_attempt_total`, `confirm_password_reset` отвергает невалидный token payload как `InvalidResetToken`.
 - Добавлен service-level тест на стабильный error contract для duplicate email: повторный `create_user` в рамках tenant возвращает `EmailAlreadyExists` (без transport-зависимой вариативности).

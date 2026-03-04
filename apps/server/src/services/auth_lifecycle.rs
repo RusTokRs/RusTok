@@ -331,14 +331,21 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
 
-        let user = users::Entity::find_by_email(db, tenant_id, &claims.sub)
+        Self::confirm_password_reset_for_email_db(db, tenant_id, &claims.sub, password).await
+    }
+
+    async fn confirm_password_reset_for_email_db(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        email: &str,
+        password: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let user = users::Entity::find_by_email(db, tenant_id, email)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidResetToken)?;
 
-        Self::reset_password_and_revoke_sessions(db, tenant_id, user, password, None).await?;
-
-        Ok(())
+        Self::reset_password_and_revoke_sessions(db, tenant_id, user, password, None).await
     }
 
     pub async fn change_password(
@@ -480,7 +487,7 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
     };
-    use crate::auth::{hash_password, AuthConfig};
+    use crate::auth::{hash_password, verify_password, AuthConfig};
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
     use crate::services::auth::AuthService;
@@ -910,6 +917,84 @@ mod tests {
         .expect_err("invalid token payload must be rejected");
 
         assert!(matches!(err, AuthLifecycleError::InvalidResetToken));
+    }
+
+    #[tokio::test]
+    async fn confirm_password_reset_updates_password_and_revokes_all_sessions() {
+        AuthLifecycleService::reset_metrics_for_tests();
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant reset", "tenant-reset-positive")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let old_password = "OldPassword123!";
+        let new_password = "NewPassword123!";
+        let old_hash = hash_password(old_password).expect("failed to hash old password");
+        let user = users::ActiveModel::new(tenant.id, "reset-positive@example.com", &old_hash)
+            .insert(&db)
+            .await
+            .expect("failed to create user");
+
+        let now = Utc::now();
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "reset-positive-token-1".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create first session");
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "reset-positive-token-2".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create second session");
+
+        let metrics_before = AuthLifecycleService::metrics_snapshot();
+
+        AuthLifecycleService::confirm_password_reset_for_email_db(
+            &db,
+            tenant.id,
+            &user.email,
+            new_password,
+        )
+        .await
+        .expect("confirm reset should succeed");
+
+        let updated_user = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("failed to query updated user")
+            .expect("updated user should exist");
+        assert!(verify_password(new_password, &updated_user.password_hash)
+            .expect("new password should verify"));
+        assert!(!verify_password(old_password, &updated_user.password_hash)
+            .expect("old password must not verify"));
+
+        let active_sessions = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .count(&db)
+            .await
+            .expect("failed to query active sessions");
+        assert_eq!(active_sessions, 0);
+
+        let metrics_after = AuthLifecycleService::metrics_snapshot();
+        assert_eq!(
+            metrics_after.password_reset_sessions_revoked_total,
+            metrics_before.password_reset_sessions_revoked_total + 2
+        );
     }
 
     #[tokio::test]
