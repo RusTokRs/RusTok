@@ -234,11 +234,14 @@ Gate перед выкладкой:
 - Кодовые и документационные задачи Phases A-C завершены (см. раздел 5).
 - Rollout controls и rollback-инструкция добавлены в `apps/server/docs/README.md`.
 - Метрики rollout-периода из раздела 7 (`auth_password_reset_sessions_revoked_total`, `auth_change_password_sessions_revoked_total`, `auth_flow_inconsistency_total`, `auth_login_inactive_user_attempt_total`) публикуются через `/metrics`.
-- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (15/15), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
+- Локальный integration прогон выполнен: `cargo test -p rustok-server auth_lifecycle` проходит (19/19), что подтверждает текущий минимум по unit/integration инвариантам в окружении разработки.
 - Unit coverage для инварианта из раздела 6 (повторный reset на уже отозванных сессиях) расширено: повторный вызов не добавляет новых revoked session.
 - Добавлены unit-checks для transport error contracts `UserInactive` и `InvalidResetToken` (единый mapping в unauthorized), чтобы удерживать parity REST/GraphQL по негативным auth-сценариям.
 - Добавлены service-level тесты для негативных auth-сценариев: `login` для inactive user инкрементирует `auth_login_inactive_user_attempt_total`, `confirm_password_reset` отвергает невалидный token payload как `InvalidResetToken`.
 - Добавлен service-level тест на стабильный error contract для duplicate email: повторный `create_user` в рамках tenant возвращает `EmailAlreadyExists` (без transport-зависимой вариативности).
+- Добавлен service-level тест на tenant-scoped uniqueness contract: одинаковый email может существовать в разных tenant, что фиксирует expected behavior для multi-tenant entrypoints и предотвращает ложные cross-tenant конфликты при `create_user`.
+- Добавлен service-level parity-тест users-permissions для одной роли (`Manager`) между двумя путями создания пользователя (через `AuthLifecycleService::create_user` и legacy insert + `AuthService::replace_user_role`): итоговый набор разрешений совпадает.
+- Добавлен service-level тест tenant/user scoping для revoke сессий: `revoke_user_sessions` отзывает только сессии целевого `tenant+user` и не затрагивает соседний tenant.
 - Расширены transport-level проверки GraphQL mapping для негативных auth-кейсов: `UserInactive` и `InvalidResetToken` стабильно маппятся в согласованные сообщения ошибок.
 - `GraphQL create_user` переведён на общий `AuthLifecycleService::create_user` (единая транзакция создания пользователя + назначения RBAC-связей, без отдельной бизнес-ветки в transport-слое).
 - `REST invite/accept` переведён на общий `AuthLifecycleService::create_user`, чтобы убрать последний transport-level bypass для user-creation flow и удерживать единый контракт назначения RBAC-связей.
