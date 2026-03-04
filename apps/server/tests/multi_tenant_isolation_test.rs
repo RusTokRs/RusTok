@@ -1,9 +1,13 @@
 // Integration tests for multi-tenant content isolation.
 
+use migration::Migrator;
 use rustok_content::dto::{BodyInput, CreateNodeInput, ListNodesFilter, NodeTranslationInput};
 use rustok_content::services::NodeService;
 use rustok_core::{SecurityContext, UserRole};
-use rustok_test_utils::{db::setup_test_db, events::mock_transactional_event_bus};
+use rustok_test_utils::{
+    db::setup_test_db_with_migrations,
+    events::mock_transactional_event_bus,
+};
 use uuid::Uuid;
 
 fn build_post_input(title: &str, slug: &str) -> CreateNodeInput {
@@ -33,7 +37,7 @@ fn build_post_input(title: &str, slug: &str) -> CreateNodeInput {
 
 #[tokio::test]
 async fn list_nodes_is_scoped_by_tenant() {
-    let db = setup_test_db().await;
+    let db = setup_test_db_with_migrations::<Migrator>().await;
     let event_bus = mock_transactional_event_bus();
     let service = NodeService::new(db, event_bus);
 
@@ -91,7 +95,7 @@ async fn list_nodes_is_scoped_by_tenant() {
 
 #[tokio::test]
 async fn get_by_slug_is_scoped_by_tenant() {
-    let db = setup_test_db().await;
+    let db = setup_test_db_with_migrations::<Migrator>().await;
     let event_bus = mock_transactional_event_bus();
     let service = NodeService::new(db, event_bus);
 
