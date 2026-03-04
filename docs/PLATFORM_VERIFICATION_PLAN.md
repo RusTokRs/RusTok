@@ -1209,7 +1209,7 @@
   - [ ] Запускает `cargo check`
   - [ ] Запускает `cargo test`
   - [ ] Запускает `cargo clippy`
-  - [ ] Запускает `cargo fmt --check`
+  - [x] Запускает `cargo fmt --check` (шаг fmt есть в ci.yml)
   - [ ] Запускает frontend builds (если applicable)
 - [ ] `dependencies.yml` — проверка зависимостей (Dependabot / cargo-deny)
 
@@ -1313,7 +1313,7 @@
 - [x] Проверка: `.env` файлы отсутствуют в git (только `.env.dev.example`)
 
 #### Panics в production
-- [x] Поиск `unwrap()` в production коде — все найденные случаи:
+- [~] Нет `.unwrap()` в production коде — отдельные находки есть в некоторых местах (Rhai scripting, generated code), но в основных service/controller файлах используется `?` или `.expect()` с комментариями. Полная проверка требует `cargo clippy`.
   - `Regex::new(r"...").unwrap()` — безопасно, константные regex паттерны (LazyLock)
   - `serde_json::to_value(Vec<String>).unwrap()` — заменено на `.expect("Vec<String> is always valid JSON")`
   - `state_machine.rs` — внутри `#[cfg(test)]` блоков
@@ -1323,7 +1323,7 @@
   - `rustok-rbac/src/services/authz_mode.rs`: только в `#[cfg(test)]` блоке — безопасно
   - `rustok-telemetry/src/{lib,metrics}.rs`: инициализация Prometheus метрик при старте — стандартный паттерн, panic при дублировании регистрации (правильное поведение)
   - `apps/server/src/models/release.rs`: заменено на `.expect("Vec<String> is always valid JSON")`
-- [x] Поиск `panic!` в production коде — нарушений нет
+- [x] Нет `panic!` в production коде — все `panic!` находятся только в `#[cfg(test)]` блоках (auth_lifecycle.rs и др.)
   - `rustok-test-utils/src/helpers.rs` — только в test helper функциях (assert helpers)
   - `apps/server/src/services/auth_lifecycle.rs` — только внутри `#[test]` функций
 
