@@ -10,6 +10,8 @@ Options:
   --staging-artifacts-dir <dir>   Directory with rbac_relation_staging artifacts (default: artifacts/rbac-staging)
   --cutover-artifacts-dir <dir>   Directory with rbac_cutover_baseline artifacts (default: artifacts/rbac-cutover)
   --auth-gate-report <file>       Path to auth_release_gate report artifact (required)
+  --stage-ts <ts>                 Use explicit staging rehearsal timestamp instead of latest
+  --cutover-ts <ts>               Use explicit cutover baseline timestamp instead of latest
   --help                          Show this message
 
 Gate checks:
@@ -25,6 +27,8 @@ USAGE
 STAGING_ARTIFACTS_DIR="artifacts/rbac-staging"
 CUTOVER_ARTIFACTS_DIR="artifacts/rbac-cutover"
 AUTH_GATE_REPORT=""
+STAGE_TS=""
+CUTOVER_TS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +38,10 @@ while [[ $# -gt 0 ]]; do
       CUTOVER_ARTIFACTS_DIR="$2"; shift 2 ;;
     --auth-gate-report)
       AUTH_GATE_REPORT="$2"; shift 2 ;;
+    --stage-ts)
+      STAGE_TS="$2"; shift 2 ;;
+    --cutover-ts)
+      CUTOVER_TS="$2"; shift 2 ;;
     --help)
       usage; exit 0 ;;
     *)
@@ -85,12 +93,17 @@ if [[ ! -d "$CUTOVER_ARTIFACTS_DIR" ]]; then
   exit 1
 fi
 
-stage_report="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_relation_stage_report_*.md')"
-require_file "$stage_report" "staging stage-report markdown"
-stage_ts="$(extract_ts "$stage_report" "rbac_relation_stage_report" "md" || true)"
-if [[ -z "$stage_ts" ]]; then
-  echo "Could not extract timestamp from staging report: $stage_report" >&2
-  exit 1
+if [[ -n "$STAGE_TS" ]]; then
+  stage_ts="$STAGE_TS"
+  stage_report="$STAGING_ARTIFACTS_DIR/rbac_relation_stage_report_${stage_ts}.md"
+else
+  stage_report="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_relation_stage_report_*.md')"
+  require_file "$stage_report" "staging stage-report markdown"
+  stage_ts="$(extract_ts "$stage_report" "rbac_relation_stage_report" "md" || true)"
+  if [[ -z "$stage_ts" ]]; then
+    echo "Could not extract timestamp from staging report: $stage_report" >&2
+    exit 1
+  fi
 fi
 
 stage_pre_json="$STAGING_ARTIFACTS_DIR/rbac_report_pre_${stage_ts}.json"
@@ -99,21 +112,28 @@ stage_apply_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_apply_${stage_ts}.json"
 stage_rollback_apply_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_rollback_apply_${stage_ts}.json"
 stage_post_rollback_json="$STAGING_ARTIFACTS_DIR/rbac_report_post_rollback_${stage_ts}.json"
 
+require_file "$stage_report" "staging stage-report markdown"
 require_file "$stage_pre_json" "staging pre-check JSON (same timestamp as stage report)"
 require_file "$stage_dry_json" "staging dry-run JSON (same timestamp as stage report)"
 require_file "$stage_apply_json" "staging apply JSON (same timestamp as stage report)"
 require_file "$stage_rollback_apply_json" "staging rollback-apply JSON (same timestamp as stage report)"
 require_file "$stage_post_rollback_json" "staging post-rollback JSON (same timestamp as stage report)"
 
-cutover_md="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.md')"
-require_file "$cutover_md" "cutover baseline markdown"
-cutover_ts="$(extract_ts "$cutover_md" "rbac_cutover_baseline" "md" || true)"
-if [[ -z "$cutover_ts" ]]; then
-  echo "Could not extract timestamp from cutover baseline markdown: $cutover_md" >&2
-  exit 1
+if [[ -n "$CUTOVER_TS" ]]; then
+  cutover_ts="$CUTOVER_TS"
+  cutover_md="$CUTOVER_ARTIFACTS_DIR/rbac_cutover_baseline_${cutover_ts}.md"
+else
+  cutover_md="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.md')"
+  require_file "$cutover_md" "cutover baseline markdown"
+  cutover_ts="$(extract_ts "$cutover_md" "rbac_cutover_baseline" "md" || true)"
+  if [[ -z "$cutover_ts" ]]; then
+    echo "Could not extract timestamp from cutover baseline markdown: $cutover_md" >&2
+    exit 1
+  fi
 fi
 cutover_json="$CUTOVER_ARTIFACTS_DIR/rbac_cutover_baseline_${cutover_ts}.json"
 
+require_file "$cutover_md" "cutover baseline markdown"
 require_file "$cutover_json" "cutover baseline JSON (same timestamp as markdown)"
 require_file "$AUTH_GATE_REPORT" "auth release gate report"
 

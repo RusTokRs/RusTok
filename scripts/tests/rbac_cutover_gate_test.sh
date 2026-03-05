@@ -55,6 +55,23 @@ test_passes_with_required_artifacts() {
   pass "gate passes when required artifacts are valid"
 }
 
+test_passes_with_explicit_timestamps() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_artifacts "$tmp"
+
+  "$SCRIPT" \
+    --staging-artifacts-dir "$tmp/staging" \
+    --cutover-artifacts-dir "$tmp/cutover" \
+    --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" \
+    --stage-ts 20260305T010101Z \
+    --cutover-ts 20260305T020202Z >"$tmp/out.log" 2>&1
+
+  rg -q "staging_ts: 20260305T010101Z" "$tmp/out.log" || fail "expected explicit staging ts in output"
+  rg -q "baseline_ts: 20260305T020202Z" "$tmp/out.log" || fail "expected explicit cutover ts in output"
+  pass "gate passes with explicit stage/cutover timestamps"
+}
+
 test_fails_when_auth_gate_report_missing() {
   local tmp
   tmp="$(mktemp -d)"
@@ -95,8 +112,6 @@ JSON
   pass "gate fails when baseline gate_status is not pass"
 }
 
-
-
 test_fails_when_post_rollback_invariants_nonzero() {
   local tmp
   tmp="$(mktemp -d)"
@@ -119,7 +134,6 @@ JSON
   pass "gate fails when post-rollback invariants are non-zero"
 }
 
-
 test_fails_when_stage_bundle_timestamp_mismatch() {
   local tmp
   tmp="$(mktemp -d)"
@@ -128,7 +142,10 @@ test_fails_when_stage_bundle_timestamp_mismatch() {
   mv "$tmp/staging/rbac_report_pre_20260305T010101Z.json" "$tmp/staging/rbac_report_pre_20260305T999999Z.json"
 
   set +e
-  "$SCRIPT"     --staging-artifacts-dir "$tmp/staging"     --cutover-artifacts-dir "$tmp/cutover"     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
+  "$SCRIPT" \
+    --staging-artifacts-dir "$tmp/staging" \
+    --cutover-artifacts-dir "$tmp/cutover" \
+    --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
   code=$?
   set -e
 
@@ -136,7 +153,6 @@ test_fails_when_stage_bundle_timestamp_mismatch() {
   rg -q "same timestamp as stage report" "$tmp/out.log" || fail "expected stage bundle timestamp mismatch message"
   pass "gate fails when stage bundle timestamps are mismatched"
 }
-
 
 test_fails_when_cutover_bundle_timestamp_mismatch() {
   local tmp
@@ -146,7 +162,10 @@ test_fails_when_cutover_bundle_timestamp_mismatch() {
   mv "$tmp/cutover/rbac_cutover_baseline_20260305T020202Z.json" "$tmp/cutover/rbac_cutover_baseline_20260305T999999Z.json"
 
   set +e
-  "$SCRIPT"     --staging-artifacts-dir "$tmp/staging"     --cutover-artifacts-dir "$tmp/cutover"     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
+  "$SCRIPT" \
+    --staging-artifacts-dir "$tmp/staging" \
+    --cutover-artifacts-dir "$tmp/cutover" \
+    --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
   code=$?
   set -e
 
@@ -154,7 +173,6 @@ test_fails_when_cutover_bundle_timestamp_mismatch() {
   rg -q "same timestamp as markdown" "$tmp/out.log" || fail "expected cutover bundle timestamp mismatch message"
   pass "gate fails when cutover bundle timestamps are mismatched"
 }
-
 
 test_fails_when_mismatch_delta_nonzero() {
   local tmp
@@ -194,6 +212,7 @@ test_fails_without_required_flag() {
 }
 
 test_passes_with_required_artifacts
+test_passes_with_explicit_timestamps
 test_fails_when_auth_gate_report_missing
 test_fails_when_baseline_not_pass
 test_fails_when_post_rollback_invariants_nonzero
