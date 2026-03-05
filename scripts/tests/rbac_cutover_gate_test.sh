@@ -68,6 +68,8 @@ if payload.get('decision') != 'go':
     raise SystemExit('decision must be go')
 if payload.get('decision_volume_delta') != 10:
     raise SystemExit('decision_volume_delta must be 10')
+if payload.get('decision_volume_source') != 'total_decisions_delta':
+    raise SystemExit('decision_volume_source must be total_decisions_delta')
 PY
   pass "gate passes when required artifacts are valid"
 }
@@ -298,8 +300,32 @@ with open(sys.argv[1], 'r', encoding='utf-8') as fh:
     payload = json.load(fh)
 if payload.get('decision_volume_delta') != 14:
     raise SystemExit('decision_volume_delta must be 14')
+if payload.get('decision_volume_source') != 'permission_checks_total_delta':
+    raise SystemExit('decision_volume_source must be permission_checks_total_delta')
 PY
   pass "gate accepts permission_checks_total_delta as decision volume"
+}
+
+test_fails_when_total_decisions_delta_non_integer() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_artifacts "$tmp"
+
+  cat > "$tmp/cutover/rbac_cutover_baseline_20260305T020202Z.json" <<'JSON'
+{"gate_status":"pass","mismatch_delta":0,"shadow_compare_failures_delta":0,"total_decisions_delta":"10"}
+JSON
+
+  set +e
+  "$SCRIPT" \
+    --staging-artifacts-dir "$tmp/staging" \
+    --cutover-artifacts-dir "$tmp/cutover" \
+    --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
+  code=$?
+  set -e
+
+  [[ "$code" -ne 0 ]] || fail "expected non-zero exit when total_decisions_delta is non-integer"
+  rg -q "baseline field must be integer when present: total_decisions_delta" "$tmp/out.log" || fail "expected total_decisions_delta integer validation message"
+  pass "gate fails when total_decisions_delta is non-integer"
 }
 
 test_fails_when_decision_volume_key_missing() {
@@ -393,6 +419,7 @@ test_passes_with_permission_checks_total_delta_key
 test_fails_when_decision_volume_key_missing
 test_fails_when_decision_volume_keys_disagree
 test_fails_when_permission_checks_total_delta_non_integer
+test_fails_when_total_decisions_delta_non_integer
 test_fails_without_required_flag
 
 echo "All rbac_cutover_gate.sh tests passed."
