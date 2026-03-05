@@ -5,6 +5,9 @@ const nextCoreWebVitalsRules = nextPlugin.configs["core-web-vitals"].rules;
 
 export default [
   {
+    ignores: [".next/**", "node_modules/**"],
+  },
+  {
     files: ["**/*.{js,jsx,ts,tsx}"],
     languageOptions: {
       parser: tsParser,
