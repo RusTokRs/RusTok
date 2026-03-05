@@ -53,7 +53,17 @@ test_passes_with_required_artifacts() {
 
   rg -q "RBAC cutover gate: PASS" "$tmp/out.log" || fail "expected PASS output"
   rg -q "decision_output:" "$tmp/out.log" || fail "expected decision output path in stdout"
-  find "$tmp/cutover" -maxdepth 1 -name 'rbac_cutover_gate_decision_*.md' | rg -q . || fail "expected default gate decision artifact"
+  rg -q "decision_json_output:" "$tmp/out.log" || fail "expected decision json output path in stdout"
+  [[ -f "$tmp/cutover/gate-decision.md" ]] || fail "expected default gate markdown decision artifact"
+  [[ -f "$tmp/cutover/gate-decision.json" ]] || fail "expected default gate json decision artifact"
+  python - "$tmp/cutover/gate-decision.json" <<'PY' || fail "expected valid json decision artifact"
+import json
+import sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    payload = json.load(fh)
+if payload.get('decision') != 'pass':
+    raise SystemExit('decision must be pass')
+PY
   pass "gate passes when required artifacts are valid"
 }
 
@@ -62,16 +72,29 @@ test_passes_with_custom_decision_output() {
   tmp="$(mktemp -d)"
   make_artifacts "$tmp"
   local out_file="$tmp/out/gate-decision.md"
+  local out_json="$tmp/out/gate-decision.json"
 
   "$SCRIPT" \
     --staging-artifacts-dir "$tmp/staging" \
     --cutover-artifacts-dir "$tmp/cutover" \
     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" \
-    --decision-output "$out_file" >"$tmp/out.log" 2>&1
+    --decision-output "$out_file" \
+    --decision-json-output "$out_json" >"$tmp/out.log" 2>&1
 
   [[ -f "$out_file" ]] || fail "expected custom decision output file"
+  [[ -f "$out_json" ]] || fail "expected custom decision json output file"
   rg -q "decision: PASS" "$out_file" || fail "expected PASS decision in custom output"
   rg -q "auth_gate_report:" "$out_file" || fail "expected auth gate path in custom output"
+  python - "$out_json" <<'PY' || fail "expected custom decision json payload"
+import json
+import sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    payload = json.load(fh)
+if payload.get('decision') != 'pass':
+    raise SystemExit('decision must be pass')
+if 'auth_gate_report' not in payload:
+    raise SystemExit('auth_gate_report must be present')
+PY
   pass "gate writes decision artifact to custom output path"
 }
 
