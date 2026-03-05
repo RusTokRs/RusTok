@@ -52,7 +52,27 @@ test_passes_with_required_artifacts() {
     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
 
   rg -q "RBAC cutover gate: PASS" "$tmp/out.log" || fail "expected PASS output"
+  rg -q "decision_output:" "$tmp/out.log" || fail "expected decision output path in stdout"
+  find "$tmp/cutover" -maxdepth 1 -name 'rbac_cutover_gate_decision_*.md' | rg -q . || fail "expected default gate decision artifact"
   pass "gate passes when required artifacts are valid"
+}
+
+test_passes_with_custom_decision_output() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_artifacts "$tmp"
+  local out_file="$tmp/out/gate-decision.md"
+
+  "$SCRIPT" \
+    --staging-artifacts-dir "$tmp/staging" \
+    --cutover-artifacts-dir "$tmp/cutover" \
+    --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" \
+    --decision-output "$out_file" >"$tmp/out.log" 2>&1
+
+  [[ -f "$out_file" ]] || fail "expected custom decision output file"
+  rg -q "decision: PASS" "$out_file" || fail "expected PASS decision in custom output"
+  rg -q "auth_gate_report:" "$out_file" || fail "expected auth gate path in custom output"
+  pass "gate writes decision artifact to custom output path"
 }
 
 test_passes_with_explicit_timestamps() {
@@ -244,6 +264,7 @@ test_fails_without_required_flag() {
 }
 
 test_passes_with_required_artifacts
+test_passes_with_custom_decision_output
 test_passes_with_explicit_timestamps
 test_fails_on_invalid_explicit_stage_ts_format
 test_fails_on_invalid_explicit_cutover_ts_format
