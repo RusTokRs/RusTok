@@ -2,7 +2,7 @@
 
 - Date: 2026-02-19
 - Status: Living document (updated)
-- Last updated: 2026-02-19 (completion pass)
+- Last updated: 2026-03-05 (backlog cleanup pass)
 - Author: Platform Architecture Review
 
 ---
@@ -126,422 +126,117 @@ RUSTOK_REDIS_URL / REDIS_URL задан?
 
 ---
 
-## 2. Рекомендации
+## 2. Рекомендации (актуальный backlog)
 
-> Ниже сохранён полный трек рекомендаций: часть пунктов уже реализована и отмечена как ✅, часть остаётся в работе/плане.
+> Раздел очищен от закрытых пунктов и задач, потерявших актуальность. Ниже оставлены только действия, которые ещё требуют реализации.
 
-### 2.1 ✅ РЕАЛИЗОВАНО: Устранить размытую границу core / domain-module
+### 2.1 Вынести `DomainEvent` из `rustok-core` в `rustok-events` (стратегический трек)
 
-**Проблема.** `rustok-tenant`, `rustok-rbac` и `rustok-index` имеют `impl RusToKModule`, но не регистрировались в `build_registry()`. Не было формального способа отличить обязательные модули от опциональных.
+**Почему это ещё в backlog:** контракт событий всё ещё частично завязан на core-слой, что усложняет эволюцию schema/versioning и переиспользование событийных контрактов вне core.
 
-> **Что точно является Core (нельзя отключить):** `rustok-index`, `rustok-tenant`, `rustok-rbac`.
->
-> **Что точно НЕ является частью `ModuleKind` системы:**
-> - `rustok-test-utils` — это `[dev-dependencies]`, в production binary не входит вообще.
-> - `utoipa-swagger-ui-vendored` — vendored статика Swagger UI, не `RusToKModule`.
-> - `rustok-outbox` — не реализует `RusToKModule`; это инфраструктурный компонент, инициализируемый через `build_event_runtime()`, а не через registry.
+**Что осталось сделать:**
+- завершить migration phases 2/3 из ADR `2026-02-19-rustok-events-canonical-contract.md`;
+- убрать остаточные direct dependencies доменных модулей на legacy event API в `rustok-core`;
+- зафиксировать deprecation-политику и финальную точку удаления совместимого слоя.
 
-**Рекомендация.** Ввести формальную классификацию на уровне trait'а:
+### 2.2 Typed per-tenant module settings
 
-```rust
-// В rustok-core/src/module.rs
-pub enum ModuleKind {
-    /// Всегда активен, не может быть отключён tenant'ом
-    Core,
-    /// Регистрируется в реестре, может быть включён/отключён per-tenant
-    Optional,
-}
+**Почему это ещё в backlog:** контракт настроек модулей формализован на уровне дизайна, но runtime и миграционный путь для всех модулей ещё не доведены до единообразного typed-формата.
 
-pub trait RusToKModule: Send + Sync + MigrationSource {
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Optional  // safe default
-    }
-    // ... остальное без изменений
-}
-```
+**Что осталось сделать:**
+- определить единый typed контракт настроек в runtime (валидация + дефолты + версионирование);
+- подготовить безопасную миграцию с legacy `tenant_modules.settings`;
+- добавить интеграционные тесты на backward compatibility.
 
-**Решение реализовано:**
-- В `rustok-core/src/module.rs` добавлен `ModuleKind { Core, Optional }` с doc-комментарием-предупреждением.
-- `fn kind(&self) -> ModuleKind` добавлен в трейт `RusToKModule` с default `Optional`.
-- `ModuleRegistry` разделён на два bucket'а: `core_modules` и `optional_modules`.
-- `ModuleLifecycleService::toggle_module()` возвращает `ToggleModuleError::CoreModuleCannotBeDisabled` при попытке отключить core-модуль.
-- `IndexModule`, `TenantModule`, `RbacModule` переопределяют `fn kind() -> ModuleKind::Core`.
-- Все три зарегистрированы в `build_registry()` первыми.
+### 2.3 `rustok-notifications` как опциональный модуль
 
----
+**Почему это ещё в backlog:** capability нужна платформе, но полноценного optional-модуля с lifecycle/health/dependency контрактом пока нет.
 
-### 2.2 ✅ РЕАЛИЗОВАНО: Зарегистрировать `rustok-index` в `build_registry()`
+**Что осталось сделать:**
+- оформить `rustok-notifications` как `RusToKModule` (`ModuleKind::Optional`);
+- подключить единый lifecycle (init/health/stop) и пер-tenant toggle;
+- формализовать зависимости и эксплуатационные метрики.
 
-**Проблема.** `rustok-index` не был зарегистрирован. CQRS read-path не работал.
+### 2.4 Разделение `apps/server` на `core-server` + `module-bundles` (после ADR)
 
-**Решение:** `IndexModule` добавлен в `apps/server/src/modules/mod.rs` как первый Core-модуль.
+**Почему это ещё в backlog:** архитектурный трек зафиксирован в ADR, но требует отдельной фазы внедрения с контролем регрессий.
 
----
+**Что осталось сделать:**
+- подготовить минимальный план нарезки на bundles без breaking для runtime;
+- внедрить поэтапно (сначала internal bundles, затем external/plugin-ready слой);
+- синхронизировать route registration policy и module ownership boundaries.
 
-### 2.3 ✅ РЕАЛИЗОВАНО: Зарегистрировать `TenantModule` и `RbacModule`
+## 3. Приоритизированный план действий (только открытые пункты)
 
-**Проблема.** `TenantModule` и `RbacModule` реализовали `RusToKModule` с `health()`, но не были зарегистрированы — их health-статус отсутствовал в `/health/modules`.
+| ID | Рекомендация | Приоритет | Статус | Риск | Ценность | Owner area |
+|---|---|---|---|---|---|---|
+| 2.1 | Вынести `DomainEvent` из core | 🔵 Стратегически | In Progress | Высокий | Extensibility | Platform foundation |
+| 2.2 | Typed per-tenant module config | 🟢 Улучшение | Backlog | Средний | Consistency / safety | Platform foundation + domain modules |
+| 2.3 | `rustok-notifications` как optional module | 🟢 Улучшение | Backlog | Высокий | New capability | Domain modules |
+| 2.4 | `core-server` + `module-bundles` | 🔵 Стратегически | ADR ready / Backlog | Высокий | DX / scalability | Platform foundation |
 
-**Решение:** Оба зарегистрированы в `build_registry()` как Core-модули. Теперь их health виден, хуки вызываются, миграции подхватываются автоматически.
+## 4. Итоговая картина
 
----
+- Базовые архитектурные проблемы из первого ревью (границы Core/Optional, регистрация core-модулей, валидация `modules.toml`, outbox reliability baseline, Alloy lifecycle baseline) закрыты и больше не ведутся как отдельные action items в этом документе.
+- Текущий фокус смещён на стратегические и расширяемые треки: event contract decoupling, typed module settings, notifications module и server bundling.
+- Все новые изменения по этим направлениям должны синхронно отражаться в `docs/architecture/*`, `docs/modules/*` и соответствующих ADR.
 
-### 2.4 ✅ РЕАЛИЗОВАНО: Проверка синхронизации `modules.toml` и `build_registry()`
+## 5. Roadmap (следующие итерации, только незакрытые работы)
 
-**Решение.** Добавлена рантайм-проверка `modules::validate_registry_vs_manifest(&registry)` в `apps/server/src/app.rs` сразу после `build_registry()`. Сервер завершает запуск с ошибкой при рассинхроне slug'ов и/или конфликте `required` ↔ `ModuleKind::Core`.
+### 5.1 Итерация 1 — event contract decoupling (2.1)
 
-**Важно:** `rustok-outbox` остаётся core-инфраструктурой в манифесте, но intentionally исключён из проверки registry-слотов, потому что это не `RusToKModule` и он инициализируется через event runtime.
-
-```rust
-let registry = modules::build_registry();
-modules::validate_registry_vs_manifest(&registry)?;
-```
-
----
-
-### 2.5 ✅ РЕАЛИЗОВАНО: Добавить `dependencies` для Blog/Forum относительно Content
-
-**Решение.** В `BlogModule` и `ForumModule` зависимости уже заданы как `&["content"]`, поэтому `ModuleLifecycleService` корректно блокирует неконсистентные toggle-операции (включение без dependency и отключение dependency при активных dependents).
-
----
-
-### 2.6 ✅ РЕАЛИЗОВАНО: Ввести `required`/`depends_on` в `modules.toml` + валидацию
-
-**Решение.** `modules.toml` уже содержит `required` и `depends_on`, а runtime-проверка `validate_registry_vs_manifest()` валидирует не только `required` ↔ `ModuleKind::Core`, но и соответствие `depends_on` из манифеста зависимостям, объявленным в `RusToKModule::dependencies()`.
-
----
-
-### 2.7 ✅ РЕАЛИЗОВАНО: Связать L1 (Outbox) и L2 (Iggy) в единый pipeline
-
-**Проблема.** Сейчас три транспортных уровня — это три **независимых режима**, а не иерархия. `OutboxRelay` пишет события в `MemoryTransport` (не в Iggy). При выборе `transport = "iggy"` outbox-гарантии теряются. Нет плавного пути L1 → L2.
-
-**Рекомендация.** Сделать `OutboxRelay` настраиваемым: relay target должен поддерживать `IggyTransport` как downstream:
-
-```toml
-[settings.rustok.events]
-transport = "outbox"           # write-side: всегда outbox
-relay_target = "iggy"         # read-side: relay в Iggy для replay и highload
-```
-
-Это обеспечит: AtLeastOnce через outbox + replay через Iggy + не падать при старте если Iggy временно недоступен (lazy connect).
-
-**Текущий статус.** В `apps/server` добавлен `relay_target` (`memory|iggy`) и runtime fallback на memory при недоступном Iggy downstream; параметры retry/backoff вынесены в конфиг.
-
----
-
-### 2.8 ✅ РЕАЛИЗОВАНО: `InMemoryCacheBackend::set_with_ttl()` учитывает per-entry TTL
-
-**Решение.** In-memory backend переведён на per-entry expiration через `moka::Expiry`: значение кэша теперь хранит `payload + ttl`, а `set_with_ttl()` выставляет TTL на уровне записи. `set()` использует `default_ttl` экземпляра backend и также проходит через `set_with_ttl()`.
-
-Это устранило расхождение между API и фактическим поведением: теперь разный TTL для ключей внутри одного `InMemoryCacheBackend` поддерживается корректно.
-
----
-
-### 2.9 🟡 В ПРОЦЕССЕ: Вынести `DomainEvent` из `rustok-core` в `rustok-events`
-
-**Проблема.** `rustok-core/src/events/types.rs` содержит 37 556 байт — это огромный enum с событиями для content, blog, forum, commerce, user, pages, tenants, MCP. При добавлении нового модуля разработчик вынужден редактировать core, что нарушает принцип Open/Closed.
-
-```rust
-// сегодня: всё в одном месте
-pub enum DomainEvent {
-    NodeCreated { ... },      // content
-    ProductCreated { ... },   // commerce
-    OrderPlaced { ... },      // commerce
-    PostPublished { ... },    // blog
-    TopicCreated { ... },     // forum
-    PagePublished { ... },    // pages
-    // ...50+ вариантов
-}
-```
-
-**Рекомендация.** Ввести паттерн расширяемых событий через типизированные "пространства":
-
-```rust
-// В rustok-core: только инфраструктурные события + envelope
-pub enum CoreEvent {
-    UserRegistered { user_id: Uuid, email: String },
-    UserLoggedIn { user_id: Uuid },
-    TenantCreated { tenant_id: Uuid },
-}
-
-// Каждый модуль объявляет свои события сам:
-// rustok-commerce/src/events.rs
-pub enum CommerceEvent {
-    ProductCreated { product_id: Uuid },
-    OrderPlaced { order_id: Uuid, tenant_id: Uuid },
-}
-
-// EventEnvelope параметризуется по payload:
-pub struct EventEnvelope<E = serde_json::Value> {
-    pub event_type: String,
-    pub tenant_id: Uuid,
-    pub event: E,
-    // ...
-}
-```
-
-**Текущий статус.** Реализован Phase 1: создан crate `rustok-events` как стабильная точка импорта для событийных контрактов, с совместимым re-export `DomainEvent`/`EventEnvelope` из `rustok-core`.
-
-**Осталось до финала:**
-- **Phase 2:** перенести canonical-определение `DomainEvent`/схем payload в `rustok-events`, оставить в `rustok-core` только совместимый compatibility-layer.
-- **Phase 3:** удалить legacy re-export из `rustok-core`, обновить импорты во всех модулях и зафиксировать breaking-границу в ADR.
-
-Оба этапа остаются Breaking Change и требуют ADR перед merge в release branch.
-
----
-
-### 2.10 🟢 УЛУЧШЕНИЕ: Добавить per-tenant module settings
-
-**Проблема.** `tenant_modules.settings` (JSONB) уже существует в модели, но нигде не используется. `ModuleContext.config` принимает `&Value`, но сервисы его игнорируют.
-
-**Рекомендация.** Ввести типизированный конфиг для модулей:
-
-```rust
-pub trait RusToKModule {
-    type Config: DeserializeOwned + Default;
-
-    fn parse_config(&self, raw: &Value) -> Result<Self::Config> {
-        serde_json::from_value(raw.clone()).map_err(|e| Error::config(e))
-    }
-}
-```
-
-Это откроет возможность per-tenant настройки: лимиты постов для блога, список валют для commerce, кастомные SEO-поля и т.д.
-
----
-
-### 2.11 🟢 УЛУЧШЕНИЕ: Добавить `rustok-notifications` как опциональный инфраструктурный модуль
-
-**Проблема.** В RBAC и Events нет общего механизма уведомлений. Сейчас если нужно отправить email при `OrderPlaced` — это пишется в ad-hoc обработчиках.
-
-**Рекомендация.** Создать `crates/rustok-notifications`:
-- Подписывается на `DomainEvent` через EventBus.
-- Поддерживает каналы: email (уже есть `apps/server/src/services/email.rs`), webhook, in-app.
-- Конфигурируется per-tenant через `tenant_modules.settings`.
-- Является опциональным Optional-модулем (не Core).
-
----
-
-### 2.12 ✅ РЕАЛИЗОВАНО: Улучшить Outbox: добавить DLQ и мониторинг backlog
-
-**Проблема.** `OutboxRelay::process_pending_once()` логирует ошибки но не отправляет застрявшие события в Dead Letter Queue. Нет метрик по backlog size.
-
-**Рекомендация.**
-1. Добавить `outbox_backlog_size` gauge в Prometheus metrics (экспортировать через `/metrics`).
-2. Реализовать DLQ: после N попыток (конфигурируемое) переносить события в таблицу `sys_events` со статусом `failed` (логический DLQ).
-3. Добавить API endpoint `GET /api/admin/events/dlq` для просмотра и replay застрявших событий.
-
-**Текущий статус.** Реализованы outbox метрики в `/metrics` (`outbox_backlog_size`, `outbox_retries_total`, `outbox_dlq_total`) и admin endpoints: `GET /api/admin/events/dlq`, `POST /api/admin/events/dlq/{id}/replay`.
-
-Базовый скелет DLQ уже есть в `crates/rustok-iggy/src/dlq.rs` — можно портировать логику в outbox-уровень.
-
----
-
-### 2.13 ✅ РЕАЛИЗОВАНО: Формализовать Alloy Scripting как опциональный модуль
-
-**Проблема.** `alloy-scripting` подключался напрямую в `app.rs` через `alloy_scripting::create_default_engine()` — минуя ModuleRegistry. Это нарушало единообразие модульной архитектуры.
-
-**Решение.** Создан `AlloyModule` в `apps/server/src/modules/alloy.rs`:
-
-```rust
-pub struct AlloyModule;
-
-impl RusToKModule for AlloyModule {
-    fn slug(&self) -> &'static str { "alloy" }
-    fn kind(&self) -> ModuleKind { ModuleKind::Optional }
-}
-```
-
-- `AlloyModule` реализует `RusToKModule` с `ModuleKind::Optional`.
-- Зарегистрирован в `build_registry()` вместе с остальными опциональными модулями.
-- Объявляет RBAC-разрешения для ресурса `Scripts` (create/read/update/delete/list/manage).
-- Делегирует `ScriptsMigration` из `alloy-scripting::migration`.
-- Добавлен в `modules.toml` как `alloy = { crate = "alloy-scripting", ... }`.
-- Добавлен ресурс `Scripts` и константы `SCRIPTS_*` в `rustok-core/src/permissions.rs`.
-- Скриптовый рантайм (`AlloyState`) по-прежнему инициализируется в `app.rs::after_routes()` — это правильно, т.к. это session-level состояние, не module-metadata.
-
-Это позволяет:
-- Отображать состояние `alloy` в `/health/modules`.
-- Ограничивать доступ через RBAC (`scripts:*` permissions).
-- Запускать миграции через единый механизм реестра.
-- Включать/отключать скриптовый движок per-tenant в будущем.
-
----
-
-### 2.14 🔵 СТРАТЕГИЧЕСКИ: Разделить `apps/server` на `core-server` + `module-bundles`
-
-**Проблема.** Сейчас в `apps/server/src/app.rs` все маршруты (`commerce`, `blog`, `forum`, `content`, `pages`) захардкожены. При добавлении нового модуля нужно менять `app.rs`. Это создаёт coupling.
-
-**Рекомендация.** Ввести автоматическую регистрацию роутов через trait:
-
-```rust
-pub trait HttpModule: RusToKModule {
-    fn routes(&self) -> axum::Router;
-}
-
-// В app.rs:
-fn routes(ctx: &AppContext) -> AppRoutes {
-    let registry = modules::build_registry();
-    let mut routes = AppRoutes::with_default_routes()
-        .add_route(controllers::health::routes())
-        .add_route(controllers::auth::routes())
-        .add_route(controllers::graphql::routes());
-
-    for module in registry.http_modules() {
-        routes = routes.add_route(module.routes());
-    }
-    routes
-}
-```
-
-Это позволит добавлять новые модули без изменения `app.rs`.
-
----
-
-## 3. Приоритизированный план действий
-
-| # | Рекомендация | Приоритет | Статус | Сложность | Блокирует | Owner | Целевая итерация |
-|---|---|---|---|---|---|---|---|
-| 2.1 | Ввести `ModuleKind::Core` / `Optional` | ✅ Готово | Done | — | — | Platform foundation | Завершено |
-| 2.2 | Зарегистрировать `rustok-index` | ✅ Готово | Done | — | — | Platform foundation | Завершено |
-| 2.3 | Зарегистрировать Tenant/RBAC как Core | ✅ Готово | Done | — | — | Platform foundation | Завершено |
-| 2.4 | Синхронизация `modules.toml` ↔ `build_registry()` | ✅ Готово | Done | Средняя | Ops reliability | Platform foundation | Завершено |
-| 2.8 | Исправить `set_with_ttl()` в InMemoryCache | ✅ Готово | Done | Низкая | Cache correctness | Platform foundation | Завершено |
-| 2.5 | Заполнить `dependencies()` для Blog/Forum | ✅ Готово | Done | Низкая | Data integrity | Domain modules | Завершено |
-| 2.6 | `required` / `depends_on` в `modules.toml` | ✅ Готово | Done | Низкая | Ops tooling | Platform foundation | Завершено |
-| 2.7 | Связать L1 (Outbox) → L2 (Iggy) pipeline | 🟡 Важно | Backlog | Высокая | Event highload | Platform foundation + shared infra | Итерация 2 |
-| 2.12 | Outbox DLQ + backlog metrics | 🟢 Улучшение | Backlog | Средняя | Event reliability | Platform foundation + operational tooling | Итерация 2 |
-| 2.10 | Per-tenant typed module config | 🟢 Улучшение | Backlog | Средняя | Extensibility | Platform foundation + domain modules | Итерация 3 |
-| 2.11 | `rustok-notifications` модуль | 🟢 Улучшение | Backlog | Высокая | New capability | Domain modules | Итерация 3 |
-| 2.13 | Alloy как `RusToKModule` | ✅ Готово | Done | — | — | Platform foundation | Завершено |
-| 2.9 | Вынести `DomainEvent` из core | 🔵 Стратегически | In Progress (Phase 1) | Высокая | Extensibility | Platform foundation (ADR) | Итерация 3+ |
-| 2.14 | Авторегистрация HTTP routes | 🔵 Стратегически | ADR Needed | Высокая | DX / scalability | Platform foundation (ADR) | После ADR |
-
----
-
-## 4. Итоговая картина после применения рекомендаций
-
-```mermaid
-graph TD
-    subgraph "Kernel (always on)"
-        CORE[rustok-core]
-        OUTBOX[rustok-outbox + DLQ]
-        INDEX[rustok-index ← registered]
-        TENANT[rustok-tenant ← registered as Core]
-        RBAC[rustok-rbac ← registered as Core]
-        TELEMETRY[rustok-telemetry]
-    end
-
-    subgraph "Domain Modules (per-tenant toggle)"
-        CONTENT[rustok-content]
-        COMMERCE[rustok-commerce]
-        BLOG[rustok-blog → depends: content]
-        FORUM[rustok-forum → depends: content]
-        PAGES[rustok-pages]
-        NOTIF[rustok-notifications ← new]
-    end
-
-    subgraph "Optional Infrastructure"
-        ALLOY[alloy-scripting ← registered as RusToKModule ✅]
-        MCP[rustok-mcp]
-        IGGY[rustok-iggy]
-    end
-
-    CORE --> TENANT
-    CORE --> RBAC
-    CORE --> INDEX
-    CONTENT --> BLOG
-    CONTENT --> FORUM
-    OUTBOX --> INDEX
-    OUTBOX --> NOTIF
-```
-
----
-
-
-## 5. Предлагаемый roadmap (следующие 3 итерации)
-
-> Формат: 1 итерация = 2 недели. Цель roadmap — перевести рекомендации из «архитектурных тезисов» в план поставки с измеримым DoD.
-
-### 5.1 Итерация 1 (stability first)
 **Scope**
-- Проверка результата **2.5**: зависимости `blog/forum -> content` должны оставаться синхронизированными с runtime registry.
-- Проверка результата **2.6**: `required`/`depends_on` из `modules.toml` должны валидироваться на старте сервера.
-- Добавить smoke-тесты на `toggle_module()` для сценариев disable/enable с зависимостями.
+- продолжить phases 2/3 по migration `DomainEvent` в `rustok-events`;
+- подготовить и запустить deprecation-path для legacy API.
 
-**Deliverables**
-- Обновлённый модульный контракт зависимостей (`blog/forum -> content`).
-- Машиночитаемые ограничения в manifest-схеме (`required`, `depends_on`).
-- Набор regression-тестов на lifecycle-ограничения.
+**DoD**
+- доменные модули используют канонический контракт из `rustok-events`;
+- legacy-слой помечен как deprecated с фиксированной датой удаления;
+- миграция покрыта integration/regression тестами.
 
-**Критерии приёмки (DoD)**
-- `content` нельзя отключить, пока активны зависимые `blog/forum`.
-- Ошибка при нарушении зависимости детерминирована (стабильный error code/message).
-- Тесты в CI воспроизводят и positive, и negative path.
+### 5.2 Итерация 2 — typed settings + notifications (2.2, 2.3)
 
-### 5.2 Итерация 2 (event reliability)
 **Scope**
-- Закрыть **2.7**: реализовать relay target `iggy` для outbox.
-- Закрыть **2.12**: backlog gauge + DLQ + admin read/replay endpoint.
-- Добавить alerting (warning/critical) на backlog, retry spike, DLQ growth.
+- довести typed module settings до production-ready состояния;
+- включить `rustok-notifications` в единый lifecycle optional-модулей.
 
-**Deliverables**
-- Конфигурируемый pipeline `outbox -> relay_target`.
-- Таблица/механика DLQ и административный replay flow.
-- Набор метрик и alerts для операционного мониторинга.
+**DoD**
+- настроечный контракт модулей типизирован и валидируется в runtime;
+- миграция legacy settings выполняется без потери совместимости;
+- notifications-модуль наблюдаем через health/metrics и поддерживает per-tenant toggle.
 
-**Критерии приёмки (DoD)**
-- При недоступном downstream события не теряются и повторно отправляются после восстановления.
-- Backlog и DLQ наблюдаемы через `/metrics` и дашборд.
-- Replay из DLQ документирован и проходит контролируемо.
+### 5.3 Итерация 3 — server bundling prep (2.4)
 
-### 5.3 Итерация 3 (extensibility)
 **Scope**
-- Закрыть **2.10**: typed module config с backward-compatible migration для `tenant_modules.settings`.
-- Закрыть **2.11** и **2.13**: notifications и alloy как опциональные модули через единый lifecycle.
-- Подготовить ADR для **2.9** и **2.14** (breaking/strategic track).
+- подготовить техническую фазу декомпозиции `apps/server` на `core-server` и `module-bundles`;
+- согласовать sequence внедрения без breaking-runtime.
 
-**Deliverables**
-- Типизированные per-tenant конфиги модулей.
-- Унифицированное подключение optional infrastructure через `RusToKModule`.
-- ADR-пакет для стратегических изменений event model и маршрутизации.
+**DoD**
+- зафиксирован пошаговый implementation plan с контрольными точками;
+- route/module boundaries формализованы и проверяемы тестами;
+- риски миграции описаны и закрыты mitigation-планом.
 
-**Критерии приёмки (DoD)**
-- Новые optional-модули подключаются без правки центрального роутинга.
-- Миграция конфигов не ломает существующие tenant settings.
-- ADR согласованы и готовы к реализации в следующем release train.
+### 5.4 Отдельный backlog: замена самописного кода библиотеками
 
-### 5.4 Governance и точки контроля
-- **Еженедельный checkpoint:** статус по пунктам 2.x, риски, блокеры, owner на каждый item.
-- **Документационный контроль:** любые изменения по модулям/событиям/маршрутизации синхронно отражаются в `docs/index.md` и профильных docs-файлах.
-- **ADR-контроль:** для `2.9` Phase 1 допускается без ADR (совместимый слой), а финальный перенос контракта (Phase 2/3) и `2.14` не переводятся в implementation до публикации ADR в `DECISIONS/`.
+Ниже — точки, где самописная логика может быть заменена battle-tested библиотеками (отдельно от стратегического roadmap выше).
 
-### 5.5 Следующие шаги «по списку» (операционализация)
+| Область | Что сейчас | Чем заменить | Почему это лучше |
+|---|---|---|---|
+| Security validation (`rustok-core`) | Ручной blacklist-regex для SQL/XSS/command/path, ручная HTML-экранизация, email/UUID regex | `ammonia` (sanitization), `validator` + `email_address`/`uuid::Uuid::parse_str`, `garde`/`nutype` | Меньше ложных срабатываний/пропусков, проще сопровождение |
+| SSRF/URL validation (`rustok-core`) | Ручная проверка `localhost`, private IP и scheme | `url` + `ipnet`/`cidr` deny/allow policy | Меньше edge-case багов, централизуемая policy |
+| Rate limiting (`rustok-core` + `apps/server`) | Собственный token bucket + cleanup | `governor` и/или `tower-governor` | Надёжнее и дешевле в поддержке |
+| Retry/circuit-breaker (`rustok-core`) | Самописные `RetryPolicy` и `CircuitBreaker` | `tower` + `backoff`/`tokio-retry` (или `failsafe`) | Меньше custom state-machine кода |
+| Frontend debounce hooks (`next-admin`) | Локальные `useDebounce`/`useDebouncedCallback` | `use-debounce` или `lodash.debounce` | Меньше edge cases и дублирования |
 
-Чтобы roadmap не оставался декларативным, фиксируем ближайшие шаги в формате action list.
+Приоритизация:
+1. P0 — security validation + SSRF policy.
+2. P1 — rate limiting + resilience stack.
+3. P2 — frontend debounce.
 
-#### Ближайшие 2 недели (focus: 2.7 + 2.12)
-- [x] Подготовлен technical design для `relay_target` (`memory|iggy`) с backward-compatibility (см. `docs/architecture/events.md`, раздел *Outbox Relay Pipeline*).
-- [x] Конфигурационные поля (`relay_target`, `relay_retry_policy`, `dlq.max_attempts`) формализованы в архитектурной спецификации и включены в план runtime-валидации (см. `docs/architecture/events.md`).
-- [x] Метрики `outbox_backlog_size`, `outbox_retries_total`, `outbox_dlq_total` добавлены в observability baseline и alerting-политику (см. `docs/guides/observability-quickstart.md`).
-- [x] Зафиксирован API-контур для DLQ admin flow (`GET /api/admin/events/dlq`, `POST /api/admin/events/dlq/{id}/replay`) и операционный сценарий replay (см. `docs/architecture/events.md`).
-- [x] Runbook для инцидентов (backlog growth / downstream outage / DLQ replay) добавлен в `docs/architecture/events.md`.
-
-#### Следующий шаг после стабилизации (focus: 2.10 + 2.13)
-- [x] Зафиксирован целевой контракт typed module config и миграционная стратегия для legacy `tenant_modules.settings` в п. 2.10 данного документа.
-- [x] Архитектурное решение по Alloy lifecycle закреплено в п. 2.13 (optional module contract + health visibility) как baseline для реализации.
-- [x] RBAC-пермишены `scripting:execute` и `scripting:manage` зафиксированы как обязательная часть Alloy-модуля (п. 2.13).
-
-#### Стратегический трек (focus: 2.9 + 2.14)
-- [x] Подготовлен ADR `DECISIONS/2026-02-19-rustok-events-canonical-contract.md`.
-- [x] Подготовлен ADR `DECISIONS/2026-02-19-core-server-module-bundles-routing.md`.
-- [x] Migration checklist для breaking-фазы закреплён в ADR `2026-02-19-rustok-events-canonical-contract.md`.
-
-**Артефакты, которые должны появиться по итогам шагов:**
-- обновления в `docs/architecture/events.md` (pipeline, DLQ, replay);
-- обновления в `docs/guides/observability-quickstart.md` (новые метрики и alerts);
-- ADR-файлы в `DECISIONS/` для стратегических пунктов 2.9 и 2.14.
-
+Базовый rollout:
+- adapter/feature-flag (`legacy` vs `library`);
+- постепенное включение по сегментам трафика;
+- regression corpus для security payloads в CI.
 
 ---
 
