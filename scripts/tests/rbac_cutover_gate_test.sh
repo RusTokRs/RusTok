@@ -120,6 +120,42 @@ JSON
 }
 
 
+test_fails_when_stage_bundle_timestamp_mismatch() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_artifacts "$tmp"
+
+  mv "$tmp/staging/rbac_report_pre_20260305T010101Z.json" "$tmp/staging/rbac_report_pre_20260305T999999Z.json"
+
+  set +e
+  "$SCRIPT"     --staging-artifacts-dir "$tmp/staging"     --cutover-artifacts-dir "$tmp/cutover"     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
+  code=$?
+  set -e
+
+  [[ "$code" -ne 0 ]] || fail "expected non-zero exit when stage bundle timestamps are mismatched"
+  rg -q "same timestamp as stage report" "$tmp/out.log" || fail "expected stage bundle timestamp mismatch message"
+  pass "gate fails when stage bundle timestamps are mismatched"
+}
+
+
+test_fails_when_cutover_bundle_timestamp_mismatch() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_artifacts "$tmp"
+
+  mv "$tmp/cutover/rbac_cutover_baseline_20260305T020202Z.json" "$tmp/cutover/rbac_cutover_baseline_20260305T999999Z.json"
+
+  set +e
+  "$SCRIPT"     --staging-artifacts-dir "$tmp/staging"     --cutover-artifacts-dir "$tmp/cutover"     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
+  code=$?
+  set -e
+
+  [[ "$code" -ne 0 ]] || fail "expected non-zero exit when cutover bundle timestamps are mismatched"
+  rg -q "same timestamp as markdown" "$tmp/out.log" || fail "expected cutover bundle timestamp mismatch message"
+  pass "gate fails when cutover bundle timestamps are mismatched"
+}
+
+
 test_fails_when_mismatch_delta_nonzero() {
   local tmp
   tmp="$(mktemp -d)"
@@ -161,6 +197,8 @@ test_passes_with_required_artifacts
 test_fails_when_auth_gate_report_missing
 test_fails_when_baseline_not_pass
 test_fails_when_post_rollback_invariants_nonzero
+test_fails_when_stage_bundle_timestamp_mismatch
+test_fails_when_cutover_bundle_timestamp_mismatch
 test_fails_when_mismatch_delta_nonzero
 test_fails_without_required_flag
 

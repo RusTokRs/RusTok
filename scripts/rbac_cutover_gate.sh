@@ -13,9 +13,9 @@ Options:
   --help                          Show this message
 
 Gate checks:
-  1) Staging artifacts include stage report + pre/dry-run/apply/rollback/post-rollback reports
+  1) Staging artifacts are validated as one timestamp-consistent rehearsal bundle
   2) Staging post-rollback invariants are zero (users_without_roles/orphan_user_roles/orphan_role_permissions)
-  3) Cutover baseline artifacts include markdown + json report
+  3) Cutover baseline artifacts are validated as one timestamp-consistent bundle (md+json)
   4) Baseline json has gate_status=pass
   5) Baseline json deltas mismatch/shadow failures are zero
   6) Auth gate report artifact exists
@@ -63,6 +63,19 @@ require_file() {
   fi
 }
 
+extract_ts() {
+  local path="$1"
+  local prefix="$2"
+  local suffix="$3"
+  local base
+  base="$(basename "$path")"
+  if [[ "$base" =~ ^${prefix}_(.+)\.${suffix}$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
 if [[ ! -d "$STAGING_ARTIFACTS_DIR" ]]; then
   echo "Staging artifacts directory does not exist: $STAGING_ARTIFACTS_DIR" >&2
   exit 1
@@ -73,25 +86,36 @@ if [[ ! -d "$CUTOVER_ARTIFACTS_DIR" ]]; then
 fi
 
 stage_report="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_relation_stage_report_*.md')"
-stage_pre_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_report_pre_*.json')"
-stage_dry_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_backfill_dry_run_*.json')"
-stage_apply_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_backfill_apply_*.json')"
-stage_rollback_apply_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_backfill_rollback_apply_*.json')"
-stage_post_rollback_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_report_post_rollback_*.json')"
+require_file "$stage_report" "staging stage-report markdown"
+stage_ts="$(extract_ts "$stage_report" "rbac_relation_stage_report" "md" || true)"
+if [[ -z "$stage_ts" ]]; then
+  echo "Could not extract timestamp from staging report: $stage_report" >&2
+  exit 1
+fi
+
+stage_pre_json="$STAGING_ARTIFACTS_DIR/rbac_report_pre_${stage_ts}.json"
+stage_dry_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_dry_run_${stage_ts}.json"
+stage_apply_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_apply_${stage_ts}.json"
+stage_rollback_apply_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_rollback_apply_${stage_ts}.json"
+stage_post_rollback_json="$STAGING_ARTIFACTS_DIR/rbac_report_post_rollback_${stage_ts}.json"
+
+require_file "$stage_pre_json" "staging pre-check JSON (same timestamp as stage report)"
+require_file "$stage_dry_json" "staging dry-run JSON (same timestamp as stage report)"
+require_file "$stage_apply_json" "staging apply JSON (same timestamp as stage report)"
+require_file "$stage_rollback_apply_json" "staging rollback-apply JSON (same timestamp as stage report)"
+require_file "$stage_post_rollback_json" "staging post-rollback JSON (same timestamp as stage report)"
 
 cutover_md="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.md')"
-cutover_json="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.json')"
-
-require_file "$stage_report" "staging stage-report markdown"
-require_file "$stage_pre_json" "staging pre-check JSON"
-require_file "$stage_dry_json" "staging dry-run JSON"
-require_file "$stage_apply_json" "staging apply JSON"
-require_file "$stage_rollback_apply_json" "staging rollback-apply JSON"
-require_file "$stage_post_rollback_json" "staging post-rollback JSON"
 require_file "$cutover_md" "cutover baseline markdown"
-require_file "$cutover_json" "cutover baseline JSON"
-require_file "$AUTH_GATE_REPORT" "auth release gate report"
+cutover_ts="$(extract_ts "$cutover_md" "rbac_cutover_baseline" "md" || true)"
+if [[ -z "$cutover_ts" ]]; then
+  echo "Could not extract timestamp from cutover baseline markdown: $cutover_md" >&2
+  exit 1
+fi
+cutover_json="$CUTOVER_ARTIFACTS_DIR/rbac_cutover_baseline_${cutover_ts}.json"
 
+require_file "$cutover_json" "cutover baseline JSON (same timestamp as markdown)"
+require_file "$AUTH_GATE_REPORT" "auth release gate report"
 
 python - "$stage_post_rollback_json" <<'PY'
 import json
@@ -137,12 +161,14 @@ if not isinstance(payload.get('total_decisions_delta'), int):
 PY
 
 echo "RBAC cutover gate: PASS"
+echo "- staging_ts: $stage_ts"
 echo "- staging_report: $stage_report"
 echo "- staging_pre_json: $stage_pre_json"
 echo "- staging_dry_run_json: $stage_dry_json"
 echo "- staging_apply_json: $stage_apply_json"
 echo "- staging_rollback_apply_json: $stage_rollback_apply_json"
 echo "- staging_post_rollback_json: $stage_post_rollback_json"
+echo "- baseline_ts: $cutover_ts"
 echo "- baseline_md: $cutover_md"
 echo "- baseline_json: $cutover_json"
 echo "- auth_gate_report: $AUTH_GATE_REPORT"
