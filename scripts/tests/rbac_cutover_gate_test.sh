@@ -59,6 +59,7 @@ test_passes_with_required_artifacts() {
   [[ -f "$tmp/cutover/mismatch-sample.jsonl" ]] || fail "expected default mismatch sample artifact"
   rg -q "# RBAC Gate Decision" "$tmp/cutover/gate-decision.md" || fail "expected template markdown header"
   rg -q -- "- decision: go" "$tmp/cutover/gate-decision.md" || fail "expected go decision in markdown"
+  rg -q -- "- decision_volume_source: total_decisions_delta" "$tmp/cutover/gate-decision.md" || fail "expected decision_volume_source in markdown"
   python - "$tmp/cutover/gate-decision.json" <<'PY' || fail "expected valid json decision artifact"
 import json
 import sys
@@ -293,6 +294,7 @@ JSON
     --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
 
   rg -q -- "- decision_volume_delta: 14" "$tmp/cutover/gate-decision.md" || fail "expected permission_checks_total_delta propagated to markdown"
+  rg -q -- "- decision_volume_source: permission_checks_total_delta" "$tmp/cutover/gate-decision.md" || fail "expected permission_checks_total_delta source in markdown"
   python - "$tmp/cutover/gate-decision.json" <<'PY' || fail "expected permission_checks_total_delta propagated to json"
 import json
 import sys

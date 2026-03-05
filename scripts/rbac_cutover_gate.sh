@@ -242,10 +242,18 @@ elif isinstance(permission_checks_total_delta, int):
 else:
     raise SystemExit('baseline field must be integer: total_decisions_delta or permission_checks_total_delta')
 
-print(f"{decision_volume_delta}\t{decision_volume_source}")
+print(decision_volume_delta)
+print(decision_volume_source)
 PY
  )"
-IFS=$'\t' read -r decision_volume_delta decision_volume_source <<< "$decision_volume_payload"
+
+mapfile -t decision_volume_fields <<< "$decision_volume_payload"
+if [[ "${#decision_volume_fields[@]}" -ne 2 ]]; then
+  echo "unexpected decision-volume payload shape from parser" >&2
+  exit 1
+fi
+decision_volume_delta="${decision_volume_fields[0]}"
+decision_volume_source="${decision_volume_fields[1]}"
 
 echo "RBAC cutover gate: PASS"
 echo "- staging_ts: $stage_ts"
