@@ -1066,7 +1066,6 @@ mod tests {
     const AUTHZ_MODE_ENV: &str = "RUSTOK_RBAC_AUTHZ_MODE";
     const LEGACY_ROLE_FALLBACK_FLAG_ENV: &str = "RUSTOK_RBAC_LEGACY_ROLE_FALLBACK_ENABLED";
 
-
     struct EnvVarGuard {
         _lock: MutexGuard<'static, ()>,
         name: &'static str,
@@ -1122,6 +1121,42 @@ mod tests {
     }
 
     impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            self.restore();
+        }
+    }
+
+    struct ScopedEnvOverride {
+        name: &'static str,
+        previous: Option<String>,
+    }
+
+    impl ScopedEnvOverride {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous = std::env::var(name).ok();
+            // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
+            unsafe {
+                std::env::set_var(name, value);
+            }
+            Self { name, previous }
+        }
+
+        fn restore(&self) {
+            if let Some(previous) = self.previous.as_ref() {
+                // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
+                unsafe {
+                    std::env::set_var(self.name, previous);
+                }
+            } else {
+                // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
+                unsafe {
+                    std::env::remove_var(self.name);
+                }
+            }
+        }
+    }
+
+    impl Drop for ScopedEnvOverride {
         fn drop(&mut self) {
             self.restore();
         }
@@ -1429,17 +1464,9 @@ mod tests {
         let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
         env.remove();
 
-        // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-        unsafe {
-            std::env::set_var(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
-        }
+        let _fallback_alias = ScopedEnvOverride::set(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
 
         assert!(AuthService::is_dual_read_enabled());
-
-        // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-        unsafe {
-            std::env::remove_var(LEGACY_ROLE_FALLBACK_FLAG_ENV);
-        }
     }
 
     #[test]
@@ -1447,17 +1474,9 @@ mod tests {
         let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
         env.set("relation_only");
 
-        // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-        unsafe {
-            std::env::set_var(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
-        }
+        let _fallback_alias = ScopedEnvOverride::set(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
 
         assert!(!AuthService::is_dual_read_enabled());
-
-        // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-        unsafe {
-            std::env::remove_var(LEGACY_ROLE_FALLBACK_FLAG_ENV);
-        }
     }
 
     #[test]
