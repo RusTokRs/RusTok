@@ -161,6 +161,8 @@ fn format_rbac_metrics(
         RBAC_CONSISTENCY_QUERY_LATENCY_MS_TOTAL.load(Ordering::Relaxed);
     let consistency_query_latency_samples =
         RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES.load(Ordering::Relaxed);
+    let engine_decisions_total =
+        stats.engine_decisions_relation_total + stats.engine_decisions_casbin_total;
 
     format!(
         "rustok_rbac_permission_cache_hits {cache_hits}\n\
@@ -177,9 +179,11 @@ rustok_rbac_permission_denied_reason_unknown {denied_unknown}\n\
 rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n\
 rustok_rbac_decision_mismatch_total {decision_mismatch_total}\n\
 rustok_rbac_shadow_compare_failures_total {shadow_compare_failures_total}\n\
+rustok_rbac_engine_decisions_total {engine_decisions_total}\n\
 rustok_rbac_engine_decisions_relation_total {engine_decisions_relation_total}\n\
 rustok_rbac_engine_decisions_casbin_total {engine_decisions_casbin_total}\n\
 rustok_rbac_engine_mismatch_total {engine_mismatch_total}\n\
+rustok_rbac_engine_eval_duration_ms {engine_eval_duration_ms_total}\n\
 rustok_rbac_engine_eval_duration_ms_total {engine_eval_duration_ms_total}\n\
 rustok_rbac_engine_eval_duration_samples {engine_eval_duration_samples}\n\
 rustok_rbac_users_without_roles_total {users_without_roles_total}\n\
@@ -202,6 +206,7 @@ rustok_rbac_consistency_query_latency_samples {consistency_query_latency_samples
         claim_role_mismatch_total = stats.claim_role_mismatch_total,
         decision_mismatch_total = stats.decision_mismatch_total,
         shadow_compare_failures_total = stats.shadow_compare_failures_total,
+        engine_decisions_total = engine_decisions_total,
         engine_decisions_relation_total = stats.engine_decisions_relation_total,
         engine_decisions_casbin_total = stats.engine_decisions_casbin_total,
         engine_mismatch_total = stats.engine_mismatch_total,
@@ -249,8 +254,10 @@ mod tests {
     #[test]
     fn rbac_metrics_include_engine_decision_and_latency_counters() {
         let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_engine_decisions_total"));
         assert!(payload.contains("rustok_rbac_engine_decisions_relation_total"));
         assert!(payload.contains("rustok_rbac_engine_decisions_casbin_total"));
+        assert!(payload.contains("rustok_rbac_engine_eval_duration_ms"));
         assert!(payload.contains("rustok_rbac_engine_eval_duration_ms_total"));
         assert!(payload.contains("rustok_rbac_engine_eval_duration_samples"));
     }
