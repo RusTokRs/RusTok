@@ -93,7 +93,7 @@ impl AuthService {
     }
 
     fn is_dual_read_enabled() -> bool {
-        Self::authz_mode() == RbacAuthzMode::DualRead
+        Self::authz_mode().should_run_legacy_role_shadow()
     }
 
     fn should_run_casbin_shadow() -> bool {
@@ -1064,6 +1064,8 @@ mod tests {
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     const AUTHZ_MODE_ENV: &str = "RUSTOK_RBAC_AUTHZ_MODE";
+    const LEGACY_ROLE_FALLBACK_FLAG_ENV: &str = "RUSTOK_RBAC_LEGACY_ROLE_FALLBACK_ENABLED";
+    const RELATION_ENFORCEMENT_FLAG_ENV: &str = "RUSTOK_RBAC_RELATION_ENFORCEMENT_ENABLED";
 
     struct EnvVarGuard {
         _lock: MutexGuard<'static, ()>,
@@ -1120,6 +1122,42 @@ mod tests {
     }
 
     impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            self.restore();
+        }
+    }
+
+    struct ScopedEnvOverride {
+        name: &'static str,
+        previous: Option<String>,
+    }
+
+    impl ScopedEnvOverride {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous = std::env::var(name).ok();
+            // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
+            unsafe {
+                std::env::set_var(name, value);
+            }
+            Self { name, previous }
+        }
+
+        fn restore(&self) {
+            if let Some(previous) = self.previous.as_ref() {
+                // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
+                unsafe {
+                    std::env::set_var(self.name, previous);
+                }
+            } else {
+                // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
+                unsafe {
+                    std::env::remove_var(self.name);
+                }
+            }
+        }
+    }
+
+    impl Drop for ScopedEnvOverride {
         fn drop(&mut self) {
             self.restore();
         }
@@ -1420,6 +1458,47 @@ mod tests {
         env.set("  DUAL_READ  ");
 
         assert!(AuthService::is_dual_read_enabled());
+    }
+
+    #[test]
+    fn authz_mode_enables_dual_read_from_legacy_fallback_alias_when_mode_missing() {
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.remove();
+
+        let _fallback_alias = ScopedEnvOverride::set(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
+
+        assert!(AuthService::is_dual_read_enabled());
+    }
+
+    #[test]
+    fn authz_mode_explicit_relation_only_overrides_legacy_fallback_alias() {
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.set("relation_only");
+
+        let _fallback_alias = ScopedEnvOverride::set(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
+
+        assert!(!AuthService::is_dual_read_enabled());
+    }
+
+    #[test]
+    fn authz_mode_relation_enforcement_alias_keeps_dual_read_disabled_when_mode_missing() {
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.remove();
+
+        let _relation_enforcement = ScopedEnvOverride::set(RELATION_ENFORCEMENT_FLAG_ENV, "true");
+
+        assert!(!AuthService::is_dual_read_enabled());
+    }
+
+    #[test]
+    fn authz_mode_relation_enforcement_alias_has_priority_over_legacy_fallback_alias() {
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.remove();
+
+        let _fallback_alias = ScopedEnvOverride::set(LEGACY_ROLE_FALLBACK_FLAG_ENV, "true");
+        let _relation_enforcement = ScopedEnvOverride::set(RELATION_ENFORCEMENT_FLAG_ENV, "true");
+
+        assert!(!AuthService::is_dual_read_enabled());
     }
 
     #[test]

@@ -20,6 +20,16 @@ const RELATION_DUAL_READ_FLAG_ALIASES: [&str; 3] = [
     "RBAC_RELATION_DUAL_READ_ENABLED",
     "rbac_relation_dual_read_enabled",
 ];
+const RELATION_ENFORCEMENT_FLAG_ALIASES: [&str; 3] = [
+    "RUSTOK_RBAC_RELATION_ENFORCEMENT_ENABLED",
+    "RBAC_RELATION_ENFORCEMENT_ENABLED",
+    "rbac_relation_enforcement_enabled",
+];
+const LEGACY_ROLE_FALLBACK_FLAG_ALIASES: [&str; 3] = [
+    "RUSTOK_RBAC_LEGACY_ROLE_FALLBACK_ENABLED",
+    "RBAC_LEGACY_ROLE_FALLBACK_ENABLED",
+    "rbac_legacy_role_fallback_enabled",
+];
 const CASBIN_SHADOW_FLAG_ALIASES: [&str; 3] = [
     "RUSTOK_RBAC_CASBIN_SHADOW_ENABLED",
     "RBAC_CASBIN_SHADOW_ENABLED",
@@ -74,6 +84,20 @@ impl RbacAuthzMode {
             return Self::DualRead;
         }
 
+        if RELATION_ENFORCEMENT_FLAG_ALIASES
+            .iter()
+            .any(|name| env_flag_enabled(name))
+        {
+            return Self::RelationOnly;
+        }
+
+        if LEGACY_ROLE_FALLBACK_FLAG_ALIASES
+            .iter()
+            .any(|name| env_flag_enabled(name))
+        {
+            return Self::DualRead;
+        }
+
         Self::RelationOnly
     }
 
@@ -120,7 +144,8 @@ fn env_flag_enabled(name: &str) -> bool {
 mod tests {
     use super::{
         AuthzEngine, RbacAuthzMode, AUTHZ_MODE_ENV, CASBIN_ENFORCEMENT_FLAG_ALIASES,
-        CASBIN_SHADOW_FLAG_ALIASES, RELATION_DUAL_READ_FLAG_ALIASES,
+        CASBIN_SHADOW_FLAG_ALIASES, LEGACY_ROLE_FALLBACK_FLAG_ALIASES,
+        RELATION_DUAL_READ_FLAG_ALIASES, RELATION_ENFORCEMENT_FLAG_ALIASES,
     };
     use crate::error::RbacError;
     use std::sync::{Mutex, OnceLock};
@@ -231,6 +256,32 @@ mod tests {
     }
 
     #[test]
+    fn from_env_supports_all_relation_enforcement_flag_aliases() {
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
+        mode_env.remove();
+
+        for name in RELATION_ENFORCEMENT_FLAG_ALIASES {
+            let alias = EnvVarGuard::capture(name);
+            alias.set("true");
+            assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::RelationOnly);
+        }
+    }
+
+    #[test]
+    fn from_env_supports_legacy_role_fallback_aliases_as_dual_read_shadow() {
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
+        mode_env.remove();
+
+        for name in LEGACY_ROLE_FALLBACK_FLAG_ALIASES {
+            let alias = EnvVarGuard::capture(name);
+            alias.set("true");
+            assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::DualRead);
+        }
+    }
+
+    #[test]
     fn from_env_supports_casbin_shadow_aliases() {
         let _lock = env_lock();
         let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
@@ -267,6 +318,49 @@ mod tests {
             alias.set("true");
             assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::RelationOnly);
         }
+    }
+
+    #[test]
+    fn relation_enforcement_alias_has_priority_over_legacy_fallback_alias() {
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
+        mode_env.remove();
+
+        let fallback_alias = EnvVarGuard::capture(LEGACY_ROLE_FALLBACK_FLAG_ALIASES[0]);
+        fallback_alias.set("true");
+        let relation_enforcement_alias = EnvVarGuard::capture(RELATION_ENFORCEMENT_FLAG_ALIASES[0]);
+        relation_enforcement_alias.set("true");
+
+        assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::RelationOnly);
+    }
+
+    #[test]
+    fn relation_dual_read_alias_has_priority_over_relation_enforcement_alias() {
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
+        mode_env.remove();
+
+        let relation_enforcement_alias = EnvVarGuard::capture(RELATION_ENFORCEMENT_FLAG_ALIASES[0]);
+        relation_enforcement_alias.set("true");
+        let dual_alias = EnvVarGuard::capture(RELATION_DUAL_READ_FLAG_ALIASES[0]);
+        dual_alias.set("true");
+
+        assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::DualRead);
+    }
+
+    #[test]
+    fn ignores_disabled_alias_values() {
+        let _lock = env_lock();
+        let mode_env = EnvVarGuard::capture(AUTHZ_MODE_ENV);
+        mode_env.remove();
+
+        let disabled_relation_enforcement =
+            EnvVarGuard::capture(RELATION_ENFORCEMENT_FLAG_ALIASES[0]);
+        disabled_relation_enforcement.set("false");
+        let enabled_fallback = EnvVarGuard::capture(LEGACY_ROLE_FALLBACK_FLAG_ALIASES[0]);
+        enabled_fallback.set("on");
+
+        assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::DualRead);
     }
 
     #[test]

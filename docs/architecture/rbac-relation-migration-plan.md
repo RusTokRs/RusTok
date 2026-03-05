@@ -111,6 +111,7 @@
   - В `AuthService` добавлен runtime shadow dual-read для `has_permission/has_any_permission/has_all_permissions` под env-флагом `RUSTOK_RBAC_AUTHZ_MODE=dual_read` (также поддерживаются алиасы `dual-read` и `dual`) (relation decision остаётся авторитативным).
   - Режим rollout-конфигурации (`RbacAuthzMode`: `relation_only`/`dual_read`) перенесён в `crates/rustok-rbac` как модульный контракт, `apps/server` использует его без локального enum-дублирования.
   - Для rollout-совместимости `RbacAuthzMode` поддерживает legacy toggle `RUSTOK_RBAC_RELATION_DUAL_READ_ENABLED` (aliases: `RBAC_RELATION_DUAL_READ_ENABLED`, `rbac_relation_dual_read_enabled`) (если `RUSTOK_RBAC_AUTHZ_MODE` не задан), чтобы staged cutover можно было выполнять без одномоментного переезда всех окружений на новый env-ключ.
+  - Зафиксированы дополнительные migration-флаги совместимости в `RbacAuthzMode::from_env`: relation enforcement (`RUSTOK_RBAC_RELATION_ENFORCEMENT_ENABLED`, `RBAC_RELATION_ENFORCEMENT_ENABLED`, `rbac_relation_enforcement_enabled`) и временный legacy fallback (`RUSTOK_RBAC_LEGACY_ROLE_FALLBACK_ENABLED`, `RBAC_LEGACY_ROLE_FALLBACK_ENABLED`, `rbac_legacy_role_fallback_enabled`); в alias-only конфигурации enforcement имеет приоритет над fallback.
   - Legacy-vs-relation shadow decision semantics вынесены в модульный `rustok-rbac::shadow_decision`; `apps/server` оставляет только загрузку legacy-ролей, метрики и logging/feature-flag orchestration.
   - Для server-adapter слоя shadow orchestration унифицирован через `ShadowCheck` + `compare_shadow_decision` (single/any/all без дублирования policy-веток в `AuthService`).
   - В `rustok-rbac` добавлен модульный dual-read orchestrator `evaluate_dual_read` (`DualReadOutcome`), поэтому `apps/server` больше не держит локальную decision-ветвистость для `skip/compare` и использует модульный исход dual-read-решения.
@@ -440,9 +441,9 @@
 - [ ] Определён владелец migration-program (DRI) и резервный DRI.
 - [ ] Определён freeze-период для изменения RBAC API-контрактов.
 - [ ] Зафиксированы feature flags:
-  - [ ] `rbac_relation_dual_read_enabled`
-  - [ ] `rbac_relation_enforcement_enabled`
-  - [ ] `rbac_legacy_role_fallback_enabled` (временный)
+  - [x] `rbac_relation_dual_read_enabled`
+  - [x] `rbac_relation_enforcement_enabled`
+  - [x] `rbac_legacy_role_fallback_enabled` (временный)
 - [ ] Обновлены `docs/architecture/rbac.md` и `docs/index.md`.
 
 ### 9.2 Фаза 1 — Консистентность flow
@@ -677,7 +678,7 @@
 
 - [x] Подготовлен foundation для staged rollout в `crates/rustok-rbac`: режимы `casbin_shadow` / `casbin_only` и алиасы feature-flags (`RUSTOK_RBAC_CASBIN_SHADOW_ENABLED`, `RUSTOK_RBAC_CASBIN_ENFORCEMENT_ENABLED`) добавлены в `RbacAuthzMode`.
 - [x] Добавлен tenant-aware baseline `casbin_model.conf` и экспорт helper `default_casbin_model()` как стартовый артефакт этапа C0.
-- [~] Shadow-path для Casbin parity подключён в runtime checks `AuthService::{has_permission,has_any_permission,has_all_permissions}` под режимом `RUSTOK_RBAC_AUTHZ_MODE=casbin_shadow`: сравнение выполняется через `rustok-rbac::evaluate_casbin_shadow` (matcher-compatible in-module evaluator), публикуются метрики `rustok_rbac_engine_decisions_relation_total`, `rustok_rbac_engine_decisions_casbin_total`, `rustok_rbac_engine_mismatch_total`, `rustok_rbac_engine_eval_duration_{ms_total,samples}`, mismatch логируется событием `rbac_engine_mismatch` с обязательными полями (`tenant_id`, `user_id`, `resource`, `action`, `relation_decision`, `casbin_decision`); полноценный `CasbinPermissionResolver` с persistent adapter/wiring остаётся следующим шагом C1/C2.
+- [~] Shadow-path для Casbin parity подключён в runtime checks `AuthService::{has_permission,has_any_permission,has_all_permissions}` под режимом `RUSTOK_RBAC_AUTHZ_MODE=casbin_shadow`: сравнение выполняется через `rustok-rbac::evaluate_casbin_shadow` (matcher-compatible in-module evaluator), публикуются канонические метрики `rustok_rbac_engine_decisions_relation_total`, `rustok_rbac_engine_decisions_casbin_total`, `rustok_rbac_engine_mismatch_total`, `rustok_rbac_engine_eval_duration_{ms_total,samples}` и compatibility-алиасы `rbac_engine_decisions_total`, `rbac_engine_mismatch_total`, `rbac_engine_mismatch_total{source="relation",target="casbin"}`, `rbac_engine_eval_duration_ms`, `rbac_engine_eval_latency_ms{engine="casbin"}`, mismatch логируется событием `rbac_engine_mismatch` с обязательными полями (`tenant_id`, `user_id`, `resource`, `action`, `relation_decision`, `casbin_decision`); полноценный `CasbinPermissionResolver` с persistent adapter/wiring остаётся следующим шагом C1/C2.
 
 ### 15.1 Точка старта (когда начинаем переход)
 

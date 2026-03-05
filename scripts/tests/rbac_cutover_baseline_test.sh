@@ -231,7 +231,17 @@ test_json_report_includes_timestamps() {
   json_report="$(find "$tmp/artifacts" -maxdepth 1 -name 'rbac_cutover_baseline_*.json' | head -n 1)"
   [[ -n "$json_report" ]] || fail "expected json report artifact"
   rg -q '"timestamp"' "$json_report" || fail "expected per-sample timestamps in json report"
-  pass "json report includes per-sample timestamps"
+  rg -q '"permission_checks_total_delta"' "$json_report" || fail "expected permission_checks_total_delta in json report"
+  rg -q '"total_decisions_delta"' "$json_report" || fail "expected total_decisions_delta alias in json report"
+  python - "$json_report" <<'PY' || fail "expected decision delta aliases to match"
+import json
+import sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    payload = json.load(fh)
+if payload.get('permission_checks_total_delta') != payload.get('total_decisions_delta'):
+    raise SystemExit('decision delta aliases must match')
+PY
+  pass "json report includes timestamp and compatible decision delta aliases"
 }
 
 

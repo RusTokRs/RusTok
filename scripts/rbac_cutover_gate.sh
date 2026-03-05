@@ -197,7 +197,7 @@ for key in (
         raise SystemExit(f"staging post-rollback invariant must be 0 before relation-only cutover: {key}={value}")
 PY
 
-python - "$cutover_json" <<'PY'
+decision_volume_payload="$(python - "$cutover_json" <<'PY'
 import json
 import sys
 
@@ -216,9 +216,49 @@ for key in ('mismatch_delta', 'shadow_compare_failures_delta'):
     if value != 0:
         raise SystemExit(f"baseline field must be 0 before relation-only cutover: {key}={value}")
 
-if not isinstance(payload.get('total_decisions_delta'), int):
-    raise SystemExit('baseline field must be integer: total_decisions_delta')
+total_decisions_delta = payload.get('total_decisions_delta')
+permission_checks_total_delta = payload.get('permission_checks_total_delta')
+
+if total_decisions_delta is not None and not isinstance(total_decisions_delta, int):
+    raise SystemExit('baseline field must be integer when present: total_decisions_delta')
+
+if permission_checks_total_delta is not None and not isinstance(permission_checks_total_delta, int):
+    raise SystemExit('baseline field must be integer when present: permission_checks_total_delta')
+
+if isinstance(total_decisions_delta, int) and isinstance(permission_checks_total_delta, int):
+    if total_decisions_delta != permission_checks_total_delta:
+        raise SystemExit(
+            'baseline decision volume keys must match when both present: '
+            f'total_decisions_delta={total_decisions_delta}, '
+            f'permission_checks_total_delta={permission_checks_total_delta}'
+        )
+
+if isinstance(total_decisions_delta, int):
+    decision_volume_delta = total_decisions_delta
+    decision_volume_source = 'total_decisions_delta'
+elif isinstance(permission_checks_total_delta, int):
+    decision_volume_delta = permission_checks_total_delta
+    decision_volume_source = 'permission_checks_total_delta'
+else:
+    raise SystemExit('baseline field must be integer: total_decisions_delta or permission_checks_total_delta')
+
+print(decision_volume_delta)
+print(decision_volume_source)
 PY
+ )"
+
+mapfile -t decision_volume_fields <<< "$decision_volume_payload"
+if [[ "${#decision_volume_fields[@]}" -ne 2 ]]; then
+  echo "unexpected decision-volume payload shape from parser" >&2
+  exit 1
+fi
+decision_volume_delta="${decision_volume_fields[0]}"
+decision_volume_source="${decision_volume_fields[1]}"
+
+if [[ "$decision_volume_source" != "total_decisions_delta" && "$decision_volume_source" != "permission_checks_total_delta" ]]; then
+  echo "unexpected decision-volume source from parser: $decision_volume_source" >&2
+  exit 1
+fi
 
 echo "RBAC cutover gate: PASS"
 echo "- staging_ts: $stage_ts"
@@ -232,6 +272,7 @@ echo "- baseline_ts: $cutover_ts"
 echo "- baseline_md: $cutover_md"
 echo "- baseline_json: $cutover_json"
 echo "- auth_gate_report: $AUTH_GATE_REPORT"
+echo "- decision_volume_source: $decision_volume_source"
 echo "- decision_output: $DECISION_OUTPUT"
 echo "- decision_json_output: $DECISION_JSON_OUTPUT"
 
@@ -246,7 +287,8 @@ cat > "$DECISION_OUTPUT" <<EOF
 
 ## Metrics snapshot
 - engine_mismatch_total: 0
-- decision_volume_delta: $(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["total_decisions_delta"])' "$cutover_json")
+- decision_volume_delta: ${decision_volume_delta}
+- decision_volume_source: ${decision_volume_source}
 - latency_p95_delta: n/a
 - latency_p99_delta: n/a
 - 401_403_rate_delta: n/a
@@ -278,7 +320,8 @@ cat > "$DECISION_JSON_OUTPUT" <<EOF
   "staging_ts": "$stage_ts",
   "baseline_ts": "$cutover_ts",
   "engine_mismatch_total": 0,
-  "decision_volume_delta": $(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["total_decisions_delta"])' "$cutover_json"),
+  "decision_volume_delta": ${decision_volume_delta},
+  "decision_volume_source": "${decision_volume_source}",
   "latency_p95_delta": null,
   "latency_p99_delta": null,
   "rate_401_403_delta": null,
