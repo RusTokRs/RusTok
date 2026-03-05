@@ -13,11 +13,12 @@ Options:
   --help                          Show this message
 
 Gate checks:
-  1) Staging artifacts include stage report + pre report + dry-run report
-  2) Cutover baseline artifacts include markdown + json report
-  3) Baseline json has gate_status=pass
-  4) Baseline json deltas mismatch/shadow failures are zero
-  5) Auth gate report artifact exists
+  1) Staging artifacts include stage report + pre/dry-run/apply/rollback/post-rollback reports
+  2) Staging post-rollback invariants are zero (users_without_roles/orphan_user_roles/orphan_role_permissions)
+  3) Cutover baseline artifacts include markdown + json report
+  4) Baseline json has gate_status=pass
+  5) Baseline json deltas mismatch/shadow failures are zero
+  6) Auth gate report artifact exists
 USAGE
 }
 
@@ -74,6 +75,9 @@ fi
 stage_report="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_relation_stage_report_*.md')"
 stage_pre_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_report_pre_*.json')"
 stage_dry_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_backfill_dry_run_*.json')"
+stage_apply_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_backfill_apply_*.json')"
+stage_rollback_apply_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_backfill_rollback_apply_*.json')"
+stage_post_rollback_json="$(latest_file "$STAGING_ARTIFACTS_DIR" 'rbac_report_post_rollback_*.json')"
 
 cutover_md="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.md')"
 cutover_json="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.json')"
@@ -81,9 +85,33 @@ cutover_json="$(latest_file "$CUTOVER_ARTIFACTS_DIR" 'rbac_cutover_baseline_*.js
 require_file "$stage_report" "staging stage-report markdown"
 require_file "$stage_pre_json" "staging pre-check JSON"
 require_file "$stage_dry_json" "staging dry-run JSON"
+require_file "$stage_apply_json" "staging apply JSON"
+require_file "$stage_rollback_apply_json" "staging rollback-apply JSON"
+require_file "$stage_post_rollback_json" "staging post-rollback JSON"
 require_file "$cutover_md" "cutover baseline markdown"
 require_file "$cutover_json" "cutover baseline JSON"
 require_file "$AUTH_GATE_REPORT" "auth release gate report"
+
+
+python - "$stage_post_rollback_json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as fh:
+    payload = json.load(fh)
+
+for key in (
+    'users_without_roles_total',
+    'orphan_user_roles_total',
+    'orphan_role_permissions_total',
+):
+    value = payload.get(key)
+    if not isinstance(value, int):
+        raise SystemExit(f"staging post-rollback field must be integer: {key}")
+    if value != 0:
+        raise SystemExit(f"staging post-rollback invariant must be 0 before relation-only cutover: {key}={value}")
+PY
 
 python - "$cutover_json" <<'PY'
 import json
@@ -112,6 +140,9 @@ echo "RBAC cutover gate: PASS"
 echo "- staging_report: $stage_report"
 echo "- staging_pre_json: $stage_pre_json"
 echo "- staging_dry_run_json: $stage_dry_json"
+echo "- staging_apply_json: $stage_apply_json"
+echo "- staging_rollback_apply_json: $stage_rollback_apply_json"
+echo "- staging_post_rollback_json: $stage_post_rollback_json"
 echo "- baseline_md: $cutover_md"
 echo "- baseline_json: $cutover_json"
 echo "- auth_gate_report: $AUTH_GATE_REPORT"

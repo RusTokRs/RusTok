@@ -19,6 +19,15 @@ JSON
   cat > "$root/staging/rbac_backfill_dry_run_20260305T010101Z.json" <<'JSON'
 {"dry_run":true,"candidates_total":3}
 JSON
+  cat > "$root/staging/rbac_backfill_apply_20260305T010101Z.json" <<'JSON'
+{"dry_run":false,"fixed_users":3}
+JSON
+  cat > "$root/staging/rbac_backfill_rollback_apply_20260305T010101Z.json" <<'JSON'
+{"dry_run":false,"reverted":3}
+JSON
+  cat > "$root/staging/rbac_report_post_rollback_20260305T010101Z.json" <<'JSON'
+{"users_without_roles_total":0,"orphan_user_roles_total":0,"orphan_role_permissions_total":0}
+JSON
 
   cat > "$root/cutover/rbac_cutover_baseline_20260305T020202Z.md" <<'MD'
 # baseline
@@ -86,6 +95,31 @@ JSON
   pass "gate fails when baseline gate_status is not pass"
 }
 
+
+
+test_fails_when_post_rollback_invariants_nonzero() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_artifacts "$tmp"
+
+  cat > "$tmp/staging/rbac_report_post_rollback_20260305T010101Z.json" <<'JSON'
+{"users_without_roles_total":1,"orphan_user_roles_total":0,"orphan_role_permissions_total":0}
+JSON
+
+  set +e
+  "$SCRIPT" \
+    --staging-artifacts-dir "$tmp/staging" \
+    --cutover-artifacts-dir "$tmp/cutover" \
+    --auth-gate-report "$tmp/auth/auth_release_gate_20260305.md" >"$tmp/out.log" 2>&1
+  code=$?
+  set -e
+
+  [[ "$code" -ne 0 ]] || fail "expected non-zero exit when post-rollback invariants are non-zero"
+  rg -q "staging post-rollback invariant must be 0" "$tmp/out.log" || fail "expected post-rollback invariant failure message"
+  pass "gate fails when post-rollback invariants are non-zero"
+}
+
+
 test_fails_when_mismatch_delta_nonzero() {
   local tmp
   tmp="$(mktemp -d)"
@@ -126,6 +160,7 @@ test_fails_without_required_flag() {
 test_passes_with_required_artifacts
 test_fails_when_auth_gate_report_missing
 test_fails_when_baseline_not_pass
+test_fails_when_post_rollback_invariants_nonzero
 test_fails_when_mismatch_delta_nonzero
 test_fails_without_required_flag
 
