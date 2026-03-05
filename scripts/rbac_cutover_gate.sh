@@ -197,7 +197,7 @@ for key in (
         raise SystemExit(f"staging post-rollback invariant must be 0 before relation-only cutover: {key}={value}")
 PY
 
-python - "$cutover_json" <<'PY'
+decision_volume_delta="$(python - "$cutover_json" <<'PY'
 import json
 import sys
 
@@ -217,8 +217,16 @@ for key in ('mismatch_delta', 'shadow_compare_failures_delta'):
         raise SystemExit(f"baseline field must be 0 before relation-only cutover: {key}={value}")
 
 if not isinstance(payload.get('total_decisions_delta'), int):
-    raise SystemExit('baseline field must be integer: total_decisions_delta')
+    decision_volume_delta = payload.get('permission_checks_total_delta')
+else:
+    decision_volume_delta = payload.get('total_decisions_delta')
+
+if not isinstance(decision_volume_delta, int):
+    raise SystemExit('baseline field must be integer: total_decisions_delta or permission_checks_total_delta')
+
+print(decision_volume_delta)
 PY
+ )"
 
 echo "RBAC cutover gate: PASS"
 echo "- staging_ts: $stage_ts"
@@ -246,7 +254,7 @@ cat > "$DECISION_OUTPUT" <<EOF
 
 ## Metrics snapshot
 - engine_mismatch_total: 0
-- decision_volume_delta: $(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["total_decisions_delta"])' "$cutover_json")
+- decision_volume_delta: ${decision_volume_delta}
 - latency_p95_delta: n/a
 - latency_p99_delta: n/a
 - 401_403_rate_delta: n/a
@@ -278,7 +286,7 @@ cat > "$DECISION_JSON_OUTPUT" <<EOF
   "staging_ts": "$stage_ts",
   "baseline_ts": "$cutover_ts",
   "engine_mismatch_total": 0,
-  "decision_volume_delta": $(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["total_decisions_delta"])' "$cutover_json"),
+  "decision_volume_delta": ${decision_volume_delta},
   "latency_p95_delta": null,
   "latency_p99_delta": null,
   "rate_401_403_delta": null,
