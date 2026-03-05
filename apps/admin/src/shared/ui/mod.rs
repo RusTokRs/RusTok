@@ -1,69 +1,10 @@
-pub mod page_header;
+pub use leptos_ui::*;
 
+pub mod page_header;
 pub use page_header::page_header;
 
-use leptos::prelude::*;
-use leptos::web_sys;
-
 use crate::shared::i18n::{use_locale, Locale};
-
-#[component]
-pub fn ui_button(
-    #[prop(into)] on_click: Callback<web_sys::MouseEvent>,
-    #[prop(optional)] children: Option<Children>,
-    #[prop(optional, into)] class: String,
-    #[prop(default = Signal::derive(|| false))] disabled: Signal<bool>,
-) -> impl IntoView {
-    let base_class = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2";
-    let merged_class = move || {
-        if class.is_empty() {
-            base_class.to_string()
-        } else {
-            format!("{base_class} {class}")
-        }
-    };
-
-    view! {
-        <button
-            class=merged_class
-            on:click=move |ev| on_click.run(ev)
-            disabled=move || disabled.get()
-        >
-            {children.map(|c| c())}
-        </button>
-    }
-}
-
-#[component]
-pub fn ui_input(
-    #[prop(into)] value: Signal<String>,
-    #[prop(into)] set_value: WriteSignal<String>,
-    #[prop(into)] placeholder: TextProp,
-    #[prop(default = "text")] type_: &'static str,
-    #[prop(default = String::new().into(), into)] label: TextProp,
-) -> impl IntoView {
-    view! {
-        <div class="flex flex-col gap-2">
-            {move || {
-                let label_value = label.get();
-                (!label_value.is_empty()).then(|| {
-                    view! {
-                        <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            {label_value}
-                        </label>
-                    }
-                })
-            }}
-            <input
-                type=type_
-                placeholder=placeholder
-                prop:value=value
-                on:input=move |ev| set_value.set(event_target_value(&ev))
-                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            />
-        </div>
-    }
-}
+use leptos::prelude::*;
 
 #[component]
 pub fn ui_language_toggle() -> impl IntoView {
@@ -73,45 +14,24 @@ pub fn ui_language_toggle() -> impl IntoView {
         locale.set_locale.set(value);
     };
 
-    view! {
-        <div class="flex gap-2">
-            <button
-                type="button"
-                class=move || {
-                    let is_active = locale.locale.get() == Locale::Ru;
-                    if is_active {
-                        "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    } else {
-                        "inline-flex items-center justify-center rounded-md border border-input px-3 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                    }
-                }
-                on:click=move |_| set_locale(Locale::Ru)
-            >
-                "RU"
-            </button>
-            <button
-                type="button"
-                class=move || {
-                    let is_active = locale.locale.get() == Locale::En;
-                    if is_active {
-                        "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    } else {
-                        "inline-flex items-center justify-center rounded-md border border-input px-3 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                    }
-                }
-                on:click=move |_| set_locale(Locale::En)
-            >
-                "EN"
-            </button>
-        </div>
-    }
-}
+    let current_locale = Signal::derive(move || {
+        match locale.locale.get() {
+            Locale::Ru => "ru",
+            Locale::En => "en",
+        }
+        .to_string()
+    });
 
-#[component]
-pub fn ui_success_message(#[prop(into)] message: String) -> impl IntoView {
     view! {
-        <div class="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
-            {message}
-        </div>
+        <leptos_ui::ui_language_toggle
+            current_locale=current_locale
+            on_set_locale=move |lang| {
+                match lang {
+                    "ru" => set_locale(Locale::Ru),
+                    "en" => set_locale(Locale::En),
+                    _ => {}
+                }
+            }
+        />
     }
 }

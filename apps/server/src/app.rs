@@ -30,7 +30,13 @@ use crate::services::index_dispatcher::spawn_index_dispatcher;
 use crate::tasks;
 use loco_rs::prelude::Queue;
 use migration::Migrator;
+use rust_embed::RustEmbed;
 use std::sync::Arc;
+use tower_http::services::ServeDir;
+
+#[derive(RustEmbed)]
+#[folder = "../../apps/admin/dist"]
+struct AdminAssets;
 
 pub struct App;
 
@@ -53,8 +59,20 @@ impl Hooks for App {
     async fn boot(
         mode: StartMode,
         environment: &Environment,
-        config: Config,
+        mut config: Config,
     ) -> Result<BootResult> {
+        if std::env::var("DATABASE_URL").is_err()
+            && (config.database.uri.is_empty()
+                || config.database.uri.contains("localhost:5432")
+                || config.database.uri.contains("db:5432"))
+        {
+            config.database.uri = "sqlite://rustok.sqlite?mode=rwc".to_string();
+            tracing::info!(
+                "No external database found. Falling back to local SQLite: {}",
+                config.database.uri
+            );
+        }
+
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 
@@ -181,8 +199,38 @@ impl Hooks for App {
             },
         );
 
+        let admin_router =
+            AxumRouter::new().fallback(move |path: axum::extract::Path<String>| async move {
+                let path = path.0.trim_start_matches('/');
+                let path = if path.is_empty() { "index.html" } else { path };
+
+                match AdminAssets::get(path) {
+                    Some(content) => {
+                        let mime = mime_guess::from_path(path).first_or_octet_stream();
+                        (
+                            [(axum::http::header::CONTENT_TYPE, mime.as_ref())],
+                            content.data,
+                        )
+                            .into_response()
+                    }
+                    None => match AdminAssets::get("index.html") {
+                        Some(content) => (
+                            [(axum::http::header::CONTENT_TYPE, "text/html")],
+                            content.data,
+                        )
+                            .into_response(),
+                        None => (axum::http::StatusCode::NOT_FOUND, "Admin UI not bundled")
+                            .into_response(),
+                    },
+                }
+            });
+
+        let storefront_router = rustok_storefront::router();
+
         Ok(router
             .nest("/api/alloy", alloy_rest_router)
+            .nest("/admin", admin_router)
+            .nest("/", storefront_router)
             .layer(Extension(registry))
             .layer(Extension(alloy_state))
             .layer(auth_rate_limit_middleware)

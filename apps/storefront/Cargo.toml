@@ -12,6 +12,7 @@ leptos = { workspace = true, features = ["ssr"] }
 leptos_router = { workspace = true }
 leptos-auth = { workspace = true }
 leptos-graphql = { workspace = true }
+leptos-ui = { workspace = true }
 leptos-hook-form = { workspace = true }
 leptos-zod = { workspace = true }
 leptos-table = { workspace = true }

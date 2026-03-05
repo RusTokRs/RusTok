@@ -1,7 +1,7 @@
 import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/base/button";
 import { getModulesForSlot } from "@/modules";
 
 export default async function StorefrontHome() {

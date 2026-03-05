@@ -11,6 +11,7 @@ redis-cache = []
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
+rustok-storefront = { path = "../storefront" }
 rustok-commerce.workspace = true
 rustok-blog.workspace = true
 rustok-content.workspace = true
@@ -54,6 +55,9 @@ utoipa = { workspace = true, features = ["axum_extras", "uuid", "chrono", "yaml"
 redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
 futures-util = "0.3"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls"] }
+rust-embed = { version = "8.0", features = ["interpolate-folder-path"] }
+tower-http = { workspace = true, features = ["fs"] }
+mime_guess = "2.0"
 
 # Loco extras
 migration = { path = "migration" }
