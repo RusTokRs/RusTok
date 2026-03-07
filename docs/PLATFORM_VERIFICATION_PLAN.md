@@ -119,9 +119,11 @@
 ### 0.5 Вспомогательные инструменты
 
 - [ ] `cargo build -p xtask` — xtask собирается
-- [ ] `make help` — Makefile содержит актуальные targets
-- [ ] Docker: `docker-compose.yml` валиден (`docker compose config`)
-- [ ] Docker: `docker-compose.full-dev.yml` валиден
+- [x] `make help` — Makefile содержит актуальные targets
+- [x] Docker: `docker-compose.yml` валиден (`docker compose config`)
+- [x] Docker: `docker-compose.full-dev.yml` валиден
+  - Проверено через `docker compose config` и `docker compose -f docker-compose.yml -f docker-compose.full-dev.yml config`
+  - Дополнительно устранены предупреждения Compose V2: удалён устаревший ключ `version` из `docker-compose.full-dev.yml` и `docker-compose.observability.yml`
 
 ---
 
@@ -1098,7 +1100,8 @@
 
 - [ ] Dashboard JSON файлы валидны
 - [ ] Dashboards покрывают: HTTP, DB, Cache, Events
-- [ ] Grafana datasource конфигурация корректна
+- [x] Grafana datasource конфигурация корректна
+  - Добавлены стабильные `uid` для `Prometheus` и `Jaeger`, убрана битая ссылка `tracesToLogs.datasourceUid = loki`, которой не было в стеке
 
 ### 15.5 Docker Compose
 
@@ -1547,6 +1550,7 @@
 | 24 | 🟡 Высокий | ✅ Исправлено | Миграции `ScriptsMigration` и `ScriptExecutionsMigration` из `alloy-scripting` не были включены в главный Migrator — таблицы `scripts` и `script_executions` не создавались при деплое. Добавлены wrapper-файлы `m20260302_000001_create_scripts.rs` и `m20260302_000002_create_script_executions.rs`, подключена зависимость `alloy-scripting` в `migration/Cargo.toml`. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20260302_*.rs`, `apps/server/migration/Cargo.toml` | 7.6, 0.3 |
 | 25 | 🟡 Высокий | ✅ Исправлено | Миграция `search_index` существовала в `apps/server/migration/src/` (использует `PgSearchEngine`) но не была зарегистрирована в Migrator. Также конфликт имён модулей (`m20250130_000010` дважды). Файл переименован в `m20250130_000010a_create_search_index.rs`, добавлен в Migrator. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20250130_000010a_create_search_index.rs` | 0.3, 7.7 |
 | 26 | 🟡 Средний | ✅ Исправлено | Commerce DTOs (`CreateProductInput`, `UpdateProductInput`, `CreateVariantInput`, `UpdateVariantInput`, `PriceInput`) не имели `#[derive(Validate)]` и вызовы валидации в сервисах. Добавлены: `validator` в `rustok-commerce/Cargo.toml`, `#[derive(Validate)]` с аннотациями полей в DTO, вызов `.validate()?` в `CatalogService::create_product()` и `update_product()`. Также добавлены вызовы валидации в `NodeService` для `create_node_in_tx` и `update_node_in_tx`. | `crates/rustok-commerce/src/dto/product.rs`, `dto/variant.rs`, `services/catalog.rs`, `crates/rustok-content/src/services/node_service.rs`, `crates/rustok-commerce/Cargo.toml` | 18.4, 19.7 |
+| 27 | 🟡 Средний | ✅ Исправлено | Observability/Grafana конфигурация содержала дрейф от реального стека: datasources не имели стабильных `uid`, а Jaeger datasource ссылался на несуществующий Loki (`tracesToLogs.datasourceUid = loki`). Это ломало привязку dashboard → datasource и вводило в заблуждение операторов. Исправлено: добавлены `uid: prometheus` и `uid: jaeger`, удалена битая `tracesToLogs` ссылка, а в Compose-файлах убран устаревший ключ `version`, чтобы `docker compose config` проходил без предупреждений. | `grafana/datasources/datasources.yml`, `docker-compose.full-dev.yml`, `docker-compose.observability.yml`, `docs/PLATFORM_VERIFICATION_PLAN.md` | 0.5, 15.4 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 

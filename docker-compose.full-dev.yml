@@ -9,8 +9,6 @@
 # - Leptos storefront
 # - Nginx reverse proxy (optional)
 
-version: '3.8'
-
 services:
   # ============================================================================
   # Backend Server (Loco + Rust)
