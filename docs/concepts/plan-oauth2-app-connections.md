@@ -403,22 +403,22 @@ impl Principal {
 
 ---
 
-## Этап 6: Seed Data — first-party apps
+## Этап 6: Seed Data — инфраструктурные клиенты
 
-**Цель**: При dev-старте создавать Application + клиентов для UI и CLI.
+**Цель**: При dev-старте создавать только инфраструктурные OAuth-клиенты (CLI, internal worker). Фронтенды, мобильные приложения и внешние интеграции подключаются через `createOAuthClient` GraphQL mutation.
+
+### Принцип
+
+Seed содержит **только то, что нужно самой платформе** для работы, независимо от выбора фронтенда:
+- CLI — нужен разработчикам для `rustok auth login`, публикации модулей
+- Internal worker — нужен для фоновых задач (build pipeline, cleanup)
+
+Всё остальное (Leptos-админка, Next.js-админка, мобильное приложение, CRM, ERP) — это **внешние клиенты**, которые подключаются администратором через UI "Apps" или GraphQL API. Это универсально: не важно, Leptos это, React, Flutter или интеграция с 1С.
 
 ### Seed data
 
 ```
 Application: "RusTok Platform", slug: "rustok-platform", publisher: system tenant
-
-OAuth Clients — UI (все public, pkce_required: true, grant: authorization_code):
-  - client_id: "rustok-admin-leptos",      redirect: ["http://localhost:3001/auth/callback"]
-  - client_id: "rustok-storefront-leptos", redirect: ["http://localhost:3101/auth/callback"]
-  # Next.js клиенты не включены в seed — подключаются вручную через
-  # GraphQL createOAuthClient при выборе Next.js в качестве фронтенда.
-  # Пример redirect URIs: http://localhost:3000/auth/callback (admin),
-  #                        http://localhost:3100/auth/callback (storefront)
 
 OAuth Clients — CLI (public, pkce_required: true, grant: authorization_code):
   - client_id: "rustok-cli",               redirect: ["http://127.0.0.1:*/callback"]
@@ -431,8 +431,36 @@ OAuth Clients — server-to-server (confidential, grant: client_credentials):
     ← для фоновых задач (build pipeline, cleanup, etc.)
     ← secret генерируется при первом запуске, выводится в логи
 
-Installation: все клиенты в default tenant, full scopes, auto-approved (first-party)
+Installation: все seed-клиенты в default tenant, full scopes, auto-approved (first-party)
 ```
+
+### Подключение фронтендов и приложений
+
+Администратор подключает фронтенд или внешнее приложение через GraphQL или UI:
+
+```graphql
+mutation {
+  createOAuthClient(applicationId: "...", input: {
+    clientType: PUBLIC
+    redirectUris: ["http://localhost:3001/auth/callback"]
+    allowedGrants: [AUTHORIZATION_CODE]
+    pkceRequired: true
+  }) {
+    client { clientId }
+  }
+}
+```
+
+Примеры типичных клиентов (не в seed, создаются вручную):
+
+| Клиент | Тип | Grant | Redirect URI |
+|--------|-----|-------|-------------|
+| Leptos Admin | public | authorization_code | `http://localhost:3001/auth/callback` |
+| Next.js Admin | public | authorization_code | `http://localhost:3000/auth/callback` |
+| Leptos Storefront | public | authorization_code | `http://localhost:3101/auth/callback` |
+| Mobile App (Flutter) | public | authorization_code | `com.rustok.app://callback` |
+| CRM Integration | confidential | client_credentials | — |
+| ERP Sync | confidential | client_credentials | — |
 
 ### Связь с маркетплейсом модулей
 
