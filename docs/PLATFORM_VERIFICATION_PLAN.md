@@ -876,19 +876,20 @@
 
 - [x] `package.json`: зависимости корректны — Next.js 16, Clerk, shadcn/ui, recharts, react-day-picker, @tanstack/react-table, etc.
 - [x] `npm install` проходит (с предупреждениями о peerDeps из-за bun.lock)
-- [~] `npm run build` — компиляция Turbopack успешна (`Compiled successfully in 16.0s`), TypeScript проверка выявила ошибки в `calendar.tsx` и `chart.tsx` — исправлены (react-day-picker v9 API, recharts v3 TooltipProps). Требует повторной проверки.
-  - Исправлено: `calendar.tsx` — `Chevron` вместо `IconLeft`/`IconRight`, новые `classNames` (month_caption, button_previous, button_next, etc.)
-  - Исправлено: `chart.tsx` — `TooltipProps<ValueType, NameType>` вместо `React.ComponentProps<typeof Tooltip>`
-  - Исправлено: `next.config.ts` — `turbopack.root` для разрешения local crate UI packages; webpack `resolve.alias`
-  - Исправлено: `@rustok/blog-admin` `package.json` — добавлены реальные `dependencies` вместо `peerDependencies`
-- [ ] `npm run lint` проходит
+- [x] `npm run build` — повторно проверено после фиксов `calendar.tsx`/`chart.tsx`/`next.config.ts`: `npm install && npm run build` проходит в `apps/next-admin`.
+  - Исправлено ранее и перепроверено: `calendar.tsx` — `Chevron` вместо `IconLeft`/`IconRight`, новые `classNames` (month_caption, button_previous, button_next, etc.)
+  - Исправлено ранее и перепроверено: `chart.tsx` — `TooltipProps<ValueType, NameType>` вместо `React.ComponentProps<typeof Tooltip>`
+  - Исправлено ранее и перепроверено: `next.config.ts` — `turbopack.root` для разрешения local crate UI packages; webpack `resolve.alias`
+  - Исправлено ранее и перепроверено: `@rustok/blog-admin` `package.json` — добавлены реальные `dependencies` вместо `peerDependencies`
+- [x] `npm run lint` проходит
+  - Для рабочей локальной верификации `apps/next-admin/package.json` переведён с `next lint` на прямой вызов `eslint src`: в Next.js 16 CLI-команда `next lint` в этом приложении падала с `Invalid project directory .../lint`, а ESLint 10 требовал flat-config миграцию. Добавлены `eslint.config.mjs` и `.eslintignore`, а `eslint` зафиксирован на `8.57.1`, чтобы `npm run lint` реально проверял исходники `src/`.
 - [x] Clerk auth setup — `docs/clerk_setup.md` есть, `src/auth.ts` настроен
 - [x] RBAC навигация — `docs/nav-rbac.md` есть, `src/config/nav-config.ts` использует `getAdminNavItems()` с `access: { role }`
 - [x] Темизация — `docs/themes.md` есть, `src/styles/` + CSS variables
 - [x] GraphQL клиент подключён — `src/lib/graphql/` с Apollo/fetch клиентом
 - [x] Используются packages из `packages/` — `leptos-auth`, `leptos-graphql` через `packages/*/next/index.ts`
 - [x] Routing: admin-страницы через Next.js App Router в `src/app/dashboard/`
-- [~] TypeScript компилируется — исправлены ошибки в UI компонентах, требует полной проверки `npm run build`
+- [x] TypeScript компилируется — полная проверка подтверждена успешным `npm run build`
 
 ### 11.2 apps/next-frontend
 
