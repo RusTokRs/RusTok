@@ -1563,7 +1563,8 @@
 - [x] Рефакторинг `TopicService` → `publish_in_tx()`
 - [x] Рефакторинг `ReplyService::create_reply()` → `publish_in_tx()`
 - [x] Рефакторинг `ModerationService` (3 вызова) → `publish_in_tx()`
-- [ ] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
+- [x] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
+  - Добавлены тесты в `crates/rustok-blog/tests/integration.rs`: happy-path для `MemoryTransport` и failure-path для не-transactional/failing transport (событие не наблюдается при ошибке публикации)
 
 ---
 

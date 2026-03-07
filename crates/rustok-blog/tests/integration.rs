@@ -3,11 +3,15 @@
 //! These tests require a database connection and are marked with #[ignore]
 //! to prevent running in CI without proper test infrastructure.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use rustok_blog::dto::{CreatePostInput, PostListQuery};
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::BlogError;
 use rustok_core::events::EventEnvelope;
-use rustok_core::DomainEvent;
+use rustok_core::{DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole};
+use rustok_outbox::TransactionalEventBus;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -125,6 +129,26 @@ async fn next_event(
         .await
         .map_err(|_| "timed out waiting for event")??;
     Ok(envelope)
+}
+
+#[derive(Clone)]
+struct FailingTransport;
+
+#[async_trait]
+impl EventTransport for FailingTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> rustok_core::Result<()> {
+        Err(rustok_core::Error::External(
+            "simulated transport failure".to_string(),
+        ))
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::InMemory
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 mod unit_tests {
@@ -255,5 +279,73 @@ mod unit_tests {
         assert!(input.seo_title.is_some());
         assert!(input.seo_description.is_some());
         assert!(!input.publish);
+    }
+
+    #[tokio::test]
+    async fn test_non_outbox_transport_fails_before_any_event_is_observed() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let mut receiver = MemoryTransport::new().subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(FailingTransport));
+
+        let result = event_bus
+            .publish_in_tx(
+                &(),
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::BlogPostCreated {
+                    post_id: Uuid::new_v4(),
+                    author_id: Some(actor_id),
+                    locale: "en".to_string(),
+                },
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(receiver.try_recv(), Err(broadcast::error::TryRecvError::Empty)));
+    }
+
+    #[tokio::test]
+    async fn test_memory_transport_publish_in_tx_delivers_blog_event() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let transport = MemoryTransport::new();
+        let mut receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+
+        event_bus
+            .publish_in_tx(
+                &(),
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::BlogPostCreated {
+                    post_id: Uuid::new_v4(),
+                    author_id: Some(actor_id),
+                    locale: "en".to_string(),
+                },
+            )
+            .await
+            .expect("memory transport should accept publish_in_tx");
+
+        let envelope = receiver.recv().await.expect("event should be published");
+        assert_eq!(envelope.tenant_id, tenant_id);
+        assert_eq!(envelope.actor_id, Some(actor_id));
+        assert!(matches!(
+            envelope.event,
+            DomainEvent::BlogPostCreated {
+                author_id: Some(id),
+                locale,
+                ..
+            } if id == actor_id && locale == "en"
+        ));
+    }
+
+    #[test]
+    fn test_blog_security_context_uses_explicit_actor() {
+        let actor_id = Uuid::new_v4();
+        let security = SecurityContext::new(UserRole::Admin, Some(actor_id));
+
+        assert_eq!(security.user_id, Some(actor_id));
+        assert_eq!(security.role, UserRole::Admin);
     }
 }
