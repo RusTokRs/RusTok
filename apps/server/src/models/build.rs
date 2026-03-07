@@ -47,23 +47,27 @@ pub enum BuildStage {
     Complete,
 }
 
-/// Deployment profile determines how the platform is built and deployed:
+/// Deployment profile — derived from `[build.server]` in modules.toml.
 ///
-/// - `Monolith`: Single Rust binary — Axum server with Leptos admin (WASM) and
-///   Leptos storefront (SSR) embedded. Like WordPress: one process, one port.
-/// - `HeadlessLeptos`: Axum API-only server + separate Leptos WASM admin +
-///   separate Leptos SSR storefront. Three Rust binaries, independently deployable.
-/// - `HeadlessNext`: Axum API-only server + separate Next.js admin + separate
-///   Next.js storefront. One Rust binary + two Node.js processes.
+/// Determined by two booleans: `embed_admin` and `embed_storefront`.
+///
+/// | embed_admin | embed_storefront | Profile            | Description                                    |
+/// |-------------|------------------|--------------------|------------------------------------------------|
+/// | true        | true             | Monolith           | One binary: Axum + Leptos admin + storefront   |
+/// | true        | false            | ServerWithAdmin    | Axum + Leptos admin; storefront(s) separate    |
+/// | false       | true             | ServerWithStorefront | Axum + Leptos storefront; admin separate     |
+/// | false       | false            | HeadlessApi        | Pure API; admin and storefront(s) separate     |
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum DeploymentProfile {
     #[sea_orm(string_value = "monolith")]
     Monolith,
-    #[sea_orm(string_value = "headless-leptos")]
-    HeadlessLeptos,
-    #[sea_orm(string_value = "headless-next")]
-    HeadlessNext,
+    #[sea_orm(string_value = "server-with-admin")]
+    ServerWithAdmin,
+    #[sea_orm(string_value = "server-with-storefront")]
+    ServerWithStorefront,
+    #[sea_orm(string_value = "headless-api")]
+    HeadlessApi,
 }
 
 /// Build entity

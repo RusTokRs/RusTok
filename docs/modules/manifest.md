@@ -28,21 +28,28 @@
 Рекомендуемый формат — TOML, чтобы удобно использовать в CI и в Rust-скриптах.
 
 ```toml
-schema = 1
+schema = 2
 app = "rustok-server"
 
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
-deployment_profile = "monolith" # monolith | headless-leptos | headless-next
+
+[build.server]
+embed_admin = true           # Встроить Leptos admin в бинарник сервера
+embed_storefront = true      # Встроить Leptos storefront в бинарник сервера
+
+[build.admin]
+stack = "leptos"             # "leptos" | "next"
+
+[[build.storefront]]
+id = "default"
+stack = "leptos"             # "leptos" | "next"
 
 [modules]
-# slug = { crate = "...", source = "...", version = "...", features = [...] }
 content = { crate = "rustok-content", source = "crates-io", version = "0.1" }
 commerce = { crate = "rustok-commerce", source = "git", git = "ssh://git/commerce.git", rev = "abc123" }
 blog = { crate = "rustok-blog", source = "path", path = "../modules/rustok-blog" }
-forum = { crate = "rustok-forum", source = "crates-io", version = "0.1", features = ["comments"] }
-pages = { crate = "rustok-pages", source = "path", path = "../modules/rustok-pages" }
 
 [settings]
 default_enabled = ["content", "commerce", "pages"]
@@ -52,11 +59,16 @@ default_enabled = ["content", "commerce", "pages"]
 
 | Поле | Тип | Обязательное | Описание |
 | --- | --- | --- | --- |
-| `schema` | int | да | Версия формата манифеста. |
+| `schema` | int | да | Версия формата манифеста (текущая: 2). |
 | `app` | string | да | Целевое приложение/бинарник. |
 | `build.target` | string | нет | Целевой triple сборки. |
 | `build.profile` | string | нет | Профиль сборки (`release`/`debug`). |
-| `build.deployment_profile` | string | нет | Режим деплоя: `monolith` \| `headless-leptos` \| `headless-next`. См. ADR `2026-03-07`. |
+| `build.server.embed_admin` | bool | нет | Встроить Leptos admin в сервер (default: false). |
+| `build.server.embed_storefront` | bool | нет | Встроить Leptos storefront в сервер (default: false). |
+| `build.admin.stack` | string | нет | UI-стек админки: `"leptos"` \| `"next"`. |
+| `[[build.storefront]]` | array | нет | Список storefront'ов (мультисайт). |
+| `build.storefront[].id` | string | да | Уникальный ID storefront'а. |
+| `build.storefront[].stack` | string | да | UI-стек: `"leptos"` \| `"next"`. |
 | `modules` | table | да | Карта `slug -> module spec`. |
 | `settings.default_enabled` | array | нет | Какие модули включать по умолчанию после сборки. |
 
@@ -76,24 +88,33 @@ default_enabled = ["content", "commerce", "pages"]
 > из `RusToKModule` во время сборки и регистрации в `ModuleRegistry`.
 
 
-## Режимы деплоя (deployment profiles)
+## Deployment profiles (composable layers)
 
 Подробное описание — в ADR [`2026-03-07-deployment-profiles-and-ui-stack.md`](../../DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md).
 
-### `monolith`
-- Один Rust-бинарник: Axum server + Leptos admin (WASM) + Leptos storefront (SSR).
-- Как WordPress — один процесс, один порт, установил и работает.
-- Один release-id, один pipeline, откат на единый release.
+Профиль вычисляется из `embed_admin` + `embed_storefront`:
 
-### `headless-leptos`
-- Axum API-only + отдельный Leptos admin (WASM) + отдельный Leptos storefront (SSR).
-- Три Rust-бинарника, деплоятся независимо (могут быть в разных регионах).
-- Rebuild от `modules.toml` запускает раздельные pipeline-ветки.
+| `embed_admin` | `embed_storefront` | Profile | Описание |
+|---|---|---|---|
+| true | true | **Monolith** | 1 бинарник: Axum + Leptos admin + storefront (как WordPress) |
+| true | false | **ServerWithAdmin** | Axum + Leptos admin; storefront(s) отдельно |
+| false | true | **ServerWithStorefront** | Axum + Leptos storefront; admin отдельно |
+| false | false | **HeadlessApi** | Чистый API; admin и storefront(s) — отдельные процессы |
 
-### `headless-next`
-- Axum API-only + отдельный Next.js admin + отдельный Next.js storefront.
-- Один Rust-бинарник + два Node.js-процесса.
-- Перед деплоем UI обязателен preflight compatibility-check с версией backend.
+### Мультисайт
+
+`[[build.storefront]]` — массив. Можно иметь несколько storefront'ов
+с разными стеками и в разных регионах:
+
+```toml
+[[build.storefront]]
+id = "site-eu"
+stack = "next"
+
+[[build.storefront]]
+id = "site-us"
+stack = "next"
+```
 
 ## Жизненный цикл install/uninstall
 

@@ -2,14 +2,30 @@
 # Этот файл определяет состав модулей для сборки
 # Изменение = пересборка проекта
 
-schema = 1
+schema = 2
 app = "rustok-server"
 
+# ───────────────────────────────────────────────
+# Build: как собирать и что встраивать в сервер
+# ───────────────────────────────────────────────
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
-deployment_profile = "monolith" # monolith | headless-leptos | headless-next
 
+[build.server]
+embed_admin = true           # Встроить Leptos admin в бинарник сервера
+embed_storefront = true      # Встроить Leptos storefront в бинарник сервера
+
+[build.admin]
+stack = "leptos"             # "leptos" | "next"
+
+[[build.storefront]]
+id = "default"
+stack = "leptos"             # "leptos" | "next"
+
+# ───────────────────────────────────────────────
+# Modules: состав модулей платформы
+# ───────────────────────────────────────────────
 [modules]
 # Core modules (required)
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }

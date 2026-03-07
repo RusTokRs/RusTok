@@ -1,197 +1,330 @@
 # Deployment Profiles и выбор UI-стека
 
 - Date: 2026-03-07
-- Status: Proposed
+- Status: Proposed (v2 — composable layers)
 
 ## Context
 
-RusTok поддерживает два UI-стека параллельно:
+RusTok поддерживает два UI-стека:
 
 - **Leptos** (Rust) — admin (`apps/admin`) + storefront (`apps/storefront`)
 - **Next.js** (TypeScript) — admin (`apps/next-admin`) + storefront (`apps/next-frontend`)
 
-Обе админки и оба storefront'а делают **одно и то же** — используют единый
-GraphQL API на бэкенде. Разница — в deployment-модели:
+Первая итерация ADR предлагала 3 жёстких профиля (`monolith | headless-leptos |
+headless-next`), но реальные сценарии гибче:
 
-| | Leptos | Next.js |
-|---|---|---|
-| **Язык** | Rust / WASM | TypeScript / Node.js |
-| **Монолит** | Может компилироваться в один бинарник с сервером | Отдельный Node.js-процесс всегда |
-| **SSR** | Axum (тот же сервер) | Node.js (отдельный сервер) |
-| **Admin** | CSR / WASM, раздаётся через nginx или axum static | Standalone Next.js server |
-| **Аналог WordPress** | Да — один бинарник, установил и работает | Нет — минимум 2 процесса |
+> «Мы были на монолите, но захотели вынести storefront на Next.js для двух
+> сайтов в разных регионах, а бэкенд с админкой оставить вместе»
 
-Проблема: **нельзя запускать две админки одновременно**. Оператор должен выбрать
-один стек при установке/сборке платформы.
+Это невозможно выразить через 3 preset'а — нужна **компонуемая модель**.
 
 ## Decision
 
-### 1. Расширить `deployment_profile` в `modules.toml`
+### 1. Компонуемые слои вместо жёстких профилей
 
-Вместо двух значений (`monolith | headless`) вводим **три** deployment preset'а,
-каждый из которых определяет и UI-стек, и способ деплоя:
+Каждый слой (server, admin, storefront) конфигурируется **независимо**:
 
 ```toml
+# modules.toml
+
 [build]
-deployment_profile = "monolith"  # monolith | headless-leptos | headless-next
+target = "x86_64-unknown-linux-gnu"
+profile = "release"
+
+# ───────────────────────────────────────────────
+# Server: всегда Axum (Rust). Вопрос — что встроить.
+# ───────────────────────────────────────────────
+[build.server]
+embed_admin = true          # Встроить Leptos admin в бинарник?
+embed_storefront = false    # Встроить Leptos storefront в бинарник?
+
+# ───────────────────────────────────────────────
+# Admin: если embed_admin = false, нужен отдельный процесс
+# ───────────────────────────────────────────────
+[build.admin]
+stack = "leptos"            # "leptos" | "next"
+# deploy = "embedded" выводится из embed_admin = true
+
+# ───────────────────────────────────────────────
+# Storefronts: один или несколько (мультисайт)
+# ───────────────────────────────────────────────
+[[build.storefront]]
+id = "default"
+stack = "next"              # "leptos" | "next"
+# deploy = "standalone" выводится из embed_storefront = false
 ```
 
-| Profile | Server | Admin | Storefront | Кол-во процессов | Аналог |
-|---|---|---|---|---|---|
-| `monolith` | Axum (Rust) | Leptos (WASM, встроен) | Leptos (SSR, встроен) | **1** | WordPress |
-| `headless-leptos` | Axum (API only) | Leptos (WASM, отдельно) | Leptos (SSR, отдельно) | 3 | — |
-| `headless-next` | Axum (API only) | Next.js (Node.js) | Next.js (Node.js) | 3 | Strapi + Next.js |
+### 2. Типичные конфигурации
 
-### 2. Как это выглядит для оператора
+#### WordPress-монолит (всё в одном)
 
-#### При первоначальной установке
+```toml
+[build.server]
+embed_admin = true
+embed_storefront = true
 
-```bash
-# Вариант 1: Монолит (как WordPress — один бинарник)
-rustok init --profile monolith
-# → Собирает один бинарник: server + admin + storefront
-# → Запускается одной командой: ./rustok-server
-# → Admin доступен на /admin, storefront на /
+[build.admin]
+stack = "leptos"
 
-# Вариант 2: Headless с Leptos
-rustok init --profile headless-leptos
-# → Собирает 3 бинарника: server, admin (WASM), storefront (SSR)
-# → Деплоятся отдельно, могут быть в разных регионах
-
-# Вариант 3: Headless с Next.js
-rustok init --profile headless-next
-# → Собирает server (Rust), admin и storefront через npm
-# → Server = Axum API, admin/storefront = Node.js
+[[build.storefront]]
+id = "default"
+stack = "leptos"
 ```
 
-#### При смене профиля (миграция)
+**Результат**: 1 Rust-бинарник. Admin на `/admin`, storefront на `/`.
 
-```bash
-# Переключить с headless-next на monolith
-rustok switch-profile monolith
-# → Пересборка: сервер с встроенными Leptos admin + storefront
-# → Данные (БД, tenant_modules, users) — без изменений
-# → Следующий деплой запускает один бинарник вместо трёх сервисов
+#### Headless Next.js (Strapi-стиль)
+
+```toml
+[build.server]
+embed_admin = false
+embed_storefront = false
+
+[build.admin]
+stack = "next"
+
+[[build.storefront]]
+id = "default"
+stack = "next"
 ```
 
-### 3. Что определяет профиль
+**Результат**: 1 Rust API + 1 Node.js admin + 1 Node.js storefront.
 
-Профиль определяет **только способ сборки и деплоя**. Всё остальное
-(модули, tenant_modules, GraphQL API, RBAC) — идентично:
+#### Гибрид: монолит-админка + Next.js мультисайт
 
-```
-                    ┌─────────────────────────────────────────┐
-                    │          Общее для всех профилей         │
-                    │                                          │
-                    │  • GraphQL API (async-graphql)           │
-                    │  • ModuleRegistry + ModuleLifecycle      │
-                    │  • RBAC, Tenants, Events, Outbox         │
-                    │  • modules.toml (состав модулей)         │
-                    │  • tenant_modules (toggle per tenant)    │
-                    │  • Маркетплейс (один и тот же каталог)   │
-                    └────────────────┬────────────────────────┘
-                                     │
-                 ┌───────────────────┼───────────────────┐
-                 │                   │                   │
-                 ▼                   ▼                   ▼
-          ┌──────────┐       ┌──────────────┐    ┌──────────────┐
-          │ monolith │       │headless-     │    │headless-     │
-          │          │       │leptos        │    │next          │
-          ├──────────┤       ├──────────────┤    ├──────────────┤
-          │ 1 binary │       │ 3 binaries   │    │ 1 binary     │
-          │ Axum +   │       │ Axum API     │    │ + 2 Node.js  │
-          │ Leptos   │       │ Leptos WASM  │    │ Axum API     │
-          │ Admin +  │       │ Leptos SSR   │    │ Next Admin   │
-          │ Store    │       │              │    │ Next Store   │
-          └──────────┘       └──────────────┘    └──────────────┘
+Сценарий: бэкенд + админка вместе (один бинарник), а 2 storefront'а на Next.js
+в разных регионах.
+
+```toml
+[build.server]
+embed_admin = true           # Админка встроена в сервер
+embed_storefront = false     # Storefront — отдельно
+
+[build.admin]
+stack = "leptos"             # Leptos встроен в Axum
+
+[[build.storefront]]
+id = "site-eu"
+stack = "next"
+
+[[build.storefront]]
+id = "site-us"
+stack = "next"
 ```
 
-### 4. Реализация через Cargo features
+**Результат**: 1 Rust-бинарник (API + admin) + 2 Node.js storefront'а.
+
+```
+                   ┌──────────────────────────────┐
+                   │  rustok-server (Rust binary)  │
+                   │  ┌────────────────────────┐  │
+                   │  │ Axum API (GraphQL)      │  │
+                   │  ├────────────────────────┤  │
+                   │  │ Leptos Admin (WASM)     │  │  ← /admin
+                   │  └────────────────────────┘  │
+                   └──────────────┬───────────────┘
+                                  │ GraphQL
+                      ┌───────────┴───────────┐
+                      │                       │
+               ┌──────┴──────┐         ┌──────┴──────┐
+               │ Next.js     │         │ Next.js     │
+               │ site-eu     │         │ site-us     │
+               │ EU region   │         │ US region   │
+               └─────────────┘         └─────────────┘
+```
+
+#### Полный headless Leptos (для max performance)
+
+```toml
+[build.server]
+embed_admin = false
+embed_storefront = false
+
+[build.admin]
+stack = "leptos"
+
+[[build.storefront]]
+id = "default"
+stack = "leptos"
+```
+
+**Результат**: 3 Rust-бинарника, независимо деплоятся.
+
+#### Leptos admin + Leptos storefront EU + Next.js storefront US
+
+```toml
+[build.server]
+embed_admin = true
+embed_storefront = false
+
+[build.admin]
+stack = "leptos"
+
+[[build.storefront]]
+id = "main-site"
+stack = "leptos"
+
+[[build.storefront]]
+id = "us-site"
+stack = "next"
+```
+
+**Результат**: 1 Rust-бинарник (API + admin) + 1 Rust SSR + 1 Node.js.
+Можно даже миксовать стеки storefront'ов.
+
+### 3. Реализация через Cargo features
 
 ```toml
 # apps/server/Cargo.toml
 [features]
-default = ["monolith"]
+default = []
 
-# Встраивает Leptos admin (CSR/WASM assets) и storefront (SSR) в сервер
-monolith = ["leptos-admin-embed", "leptos-storefront-embed"]
+# Встраивает Leptos admin WASM assets в сервер
+embed-admin = ["dep:admin-assets"]
 
-# API-only — без UI, для headless-* профилей
-headless = []
-
-# Отдельные фичи для встраивания
-leptos-admin-embed = ["dep:admin-assets"]
-leptos-storefront-embed = ["dep:leptos-storefront"]
+# Встраивает Leptos storefront SSR в сервер
+embed-storefront = ["dep:leptos-storefront"]
 ```
 
-Build pipeline читает `deployment_profile` из `modules.toml` и выбирает features:
+Build pipeline читает `[build.server]` и собирает features:
 
 ```bash
-# monolith
-cargo build -p rustok-server --release --features monolith
+# embed_admin=true, embed_storefront=true → монолит
+cargo build -p rustok-server --release \
+  --features "embed-admin,embed-storefront"
 
-# headless-leptos или headless-next
-cargo build -p rustok-server --release --features headless
-# + отдельно собирает admin и storefront
+# embed_admin=true, embed_storefront=false → админка встроена, storefront отдельно
+cargo build -p rustok-server --release \
+  --features "embed-admin"
+
+# embed_admin=false, embed_storefront=false → чистый API
+cargo build -p rustok-server --release
 ```
 
-### 5. Маркетплейс — profile-agnostic
+Для отдельных storefront'ов:
 
-Маркетплейс модулей **не зависит от профиля**. Модуль публикуется один раз
-и работает в любом профиле, потому что:
+```bash
+# Leptos storefront → отдельный Rust SSR бинарник
+cargo build -p rustok-storefront --release
 
-- Backend-часть (trait `RusToKModule`, GraphQL, миграции) — **одинаковая**.
-- UI-часть (admin компоненты, storefront виджеты) — **два варианта в одном crate**:
-
-```
-rustok-blog/
-├── src/                    # Backend (работает везде)
-├── ui/
-│   ├── leptos/             # Для monolith и headless-leptos
-│   │   ├── admin/
-│   │   └── storefront/
-│   └── next/               # Для headless-next
-│       ├── admin/           # @rustok/blog-admin npm package
-│       └── frontend/        # @rustok/blog-frontend npm package
+# Next.js storefront → npm build
+cd apps/next-frontend && npm run build
 ```
 
-При сборке build pipeline включает только нужную UI-часть.
+### 4. Миграция между конфигурациями
 
-### 6. Рекомендации по выбору профиля
+Переход с монолита на гибрид — это **изменение `modules.toml` + пересборка**.
+Данные (БД, tenant_modules, пользователи) не затрагиваются.
 
-| Сценарий | Рекомендация |
-|---|---|
-| Self-hosted, один сервер, хочется как WordPress | `monolith` |
-| Self-hosted, нужен горизонтальный scaling | `headless-leptos` |
-| Команда на TypeScript/React | `headless-next` |
-| Multi-region, CDN для storefront | `headless-leptos` или `headless-next` |
-| Максимальная производительность | `monolith` (один процесс, нет HTTP между сервисами) |
-| Разработка, быстрый старт | `monolith` (одна команда) |
+```bash
+# Было: монолит
+# Хотим: бэкенд+админка вместе, storefront на Next.js
+
+# 1. Обновить modules.toml
+[build.server]
+embed_admin = true
+embed_storefront = false    # ← было true
+
+[[build.storefront]]
+id = "default"
+stack = "next"              # ← было leptos
+
+# 2. Пересборка
+rustok rebuild
+# → Собирает server (с админкой, без storefront)
+# → Собирает Next.js storefront
+# → Деплоит оба
+
+# 3. Данные — без изменений
+# GraphQL API тот же, tenant_modules те же,
+# storefront просто берёт данные из другого стека
+```
+
+### 5. DeploymentProfile в БД
+
+Enum в builds table остаётся для обратной совместимости, но расширяется:
+
+```rust
+pub enum DeploymentProfile {
+    /// Всё в одном: server + admin + storefront
+    Monolith,
+    /// Server + embedded admin, storefronts отдельно
+    ServerWithAdmin,
+    /// Server + embedded storefront, admin отдельно
+    ServerWithStorefront,
+    /// Чистый API, всё остальное отдельно
+    HeadlessApi,
+}
+```
+
+Вычисляется автоматически из `[build.server]`:
+
+| `embed_admin` | `embed_storefront` | Profile |
+|---|---|---|
+| `true` | `true` | `Monolith` |
+| `true` | `false` | `ServerWithAdmin` |
+| `false` | `true` | `ServerWithStorefront` |
+| `false` | `false` | `HeadlessApi` |
+
+### 6. Мультисайт — storefront per tenant
+
+`[[build.storefront]]` поддерживает массив, что позволяет:
+
+- **Разные регионы**: site-eu, site-us — один и тот же код, разные инстансы.
+- **Разные стеки**: site-main на Leptos (performance), site-promo на Next.js (команда знает React).
+- **Разные tenant'ы**: каждый storefront может обслуживать подмножество tenant'ов.
+
+```toml
+[[build.storefront]]
+id = "main"
+stack = "leptos"
+tenants = ["*"]              # Все тенанты по умолчанию
+
+[[build.storefront]]
+id = "promo-us"
+stack = "next"
+tenants = ["acme-us", "beta-us"]  # Только конкретные тенанты
+```
+
+Маршрутизация (какой storefront обслуживает какой tenant) — через:
+- DNS (tenant.rustok.dev → конкретный storefront)
+- Reverse proxy (nginx/traefik routing rules)
+- Или через конфиг в БД (`tenant.storefront_url`).
+
+### 7. Маркетплейс — profile-agnostic
+
+Маркетплейс модулей **не зависит от конфигурации**. Модуль работает в любом
+варианте, потому что:
+
+- Backend-часть — **всегда одинаковая** (RusToKModule trait).
+- UI-часть — **оба стека в одном crate**, build pipeline берёт нужный.
+
+Если модуль не имеет UI для конкретного стека — это ОК.
+Backend-функциональность (GraphQL, миграции, events) работает.
+UI просто не показывается в этом storefront'е.
 
 ## Consequences
 
 ### Позитивные
 
-- **Чёткий выбор** при установке — нет путаницы "какую админку использовать".
-- **Монолит как WordPress** — один бинарник, минимум инфраструктуры.
-- **Гибкость** — можно переключить профиль при необходимости.
-- **Маркетплейс не зависит от профиля** — модуль работает везде.
-- **Планы и документация** автоматически покрывают все профили, потому что
-  разница только в build/deploy, а не в бизнес-логике.
+- **Любая комбинация** — монолит, гибрид, полный headless, мультисайт.
+- **Пример с монолита на Next.js storefront** — просто меняем два поля в TOML.
+- **Мультисайт из коробки** — `[[build.storefront]]` массив.
+- **Миксование стеков** — один storefront на Leptos, другой на Next.js.
+- **Данные не меняются** — переключение стека = только пересборка.
 
 ### Негативные
 
-- **Два UI-стека поддерживать дороже** — каждый модуль должен иметь
-  UI-компоненты для обоих стеков (или только для одного, если второй не нужен).
-- **Тестирование** — CI должен проверять все три профиля.
-- **Монолит-режим для Leptos storefront SSR** требует интеграции с Axum,
-  что усложняет routing (admin routes vs storefront routes на одном порту).
+- **Сложнее для новичков** — больше полей чем один `deployment_profile`.
+  Митигация: preset'ы (шаблоны) через CLI: `rustok init --preset monolith`.
+- **Build pipeline сложнее** — нужно собирать разные артефакты для разных storefront'ов.
+- **Тестирование** — больше комбинаций в CI.
 
 ### Follow-up
 
-1. Добавить `ui_stack` поле в `modules.toml` (или вывести из `deployment_profile`).
-2. Добавить Cargo features `monolith` / `headless` в `apps/server/Cargo.toml`.
-3. Обновить `DeploymentProfile` enum: `Monolith` / `HeadlessLeptos` / `HeadlessNext`.
-4. Обновить build pipeline: генерация `cargo build` команды на основе профиля.
-5. Обновить Makefile: `make build-monolith`, `make build-headless-leptos`, `make build-headless-next`.
-6. Документировать в README: таблица профилей с инструкциями по установке.
+1. Обновить `modules.toml` на новый формат `[build.server]` / `[[build.storefront]]`.
+2. Обновить `DeploymentProfile` enum: `Monolith | ServerWithAdmin | ServerWithStorefront | HeadlessApi`.
+3. Добавить Cargo features: `embed-admin`, `embed-storefront`.
+4. CLI preset'ы: `rustok init --preset monolith`, `--preset headless-next`, `--preset hybrid`.
+5. Build pipeline: генерация команд сборки на основе TOML конфигурации.
+6. Документировать типичные конфигурации в README.
