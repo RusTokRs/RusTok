@@ -10,6 +10,7 @@ use rustok_forum::{CategoryService, ReplyService, TopicService};
 use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
+use crate::graphql::common::PaginationInput;
 
 #[derive(Default)]
 pub struct ForumQuery;
@@ -21,7 +22,8 @@ impl ForumQuery {
         ctx: &Context<'_>,
         tenant_id: Uuid,
         locale: Option<String>,
-    ) -> Result<Vec<GqlForumCategory>> {
+        #[graphql(default)] pagination: PaginationInput,
+    ) -> Result<ForumCategoryConnection> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -49,11 +51,14 @@ impl ForumQuery {
         let security = auth.security_context();
         let service = CategoryService::new(db.clone(), event_bus.clone());
         let locale = locale.as_deref().unwrap_or("en");
+        let (offset, limit) = pagination.normalize()?;
 
         let categories = service.list(tenant_id, security, locale).await?;
-
-        Ok(categories
+        let total = categories.len() as i64;
+        let items = categories
             .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
             .map(|c| GqlForumCategory {
                 id: c.id,
                 locale: c.locale,
@@ -66,7 +71,9 @@ impl ForumQuery {
                 topic_count: c.topic_count,
                 reply_count: c.reply_count,
             })
-            .collect())
+            .collect();
+
+        Ok(ForumCategoryConnection::new(items, total, offset, limit))
     }
 
     async fn forum_topics(
@@ -75,9 +82,8 @@ impl ForumQuery {
         tenant_id: Uuid,
         category_id: Option<Uuid>,
         locale: Option<String>,
-        page: Option<u64>,
-        per_page: Option<u64>,
-    ) -> Result<Vec<GqlForumTopic>> {
+        #[graphql(default)] pagination: PaginationInput,
+    ) -> Result<ForumTopicConnection> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -104,17 +110,17 @@ impl ForumQuery {
 
         let security = auth.security_context();
         let service = TopicService::new(db.clone(), event_bus.clone());
+        let (offset, limit) = pagination.normalize()?;
         let filter = rustok_forum::ListTopicsFilter {
             category_id,
             status: None,
             locale,
-            page: page.unwrap_or(1),
-            per_page: per_page.unwrap_or(20),
+            page: (offset / limit + 1) as u64,
+            per_page: limit as u64,
         };
 
-        let (topics, _total) = service.list(tenant_id, security, filter).await?;
-
-        Ok(topics
+        let (topics, total) = service.list(tenant_id, security, filter).await?;
+        let items = topics
             .into_iter()
             .map(|t| GqlForumTopic {
                 id: t.id,
@@ -133,7 +139,9 @@ impl ForumQuery {
                 created_at: t.created_at,
                 updated_at: String::new(),
             })
-            .collect())
+            .collect();
+
+        Ok(ForumTopicConnection::new(items, total as i64, offset, limit))
     }
 
     async fn forum_replies(
@@ -142,9 +150,8 @@ impl ForumQuery {
         tenant_id: Uuid,
         topic_id: Uuid,
         locale: Option<String>,
-        page: Option<u64>,
-        per_page: Option<u64>,
-    ) -> Result<Vec<GqlForumReply>> {
+        #[graphql(default)] pagination: PaginationInput,
+    ) -> Result<ForumReplyConnection> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -171,17 +178,18 @@ impl ForumQuery {
 
         let security = auth.security_context();
         let service = ReplyService::new(db.clone(), event_bus.clone());
+        let (offset, limit) = pagination.normalize()?;
         let filter = rustok_forum::ListRepliesFilter {
             locale,
-            page: page.unwrap_or(1),
-            per_page: per_page.unwrap_or(20),
+            page: (offset / limit + 1) as u64,
+            per_page: limit as u64,
         };
 
-        let (replies, _total) = service
+        let (replies, total) = service
             .list_for_topic(tenant_id, security, topic_id, filter)
             .await?;
 
-        Ok(replies
+        let items = replies
             .into_iter()
             .map(|r| GqlForumReply {
                 id: r.id,
@@ -195,6 +203,8 @@ impl ForumQuery {
                 created_at: r.created_at,
                 updated_at: String::new(),
             })
-            .collect())
+            .collect();
+
+        Ok(ForumReplyConnection::new(items, total as i64, offset, limit))
     }
 }

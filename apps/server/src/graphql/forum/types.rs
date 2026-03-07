@@ -1,4 +1,6 @@
 use async_graphql::{InputObject, SimpleObject};
+
+use crate::graphql::connection::ListConnection;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -85,3 +87,7 @@ pub struct CreateForumCategoryInput {
     pub position: Option<i32>,
     pub moderated: bool,
 }
+
+pub type ForumCategoryConnection = ListConnection<GqlForumCategory>;
+pub type ForumTopicConnection = ListConnection<GqlForumTopic>;
+pub type ForumReplyConnection = ListConnection<GqlForumReply>;

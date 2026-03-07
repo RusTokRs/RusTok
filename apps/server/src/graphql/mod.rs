@@ -3,6 +3,7 @@ pub mod auth;
 pub mod blog;
 pub mod commerce;
 pub mod common;
+pub mod connection;
 pub mod content;
 pub mod errors;
 pub mod forum;

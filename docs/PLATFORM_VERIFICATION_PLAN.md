@@ -1438,7 +1438,7 @@
 - [x] Каждый mutation имеет permission check (не полагается на «auth достаточно»)
   - Проверено по `apps/server/src/graphql/*/mutation.rs`: blog/content/commerce/forum/pages/alloy/auth mutations имеют явные permission/auth checks
 - [~] Каждый query с list возвращает paginated результат (не полную таблицу)
-  - `users`, `products`, `pages`, `posts`, `nodes`, `scripts` используют pagination/page_info, но `forum_categories`, `forum_topics`, `forum_replies`, `enabled_modules`, `tenant_modules`, `module_registry` возвращают обычные списки — нужен отдельный рефакторинг
+  - `users`, `products`, `pages`, `posts`, `nodes`, `scripts` используют pagination/page_info; дополнительно переведены `forum_categories`, `forum_topics`, `forum_replies` на connection-ответы с `page_info`. Непагинированными пока остаются `enabled_modules`, `tenant_modules`, `module_registry`, `recent_activity`, `scripts_for_event`
 - [~] `context.data::<TenantContext>()` используется в каждом resolver (не пропущен)
   - Часть resolvers опирается на аргумент `tenant_id`, а root/resolver-level multi-tenant queries используют `TenantContext`; единый паттерн ещё не везде соблюдён
 - [~] Нет бизнес-логики в resolvers — только вызов domain services
@@ -1458,12 +1458,15 @@
   - 204 No Content для DELETE — исправлено во всех controllers
   - 404 Not Found для отсутствующих ресурсов — через `Error::NotFound`
   - 422 Unprocessable Entity для validation errors (не 400)
-- [ ] Нет бизнес-логики в controllers — только вызов domain services
-- [ ] `loco_rs::Result` для error handling (не custom error types)
-- [ ] Все `CreateInput`/`UpdateInput` проходят через `validator::Validate`
-- [ ] Нет endpoints без пагинации в list-запросах
-- [ ] Rate limiting применён к auth endpoints (login, register, reset-password)
-- [ ] CORS middleware подключён с правильными origins
+- [~] Нет бизнес-логики в controllers — основные write-endpoints делегируют в domain services, но часть read/list handlers (`commerce/products.rs`, `commerce/variants.rs`, `commerce/inventory.rs`, `forum/categories.rs`) всё ещё содержит прямые SeaORM-запросы и сборку response DTO в controller-слое
+- [x] `loco_rs::Result` для error handling (не custom error types)
+- [~] Все `CreateInput`/`UpdateInput` проходят через `validator::Validate`
+  - Content и Commerce валидируются на уровне DTO/service; blog/forum/pages в основном опираются на `NodeService`, но transport-level audit показал, что единый `Validate` derive покрывает не все input-структуры
+- [~] Нет endpoints без пагинации в list-запросах
+  - Пагинация есть у commerce products, но list endpoints для content/blog/forum/categories/replies/variants пока возвращают plain `Vec<_>` без общей pagination envelope
+- [x] Rate limiting применён к auth endpoints (login, register, reset-password)
+- [~] CORS middleware подключён с правильными origins
+  - В dev используется permissive-конфигурация (`CorsLayer::very_permissive()`), production-specific allowlist требует отдельной настройки через env/config
 
 ### 19.14 REST ↔ GraphQL parity
 
