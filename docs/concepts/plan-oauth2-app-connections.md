@@ -413,10 +413,12 @@ impl Principal {
 Application: "RusTok Platform", slug: "rustok-platform", publisher: system tenant
 
 OAuth Clients — UI (все public, pkce_required: true, grant: authorization_code):
-  - client_id: "rustok-admin-nextjs",      redirect: ["http://localhost:3000/auth/callback"]
   - client_id: "rustok-admin-leptos",      redirect: ["http://localhost:3001/auth/callback"]
-  - client_id: "rustok-storefront-nextjs", redirect: ["http://localhost:3100/auth/callback"]
   - client_id: "rustok-storefront-leptos", redirect: ["http://localhost:3101/auth/callback"]
+  # Next.js клиенты не включены в seed — подключаются вручную через
+  # GraphQL createOAuthClient при выборе Next.js в качестве фронтенда.
+  # Пример redirect URIs: http://localhost:3000/auth/callback (admin),
+  #                        http://localhost:3100/auth/callback (storefront)
 
 OAuth Clients — CLI (public, pkce_required: true, grant: authorization_code):
   - client_id: "rustok-cli",               redirect: ["http://127.0.0.1:*/callback"]
@@ -567,7 +569,7 @@ default = "en"
 
 ## Этап 9: Admin UI — Страницы регистрации и управления приложениями
 
-**Цель**: Страницы "Apps" (как у Shopify) в обеих админках — Next.js и Leptos. Полный CRUD: список приложений, установка в tenant, создание OAuth-клиентов, просмотр установок.
+**Цель**: Страницы "Apps" (как у Shopify) в Leptos-админке. Полный CRUD: список приложений, установка в tenant, создание OAuth-клиентов, просмотр установок. Next.js-версия откладывается — реализуется при необходимости по аналогии.
 
 ### Разделение с Modules UI
 
@@ -593,39 +595,7 @@ Sidebar:
 
 Обе секции сгруппированы в "Platform", но это разные страницы с разными data sources и GraphQL queries. Пользователь видит их как два инструмента: "какие модули включены" vs "какие приложения подключены".
 
-### 9.1 Next.js Admin (`apps/next-admin/`)
-
-**Паттерн для следования**: `apps/next-admin/src/app/dashboard/modules/page.tsx` + `apps/next-admin/src/features/modules/`
-
-**Новые файлы — роуты** (App Router):
-- `apps/next-admin/src/app/dashboard/apps/page.tsx` — список установленных приложений (как Shopify Apps index)
-- `apps/next-admin/src/app/dashboard/apps/[id]/page.tsx` — детали установки + управление (scopes, revoke, audit log)
-- `apps/next-admin/src/app/dashboard/apps/registry/page.tsx` — каталог доступных приложений (для установки)
-- `apps/next-admin/src/app/dashboard/apps/create/page.tsx` — регистрация нового приложения (для разработчиков)
-- `apps/next-admin/src/app/dashboard/apps/[id]/clients/page.tsx` — OAuth-клиенты приложения (create, rotate secret)
-
-**Новые файлы — feature** (паттерн features/modules/):
-- `apps/next-admin/src/features/apps/api.ts` — GraphQL queries/mutations (listApplications, installApp, createApp, createClient, rotateSecret, revokeInstallation)
-- `apps/next-admin/src/features/apps/components/apps-list.tsx` — таблица/карточки установленных приложений со статусом
-- `apps/next-admin/src/features/apps/components/app-detail.tsx` — детальная страница приложения
-- `apps/next-admin/src/features/apps/components/app-registry.tsx` — каталог для установки (карточки как app store)
-- `apps/next-admin/src/features/apps/components/create-app-form.tsx` — форма регистрации приложения (name, slug, redirect URIs, client type, scopes)
-- `apps/next-admin/src/features/apps/components/client-secret-dialog.tsx` — модалка "Скопируйте секрет — он показывается один раз" (как у Shopify/GitHub)
-- `apps/next-admin/src/features/apps/components/scope-selector.tsx` — мультиселект scopes (products:read, orders:manage, ...)
-- `apps/next-admin/src/features/apps/index.ts` — экспорт
-
-**Файлы для изменения**:
-- `apps/next-admin/src/config/nav-config.ts` — добавить "Apps" рядом с "Modules" в секцию "Platform":
-  ```ts
-  // Объединить Modules + Apps в одну секцию:
-  { title: 'Modules', url: '/dashboard/modules', icon: 'modules', shortcut: ['g', 'm'],
-    isActive: false, items: [], access: { role: 'admin' } },
-  { title: 'Apps', url: '/dashboard/apps', icon: 'apps', shortcut: ['a', 'a'],
-    isActive: false, items: [], access: { role: 'admin' } },
-  ```
-- `apps/next-admin/src/types/index.ts` — типы если нужны дополнительные NavItem fields
-
-### 9.2 Leptos Admin (`apps/admin/`)
+### 9.1 Leptos Admin (`apps/admin/`)
 
 **Паттерн для следования**: `apps/admin/src/pages/modules.rs` + `apps/admin/src/features/modules/`
 
@@ -664,7 +634,7 @@ Sidebar:
 - `apps/admin/src/pages/mod.rs` — экспорт новых страниц
 - `apps/admin/src/features/mod.rs` — `pub mod apps;`
 
-### 9.3 UI/UX — как у Shopify
+### 9.2 UI/UX — как у Shopify
 
 **Страница "Apps" (список)** — карточки установленных приложений:
 - Название + иконка + описание
@@ -687,7 +657,7 @@ Sidebar:
 - OAuth Client setup: client type (public/confidential), redirect URIs, allowed grants, allowed scopes (checkbox list)
 - Submit → показать client_id + client_secret (один раз, dialog)
 
-### 9.4 i18n ключи
+### 9.3 i18n ключи
 
 Добавить ключи перевода:
 - `app.nav.apps` = "Apps" / "Приложения"
@@ -697,6 +667,10 @@ Sidebar:
 - `apps.create` = "Register App"
 - `apps.revoke.confirm` = "Are you sure? This will revoke all access tokens."
 - `apps.secret.warning` = "Copy this secret now. It won't be shown again."
+
+### 9.4 Next.js Admin — отложено
+
+Next.js админка (`apps/next-admin/`) реализуется позже при необходимости. Паттерн аналогичен Leptos: роуты в `app/dashboard/apps/`, feature в `features/apps/`, навигация в `config/nav-config.ts`. GraphQL API (Этап 5) одинаков для обоих фронтендов, поэтому Next.js-версия — чисто UI-задача без серверных изменений.
 
 ---
 
@@ -737,8 +711,6 @@ Sidebar:
 | `crates/rustok-core/src/permissions.rs` | Resource/Action/Permission — расширяем |
 | `crates/rustok-core/src/module.rs` | RusToKModule trait |
 | `crates/rustok-core/src/events/types.rs` | DomainEvent — новые варианты |
-| `apps/next-admin/src/config/nav-config.ts` | Sidebar navigation — добавляем "Apps" |
-| `apps/next-admin/src/features/modules/` | Паттерн для features/apps/ (Next.js) |
 | `apps/admin/src/shared/config/nav.rs` | Sidebar navigation — добавляем "Apps" |
 | `apps/admin/src/app/router.rs` | Leptos роутер — добавляем /apps роуты |
 | `apps/admin/src/pages/modules.rs` | Паттерн для pages/apps.rs (Leptos) |
