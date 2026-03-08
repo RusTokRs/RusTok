@@ -761,30 +761,30 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 
 ## План реализации
 
-### Phase 1: Core OAuth2 (MVP) - **Готово**
+### Phase 1: Core OAuth2 (MVP) - **В основном готово**
 
 - [x] Миграция БД: `oauth_apps`, `oauth_tokens`
 - [x] `OAuthAppService` — CRUD для приложений
 - [x] `POST /oauth/token` — `client_credentials` flow
-- [x] Scope enforcement в GraphQL middleware
+- [x] Scope enforcement в GraphQL middleware (`AuthContext::require_scope`)
 - [x] Расширение JWT Claims (`client_id`, `scopes`, `grant_type`)
 - [x] GraphQL mutations: `createOAuthApp`, `rotateOAuthAppSecret`, `revokeOAuthApp`
-- [x] Auto-sync при rebuild (`sync_app_connections`)
+- [ ] Auto-sync при rebuild (`sync_app_connections`) — **НЕ РЕАЛИЗОВАНО, функция отсутствует в коде**
 
 **Результат**: Next.js storefront подключается через `client_credentials`.
 
-### Phase 2: Authorization Code + PKCE - **Готово**
+### Phase 2: Authorization Code + PKCE - **В основном готово**
 
 - [x] `POST /oauth/authorize` — authorization endpoint
-- [x] PKCE validation (S256)
+- [x] PKCE validation (S256) — с constant-time comparison
 - [x] Authorization code storage (`oauth_authorization_codes`)
 - [x] `authorization_code` grant type в `/oauth/token`
 - [x] Refresh token rotation
-- [x] `POST /oauth/revoke` (RFC 7009)
+- [ ] `POST /oauth/revoke` (RFC 7009) — **НЕ РЕАЛИЗОВАНО: handler отсутствует, маршрут не зарегистрирован. Metadata endpoint ссылается на `/api/oauth/revoke`, но его нет**
 
-**Результат**: Мобильные приложения и SPA могут логинить пользователей.
+**Результат**: Мобильные приложения и SPA могут логинить пользователей. Revoke только через GraphQL.
 
-### Phase 3: Consent & Third-Party - **Готово**
+### Phase 3: Consent & Third-Party - **Готово, но с критическим багом**
 
 - [x] `oauth_consents` таблица
 - [x] Consent UI (страница подтверждения scopes) - Backend API готов (`grantAppConsent`)
@@ -792,19 +792,37 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 - [x] Scope review для third-party apps - Защита в `/oauth/authorize` (`interaction_required`)
 - [x] User profile: «Connected apps» → revoke access - Query `myAuthorizedApps` и `revokeAppConsent`
 
-**Результат**: Сторонние разработчики могут создавать интеграции.
+> **BUG**: `controllers/oauth.rs:475` — сравнение `app.app_type == "ThirdParty"` вместо `"third_party"`.
+> Consent check **никогда не срабатывает**, т.к. в БД хранится `"third_party"` (через `AppType::as_str()`).
+> Аналогичный баг в `tasks/create_oauth_app.rs:43`.
+
+**Результат**: Сторонние разработчики могут создавать интеграции, но consent-проверка не работает.
 
 ### Phase 4: Admin UI & DX - **Готово**
 
-- [x] Leptos Admin: управление приложениями (CRUD + ротация секрета) + FSD компоненты
+- [x] Leptos Admin: управление приложениями (CRUD + ротация секрета) + FSD компоненты (`apps/admin/src/{entities,features,widgets,pages}/oauth_apps*`)
 - [x] Встроенный SDK для фронтенда (`npm pkg @rustok/sdk`) - Перенесено на Next.js Admin интеграции (`Next.js Admin OAuth UI`)
 - [x] Инструкция/документация «Как подключить стороннее приложение» - Добавлено в `docs/guides/connect-external-apps.md`
-- [x] CLI tools/скрипты для быстрого заведения app в dev-окружении (через Loco CLI Task)
-- [x] `/.well-known/oauth-authorization-server` metadata endpoint
+- [x] CLI tools/скрипты для быстрого заведения app в dev-окружении (через Loco CLI Task `create_oauth_app`)
+- [x] `/.well-known/oauth-authorization-server` metadata endpoint (+ `/openid-configuration`)
 - [x] OpenID Connect basic support (`/oauth/userinfo`)
-- [x] Документация для разработчиков модулей
+- [ ] Документация для разработчиков модулей — **отдельного документа не найдено**
 
-**Результат**: Полноценная developer experience.
+**Результат**: Полноценная developer experience (с оговорками).
+
+### Verified: 2026-03-08
+
+#### Найденные проблемы при верификации
+
+| # | Серьёзность | Проблема | Файл | Описание |
+|---|---|---|---|---|
+| 1 | **Critical** | Case mismatch в consent check | `controllers/oauth.rs:475` | `"ThirdParty"` вместо `"third_party"` — consent для ThirdParty apps не работает |
+| 2 | **Critical** | Case mismatch в CLI task | `tasks/create_oauth_app.rs:43` | `"ThirdParty"` вместо `"third_party"` — создаёт apps с неправильным типом |
+| 3 | **High** | `/oauth/revoke` не реализован | `controllers/oauth.rs` routes | Metadata заявляет endpoint, но handler отсутствует |
+| 4 | **High** | `sync_app_connections` не реализован | — | Функция из Phase 1 полностью отсутствует в коде |
+| 5 | **High** | `oauth_tokens` missing `updated_at` | migration `m20260308_000002` | Миграция не создаёт колонку, но сервис пишет в неё (строки 411, 448) — runtime error |
+| 6 | **Medium** | Workspace не компилируется | `Cargo.toml` | Конфликт `leptos_i18n_codegen` 0.6.0 vs 0.6.1 |
+| 7 | **Low** | Partial indexes не используют WHERE | migrations | План предполагает `WHERE is_active = TRUE` / `WHERE revoked_at IS NULL`, в реализации — обычные индексы |
 
 ## Связь с другими планами
 
