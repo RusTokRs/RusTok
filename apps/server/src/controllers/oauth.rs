@@ -472,7 +472,7 @@ async fn authorize_handler(
     };
 
     // 4. Check consent if app is ThirdParty
-    if app.app_type == "ThirdParty" {
+    if app.app_type == "third_party" {
         let has_consent = OAuthAppService::get_active_consent(
             &ctx.db,
             app.id,
@@ -528,6 +528,89 @@ async fn authorize_handler(
     Ok(Json(response))
 }
 
+/// OAuth2 Token Revocation Request (RFC 7009)
+#[derive(Debug, Deserialize)]
+pub struct RevokeRequest {
+    pub token: String,
+    /// Optional hint: "access_token" or "refresh_token"
+    pub token_type_hint: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+}
+
+/// Token Revocation Endpoint (RFC 7009)
+/// Revokes a refresh token (access tokens are stateless JWTs and expire naturally).
+async fn revoke_handler(
+    State(ctx): State<AppContext>,
+    tenant_ctx: TenantContext,
+    Json(req): Json<RevokeRequest>,
+) -> Result<axum::http::StatusCode, TokenErrorResponse> {
+    // 1. Authenticate the client
+    let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
+        error: "invalid_client".to_string(),
+        error_description: "client_id is required".to_string(),
+    })?;
+    let client_id = Uuid::parse_str(client_id_str).map_err(|_| TokenErrorResponse {
+        error: "invalid_client".to_string(),
+        error_description: "Invalid client_id format".to_string(),
+    })?;
+
+    let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
+        .await
+        .map_err(|_| TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Internal error".to_string(),
+        })?
+        .ok_or_else(|| TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Unknown client_id".to_string(),
+        })?;
+
+    if app.tenant_id != tenant_ctx.id {
+        return Err(TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Client not registered for this tenant".to_string(),
+        });
+    }
+
+    // Verify client_secret if the app has one
+    if let Some(secret_hash) = &app.client_secret_hash {
+        let client_secret = req.client_secret.as_deref().ok_or_else(|| TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "client_secret is required".to_string(),
+        })?;
+        let valid =
+            OAuthAppService::verify_client_secret(client_secret, secret_hash).map_err(|_| {
+                TokenErrorResponse {
+                    error: "invalid_client".to_string(),
+                    error_description: "Invalid client credentials".to_string(),
+                }
+            })?;
+        if !valid {
+            return Err(TokenErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: "Invalid client credentials".to_string(),
+            });
+        }
+    }
+
+    // 2. Hash the token and try to revoke it
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(req.token.as_bytes());
+    let token_hash = hex::encode(hasher.finalize());
+
+    OAuthAppService::revoke_token_by_hash(&ctx.db, &token_hash, app.id)
+        .await
+        .map_err(|_| TokenErrorResponse {
+            error: "server_error".to_string(),
+            error_description: "Failed to revoke token".to_string(),
+        })?;
+
+    // RFC 7009: always return 200 OK regardless of whether token existed
+    Ok(axum::http::StatusCode::OK)
+}
+
 /// OpenID Connect UserInfo Endpoint (RFC 5362)
 /// Allows clients with `openid` or `profile` scopes to fetch user details.
 async fn userinfo_handler(
@@ -561,4 +644,5 @@ pub fn routes() -> Routes {
         .add("/authorize", post(authorize_handler))
         .add("/token", post(token_handler))
         .add("/userinfo", get(userinfo_handler))
+        .add("/revoke", post(revoke_handler))
 }

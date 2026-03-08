@@ -40,7 +40,7 @@ impl Task for CreateOAuthAppTask {
             name,
             slug,
             description: Some("Created via CLI task".to_string()),
-            app_type: "ThirdParty".to_string(),
+            app_type: "third_party".to_string(),
             redirect_uris: vec![
                 "http://localhost:3000/api/auth/callback".to_string(),
                 "http://localhost:1420".to_string(),

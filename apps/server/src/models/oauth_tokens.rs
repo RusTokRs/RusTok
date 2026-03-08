@@ -9,11 +9,13 @@ impl Entity {
     pub async fn find_active_by_hash(
         db: &DatabaseConnection,
         token_hash: &str,
+        app_id: Uuid,
     ) -> Result<Option<Model>, DbErr> {
         Entity::find()
             .filter(
                 Condition::all()
                     .add(Column::TokenHash.eq(token_hash))
+                    .add(Column::AppId.eq(app_id))
                     .add(Column::RevokedAt.is_null()),
             )
             .one(db)

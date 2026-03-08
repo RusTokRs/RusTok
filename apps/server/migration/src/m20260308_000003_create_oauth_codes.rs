@@ -109,17 +109,14 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Index for looking up the code during exchange
+        // Partial index for looking up unused codes during exchange
         manager
-            .create_index(
-                Index::create()
-                    .name("idx_oauth_codes_hash")
-                    .table(OAuthAuthorizationCodes::Table)
-                    .col(OAuthAuthorizationCodes::CodeHash)
-                    .unique()
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                "CREATE UNIQUE INDEX idx_oauth_codes_hash ON oauth_authorization_codes (code_hash) WHERE used_at IS NULL",
             )
             .await
+            .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

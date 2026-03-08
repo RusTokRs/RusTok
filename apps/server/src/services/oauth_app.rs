@@ -11,7 +11,9 @@ use crate::models::oauth_consents::{
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
 use loco_rs::{Error, Result};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
+};
 use uuid::Uuid;
 
 /// Input for creating a new OAuth app
@@ -455,6 +457,31 @@ impl OAuthAppService {
         Self::issue_authorization_token_pair(db, app, auth_config, user_id, &scopes).await
     }
 
+    /// Revoke a token by its hash (RFC 7009).
+    /// Returns Ok(()) even if the token doesn't exist (per RFC 7009 spec).
+    pub async fn revoke_token_by_hash(
+        db: &DatabaseConnection,
+        token_hash: &str,
+        app_id: Uuid,
+    ) -> Result<()> {
+        let token = OAuthTokens::find_active_by_hash(db, token_hash, app_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+
+        if let Some(t) = token {
+            let mut active: oauth_tokens::ActiveModel = t.into();
+            active.revoked_at = Set(Some(Utc::now().into()));
+            active.updated_at = Set(Utc::now().into());
+            active
+                .update(db)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+        }
+
+        // Per RFC 7009: always succeed even if token not found
+        Ok(())
+    }
+
     /// Check if user has granted consent for the requested scopes
     pub async fn get_active_consent(
         db: &DatabaseConnection,
@@ -570,6 +597,210 @@ impl OAuthAppService {
 
         Ok(())
     }
+}
+
+/// Sync OAuth app connections based on the modules manifest.
+/// Called after a successful build to ensure apps match the deployment configuration.
+///
+/// Rules:
+/// - embed_admin=true → upsert Embedded app "leptos-admin" (no secret, *:*)
+/// - embed_storefront=true → upsert Embedded app "leptos-storefront" (no secret, *:*)
+/// - Standalone storefronts → upsert FirstParty app per storefront entry
+/// - Standalone admin → upsert FirstParty app for the admin stack
+/// - Apps in DB that no longer match any manifest entry → soft-deactivate
+pub async fn sync_app_connections(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    manifest: &crate::modules::manifest::ModulesManifest,
+) -> Result<()> {
+    let existing = OAuthAppService::list_by_tenant(db, tenant_id).await?;
+
+    let mut active_slugs: Vec<String> = Vec::new();
+
+    // 1. Embedded apps
+    if manifest.build.server.embed_admin {
+        upsert_embedded_app(db, tenant_id, "leptos-admin", &["*:*"]).await?;
+        active_slugs.push("leptos-admin".to_string());
+    }
+    if manifest.build.server.embed_storefront {
+        upsert_embedded_app(db, tenant_id, "leptos-storefront", &["*:*"]).await?;
+        active_slugs.push("leptos-storefront".to_string());
+    }
+
+    // 2. Standalone storefronts → FirstParty apps
+    for sf in &manifest.build.storefront {
+        if !manifest.build.server.embed_storefront || sf.stack == "next" {
+            upsert_first_party_app(
+                db,
+                tenant_id,
+                &sf.id,
+                &format!("{} storefront", sf.id),
+                &["storefront:*"],
+                &["authorization_code", "client_credentials"],
+            )
+            .await?;
+            active_slugs.push(sf.id.clone());
+        }
+    }
+
+    // 3. Standalone admin → FirstParty app
+    if !manifest.build.server.embed_admin && !manifest.build.admin.stack.is_empty() {
+        let slug = format!("{}-admin", manifest.build.admin.stack);
+        upsert_first_party_app(
+            db,
+            tenant_id,
+            &slug,
+            &format!("{} Admin", manifest.build.admin.stack),
+            &["admin:*"],
+            &["authorization_code", "client_credentials"],
+        )
+        .await?;
+        active_slugs.push(slug);
+    }
+
+    // 4. Deactivate orphaned auto-created apps
+    for app in &existing {
+        if app.auto_created && !active_slugs.contains(&app.slug) {
+            let mut active: OAuthAppActiveModel = app.clone().into();
+            active.is_active = Set(false);
+            active.revoked_at = Set(Some(Utc::now().into()));
+            active.updated_at = Set(Utc::now().into());
+            let _ = active.update(db).await;
+        }
+    }
+
+    Ok(())
+}
+
+/// Upsert an embedded app (no credentials needed)
+async fn upsert_embedded_app(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    slug: &str,
+    scopes: &[&str],
+) -> Result<()> {
+    let existing = OAuthApps::find()
+        .filter(
+            sea_orm::Condition::all()
+                .add(oauth_apps::Column::TenantId.eq(tenant_id))
+                .add(oauth_apps::Column::Slug.eq(slug)),
+        )
+        .one(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+
+    if let Some(app) = existing {
+        // Re-activate if it was deactivated
+        if !app.is_active {
+            let mut active: OAuthAppActiveModel = app.into();
+            active.is_active = Set(true);
+            active.revoked_at = Set(None);
+            active.updated_at = Set(Utc::now().into());
+            active.update(db).await.map_err(|_| Error::InternalServerError)?;
+        }
+    } else {
+        let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+        OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            name: Set(slug.to_string()),
+            slug: Set(slug.to_string()),
+            description: Set(Some("Auto-created embedded app".to_string())),
+            app_type: Set("embedded".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(None), // Embedded — no secret
+            redirect_uris: Set(serde_json::json!([])),
+            scopes: Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?),
+            grant_types: Set(serde_json::json!([])),
+            manifest_ref: Set(Some(slug.to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    }
+
+    Ok(())
+}
+
+/// Upsert a first-party app (creates credentials on first creation)
+async fn upsert_first_party_app(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    slug: &str,
+    name: &str,
+    scopes: &[&str],
+    grant_types: &[&str],
+) -> Result<()> {
+    let existing = OAuthApps::find()
+        .filter(
+            sea_orm::Condition::all()
+                .add(oauth_apps::Column::TenantId.eq(tenant_id))
+                .add(oauth_apps::Column::Slug.eq(slug)),
+        )
+        .one(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+
+    if let Some(app) = existing {
+        // Re-activate if deactivated; update scopes/grant_types
+        let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+        let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
+        let mut active: OAuthAppActiveModel = app.into();
+        active.is_active = Set(true);
+        active.revoked_at = Set(None);
+        active.scopes = Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?);
+        active.grant_types = Set(serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?);
+        active.updated_at = Set(Utc::now().into());
+        active.update(db).await.map_err(|_| Error::InternalServerError)?;
+    } else {
+        let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+        let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
+        let client_secret_plain = generate_client_secret();
+        let client_secret_hash = auth::hash_password(&client_secret_plain)?;
+
+        let app = OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            name: Set(name.to_string()),
+            slug: Set(slug.to_string()),
+            description: Set(Some(format!("Auto-created for {slug}"))),
+            app_type: Set("first_party".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(Some(client_secret_hash)),
+            redirect_uris: Set(serde_json::json!([])),
+            scopes: Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?),
+            grant_types: Set(serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?),
+            manifest_ref: Set(Some(slug.to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+
+        // Log the credentials (in production, these should go to a secure channel)
+        tracing::info!(
+            client_id = %app.client_id,
+            slug = slug,
+            "First-party OAuth app created. Client secret was generated (store securely)."
+        );
+    }
+
+    Ok(())
 }
 
 /// Generate a client secret with `sk_live_` prefix

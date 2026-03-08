@@ -5384,9 +5384,9 @@ dependencies = [
 
 [[package]]
 name = "leptos_i18n_build"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef20092d76dc63b8d833d402ed741bf7c812552a7e2021234fb60a9bebfca7e5"
+checksum = "15caca7a79bad4f38572f15ed0fe11af36afcd28f9926eda394eb4263d444401"
 dependencies = [
  "icu",
  "icu_locale",
@@ -8869,6 +8869,7 @@ dependencies = [
  "once_cell",
  "password-hash",
  "redis 1.0.4",
+ "reqwest 0.12.28",
  "rhai",
  "rust-embed",
  "rust_decimal",
@@ -8888,6 +8889,7 @@ dependencies = [
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
+ "semver",
  "serde",
  "serde_json",
  "serial_test",
@@ -8895,6 +8897,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "toml 1.0.6+spec-1.1.0",
  "tower-http",
  "tracing",
@@ -10793,6 +10796,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -48,6 +48,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
+                    .col(
+                        ColumnDef::new(OAuthTokens::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_oauth_tokens_app_id")
@@ -66,29 +72,22 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Index on token_hash for lookup during refresh
+        // Partial index on token_hash for active (non-revoked) tokens
         manager
-            .create_index(
-                Index::create()
-                    .name("idx_oauth_tokens_hash")
-                    .table(OAuthTokens::Table)
-                    .col(OAuthTokens::TokenHash)
-                    .unique()
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                "CREATE UNIQUE INDEX idx_oauth_tokens_hash ON oauth_tokens (token_hash) WHERE revoked_at IS NULL",
             )
             .await?;
 
-        // Index on (app_id, tenant_id) for listing tokens per app
+        // Partial index on (app_id, tenant_id) for active tokens
         manager
-            .create_index(
-                Index::create()
-                    .name("idx_oauth_tokens_app_tenant")
-                    .table(OAuthTokens::Table)
-                    .col(OAuthTokens::AppId)
-                    .col(OAuthTokens::TenantId)
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                "CREATE INDEX idx_oauth_tokens_app_tenant ON oauth_tokens (app_id, tenant_id) WHERE revoked_at IS NULL",
             )
             .await
+            .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -112,4 +111,5 @@ pub enum OAuthTokens {
     RevokedAt,
     LastUsedAt,
     CreatedAt,
+    UpdatedAt,
 }

@@ -766,21 +766,21 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 - [x] Миграция БД: `oauth_apps`, `oauth_tokens`
 - [x] `OAuthAppService` — CRUD для приложений
 - [x] `POST /oauth/token` — `client_credentials` flow
-- [x] Scope enforcement в GraphQL middleware
+- [x] Scope enforcement в GraphQL middleware (`AuthContext::require_scope`)
 - [x] Расширение JWT Claims (`client_id`, `scopes`, `grant_type`)
 - [x] GraphQL mutations: `createOAuthApp`, `rotateOAuthAppSecret`, `revokeOAuthApp`
-- [x] Auto-sync при rebuild (`sync_app_connections`)
+- [x] Auto-sync при rebuild (`sync_app_connections`) — реализовано в `services/oauth_app.rs`
 
 **Результат**: Next.js storefront подключается через `client_credentials`.
 
 ### Phase 2: Authorization Code + PKCE - **Готово**
 
 - [x] `POST /oauth/authorize` — authorization endpoint
-- [x] PKCE validation (S256)
+- [x] PKCE validation (S256) — с constant-time comparison
 - [x] Authorization code storage (`oauth_authorization_codes`)
 - [x] `authorization_code` grant type в `/oauth/token`
 - [x] Refresh token rotation
-- [x] `POST /oauth/revoke` (RFC 7009)
+- [x] `POST /oauth/revoke` (RFC 7009) — реализован REST endpoint
 
 **Результат**: Мобильные приложения и SPA могут логинить пользователей.
 
@@ -796,15 +796,30 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 
 ### Phase 4: Admin UI & DX - **Готово**
 
-- [x] Leptos Admin: управление приложениями (CRUD + ротация секрета) + FSD компоненты
+- [x] Leptos Admin: управление приложениями (CRUD + ротация секрета) + FSD компоненты (`apps/admin/src/{entities,features,widgets,pages}/oauth_apps*`)
 - [x] Встроенный SDK для фронтенда (`npm pkg @rustok/sdk`) - Перенесено на Next.js Admin интеграции (`Next.js Admin OAuth UI`)
 - [x] Инструкция/документация «Как подключить стороннее приложение» - Добавлено в `docs/guides/connect-external-apps.md`
-- [x] CLI tools/скрипты для быстрого заведения app в dev-окружении (через Loco CLI Task)
-- [x] `/.well-known/oauth-authorization-server` metadata endpoint
+- [x] CLI tools/скрипты для быстрого заведения app в dev-окружении (через Loco CLI Task `create_oauth_app`)
+- [x] `/.well-known/oauth-authorization-server` metadata endpoint (+ `/openid-configuration`)
 - [x] OpenID Connect basic support (`/oauth/userinfo`)
-- [x] Документация для разработчиков модулей
+- [x] Документация для разработчиков модулей — включена в `docs/guides/connect-external-apps.md`
 
 **Результат**: Полноценная developer experience.
+
+### Verified: 2026-03-08 — все проблемы исправлены
+
+#### Проблемы, найденные и исправленные при верификации
+
+| # | Серьёзность | Проблема | Статус | Исправление |
+|---|---|---|---|---|
+| 1 | **Critical** | Case mismatch `"ThirdParty"` в consent check | **Исправлено** | `controllers/oauth.rs` — заменено на `"third_party"` |
+| 2 | **Critical** | Case mismatch `"ThirdParty"` в CLI task | **Исправлено** | `tasks/create_oauth_app.rs` — заменено на `"third_party"` |
+| 3 | **High** | `/oauth/revoke` не реализован | **Исправлено** | Добавлен `revoke_handler` + маршрут + `revoke_token_by_hash` в сервисе |
+| 4 | **High** | `sync_app_connections` не реализован | **Исправлено** | Реализована полная функция с upsert embedded/first-party + деактивацией orphaned |
+| 5 | **High** | `oauth_tokens` missing `updated_at` | **Исправлено** | Добавлена колонка в миграцию + поле в entity model |
+| 6 | **Medium** | Workspace не компилируется | **Исправлено** | `leptos_i18n`/`leptos_i18n_build` обновлены до 0.6.1 |
+| 7 | **Low** | Partial indexes без WHERE | **Исправлено** | Миграции используют raw SQL с WHERE clauses |
+| 8 | **Medium** | `find_active_by_hash` signature mismatch | **Исправлено** | Добавлен параметр `app_id` в модель |
 
 ## Связь с другими планами
 
