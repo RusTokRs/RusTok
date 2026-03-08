@@ -3,7 +3,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
 use crate::features::auth::UserMenu;
-use crate::shared::i18n::translate;
+use crate::{t_string, use_i18n};
 use crate::shared::ui::LanguageToggle;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -14,6 +14,7 @@ struct Breadcrumb {
 
 #[component]
 pub fn Header() -> impl IntoView {
+    let i18n = use_i18n();
     let location = use_location();
 
     let breadcrumbs = Memo::new(move |_| resolve_breadcrumbs(&location.pathname.get()));
@@ -22,8 +23,8 @@ pub fn Header() -> impl IntoView {
     Effect::new(move |_| {
         let title = format!(
             "{} — {}",
-            translate("app.brand.title"),
-            translate(title_key.get())
+            t_string!(i18n, app.brand.title),
+            resolve_label(i18n, title_key.get())
         );
         set_document_title(&title);
     });
@@ -31,7 +32,7 @@ pub fn Header() -> impl IntoView {
     view! {
         <header class="h-14 bg-background border-b border-border flex items-center justify-between px-6 shrink-0">
             <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                <span class="font-medium text-foreground">{translate("app.brand.short")}</span>
+                <span class="font-medium text-foreground">{t_string!(i18n, app.brand.title)}</span>
                 <span>"/"</span>
                 {{
                     let crumbs = breadcrumbs.get();
@@ -43,9 +44,9 @@ pub fn Header() -> impl IntoView {
                             let label_key = crumb.label_key;
                             let is_last = index == last_index;
                             let content = if let Some(href) = crumb.href {
-                                view! { <A href=href attr:class="hover:text-foreground transition-colors">{move || translate(label_key)}</A> }.into_any()
+                                view! { <A href=href attr:class="hover:text-foreground transition-colors">{move || resolve_label(i18n, label_key)}</A> }.into_any()
                             } else {
-                                view! { <span class="text-foreground">{move || translate(label_key)}</span> }.into_any()
+                                view! { <span class="text-foreground">{move || resolve_label(i18n, label_key)}</span> }.into_any()
                             };
                             view! {
                                 <div class="flex items-center gap-2">
@@ -68,6 +69,21 @@ pub fn Header() -> impl IntoView {
     }
 }
 
+/// Resolve a navigation label key to its translation.
+/// Uses compile-time checked keys via t_string! for known routes.
+fn resolve_label(i18n: leptos_i18n::I18nContext<crate::i18n::Locale>, key: &str) -> String {
+    let s: &str = match key {
+        "app.nav.dashboard" => t_string!(i18n, app.nav.dashboard),
+        "app.nav.users" => t_string!(i18n, app.nav.users),
+        "app.nav.profile" => t_string!(i18n, app.nav.profile),
+        "app.nav.security" => t_string!(i18n, app.nav.security),
+        "app.nav.modules" => t_string!(i18n, app.nav.modules),
+        "users.detail.title" => t_string!(i18n, users.detail.title),
+        _ => key,
+    };
+    s.to_string()
+}
+
 fn resolve_breadcrumbs(pathname: &str) -> Vec<Breadcrumb> {
     match pathname {
         "/" | "/dashboard" => vec![Breadcrumb {
@@ -85,6 +101,10 @@ fn resolve_breadcrumbs(pathname: &str) -> Vec<Breadcrumb> {
         "/security" => vec![Breadcrumb {
             label_key: "app.nav.security",
             href: Some("/security"),
+        }],
+        "/modules" => vec![Breadcrumb {
+            label_key: "app.nav.modules",
+            href: Some("/modules"),
         }],
         _ if pathname.starts_with("/users/") => vec![
             Breadcrumb {
@@ -109,6 +129,7 @@ fn resolve_title_key(pathname: &str) -> &'static str {
         "/users" => "app.nav.users",
         "/profile" => "app.nav.profile",
         "/security" => "app.nav.security",
+        "/modules" => "app.nav.modules",
         _ if pathname.starts_with("/users/") => "users.detail.title",
         _ => "app.nav.dashboard",
     }

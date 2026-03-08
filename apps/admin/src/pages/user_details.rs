@@ -4,10 +4,10 @@ use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use serde::{Deserialize, Serialize};
 
-use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{USER_DETAILS_QUERY, USER_DETAILS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
 use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::{t_string, use_i18n};
 use leptos_auth::hooks::{use_tenant, use_token};
 
 #[derive(Params, PartialEq)]
@@ -94,6 +94,7 @@ mutation DeleteUser($id: UUID!) {
 
 #[component]
 pub fn UserDetails() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
     let navigate = use_navigate();
@@ -242,13 +243,13 @@ pub fn UserDetails() -> impl IntoView {
             <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <span class="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                        {move || translate("app.nav.users")}
+                        {move || t_string!(i18n, app.nav.users)}
                     </span>
                     <h1 class="mt-2 text-2xl font-semibold text-foreground">
-                        {move || translate("users.detail.title")}
+                        {move || t_string!(i18n, users.detail.title)}
                     </h1>
                     <p class="mt-2 text-sm text-muted-foreground">
-                        {move || translate("users.detail.subtitle")}
+                        {move || t_string!(i18n, users.detail.subtitle)}
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
@@ -257,7 +258,7 @@ pub fn UserDetails() -> impl IntoView {
                         on_click=go_back
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
-                        {move || translate("users.detail.back")}
+                        {move || t_string!(i18n, users.detail.back)}
                     </Button>
                     <Show when=move || !is_editing.get()>
                         <Button
@@ -274,13 +275,13 @@ pub fn UserDetails() -> impl IntoView {
                             }
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >
-                            {move || translate("users.detail.edit")}
+                            {move || t_string!(i18n, users.detail.edit)}
                         </Button>
                         <Button
                             on_click=move |_| show_delete_confirm.set(true)
                             class="border border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10"
                         >
-                            {move || translate("users.detail.delete")}
+                            {move || t_string!(i18n, users.detail.delete)}
                         </Button>
                     </Show>
                     <Show when=move || is_editing.get()>
@@ -289,16 +290,16 @@ pub fn UserDetails() -> impl IntoView {
                             disabled=is_saving.into()
                         >
                             {move || if is_saving.get() {
-                                translate("users.detail.saving").to_string()
+                                t_string!(i18n, users.detail.saving).to_string()
                             } else {
-                                translate("users.detail.save").to_string()
+                                t_string!(i18n, users.detail.save).to_string()
                             }}
                         </Button>
                         <Button
                             on_click=cancel_edit
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >
-                            {move || translate("users.detail.cancel")}
+                            {move || t_string!(i18n, users.detail.cancel)}
                         </Button>
                     </Show>
                 </div>
@@ -314,10 +315,10 @@ pub fn UserDetails() -> impl IntoView {
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                     <div class="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl border border-border">
                         <h3 class="mb-2 text-lg font-semibold text-card-foreground">
-                            {move || translate("users.detail.deleteConfirmTitle")}
+                            {move || t_string!(i18n, users.detail.deleteConfirmTitle)}
                         </h3>
                         <p class="mb-4 text-sm text-muted-foreground">
-                            {move || translate("users.detail.deleteConfirmText")}
+                            {move || t_string!(i18n, users.detail.deleteConfirmText)}
                         </p>
                         <Show when=move || delete_error.get().is_some()>
                             <div class="mb-3 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
@@ -331,9 +332,9 @@ pub fn UserDetails() -> impl IntoView {
                                 class="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
                                 {move || if is_deleting.get() {
-                                    translate("users.detail.deleting").to_string()
+                                    t_string!(i18n, users.detail.deleting).to_string()
                                 } else {
-                                    translate("users.detail.confirmDelete").to_string()
+                                    t_string!(i18n, users.detail.confirmDelete).to_string()
                                 }}
                             </Button>
                             <Button
@@ -341,7 +342,7 @@ pub fn UserDetails() -> impl IntoView {
                                 class="flex-1 border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                 disabled=is_deleting.into()
                             >
-                                {move || translate("users.detail.cancel")}
+                                {move || t_string!(i18n, users.detail.cancel)}
                             </Button>
                         </div>
                     </div>
@@ -350,19 +351,19 @@ pub fn UserDetails() -> impl IntoView {
 
             <div class="rounded-2xl bg-card p-6 shadow border border-border">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                    {move || translate("users.detail.section")}
+                    {move || t_string!(i18n, users.detail.section)}
                 </h4>
                 <Suspense
                     fallback=move || view! {
                         <p class="text-sm text-muted-foreground">
-                            {move || translate("users.detail.loading")}
+                            {move || t_string!(i18n, users.detail.loading)}
                         </p>
                     }
                 >
                     {move || match user_resource.get() {
                         None => view! {
                             <p class="text-sm text-muted-foreground">
-                                {move || translate("users.detail.pending")}
+                                {move || t_string!(i18n, users.detail.pending)}
                             </p>
                         }
                         .into_any(),
@@ -370,7 +371,7 @@ pub fn UserDetails() -> impl IntoView {
                             if let Some(user) = response.user {
                                 let email = user.email.clone();
                                 let name_display = user.name.clone()
-                                    .unwrap_or_else(|| translate("users.placeholderDash").to_string());
+                                    .unwrap_or_else(|| t_string!(i18n, users.placeholderDash).to_string());
                                 let role_display = user.role.clone();
                                 let status_display = user.status.clone();
                                 let tenant_display = user.tenant_name.clone()
@@ -382,13 +383,13 @@ pub fn UserDetails() -> impl IntoView {
                                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                         <div>
                                             <span class="text-xs text-muted-foreground">
-                                                {move || translate("users.detail.email")}
+                                                {move || t_string!(i18n, users.detail.email)}
                                             </span>
                                             <p class="mt-1 text-sm text-foreground">{email}</p>
                                         </div>
                                         <div>
                                             <span class="text-xs text-muted-foreground">
-                                                {move || translate("users.detail.name")}
+                                                {move || t_string!(i18n, users.detail.name)}
                                             </span>
                                             <Show
                                                 when=move || is_editing.get()
@@ -409,7 +410,7 @@ pub fn UserDetails() -> impl IntoView {
                                         </div>
                                         <div>
                                             <span class="text-xs text-muted-foreground">
-                                                {move || translate("users.detail.role")}
+                                                {move || t_string!(i18n, users.detail.role)}
                                             </span>
                                             <Show
                                                 when=move || is_editing.get()
@@ -434,7 +435,7 @@ pub fn UserDetails() -> impl IntoView {
                                         </div>
                                         <div>
                                             <span class="text-xs text-muted-foreground">
-                                                {move || translate("users.detail.status")}
+                                                {move || t_string!(i18n, users.detail.status)}
                                             </span>
                                             <Show
                                                 when=move || is_editing.get()
@@ -464,13 +465,13 @@ pub fn UserDetails() -> impl IntoView {
                                         </div>
                                         <div>
                                             <span class="text-xs text-muted-foreground">
-                                                {move || translate("users.detail.createdAt")}
+                                                {move || t_string!(i18n, users.detail.createdAt)}
                                             </span>
                                             <p class="mt-1 text-sm text-foreground">{created_at}</p>
                                         </div>
                                         <div>
                                             <span class="text-xs text-muted-foreground">
-                                                {move || translate("users.detail.id")}
+                                                {move || t_string!(i18n, users.detail.id)}
                                             </span>
                                             <p class="mt-1 text-sm text-foreground">{id}</p>
                                         </div>
@@ -480,7 +481,7 @@ pub fn UserDetails() -> impl IntoView {
                             } else {
                                 view! {
                                     <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                                        {move || translate("users.detail.empty")}
+                                        {move || t_string!(i18n, users.detail.empty)}
                                     </div>
                                 }
                                 .into_any()
@@ -489,10 +490,10 @@ pub fn UserDetails() -> impl IntoView {
                         Some(Err(err)) => view! {
                             <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                                 {match err {
-                                    ApiError::Unauthorized => translate("users.graphql.unauthorized").to_string(),
-                                    ApiError::Http(code) => format!("{} {}", translate("users.graphql.error"), code),
-                                    ApiError::Network => translate("users.graphql.network").to_string(),
-                                    ApiError::Graphql(message) => format!("{} {}", translate("users.graphql.error"), message),
+                                    ApiError::Unauthorized => t_string!(i18n, users.graphql.unauthorized).to_string(),
+                                    ApiError::Http(code) => format!("{} {}", t_string!(i18n, users.graphql.error), code),
+                                    ApiError::Network => t_string!(i18n, users.graphql.network).to_string(),
+                                    ApiError::Graphql(message) => format!("{} {}", t_string!(i18n, users.graphql.error), message),
                                 }}
                             </div>
                         }

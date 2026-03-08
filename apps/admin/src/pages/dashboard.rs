@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::app::modules::{components_for_slot, AdminSlot};
-use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
 use crate::shared::api::request;
 use crate::shared::ui::{Button, LanguageToggle, PageHeader};
 use crate::widgets::stats_card::StatsCard;
+use crate::{t_string, use_i18n};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStatsResponse {
@@ -61,6 +61,7 @@ struct ActivityUser {
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
+    let i18n = use_i18n();
     let auth = use_auth();
     let current_user = use_current_user();
     let token = use_token();
@@ -110,18 +111,18 @@ pub fn Dashboard() -> impl IntoView {
         <section class="px-10 py-8">
             <PageHeader
                 title=title
-                eyebrow=translate("app.nav.dashboard")
-                subtitle=translate("app.dashboard.subtitle")
+                eyebrow=t_string!(i18n, app.nav.dashboard).to_string()
+                subtitle=t_string!(i18n, app.dashboard.subtitle).to_string()
                 actions=view! {
                     <LanguageToggle />
                     <Button
                         on_click=logout
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
-                        {move || translate("app.dashboard.logout")}
+                        {move || t_string!(i18n, app.dashboard.logout)}
                     </Button>
                     <Button on_click=move |_| {}>
-                        {move || translate("app.dashboard.createTenant")}
+                        {move || t_string!(i18n, app.dashboard.createTenant)}
                     </Button>
                 }
                 .into_any()
@@ -146,22 +147,22 @@ pub fn Dashboard() -> impl IntoView {
                         .map(|stats| {
                             vec![
                                 (
-                                    translate("app.dashboard.stats.users"),
+                                    t_string!(i18n, app.dashboard.stats.users),
                                     stats.total_users.to_string(),
                                     format!("{:+.1}%", stats.users_change),
                                 ),
                                 (
-                                    translate("app.dashboard.stats.posts"),
+                                    t_string!(i18n, app.dashboard.stats.posts),
                                     stats.total_posts.to_string(),
                                     format!("{:+.1}%", stats.posts_change),
                                 ),
                                 (
-                                    translate("app.dashboard.stats.orders"),
+                                    t_string!(i18n, app.dashboard.stats.orders),
                                     stats.total_orders.to_string(),
                                     format!("{:+.1}%", stats.orders_change),
                                 ),
                                 (
-                                    translate("app.dashboard.stats.revenue"),
+                                    t_string!(i18n, app.dashboard.stats.revenue),
                                     format!("${}", stats.total_revenue),
                                     format!("{:+.1}%", stats.revenue_change),
                                 ),
@@ -169,10 +170,10 @@ pub fn Dashboard() -> impl IntoView {
                         })
                         .unwrap_or_else(|| {
                             vec![
-                                (translate("app.dashboard.stats.users"), "—".to_string(), "".to_string()),
-                                (translate("app.dashboard.stats.posts"), "—".to_string(), "".to_string()),
-                                (translate("app.dashboard.stats.orders"), "—".to_string(), "".to_string()),
-                                (translate("app.dashboard.stats.revenue"), "—".to_string(), "".to_string()),
+                                (t_string!(i18n, app.dashboard.stats.users), "—".to_string(), "".to_string()),
+                                (t_string!(i18n, app.dashboard.stats.posts), "—".to_string(), "".to_string()),
+                                (t_string!(i18n, app.dashboard.stats.orders), "—".to_string(), "".to_string()),
+                                (t_string!(i18n, app.dashboard.stats.revenue), "—".to_string(), "".to_string()),
                             ]
                         });
 
@@ -187,7 +188,7 @@ pub fn Dashboard() -> impl IntoView {
                                             value=value
                                             icon=view! { <span class="text-muted-foreground">"•"</span> }.into_any()
                                             trend=hint
-                                            trend_label=translate("app.dashboard.stats.vsLastMonth")
+                                            trend_label=t_string!(i18n, app.dashboard.stats.vsLastMonth)
                                             class="transition-all hover:scale-[1.02]"
                                         />
                                     }
@@ -201,7 +202,7 @@ pub fn Dashboard() -> impl IntoView {
             <div class="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
                 <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                     <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                        {move || translate("app.dashboard.activity.title")}
+                        {move || t_string!(i18n, app.dashboard.activity.title)}
                     </h4>
                     <Suspense
                         fallback=move || view! {
@@ -224,7 +225,7 @@ pub fn Dashboard() -> impl IntoView {
                             if activities.is_empty() {
                                 view! {
                                     <div class="py-8 text-center text-muted-foreground">
-                                        {translate("app.dashboard.activity.empty")}
+                                        {t_string!(i18n, app.dashboard.activity.empty)}
                                     </div>
                                 }.into_any()
                             } else {
@@ -237,7 +238,7 @@ pub fn Dashboard() -> impl IntoView {
                                                 .user
                                                 .as_ref()
                                                 .and_then(|u| u.name.clone())
-                                                .unwrap_or_else(|| translate("app.dashboard.activity.system").to_string());
+                                                .unwrap_or_else(|| t_string!(i18n, app.dashboard.activity.system).to_string());
                                             view! {
                                                 <div class="flex items-center justify-between border-b border-border py-3 last:border-b-0">
                                                     <div class="min-w-0 flex-1">
@@ -263,17 +264,17 @@ pub fn Dashboard() -> impl IntoView {
                 </div>
                 <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                     <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                        {move || translate("app.dashboard.quick.title")}
+                        {move || t_string!(i18n, app.dashboard.quick.title)}
                     </h4>
                     <div class="grid gap-3">
                         <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/security">
-                            {move || translate("app.dashboard.quick.security")}
+                            {move || t_string!(i18n, app.dashboard.quick.security)}
                         </a>
                         <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/profile">
-                            {move || translate("app.dashboard.quick.profile")}
+                            {move || t_string!(i18n, app.dashboard.quick.profile)}
                         </a>
                         <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/users">
-                            {move || translate("app.dashboard.quick.users")}
+                            {move || t_string!(i18n, app.dashboard.quick.users)}
                         </a>
                     </div>
                 </div>
@@ -293,6 +294,8 @@ pub fn Dashboard() -> impl IntoView {
 fn format_time_ago(timestamp: &str) -> String {
     use chrono::{DateTime, Utc};
 
+    let i18n = use_i18n();
+
     let Ok(dt) = timestamp.parse::<DateTime<Utc>>() else {
         return timestamp.to_string();
     };
@@ -305,13 +308,13 @@ fn format_time_ago(timestamp: &str) -> String {
     let days = duration.num_days();
 
     if minutes < 1 {
-        translate("app.time.justNow").to_string()
+        t_string!(i18n, app.time.justNow).to_string()
     } else if minutes < 60 {
-        translate("app.time.minutesAgo").replace("{n}", &minutes.to_string())
+        format!("{} {}", minutes, t_string!(i18n, app.time.minutesAgo))
     } else if hours < 24 {
-        translate("app.time.hoursAgo").replace("{n}", &hours.to_string())
+        format!("{}{}", hours, t_string!(i18n, app.time.hoursAgo))
     } else if days < 30 {
-        translate("app.time.daysAgo").replace("{n}", &days.to_string())
+        format!("{}{}", days, t_string!(i18n, app.time.daysAgo))
     } else {
         dt.format("%d.%m.%Y").to_string()
     }

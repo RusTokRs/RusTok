@@ -10,36 +10,35 @@ use crate::pages::{
     users::Users,
 };
 use crate::widgets::app_shell::AppLayout;
-
-use super::providers::locale::provide_locale_context;
+use crate::I18nContextProvider;
 
 #[component]
 pub fn App() -> impl IntoView {
-    provide_locale_context();
-
     view! {
-        <AuthProvider>
-            <Router>
-                <Routes fallback=|| view! { <NotFound /> }>
-                    <Route path=path!("/login") view=Login />
-                    <Route path=path!("/register") view=Register />
-                    <Route path=path!("/reset") view=ResetPassword />
+        <I18nContextProvider>
+            <AuthProvider>
+                <Router>
+                    <Routes fallback=|| view! { <NotFound /> }>
+                        <Route path=path!("/login") view=Login />
+                        <Route path=path!("/register") view=Register />
+                        <Route path=path!("/reset") view=ResetPassword />
 
-                    <ParentRoute path=path!("") view=ProtectedRoute>
-                        <ParentRoute path=path!("") view=AppLayout>
-                            <Route path=path!("/dashboard") view=Dashboard />
-                            <Route path=path!("/profile") view=Profile />
-                            <Route path=path!("/security") view=Security />
-                            <Route path=path!("/modules") view=Modules />
-                            <Route path=path!("/users") view=Users />
-                            <Route path=path!("/users/:id") view=UserDetails />
-                            <Route path=path!("") view=Dashboard />
+                        <ParentRoute path=path!("") view=ProtectedRoute>
+                            <ParentRoute path=path!("") view=AppLayout>
+                                <Route path=path!("/dashboard") view=Dashboard />
+                                <Route path=path!("/profile") view=Profile />
+                                <Route path=path!("/security") view=Security />
+                                <Route path=path!("/modules") view=Modules />
+                                <Route path=path!("/users") view=Users />
+                                <Route path=path!("/users/:id") view=UserDetails />
+                                <Route path=path!("") view=Dashboard />
+                            </ParentRoute>
                         </ParentRoute>
-                    </ParentRoute>
 
-                    <Route path=path!("/*") view=NotFound />
-                </Routes>
-            </Router>
-        </AuthProvider>
+                        <Route path=path!("/*") view=NotFound />
+                    </Routes>
+                </Router>
+            </AuthProvider>
+        </I18nContextProvider>
     }
 }

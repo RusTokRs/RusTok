@@ -13,7 +13,7 @@ import {
   IconPlugConnected,
   IconPlugConnectedX
 } from '@tabler/icons-react';
-import { useT } from '@/shared/hooks/use-i18n';
+import { useTranslations } from 'next-intl';
 import type { ModuleInfo } from '../api';
 
 interface ModuleCardProps {
@@ -23,7 +23,7 @@ interface ModuleCardProps {
 }
 
 export function ModuleCard({ module, loading, onToggle }: ModuleCardProps) {
-  const { t } = useT();
+  const t = useTranslations('modules');
   const isCore = module.kind === 'core';
 
   return (
@@ -43,7 +43,7 @@ export function ModuleCard({ module, loading, onToggle }: ModuleCardProps) {
           <div className='flex items-center gap-2'>
             {isCore && (
               <Badge variant='default' className='text-xs'>
-                {t('modules.badge.core')}
+                {t('badge.core')}
               </Badge>
             )}
             <Badge variant='outline' className='text-xs'>
@@ -60,18 +60,18 @@ export function ModuleCard({ module, loading, onToggle }: ModuleCardProps) {
           <div className='text-muted-foreground text-xs'>
             {module.dependencies.length > 0 && (
               <span>
-                {t('modules.depends_on')}: {module.dependencies.join(', ')}
+                {t('depends_on')}: {module.dependencies.join(', ')}
               </span>
             )}
           </div>
           {isCore ? (
             <Badge variant='secondary' className='text-xs'>
-              {t('modules.always_on')}
+              {t('always_on')}
             </Badge>
           ) : (
             <div className='flex items-center gap-2'>
               <span className='text-muted-foreground text-xs'>
-                {module.enabled ? t('modules.enabled') : t('modules.disabled')}
+                {module.enabled ? t('enabled') : t('disabled')}
               </span>
               <Switch
                 checked={module.enabled}

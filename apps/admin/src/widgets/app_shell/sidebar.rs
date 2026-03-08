@@ -2,10 +2,11 @@ use leptos::prelude::*;
 use leptos_auth::hooks::use_current_user;
 use leptos_router::components::A;
 
-use crate::shared::i18n::translate;
+use crate::{t_string, use_i18n};
 
 #[component]
 pub fn Sidebar() -> impl IntoView {
+    let i18n = use_i18n();
     let current_user = use_current_user();
 
     view! {
@@ -15,14 +16,14 @@ pub fn Sidebar() -> impl IntoView {
                     <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                         <span class="text-primary-foreground font-bold text-sm">"R"</span>
                     </div>
-                    <span class="text-sm font-semibold text-sidebar-foreground">{translate("app.brand.title")}</span>
+                    <span class="text-sm font-semibold text-sidebar-foreground">{t_string!(i18n, app.brand.title)}</span>
                 </A>
             </div>
 
             <nav class="flex-1 px-3 py-4 overflow-y-auto">
-                <NavGroupLabel label=move || translate("app.nav.group.overview") />
+                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.overview).to_string() />
                 <NavLink href="/dashboard" icon="grid">
-                    {move || translate("app.nav.dashboard")}
+                    {move || t_string!(i18n, app.nav.dashboard)}
                 </NavLink>
 
                 {move || {
@@ -33,12 +34,12 @@ pub fn Sidebar() -> impl IntoView {
                     if is_admin {
                         view! {
                             <div class="pt-3">
-                                <NavGroupLabel label=move || translate("app.nav.group.management") />
+                                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.management).to_string() />
                                 <NavLink href="/users" icon="users">
-                                    {move || translate("app.nav.users")}
+                                    {move || t_string!(i18n, app.nav.users)}
                                 </NavLink>
                                 <NavLink href="/modules" icon="package">
-                                    {move || translate("app.nav.modules")}
+                                    {move || t_string!(i18n, app.nav.modules)}
                                 </NavLink>
                             </div>
                         }.into_any()
@@ -48,12 +49,12 @@ pub fn Sidebar() -> impl IntoView {
                 }}
 
                 <div class="pt-3">
-                    <NavGroupLabel label=move || translate("app.nav.group.account") />
+                    <NavGroupLabel label=move || t_string!(i18n, app.nav.group.account).to_string() />
                     <NavLink href="/profile" icon="user">
-                        {move || translate("app.nav.profile")}
+                        {move || t_string!(i18n, app.nav.profile)}
                     </NavLink>
                     <NavLink href="/security" icon="lock">
-                        {move || translate("app.nav.security")}
+                        {move || t_string!(i18n, app.nav.security)}
                     </NavLink>
                 </div>
             </nav>
@@ -73,7 +74,7 @@ pub fn Sidebar() -> impl IntoView {
                     </div>
                     <div class="grid flex-1 min-w-0 text-left text-sm leading-tight">
                         <span class="truncate font-semibold text-sidebar-foreground text-xs">
-                            {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| translate("app.menu.defaultUser").to_string())}
+                            {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| t_string!(i18n, app.menu.defaultUser).to_string())}
                         </span>
                         <span class="truncate text-xs text-sidebar-foreground/60">
                             {move || current_user.get().map(|u| u.email.clone()).unwrap_or_default()}

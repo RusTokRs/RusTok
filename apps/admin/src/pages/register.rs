@@ -3,11 +3,12 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::use_auth;
 use leptos_router::hooks::use_navigate;
 
-use crate::app::providers::locale::translate;
 use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::{t_string, use_i18n};
 
 #[component]
 pub fn Register() -> impl IntoView {
+    let i18n = use_i18n();
     let auth = use_auth();
     let navigate = use_navigate();
 
@@ -20,7 +21,7 @@ pub fn Register() -> impl IntoView {
 
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_error.set(Some(translate("register.errorRequired").to_string()));
+            set_error.set(Some(t_string!(i18n, register.errorRequired).to_string()));
             set_status.set(None);
             return;
         }
@@ -44,7 +45,7 @@ pub fn Register() -> impl IntoView {
             {
                 Ok(()) => {
                     set_error.set(None);
-                    set_status.set(Some(translate("register.success").to_string()));
+                    set_status.set(Some(t_string!(i18n, register.success).to_string()));
                     navigate("/dashboard", Default::default());
                 }
                 Err(e) => {
@@ -59,16 +60,16 @@ pub fn Register() -> impl IntoView {
         <section class="grid min-h-screen grid-cols-1 lg:grid-cols-[1.2fr_1fr]">
             <aside class="flex flex-col justify-center gap-6 bg-primary p-12 text-primary-foreground lg:p-16">
                 <span class="inline-flex w-fit items-center rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-semibold text-primary-foreground/80">
-                    {move || translate("register.badge")}
+                    {move || t_string!(i18n, register.badge)}
                 </span>
-                <h1 class="text-4xl font-semibold">{move || translate("register.heroTitle")}</h1>
-                <p class="text-lg text-primary-foreground/80">{move || translate("register.heroSubtitle")}</p>
+                <h1 class="text-4xl font-semibold">{move || t_string!(i18n, register.heroTitle)}</h1>
+                <p class="text-lg text-primary-foreground/80">{move || t_string!(i18n, register.heroSubtitle)}</p>
                 <div class="grid gap-2">
                     <p class="text-sm font-semibold">
-                        {move || translate("register.heroListTitle")}
+                        {move || t_string!(i18n, register.heroListTitle)}
                     </p>
                     <p class="text-sm text-primary-foreground/75">
-                        {move || translate("register.heroListSubtitle")}
+                        {move || t_string!(i18n, register.heroListSubtitle)}
                     </p>
                 </div>
             </aside>
@@ -76,14 +77,14 @@ pub fn Register() -> impl IntoView {
                 <div class="flex flex-col gap-5 rounded-xl border border-border bg-card p-8 shadow-md">
                     <div>
                         <h2 class="text-2xl font-semibold text-card-foreground">
-                            {move || translate("register.title")}
+                            {move || t_string!(i18n, register.title)}
                         </h2>
                         <p class="text-muted-foreground">
-                            {move || translate("register.subtitle")}
+                            {move || t_string!(i18n, register.subtitle)}
                         </p>
                     </div>
                     <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-                        <span>{move || translate("register.languageLabel")}</span>
+                        <span>{move || t_string!(i18n, register.languageLabel)}</span>
                         <LanguageToggle />
                     </div>
                     <Show when=move || error.get().is_some()>
@@ -100,39 +101,39 @@ pub fn Register() -> impl IntoView {
                         value=tenant
                         set_value=set_tenant
                         placeholder="demo"
-                        label=move || translate("register.tenantLabel")
+                        label=move || t_string!(i18n, register.tenantLabel)
                     />
                     <Input
                         value=email
                         set_value=set_email
                         placeholder="admin@rustok.io"
-                        label=move || translate("register.emailLabel")
+                        label=move || t_string!(i18n, register.emailLabel)
                     />
                     <Input
                         value=name
                         set_value=set_name
                         placeholder="Alex Morgan"
-                        label=move || translate("register.nameLabel")
+                        label=move || t_string!(i18n, register.nameLabel)
                     />
                     <Input
                         value=password
                         set_value=set_password
                         placeholder="••••••••"
                         type_="password"
-                        label=move || translate("register.passwordLabel")
+                        label=move || t_string!(i18n, register.passwordLabel)
                     />
                     <p class="text-sm text-muted-foreground">
-                        {move || translate("register.passwordHint")}
+                        {move || t_string!(i18n, register.passwordHint)}
                     </p>
                     <Button on_click=on_submit class="w-full">
-                        {move || translate("register.submit")}
+                        {move || t_string!(i18n, register.submit)}
                     </Button>
                     <div class="flex justify-between gap-3 text-sm">
                         <a class="text-primary hover:underline underline-offset-4" href="/login">
-                            {move || translate("register.loginLink")}
+                            {move || t_string!(i18n, register.loginLink)}
                         </a>
                         <a class="text-primary hover:underline underline-offset-4" href="/reset">
-                            {move || translate("register.resetLink")}
+                            {move || t_string!(i18n, register.resetLink)}
                         </a>
                     </div>
                 </div>

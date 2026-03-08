@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::entities::module::ModuleInfo;
-use crate::shared::i18n::translate;
+use crate::{t, t_string, use_i18n};
 
 #[component]
 pub fn ModuleCard(
@@ -9,6 +9,7 @@ pub fn ModuleCard(
     #[prop(into)] loading: Signal<bool>,
     #[prop(optional)] on_toggle: Option<Callback<(String, bool)>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let is_core = module.is_core();
     let enabled = module.enabled;
     let slug = module.module_slug.clone();
@@ -46,7 +47,7 @@ pub fn ModuleCard(
                     <div class="flex items-center gap-2">
                         {is_core.then(|| view! {
                             <span class="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
-                                {translate("modules.badge.core")}
+                                {t!(i18n, modules.badge.core)}
                             </span>
                         })}
                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
@@ -62,14 +63,14 @@ pub fn ModuleCard(
                         {(!module.dependencies.is_empty()).then(|| {
                             let deps = module.dependencies.join(", ");
                             view! {
-                                <span>{format!("{}: {}", translate("modules.depends_on"), deps)}</span>
+                                <span>{format!("{}: {}", t_string!(i18n, modules.depends_on), deps)}</span>
                             }
                         })}
                     </div>
                     {if is_core {
                         view! {
                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                {translate("modules.always_on")}
+                                {t!(i18n, modules.always_on)}
                             </span>
                         }.into_any()
                     } else {
@@ -78,9 +79,9 @@ pub fn ModuleCard(
                             <div class="flex items-center gap-2">
                                 <span class="text-xs text-muted-foreground">
                                     {if enabled {
-                                        translate("modules.enabled")
+                                        t_string!(i18n, modules.enabled)
                                     } else {
-                                        translate("modules.disabled")
+                                        t_string!(i18n, modules.disabled)
                                     }}
                                 </span>
                                 <button

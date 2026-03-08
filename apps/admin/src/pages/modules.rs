@@ -1,14 +1,14 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
-use serde_json::json;
 
 use crate::features::modules::api;
 use crate::features::modules::components::ModulesList;
-use crate::shared::i18n::translate;
 use crate::shared::ui::PageHeader;
+use crate::{t_string, use_i18n};
 
 #[component]
 pub fn Modules() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -22,9 +22,9 @@ pub fn Modules() -> impl IntoView {
     view! {
         <section class="px-10 py-8">
             <PageHeader
-                title=translate("modules.title")
-                eyebrow=translate("modules.eyebrow")
-                subtitle=translate("modules.subtitle")
+                title=t_string!(i18n, modules.title)
+                eyebrow=t_string!(i18n, modules.eyebrow).to_string()
+                subtitle=t_string!(i18n, modules.subtitle).to_string()
             />
 
             <Suspense
@@ -47,7 +47,7 @@ pub fn Modules() -> impl IntoView {
                             Err(err) => {
                                 view! {
                                     <div class="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("{}: {}", translate("modules.error.load"), err)}
+                                        {format!("{}: {}", t_string!(i18n, modules.error.load), err)}
                                     </div>
                                 }.into_any()
                             }

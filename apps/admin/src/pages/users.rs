@@ -8,10 +8,10 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
-use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
 use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
+use crate::{t_string, use_i18n};
 
 #[derive(Clone, Debug, Serialize)]
 struct CreateUserVariables {
@@ -117,6 +117,7 @@ fn users_table_skeleton() -> impl IntoView {
 
 #[component]
 pub fn Users() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
     let navigate = use_navigate();
@@ -277,7 +278,7 @@ pub fn Users() -> impl IntoView {
             let tenant_val = tenant.get();
 
             if email_val.is_empty() || password_val.is_empty() {
-                set_create_error.set(Some(translate("users.create.errorRequired").to_string()));
+                set_create_error.set(Some(t_string!(i18n, users.create.errorRequired).to_string()));
                 return;
             }
 
@@ -331,19 +332,19 @@ pub fn Users() -> impl IntoView {
     view! {
         <section class="px-10 py-8">
             <PageHeader
-                title=translate("users.title")
-                subtitle=translate("users.subtitle")
-                eyebrow=translate("app.nav.users")
+                title=t_string!(i18n, users.title)
+                subtitle=t_string!(i18n, users.subtitle).to_string()
+                eyebrow=t_string!(i18n, app.nav.users).to_string()
                 actions=view! {
                     <LanguageToggle />
                     <Button
                         on_click=refresh
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
-                        {move || translate("users.refresh")}
+                        {move || t_string!(i18n, users.refresh)}
                     </Button>
                     <Button on_click=open_create_modal>
-                        {move || translate("users.create.button")}
+                        {move || t_string!(i18n, users.create.button)}
                     </Button>
                 }
                 .into_any()
@@ -351,7 +352,7 @@ pub fn Users() -> impl IntoView {
 
             <div class="rounded-2xl bg-card p-6 shadow border border-border">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                    {move || translate("users.graphql.title")}
+                    {move || t_string!(i18n, users.graphql.title)}
                 </h4>
                 <Suspense
                     fallback=move || view! { <div>{users_table_skeleton()}</div> }
@@ -364,26 +365,26 @@ pub fn Users() -> impl IntoView {
                             view! {
                             <div>
                                 <p class="text-xs text-muted-foreground mb-4">
-                                    {move || translate("users.graphql.total")} " " {total_count}
+                                    {move || t_string!(i18n, users.graphql.total)} " " {total_count}
                                 </p>
                                 <div class="mb-4 grid gap-3 md:grid-cols-3">
                                     <Input
                                         value=search_query
                                         set_value=set_search_query
-                                        placeholder=move || translate("users.filters.searchPlaceholder")
-                                        label=move || translate("users.filters.search")
+                                        placeholder=move || t_string!(i18n, users.filters.searchPlaceholder)
+                                        label=move || t_string!(i18n, users.filters.search)
                                     />
                                     <Input
                                         value=role_filter
                                         set_value=set_role_filter
-                                        placeholder=move || translate("users.filters.rolePlaceholder")
-                                        label=move || translate("users.filters.role")
+                                        placeholder=move || t_string!(i18n, users.filters.rolePlaceholder)
+                                        label=move || t_string!(i18n, users.filters.role)
                                     />
                                     <Input
                                         value=status_filter
                                         set_value=set_status_filter
-                                        placeholder=move || translate("users.filters.statusPlaceholder")
-                                        label=move || translate("users.filters.status")
+                                        placeholder=move || t_string!(i18n, users.filters.statusPlaceholder)
+                                        label=move || t_string!(i18n, users.filters.status)
                                     />
                                 </div>
                                 <div class="overflow-x-auto">
@@ -391,19 +392,19 @@ pub fn Users() -> impl IntoView {
                                         <thead>
                                             <tr>
                                                 <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.email")}
+                                                    {move || t_string!(i18n, users.graphql.email)}
                                                 </th>
                                                 <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.name")}
+                                                    {move || t_string!(i18n, users.graphql.name)}
                                                 </th>
                                                 <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.role")}
+                                                    {move || t_string!(i18n, users.graphql.role)}
                                                 </th>
                                                 <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.status")}
+                                                    {move || t_string!(i18n, users.graphql.status)}
                                                 </th>
                                                 <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.createdAt")}
+                                                    {move || t_string!(i18n, users.graphql.createdAt)}
                                                 </th>
                                             </tr>
                                         </thead>
@@ -431,7 +432,7 @@ pub fn Users() -> impl IntoView {
                                                                     </A>
                                                                 </td>
                                                                 <td class="border-b border-border py-2 text-foreground">
-                                                                    {name.unwrap_or_else(|| translate("users.placeholderDash").to_string())}
+                                                                    {name.unwrap_or_else(|| t_string!(i18n, users.placeholderDash).to_string())}
                                                                 </td>
                                                                 <td class="border-b border-border py-2 text-foreground">{role}</td>
                                                                 <td class="border-b border-border py-2">
@@ -452,10 +453,10 @@ pub fn Users() -> impl IntoView {
                                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                         disabled=Signal::derive(move || page.get() <= 1)
                                     >
-                                        {move || translate("users.pagination.prev")}
+                                        {move || t_string!(i18n, users.pagination.prev)}
                                     </Button>
                                     <span class="text-xs text-muted-foreground">
-                                        {move || translate("users.pagination.page")} " " {page.get()}
+                                        {move || t_string!(i18n, users.pagination.page)} " " {page.get()}
                                     </span>
                                     <Button
                                         on_click=next_page
@@ -465,7 +466,7 @@ pub fn Users() -> impl IntoView {
                                             page.get() * limit.get() >= total
                                         })
                                     >
-                                        {move || translate("users.pagination.next")}
+                                        {move || t_string!(i18n, users.pagination.next)}
                                     </Button>
                                 </div>
                             </div>
@@ -475,10 +476,10 @@ pub fn Users() -> impl IntoView {
                         Some(Err(err)) => view! {
                             <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                                 {match err {
-                                    ApiError::Unauthorized => translate("users.graphql.unauthorized").to_string(),
-                                    ApiError::Http(code) => format!("{} {}", translate("users.graphql.error"), code),
-                                    ApiError::Network => translate("users.graphql.network").to_string(),
-                                    ApiError::Graphql(message) => format!("{} {}", translate("users.graphql.error"), message),
+                                    ApiError::Unauthorized => t_string!(i18n, users.graphql.unauthorized).to_string(),
+                                    ApiError::Http(code) => format!("{} {}", t_string!(i18n, users.graphql.error), code),
+                                    ApiError::Network => t_string!(i18n, users.graphql.network).to_string(),
+                                    ApiError::Graphql(message) => format!("{} {}", t_string!(i18n, users.graphql.error), message),
                                 }}
                             </div>
                         }
@@ -491,7 +492,7 @@ pub fn Users() -> impl IntoView {
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                     <div class="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl border border-border">
                         <h3 class="mb-4 text-lg font-semibold text-card-foreground">
-                            {move || translate("users.create.title")}
+                            {move || t_string!(i18n, users.create.title)}
                         </h3>
 
                         <Show when=move || create_error.get().is_some()>
@@ -505,32 +506,32 @@ pub fn Users() -> impl IntoView {
                                 value=new_email
                                 set_value=set_new_email
                                 placeholder="admin@rustok.io"
-                                label=move || translate("users.create.emailLabel")
+                                label=move || t_string!(i18n, users.create.emailLabel)
                             />
                             <Input
                                 value=new_name
                                 set_value=set_new_name
                                 placeholder="John Doe"
-                                label=move || translate("users.create.nameLabel")
+                                label=move || t_string!(i18n, users.create.nameLabel)
                             />
                             <Input
                                 value=new_password
                                 set_value=set_new_password
                                 placeholder="••••••••"
                                 type_="password"
-                                label=move || translate("users.create.passwordLabel")
+                                label=move || t_string!(i18n, users.create.passwordLabel)
                             />
                             <Input
                                 value=new_role
                                 set_value=set_new_role
                                 placeholder="ADMIN, MANAGER, CUSTOMER"
-                                label=move || translate("users.create.roleLabel")
+                                label=move || t_string!(i18n, users.create.roleLabel)
                             />
                             <Input
                                 value=new_status
                                 set_value=set_new_status
                                 placeholder="ACTIVE, INACTIVE"
-                                label=move || translate("users.create.statusLabel")
+                                label=move || t_string!(i18n, users.create.statusLabel)
                             />
                         </div>
 
@@ -541,16 +542,16 @@ pub fn Users() -> impl IntoView {
                                 class="flex-1"
                             >
                                 {move || if is_creating.get() {
-                                    translate("users.create.creating").to_string()
+                                    t_string!(i18n, users.create.creating).to_string()
                                 } else {
-                                    translate("users.create.submit").to_string()
+                                    t_string!(i18n, users.create.submit).to_string()
                                 }}
                             </Button>
                             <Button
                                 on_click=close_create_modal
                                 class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                             >
-                                {move || translate("users.create.cancel")}
+                                {move || t_string!(i18n, users.create.cancel)}
                             </Button>
                         </div>
                     </div>
