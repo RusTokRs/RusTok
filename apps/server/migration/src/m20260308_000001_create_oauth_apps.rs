@@ -13,25 +13,18 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(OAuthApps::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(OAuthApps::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(OAuthApps::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(OAuthApps::TenantId).uuid().not_null())
                     // Identification
-                    .col(
-                        ColumnDef::new(OAuthApps::Name)
-                            .string_len(255)
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(OAuthApps::Slug)
-                            .string_len(100)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(OAuthApps::Name).string_len(255).not_null())
+                    .col(ColumnDef::new(OAuthApps::Slug).string_len(100).not_null())
                     .col(ColumnDef::new(OAuthApps::Description).text())
-                    .col(
-                        ColumnDef::new(OAuthApps::AppType)
-                            .string_len(50)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(OAuthApps::AppType).string_len(50).not_null())
                     .col(ColumnDef::new(OAuthApps::IconUrl).string_len(500))
                     // Credentials
                     .col(
@@ -40,10 +33,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(
-                        ColumnDef::new(OAuthApps::ClientSecretHash)
-                            .string_len(255),
-                    )
+                    .col(ColumnDef::new(OAuthApps::ClientSecretHash).string_len(255))
                     // OAuth2 config
                     .col(
                         ColumnDef::new(OAuthApps::RedirectUris)

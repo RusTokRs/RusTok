@@ -1,4 +1,4 @@
-pub mod app;
+﻿pub mod app;
 pub mod entities;
 pub mod modules;
 pub mod pages;
@@ -10,12 +10,21 @@ use leptos::prelude::RenderHtml;
 use leptos::view;
 
 use crate::app::StorefrontShell;
+use crate::shared::context::enabled_modules::fetch_enabled_modules;
 
-pub fn render_shell(locale: &str) -> String {
+pub async fn render_shell(locale: &str) -> String {
     let locale_owned = locale.to_string();
+    let enabled_modules = match fetch_enabled_modules().await {
+        Ok(modules) => modules,
+        Err(err) => {
+            eprintln!("failed to fetch enabled modules for storefront SSR: {err}");
+            Vec::new()
+        }
+    };
+
     let app_html = {
         let locale = locale_owned.clone();
-        view! { <StorefrontShell locale=locale /> }.to_html()
+        view! { <StorefrontShell locale=locale enabled_modules=enabled_modules /> }.to_html()
     };
     format!(
         r#"<!DOCTYPE html>
@@ -46,7 +55,7 @@ pub fn router() -> Router {
                     .get("lang")
                     .map(|value| value.to_lowercase())
                     .unwrap_or_else(|| "en".to_string());
-                render_shell(locale.as_str())
+                render_shell(locale.as_str()).await
             },
         ),
     )

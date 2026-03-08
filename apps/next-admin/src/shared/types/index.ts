@@ -11,6 +11,7 @@ export interface PermissionCheck {
 export interface NavItem {
   title: string;
   url: string;
+  moduleSlug?: string;
   disabled?: boolean;
   external?: boolean;
   shortcut?: [string, string];
@@ -42,3 +43,4 @@ export interface FooterItem {
 export type MainNavItem = NavItemWithOptionalChildren;
 
 export type SidebarNavItem = NavItemWithChildren;
+

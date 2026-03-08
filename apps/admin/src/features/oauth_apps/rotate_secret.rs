@@ -9,12 +9,15 @@ pub fn RotateSecretDialog(
     on_cancel: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
     let name = app.name.clone();
-    
+
     let rotate_action = create_action(move |_: &()| {
         let on_success = on_success.clone();
         async move {
             // MOCK: GraphQL rotation logic
-            let new_secret = format!("sk_live_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
+            let new_secret = format!(
+                "sk_live_{}",
+                uuid::Uuid::new_v4().to_string().replace("-", "")
+            );
             on_success(new_secret);
         }
     });
@@ -27,15 +30,15 @@ pub fn RotateSecretDialog(
                 <br/>
                 "The old secret will immediately stop working and all active sessions/tokens might be invalidated or require the new secret to refresh."
             </p>
-            
+
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button 
+                <ui_button::Button
                     variant=crate::shared::ui::ButtonVariant::Destructive
                     on:click=move |_| rotate_action.dispatch(())
                 >
                     "Yes, Rotate Secret"
                 </ui_button::Button>
-                <ui_button::Button 
+                <ui_button::Button
                     variant=crate::shared::ui::ButtonVariant::Outline
                     on:click=move |_| on_cancel()
                 >

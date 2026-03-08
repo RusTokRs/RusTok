@@ -36,10 +36,7 @@ impl Entity {
             .await
     }
 
-    pub async fn count_active_by_app(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<u64, DbErr> {
+    pub async fn count_active_by_app(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, DbErr> {
         Entity::find()
             .filter(
                 Condition::all()

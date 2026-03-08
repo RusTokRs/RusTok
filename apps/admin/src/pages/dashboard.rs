@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::app::modules::{components_for_slot, AdminSlot};
+use crate::app::providers::enabled_modules::use_enabled_modules;
 use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
 use crate::shared::api::request;
 use crate::shared::ui::{Button, LanguageToggle, PageHeader};
@@ -100,12 +101,17 @@ pub fn Dashboard() -> impl IntoView {
         });
     };
 
+    let enabled_modules = use_enabled_modules();
+
     let title = current_user
         .get()
         .and_then(|user| user.name)
         .unwrap_or_else(|| "Dashboard".to_string());
 
-    let module_sections = components_for_slot(AdminSlot::DashboardSection);
+    let module_sections = Signal::derive(move || {
+        let enabled = enabled_modules.get();
+        components_for_slot(AdminSlot::DashboardSection, Some(&enabled))
+    });
 
     view! {
         <section class="px-10 py-8">
@@ -281,10 +287,7 @@ pub fn Dashboard() -> impl IntoView {
             </div>
 
             <div class="mt-8 grid gap-6 lg:grid-cols-2">
-                {module_sections
-                    .into_iter()
-                    .map(|module| (module.render)())
-                    .collect_view()}
+                {move || module_sections.get().into_iter().map(|module| (module.render)()).collect_view()}
             </div>
 
         </section>

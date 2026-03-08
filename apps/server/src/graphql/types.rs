@@ -7,8 +7,12 @@ use uuid::Uuid;
 
 use crate::graphql::common::PageInfo;
 use crate::graphql::loaders::TenantNameLoader;
+use crate::models::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
+use crate::models::release::{Model as ReleaseModel, ReleaseStatus};
 use crate::models::users;
+use crate::modules::InstalledManifestModule;
 use crate::services::auth::AuthService;
+use crate::services::build_service::BuildEvent;
 
 #[derive(SimpleObject, Clone)]
 pub struct Tenant {
@@ -135,6 +139,345 @@ pub struct TenantModule {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct InstalledModule {
+    pub slug: String,
+    pub source: String,
+    pub crate_name: String,
+    pub version: Option<String>,
+    pub git: Option<String>,
+    pub rev: Option<String>,
+    pub path: Option<String>,
+    pub required: bool,
+    pub dependencies: Vec<String>,
+}
+
+impl From<&InstalledManifestModule> for InstalledModule {
+    fn from(module: &InstalledManifestModule) -> Self {
+        Self {
+            slug: module.slug.clone(),
+            source: module.source.clone(),
+            crate_name: module.crate_name.clone(),
+            version: module.version.clone(),
+            git: module.git.clone(),
+            rev: module.rev.clone(),
+            path: module.path.clone(),
+            required: module.required,
+            dependencies: module.depends_on.clone(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct MarketplaceModuleVersion {
+    pub version: String,
+    pub changelog: Option<String>,
+    pub yanked: bool,
+    pub published_at: Option<String>,
+    pub checksum_sha256: Option<String>,
+    pub signature_present: bool,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct MarketplaceModule {
+    pub slug: String,
+    pub name: String,
+    pub latest_version: String,
+    pub description: String,
+    pub source: String,
+    pub kind: String,
+    pub category: String,
+    pub crate_name: String,
+    pub dependencies: Vec<String>,
+    pub ownership: String,
+    pub trust_level: String,
+    pub rustok_min_version: Option<String>,
+    pub rustok_max_version: Option<String>,
+    pub publisher: Option<String>,
+    pub checksum_sha256: Option<String>,
+    pub signature_present: bool,
+    pub versions: Vec<MarketplaceModuleVersion>,
+    pub compatible: bool,
+    pub recommended_admin_surfaces: Vec<String>,
+    pub showcase_admin_surfaces: Vec<String>,
+    pub installed: bool,
+    pub installed_version: Option<String>,
+    pub update_available: bool,
+}
+
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlBuildStatus {
+    Queued,
+    Running,
+    Success,
+    Failed,
+    Cancelled,
+}
+
+impl From<BuildStatus> for GqlBuildStatus {
+    fn from(status: BuildStatus) -> Self {
+        match status {
+            BuildStatus::Queued => Self::Queued,
+            BuildStatus::Running => Self::Running,
+            BuildStatus::Success => Self::Success,
+            BuildStatus::Failed => Self::Failed,
+            BuildStatus::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlBuildStage {
+    Pending,
+    Checkout,
+    Build,
+    Test,
+    Deploy,
+    Complete,
+}
+
+impl From<BuildStage> for GqlBuildStage {
+    fn from(stage: BuildStage) -> Self {
+        match stage {
+            BuildStage::Pending => Self::Pending,
+            BuildStage::Checkout => Self::Checkout,
+            BuildStage::Build => Self::Build,
+            BuildStage::Test => Self::Test,
+            BuildStage::Deploy => Self::Deploy,
+            BuildStage::Complete => Self::Complete,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlDeploymentProfile {
+    Monolith,
+    ServerWithAdmin,
+    ServerWithStorefront,
+    HeadlessApi,
+}
+
+impl From<DeploymentProfile> for GqlDeploymentProfile {
+    fn from(profile: DeploymentProfile) -> Self {
+        match profile {
+            DeploymentProfile::Monolith => Self::Monolith,
+            DeploymentProfile::ServerWithAdmin => Self::ServerWithAdmin,
+            DeploymentProfile::ServerWithStorefront => Self::ServerWithStorefront,
+            DeploymentProfile::HeadlessApi => Self::HeadlessApi,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlReleaseStatus {
+    Pending,
+    Deploying,
+    Active,
+    RolledBack,
+    Failed,
+}
+
+impl From<ReleaseStatus> for GqlReleaseStatus {
+    fn from(status: ReleaseStatus) -> Self {
+        match status {
+            ReleaseStatus::Pending => Self::Pending,
+            ReleaseStatus::Deploying => Self::Deploying,
+            ReleaseStatus::Active => Self::Active,
+            ReleaseStatus::RolledBack => Self::RolledBack,
+            ReleaseStatus::Failed => Self::Failed,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct BuildJob {
+    pub id: String,
+    pub status: GqlBuildStatus,
+    pub stage: GqlBuildStage,
+    pub progress: i32,
+    pub profile: GqlDeploymentProfile,
+    pub manifest_ref: String,
+    pub manifest_hash: String,
+    pub modules_delta: String,
+    pub requested_by: String,
+    pub reason: Option<String>,
+    pub release_id: Option<String>,
+    pub logs_url: Option<String>,
+    pub error_message: Option<String>,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
+    let Some(value) = value else {
+        return String::new();
+    };
+
+    if let Some(summary) = value.as_str() {
+        return summary.to_string();
+    }
+
+    if let Some(summary) = value.get("summary").and_then(serde_json::Value::as_str) {
+        return summary.to_string();
+    }
+
+    if let Some(object) = value.as_object() {
+        let mut slugs = object.keys().cloned().collect::<Vec<_>>();
+        slugs.sort();
+        return slugs.join(",");
+    }
+
+    value.to_string()
+}
+
+impl BuildJob {
+    pub fn from_model(model: &BuildModel) -> Self {
+        Self {
+            id: model.id.to_string(),
+            status: model.status.clone().into(),
+            stage: model.stage.clone().into(),
+            progress: model.progress,
+            profile: model.profile.clone().into(),
+            manifest_ref: model.manifest_ref.clone(),
+            manifest_hash: model.manifest_hash.clone(),
+            modules_delta: build_modules_delta_summary(model.modules_delta.as_ref()),
+            requested_by: model.requested_by.clone(),
+            reason: model.reason.clone(),
+            release_id: model.release_id.clone(),
+            logs_url: model.logs_url.clone(),
+            error_message: model.error_message.clone(),
+            started_at: model.started_at.map(|value| value.to_rfc3339()),
+            finished_at: model.finished_at.map(|value| value.to_rfc3339()),
+            created_at: model.created_at.to_rfc3339(),
+            updated_at: model.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct BuildProgressEvent {
+    pub build_id: String,
+    pub status: GqlBuildStatus,
+    pub stage: GqlBuildStage,
+    pub progress: i32,
+    pub release_id: Option<String>,
+    pub error_message: Option<String>,
+}
+
+impl BuildProgressEvent {
+    pub fn from_event(event: BuildEvent) -> Self {
+        match event {
+            BuildEvent::BuildRequested { build_id, .. } => Self {
+                build_id: build_id.to_string(),
+                status: GqlBuildStatus::Queued,
+                stage: GqlBuildStage::Pending,
+                progress: 0,
+                release_id: None,
+                error_message: None,
+            },
+            BuildEvent::BuildStarted {
+                build_id,
+                stage,
+                progress,
+            } => Self {
+                build_id: build_id.to_string(),
+                status: GqlBuildStatus::Running,
+                stage: stage.into(),
+                progress,
+                release_id: None,
+                error_message: None,
+            },
+            BuildEvent::BuildProgress {
+                build_id,
+                stage,
+                progress,
+            } => Self {
+                build_id: build_id.to_string(),
+                status: GqlBuildStatus::Running,
+                stage: stage.into(),
+                progress,
+                release_id: None,
+                error_message: None,
+            },
+            BuildEvent::BuildCompleted {
+                build_id,
+                release_id,
+            } => Self {
+                build_id: build_id.to_string(),
+                status: GqlBuildStatus::Success,
+                stage: GqlBuildStage::Complete,
+                progress: 100,
+                release_id,
+                error_message: None,
+            },
+            BuildEvent::BuildCancelled {
+                build_id,
+                stage,
+                progress,
+            } => Self {
+                build_id: build_id.to_string(),
+                status: GqlBuildStatus::Cancelled,
+                stage: stage.into(),
+                progress,
+                release_id: None,
+                error_message: None,
+            },
+            BuildEvent::BuildFailed {
+                build_id,
+                stage,
+                progress,
+                error,
+            } => Self {
+                build_id: build_id.to_string(),
+                status: GqlBuildStatus::Failed,
+                stage: stage.into(),
+                progress,
+                release_id: None,
+                error_message: Some(error),
+            },
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct ReleaseInfo {
+    pub id: String,
+    pub build_id: String,
+    pub status: GqlReleaseStatus,
+    pub environment: String,
+    pub manifest_hash: String,
+    pub modules: Vec<String>,
+    pub previous_release_id: Option<String>,
+    pub deployed_at: Option<String>,
+    pub rolled_back_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl ReleaseInfo {
+    pub fn from_model(model: &ReleaseModel) -> Self {
+        Self {
+            id: model.id.clone(),
+            build_id: model.build_id.to_string(),
+            status: model.status.clone().into(),
+            environment: model.environment.clone(),
+            manifest_hash: model.manifest_hash.clone(),
+            modules: serde_json::from_value(model.modules.clone()).unwrap_or_default(),
+            previous_release_id: model.previous_release_id.clone(),
+            deployed_at: model.deployed_at.map(|value| value.to_rfc3339()),
+            rolled_back_at: model.rolled_back_at.map(|value| value.to_rfc3339()),
+            created_at: model.created_at.to_rfc3339(),
+            updated_at: model.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct DeleteUserPayload {
     pub success: bool,
 }
@@ -148,6 +491,10 @@ pub struct ModuleRegistryItem {
     pub kind: String,
     pub enabled: bool,
     pub dependencies: Vec<String>,
+    pub ownership: String,
+    pub trust_level: String,
+    pub recommended_admin_surfaces: Vec<String>,
+    pub showcase_admin_surfaces: Vec<String>,
 }
 
 #[derive(SimpleObject, Debug, Clone)]

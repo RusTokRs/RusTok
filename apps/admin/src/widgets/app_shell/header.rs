@@ -3,8 +3,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
 use crate::features::auth::UserMenu;
-use crate::{t_string, use_i18n};
 use crate::shared::ui::LanguageToggle;
+use crate::{t_string, use_i18n};
 
 #[derive(Clone, Copy, PartialEq)]
 struct Breadcrumb {

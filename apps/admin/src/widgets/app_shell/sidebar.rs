@@ -3,12 +3,20 @@ use leptos_auth::hooks::use_current_user;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
+use crate::app::modules::{components_for_slot, AdminSlot};
+use crate::app::providers::enabled_modules::use_enabled_modules;
 use crate::{t_string, use_i18n};
 
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let i18n = use_i18n();
     let current_user = use_current_user();
+    let enabled_modules = use_enabled_modules();
+
+    let module_nav_items = Signal::derive(move || {
+        let enabled = enabled_modules.get();
+        components_for_slot(AdminSlot::NavItem, Some(&enabled))
+    });
 
     view! {
         <aside class="w-64 bg-sidebar border-r border-sidebar-border h-screen flex flex-col shrink-0">
@@ -45,6 +53,13 @@ pub fn Sidebar() -> impl IntoView {
                                 <NavLink href="/apps" icon="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1">
                                     {move || "App Connections".to_string()}
                                 </NavLink>
+
+                                <Show when=move || !module_nav_items.get().is_empty()>
+                                    <div class="pt-3">
+                                        <NavGroupLabel label=move || "Modules".to_string() />
+                                        {move || module_nav_items.get().into_iter().map(|item| (item.render)()).collect_view()}
+                                    </div>
+                                </Show>
                             </div>
                         }.into_any()
                     } else {

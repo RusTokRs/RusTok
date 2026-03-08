@@ -13,27 +13,34 @@ pub struct OAuthAuthorizationServerMetadata {
     pub token_endpoint: String,
     pub userinfo_endpoint: String,
     pub revocation_endpoint: String,
-    
+
     // Supported lists
     pub scopes_supported: Vec<String>,
     pub response_types_supported: Vec<String>,
     pub grant_types_supported: Vec<String>,
     pub token_endpoint_auth_methods_supported: Vec<String>,
     pub code_challenge_methods_supported: Vec<String>,
-    
+
     // Claims
     pub claims_supported: Vec<String>,
 }
 
-async fn get_metadata(State(ctx): State<AppContext>) -> Result<Json<OAuthAuthorizationServerMetadata>, loco_rs::Error> {
-    let auth_config = AuthConfig::from_ctx(&ctx).map_err(|_| loco_rs::Error::Message("Auth config error".into()))?;
-    
+async fn get_metadata(
+    State(ctx): State<AppContext>,
+) -> Result<Json<OAuthAuthorizationServerMetadata>, loco_rs::Error> {
+    let auth_config = AuthConfig::from_ctx(&ctx)
+        .map_err(|_| loco_rs::Error::Message("Auth config error".into()))?;
+
     // Generate issuer base URL
-    // In a real environment, this should be the public URL from config. 
+    // In a real environment, this should be the public URL from config.
     // Fallback to localhost if not configured (useful for dev)
-    let domain = std::env::var("RUSTOK_PUBLIC_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
-    let issuer = auth_config.issuer.clone().unwrap_or_else(|| "rustok".to_string());
-    
+    let domain =
+        std::env::var("RUSTOK_PUBLIC_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let issuer = auth_config
+        .issuer
+        .clone()
+        .unwrap_or_else(|| "rustok".to_string());
+
     // Normally issuer is a URL in OIDC, but if it's just "rustok", we return the domain base
     let issuer_url = if issuer.starts_with("http") {
         issuer
@@ -47,7 +54,7 @@ async fn get_metadata(State(ctx): State<AppContext>) -> Result<Json<OAuthAuthori
         token_endpoint: format!("{}/api/oauth/token", domain),
         userinfo_endpoint: format!("{}/api/oauth/userinfo", domain),
         revocation_endpoint: format!("{}/api/oauth/revoke", domain),
-        
+
         scopes_supported: vec![
             "openid".into(),
             "profile".into(),
@@ -62,23 +69,19 @@ async fn get_metadata(State(ctx): State<AppContext>) -> Result<Json<OAuthAuthori
             "admin:*".into(),
             "storefront:*".into(),
         ],
-        
+
         response_types_supported: vec!["code".into()],
-        
+
         grant_types_supported: vec![
             "authorization_code".into(),
             "client_credentials".into(),
             "refresh_token".into(),
         ],
-        
-        token_endpoint_auth_methods_supported: vec![
-            "client_secret_post".into(),
-        ],
-        
-        code_challenge_methods_supported: vec![
-            "S256".into(),
-        ],
-        
+
+        token_endpoint_auth_methods_supported: vec!["client_secret_post".into()],
+
+        code_challenge_methods_supported: vec!["S256".into()],
+
         claims_supported: vec![
             "sub".into(),
             "iss".into(),

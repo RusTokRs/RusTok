@@ -1,7 +1,9 @@
 pub mod auth;
 pub mod auth_lifecycle;
+pub mod build_event_hub;
 pub mod email;
 pub mod event_bus;
+pub mod marketplace_catalog;
 pub mod module_lifecycle;
 pub mod oauth_app;
 

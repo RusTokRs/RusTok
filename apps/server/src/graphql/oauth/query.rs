@@ -67,7 +67,10 @@ impl OAuthQuery {
     }
 
     /// List apps the current user has authorized
-    async fn my_authorized_apps(&self, ctx: &Context<'_>) -> Result<Vec<super::types::AuthorizedAppGql>> {
+    async fn my_authorized_apps(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<super::types::AuthorizedAppGql>> {
         let auth = ctx.data::<AuthContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
 
@@ -80,9 +83,9 @@ impl OAuthQuery {
         // Find active consents joined with apps
         use crate::models::oauth_apps;
         use crate::models::oauth_consents;
-        use sea_orm::{QueryFilter, ColumnTrait, EntityTrait, QuerySelect};
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 
-        let active_consents: Vec<(oauth_consents::Model, Option<oauth_apps::Model>)> = 
+        let active_consents: Vec<(oauth_consents::Model, Option<oauth_apps::Model>)> =
             oauth_consents::Entity::find()
                 .filter(oauth_consents::Column::UserId.eq(user_id))
                 .filter(oauth_consents::Column::TenantId.eq(auth.tenant_id))
@@ -90,7 +93,9 @@ impl OAuthQuery {
                 .find_also_related(oauth_apps::Entity)
                 .all(db)
                 .await
-                .map_err(|e| async_graphql::Error::new(format!("Failed to fetch authorizations: {e}")))?;
+                .map_err(|e| {
+                    async_graphql::Error::new(format!("Failed to fetch authorizations: {e}"))
+                })?;
 
         let mut results = Vec::new();
         for (consent, app) in active_consents {

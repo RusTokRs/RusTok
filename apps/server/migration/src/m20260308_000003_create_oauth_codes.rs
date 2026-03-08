@@ -68,10 +68,7 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(OAuthAuthorizationCodes::UsedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(OAuthAuthorizationCodes::UsedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(OAuthAuthorizationCodes::CreatedAt)
                             .timestamp_with_time_zone()
@@ -81,21 +78,30 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_oauth_codes_app_id")
-                            .from(OAuthAuthorizationCodes::Table, OAuthAuthorizationCodes::AppId)
+                            .from(
+                                OAuthAuthorizationCodes::Table,
+                                OAuthAuthorizationCodes::AppId,
+                            )
                             .to(OAuthApps::Table, OAuthApps::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_oauth_codes_user_id")
-                            .from(OAuthAuthorizationCodes::Table, OAuthAuthorizationCodes::UserId)
+                            .from(
+                                OAuthAuthorizationCodes::Table,
+                                OAuthAuthorizationCodes::UserId,
+                            )
                             .to(Users::Table, Users::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_oauth_codes_tenant_id")
-                            .from(OAuthAuthorizationCodes::Table, OAuthAuthorizationCodes::TenantId)
+                            .from(
+                                OAuthAuthorizationCodes::Table,
+                                OAuthAuthorizationCodes::TenantId,
+                            )
                             .to(Tenants::Table, Tenants::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )

@@ -1,0 +1,4 @@
+[module]
+ownership = "first_party"
+trust_level = "verified"
+recommended_admin_surfaces = ["leptos-admin"]

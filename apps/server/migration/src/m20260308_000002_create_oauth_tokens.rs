@@ -34,11 +34,7 @@ impl MigrationTrait for Migration {
                             .string_len(50)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(OAuthTokens::Scopes)
-                            .json_binary()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(OAuthTokens::Scopes).json_binary().not_null())
                     .col(
                         ColumnDef::new(OAuthTokens::ExpiresAt)
                             .timestamp_with_time_zone()

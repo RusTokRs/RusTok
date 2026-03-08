@@ -1,4 +1,5 @@
 mod modules;
+mod shared;
 
 use axum::{
     http::{header, StatusCode},
@@ -11,7 +12,10 @@ use leptos::prelude::{ClassAttribute, CollectView, ElementChild, GlobalAttribute
 use leptos::{component, view, IntoView};
 use std::path::PathBuf;
 
-use crate::modules::{components_for_slot, StorefrontSlot};
+use crate::modules::{components_for_slot, init_modules, StorefrontSlot};
+use crate::shared::context::enabled_modules::{
+    fetch_enabled_modules, use_enabled_modules, EnabledModulesProvider,
+};
 
 include!(concat!(env!("OUT_DIR"), "/i18n/mod.rs"));
 use i18n::*;
@@ -28,22 +32,22 @@ fn featured_products(locale: &str) -> Vec<ProductCardData> {
     match locale {
         "ru" => vec![
             ProductCardData {
-                title: "Смарт-аксессуары",
-                description: "Функциональные гаджеты для повседневной жизни.",
-                price: "от 4 990 ₽",
-                badge: Some("Лидер продаж"),
+                title: "РЎРјР°СЂС‚-Р°РєСЃРµСЃСЃСѓР°СЂС‹",
+                description: "Р¤СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рµ РіР°РґР¶РµС‚С‹ РґР»СЏ РїРѕРІСЃРµРґРЅРµРІРЅРѕР№ Р¶РёР·РЅРё.",
+                price: "РѕС‚ 4 990 в‚Ѕ",
+                badge: Some("Р›РёРґРµСЂ РїСЂРѕРґР°Р¶"),
             },
             ProductCardData {
-                title: "Экологичная коллекция",
-                description: "Натуральные материалы и премиальная отделка.",
-                price: "от 2 490 ₽",
+                title: "Р­РєРѕР»РѕРіРёС‡РЅР°СЏ РєРѕР»Р»РµРєС†РёСЏ",
+                description: "РќР°С‚СѓСЂР°Р»СЊРЅС‹Рµ РјР°С‚РµСЂРёР°Р»С‹ Рё РїСЂРµРјРёР°Р»СЊРЅР°СЏ РѕС‚РґРµР»РєР°.",
+                price: "РѕС‚ 2 490 в‚Ѕ",
                 badge: None,
             },
             ProductCardData {
-                title: "Городская классика",
-                description: "Минималистичные силуэты для любого сезона.",
-                price: "от 6 500 ₽",
-                badge: Some("Новинка"),
+                title: "Р“РѕСЂРѕРґСЃРєР°СЏ РєР»Р°СЃСЃРёРєР°",
+                description: "РњРёРЅРёРјР°Р»РёСЃС‚РёС‡РЅС‹Рµ СЃРёР»СѓСЌС‚С‹ РґР»СЏ Р»СЋР±РѕРіРѕ СЃРµР·РѕРЅР°.",
+                price: "РѕС‚ 6 500 в‚Ѕ",
+                badge: Some("РќРѕРІРёРЅРєР°"),
             },
         ],
         _ => vec![
@@ -70,11 +74,7 @@ fn featured_products(locale: &str) -> Vec<ProductCardData> {
 }
 
 #[component]
-fn ProductCard(
-    product: ProductCardData,
-    badge_new: String,
-    cta_view: String,
-) -> impl IntoView {
+fn ProductCard(product: ProductCardData, badge_new: String, cta_view: String) -> impl IntoView {
     let badge = product.badge.map(|b| b.to_string()).unwrap_or(badge_new);
     view! {
         <div class="rounded-xl border border-border bg-card shadow">
@@ -97,10 +97,12 @@ fn ProductCard(
 }
 
 #[component]
-fn StorefrontShell(locale: String) -> impl IntoView {
+fn StorefrontShellContent(locale: String) -> impl IntoView {
     let i18n = use_i18n();
     let products = featured_products(locale.as_str());
-    let module_sections = components_for_slot(StorefrontSlot::HomeAfterHero);
+    let enabled_modules = use_enabled_modules().get();
+    let module_sections =
+        components_for_slot(StorefrontSlot::HomeAfterHero, Some(&enabled_modules));
     let badge_new = t_string!(i18n, badge.new).to_string();
     let cta_view = t_string!(i18n, cta.view).to_string();
 
@@ -133,7 +135,7 @@ fn StorefrontShell(locale: String) -> impl IntoView {
                                     </li>
                                     <li>
                                         <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href="/?lang=ru">
-                                            "Русский"
+                                            "Р СѓСЃСЃРєРёР№"
                                         </a>
                                     </li>
                                 </ul>
@@ -254,16 +256,34 @@ fn StorefrontShell(locale: String) -> impl IntoView {
     }
 }
 
-fn render_shell(locale: &str) -> String {
+#[component]
+fn StorefrontShell(locale: String, enabled_modules: Vec<String>) -> impl IntoView {
+    init_modules();
+
+    view! {
+        <EnabledModulesProvider initial_modules=enabled_modules>
+            <StorefrontShellContent locale=locale />
+        </EnabledModulesProvider>
+    }
+}
+
+async fn render_shell(locale: &str) -> String {
     let locale_enum = match locale {
         "ru" => Locale::ru,
         _ => Locale::en,
+    };
+    let enabled_modules = match fetch_enabled_modules().await {
+        Ok(modules) => modules,
+        Err(err) => {
+            eprintln!("failed to fetch enabled modules for storefront SSR: {err}");
+            Vec::new()
+        }
     };
     let app_html = leptos::prelude::Owner::new().with(|| {
         use leptos::prelude::Signal;
         leptos_i18n::context::provide_i18n_subcontext::<Locale>(Some(Signal::stored(locale_enum)));
         let locale = locale.to_string();
-        view! { <StorefrontShell locale=locale /> }.to_html()
+        view! { <StorefrontShell locale=locale enabled_modules=enabled_modules /> }.to_html()
     });
     format!(
         r#"<!DOCTYPE html>
@@ -283,6 +303,25 @@ fn render_shell(locale: &str) -> String {
     )
 }
 
+fn router() -> Router {
+    Router::new()
+        .route(
+            "/",
+            get(
+                |axum::extract::Query(params): axum::extract::Query<
+                    std::collections::HashMap<String, String>,
+                >| async move {
+                    let locale = params
+                        .get("lang")
+                        .map(|value| value.to_lowercase())
+                        .unwrap_or_else(|| "en".to_string());
+                    render_shell(locale.as_str()).await
+                },
+            ),
+        )
+        .route("/assets/app.css", get(css_handler))
+}
+
 fn static_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")
 }
@@ -297,9 +336,6 @@ async fn css_handler() -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Note: modules::init_modules() is not easily exported if it was private in lib.rs,
-    // but I'll assume we handle module init in the shared library or backend.
-
     let app = router();
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3100").await?;

@@ -65,3 +65,4 @@
 - Локальные docs: `apps/next-admin/docs/*`
 - Платформенные UI docs: `docs/UI/*`
 - Карта документации: `docs/index.md`
+

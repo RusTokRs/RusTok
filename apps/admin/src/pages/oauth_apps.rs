@@ -23,12 +23,12 @@ pub fn OAuthAppsPage() -> impl IntoView {
 
     let on_rotate = move |app| set_modal_state.set(ModalState::RotateSecret(app));
     let on_revoke = move |app| set_modal_state.set(ModalState::RevokeApp(app));
-    
+
     let close_modal = move || set_modal_state.set(ModalState::None);
 
     // MOCK initial fetch
     create_effect(move |_| {
-        set_apps.set(vec![]); 
+        set_apps.set(vec![]);
     });
 
     view! {
@@ -45,7 +45,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
                 </ui_button::Button>
             </div>
 
-            <OAuthAppsList 
+            <OAuthAppsList
                 apps=apps.get()
                 on_rotate_secret=on_rotate
                 on_revoke_app=on_revoke
@@ -101,12 +101,12 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                     <div class="space-y-4">
                                         <h3 class="text-lg font-medium text-green-600">"Success!"</h3>
                                         <p class="text-sm">"Your new Client Secret has been generated."</p>
-                                        
+
                                         <div class="p-3 bg-slate-100 rounded border font-mono text-sm break-all">
                                             {secret}
                                         </div>
                                         <ui_success_message::SuccessMessage message="Store this secret safely. You will not be able to see it again." />
-                                        
+
                                         <ui_button::Button class="w-full" on:click=move |_| close()>
                                             "I have saved it"
                                         </ui_button::Button>

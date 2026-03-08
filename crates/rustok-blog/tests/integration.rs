@@ -10,7 +10,9 @@ use rustok_blog::dto::{CreatePostInput, PostListQuery};
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::BlogError;
 use rustok_core::events::EventEnvelope;
-use rustok_core::{DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole};
+use rustok_core::{
+    DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole,
+};
 use rustok_outbox::TransactionalEventBus;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -302,7 +304,10 @@ mod unit_tests {
             .await;
 
         assert!(result.is_err());
-        assert!(matches!(receiver.try_recv(), Err(broadcast::error::TryRecvError::Empty)));
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
     }
 
     #[tokio::test]

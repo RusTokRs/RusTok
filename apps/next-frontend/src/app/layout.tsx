@@ -1,8 +1,10 @@
-import "@/styles/globals.css";
+﻿import "@/styles/globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
+
+import { EnabledModulesProvider } from "./providers/enabled-modules-provider";
 
 export const metadata: Metadata = {
   title: "RusToK Storefront",
@@ -21,9 +23,10 @@ export default async function RootLayout({
     <html lang={locale}>
       <body className="min-h-screen bg-background text-foreground">
         <NextIntlClientProvider messages={messages}>
-          {children}
+          <EnabledModulesProvider>{children}</EnabledModulesProvider>
         </NextIntlClientProvider>
       </body>
     </html>
   );
 }
+

@@ -5,6 +5,7 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::OptionalCurrentUser;
 use crate::graphql::build_schema;
 use crate::graphql::persisted::is_admin_persisted_hash;
+use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use rustok_core::ModuleRegistry;
 
@@ -32,6 +33,7 @@ async fn graphql_handler(
         ctx.db.clone(),
         event_bus_from_context(&ctx),
         transactional_event_bus_from_context(&ctx),
+        build_event_hub_from_context(&ctx),
         alloy_state,
     );
     let mut request = req.data(ctx).data(tenant_ctx).data(registry);

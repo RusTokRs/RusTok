@@ -7,7 +7,9 @@ use uuid::Uuid;
 use crate::context::AuthContext;
 use crate::services::oauth_app::{self, OAuthAppService};
 
-use super::types::{CreateOAuthAppInput, CreateOAuthAppResultGql, OAuthAppGql, RotateSecretResultGql};
+use super::types::{
+    CreateOAuthAppInput, CreateOAuthAppResultGql, OAuthAppGql, RotateSecretResultGql,
+};
 
 #[derive(Default)]
 pub struct OAuthMutation;
@@ -148,11 +150,7 @@ impl OAuthMutation {
     }
 
     /// Revoke consent to an application (also revokes tokens)
-    async fn revoke_app_consent(
-        &self,
-        ctx: &Context<'_>,
-        app_id: Uuid,
-    ) -> Result<bool> {
+    async fn revoke_app_consent(&self, ctx: &Context<'_>, app_id: Uuid) -> Result<bool> {
         let auth = ctx.data::<AuthContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
 

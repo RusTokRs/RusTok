@@ -1,10 +1,11 @@
-use leptos::prelude::*;
+﻿use leptos::prelude::*;
 
 use super::{register_component, StorefrontComponentRegistration, StorefrontSlot};
 
 pub fn register_components() {
     register_component(StorefrontComponentRegistration {
         id: "storefront-module-spotlight",
+        module_slug: None,
         slot: StorefrontSlot::HomeAfterHero,
         order: 10,
         render: module_spotlight,

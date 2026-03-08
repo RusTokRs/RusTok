@@ -24,17 +24,18 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(OAuthConsents::AppId).uuid().not_null())
                     .col(ColumnDef::new(OAuthConsents::UserId).uuid().not_null())
                     .col(ColumnDef::new(OAuthConsents::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(OAuthConsents::Scopes).json_binary().not_null())
+                    .col(
+                        ColumnDef::new(OAuthConsents::Scopes)
+                            .json_binary()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(OAuthConsents::GrantedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(OAuthConsents::RevokedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(OAuthConsents::RevokedAt).timestamp_with_time_zone())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_oauth_consents_app_id")
@@ -76,11 +77,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(
-                Table::drop()
-                    .table(OAuthConsents::Table)
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(OAuthConsents::Table).to_owned())
             .await
     }
 }

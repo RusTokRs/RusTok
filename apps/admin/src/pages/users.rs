@@ -283,7 +283,9 @@ pub fn Users() -> impl IntoView {
             let tenant_val = tenant.get();
 
             if email_val.is_empty() || password_val.is_empty() {
-                set_create_error.set(Some(t_string!(i18n, users.create.errorRequired).to_string()));
+                set_create_error.set(Some(
+                    t_string!(i18n, users.create.errorRequired).to_string(),
+                ));
                 return;
             }
 

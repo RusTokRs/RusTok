@@ -112,7 +112,9 @@ pub fn Profile() -> impl IntoView {
                 }
                 Err(err) => {
                     let message = match err {
-                        ApiError::Unauthorized => t_string!(i18n, errors.auth.unauthorized).to_string(),
+                        ApiError::Unauthorized => {
+                            t_string!(i18n, errors.auth.unauthorized).to_string()
+                        }
                         ApiError::Http(_) => t_string!(i18n, errors.http).to_string(),
                         ApiError::Network => t_string!(i18n, errors.network).to_string(),
                         ApiError::Graphql(_) => t_string!(i18n, errors.unknown).to_string(),

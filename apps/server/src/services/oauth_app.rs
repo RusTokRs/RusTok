@@ -5,7 +5,9 @@ use crate::models::oauth_apps::{self, ActiveModel as OAuthAppActiveModel, Entity
 use crate::models::oauth_authorization_codes::{
     self, ActiveModel as OAuthCodeActiveModel, Entity as OAuthCodes,
 };
-use crate::models::oauth_consents::{self, ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents};
+use crate::models::oauth_consents::{
+    self, ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
+};
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
 use loco_rs::{Error, Result};
@@ -63,10 +65,12 @@ impl OAuthAppService {
             client_secret_hash: Set(Some(client_secret_hash)),
             redirect_uris: Set(serde_json::to_value(&input.redirect_uris)
                 .map_err(|_| Error::InternalServerError)?),
-            scopes: Set(serde_json::to_value(&input.scopes)
-                .map_err(|_| Error::InternalServerError)?),
-            grant_types: Set(serde_json::to_value(&input.grant_types)
-                .map_err(|_| Error::InternalServerError)?),
+            scopes: Set(
+                serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?
+            ),
+            grant_types: Set(
+                serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?
+            ),
             manifest_ref: Set(None),
             auto_created: Set(false),
             is_active: Set(true),
@@ -300,10 +304,14 @@ impl OAuthAppService {
 
         // Validations
         if !auth_code.is_active() {
-            return Err(Error::Unauthorized("Code is expired or already used".into()));
+            return Err(Error::Unauthorized(
+                "Code is expired or already used".into(),
+            ));
         }
         if auth_code.app_id != app.id {
-            return Err(Error::Unauthorized("Code belongs to a different app".into()));
+            return Err(Error::Unauthorized(
+                "Code belongs to a different app".into(),
+            ));
         }
         if auth_code.redirect_uri != redirect_uri {
             return Err(Error::Unauthorized("Redirect URI mismatch".into()));
@@ -317,7 +325,10 @@ impl OAuthAppService {
         // Mark code as used
         let mut active: OAuthCodeActiveModel = auth_code.clone().into();
         active.used_at = Set(Some(Utc::now().into()));
-        active.update(db).await.map_err(|_| Error::InternalServerError)?;
+        active
+            .update(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
 
         // Issue tokens
         let scopes = auth_code.scopes_list();
@@ -338,7 +349,10 @@ impl OAuthAppService {
 
         // Constant time comparison is safer for crypto
         use subtle::ConstantTimeEq;
-        expected_challenge.as_bytes().ct_eq(code_challenge.as_bytes()).into()
+        expected_challenge
+            .as_bytes()
+            .ct_eq(code_challenge.as_bytes())
+            .into()
     }
 
     /// Issue an access token and a refresh token for authorization_code flow
@@ -373,7 +387,7 @@ impl OAuthAppService {
 
         // Generate refresh token
         let refresh_token_plain = auth::generate_refresh_token();
-        
+
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(refresh_token_plain.as_bytes());
@@ -386,8 +400,9 @@ impl OAuthAppService {
             tenant_id: Set(app.tenant_id),
             token_hash: Set(token_hash),
             grant_type: Set("authorization_code".to_string()),
-            scopes: Set(serde_json::to_value(granted_scopes)
-                .map_err(|_| Error::InternalServerError)?),
+            scopes: Set(
+                serde_json::to_value(granted_scopes).map_err(|_| Error::InternalServerError)?
+            ),
             // 30 days validity for refresh token
             expires_at: Set((chrono::Utc::now() + chrono::Duration::days(30)).into()),
             revoked_at: Set(None),
@@ -422,16 +437,19 @@ impl OAuthAppService {
             .ok_or_else(|| Error::Unauthorized("Invalid or expired refresh token".into()))?;
 
         // Extract required fields before doing anything
-        let user_id = token_model.user_id.ok_or_else(|| {
-            Error::Unauthorized("Refresh token has no associated user".into())
-        })?;
+        let user_id = token_model
+            .user_id
+            .ok_or_else(|| Error::Unauthorized("Refresh token has no associated user".into()))?;
         let scopes = token_model.scopes_list();
 
         // Rotate the token (revoke the old one)
         let mut active: crate::models::oauth_tokens::ActiveModel = token_model.into();
         active.revoked_at = Set(Some(Utc::now().into()));
         active.updated_at = Set(Utc::now().into());
-        active.update(db).await.map_err(|_| Error::InternalServerError)?;
+        active
+            .update(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
 
         // Issue new token pair
         Self::issue_authorization_token_pair(db, app, auth_config, user_id, &scopes).await
@@ -478,15 +496,21 @@ impl OAuthAppService {
             // Merge scopes
             let mut current_scopes = consent.scopes_list();
             for new_scope in scopes {
-                if !current_scopes.contains(&new_scope) { // simplified array merge
+                if !current_scopes.contains(&new_scope) {
+                    // simplified array merge
                     current_scopes.push(new_scope);
                 }
             }
 
             let mut active: OAuthConsentActiveModel = consent.into();
-            active.scopes = Set(serde_json::to_value(&current_scopes).map_err(|_| Error::InternalServerError)?);
+            active.scopes =
+                Set(serde_json::to_value(&current_scopes)
+                    .map_err(|_| Error::InternalServerError)?);
             active.granted_at = Set(Utc::now().into());
-            active.update(db).await.map_err(|_| Error::InternalServerError)?;
+            active
+                .update(db)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
         } else {
             // Create new consent
             OAuthConsentActiveModel {
@@ -521,7 +545,10 @@ impl OAuthAppService {
         if let Some(c) = consent {
             let mut active: OAuthConsentActiveModel = c.into();
             active.revoked_at = Set(Some(now.into()));
-            active.update(db).await.map_err(|_| Error::InternalServerError)?;
+            active
+                .update(db)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
         }
 
         // Revoke all tokens for this user and app
@@ -613,6 +640,9 @@ mod tests {
 
         assert!(OAuthAppService::verify_pkce(expected_challenge, verifier));
         assert!(!OAuthAppService::verify_pkce("wrong_challenge", verifier));
-        assert!(!OAuthAppService::verify_pkce(expected_challenge, "wrong_verifier"));
+        assert!(!OAuthAppService::verify_pkce(
+            expected_challenge,
+            "wrong_verifier"
+        ));
     }
 }

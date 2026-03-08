@@ -27,6 +27,7 @@ alloy-scripting.workspace = true
 
 loco-rs.workspace = true
 tokio.workspace = true
+tokio-stream = { version = "0.1", features = ["sync"] }
 axum.workspace = true
 axum-extra = { version = "0.12", features = ["typed-header"] }
 sea-orm.workspace = true
@@ -58,6 +59,8 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 rust-embed = { version = "8.0", features = ["interpolate-folder-path"] }
 tower-http = { workspace = true, features = ["fs"] }
 mime_guess = "2.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+semver = "1.0"
 
 # Loco extras
 migration = { path = "migration" }

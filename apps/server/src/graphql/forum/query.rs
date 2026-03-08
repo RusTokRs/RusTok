@@ -141,7 +141,12 @@ impl ForumQuery {
             })
             .collect();
 
-        Ok(ForumTopicConnection::new(items, total as i64, offset, limit))
+        Ok(ForumTopicConnection::new(
+            items,
+            total as i64,
+            offset,
+            limit,
+        ))
     }
 
     async fn forum_replies(
@@ -205,6 +210,11 @@ impl ForumQuery {
             })
             .collect();
 
-        Ok(ForumReplyConnection::new(items, total as i64, offset, limit))
+        Ok(ForumReplyConnection::new(
+            items,
+            total as i64,
+            offset,
+            limit,
+        ))
     }
 }

@@ -2,7 +2,11 @@
 //!
 //! `POST /oauth/token` — Token endpoint (client_credentials flow)
 
-use axum::{extract::State, routing::{post, get}, Json};
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json,
+};
 use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -16,7 +20,7 @@ use crate::services::oauth_app::OAuthAppService;
 #[derive(Debug, Deserialize)]
 pub struct TokenRequest {
     pub grant_type: String,
-    
+
     // For client_credentials
     pub client_id: Option<String>,
     pub client_secret: Option<String>,
@@ -158,19 +162,21 @@ async fn handle_client_credentials(
             error_description: "client_secret is required for client_credentials".to_string(),
         })?;
 
-    let secret_hash = app.client_secret_hash.as_deref().ok_or_else(|| {
-        TokenErrorResponse {
+    let secret_hash = app
+        .client_secret_hash
+        .as_deref()
+        .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Client has no secret configured".to_string(),
-        }
-    })?;
+        })?;
 
-    let valid = OAuthAppService::verify_client_secret(client_secret, secret_hash).map_err(
-        |_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Invalid client credentials".to_string(),
-        },
-    )?;
+    let valid =
+        OAuthAppService::verify_client_secret(client_secret, secret_hash).map_err(|_| {
+            TokenErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: "Invalid client credentials".to_string(),
+            }
+        })?;
 
     if !valid {
         return Err(TokenErrorResponse {
@@ -236,14 +242,20 @@ async fn handle_authorization_code(
         error: "invalid_client".to_string(),
         error_description: "Invalid client_id format".to_string(),
     })?;
-    let code_verifier = req.code_verifier.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_request".to_string(),
-        error_description: "code_verifier is required for PKCE".to_string(),
-    })?;
-    let redirect_uri = req.redirect_uri.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_request".to_string(),
-        error_description: "redirect_uri is required".to_string(),
-    })?;
+    let code_verifier = req
+        .code_verifier
+        .as_deref()
+        .ok_or_else(|| TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "code_verifier is required for PKCE".to_string(),
+        })?;
+    let redirect_uri = req
+        .redirect_uri
+        .as_deref()
+        .ok_or_else(|| TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "redirect_uri is required".to_string(),
+        })?;
     let code = req.code.as_deref().ok_or_else(|| TokenErrorResponse {
         error: "invalid_request".to_string(),
         error_description: "code is required".to_string(),
@@ -281,13 +293,20 @@ async fn handle_authorization_code(
         error_description: "Server configuration error".to_string(),
     })?;
 
-    let (access_token, refresh_token_plain, expires_in) = 
-        OAuthAppService::exchange_authorization_code(&ctx.db, &app, &auth_config, code, redirect_uri, code_verifier)
-            .await
-            .map_err(|e| TokenErrorResponse {
-                error: "invalid_grant".to_string(),
-                error_description: e.to_string(),
-            })?;
+    let (access_token, refresh_token_plain, expires_in) =
+        OAuthAppService::exchange_authorization_code(
+            &ctx.db,
+            &app,
+            &auth_config,
+            code,
+            redirect_uri,
+            code_verifier,
+        )
+        .await
+        .map_err(|e| TokenErrorResponse {
+            error: "invalid_grant".to_string(),
+            error_description: e.to_string(),
+        })?;
 
     // Touch app last_used_at in background
     let db = ctx.db.clone();
@@ -313,16 +332,19 @@ async fn handle_refresh_token(
     req: &TokenRequest,
 ) -> Result<Json<TokenResponse>, TokenErrorResponse> {
     // 1. Verify fields
-    let refresh_token = req.refresh_token.as_deref().ok_or_else(|| TokenErrorResponse {
-        error: "invalid_request".to_string(),
-        error_description: "refresh_token is required".to_string(),
-    })?;
+    let refresh_token = req
+        .refresh_token
+        .as_deref()
+        .ok_or_else(|| TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "refresh_token is required".to_string(),
+        })?;
 
     let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
         error: "invalid_client".to_string(),
         error_description: "client_id is required".to_string(),
     })?;
-    
+
     let client_id = Uuid::parse_str(client_id_str).map_err(|_| TokenErrorResponse {
         error: "invalid_client".to_string(),
         error_description: "Invalid client_id format".to_string(),
@@ -353,7 +375,7 @@ async fn handle_refresh_token(
         error_description: "Server configuration error".to_string(),
     })?;
 
-    let (access_token, refresh_token_plain, expires_in) = 
+    let (access_token, refresh_token_plain, expires_in) =
         OAuthAppService::refresh_access_token(&ctx.db, &app, &auth_config, refresh_token)
             .await
             .map_err(|e| TokenErrorResponse {
@@ -380,7 +402,7 @@ async fn handle_refresh_token(
 async fn authorize_handler(
     State(ctx): State<AppContext>,
     tenant_ctx: TenantContext,
-    current_user: CurrentUser,   // Requires authenticated user
+    current_user: CurrentUser, // Requires authenticated user
     Json(req): Json<AuthorizeRequest>,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
     // 1. Verify standard parameters
@@ -464,12 +486,13 @@ async fn authorize_handler(
         })?;
 
         if !has_consent {
-            // App needs consent from user. 
+            // App needs consent from user.
             // In a real environment, we would redirect to a consent UI.
             // But since this is API-first, we return interaction_required.
             return Err(TokenErrorResponse {
                 error: "interaction_required".to_string(),
-                error_description: "User consent is required. Please prompt the user to grant access.".to_string(),
+                error_description:
+                    "User consent is required. Please prompt the user to grant access.".to_string(),
             });
         }
     }
@@ -497,7 +520,7 @@ async fn authorize_handler(
         "code": code,
         "redirect_uri": req.redirect_uri,
     });
-    
+
     if let Some(state) = req.state {
         response["state"] = serde_json::json!(state);
     }
@@ -508,15 +531,15 @@ async fn authorize_handler(
 /// OpenID Connect UserInfo Endpoint (RFC 5362)
 /// Allows clients with `openid` or `profile` scopes to fetch user details.
 async fn userinfo_handler(
-    current_user: CurrentUser,   // Automatically extracts and validates Bearer token
+    current_user: CurrentUser, // Automatically extracts and validates Bearer token
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
     // We already know the token is valid, active, and belongs to a user because
     // the CurrentUser extractor succeeds only if these conditions are met.
-    
+
     // In a full OIDC implementation, we'd check if the token had the `openid` scope specifically.
     // We assume CurrentUser claims contain the scopes if needed, but since we rely on RBAC
     // returning the user profile here is generally safe for authenticated apps.
-    
+
     let user = current_user.user;
 
     // standard OIDC claims

@@ -15,6 +15,7 @@ pub mod pages;
 pub mod persisted;
 pub mod queries;
 pub mod schema;
+pub mod subscriptions;
 pub mod types;
 
 pub use schema::{build_schema, AppSchema};

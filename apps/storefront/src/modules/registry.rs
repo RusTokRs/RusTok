@@ -1,3 +1,4 @@
+﻿use std::collections::HashSet;
 use std::sync::{OnceLock, RwLock};
 
 use leptos::prelude::AnyView;
@@ -10,6 +11,7 @@ pub enum StorefrontSlot {
 #[derive(Clone)]
 pub struct StorefrontComponentRegistration {
     pub id: &'static str,
+    pub module_slug: Option<&'static str>,
     pub slot: StorefrontSlot,
     pub order: usize,
     pub render: fn() -> AnyView,
@@ -26,12 +28,19 @@ pub fn register_component(component: StorefrontComponentRegistration) {
     components.push(component);
 }
 
-pub fn components_for_slot(slot: StorefrontSlot) -> Vec<StorefrontComponentRegistration> {
+pub fn components_for_slot(
+    slot: StorefrontSlot,
+    enabled_modules: Option<&HashSet<String>>,
+) -> Vec<StorefrontComponentRegistration> {
     let components = registry()
         .read()
         .expect("storefront module registry lock")
         .iter()
         .filter(|component| component.slot == slot)
+        .filter(|component| match (component.module_slug, enabled_modules) {
+            (Some(module_slug), Some(enabled)) => enabled.contains(module_slug),
+            _ => true,
+        })
         .cloned()
         .collect::<Vec<_>>();
 

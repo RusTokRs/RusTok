@@ -60,3 +60,4 @@ command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", 
 - [`docs/UI/rust-ui-component-catalog.md`](../../../docs/UI/rust-ui-component-catalog.md) — каталог UI-компонентов
 - [`UI/leptos/README.md`](../../../UI/leptos/README.md) — документация iu-leptos
 - [`UI/docs/api-contracts.md`](../../../UI/docs/api-contracts.md) — API-контракты компонентов
+

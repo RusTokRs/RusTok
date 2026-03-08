@@ -5,6 +5,7 @@ use super::{register_component, AdminComponentRegistration, AdminSlot};
 pub fn register_components() {
     register_component(AdminComponentRegistration {
         id: "core-dashboard-module-status",
+        module_slug: None,
         slot: AdminSlot::DashboardSection,
         order: 10,
         render: module_status_card,

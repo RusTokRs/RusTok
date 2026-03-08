@@ -1,4 +1,4 @@
-mod alloy;
+﻿mod alloy;
 mod manifest;
 
 use rustok_blog::BlogModule;
@@ -12,14 +12,16 @@ use rustok_rbac::RbacModule;
 use rustok_tenant::TenantModule;
 
 pub use alloy::AlloyModule;
+pub use manifest::{
+    validate_registry_vs_manifest, InstalledManifestModule, ManifestDiff, ManifestError,
+    ManifestManager, ManifestModuleSpec, ModulesManifest,
+};
 
 pub fn build_registry() -> ModuleRegistry {
     ModuleRegistry::new()
-        // --- Core modules: always active, cannot be disabled per-tenant ---
         .register(IndexModule)
         .register(TenantModule)
         .register(RbacModule)
-        // --- Optional domain modules: per-tenant toggle ---
         .register(ContentModule)
         .register(CommerceModule)
         .register(BlogModule)
@@ -27,5 +29,3 @@ pub fn build_registry() -> ModuleRegistry {
         .register(PagesModule)
         .register(AlloyModule::new())
 }
-
-pub use manifest::validate_registry_vs_manifest;

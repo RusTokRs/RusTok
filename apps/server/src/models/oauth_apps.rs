@@ -67,8 +67,6 @@ impl Model {
 
     /// Check if the app supports a specific grant type
     pub fn supports_grant_type(&self, grant_type: &str) -> bool {
-        self.grant_types_list()
-            .iter()
-            .any(|gt| gt == grant_type)
+        self.grant_types_list().iter().any(|gt| gt == grant_type)
     }
 }

@@ -9,7 +9,7 @@ pub fn RevokeAppDialog(
     on_cancel: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
     let name = app.name.clone();
-    
+
     let revoke_action = create_action(move |_: &()| {
         let on_success = on_success.clone();
         async move {
@@ -26,15 +26,15 @@ pub fn RevokeAppDialog(
                 <br/>
                 "This action cannot be undone. All active tokens will be invalidated immediately, and the application will be disconnected from all users."
             </p>
-            
+
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button 
+                <ui_button::Button
                     variant=crate::shared::ui::ButtonVariant::Destructive
                     on:click=move |_| revoke_action.dispatch(())
                 >
                     "Revoke Application"
                 </ui_button::Button>
-                <ui_button::Button 
+                <ui_button::Button
                     variant=crate::shared::ui::ButtonVariant::Outline
                     on:click=move |_| on_cancel()
                 >

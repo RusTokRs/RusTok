@@ -7,6 +7,20 @@
 > - `docs/concepts/plan-oauth2-app-connections.md` — OAuth2 AS, аутентификация клиентов
 > - `docs/modules/module-rebuild-plan.md` — tenant-level toggle, build pipeline
 >
+> Execution split:
+> - Module detail state on `/modules` is now deep-linkable in both admin apps: the selected catalog entry is mirrored into the `module` query param, so direct links reopen the same detail panel instead of relying on purely local UI state.
+> - The shared backend and both admin apps now support source-aware catalog filtering: `marketplace(...)` can be narrowed by source and install-state in addition to trust and compatibility, and `/modules` exposes those controls without diverging the two admin surfaces.
+> - Both admin apps now expose a dedicated `marketplaceModule(slug)` detail panel on `/modules`, so operators can review package metadata, admin-surface policy, compatibility, provenance, and version history before install or upgrade actions.
+> - Both admin apps now have a shared catalog filtering baseline on `/modules`: Marketplace and Updates can be narrowed by search, category, trust level, and compatibility-only mode without diverging the two admin surfaces.
+> - Этот документ описывает целевую marketplace/registry архитектуру и долгоживущие контракты.
+> - Фактический статус внедрения в монорепе ведётся в `docs/modules/module-rebuild-plan.md`.
+> - Текущий implementation cut в репозитории использует внутренний catalog contract платформы, собранный из `modules.toml` + `ModuleRegistry`; отдельный registry service, публикация и verification pipeline остаются следующими этапами этого RFC.
+> - Catalog contract уже расширяется metadata-полями ownership/trust/admin-surface policy, чтобы first-party, third-party и showcase-only UI surfaces были видимы до появления внешнего registry.
+> - Текущий implementation cut уже перенес эти поля в first-party `rustok-module.toml` для встроенных path-модулей; синхронизация с registry и publish-flow для third-party модулей остаются следующими фазами RFC.
+> - Backend catalog loading now already goes through a provider abstraction with `local-manifest` as the first concrete provider, so adding `registry`, `git`, or private sources does not require очередного перелома внутреннего platform contract.
+> - Legacy/current API сохранять не требуется: текущие GraphQL/catalog/build contracts считаются внутренними и свободно эволюционируют как часть новой модульной системы платформы.
+> - Следующий execution step для консистентности с этим RFC: поднять внутренний `registry` provider skeleton в provider chain платформы, даже если внешний registry service еще не существует.
+>
 > **Важно**: Архитектура аутентификации для маркетплейса описана в Приложении A
 > OAuth-плана (`plan-oauth2-app-connections.md`). Три auth-потока:
 > - Admin UI → Server (OAuth PKCE прокси) → Marketplace (Platform API Key)
@@ -1215,18 +1229,25 @@ modules.rustok.dev
 - ✅ Встроенные модули в монорепе.
 - ✅ `modules.toml` как source of truth.
 - ✅ Tenant-level toggle в UI.
+- ✅ Provider abstraction для внутреннего каталога с `local-manifest` как первым concrete source.
+- ✅ Internal `registry` provider уже умеет делать базовый HTTP fetch по `{registry_url}/catalog`, кэшировать ответ в памяти и мягко деградировать в `local-manifest`, если registry недоступен.
+- ✅ Internal registry payload уже versioned (`schema_version`) и может нести compatibility bounds (`rustok_min_version` / `rustok_max_version`); платформа уже рассчитывает `compatible` на catalog projection layer.
+- ✅ Internal catalog contract уже несет provenance/history baseline: `publisher`, checksum/signature presence и `versions[]` доступны на projection layer даже до появления полноценного external registry UI.
+- ✅ Internal GraphQL contract уже умеет detail/query baseline: `marketplace(...)` поддерживает richer optional filters, а `marketplaceModule(slug)` уже сидит на том же projection layer и готов под будущую detail page.
+- ✅ Обе текущие админки уже отображают provenance/detail baseline на `/modules`: compatibility, publisher, checksum/signature presence и short version history видны прямо в catalog/update cards.
 - ❌ Нет внешнего каталога.
+- ⏳ Следующий шаг этой фазы: договориться о verified badge policy, richer dedicated detail page и затем включить `git/private` providers в ту же federated chain.
 
 ### Phase 1: Стандарт и валидатор
 
 **Цель**: Все встроенные модули следуют единому стандарту.
 
 - Определить формат `rustok-module.toml` (см. секцию 3).
-- Добавить `rustok-module.toml` ко всем существующим модулям.
-- Написать `rustok module check` валидатор.
+- Добавить `rustok-module.toml` ко всем встроенным first-party path-модулям.
+- Написать `rustok module check` валидатор (server + `cargo xtask validate-manifest` baseline уже есть; publish-grade CLI остается отдельным шагом).
 - Интегрировать валидацию в CI.
 
-**Критерий готовности**: Все 9 модулей имеют валидный `rustok-module.toml`.
+**Критерий готовности**: Все 10 встроенных path-модулей имеют валидный `rustok-module.toml`.
 
 ### Phase 2: Build Pipeline
 
@@ -1238,7 +1259,7 @@ modules.rustok.dev
 - `ManifestManager` — CRUD для `modules.toml`.
 - Build Service — запуск `cargo build` по запросу.
 - GraphQL mutations: `installModule`, `uninstallModule`.
-- GraphQL subscription: `buildProgress`.
+- GraphQL subscription: `buildProgress` (server schema/event hub contract is in place; websocket/client transport still pending, and current admin baseline uses live polling on top of `activeBuild`/`buildHistory`).
 - UI: прогресс-бар, история сборок.
 - Permissions: `marketplace:install`, `builds:view`, `builds:manage`.
 

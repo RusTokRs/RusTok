@@ -5,14 +5,24 @@ use crate::auth::hash_password;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::{
-    CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User,
+    BuildJob, CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User,
 };
 use crate::models::_entities::users::Column as UsersColumn;
+use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
 use crate::models::users;
+use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
 use crate::services::auth::AuthService;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::build_event_hub::{
+    build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
+};
+use crate::services::build_service::EventBusBuildEventPublisher;
+use crate::services::build_service::{BuildRequest, BuildService};
+use crate::services::event_bus::event_bus_from_context;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
 use rustok_core::{Action, ModuleRegistry, Permission, Resource};
+use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct RootMutation;
@@ -26,6 +36,135 @@ fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
             <FieldError as GraphQLError>::internal_error(&inner.to_string())
         }
         _ => <FieldError as GraphQLError>::internal_error("Failed to create user"),
+    }
+}
+
+fn map_manifest_error(err: ManifestError) -> FieldError {
+    match err {
+        ManifestError::UnknownModule(_)
+        | ManifestError::ModuleAlreadyInstalled(_)
+        | ManifestError::ModuleNotInstalled(_)
+        | ManifestError::RequiredModule(_)
+        | ManifestError::HasDependents { .. }
+        | ManifestError::MissingDependencies { .. }
+        | ManifestError::UnknownDefaultEnabled(_)
+        | ManifestError::VersionUnchanged(_, _)
+        | ManifestError::InvalidVersion
+        | ManifestError::MissingInRegistry(_)
+        | ManifestError::RequiredMismatch(_)
+        | ManifestError::DependencyMismatch(_)
+        | ManifestError::MissingModulePackageManifest { .. }
+        | ManifestError::InvalidModuleOwnership { .. }
+        | ManifestError::InvalidModuleTrustLevel { .. }
+        | ManifestError::InvalidModuleAdminSurface { .. }
+        | ManifestError::ConflictingModuleAdminSurface { .. } => FieldError::new(err.to_string()),
+        ManifestError::Read { .. }
+        | ManifestError::Parse { .. }
+        | ManifestError::Write { .. }
+        | ManifestError::ModulePackageRead { .. }
+        | ManifestError::ModulePackageParse { .. } => {
+            <FieldError as GraphQLError>::internal_error(&err.to_string())
+        }
+    }
+}
+
+fn parse_build_id(build_id: &str) -> Result<Uuid> {
+    Uuid::parse_str(build_id).map_err(|_| FieldError::new("Invalid build ID"))
+}
+
+async fn ensure_modules_manage_permission(
+    ctx: &Context<'_>,
+) -> Result<(AuthContext, TenantContext)> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+        .clone();
+    let tenant = ctx.data::<TenantContext>()?.clone();
+    let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+
+    let can_manage_modules = AuthService::has_permission(
+        &app_ctx.db,
+        &tenant.id,
+        &auth.user_id,
+        &Permission::new(Resource::Modules, Action::Manage),
+    )
+    .await
+    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+    if !can_manage_modules {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: modules:manage required",
+        ));
+    }
+
+    Ok((auth, tenant))
+}
+
+async fn request_build_for_manifest(
+    app_ctx: &loco_rs::prelude::AppContext,
+    tenant_id: Uuid,
+    manifest: &ModulesManifest,
+    manifest_diff: &ManifestDiff,
+    requested_by: &str,
+    reason: &str,
+) -> Result<BuildJob> {
+    let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
+        Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
+            app_ctx,
+        ))),
+        Arc::new(EventBusBuildEventPublisher::new(
+            event_bus_from_context(app_ctx),
+            tenant_id,
+        )),
+    ]));
+
+    let build = BuildService::with_event_publisher(app_ctx.db.clone(), event_publisher)
+        .request_build(BuildRequest {
+            manifest_ref: ManifestManager::manifest_ref(),
+            requested_by: requested_by.to_string(),
+            reason: Some(reason.to_string()),
+            modules_delta: manifest_diff.summary(),
+            modules: ManifestManager::build_modules(manifest),
+            profile: ManifestManager::deployment_profile(manifest),
+        })
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+    Ok(BuildJob::from_model(&build))
+}
+
+async fn persist_manifest_and_request_build(
+    app_ctx: &loco_rs::prelude::AppContext,
+    tenant_id: Uuid,
+    registry: &ModuleRegistry,
+    original_manifest: ModulesManifest,
+    manifest: ModulesManifest,
+    manifest_diff: ManifestDiff,
+    requested_by: &str,
+    reason: String,
+) -> Result<BuildJob> {
+    ManifestManager::validate_with_registry(&manifest, registry).map_err(map_manifest_error)?;
+    ManifestManager::save(&manifest).map_err(map_manifest_error)?;
+
+    match request_build_for_manifest(
+        app_ctx,
+        tenant_id,
+        &manifest,
+        &manifest_diff,
+        requested_by,
+        &reason,
+    )
+    .await
+    {
+        Ok(build) => Ok(build),
+        Err(err) => {
+            if let Err(restore_err) = ManifestManager::save(&original_manifest) {
+                return Err(<FieldError as GraphQLError>::internal_error(&format!(
+                    "failed to request build after manifest update: {err}; rollback failed: {restore_err}"
+                )));
+            }
+            Err(err)
+        }
     }
 }
 
@@ -256,6 +395,162 @@ impl RootMutation {
         Ok(DeleteUserPayload { success: true })
     }
 
+    async fn install_module(
+        &self,
+        ctx: &Context<'_>,
+        slug: String,
+        version: String,
+    ) -> Result<BuildJob> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
+
+        let mut manifest = ManifestManager::load().map_err(map_manifest_error)?;
+        let original_manifest = manifest.clone();
+        let manifest_diff =
+            ManifestManager::install_builtin_module(&mut manifest, &slug, Some(version))
+                .map_err(map_manifest_error)?;
+
+        persist_manifest_and_request_build(
+            app_ctx,
+            tenant.id,
+            registry,
+            original_manifest,
+            manifest,
+            manifest_diff,
+            &auth.user_id.to_string(),
+            format!("install module {slug}"),
+        )
+        .await
+    }
+
+    async fn uninstall_module(&self, ctx: &Context<'_>, slug: String) -> Result<BuildJob> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
+
+        let mut manifest = ManifestManager::load().map_err(map_manifest_error)?;
+        let original_manifest = manifest.clone();
+        let manifest_diff =
+            ManifestManager::uninstall_module(&mut manifest, &slug).map_err(map_manifest_error)?;
+
+        persist_manifest_and_request_build(
+            app_ctx,
+            tenant.id,
+            registry,
+            original_manifest,
+            manifest,
+            manifest_diff,
+            &auth.user_id.to_string(),
+            format!("uninstall module {slug}"),
+        )
+        .await
+    }
+
+    async fn upgrade_module(
+        &self,
+        ctx: &Context<'_>,
+        slug: String,
+        version: String,
+    ) -> Result<BuildJob> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
+
+        let mut manifest = ManifestManager::load().map_err(map_manifest_error)?;
+        let original_manifest = manifest.clone();
+        let manifest_diff = ManifestManager::upgrade_module(&mut manifest, &slug, version)
+            .map_err(map_manifest_error)?;
+
+        persist_manifest_and_request_build(
+            app_ctx,
+            tenant.id,
+            registry,
+            original_manifest,
+            manifest,
+            manifest_diff,
+            &auth.user_id.to_string(),
+            format!("upgrade module {slug}"),
+        )
+        .await
+    }
+
+    async fn rollback_build(&self, ctx: &Context<'_>, build_id: String) -> Result<BuildJob> {
+        let (_, tenant) = ensure_modules_manage_permission(ctx).await?;
+
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = BuildService::with_event_publisher(
+            app_ctx.db.clone(),
+            Arc::new(CompositeBuildEventPublisher::new(vec![
+                Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
+                    app_ctx,
+                ))),
+                Arc::new(EventBusBuildEventPublisher::new(
+                    event_bus_from_context(app_ctx),
+                    tenant.id,
+                )),
+            ])),
+        );
+
+        if service
+            .active_build()
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .is_some()
+        {
+            return Err(FieldError::new(
+                "Cannot rollback while another build is still queued or running",
+            ));
+        }
+
+        let build = service
+            .get_build(parse_build_id(&build_id)?)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .ok_or_else(|| FieldError::new("Build not found"))?;
+
+        let release_id = build
+            .release_id
+            .clone()
+            .ok_or_else(|| FieldError::new("Build does not have a release to rollback"))?;
+
+        let active_release = ReleaseEntity::find()
+            .filter(ReleaseColumn::Status.eq(ReleaseStatus::Active))
+            .one(&app_ctx.db)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .ok_or_else(|| FieldError::new("No active release available for rollback"))?;
+
+        if active_release.id != release_id {
+            return Err(FieldError::new(
+                "Only the build that backs the current active release can be rolled back",
+            ));
+        }
+
+        if active_release.previous_release_id.is_none() {
+            return Err(FieldError::new(
+                "No previous release available for rollback",
+            ));
+        }
+
+        let restored_release = service
+            .rollback(&release_id)
+            .await
+            .map_err(|err| FieldError::new(err.to_string()))?;
+
+        let restored_build = service
+            .get_build(restored_release.build_id)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::internal_error(
+                    "restored release is missing its build record",
+                )
+            })?;
+
+        Ok(BuildJob::from_model(&restored_build))
+    }
+
     async fn toggle_module(
         &self,
         ctx: &Context<'_>,
@@ -324,7 +619,7 @@ impl RootMutation {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_create_user_error, AuthLifecycleError};
+    use super::{map_create_user_error, map_manifest_error, AuthLifecycleError, ManifestError};
 
     #[test]
     fn create_user_maps_email_exists() {
@@ -338,5 +633,11 @@ mod tests {
             loco_rs::prelude::Error::InternalServerError,
         ));
         assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn manifest_error_maps_validation_errors_to_user_messages() {
+        let err = map_manifest_error(ManifestError::RequiredModule("pages".to_string()));
+        assert!(err.message.contains("required"));
     }
 }

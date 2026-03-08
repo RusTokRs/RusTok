@@ -1,15 +1,17 @@
-use crate::modules::{components_for_slot, StorefrontSlot};
+use crate::modules::{components_for_slot, init_modules, StorefrontSlot};
 use crate::pages::home::HomePage;
+use crate::shared::context::enabled_modules::{use_enabled_modules, EnabledModulesProvider};
 use crate::shared::local::{featured_products, locale_strings};
 use crate::widgets::footer::Footer;
 use crate::widgets::header::Header;
 use leptos::prelude::*;
 
 #[component]
-pub fn StorefrontShell(locale: String) -> impl IntoView {
+fn StorefrontShellContent(locale: String) -> impl IntoView {
     let strings = locale_strings(locale.as_str());
     let products = featured_products(locale.as_str());
-    let module_views = components_for_slot(StorefrontSlot::HomeAfterHero)
+    let enabled_modules = use_enabled_modules().get();
+    let module_views = components_for_slot(StorefrontSlot::HomeAfterHero, Some(&enabled_modules))
         .into_iter()
         .map(|module| (module.render)())
         .collect::<Vec<_>>();
@@ -47,5 +49,16 @@ pub fn StorefrontShell(locale: String) -> impl IntoView {
 
             <Footer tagline=strings.footer_tagline />
         </div>
+    }
+}
+
+#[component]
+pub fn StorefrontShell(locale: String, enabled_modules: Vec<String>) -> impl IntoView {
+    init_modules();
+
+    view! {
+        <EnabledModulesProvider initial_modules=enabled_modules>
+            <StorefrontShellContent locale=locale />
+        </EnabledModulesProvider>
     }
 }

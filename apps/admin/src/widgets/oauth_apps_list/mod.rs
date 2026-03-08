@@ -30,7 +30,7 @@ pub fn OAuthAppsList(
                             let app_clone2 = app.clone();
                             let on_rotate_secret = on_rotate_secret.clone();
                             let on_revoke_app = on_revoke_app.clone();
-                            
+
                             view! {
                                 <tr class="hover:bg-muted/50 transition-colors">
                                     <td class="px-4 py-3 font-medium text-slate-900">
@@ -46,14 +46,14 @@ pub fn OAuthAppsList(
                                         {app.active_token_count}
                                     </td>
                                     <td class="px-4 py-3 text-right space-x-2">
-                                        <ui_button::Button 
+                                        <ui_button::Button
                                             variant=crate::shared::ui::ButtonVariant::Outline
                                             size=crate::shared::ui::Size::Sm
                                             on:click=move |_| on_rotate_secret(app_clone1.clone())
                                         >
                                             "Rotate Secret"
                                         </ui_button::Button>
-                                        <ui_button::Button 
+                                        <ui_button::Button
                                             variant=crate::shared::ui::ButtonVariant::Destructive
                                             size=crate::shared::ui::Size::Sm
                                             on:click=move |_| on_revoke_app(app_clone2.clone())

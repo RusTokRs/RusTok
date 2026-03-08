@@ -1,14 +1,16 @@
-import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
+﻿import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import { Button } from "@/shared/ui/base/button";
 import { getModulesForSlot } from "@/modules";
+import { fetchEnabledModules } from "@/shared/api/modules";
+import { Button } from "@/shared/ui/base/button";
 
 export default async function StorefrontHome() {
   const t = await getTranslations("Storefront");
   const features = t.raw("features") as string[];
   const chips = t.raw("chips") as string[];
-  const moduleSections = getModulesForSlot("home:afterHero");
+  const enabledModules = await fetchEnabledModules();
+  const moduleSections = getModulesForSlot("home:afterHero", enabledModules);
 
   return (
     <main className="min-h-screen bg-background">
@@ -41,7 +43,7 @@ export default async function StorefrontHome() {
           </div>
           <div className="rounded-3xl border border-border bg-secondary p-6 shadow-sm">
             <div className="space-y-6">
-              <div className="rounded-2xl bg-card border border-border p-4 shadow-sm">
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Rocket className="h-5 w-5" />
@@ -56,7 +58,7 @@ export default async function StorefrontHome() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-2xl bg-card border border-border p-4 shadow-sm">
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
                     <Sparkles className="h-5 w-5" />
@@ -71,7 +73,7 @@ export default async function StorefrontHome() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-2xl bg-card border border-border p-4 shadow-sm">
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                 <p className="text-sm font-semibold text-card-foreground">
                   {t("cards.stackTitle")}
                 </p>
@@ -88,17 +90,16 @@ export default async function StorefrontHome() {
               </div>
               <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
                 <h3 className="font-semibold">{t("alertTitle")}</h3>
-                <p className="mt-1 text-muted-foreground">{t("alertDescription")}</p>
+                <p className="mt-1 text-muted-foreground">
+                  {t("alertDescription")}
+                </p>
               </div>
             </div>
           </div>
         </div>
       </section>
       {moduleSections.map((module) => (
-        <section
-          key={module.id}
-          className="mx-auto max-w-6xl px-6 pb-12"
-        >
+        <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
           {module.render()}
         </section>
       ))}

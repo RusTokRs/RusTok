@@ -1,8 +1,8 @@
 use crate::entities::product::{ProductCard, ProductCardData};
 use crate::shared::ui::{UiButton, UiInput};
-use leptos_ui::ButtonVariant;
-use leptos::prelude::*;
 use leptos::prelude::AnyView;
+use leptos::prelude::*;
+use leptos_ui::ButtonVariant;
 
 #[component]
 pub fn HomePage(

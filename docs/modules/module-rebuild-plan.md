@@ -3,6 +3,12 @@
 > Статус: RFC / Дорожная карта
 > Дата: 2026-03-03
 
+> Source of truth:
+> - Этот документ ведёт текущую реализацию и статус delivery по server/admin/storefront.
+> - `docs/modules/marketplace-plan.md` остаётся архитектурным RFC для долгосрочного marketplace/registry контракта.
+> - Если документы расходятся, для текущей codebase приоритет у этого файла; marketplace RFC задаёт целевую форму API и источников модулей.
+> - Никакого legacy/public API здесь не предполагается: все GraphQL/catalog/build contracts считаются внутренними и эволюционными частями новой модульной системы платформы.
+
 ## Философия
 
 Для администратора управление модулями выглядит **одинаково** — как в WordPress:
@@ -805,12 +811,12 @@ rustok-blog/
 | P1 | `ModuleGuard` для маршрутов | **Все 4** | Низкая | — |
 | P1 | Conditional sidebar nav по enabled модулям | Leptos Admin, Next.js Admin | Низкая | — |
 | P1 | Фильтрация storefront слотов по enabled | Leptos Storefront, Next.js Frontend | Низкая | — |
-| P2 | `rustok-module.toml` стандарт + валидатор | Server, CLI | Средняя | — |
+| P2 | `rustok-module.toml` стандарт + валидатор | Server, CLI | Средняя | Частично (Server + xtask baseline) |
 | P2 | Manifest Manager (CRUD для modules.toml) | Server | Средняя | — |
 | P2 | Build Service API (GraphQL) | Server | Высокая | — |
 | P3 | Build Orchestrator (CI/CD интеграция) | Server, CI | Высокая | — |
 | P3 | Marketplace каталог UI | Leptos Admin, Next.js Admin | Средняя | — |
-| P3 | Build progress UI | Leptos Admin, Next.js Admin | Средняя | — |
+| P3 | Build progress UI | Leptos Admin, Next.js Admin | Средняя | Частично (live polling baseline + server subscription contract) |
 | P3 | Updates tab UI | Leptos Admin, Next.js Admin | Низкая | — |
 | P3 | Cargo features авто-генерация | Server, CI | Низкая | — |
 | P4 | Маркетплейс: реестр + GraphQL API | Server (отдельный сервис) | Высокая | — |
@@ -828,3 +834,40 @@ rustok-blog/
 - **Валидация зависимостей**: перед install/uninstall проверяется граф.
 - **Маркетплейс**: модули проходят validation pipeline перед публикацией.
 - **Sandbox**: сторонние модули не имеют доступа к fs/network напрямую — только через platform API.
+
+## Implementation Log (2026-03-08)
+
+- Module detail state on `/modules` is now deep-linkable in both admin apps: the selected catalog entry is mirrored into the `module` query param, so direct links like `/modules?module=blog` reopen the same detail panel and the detail fetch path is unified between click-open and URL-open flows.
+- Marketplace catalog filtering was extended across the shared backend and both admin apps: `marketplace(...)` now accepts source-aware filtering on top of trust/compatibility/install-state, and `/modules` exposes `source` plus `installed only` controls while keeping live build refresh pinned to the applied filter set.
+- Both admin apps now have a shared catalog filtering baseline on `/modules`: Marketplace and Updates can be narrowed by search, category, trust level, and compatibility-only mode, and live orchestration refresh now respects the active filter set instead of snapping back to an unfiltered catalog snapshot.
+- `/modules` in both admin apps now exposes a dedicated module detail panel backed by `marketplaceModule(slug)`: Installed, Marketplace, and Updates cards all share a Details action, and the panel centralizes package metadata, admin-surface policy, compatibility, provenance, and short version history for review.
+- Admin P1 completed in both admin apps: EnabledModulesProvider, ModuleGuard, module-aware navigation filtering, and live toggle state sync.
+- Storefront P1 completed in both storefront apps: EnabledModulesProvider, ModuleGuard primitives, and slot filtering by enabled modules.
+- Shared module registration was updated where needed: @rustok/blog-frontend now registers moduleSlug = "blog" so module-owned widgets disappear when the tenant disables Blog.
+- Platform-level backend now has a concrete ManifestManager for modules.toml: install/uninstall/upgrade diffing, deployment-profile derivation, default-enabled sync, and relaxed registry validation so optional modules can be removed before the rebuild deploys.
+- Server GraphQL now exposes the first platform lifecycle surface for both admin stacks: installedModules, activeBuild, buildHistory, installModule, uninstallModule, and upgradeModule, all wired to the existing BuildService and current modules:read/list/manage permissions.
+- Both admin apps now consume that lifecycle on /modules: they show installed-vs-runtime state, active build status, recent build history, and platform install/uninstall actions next to the existing tenant toggle UX.
+- Remaining work is now concentrated in build orchestration/subscriptions and rollback/log streaming UX on top of the new API surface; the shared admin workspace now has Installed, Marketplace, and Updates tabs in both stacks.
+- Admin P3 workspace UI completed in both admin apps: /modules now uses consistent Installed, Marketplace, and Updates tabs, backed by installed module metadata and upgrade actions on top of the shared GraphQL lifecycle surface.
+- Build progress UX was expanded in both admin apps with progress cards, rebuild history visibility, and queue-state locking around install/uninstall/upgrade actions.
+- Rollback/read-side lifecycle is now exposed on the shared GraphQL surface: activeRelease and rollbackBuild are available, and build payloads now carry releaseId, logsUrl, errorMessage, and manifest metadata for richer admin recovery UX.
+- Both admin apps now surface active release context in /modules, expose rollback for the currently active releasable build, and show error/log metadata directly inside build history cards.
+- Marketplace planning is now explicitly split into two layers: this file tracks execution in the monorepo, while `marketplace-plan.md` owns the future registry/network architecture.
+- Both admin apps now use a dedicated `marketplace` catalog query instead of deriving the Marketplace tab from `moduleRegistry`; the server catalog is backed by `modules.toml` as source of truth and enriched with `ModuleRegistry` runtime metadata for current built-in modules.
+- The new marketplace catalog contract already carries module source semantics (`path`/future `registry`/future `git`) and installed/update status, so the current UI stays consistent with the long-term marketplace RFC even before the external registry service exists.
+- Module catalog metadata now carries ownership/trust/admin-surface policy: first-party vs third-party, trust level, recommended admin surfaces, and showcase-only admin surfaces.
+- `/modules` in both admin apps now makes the product policy explicit: Leptos admin is the canonical module surface, while Next admin is treated as a showcase surface and only modules explicitly marked for Next showcase support advertise that path.
+- The ownership/trust/admin-surface policy was moved out of GraphQL resolver hardcode into `modules.toml`/manifest metadata, so future first-party and third-party modules can be reviewed directly in the manifest and later mirrored into `rustok-module.toml` or external registry records.
+- First-party path modules now carry their own `rustok-module.toml`, while `modules.toml` is back to being the platform composition manifest instead of the place where ownership/trust/admin-surface policy is duplicated.
+- Server-side validation now treats `rustok-module.toml` as a real contract for path modules: the catalog fails fast if the file is missing or if ownership/trust/admin-surface metadata is invalid or contradictory.
+- `cargo xtask validate-manifest` now validates both `modules.toml` and module-level `rustok-module.toml` files with the same ownership/trust/admin-surface rules, so the contract is no longer runtime-only.
+- `/modules` in both admin apps now auto-refreshes orchestration state every 5 seconds while a build is active, so progress/history/release state keeps moving without manual refresh even before a dedicated GraphQL/WebSocket subscription transport lands.
+- Server-side build lifecycle now has a dedicated realtime contract: `BuildService` publishes build state changes into a shared build event hub, GraphQL schema exposes `buildProgress`, and module mutations no longer request builds through a noop publisher path.
+- Загрузка marketplace-каталога теперь идет через отдельный provider service на сервере с базовым `local-manifest` provider; это оставляет внутренний platform contract свободно меняемым и уже создает точку расширения под будущие `registry`, `git` и private providers из marketplace RFC.
+- В плане отдельно зафиксировано, что дальнейшая работа идёт не от "старого API", а от новой эволюционной системы; следующий marketplace-aligned execution step — добавить внутренний `registry` provider skeleton рядом с `local-manifest`, чтобы federated chain проверялась не только по RFC, но и по коду.
+- Этот следующий шаг выполнен на execution-слое: `MarketplaceCatalogService::evolutionary_defaults()` теперь поднимает chain `local-manifest -> registry`, `registry` provider читает внутреннюю конфигурацию `RUSTOK_MARKETPLACE_REGISTRY_URL` и пока осознанно работает как skeleton без fetch-логики, а unit-test закрепляет приоритет первого provider по slug и наличие обоих source-слоев в default chain.
+- `registry` provider больше не пустой: он умеет делать HTTP fetch по внутреннему endpoint `{registry_url}/catalog`, кэширует каталог в памяти (`RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS`, default 60s), использует таймаут `RUSTOK_MARKETPLACE_REGISTRY_TIMEOUT_MS` (default 3000ms) и при ошибке мягко деградирует в локальный каталог без падения `/modules`.
+- Internal registry contract стал versioned: provider теперь ожидает `schema_version = 1`, registry-модули могут нести `rustok_min_version` / `rustok_max_version`, а GraphQL marketplace projection уже рассчитывает `compatible` на стороне платформы по текущей версии RusTok вместо слепого списка модулей.
+- Catalog provenance тоже начал жить в internal contract: registry payload и GraphQL projection теперь готовы к `publisher`, `checksum_sha256`, `signature_present` и `versions[]`, so future admin/detail UI сможет показывать verification trail и history без нового перелома схемы.
+- GraphQL marketplace contract перестал быть list-only: `marketplace(...)` теперь поддерживает richer optional filters (`trustLevel`, `onlyCompatible`, `installedOnly`), а `marketplaceModule(slug)` уже отдает detail-ready projection поверх того же catalog/provider слоя.
+- `/modules` в обеих админках теперь реально подхватывает новый catalog detail surface: карточки marketplace/install/update показывают compatibility, publisher, checksum/signature provenance и короткий version trail, так что verification/history metadata уже дошла до UI, а не осталась только в schema.

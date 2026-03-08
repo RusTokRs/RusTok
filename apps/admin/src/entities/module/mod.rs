@@ -1,3 +1,5 @@
 pub mod model;
 
-pub use model::{ModuleInfo, ToggleModuleResult};
+pub use model::{
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, ToggleModuleResult,
+};
