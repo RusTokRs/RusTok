@@ -89,13 +89,13 @@ compatibility with platform-level contracts.
 ### Phase 3 — Productionization (planned)
 
 - [x] CommentService implementation
-- [ ] CategoryService implementation
-- [ ] TagService implementation
+- [ ] CategoryService implementation (service not started; requirements decomposed below)
+- [ ] TagService implementation (service not started; requirements decomposed below)
 - [ ] RBAC enforcement: check permissions in service layer
 - [ ] Rate limiting for post creation
 - [ ] Full-text search integration via rustok-index
 - [ ] Performance testing and optimization
-- [ ] Integration tests with test database
+- [ ] Integration tests with test database (partially implemented: comment/post flows)
 - [ ] View counter via redis/atomic increment
 - [ ] category_name denormalization in list responses
 
@@ -110,13 +110,99 @@ compatibility with platform-level contracts.
 | `state_machine_proptest.rs` | ✅ Complete | Property-based tests |
 | `services/post.rs` | ✅ Complete | Full CRUD + i18n + events |
 | `services/comment.rs` | ✅ Complete | CRUD + locale fallback + threaded comments |
-| `services/category.rs` | ⬜ TODO | Blog categories |
-| `services/tag.rs` | ⬜ TODO | Tag management |
+| `services/category.rs` | ⬜ TODO (not created) | No file yet; implementation tracked in roadmap block below |
+| `services/tag.rs` | ⬜ TODO (not created) | No file yet; implementation tracked in roadmap block below |
 | `dto/post.rs` | ✅ Complete | All fields, i18n, SEO, pagination |
 | `entities/` | ✅ Complete | Re-exports from content module |
 | Tests (unit) | ✅ Complete | State machine, DTOs, errors, locale, service |
-| Tests (integration) | ⬜ TODO | Requires test database |
+| Tests (integration) | 🟨 In progress | Runnable sqlite integration tests exist; several DB-dependent lifecycle tests still ignored |
 | Documentation | ✅ Complete | README, CRATE_API, docs |
+
+## Open TODO decomposition
+
+### `services/category.rs` — ⬜ TODO (Phase 3 / Priority: P1)
+
+**Scope of work**
+- Add `CategoryService` with CRUD + list API (`create_category`, `get_category`, `update_category`, `delete_category`, `list_categories`) aligned with blog tenancy model.
+- Define category DTOs in `dto/category.rs` and export from crate root.
+- Integrate with `PostService` validation to reject non-existing `category_id` at create/update time.
+- Provide REST/GraphQL endpoints after service readiness (same release phase).
+
+**Dependencies (data/migrations/API)**
+- Data model source: `rustok-content` entities (`nodes` + metadata) and/or dedicated category storage decision.
+- Migrations: if category gets dedicated table, add migration in content/blog migration chain; if metadata-based, no schema migration but strict metadata contract update.
+- API dependencies: synchronized changes in server handlers and GraphQL schema for category management.
+
+**Definition of Done**
+- `CategoryService` implemented and exported via `services/mod.rs` and `lib.rs`.
+- All methods enforce tenant isolation and return `BlogError::CategoryNotFound` where applicable.
+- Post create/update validates `category_id` existence.
+- REST + GraphQL contracts updated and documented.
+
+**Test scenarios**
+- Unit: create/get/update/delete/list happy paths.
+- Unit: category not found, duplicate slug/name handling, cross-tenant access forbidden.
+- Integration: post creation with valid category succeeds; with missing category fails.
+
+**Key implementation references (current related code)**
+- Error contract already present: [`src/error.rs`](../src/error.rs).
+- Category identifier already present in post DTO/service payloads: [`src/dto/post.rs`](../src/dto/post.rs), [`src/services/post.rs`](../src/services/post.rs).
+
+### `services/tag.rs` — ⬜ TODO (Phase 3 / Priority: P1)
+
+**Scope of work**
+- Add `TagService` with CRUD/list + optional slug normalization.
+- Define DTOs in `dto/tag.rs` and export from public API.
+- Connect `PostService` validation to ensure submitted tags exist or are auto-created (strategy to be fixed before implementation).
+- Add API surface for tag discovery/management.
+
+**Dependencies (data/migrations/API)**
+- Data: resolve canonical tag storage (`nodes` metadata vs dedicated table) and uniqueness constraints.
+- Migrations: required if dedicated storage/unique index is introduced.
+- API: REST and GraphQL query/mutation additions for tags; docs + OpenAPI sync.
+
+**Definition of Done**
+- `TagService` implemented and exported.
+- Tag lifecycle covered by tenant-aware validation and deterministic normalization.
+- Post flows either validate-only or upsert tags according to approved policy.
+- API + docs fully synchronized.
+
+**Test scenarios**
+- Unit: create/list/update/delete tags, normalization, duplicate prevention.
+- Unit: tenant isolation and `TagNotFound` mapping.
+- Integration: filter posts by tag with persisted tag entities.
+
+**Key implementation references (current related code)**
+- Tag-related errors already defined: [`src/error.rs`](../src/error.rs).
+- Existing post tag flow + filtering API: [`src/services/post.rs`](../src/services/post.rs), [`src/dto/post.rs`](../src/dto/post.rs).
+
+### Tests (integration) — 🟨 Partial implementation (Phase 3 / Priority: P0)
+
+**Actual status in code**
+- File `tests/integration.rs` already includes working sqlite-backed integration coverage for comment/thread workflows and event checks.
+- Several post lifecycle tests remain `#[ignore]` and currently act as placeholders for full DB/migration/indexer wiring.
+
+**Scope of remaining work**
+- Unignore and complete post lifecycle integration tests (`create → publish → list/filter → delete guards`).
+- Wire test bootstrap to real migration path instead of ad-hoc schema SQL.
+- Add assertions for emitted blog domain events and permission checks.
+
+**Dependencies (data/migrations/API)**
+- Stable test DB bootstrap (sqlite or postgres) with deterministic migration execution.
+- Optional index/outbox test harness when validating publish/index flows.
+
+**Definition of Done**
+- Ignored integration tests converted into green, deterministic CI-suitable tests (or split into explicit nightly profile with clear policy).
+- Coverage includes post lifecycle, list filtering by tag/category, forbidden mutations, and publish/delete invariants.
+
+**Test scenarios**
+- `test_create_and_publish_post`: status transitions + publish timestamps.
+- `test_list_posts_with_pagination` and `test_filter_posts_by_tag`: pagination and filtering correctness.
+- `test_cannot_delete_published_post`: invariant enforcement.
+
+**Key implementation references**
+- Integration test suite: [`tests/integration.rs`](../tests/integration.rs).
+- Current service behavior under test: [`src/services/post.rs`](../src/services/post.rs), [`src/services/comment.rs`](../src/services/comment.rs).
 
 ## Module Contracts
 
@@ -185,4 +271,4 @@ or observability expectations:
 
 ## Last Updated
 
-2025-02-24 — Phase 2 complete: i18n, events, full fields, REST/GraphQL expansion
+2026-03-11 — TODO decomposition updated for Category/Tag services and integration-test status synced with actual code
