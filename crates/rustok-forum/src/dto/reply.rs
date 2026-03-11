@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -7,8 +9,9 @@ use uuid::Uuid;
 pub struct CreateReplyInput {
     pub locale: String,
     pub content: String,
-    pub content_format: Option<String>,
-    pub content_json: Option<serde_json::Value>,
+    #[serde(default = "default_content_format")]
+    pub content_format: String,
+    pub content_json: Option<Value>,
     pub parent_reply_id: Option<Uuid>,
 }
 
@@ -17,7 +20,7 @@ pub struct UpdateReplyInput {
     pub locale: String,
     pub content: Option<String>,
     pub content_format: Option<String>,
-    pub content_json: Option<serde_json::Value>,
+    pub content_json: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
@@ -35,6 +38,10 @@ fn default_page() -> u64 {
 
 fn default_per_page() -> u64 {
     20
+}
+
+fn default_content_format() -> String {
+    CONTENT_FORMAT_MARKDOWN.to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

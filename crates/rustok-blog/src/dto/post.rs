@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -12,7 +14,8 @@ pub struct CreatePostInput {
     #[schema(max_length = 512)]
     pub title: String,
     pub body: String,
-    pub body_format: Option<String>,
+    #[serde(default = "default_content_format")]
+    pub body_format: String,
     pub content_json: Option<Value>,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
@@ -225,4 +228,8 @@ impl PostListResponse {
             total_pages,
         }
     }
+}
+
+fn default_content_format() -> String {
+    CONTENT_FORMAT_MARKDOWN.to_string()
 }

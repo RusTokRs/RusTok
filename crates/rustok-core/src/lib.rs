@@ -2,6 +2,7 @@ pub mod async_utils;
 pub mod auth;
 pub mod cache;
 pub mod config;
+pub mod content_format;
 pub mod context;
 pub mod error;
 pub mod events;
@@ -40,6 +41,10 @@ pub use cache::{CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
 pub use config::{
     Config, ConfigError, ConfigLoader, ConfigSource, ConfigValue, DatabaseConfig, Secret,
     ServerConfig,
+};
+pub use content_format::{
+    normalize_content_format, prepare_content_payload, PreparedContent, CONTENT_FORMAT_MARKDOWN,
+    CONTENT_FORMAT_RT_JSON_V1,
 };
 pub use context::{AppContext, CacheBackend, SearchBackend};
 pub use error::{

@@ -91,14 +91,27 @@
 
 1. schema validation (`version/locale/doc`, allowed nodes/marks, limits, URL/embed policy),
 2. sanitize (drop unknown nodes/marks, normalize attrs),
-3. сохранение только sanitized JSON,
-4. повторный sanitize/normalization перед HTML-рендером (defense in depth).
+3. сохранение только sanitized JSON.
 
-## Контракт чтения (response DTO)
+## План миграции `markdown -> rt_json_v1` (без ломающего релиза)
 
-Для blog/forum в ответах используется единый контракт чтения rich-контента:
+Миграция выполняется поэтапно, с сохранением обратной совместимости:
 
-- `body_format`/`content_format` всегда присутствует и определяет формат (`markdown` или `rt_json_v1`).
-- При `*_format = "rt_json_v1"` backend возвращает нормализованный JSON в отдельном поле `content_json` (объект).
-- При `*_format = "markdown"` поле `content_json` равно `null`, а текст читается из `body`/`content`.
-- Поля `body`/`content` сохраняются в response для backward compatibility; для `rt_json_v1` в них может лежать строковое JSON-представление того же документа.
+1. **Dual-write-ready API (текущий этап)**
+   - DTO create/update принимают `body_format`/`content_format` и `content_json`.
+   - Backend принимает оба формата: `markdown` и `rt_json_v1`.
+   - Для rich-контента хранится sanitизированный `rt_json_v1`.
+2. **Dual-read + legacy fallback**
+   - При чтении старых записей без формата или с историческим markdown применяется fallback `markdown`.
+   - Миграция БД на этом шаге не требуется.
+3. **Фоновая конверсия исторических данных**
+   - Batch-job конвертирует markdown-записи в `rt_json_v1` в фоне (tenant-by-tenant / module-by-module).
+   - Для каждой записи сохраняется both audit trail и возможность безопасного retry.
+4. **Gradual rollout по каналам записи**
+   - UI/API клиенты постепенно переключаются на отправку `rt_json_v1`.
+   - Метрики: доля `rt_json_v1` записей, ошибки валидации, sanitize-drop rate.
+5. **Ограничение legacy writes (после saturation)**
+   - После достижения целевого порога (>95% rich writes) вводится soft-warning для новых markdown-записей.
+   - Жёсткое отключение markdown допускается только отдельным ADR и релиз-нотом.
+
+Ключевой принцип: **read compatibility сохраняется на всех этапах**, поэтому нет необходимости в «big bang» миграции.

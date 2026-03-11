@@ -5,9 +5,7 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{
-    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
-};
+use rustok_core::{prepare_content_payload, DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::constants::{topic_status, KIND_TOPIC};
@@ -55,25 +53,14 @@ impl TopicService {
         let category_id = input.category_id;
         let locale = input.locale.clone();
 
-        let body_format = input
-            .body_format
-            .clone()
-            .unwrap_or_else(|| "markdown".to_string());
-        let body_value = if body_format == "rt_json_v1" {
-            let body_json = input.content_json.clone().ok_or_else(|| {
-                ForumError::Validation(
-                    "content_json is required when body_format is rt_json_v1".to_string(),
-                )
-            })?;
-            let body_validation = validate_and_sanitize_rt_json(
-                &body_json,
-                &RtJsonValidationConfig::for_locale(&locale),
-            )
-            .map_err(ForumError::Validation)?;
-            body_validation.sanitized.to_string()
-        } else {
-            input.body.clone()
-        };
+        let prepared_body = prepare_content_payload(
+            Some(&input.body_format),
+            Some(&input.body),
+            input.content_json.as_ref(),
+            &locale,
+            "Topic body",
+        )
+        .map_err(ForumError::Validation)?;
 
         let metadata = serde_json::json!({
             "tags": input.tags,
@@ -109,8 +96,8 @@ impl TopicService {
                     }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(body_value),
-                        format: Some(body_format),
+                        body: Some(prepared_body.body),
+                        format: Some(prepared_body.format),
                     }],
                 },
             )
@@ -181,36 +168,21 @@ impl TopicService {
         };
 
         let bodies = if input.body.is_some()
-            || input.body_format.is_some()
             || input.content_json.is_some()
+            || input.body_format.is_some()
         {
-            let body_format = input
-                .body_format
-                .clone()
-                .unwrap_or_else(|| "markdown".to_string());
-            let body_value = if body_format == "rt_json_v1" {
-                let body_json = input.content_json.clone().ok_or_else(|| {
-                    ForumError::Validation(
-                        "content_json is required when body_format is rt_json_v1".to_string(),
-                    )
-                })?;
-                let body_validation = validate_and_sanitize_rt_json(
-                    &body_json,
-                    &RtJsonValidationConfig::for_locale(&input.locale),
-                )
-                .map_err(ForumError::Validation)?;
-                body_validation.sanitized.to_string()
-            } else {
-                input.body.clone().ok_or_else(|| {
-                    ForumError::Validation(
-                        "body is required when body_format is markdown".to_string(),
-                    )
-                })?
-            };
+            let prepared_body = prepare_content_payload(
+                input.body_format.as_deref(),
+                input.body.as_deref(),
+                input.content_json.as_ref(),
+                &input.locale,
+                "Topic body",
+            )
+            .map_err(ForumError::Validation)?;
             Some(vec![BodyInput {
                 locale: input.locale.clone(),
-                body: Some(body_value),
-                format: Some(body_format),
+                body: Some(prepared_body.body),
+                format: Some(prepared_body.format),
             }])
         } else {
             None

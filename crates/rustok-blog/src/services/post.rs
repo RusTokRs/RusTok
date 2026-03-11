@@ -5,9 +5,7 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{
-    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
-};
+use rustok_core::{prepare_content_payload, DomainEvent, SecurityContext, CONTENT_FORMAT_MARKDOWN};
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
@@ -63,23 +61,14 @@ impl PostService {
         let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
         let locale = input.locale.clone();
 
-        let body_format = input
-            .body_format
-            .clone()
-            .unwrap_or_else(|| "markdown".to_string());
-        let body_value = if body_format == "rt_json_v1" {
-            let body_json = input.content_json.clone().ok_or_else(|| {
-                BlogError::validation("content_json is required when body_format is rt_json_v1")
-            })?;
-            let body_validation = validate_and_sanitize_rt_json(
-                &body_json,
-                &RtJsonValidationConfig::for_locale(&locale),
-            )
-            .map_err(BlogError::validation)?;
-            body_validation.sanitized.to_string()
-        } else {
-            input.body.clone()
-        };
+        let prepared_body = prepare_content_payload(
+            Some(&input.body_format),
+            Some(&input.body),
+            input.content_json.as_ref(),
+            &locale,
+            "Body",
+        )
+        .map_err(BlogError::validation)?;
 
         let mut metadata = input.metadata.unwrap_or_else(|| serde_json::json!({}));
         if let Value::Object(map) = &mut metadata {
@@ -138,8 +127,8 @@ impl PostService {
                     }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(body_value),
-                        format: Some(body_format),
+                        body: Some(prepared_body.body),
+                        format: Some(prepared_body.format),
                     }],
                 },
             )
@@ -185,30 +174,19 @@ impl PostService {
             }]);
         }
 
-        if input.body.is_some() || input.body_format.is_some() || input.content_json.is_some() {
-            let body_format = input
-                .body_format
-                .clone()
-                .unwrap_or_else(|| "markdown".to_string());
-            let body_value = if body_format == "rt_json_v1" {
-                let body_json = input.content_json.clone().ok_or_else(|| {
-                    BlogError::validation("content_json is required when body_format is rt_json_v1")
-                })?;
-                let body_validation = validate_and_sanitize_rt_json(
-                    &body_json,
-                    &RtJsonValidationConfig::for_locale(&locale),
-                )
-                .map_err(BlogError::validation)?;
-                body_validation.sanitized.to_string()
-            } else {
-                input.body.clone().ok_or_else(|| {
-                    BlogError::validation("body is required when body_format is markdown")
-                })?
-            };
+        if input.body.is_some() || input.content_json.is_some() || input.body_format.is_some() {
+            let prepared_body = prepare_content_payload(
+                input.body_format.as_deref(),
+                input.body.as_deref(),
+                input.content_json.as_ref(),
+                &locale,
+                "Body",
+            )
+            .map_err(BlogError::validation)?;
             update.bodies = Some(vec![BodyInput {
                 locale: locale.clone(),
-                body: Some(body_value),
-                format: Some(body_format),
+                body: Some(prepared_body.body),
+                format: Some(prepared_body.format),
             }]);
         }
 
@@ -479,9 +457,10 @@ impl PostService {
             locale: locale.to_string(),
             effective_locale: tr.effective_locale,
             available_locales: all_locales,
-            body,
-            body_format,
-            content_json,
+            body: body_resp.and_then(|b| b.body.clone()).unwrap_or_default(),
+            body_format: body_resp
+                .map(|b| b.format.clone())
+                .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
             excerpt: translation.and_then(|t| t.excerpt.clone()),
             status: map_content_status(node.status),
             category_id,

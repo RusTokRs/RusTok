@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -10,8 +12,9 @@ pub struct CreateTopicInput {
     pub title: String,
     pub slug: Option<String>,
     pub body: String,
-    pub body_format: Option<String>,
-    pub content_json: Option<serde_json::Value>,
+    #[serde(default = "default_content_format")]
+    pub body_format: String,
+    pub content_json: Option<Value>,
     pub tags: Vec<String>,
 }
 
@@ -21,7 +24,7 @@ pub struct UpdateTopicInput {
     pub title: Option<String>,
     pub body: Option<String>,
     pub body_format: Option<String>,
-    pub content_json: Option<serde_json::Value>,
+    pub content_json: Option<Value>,
     pub tags: Option<Vec<String>>,
 }
 
@@ -42,6 +45,10 @@ fn default_page() -> u64 {
 
 fn default_per_page() -> u64 {
     20
+}
+
+fn default_content_format() -> String {
+    CONTENT_FORMAT_MARKDOWN.to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

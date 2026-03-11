@@ -5,9 +5,7 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{
-    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
-};
+use rustok_core::{prepare_content_payload, DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
@@ -59,23 +57,15 @@ impl CommentService {
         }
 
         let locale = input.locale.clone();
-        let content_format = input
-            .content_format
-            .clone()
-            .unwrap_or_else(|| "markdown".to_string());
-        let content = if content_format == "rt_json_v1" {
-            let content_json = input.content_json.clone().ok_or_else(|| {
-                BlogError::validation("content_json is required when content_format is rt_json_v1")
-            })?;
-            let content_validation = validate_and_sanitize_rt_json(
-                &content_json,
-                &RtJsonValidationConfig::for_locale(&locale),
-            )
-            .map_err(BlogError::validation)?;
-            content_validation.sanitized.to_string()
-        } else {
-            input.content
-        };
+        let content = input.content;
+        let prepared_content = prepare_content_payload(
+            Some(&input.content_format),
+            Some(&content),
+            input.content_json.as_ref(),
+            &locale,
+            "Comment content",
+        )
+        .map_err(BlogError::validation)?;
         let translation_title = Self::build_comment_translation_title(&content);
         let metadata = serde_json::json!({
             "parent_comment_id": input.parent_comment_id,
@@ -108,8 +98,8 @@ impl CommentService {
                     }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(content),
-                        format: Some(content_format),
+                        body: Some(prepared_content.body),
+                        format: Some(prepared_content.format),
                     }],
                 },
             )
@@ -174,34 +164,21 @@ impl CommentService {
             .get_comment(tenant_id, comment_id, &input.locale)
             .await?;
         let bodies = if input.content.is_some()
-            || input.content_format.is_some()
             || input.content_json.is_some()
+            || input.content_format.is_some()
         {
-            let content_format = input
-                .content_format
-                .clone()
-                .unwrap_or_else(|| "markdown".to_string());
-            let content_value = if content_format == "rt_json_v1" {
-                let content_json = input.content_json.clone().ok_or_else(|| {
-                    BlogError::validation(
-                        "content_json is required when content_format is rt_json_v1",
-                    )
-                })?;
-                let content_validation = validate_and_sanitize_rt_json(
-                    &content_json,
-                    &RtJsonValidationConfig::for_locale(&input.locale),
-                )
-                .map_err(BlogError::validation)?;
-                content_validation.sanitized.to_string()
-            } else {
-                input.content.clone().ok_or_else(|| {
-                    BlogError::validation("content is required when content_format is markdown")
-                })?
-            };
+            let prepared_content = prepare_content_payload(
+                input.content_format.as_deref(),
+                input.content.as_deref(),
+                input.content_json.as_ref(),
+                &input.locale,
+                "Comment content",
+            )
+            .map_err(BlogError::validation)?;
             Some(vec![BodyInput {
                 locale: input.locale.clone(),
-                body: Some(content_value),
-                format: Some(content_format),
+                body: Some(prepared_content.body),
+                format: Some(prepared_content.format),
             }])
         } else {
             None

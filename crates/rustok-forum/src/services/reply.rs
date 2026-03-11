@@ -3,9 +3,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::{BodyInput, CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
-use rustok_core::{
-    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
-};
+use rustok_core::{prepare_content_payload, DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::constants::{reply_status, topic_status, KIND_REPLY, KIND_TOPIC};
@@ -66,25 +64,14 @@ impl ReplyService {
         let author_id = security.user_id;
         let locale = input.locale.clone();
 
-        let content_format = input
-            .content_format
-            .clone()
-            .unwrap_or_else(|| "markdown".to_string());
-        let content_value = if content_format == "rt_json_v1" {
-            let content_json = input.content_json.clone().ok_or_else(|| {
-                ForumError::Validation(
-                    "content_json is required when content_format is rt_json_v1".to_string(),
-                )
-            })?;
-            let content_validation = validate_and_sanitize_rt_json(
-                &content_json,
-                &RtJsonValidationConfig::for_locale(&locale),
-            )
-            .map_err(ForumError::Validation)?;
-            content_validation.sanitized.to_string()
-        } else {
-            input.content.clone()
-        };
+        let prepared_content = prepare_content_payload(
+            Some(&input.content_format),
+            Some(&input.content),
+            input.content_json.as_ref(),
+            &locale,
+            "Reply content",
+        )
+        .map_err(ForumError::Validation)?;
 
         let metadata = serde_json::json!({
             "parent_reply_id": input.parent_reply_id,
@@ -112,8 +99,8 @@ impl ReplyService {
                     translations: Vec::new(),
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(content_value),
-                        format: Some(content_format),
+                        body: Some(prepared_content.body),
+                        format: Some(prepared_content.format),
                     }],
                 },
             )
@@ -165,36 +152,21 @@ impl ReplyService {
     ) -> ForumResult<ReplyResponse> {
         let existing = self.get(tenant_id, reply_id, &input.locale).await?;
         let bodies = if input.content.is_some()
-            || input.content_format.is_some()
             || input.content_json.is_some()
+            || input.content_format.is_some()
         {
-            let content_format = input
-                .content_format
-                .clone()
-                .unwrap_or_else(|| "markdown".to_string());
-            let content_value = if content_format == "rt_json_v1" {
-                let content_json = input.content_json.clone().ok_or_else(|| {
-                    ForumError::Validation(
-                        "content_json is required when content_format is rt_json_v1".to_string(),
-                    )
-                })?;
-                let content_validation = validate_and_sanitize_rt_json(
-                    &content_json,
-                    &RtJsonValidationConfig::for_locale(&input.locale),
-                )
-                .map_err(ForumError::Validation)?;
-                content_validation.sanitized.to_string()
-            } else {
-                input.content.clone().ok_or_else(|| {
-                    ForumError::Validation(
-                        "content is required when content_format is markdown".to_string(),
-                    )
-                })?
-            };
+            let prepared_content = prepare_content_payload(
+                input.content_format.as_deref(),
+                input.content.as_deref(),
+                input.content_json.as_ref(),
+                &input.locale,
+                "Reply content",
+            )
+            .map_err(ForumError::Validation)?;
             Some(vec![BodyInput {
                 locale: input.locale.clone(),
-                body: Some(content_value),
-                format: Some(content_format),
+                body: Some(prepared_content.body),
+                format: Some(prepared_content.format),
             }])
         } else {
             None
