@@ -134,7 +134,20 @@ async fn next_event(
 }
 
 #[derive(Clone)]
-struct FailingTransport;
+struct FailingTransport {
+    sender: broadcast::Sender<EventEnvelope>,
+}
+
+impl FailingTransport {
+    fn new() -> Self {
+        let (sender, _) = broadcast::channel(16);
+        Self { sender }
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<EventEnvelope> {
+        self.sender.subscribe()
+    }
+}
 
 #[async_trait]
 impl EventTransport for FailingTransport {
@@ -284,15 +297,15 @@ mod unit_tests {
     }
 
     #[tokio::test]
-    async fn test_non_outbox_transport_fails_before_any_event_is_observed() {
+    async fn test_publish_with_failing_transport_returns_error_and_does_not_deliver_event() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
-        let mut receiver = MemoryTransport::new().subscribe();
-        let event_bus = TransactionalEventBus::new(Arc::new(FailingTransport));
+        let failing_transport = FailingTransport::new();
+        let mut receiver = failing_transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(failing_transport));
 
         let result = event_bus
-            .publish_in_tx(
-                &(),
+            .publish(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::BlogPostCreated {
@@ -311,7 +324,7 @@ mod unit_tests {
     }
 
     #[tokio::test]
-    async fn test_memory_transport_publish_in_tx_delivers_blog_event() {
+    async fn test_publish_with_memory_transport_delivers_blog_event() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let transport = MemoryTransport::new();
@@ -319,8 +332,7 @@ mod unit_tests {
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
         event_bus
-            .publish_in_tx(
-                &(),
+            .publish(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::BlogPostCreated {
@@ -330,7 +342,7 @@ mod unit_tests {
                 },
             )
             .await
-            .expect("memory transport should accept publish_in_tx");
+            .expect("memory transport should accept publish");
 
         let envelope = receiver.recv().await.expect("event should be published");
         assert_eq!(envelope.tenant_id, tenant_id);
