@@ -6,14 +6,19 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_blog::dto::CreateCommentInput;
 use rustok_blog::dto::{CreatePostInput, PostListQuery};
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::BlogError;
+use rustok_blog::{CommentService, PostService};
 use rustok_core::events::EventEnvelope;
 use rustok_core::{
     DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole,
 };
 use rustok_outbox::TransactionalEventBus;
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -121,6 +126,157 @@ async fn test_context() -> TestResult<TestContext> {
         _tenant_id: Uuid::new_v4(),
         _events: event_receiver,
     })
+}
+
+async fn setup_blog_test_db() -> DatabaseConnection {
+    let db_url = format!(
+        "sqlite:file:blog_integration_{}?mode=memory&cache=shared",
+        Uuid::new_v4()
+    );
+    let mut opts = ConnectOptions::new(db_url);
+    opts.max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
+
+    Database::connect(opts)
+        .await
+        .expect("failed to connect blog test sqlite database")
+}
+
+async fn ensure_blog_schema(db: &DatabaseConnection) {
+    if db.get_database_backend() != DbBackend::Sqlite {
+        return;
+    }
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS nodes (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            parent_id TEXT NULL,
+            author_id TEXT NULL,
+            kind TEXT NOT NULL,
+            category_id TEXT NULL,
+            status TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            depth INTEGER NOT NULL,
+            reply_count INTEGER NOT NULL,
+            metadata TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            published_at TEXT NULL,
+            deleted_at TEXT NULL,
+            version INTEGER NOT NULL DEFAULT 1
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create nodes table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS node_translations (
+            id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            title TEXT NULL,
+            slug TEXT NULL,
+            excerpt TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(node_id) REFERENCES nodes(id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create node_translations table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS bodies (
+            id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            body TEXT NULL,
+            format TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(node_id) REFERENCES nodes(id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create bodies table");
+}
+
+#[tokio::test]
+#[ignore = "Integration test requires database"]
+async fn test_create_comment_succeeds_with_required_translation() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let comment_service = CommentService::new(db.clone(), event_bus);
+
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let security = SecurityContext::new(UserRole::Admin, Some(actor_id));
+
+    let post = post_service
+        .create_post(
+            tenant_id,
+            security.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Post for comments".to_string(),
+                body: "Post body".to_string(),
+                excerpt: None,
+                slug: None,
+                publish: false,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("post should be created for comment test");
+
+    let result = comment_service
+        .create_comment(
+            tenant_id,
+            security,
+            post,
+            CreateCommentInput {
+                locale: "en".to_string(),
+                content: "This comment should be persisted".to_string(),
+                parent_comment_id: None,
+            },
+        )
+        .await;
+
+    match result {
+        Ok(comment) => {
+            assert_eq!(comment.post_id, post);
+            assert_eq!(comment.content, "This comment should be persisted");
+            assert_eq!(comment.locale, "en");
+        }
+        Err(err) => {
+            let message = err.to_string();
+            assert!(
+                !message.contains("At least one translation is required"),
+                "comment creation must not fail due to missing translation: {message}"
+            );
+            panic!("comment creation failed unexpectedly: {message}");
+        }
+    }
+
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -291,8 +447,7 @@ mod unit_tests {
         let event_bus = TransactionalEventBus::new(Arc::new(FailingTransport));
 
         let result = event_bus
-            .publish_in_tx(
-                &(),
+            .publish(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::BlogPostCreated {
@@ -319,8 +474,7 @@ mod unit_tests {
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
         event_bus
-            .publish_in_tx(
-                &(),
+            .publish(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::BlogPostCreated {

@@ -26,7 +26,7 @@ pub fn validate_kind(kind: &str) -> Result<(), ValidationError> {
         // Forum domain kinds
         "forum_category" | "forum_topic" | "forum_reply" => Ok(()),
         // Blog domain kinds
-        "blog_post" => Ok(()),
+        "blog_post" | "comment" => Ok(()),
         _ => Err(ValidationError::new("invalid_kind")),
     }
 }
@@ -161,6 +161,8 @@ mod tests {
         assert!(validate_kind("page").is_ok());
         assert!(validate_kind("article").is_ok());
         assert!(validate_kind("custom").is_ok());
+        assert!(validate_kind("blog_post").is_ok());
+        assert!(validate_kind("comment").is_ok());
     }
 
     #[test]

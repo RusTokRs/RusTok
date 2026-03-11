@@ -2,7 +2,9 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_content::{BodyInput, CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
+use rustok_content::{
+    BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
+};
 use rustok_core::{DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
@@ -15,6 +17,7 @@ use crate::state_machine::CommentStatus;
 
 const KIND_POST: &str = "post";
 const KIND_COMMENT: &str = "comment";
+const DEFAULT_COMMENT_TITLE: &str = "Comment";
 
 pub struct CommentService {
     db: DatabaseConnection,
@@ -53,6 +56,8 @@ impl CommentService {
         }
 
         let locale = input.locale.clone();
+        let content = input.content;
+        let translation_title = Self::build_comment_translation_title(&content);
         let metadata = serde_json::json!({
             "parent_comment_id": input.parent_comment_id,
             "comment_status": CommentStatus::Pending,
@@ -76,10 +81,15 @@ impl CommentService {
                     depth: None,
                     reply_count: None,
                     metadata,
-                    translations: vec![],
+                    translations: vec![NodeTranslationInput {
+                        locale: locale.clone(),
+                        title: Some(translation_title),
+                        slug: None,
+                        excerpt: None,
+                    }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(input.content),
+                        body: Some(content),
                         format: Some("markdown".to_string()),
                     }],
                 },
@@ -284,6 +294,16 @@ impl CommentService {
                 .and_then(|s| Uuid::parse_str(s).ok()),
             created_at: node.created_at,
             updated_at: node.updated_at,
+        }
+    }
+
+    fn build_comment_translation_title(content: &str) -> String {
+        let normalized = content.split_whitespace().collect::<Vec<_>>().join(" ");
+        let preview: String = normalized.chars().take(80).collect();
+        if preview.is_empty() {
+            DEFAULT_COMMENT_TITLE.to_string()
+        } else {
+            preview
         }
     }
 }
