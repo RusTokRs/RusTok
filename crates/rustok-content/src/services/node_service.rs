@@ -215,7 +215,7 @@ impl NodeService {
         .await?;
 
         for translation in input.translations {
-            let slug = resolve_slug(translation.slug, translation.title.as_ref())?;
+            let slug = resolve_slug(translation.slug, translation.title.as_ref(), &input.kind)?;
 
             if let Some(ref s) = slug {
                 self.ensure_slug_unique(txn, tenant_id, &translation.locale, s, None)
@@ -377,7 +377,11 @@ impl NodeService {
                 .await?;
 
             for translation in translations {
-                let slug = resolve_slug(translation.slug, translation.title.as_ref())?;
+                let slug = resolve_slug(
+                    translation.slug,
+                    translation.title.as_ref(),
+                    &node_model.kind,
+                )?;
 
                 if let Some(ref s) = slug {
                     self.ensure_slug_unique(
@@ -958,17 +962,30 @@ impl NodeService {
     }
 }
 
-fn resolve_slug(slug: Option<String>, title: Option<&String>) -> ContentResult<Option<String>> {
+fn resolve_slug(
+    slug: Option<String>,
+    title: Option<&String>,
+    kind: &str,
+) -> ContentResult<Option<String>> {
+    if kind == "comment" {
+        return Ok(slug);
+    }
+
     if let Some(slug) = slug {
         return Ok(Some(slug));
     }
 
     if let Some(title) = title {
+        if title.trim().is_empty() {
+            return Err(ContentError::Validation(
+                "Slug or non-empty title must be provided".to_string(),
+            ));
+        }
         return Ok(Some(slug::slugify(title)));
     }
 
     Err(ContentError::Validation(
-        "Slug or title must be provided".to_string(),
+        "Slug or non-empty title must be provided".to_string(),
     ))
 }
 

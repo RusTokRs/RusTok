@@ -11,12 +11,12 @@ use rustok_blog::dto::{CreatePostInput, ListCommentsFilter, PostListQuery, Updat
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::BlogError;
 use rustok_blog::{CommentService, PostService};
+use rustok_content::ContentError;
 use rustok_core::events::EventEnvelope;
 use rustok_core::{
     DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole,
 };
 use rustok_outbox::TransactionalEventBus;
-use rustok_content::ContentError;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
@@ -223,7 +223,6 @@ fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<S
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires database"]
 async fn test_create_comment_succeeds_with_required_translation() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
@@ -285,6 +284,10 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
             assert!(
                 !message.contains("At least one translation is required"),
                 "comment creation must not fail due to missing translation: {message}"
+            );
+            assert!(
+                !message.contains("invalid_kind"),
+                "comment creation must not fail due to kind validation: {message}"
             );
             panic!("comment creation failed unexpectedly: {message}");
         }
@@ -358,7 +361,9 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .await?;
     assert_eq!(child.parent_comment_id, Some(parent.id));
 
-    let fallback_en = comment_service.get_comment(tenant_id, child.id, "en").await?;
+    let fallback_en = comment_service
+        .get_comment(tenant_id, child.id, "en")
+        .await?;
     assert_eq!(fallback_en.content, "Réponse imbriquée");
     assert_eq!(fallback_en.effective_locale, "fr");
 
@@ -374,7 +379,9 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         )
         .await?;
 
-    let fallback_first = comment_service.get_comment(tenant_id, child.id, "de").await?;
+    let fallback_first = comment_service
+        .get_comment(tenant_id, child.id, "de")
+        .await?;
     assert_eq!(fallback_first.content, "");
     assert_eq!(fallback_first.effective_locale, "de");
 
@@ -436,7 +443,10 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         )
         .await
         .expect_err("customer should not update чужой комментарий");
-    assert!(matches!(forbidden, BlogError::Content(ContentError::Forbidden(_))));
+    assert!(matches!(
+        forbidden,
+        BlogError::Content(ContentError::Forbidden(_))
+    ));
 
     let not_found_update = comment_service
         .update_comment(
