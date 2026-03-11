@@ -50,6 +50,7 @@ graph TD
 ## Platform Verification
 
 - [Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md) — Глобальный чеклист верификации всей платформы (21 фаза, 400+ проверок). Включает реестр найденных проблем (Фаза 21).
+- [Verification Plans](./verification/README.md) — Каталог специализированных планов верификации (включая rolling-верификацию Leptos-библиотек).
 
 ## Root Documents
 

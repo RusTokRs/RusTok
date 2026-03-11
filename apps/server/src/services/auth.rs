@@ -17,6 +17,7 @@ use rustok_rbac::{
     DeniedReasonKind, DualReadOutcome, PermissionCache, PermissionResolver, RbacAuthzMode,
     RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver, ShadowCheck,
 };
+use rustok_telemetry::metrics;
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
 
@@ -333,6 +334,10 @@ impl AuthService {
         RBAC_ENGINE_EVAL_DURATION_SAMPLES.fetch_add(1, Ordering::Relaxed);
     }
 
+    fn record_authz_entrypoint_call(entry_point: &str, path: &str) {
+        metrics::record_module_entrypoint_call("rbac", entry_point, path);
+    }
+
     pub fn metrics_snapshot() -> RbacResolverMetricsSnapshot {
         RbacResolverMetricsSnapshot {
             permission_cache_hits: RBAC_PERMISSION_CACHE_HITS.load(Ordering::Relaxed),
@@ -372,6 +377,7 @@ impl AuthService {
         user_id: &uuid::Uuid,
         required_permission: &Permission,
     ) -> Result<bool> {
+        Self::record_authz_entrypoint_call("has_permission", "library");
         let started_at = Instant::now();
         let resolver = Self::resolver(db);
         let decision =
@@ -452,6 +458,7 @@ impl AuthService {
         user_id: &uuid::Uuid,
         required_permissions: &[Permission],
     ) -> Result<bool> {
+        Self::record_authz_entrypoint_call("has_any_permission", "library");
         let started_at = Instant::now();
 
         let resolver = Self::resolver(db);
@@ -533,6 +540,7 @@ impl AuthService {
         user_id: &uuid::Uuid,
         required_permissions: &[Permission],
     ) -> Result<bool> {
+        Self::record_authz_entrypoint_call("has_all_permissions", "library");
         let started_at = Instant::now();
 
         let resolver = Self::resolver(db);
@@ -616,6 +624,7 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<Vec<Permission>> {
+        Self::record_authz_entrypoint_call("get_user_permissions", "library");
         let resolver = Self::resolver(db);
         let started_at = Instant::now();
         let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
@@ -654,6 +663,7 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call("assign_role_permissions", "library");
         let resolver = Self::resolver(db);
         resolver
             .assign_role_permissions(tenant_id, user_id, role)
@@ -666,6 +676,7 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call("replace_user_role", "library");
         Self::replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 
@@ -674,6 +685,7 @@ impl AuthService {
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call("remove_tenant_role_assignments", "library");
         let resolver = Self::resolver(db);
         resolver
             .remove_tenant_role_assignments(tenant_id, user_id)
@@ -686,6 +698,7 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call("remove_user_role_assignment", "library");
         let resolver = Self::resolver(db);
         resolver
             .remove_user_role_assignment(tenant_id, user_id, role)
@@ -698,6 +711,7 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call("assign_role_permissions_via_store", "core_runtime");
         let role_model = Self::get_or_create_role(db, tenant_id, &role).await?;
 
         match user_roles::Entity::insert(user_roles::ActiveModel {
@@ -753,6 +767,7 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call("replace_user_role_via_store", "core_runtime");
         Self::remove_tenant_role_assignments_via_store(db, user_id, tenant_id).await?;
 
         Self::assign_role_permissions_via_store(db, user_id, tenant_id, role).await
@@ -763,6 +778,10 @@ impl AuthService {
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
     ) -> Result<()> {
+        Self::record_authz_entrypoint_call(
+            "remove_tenant_role_assignments_via_store",
+            "core_runtime",
+        );
         let tenant_role_models = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(*tenant_id))
             .all(db)
