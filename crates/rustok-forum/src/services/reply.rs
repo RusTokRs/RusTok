@@ -54,7 +54,7 @@ impl ReplyService {
             return Err(ForumError::TopicArchived);
         }
 
-        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        let create_format = input.content_format.as_str();
         if create_format != "rt_json_v1" && input.content.trim().is_empty() {
             return Err(ForumError::Validation(
                 "Reply content cannot be empty".to_string(),

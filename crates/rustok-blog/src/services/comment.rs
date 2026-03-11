@@ -51,7 +51,7 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
 
-        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        let create_format = input.content_format.as_str();
         if create_format != "rt_json_v1" && input.content.trim().is_empty() {
             return Err(BlogError::validation("Comment content cannot be empty"));
         }

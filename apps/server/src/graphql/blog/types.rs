@@ -156,7 +156,9 @@ impl From<CreatePostInput> for DomainCreatePostInput {
             locale: input.locale,
             title: input.title,
             body: input.body,
-            body_format: input.body_format,
+            body_format: input
+                .body_format
+                .unwrap_or_else(|| rustok_core::CONTENT_FORMAT_MARKDOWN.to_string()),
             content_json: input.content_json,
             excerpt: input.excerpt,
             slug: input.slug,

@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
 use crate::services::auth::AuthService;
-use rustok_core::Permission;
+use rustok_core::{Permission, CONTENT_FORMAT_MARKDOWN};
 use rustok_forum::{CategoryService, ReplyService, TopicService};
 use rustok_outbox::TransactionalEventBus;
 
@@ -54,7 +54,9 @@ impl ForumMutation {
             title: input.title,
             slug: input.slug,
             body: input.body,
-            body_format: input.body_format,
+            body_format: input
+                .body_format
+                .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
             content_json: input.content_json,
             tags: input.tags,
         };
@@ -218,7 +220,9 @@ impl ForumMutation {
         let domain_input = rustok_forum::CreateReplyInput {
             locale: input.locale,
             content: input.content,
-            content_format: input.content_format,
+            content_format: input
+                .content_format
+                .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
             content_json: input.content_json,
             parent_reply_id: input.parent_reply_id,
         };

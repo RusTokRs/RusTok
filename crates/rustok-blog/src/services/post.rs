@@ -5,7 +5,7 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{prepare_content_payload, DomainEvent, SecurityContext, CONTENT_FORMAT_MARKDOWN};
+use rustok_core::{prepare_content_payload, DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
@@ -53,7 +53,7 @@ impl PostService {
             return Err(BlogError::validation("Cannot have more than 20 tags"));
         }
 
-        let create_format = input.body_format.as_deref().unwrap_or("markdown");
+        let create_format = input.body_format.as_str();
         if create_format != "rt_json_v1" && input.body.trim().is_empty() {
             return Err(BlogError::validation("Body cannot be empty"));
         }
@@ -457,10 +457,9 @@ impl PostService {
             locale: locale.to_string(),
             effective_locale: tr.effective_locale,
             available_locales: all_locales,
-            body: body_resp.and_then(|b| b.body.clone()).unwrap_or_default(),
-            body_format: body_resp
-                .map(|b| b.format.clone())
-                .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
+            body,
+            body_format,
+            content_json,
             excerpt: translation.and_then(|t| t.excerpt.clone()),
             status: map_content_status(node.status),
             category_id,
