@@ -839,7 +839,9 @@ mod tests {
         let db = setup_test_db().await;
         ensure_blog_schema(&db).await;
 
-        let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let post_service = PostService::new(db.clone(), event_bus.clone());
         let node_service = NodeService::new(db.clone(), event_bus);
 
@@ -937,7 +939,9 @@ mod tests {
         let db = setup_test_db().await;
         ensure_blog_schema(&db).await;
 
-        let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let post_service = PostService::new(db.clone(), event_bus);
 
         let tenant_id = Uuid::new_v4();

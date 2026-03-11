@@ -348,7 +348,6 @@ impl CommentService {
 #[cfg(test)]
 mod rich_content_tests {
     use super::*;
-    use crate::constants::KIND_COMMENT;
     use rustok_content::dto::{BodyResponse, NodeResponse};
     use rustok_content::entities::node::ContentStatus;
 
