@@ -92,10 +92,7 @@ impl NodeService {
         let existing = query.one(db).await?;
 
         if existing.is_some() {
-            return Err(ContentError::Validation(format!(
-                "Slug '{}' already exists for locale '{}'",
-                slug, locale
-            )));
+            return Err(ContentError::duplicate_slug(slug, locale));
         }
 
         Ok(())
@@ -105,10 +102,7 @@ impl NodeService {
     fn check_version(&self, expected: Option<i32>, actual: i32) -> ContentResult<()> {
         if let Some(expected) = expected {
             if expected != actual {
-                return Err(ContentError::Validation(format!(
-                    "Concurrent modification detected: expected version {}, found {}",
-                    expected, actual
-                )));
+                return Err(ContentError::concurrent_modification(expected, actual));
             }
         }
         Ok(())

@@ -697,6 +697,113 @@ async fn test_delete_nonexistent_node() {
     assert!(result.is_err());
 }
 
+#[tokio::test]
+async fn test_create_node_duplicate_slug_returns_duplicate_slug() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let duplicate_slug = unique_slug("duplicate-post");
+
+    let mut first = create_test_input();
+    first.translations[0].slug = Some(duplicate_slug.clone());
+    service
+        .create_node(tenant_id, security.clone(), first)
+        .await
+        .unwrap();
+
+    let mut second = create_test_input();
+    second.translations[0].slug = Some(duplicate_slug.clone());
+
+    let result = service.create_node(tenant_id, security, second).await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ContentError::DuplicateSlug { slug, locale } => {
+            assert_eq!(slug, duplicate_slug);
+            assert_eq!(locale, "en");
+        }
+        err => panic!("Expected DuplicateSlug error, got {err:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_update_node_duplicate_slug_returns_duplicate_slug() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let existing_slug = unique_slug("existing-post");
+
+    let mut first = create_test_input();
+    first.translations[0].slug = Some(existing_slug.clone());
+    service
+        .create_node(tenant_id, security.clone(), first)
+        .await
+        .unwrap();
+
+    let mut second = create_test_input();
+    second.translations[0].slug = Some(unique_slug("another-post"));
+    let second_node = service
+        .create_node(tenant_id, security.clone(), second)
+        .await
+        .unwrap();
+
+    let update_input = UpdateNodeInput {
+        translations: Some(vec![NodeTranslationInput {
+            locale: "en".to_string(),
+            title: Some("Updated title".to_string()),
+            slug: Some(existing_slug.clone()),
+            excerpt: Some("Updated excerpt".to_string()),
+        }]),
+        ..UpdateNodeInput::default()
+    };
+
+    let result = service
+        .update_node(tenant_id, second_node.id, security, update_input)
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ContentError::DuplicateSlug { slug, locale } => {
+            assert_eq!(slug, existing_slug);
+            assert_eq!(locale, "en");
+        }
+        err => panic!("Expected DuplicateSlug error, got {err:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_update_node_version_conflict_returns_concurrent_modification() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let created = service
+        .create_node(tenant_id, security.clone(), create_test_input())
+        .await
+        .unwrap();
+
+    let update_input = UpdateNodeInput {
+        expected_version: Some(created.version + 1),
+        status: Some(ContentStatus::Published),
+        ..UpdateNodeInput::default()
+    };
+
+    let result = service
+        .update_node(tenant_id, created.id, security, update_input)
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ContentError::ConcurrentModification { expected, actual } => {
+            assert_eq!(expected, created.version + 1);
+            assert_eq!(actual, created.version);
+        }
+        err => panic!("Expected ConcurrentModification error, got {err:?}"),
+    }
+}
+
 // =============================================================================
 // Body Content Tests
 // =============================================================================
