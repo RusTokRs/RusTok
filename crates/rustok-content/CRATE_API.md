@@ -24,8 +24,7 @@
 - Путает `entities::Model` SeaORM и DTO ответа API.
 - Пропускает `tenant_id` в фильтрах запросов.
 
-
-## Error contract (public)
+## Публичный контракт ошибок
 - `ContentError::DuplicateSlug { slug, locale }` — конфликт уникальности slug в пределах `tenant_id + locale`.
 - `ContentError::ConcurrentModification { expected, actual }` — optimistic locking при `UpdateNodeInput.expected_version`.
 - Оба варианта конвертируются в `RichError` с `ErrorKind::Conflict` и кодами `DUPLICATE_SLUG` / `CONCURRENT_MODIFICATION`.

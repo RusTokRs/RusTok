@@ -166,4 +166,26 @@ mod tests {
         assert_eq!(rich.kind, ErrorKind::NotFound);
         assert_eq!(rich.fields.get("locale"), Some(&"en".to_string()));
     }
+
+    #[test]
+    fn test_duplicate_slug_conversion() {
+        let err = ContentError::duplicate_slug("my-slug", "ru");
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::Conflict);
+        assert_eq!(rich.error_code.as_deref(), Some("DUPLICATE_SLUG"));
+        assert_eq!(rich.fields.get("slug"), Some(&"my-slug".to_string()));
+        assert_eq!(rich.fields.get("locale"), Some(&"ru".to_string()));
+    }
+
+    #[test]
+    fn test_concurrent_modification_conversion() {
+        let err = ContentError::concurrent_modification(3, 2);
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::Conflict);
+        assert_eq!(rich.error_code.as_deref(), Some("CONCURRENT_MODIFICATION"));
+        assert_eq!(rich.fields.get("expected_version"), Some(&"3".to_string()));
+        assert_eq!(rich.fields.get("actual_version"), Some(&"2".to_string()));
+    }
 }
