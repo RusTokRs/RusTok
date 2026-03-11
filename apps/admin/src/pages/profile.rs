@@ -69,8 +69,8 @@ pub fn Profile() -> impl IntoView {
     let (timezone, set_timezone) = signal(String::from("Europe/Moscow"));
     let (preferred_locale, set_preferred_locale) = signal(String::from("ru"));
     let (form_state, set_form_state) = signal(FormState::idle());
-    let (error, set_error) = signal::<Option<String>>(None);
-    let (status, set_status) = signal::<Option<String>>(None);
+    let (_error, set_error) = signal::<Option<String>>(None);
+    let (_status, set_status) = signal::<Option<String>>(None);
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_save = move |_| {

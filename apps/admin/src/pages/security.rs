@@ -52,7 +52,7 @@ pub fn Security() -> impl IntoView {
     let (new_password, set_new_password) = signal(String::new());
     let (form_state, set_form_state) = signal(FormState::idle());
     let (error, set_error) = signal::<Option<String>>(None);
-    let (status, set_status) = signal::<Option<String>>(None);
+    let (_status, set_status) = signal::<Option<String>>(None);
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_change_password = move |_| {

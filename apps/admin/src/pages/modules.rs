@@ -6,7 +6,7 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo,
 };
 use crate::features::modules::api;
-use crate::features::modules::components::modules_list;
+use crate::features::modules::components::modules_list::modules_list;
 use crate::shared::api::ApiError;
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
