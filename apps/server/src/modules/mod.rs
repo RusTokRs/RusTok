@@ -13,8 +13,9 @@ use rustok_tenant::TenantModule;
 
 pub use alloy::AlloyModule;
 pub use manifest::{
-    validate_registry_vs_manifest, InstalledManifestModule, ManifestDiff, ManifestError,
-    ManifestManager, ManifestModuleSpec, ModulesManifest,
+    validate_registry_vs_manifest, CatalogManifestModule, CatalogModuleVersion,
+    InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ManifestModuleSpec,
+    ModulesManifest,
 };
 
 pub fn build_registry() -> ModuleRegistry {

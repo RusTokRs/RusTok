@@ -611,7 +611,7 @@ impl OAuthAppService {
 pub async fn sync_app_connections(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    manifest: &crate::modules::manifest::ModulesManifest,
+    manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
     let existing = OAuthAppService::list_by_tenant(db, tenant_id).await?;
 
