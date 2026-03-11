@@ -283,9 +283,6 @@ graph TD
 - `leptos-ui`: [README](../crates/leptos-ui/README.md)
 - `leptos-zod`: [README](../crates/leptos-zod/README.md), [docs/README](../crates/leptos-zod/docs/README.md)
 - `leptos-zustand`: [README](../crates/leptos-zustand/README.md), [docs/README](../crates/leptos-zustand/docs/README.md)
-- `tailwind-ast`: [README](../crates/tailwind-ast/README.md)
-- `tailwind-css`: [README](../crates/tailwind-css/README.md)
-- `tailwind-rs`: [README](../crates/tailwind-rs/README.md)
 - `iu-leptos` (UI/leptos): [README](../UI/leptos/README.md)
 - `UI/next/components`: [index](../UI/next/components/index.ts) — React/Next.js IU wrappers
 - `rustok-blog`: [README](../crates/rustok-blog/README.md), [docs/README](../crates/rustok-blog/docs/README.md), [docs/implementation-plan](../crates/rustok-blog/docs/implementation-plan.md)
