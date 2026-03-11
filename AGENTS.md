@@ -14,7 +14,7 @@ This file defines rules and ownership for all contributors and AI agents working
 - **Platform foundation**: `crates/rustok-core`, `apps/server`, shared infra.
 - **Domain modules**: `crates/rustok-*` (content, commerce, pages, blog, forum, index, etc.).
 - **Frontends**: `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`.
-- **MCP server**: `apps/mcp`, `crates/rustok-mcp`.
+- **MCP server**: `crates/rustok-mcp`.
 - **Operational tooling**: `scripts/`, `docker-compose*.yml`, `grafana/`, `prometheus/`.
 
 Detailed module ownership and responsibilities are captured in [`docs/modules/registry.md`](docs/modules/registry.md).

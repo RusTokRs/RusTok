@@ -12,7 +12,6 @@ graph TD
         SF[apps/storefront - Leptos Storefront]
         NEXT_ADMIN[apps/next-admin - Next.js Admin]
         NEXT_SF[apps/next-frontend - Next.js Storefront]
-        MCP_APP[apps/mcp - MCP stdio server]
     end
 
     subgraph Domain Modules
@@ -69,7 +68,6 @@ graph TD
     SF --> L_UI
     SF --> L_GRAPHQL
 
-    MCP_APP --> MCP
 
     COMMERCE --> CORE
     COMMERCE --> EVENTS
@@ -98,7 +96,6 @@ graph TD
 | `apps/storefront` | **Leptos Storefront** | Customer-facing web interface built with Leptos (SSR). ([CRATE_API](../../apps/storefront/CRATE_API.md)) |
 | `apps/next-admin` | **Next.js Admin** | Modern React-based admin interface (Next.js). Primary admin dashboard. ([CRATE_API](../../apps/next-admin/CRATE_API.md)) |
 | `apps/next-frontend` | **Next.js Storefront** | Modern React-based storefront (Next.js). ([CRATE_API](../../apps/next-frontend/CRATE_API.md)) |
-| `apps/mcp` | **MCP App** | MCP stdio application runtime for AI/agent integrations, built on top of `crates/rustok-mcp`. ([README](../../apps/mcp/README.md)) |
 
 ### Core Platform Crates (`crates/`)
 

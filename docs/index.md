@@ -33,7 +33,6 @@ graph TD
     A --> ASF[apps/storefront/README.md]
     A --> ANEXTADMIN[apps/next-admin/docs/*]
     A --> ANEXTSF[apps/next-frontend/docs/*]
-    A --> AMCP[apps/mcp → crates/rustok-mcp/docs/*]
 
     C --> CDOMAIN[crates/rustok-*/docs/*]
     C --> CUI[crates/leptos-*/docs/*]
@@ -176,10 +175,7 @@ graph TD
 - [Leptos Storefront implementation plan](../apps/storefront/docs/implementation-plan.md)
 - [Next.js Storefront docs](../apps/next-frontend/docs/README.md)
 - [Next.js Storefront implementation plan](../apps/next-frontend/docs/implementation-plan.md)
-- [MCP app README](../apps/mcp/README.md)
-- [MCP app docs](../apps/mcp/docs/README.md)
-- [MCP app implementation plan](../apps/mcp/docs/implementation-plan.md)
-- [MCP crate docs](../crates/rustok-mcp/docs/README.md) (`apps/mcp` uses this crate)
+- [MCP crate docs](../crates/rustok-mcp/docs/README.md)
 
 ### Module and crate docs
 
@@ -265,10 +261,6 @@ graph TD
   - [README](../apps/server/README.md)
   - [docs/README](../apps/server/docs/README.md)
   - [docs/implementation-plan](../apps/server/docs/implementation-plan.md)
-- `apps/mcp`
-  - [README](../apps/mcp/README.md)
-  - [docs/README](../apps/mcp/docs/README.md)
-  - [docs/implementation-plan](../apps/mcp/docs/implementation-plan.md)
 - `apps/storefront`
   - [README](../apps/storefront/README.md)
   - [docs/README](../apps/storefront/docs/README.md)
