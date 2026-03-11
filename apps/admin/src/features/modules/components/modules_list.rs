@@ -376,6 +376,7 @@ pub fn ModulesList(
         });
     };
 
+    let enabled_modules_for_toggle = enabled_modules.clone();
     let on_toggle = Callback::new(move |(slug, enabled): (String, bool)| {
         let slug_clone = slug.clone();
         set_loading_slug.set(Some(slug.clone()));
@@ -383,6 +384,7 @@ pub fn ModulesList(
         set_success_message.set(None);
         let token_val = token.get();
         let tenant_val = tenant.get();
+        let enabled_modules_for_toggle_async = enabled_modules_for_toggle.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
             match api::toggle_module(slug_clone.clone(), enabled, token_val, tenant_val).await {
@@ -395,7 +397,7 @@ pub fn ModulesList(
                             module.enabled = result.enabled;
                         }
                     });
-                    enabled_modules.set_module_enabled(&slug_clone, result.enabled);
+                    enabled_modules_for_toggle_async.set_module_enabled(&slug_clone, result.enabled);
                     let status = if result.enabled {
                         t_string!(i18n, modules.toast.enabled)
                     } else {
@@ -438,6 +440,7 @@ pub fn ModulesList(
             set_platform_loading_slug.set(None);
         });
     });
+    let enabled_modules_for_uninstall = enabled_modules.clone();
     let on_uninstall = Callback::new(move |slug: String| {
         let slug_clone = slug.clone();
         set_platform_loading_slug.set(Some(slug.clone()));
@@ -447,6 +450,7 @@ pub fn ModulesList(
         let tenant_val = tenant.get();
         let refresh_token = token_val.clone();
         let refresh_tenant = tenant_val.clone();
+        let enabled_modules_for_uninstall_async = enabled_modules_for_uninstall.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
             match api::uninstall_module(slug_clone.clone(), token_val, tenant_val).await {
@@ -461,7 +465,7 @@ pub fn ModulesList(
                             module.enabled = false;
                         }
                     });
-                    enabled_modules.set_module_enabled(&slug_clone, false);
+                    enabled_modules_for_uninstall_async.set_module_enabled(&slug_clone, false);
                     push_build_job(build);
                     set_success_message.set(Some(format!("Uninstall queued for {}", slug_clone)));
                     refresh_orchestration_state(
@@ -533,6 +537,7 @@ pub fn ModulesList(
             set_rollback_loading_build_id.set(None);
         });
     });
+    let navigate_for_inspect = navigate.clone();
     let on_inspect = Callback::new(move |slug: String| {
         set_selected_module_detail.set(
             marketplace_catalog
@@ -540,10 +545,11 @@ pub fn ModulesList(
                 .into_iter()
                 .find(|module| module.slug == slug),
         );
-        navigate(&format!("/modules?module={}", slug), Default::default());
+        navigate_for_inspect(&format!("/modules?module={}", slug), Default::default());
     });
+    let navigate_for_close = navigate.clone();
     let on_close_detail = Callback::new(move |_| {
-        navigate("/modules", Default::default());
+        navigate_for_close("/modules", Default::default());
     });
     let on_apply_filters = Callback::new(move |_| {
         set_form_state.set(FormState::idle());
@@ -934,7 +940,9 @@ pub fn ModulesList(
                                         let release_id_for_active = release_id.clone();
                                         let release_id_for_rollback = release_id.clone();
                                         let logs_url = build.logs_url.clone();
+                                        let logs_url_for_when = logs_url.clone();
                                         let error_message = build.error_message.clone();
+                                        let error_message_for_when = error_message.clone();
                                         let build_id = StoredValue::new(build.id.clone());
                                         let build_id_for_loading = build_id;
                                         let build_id_for_label = build_id;
@@ -943,7 +951,7 @@ pub fn ModulesList(
                                                 <div class="space-y-1">
                                                     <p class="text-sm font-medium text-card-foreground">{primary}</p>
                                                     <p class="text-xs text-muted-foreground">{format!("{} / {} / {}%", humanize_label(&build.status), humanize_label(&build.stage), build.progress)}</p>
-                                                    <Show when=move || error_message.is_some()>
+                                                    <Show when=move || error_message_for_when.is_some()>
                                                         <p class="text-xs text-destructive">{error_message.clone().unwrap_or_default()}</p>
                                                     </Show>
                                                     <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -957,7 +965,7 @@ pub fn ModulesList(
                                                                 "Active release"
                                                             </span>
                                                         </Show>
-                                                        <Show when=move || logs_url.is_some()>
+                                                        <Show when=move || logs_url_for_when.is_some()>
                                                             <a class="text-primary underline-offset-4 hover:underline" href=logs_url.clone().unwrap_or_default() target="_blank" rel="noreferrer">
                                                                 "Open logs"
                                                             </a>
@@ -997,13 +1005,14 @@ pub fn ModulesList(
                                     let slug = module.module_slug.clone();
                                     let slug_for_loading = slug.clone();
                                     let slug_for_version = slug.clone();
+                                    let slug_for_catalog = slug_for_version.clone();
                                     let recommended = module.version.clone();
                                     let tenant_loading = Signal::derive(move || loading_slug.get().as_deref() == Some(&slug_for_loading));
                                     let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
                                     let platform_version = Signal::derive(move || installed_module_list.get().iter().find(|item| item.slug == slug_for_version).and_then(|item| item.version.clone()));
                                     let recommended_version = Signal::derive(move || Some(recommended.clone()));
-                                    let catalog_module = catalog_for_slug(&slug_for_version);
-                                    view! { <ModuleCard module=module catalog_module=catalog_module tenant_loading=tenant_loading platform_loading=platform_loading platform_installed=Signal::derive(|| true) platform_busy=Signal::derive(|| active_build_state.get().is_some()) platform_version=platform_version recommended_version=recommended_version on_inspect=Some(on_inspect) /> }
+                                    let catalog_module = catalog_for_slug(&slug_for_catalog);
+                                    view! { <ModuleCard module=module catalog_module=catalog_module tenant_loading=tenant_loading platform_loading=platform_loading platform_installed=Signal::derive(|| true) platform_busy=Signal::derive(move || active_build_state.get().is_some()) platform_version=platform_version recommended_version=recommended_version on_inspect=Some(on_inspect) /> }
                                 }).collect_view()}
                             </div>
                         </div>
@@ -1016,14 +1025,15 @@ pub fn ModulesList(
                                         let slug_for_loading = slug.clone();
                                         let slug_for_installed = slug.clone();
                                         let slug_for_version = slug.clone();
+                                        let slug_for_catalog = slug_for_version.clone();
                                         let recommended = module.version.clone();
                                         let tenant_loading = Signal::derive(move || loading_slug.get().as_deref() == Some(&slug_for_loading));
                                         let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
                                         let platform_installed = Signal::derive(move || installed_module_list.get().iter().any(|item| item.slug == slug_for_installed));
                                         let platform_version = Signal::derive(move || installed_module_list.get().iter().find(|item| item.slug == slug_for_version).and_then(|item| item.version.clone()));
                                         let recommended_version = Signal::derive(move || Some(recommended.clone()));
-                                        let catalog_module = catalog_for_slug(&slug_for_version);
-                                        view! { <ModuleCard module=module catalog_module=catalog_module tenant_loading=tenant_loading platform_loading=platform_loading platform_installed=platform_installed platform_busy=Signal::derive(|| active_build_state.get().is_some()) platform_version=platform_version recommended_version=recommended_version on_toggle=Some(on_toggle) on_inspect=Some(on_inspect) on_uninstall=Some(on_uninstall) /> }
+                                        let catalog_module = catalog_for_slug(&slug_for_catalog);
+                                        view! { <ModuleCard module=module catalog_module=catalog_module tenant_loading=tenant_loading platform_loading=platform_loading platform_installed=platform_installed platform_busy=Signal::derive(move || active_build_state.get().is_some()) platform_version=platform_version recommended_version=recommended_version on_toggle=Some(on_toggle) on_inspect=Some(on_inspect) on_uninstall=Some(on_uninstall) /> }
                                     }).collect_view()}
                                 </div>
                             </Show>
@@ -1043,7 +1053,7 @@ pub fn ModulesList(
                                     let tenant_loading = Signal::derive(move || loading_slug.get().as_deref() == Some(&slug_for_loading));
                                     let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
                                     let recommended_version = Signal::derive(move || Some(recommended.clone()));
-                                    view! { <ModuleCard module=module_info catalog_module=Some(module.clone()) tenant_loading=tenant_loading platform_loading=platform_loading platform_installed=Signal::derive(|| false) platform_busy=Signal::derive(|| active_build_state.get().is_some()) platform_version=Signal::derive(|| None) recommended_version=recommended_version on_install=Some(on_install) on_inspect=Some(on_inspect) /> }
+                                    view! { <ModuleCard module=module_info catalog_module=Some(module.clone()) tenant_loading=tenant_loading platform_loading=platform_loading platform_installed=Signal::derive(|| false) platform_busy=Signal::derive(move || active_build_state.get().is_some()) platform_version=Signal::derive(|| None) recommended_version=recommended_version on_install=Some(on_install) on_inspect=Some(on_inspect) /> }
                                 }).collect_view()}
                             </div>
                         </Show>
@@ -1057,7 +1067,7 @@ pub fn ModulesList(
                                 {move || update_candidates().into_iter().map(|(module, installed_module)| {
                                     let slug = module.slug.clone();
                                     let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
-                                    view! { <ModuleUpdateCard module=module installed_module=installed_module platform_loading=platform_loading platform_busy=Signal::derive(|| active_build_state.get().is_some()) on_inspect=on_inspect on_upgrade=on_upgrade /> }
+                                    view! { <ModuleUpdateCard module=module installed_module=installed_module platform_loading=platform_loading platform_busy=Signal::derive(move || active_build_state.get().is_some()) on_inspect=on_inspect on_upgrade=on_upgrade /> }
                                 }).collect_view()}
                             </div>
                         </Show>
