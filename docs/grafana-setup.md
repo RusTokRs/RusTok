@@ -466,13 +466,13 @@ If you see "too many time series" warnings:
 - [Prometheus Documentation](https://prometheus.io/docs/)
 - [Grafana Documentation](https://grafana.com/docs/)
 - [PromQL Cheat Sheet](https://promlabs.com/promql-cheat-sheet/)
-- [RusToK Module Metrics Guide](./module-metrics.md)
+- [RusToK Module Metrics Guide](./guides/module-metrics.md)
 
 ---
 
 ## Support
 
 For issues or questions:
-- Check existing metrics documentation in `docs/module-metrics.md`
-- Review structured logging guide in `docs/structured-logging.md`
+- Check existing metrics documentation in `docs/guides/module-metrics.md`
+- Review structured logging guide in `docs/standards/logging.md`
 - Open an issue in the project repository
