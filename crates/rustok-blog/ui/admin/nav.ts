@@ -16,6 +16,16 @@ export const blogNavItems: NavItem[] = [
         title: 'New Post',
         url: '/dashboard/blog/new',
         shortcut: ['b', 'n']
+      },
+      {
+        title: 'Page Builder',
+        url: '/dashboard/blog/page-builder',
+        shortcut: ['b', 'g']
+      },
+      {
+        title: 'Forum Reply',
+        url: '/dashboard/blog/forum-reply',
+        shortcut: ['b', 'f']
       }
     ]
   }

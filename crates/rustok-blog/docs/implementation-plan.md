@@ -272,3 +272,8 @@ or observability expectations:
 ## Last Updated
 
 2026-03-11 — TODO decomposition updated for Category/Tag services and integration-test status synced with actual code
+
+
+### Rich-text admin integration (update)
+
+- [x] Integration in admin package and GraphQL surfaces (post form + PageBuilder + ForumReplyEditor exports).
