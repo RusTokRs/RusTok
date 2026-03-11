@@ -162,6 +162,8 @@ impl PostService {
         security: SecurityContext,
         input: UpdatePostInput,
     ) -> BlogResult<()> {
+        self.ensure_post_kind(tenant_id, post_id).await?;
+
         let locale = input.locale.clone().unwrap_or_else(|| "en".to_string());
         let mut update = UpdateNodeInput::default();
 
@@ -251,11 +253,7 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
-        let node = self
-            .nodes
-            .get_node(tenant_id, post_id)
-            .await
-            .map_err(BlogError::from)?;
+        let node = self.ensure_post_kind(tenant_id, post_id).await?;
         let author_id = node.author_id;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
@@ -287,6 +285,8 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        self.ensure_post_kind(tenant_id, post_id).await?;
+
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         self.nodes
@@ -317,6 +317,8 @@ impl PostService {
         security: SecurityContext,
         reason: Option<String>,
     ) -> BlogResult<()> {
+        self.ensure_post_kind(tenant_id, post_id).await?;
+
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         self.nodes
@@ -349,11 +351,7 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
-        let node = self
-            .nodes
-            .get_node(tenant_id, post_id)
-            .await
-            .map_err(BlogError::from)?;
+        let node = self.ensure_post_kind(tenant_id, post_id).await?;
         let status = map_content_status(node.status.clone());
         if status == BlogPostStatus::Published {
             return Err(BlogError::CannotDeletePublished);
@@ -388,11 +386,7 @@ impl PostService {
         post_id: Uuid,
         locale: &str,
     ) -> BlogResult<PostResponse> {
-        let node = self
-            .nodes
-            .get_node(tenant_id, post_id)
-            .await
-            .map_err(BlogError::from)?;
+        let node = self.ensure_post_kind(tenant_id, post_id).await?;
 
         let tr = resolve_translation(&node.translations, locale);
         let br = resolve_body(&node.bodies, locale);
@@ -612,6 +606,24 @@ impl PostService {
         };
         self.list_posts(tenant_id, security, query).await
     }
+
+    async fn ensure_post_kind(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> BlogResult<rustok_content::NodeResponse> {
+        let node = self
+            .nodes
+            .get_node(tenant_id, id)
+            .await
+            .map_err(BlogError::from)?;
+
+        if node.kind != KIND_POST {
+            return Err(BlogError::PostNotFound(id));
+        }
+
+        Ok(node)
+    }
 }
 
 fn map_content_status(status: rustok_content::entities::node::ContentStatus) -> BlogPostStatus {
@@ -635,6 +647,13 @@ fn map_blog_status_to_content(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use rustok_content::CreateNodeInput;
+    use rustok_core::{MemoryTransport, SecurityContext, UserRole};
+    use sea_orm::{
+        ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    };
 
     #[test]
     fn status_roundtrip_draft() {
@@ -715,6 +734,8 @@ mod tests {
             seo_title: Some("SEO заголовок".to_string()),
             seo_description: Some("SEO описание".to_string()),
             metadata: None,
+            body_format: "markdown".to_string(),
+            content_json: None,
         };
         assert_eq!(input.locale, "ru");
         assert!(input.featured_image_url.is_some());
@@ -731,5 +752,268 @@ mod tests {
         assert!(input.seo_title.is_none());
         assert!(input.seo_description.is_none());
         assert!(input.version.is_none());
+    }
+
+    async fn setup_test_db() -> DatabaseConnection {
+        let db_url = format!(
+            "sqlite:file:blog_service_post_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let mut opts = ConnectOptions::new(db_url);
+        opts.max_connections(5)
+            .min_connections(1)
+            .sqlx_logging(false);
+
+        Database::connect(opts)
+            .await
+            .expect("failed to connect blog test sqlite database")
+    }
+
+    async fn ensure_blog_schema(db: &DatabaseConnection) {
+        if db.get_database_backend() != DbBackend::Sqlite {
+            return;
+        }
+
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE IF NOT EXISTS nodes (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                parent_id TEXT NULL,
+                author_id TEXT NULL,
+                kind TEXT NOT NULL,
+                category_id TEXT NULL,
+                status TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                depth INTEGER NOT NULL,
+                reply_count INTEGER NOT NULL,
+                metadata TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                published_at TEXT NULL,
+                deleted_at TEXT NULL,
+                version INTEGER NOT NULL DEFAULT 1
+            )"
+            .to_string(),
+        ))
+        .await
+        .expect("failed to create nodes table");
+
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE IF NOT EXISTS node_translations (
+                id TEXT PRIMARY KEY,
+                node_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                title TEXT NULL,
+                slug TEXT NULL,
+                excerpt TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(node_id) REFERENCES nodes(id)
+            )"
+            .to_string(),
+        ))
+        .await
+        .expect("failed to create node_translations table");
+
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE IF NOT EXISTS bodies (
+                id TEXT PRIMARY KEY,
+                node_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                body TEXT NULL,
+                format TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(node_id) REFERENCES nodes(id)
+            )"
+            .to_string(),
+        ))
+        .await
+        .expect("failed to create bodies table");
+    }
+
+    #[tokio::test]
+    async fn blog_methods_reject_page_node_ids() {
+        let db = setup_test_db().await;
+        ensure_blog_schema(&db).await;
+
+        let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+        let post_service = PostService::new(db.clone(), event_bus.clone());
+        let node_service = NodeService::new(db.clone(), event_bus);
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let security = SecurityContext::new(UserRole::Admin, Some(actor_id));
+
+        let page_id = node_service
+            .create_node(
+                tenant_id,
+                security.clone(),
+                CreateNodeInput {
+                    kind: "page".to_string(),
+                    status: None,
+                    parent_id: None,
+                    author_id: None,
+                    category_id: None,
+                    position: None,
+                    depth: None,
+                    reply_count: None,
+                    metadata: serde_json::json!({}),
+                    translations: vec![NodeTranslationInput {
+                        locale: "en".to_string(),
+                        title: Some("Page title".to_string()),
+                        slug: Some("page-title".to_string()),
+                        excerpt: None,
+                    }],
+                    bodies: vec![BodyInput {
+                        locale: "en".to_string(),
+                        body: Some("Page body".to_string()),
+                        format: Some("markdown".to_string()),
+                    }],
+                },
+            )
+            .await
+            .expect("page node should be created")
+            .id;
+
+        assert!(matches!(
+            post_service
+                .get_post(tenant_id, page_id, "en")
+                .await
+                .expect_err("page id must be rejected by get_post"),
+            BlogError::PostNotFound(id) if id == page_id
+        ));
+
+        assert!(matches!(
+            post_service
+                .update_post(tenant_id, page_id, security.clone(), UpdatePostInput::default())
+                .await
+                .expect_err("page id must be rejected by update_post"),
+            BlogError::PostNotFound(id) if id == page_id
+        ));
+
+        assert!(matches!(
+            post_service
+                .publish_post(tenant_id, page_id, security.clone())
+                .await
+                .expect_err("page id must be rejected by publish_post"),
+            BlogError::PostNotFound(id) if id == page_id
+        ));
+
+        assert!(matches!(
+            post_service
+                .unpublish_post(tenant_id, page_id, security.clone())
+                .await
+                .expect_err("page id must be rejected by unpublish_post"),
+            BlogError::PostNotFound(id) if id == page_id
+        ));
+
+        assert!(matches!(
+            post_service
+                .archive_post(
+                    tenant_id,
+                    page_id,
+                    security.clone(),
+                    Some("cleanup".to_string()),
+                )
+                .await
+                .expect_err("page id must be rejected by archive_post"),
+            BlogError::PostNotFound(id) if id == page_id
+        ));
+
+        assert!(matches!(
+            post_service
+                .delete_post(tenant_id, page_id, security)
+                .await
+                .expect_err("page id must be rejected by delete_post"),
+            BlogError::PostNotFound(id) if id == page_id
+        ));
+    }
+
+    #[tokio::test]
+    async fn blog_methods_keep_working_for_post_node_ids() {
+        let db = setup_test_db().await;
+        ensure_blog_schema(&db).await;
+
+        let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+        let post_service = PostService::new(db.clone(), event_bus);
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let security = SecurityContext::new(UserRole::Admin, Some(actor_id));
+
+        let post_id = post_service
+            .create_post(
+                tenant_id,
+                security.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: "Guarded post".to_string(),
+                    body: "Body".to_string(),
+                    excerpt: None,
+                    slug: Some("guarded-post".to_string()),
+                    publish: false,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    metadata: None,
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                },
+            )
+            .await
+            .expect("post should be created");
+
+        post_service
+            .update_post(
+                tenant_id,
+                post_id,
+                security.clone(),
+                UpdatePostInput {
+                    title: Some("Guarded post updated".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("post update should succeed");
+
+        post_service
+            .publish_post(tenant_id, post_id, security.clone())
+            .await
+            .expect("post publish should succeed");
+
+        let published = post_service
+            .get_post(tenant_id, post_id, "en")
+            .await
+            .expect("post fetch should succeed");
+        assert_eq!(published.id, post_id);
+        assert_eq!(published.status, BlogPostStatus::Published);
+
+        post_service
+            .unpublish_post(tenant_id, post_id, security.clone())
+            .await
+            .expect("post unpublish should succeed");
+
+        post_service
+            .archive_post(tenant_id, post_id, security.clone(), None)
+            .await
+            .expect("post archive should succeed");
+
+        post_service
+            .delete_post(tenant_id, post_id, security)
+            .await
+            .expect("post delete should succeed for non-published post");
+
+        assert!(matches!(
+            post_service
+                .get_post(tenant_id, post_id, "en")
+                .await
+                .expect_err("deleted post should be missing"),
+            BlogError::Content(rustok_content::ContentError::NodeNotFound(id)) if id == post_id
+        ));
     }
 }
