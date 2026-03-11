@@ -155,15 +155,30 @@ graph TD
 
 ### Application docs
 
+- **Стандарт для всех приложений `apps/*` (обязательный минимум):**
+  - `README.md`
+  - `docs/README.md`
+  - `docs/implementation-plan.md`
+
 - [Server docs](../apps/server/docs/README.md) (includes mandatory/critical core modules baseline for agents (6 modules), Loco feature matrix, auth password-reset email delivery, dev seed behavior notes, and build-request event publication wiring)
+- [Server implementation plan](../apps/server/docs/implementation-plan.md)
 - [Loco governance register](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по Loco capabilities в server runtime.
 - [Leptos Admin docs](../apps/admin/docs/README.md)
+- [Leptos Admin implementation plan](../apps/admin/docs/implementation-plan.md)
 - [Next.js Admin README](../apps/next-admin/README.md)
+- [Next.js Admin docs](../apps/next-admin/docs/README.md)
+- [Next.js Admin implementation plan](../apps/next-admin/docs/implementation-plan.md)
 - [Next.js Admin RBAC doc](../apps/next-admin/docs/nav-rbac.md)
 - [Next.js Admin Clerk setup](../apps/next-admin/docs/clerk_setup.md)
 - [Next.js Admin themes](../apps/next-admin/docs/themes.md)
 - [Leptos Storefront README](../apps/storefront/README.md)
+- [Leptos Storefront docs](../apps/storefront/docs/README.md)
+- [Leptos Storefront implementation plan](../apps/storefront/docs/implementation-plan.md)
 - [Next.js Storefront docs](../apps/next-frontend/docs/README.md)
+- [Next.js Storefront implementation plan](../apps/next-frontend/docs/implementation-plan.md)
+- [MCP app README](../apps/mcp/README.md)
+- [MCP app docs](../apps/mcp/docs/README.md)
+- [MCP app implementation plan](../apps/mcp/docs/implementation-plan.md)
 - [MCP crate docs](../crates/rustok-mcp/docs/README.md) (`apps/mcp` uses this crate)
 
 ### Module and crate docs
@@ -234,21 +249,30 @@ graph TD
 - `apps/admin`
   - [README](../apps/admin/README.md)
   - [docs/README](../apps/admin/docs/README.md)
+  - [docs/implementation-plan](../apps/admin/docs/implementation-plan.md)
 - `apps/next-admin`
   - [README](../apps/next-admin/README.md)
+  - [docs/README](../apps/next-admin/docs/README.md)
+  - [docs/implementation-plan](../apps/next-admin/docs/implementation-plan.md)
   - [docs/clerk_setup.md](../apps/next-admin/docs/clerk_setup.md)
   - [docs/nav-rbac.md](../apps/next-admin/docs/nav-rbac.md)
   - [docs/themes.md](../apps/next-admin/docs/themes.md)
 - `apps/next-frontend`
   - [README](../apps/next-frontend/README.md)
   - [docs/README](../apps/next-frontend/docs/README.md)
+  - [docs/implementation-plan](../apps/next-frontend/docs/implementation-plan.md)
 - `apps/server`
   - [README](../apps/server/README.md)
   - [docs/README](../apps/server/docs/README.md)
+  - [docs/implementation-plan](../apps/server/docs/implementation-plan.md)
 - `apps/mcp`
-  - (uses `crates/rustok-mcp` — see MCP crate docs below)
+  - [README](../apps/mcp/README.md)
+  - [docs/README](../apps/mcp/docs/README.md)
+  - [docs/implementation-plan](../apps/mcp/docs/implementation-plan.md)
 - `apps/storefront`
   - [README](../apps/storefront/README.md)
+  - [docs/README](../apps/storefront/docs/README.md)
+  - [docs/implementation-plan](../apps/storefront/docs/implementation-plan.md)
 
 ### Crates (`crates/*`)
 
