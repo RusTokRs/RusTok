@@ -674,6 +674,161 @@ async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events()
     }));
 }
 
+#[tokio::test]
+async fn test_orchestration_rejects_unsafe_payload() {
+    let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+
+    let node_service = NodeService::new(db.clone(), event_bus.clone());
+    let orchestration = ContentOrchestrationService::new(NodeService::new(db, event_bus));
+
+    let tenant_id = Uuid::new_v4();
+    let security = orchestration_security();
+
+    let topic = node_service
+        .create_node(
+            tenant_id,
+            security.clone(),
+            CreateNodeInput {
+                kind: "forum_topic".to_string(),
+                translations: vec![NodeTranslationInput {
+                    locale: "en".to_string(),
+                    title: Some("Topic A".to_string()),
+                    slug: None,
+                    excerpt: None,
+                }],
+                bodies: vec![BodyInput {
+                    locale: "en".to_string(),
+                    body: Some("Topic body".to_string()),
+                    format: Some("markdown".to_string()),
+                }],
+                status: Some(rustok_content::entities::node::ContentStatus::Published),
+                parent_id: None,
+                author_id: security.user_id,
+                category_id: None,
+                position: Some(0),
+                depth: Some(0),
+                reply_count: Some(0),
+                metadata: serde_json::json!({"forum_status": "open"}),
+            },
+        )
+        .await
+        .expect("topic should be created");
+
+    let err = orchestration
+        .promote_topic_to_post(
+            tenant_id,
+            security,
+            PromoteTopicToPostInput {
+                topic_id: topic.id,
+                locale: "en".to_string(),
+                reason: Some("<script>alert(1)</script>".to_string()),
+                idempotency_key: "unsafe-key-1".to_string(),
+            },
+        )
+        .await
+        .expect_err("unsafe reason must be rejected");
+
+    assert!(matches!(
+        err,
+        rustok_content::ContentError::Validation(message)
+            if message.contains("unsafe payload")
+    ));
+}
+
+#[tokio::test]
+async fn test_orchestration_locale_fallback_prefers_en_then_first_available() {
+    let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let mut receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+
+    let node_service = NodeService::new(db.clone(), event_bus.clone());
+    let orchestration = ContentOrchestrationService::new(NodeService::new(db, event_bus));
+
+    let tenant_id = Uuid::new_v4();
+    let security = orchestration_security();
+
+    let topic = node_service
+        .create_node(
+            tenant_id,
+            security.clone(),
+            CreateNodeInput {
+                kind: "forum_topic".to_string(),
+                translations: vec![NodeTranslationInput {
+                    locale: "ru".to_string(),
+                    title: Some("Тема А".to_string()),
+                    slug: None,
+                    excerpt: None,
+                }],
+                bodies: vec![BodyInput {
+                    locale: "ru".to_string(),
+                    body: Some("Тело темы".to_string()),
+                    format: Some("markdown".to_string()),
+                }],
+                status: Some(rustok_content::entities::node::ContentStatus::Published),
+                parent_id: None,
+                author_id: security.user_id,
+                category_id: None,
+                position: Some(0),
+                depth: Some(0),
+                reply_count: Some(0),
+                metadata: serde_json::json!({"forum_status": "open"}),
+            },
+        )
+        .await
+        .expect("topic should be created");
+
+    node_service
+        .db()
+        .execute(Statement::from_string(
+            DbBackend::Sqlite,
+            format!(
+                "UPDATE node_translations SET slug = NULL WHERE node_id = '{}'",
+                topic.id
+            ),
+        ))
+        .await
+        .expect("clear source slugs for orchestration duplicate-slug workaround");
+
+    let promoted = orchestration
+        .promote_topic_to_post(
+            tenant_id,
+            security,
+            PromoteTopicToPostInput {
+                topic_id: topic.id,
+                locale: "de".to_string(),
+                reason: Some("locale-fallback".to_string()),
+                idempotency_key: "locale-fallback-key-1".to_string(),
+            },
+        )
+        .await
+        .expect("promotion should use fallback locale");
+
+    let promoted_post = node_service
+        .get_node(tenant_id, promoted.target_id)
+        .await
+        .expect("promoted post should exist");
+    assert!(
+        promoted_post.translations.iter().any(|t| t.locale == "ru"),
+        "fallback locale payload must preserve available translations"
+    );
+
+    let events = drain_event_envelopes(&mut receiver);
+    assert!(events.iter().any(|e| {
+        matches!(
+            &e.event,
+            DomainEvent::TopicPromotedToPost { topic_id, locale, .. }
+                if *topic_id == topic.id && locale == "ru"
+        )
+    }));
+}
+
 async fn wait_until(condition: impl Fn() -> bool) {
     for _ in 0..40 {
         if condition() {

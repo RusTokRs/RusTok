@@ -6,7 +6,10 @@ use sea_orm::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use rustok_core::{Action, DomainEvent, PermissionScope, Resource, SecurityContext};
+use rustok_core::{
+    Action, DomainEvent, InputValidator, PermissionScope, Resource, SecurityContext,
+    ValidationResult,
+};
 
 use crate::dto::{BodyInput, CreateNodeInput, NodeTranslationInput};
 use crate::entities::{
@@ -80,6 +83,7 @@ impl ContentOrchestrationService {
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_scope(security.clone(), Resource::BlogPosts, Action::Create)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
+        self.ensure_safe_optional_text("reason", input.reason.as_deref())?;
 
         let txn = self.node_service.db().begin().await?;
         if let Some(existing) = self
@@ -98,7 +102,7 @@ impl ContentOrchestrationService {
         let topic = self
             .find_node_in_tx(&txn, tenant_id, input.topic_id, KIND_TOPIC)
             .await?;
-        let (translations, bodies) = self
+        let (translations, bodies, effective_locale) = self
             .extract_locale_payload_in_tx(&txn, topic.id, &input.locale)
             .await?;
 
@@ -135,7 +139,7 @@ impl ContentOrchestrationService {
                     topic_id: input.topic_id,
                     post_id,
                     moved_comments,
-                    locale: input.locale.clone(),
+                    locale: effective_locale.clone(),
                     reason: input.reason.clone(),
                 },
             )
@@ -154,7 +158,7 @@ impl ContentOrchestrationService {
             &input.idempotency_key,
             security.user_id,
             &result,
-            json!({"locale": input.locale, "reason": input.reason}),
+            json!({"locale": effective_locale, "reason": input.reason}),
         )
         .await?;
 
@@ -171,6 +175,7 @@ impl ContentOrchestrationService {
         self.ensure_scope(security.clone(), Resource::BlogPosts, Action::Moderate)?;
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Create)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
+        self.ensure_safe_optional_text("reason", input.reason.as_deref())?;
 
         let txn = self.node_service.db().begin().await?;
         if let Some(existing) = self
@@ -189,7 +194,7 @@ impl ContentOrchestrationService {
         let post = self
             .find_node_in_tx(&txn, tenant_id, input.post_id, KIND_POST)
             .await?;
-        let (translations, bodies) = self
+        let (translations, bodies, effective_locale) = self
             .extract_locale_payload_in_tx(&txn, post.id, &input.locale)
             .await?;
 
@@ -226,7 +231,7 @@ impl ContentOrchestrationService {
                     post_id: input.post_id,
                     topic_id,
                     moved_comments,
-                    locale: input.locale.clone(),
+                    locale: effective_locale.clone(),
                     reason: input.reason.clone(),
                 },
             )
@@ -245,7 +250,7 @@ impl ContentOrchestrationService {
             &input.idempotency_key,
             security.user_id,
             &result,
-            json!({"locale": input.locale, "reason": input.reason}),
+            json!({"locale": effective_locale, "reason": input.reason}),
         )
         .await?;
 
@@ -261,6 +266,8 @@ impl ContentOrchestrationService {
     ) -> ContentResult<OrchestrationResult> {
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
+        self.ensure_safe_text("new_title", &input.new_title)?;
+        self.ensure_safe_optional_text("reason", input.reason.as_deref())?;
         if input.reply_ids.is_empty() {
             return Err(ContentError::Validation(
                 "split_topic requires at least one reply/comment id".to_string(),
@@ -280,11 +287,14 @@ impl ContentOrchestrationService {
             .find_node_in_tx(&txn, tenant_id, input.topic_id, KIND_TOPIC)
             .await?;
 
-        let (mut translations, bodies) = self
+        let (mut translations, bodies, effective_locale) = self
             .extract_locale_payload_in_tx(&txn, topic.id, &input.locale)
             .await?;
 
-        if let Some(primary) = translations.iter_mut().find(|tr| tr.locale == input.locale) {
+        if let Some(primary) = translations
+            .iter_mut()
+            .find(|tr| tr.locale == effective_locale)
+        {
             primary.title = Some(input.new_title.clone());
             primary.slug = Some(slug::slugify(&input.new_title));
         }
@@ -364,7 +374,7 @@ impl ContentOrchestrationService {
             security.user_id,
             &result,
             json!({
-                "locale": input.locale,
+                "locale": effective_locale,
                 "reason": input.reason,
                 "reply_ids": input.reply_ids,
                 "new_title": input.new_title,
@@ -384,6 +394,7 @@ impl ContentOrchestrationService {
     ) -> ContentResult<OrchestrationResult> {
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
+        self.ensure_safe_optional_text("reason", input.reason.as_deref())?;
         if input.source_topic_ids.is_empty() {
             return Err(ContentError::Validation(
                 "merge_topics requires at least one source topic".to_string(),
@@ -489,6 +500,32 @@ impl ContentOrchestrationService {
             ));
         }
 
+        self.ensure_safe_text("idempotency_key", idempotency_key)?;
+
+        if idempotency_key.len() > 128 {
+            return Err(ContentError::Validation(
+                "idempotency_key must be <= 128 chars".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn ensure_safe_text(&self, field: &str, value: &str) -> ContentResult<()> {
+        let validator = InputValidator::new();
+        match validator.validate_input(value) {
+            ValidationResult::Valid => Ok(()),
+            ValidationResult::Invalid { reason } => Err(ContentError::Validation(format!(
+                "{field} contains unsafe payload: {reason}"
+            ))),
+            ValidationResult::Sanitized { .. } => Ok(()),
+        }
+    }
+
+    fn ensure_safe_optional_text(&self, field: &str, value: Option<&str>) -> ContentResult<()> {
+        if let Some(value) = value {
+            self.ensure_safe_text(field, value)?;
+        }
         Ok(())
     }
 
@@ -560,22 +597,34 @@ impl ContentOrchestrationService {
         txn: &DatabaseTransaction,
         node_id: Uuid,
         locale: &str,
-    ) -> ContentResult<(Vec<NodeTranslationInput>, Vec<BodyInput>)> {
+    ) -> ContentResult<(Vec<NodeTranslationInput>, Vec<BodyInput>, String)> {
         let translations = node_translation::Entity::find()
             .filter(node_translation::Column::NodeId.eq(node_id))
             .all(txn)
             .await?;
 
-        if !translations.iter().any(|tr| tr.locale == locale) {
+        let effective_locale = if translations.iter().any(|tr| tr.locale == locale) {
+            locale.to_string()
+        } else if translations.iter().any(|tr| tr.locale == "en") {
+            "en".to_string()
+        } else if let Some(first) = translations.first() {
+            first.locale.clone()
+        } else {
             return Err(ContentError::Validation(format!(
-                "Locale '{locale}' is not available for node {node_id}"
+                "Node {node_id} has no translations for locale resolution"
             )));
-        }
+        };
 
         let bodies = body::Entity::find()
             .filter(body::Column::NodeId.eq(node_id))
             .all(txn)
             .await?;
+
+        if bodies.is_empty() {
+            return Err(ContentError::Validation(format!(
+                "Node {node_id} has no bodies for locale resolution"
+            )));
+        }
 
         let translations = translations
             .into_iter()
@@ -596,7 +645,7 @@ impl ContentOrchestrationService {
             })
             .collect();
 
-        Ok((translations, bodies))
+        Ok((translations, bodies, effective_locale))
     }
 
     async fn find_node_in_tx(
