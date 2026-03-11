@@ -36,10 +36,7 @@ async fn get_metadata(
     // Fallback to localhost if not configured (useful for dev)
     let domain =
         std::env::var("RUSTOK_PUBLIC_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
-    let issuer = auth_config
-        .issuer
-        .clone()
-        .unwrap_or_else(|| "rustok".to_string());
+    let issuer = auth_config.issuer.clone();
 
     // Normally issuer is a URL in OIDC, but if it's just "rustok", we return the domain base
     let issuer_url = if issuer.starts_with("http") {

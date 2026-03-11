@@ -1,6 +1,6 @@
 //! Business logic wrapper for OAuth apps
 
-use sea_orm::{entity::prelude::*, Condition, QueryFilter, Set};
+use sea_orm::{entity::prelude::*, Condition, QueryFilter};
 use uuid::Uuid;
 
 pub use super::_entities::oauth_apps::{ActiveModel, Column, Entity, Model, Relation};

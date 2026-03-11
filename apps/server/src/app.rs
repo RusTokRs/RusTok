@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use axum::middleware as axum_middleware;
+#[cfg(feature = "embed-admin-assets")]
 use axum::response::IntoResponse;
 use axum::Extension;
 use axum::Router as AxumRouter;
@@ -37,7 +38,6 @@ use migration::Migrator;
 #[cfg(feature = "embed-admin-assets")]
 use rust_embed::RustEmbed;
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 
 #[cfg(feature = "embed-admin-assets")]
 #[derive(RustEmbed)]

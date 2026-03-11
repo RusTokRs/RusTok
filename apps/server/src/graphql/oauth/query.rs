@@ -16,7 +16,7 @@ use super::{
 #[derive(Default)]
 pub struct OAuthQuery;
 
-fn require_auth_context(ctx: &Context<'_>) -> Result<&AuthContext> {
+fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
     ctx.data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
 }

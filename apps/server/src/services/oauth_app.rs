@@ -3,16 +3,16 @@
 use crate::auth::{self, AuthConfig};
 use crate::models::oauth_apps::{self, ActiveModel as OAuthAppActiveModel, Entity as OAuthApps};
 use crate::models::oauth_authorization_codes::{
-    self, ActiveModel as OAuthCodeActiveModel, Entity as OAuthCodes,
+    ActiveModel as OAuthCodeActiveModel, Entity as OAuthCodes,
 };
 use crate::models::oauth_consents::{
-    self, ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
+    ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
 use loco_rs::{Error, Result};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 use subtle::ConstantTimeEq;
 use uuid::Uuid;

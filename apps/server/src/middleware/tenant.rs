@@ -526,7 +526,7 @@ pub async fn init_tenant_cache_infrastructure(ctx: &AppContext) {
     let infra = Arc::new(TenantCacheInfrastructure::new().await);
     ctx.shared_store.insert(infra.clone());
 
-    if let Some(task) = spawn_invalidation_listener(infra).await {
+    if let Some(task) = spawn_invalidation_listener(infra.clone()).await {
         ctx.shared_store.insert(task);
     } else {
         infra
