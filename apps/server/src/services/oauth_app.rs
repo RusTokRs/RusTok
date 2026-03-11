@@ -14,6 +14,7 @@ use loco_rs::{Error, Result};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 /// Input for creating a new OAuth app
@@ -249,8 +250,7 @@ impl OAuthAppService {
         code_challenge: String,
     ) -> Result<String> {
         // Generate random 43 character code
-        use rand::Rng;
-        let random_bytes: Vec<u8> = (0..32).map(|_| rand::thread_rng().gen::<u8>()).collect();
+        let random_bytes: [u8; 32] = rand::random();
         use base64::{engine::general_purpose, Engine as _};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes);
 
@@ -350,7 +350,6 @@ impl OAuthAppService {
         let expected_challenge = general_purpose::URL_SAFE_NO_PAD.encode(hash);
 
         // Constant time comparison is safer for crypto
-        use subtle::ConstantTimeEq;
         expected_challenge
             .as_bytes()
             .ct_eq(code_challenge.as_bytes())

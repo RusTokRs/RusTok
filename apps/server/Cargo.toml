@@ -62,6 +62,8 @@ tower-http = { workspace = true, features = ["fs"] }
 mime_guess = "2.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 semver = "1.0"
+rand.workspace = true
+subtle = "2"
 
 # Loco extras
 migration = { path = "migration" }
