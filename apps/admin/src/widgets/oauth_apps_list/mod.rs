@@ -1,14 +1,17 @@
 use crate::entities::oauth_app::model::OAuthApp;
 use crate::entities::oauth_app::ui::badge::AppTypeBadge;
-use crate::shared::ui::ui_button;
-use leptos::*;
+use crate::shared::ui::ui_button as UiButton;
+use leptos::prelude::*;
 
 #[component]
 pub fn OAuthAppsList(
     apps: Vec<OAuthApp>,
-    on_rotate_secret: impl Fn(OAuthApp) + 'static + Clone,
-    on_revoke_app: impl Fn(OAuthApp) + 'static + Clone,
+    on_rotate_secret: Callback<OAuthApp>,
+    on_revoke_app: Callback<OAuthApp>,
 ) -> impl IntoView {
+    let rows_apps = apps.clone();
+    let is_empty = apps.is_empty();
+
     view! {
         <div class="overflow-x-auto rounded-md border">
             <table class="w-full text-left text-sm whitespace-nowrap">
@@ -22,10 +25,9 @@ pub fn OAuthAppsList(
                     </tr>
                 </thead>
                 <tbody class="divide-y">
-                    <For
-                        each=move || apps.clone()
-                        key=|app| app.id
-                        children=move |app| {
+                    {rows_apps
+                        .into_iter()
+                        .map(|app| {
                             let app_clone1 = app.clone();
                             let app_clone2 = app.clone();
                             let on_rotate_secret = on_rotate_secret.clone();
@@ -33,39 +35,31 @@ pub fn OAuthAppsList(
 
                             view! {
                                 <tr class="hover:bg-muted/50 transition-colors">
-                                    <td class="px-4 py-3 font-medium text-slate-900">
-                                        {app.name.clone()}
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        <AppTypeBadge app_type=app.app_type.clone() />
-                                    </td>
-                                    <td class="px-4 py-3 text-slate-500 font-mono text-xs">
-                                        {app.client_id.to_string()}
-                                    </td>
-                                    <td class="px-4 py-3 text-slate-500">
-                                        {app.active_token_count}
-                                    </td>
+                                    <td class="px-4 py-3 font-medium text-slate-900">{app.name.clone()}</td>
+                                    <td class="px-4 py-3"><AppTypeBadge app_type=app.app_type.clone() /></td>
+                                    <td class="px-4 py-3 text-slate-500 font-mono text-xs">{app.client_id.to_string()}</td>
+                                    <td class="px-4 py-3 text-slate-500">{app.active_token_count}</td>
                                     <td class="px-4 py-3 text-right space-x-2">
-                                        <ui_button::Button
+                                        <UiButton
                                             variant=crate::shared::ui::ButtonVariant::Outline
                                             size=crate::shared::ui::Size::Sm
-                                            on:click=move |_| on_rotate_secret(app_clone1.clone())
+                                            on_click=Box::new(move || on_rotate_secret.run(app_clone1.clone()))
                                         >
                                             "Rotate Secret"
-                                        </ui_button::Button>
-                                        <ui_button::Button
+                                        </UiButton>
+                                        <UiButton
                                             variant=crate::shared::ui::ButtonVariant::Destructive
                                             size=crate::shared::ui::Size::Sm
-                                            on:click=move |_| on_revoke_app(app_clone2.clone())
+                                            on_click=Box::new(move || on_revoke_app.run(app_clone2.clone()))
                                         >
                                             "Revoke"
-                                        </ui_button::Button>
+                                        </UiButton>
                                     </td>
                                 </tr>
                             }
-                        }
-                    />
-                    <Show when=move || apps.is_empty()>
+                        })
+                        .collect_view()}
+                    <Show when=move || is_empty>
                         <tr>
                             <td colspan="5" class="h-24 text-center text-slate-500">
                                 "No connections found. Connect an app to get started."

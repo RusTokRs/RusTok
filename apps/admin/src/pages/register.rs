@@ -21,8 +21,7 @@ pub fn Register() -> impl IntoView {
 
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_error.set(Some(t_string!(i18n, register.errorRequired).to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(t_string!(i18n, register.errorRequired).to_string()));
             return;
         }
 
@@ -46,8 +45,7 @@ pub fn Register() -> impl IntoView {
                 .await
             {
                 Ok(()) => {
-                    set_error.set(None);
-                    set_status.set(Some(t_string!(i18n, register.success).to_string()));
+                    set_form_state.set(FormState::idle());
                     navigate("/dashboard", Default::default());
                 }
                 Err(e) => {
@@ -93,25 +91,25 @@ pub fn Register() -> impl IntoView {
                             {move || form_state.get().form_error.unwrap_or_default()}
                         </div>
                     </Show>
-                    <ui_input
+                    <Input
                         value=tenant
                         set_value=set_tenant
                         placeholder="demo"
                         label=move || t_string!(i18n, register.tenantLabel)
                     />
-                    <ui_input
+                    <Input
                         value=email
                         set_value=set_email
                         placeholder="admin@rustok.io"
                         label=move || t_string!(i18n, register.emailLabel)
                     />
-                    <ui_input
+                    <Input
                         value=name
                         set_value=set_name
                         placeholder="Alex Morgan"
                         label=move || t_string!(i18n, register.nameLabel)
                     />
-                    <ui_input
+                    <Input
                         value=password
                         set_value=set_password
                         placeholder="••••••••"

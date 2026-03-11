@@ -55,16 +55,14 @@ pub fn Security() -> impl IntoView {
 
     let on_change_password = move |_| {
         if current_password.get().is_empty() || new_password.get().is_empty() {
-            set_error.set(Some(t_string!(i18n, security.passwordRequired).to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(t_string!(i18n, security.passwordRequired).to_string()));
             return;
         }
 
         let token_value = token.get();
         let tenant_value = tenant.get();
         if token_value.is_none() {
-            set_error.set(Some(t_string!(i18n, errors.auth.unauthorized).to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(t_string!(i18n, errors.auth.unauthorized).to_string()));
             return;
         }
 
@@ -90,8 +88,8 @@ pub fn Security() -> impl IntoView {
 
             match result {
                 Ok(_) => {
-                    set_error.set(None);
-                    set_status.set(Some(t_string!(i18n, security.passwordUpdated).to_string()));
+                    set_form_state.set(FormState::idle());
+                    set_success_message.set(Some(t_string!(i18n, security.passwordUpdated).to_string()));
                     set_current_password.set(String::new());
                     set_new_password.set(String::new());
                 }
@@ -133,7 +131,7 @@ pub fn Security() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <ui_button
+                    <Button
                         on_click=on_sign_out_all
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
@@ -150,14 +148,14 @@ pub fn Security() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">
                         {move || t_string!(i18n, security.passwordSubtitle)}
                     </p>
-                     <ui_input
+                     <Input
                         value=current_password
                         set_value=set_current_password
                         placeholder="••••••••"
                         type_="password"
                         label=move || t_string!(i18n, security.currentPasswordLabel)
                     />
-                    <ui_input
+                    <Input
                         value=new_password
                         set_value=set_new_password
                         placeholder="••••••••"
@@ -170,7 +168,7 @@ pub fn Security() -> impl IntoView {
                     <Button on_click=on_change_password class="w-full">
                         {move || t_string!(i18n, security.passwordSubmit)}
                     </Button>
-                    <Show when=move || error.get().is_some()>
+                    <Show when=move || form_state.get().form_error.is_some()>
                         <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                             {move || form_state.get().form_error.unwrap_or_default()}
                         </div>

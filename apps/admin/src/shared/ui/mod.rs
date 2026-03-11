@@ -1,7 +1,8 @@
+use leptos::prelude::*;
 pub use leptos_ui::*;
 
 pub mod page_header;
-pub use page_header::page_header;
+pub use page_header::PageHeader;
 
 use crate::{use_i18n, Locale};
 
@@ -67,13 +68,6 @@ pub fn Input(
 pub fn LanguageToggle() -> impl IntoView {
     let i18n = use_i18n();
 
-    let current_locale = Signal::derive(move || {
-        match locale.locale.get() {
-            Locale::Ru => "ru",
-            Locale::En => "en",
-        }
-        .to_string()
-    });
 
     view! {
         <div class="flex gap-2">

@@ -128,7 +128,7 @@ pub fn UserDetails() -> impl IntoView {
         },
     );
 
-    let is_editing = signal(false);
+    let (is_editing, set_is_editing) = signal(false);
     let edit_name = signal(String::new());
     let edit_role = signal(String::new());
     let edit_status = signal(String::new());
@@ -143,7 +143,7 @@ pub fn UserDetails() -> impl IntoView {
     };
 
     let cancel_edit = move |_| {
-        is_editing.set(false);
+        set_is_editing.set(false);
         set_form_state.set(FormState::idle());
     };
 
@@ -188,7 +188,7 @@ pub fn UserDetails() -> impl IntoView {
             {
                 Ok(_) => {
                     set_form_state.set(FormState::idle());
-                    is_editing.set(false);
+                    set_is_editing.set(false);
                     user_resource.refetch();
                 }
                 Err(e) => {
@@ -250,15 +250,15 @@ pub fn UserDetails() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <ui_language_toggle />
-                    <ui_button
+                    <LanguageToggle />
+                    <Button
                         on_click=go_back
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || t_string!(i18n, users.detail.back)}
                     </Button>
                     <Show when=move || !is_editing.get()>
-                        <ui_button
+                        <Button
                             on_click=move |_| {
                                 if let Some(Ok(ref resp)) = user_resource.get() {
                                     if let Some(ref user) = resp.user {
@@ -269,7 +269,7 @@ pub fn UserDetails() -> impl IntoView {
                                         set_r.set(user.role.clone());
                                         set_s.set(user.status.clone());
                                         set_form_state.set(FormState::idle());
-                                        is_editing.set(true);
+                                        set_is_editing.set(true);
                                     }
                                 }
                             }
@@ -278,24 +278,24 @@ pub fn UserDetails() -> impl IntoView {
                             {move || t_string!(i18n, users.detail.edit)}
                         </Button>
                         <Button
-                            on_click=move |_| show_delete_confirm.set(true)
+                            on_click=move |_| set_show_delete_confirm.set(true)
                             class="border border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10"
                         >
                             {move || t_string!(i18n, users.detail.delete)}
                         </Button>
                     </Show>
                     <Show when=move || is_editing.get()>
-                        <ui_button
+                        <Button
                             on_click=save_user
                             disabled=Signal::derive(move || form_state.get().is_submitting)
                         >
-                            {move || if is_saving.get() {
+                            {move || if form_state.get().is_submitting {
                                 t_string!(i18n, users.detail.saving).to_string()
                             } else {
                                 t_string!(i18n, users.detail.save).to_string()
                             }}
-                        </ui_button>
-                        <ui_button
+                        </Button>
+                        <Button
                             on_click=cancel_edit
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >
@@ -326,18 +326,18 @@ pub fn UserDetails() -> impl IntoView {
                             </div>
                         </Show>
                         <div class="flex gap-3">
-                            <ui_button
+                            <Button
                                 on_click=confirm_delete.clone()
                                 disabled=Signal::derive(move || delete_form_state.get().is_submitting)
                                 class="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
-                                {move || if is_deleting.get() {
+                                {move || if delete_form_state.get().is_submitting {
                                     t_string!(i18n, users.detail.deleting).to_string()
                                 } else {
                                     t_string!(i18n, users.detail.confirmDelete).to_string()
                                 }}
-                            </ui_button>
-                            <ui_button
+                            </Button>
+                            <Button
                                 on_click=move |_| set_show_delete_confirm.set(false)
                                 class="flex-1 border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                 disabled=Signal::derive(move || delete_form_state.get().is_submitting)
@@ -399,7 +399,7 @@ pub fn UserDetails() -> impl IntoView {
                                                 }
                                             >
                                                 <div class="mt-1">
-                                                    <ui_input
+                                                    <Input
                                                         value=edit_name.0
                                                         set_value=edit_name.1
                                                         placeholder="Full name"
@@ -427,8 +427,8 @@ pub fn UserDetails() -> impl IntoView {
                                                             SelectOption::new("ADMIN", "Admin"),
                                                             SelectOption::new("SUPER_ADMIN", "Super Admin"),
                                                         ]
-                                                        value=Some(edit_role.0)
-                                                        set_value=Some(edit_role.1)
+                                                        value=edit_role.0
+                                                        set_value=edit_role.1
                                                     />
                                                 </div>
                                             </Show>
@@ -451,8 +451,8 @@ pub fn UserDetails() -> impl IntoView {
                                                             SelectOption::new("INACTIVE", "Inactive"),
                                                             SelectOption::new("BANNED", "Banned"),
                                                         ]
-                                                        value=Some(edit_status.0)
-                                                        set_value=Some(edit_status.1)
+                                                        value=edit_status.0
+                                                        set_value=edit_status.1
                                                     />
                                                 </div>
                                             </Show>

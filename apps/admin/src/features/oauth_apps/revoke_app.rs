@@ -1,6 +1,6 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::shared::ui::ui_button;
-use leptos::*;
+use crate::shared::ui::ui_button as UiButton;
+use leptos::prelude::*;
 
 #[component]
 pub fn RevokeAppDialog(
@@ -28,18 +28,18 @@ pub fn RevokeAppDialog(
             </p>
 
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button
+                <UiButton
                     variant=crate::shared::ui::ButtonVariant::Destructive
-                    on:click=move |_| revoke_action.dispatch(())
+                    on_click=Box::new(move || { revoke_action.dispatch(()); })
                 >
                     "Revoke Application"
-                </ui_button::Button>
-                <ui_button::Button
+                </UiButton>
+                <UiButton
                     variant=crate::shared::ui::ButtonVariant::Outline
-                    on:click=move |_| on_cancel()
+                    on_click=Box::new(move || on_cancel())
                 >
                     "Cancel"
-                </ui_button::Button>
+                </UiButton>
             </div>
         </div>
     }

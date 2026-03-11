@@ -12,7 +12,7 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
 }
 
 #[component]
-pub fn module_update_card(
+pub fn ModuleUpdateCard(
     module: MarketplaceModule,
     installed_module: InstalledModule,
     #[prop(into)] platform_loading: Signal<bool>,

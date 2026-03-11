@@ -1,6 +1,6 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::shared::ui::{ui_button, ui_input, ui_success_message};
-use leptos::*;
+use crate::shared::ui::{ui_button as UiButton, ui_input as UiInput, ui_success_message as UiSuccessMessage};
+use leptos::prelude::*;
 
 #[component]
 pub fn RotateSecretDialog(
@@ -32,18 +32,18 @@ pub fn RotateSecretDialog(
             </p>
 
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button
+                <UiButton
                     variant=crate::shared::ui::ButtonVariant::Destructive
-                    on:click=move |_| rotate_action.dispatch(())
+                    on_click=Box::new(move || { rotate_action.dispatch(()); })
                 >
                     "Yes, Rotate Secret"
-                </ui_button::Button>
-                <ui_button::Button
+                </UiButton>
+                <UiButton
                     variant=crate::shared::ui::ButtonVariant::Outline
-                    on:click=move |_| on_cancel()
+                    on_click=Box::new(move || on_cancel())
                 >
                     "Cancel"
-                </ui_button::Button>
+                </UiButton>
             </div>
         </div>
     }

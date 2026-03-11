@@ -62,8 +62,8 @@ pub fn Header() -> impl IntoView {
             </div>
 
             <div class="flex items-center gap-3">
-                <ui_language_toggle />
-                <user_menu />
+                <LanguageToggle />
+                <UserMenu />
             </div>
         </header>
     }

@@ -13,7 +13,7 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
 }
 
 #[component]
-pub fn module_card(
+pub fn ModuleCard(
     module: ModuleInfo,
     #[prop(optional)] catalog_module: Option<MarketplaceModule>,
     #[prop(into)] tenant_loading: Signal<bool>,
@@ -281,6 +281,9 @@ pub fn module_card(
                     let on_install = on_install.clone();
                     let on_uninstall = on_uninstall.clone();
                     let on_inspect = on_inspect.clone();
+                    let slug_for_install_fallback = slug_for_install.clone();
+                    let version_for_install_fallback = version_for_install.clone();
+                    let slug_for_uninstall_action = slug_for_uninstall.clone();
                     view! {
                         <div class="flex items-center justify-between gap-3 border-t pt-3">
                             <button
@@ -310,19 +313,24 @@ pub fn module_card(
                                 </div>
                                 <Show
                                     when=move || platform_installed.get()
-                                    fallback=move || view! {
-                                        <button
-                                            type="button"
-                                            class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-                                            disabled=move || platform_busy.get() || platform_loading.get()
-                                            on:click=move |_| {
-                                                if let Some(cb) = on_install.clone() {
-                                                    cb.run((slug_for_install.clone(), version_for_install.clone()));
+                                    fallback=move || {
+                                        let on_install = on_install.clone();
+                                        let slug_for_install = slug_for_install_fallback.clone();
+                                        let version_for_install = version_for_install_fallback.clone();
+                                        view! {
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                                                disabled=move || platform_busy.get() || platform_loading.get()
+                                                on:click=move |_| {
+                                                    if let Some(cb) = on_install.clone() {
+                                                        cb.run((slug_for_install.clone(), version_for_install.clone()));
+                                                    }
                                                 }
-                                            }
-                                        >
-                                            {move || if platform_loading.get() { "Queueing..." } else { "Install" }}
-                                        </button>
+                                            >
+                                                {move || if platform_loading.get() { "Queueing..." } else { "Install" }}
+                                            </button>
+                                        }
                                     }
                                 >
                                     <button
@@ -331,7 +339,7 @@ pub fn module_card(
                                         disabled=move || platform_busy.get() || platform_loading.get()
                                         on:click=move |_| {
                                             if let Some(cb) = on_uninstall.clone() {
-                                                cb.run(slug_for_uninstall.clone());
+                                                cb.run(slug_for_uninstall_action.clone());
                                             }
                                         }
                                     >
