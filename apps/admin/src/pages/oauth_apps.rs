@@ -2,9 +2,9 @@ use crate::entities::oauth_app::model::OAuthApp;
 use crate::features::oauth_apps::create_app::{CreateAppForm, CreateOAuthAppResult};
 use crate::features::oauth_apps::revoke_app::RevokeAppDialog;
 use crate::features::oauth_apps::rotate_secret::RotateSecretDialog;
-use crate::shared::ui::{ui_button, ui_success_message};
+use crate::shared::ui::{ui_button as UiButton, ui_success_message as UiSuccessMessage};
 use crate::widgets::oauth_apps_list::OAuthAppsList;
-use leptos::*;
+use leptos::prelude::*;
 
 #[derive(Clone, PartialEq)]
 enum ModalState {
@@ -40,9 +40,9 @@ pub fn OAuthAppsPage() -> impl IntoView {
                         "Manage third-party applications, API clients, and external integrations."
                     </p>
                 </div>
-                <ui_button::Button on:click=move |_| set_modal_state.set(ModalState::CreateApp)>
+                <UiButton on_click=Some(Box::new(move || set_modal_state.set(ModalState::CreateApp)))>
                     "Create New App"
-                </ui_button::Button>
+                </UiButton>
             </div>
 
             <OAuthAppsList
@@ -105,11 +105,11 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                         <div class="p-3 bg-slate-100 rounded border font-mono text-sm break-all">
                                             {secret}
                                         </div>
-                                        <ui_success_message::SuccessMessage message="Store this secret safely. You will not be able to see it again." />
+                                        <UiSuccessMessage message="Store this secret safely. You will not be able to see it again." />
 
-                                        <ui_button::Button class="w-full" on:click=move |_| close()>
+                                        <UiButton class="w-full" on_click=Some(Box::new(move || close()))>
                                             "I have saved it"
-                                        </ui_button::Button>
+                                        </UiButton>
                                     </div>
                                 }.into_view()
                             },

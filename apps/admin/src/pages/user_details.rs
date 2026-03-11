@@ -250,15 +250,15 @@ pub fn UserDetails() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <ui_language_toggle />
-                    <ui_button
+                    <LanguageToggle />
+                    <Button
                         on_click=go_back
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || t_string!(i18n, users.detail.back)}
                     </Button>
                     <Show when=move || !is_editing.get()>
-                        <ui_button
+                        <Button
                             on_click=move |_| {
                                 if let Some(Ok(ref resp)) = user_resource.get() {
                                     if let Some(ref user) = resp.user {
@@ -285,7 +285,7 @@ pub fn UserDetails() -> impl IntoView {
                         </Button>
                     </Show>
                     <Show when=move || is_editing.get()>
-                        <ui_button
+                        <Button
                             on_click=save_user
                             disabled=Signal::derive(move || form_state.get().is_submitting)
                         >
@@ -294,8 +294,8 @@ pub fn UserDetails() -> impl IntoView {
                             } else {
                                 t_string!(i18n, users.detail.save).to_string()
                             }}
-                        </ui_button>
-                        <ui_button
+                        </Button>
+                        <Button
                             on_click=cancel_edit
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >
@@ -326,7 +326,7 @@ pub fn UserDetails() -> impl IntoView {
                             </div>
                         </Show>
                         <div class="flex gap-3">
-                            <ui_button
+                            <Button
                                 on_click=confirm_delete.clone()
                                 disabled=Signal::derive(move || delete_form_state.get().is_submitting)
                                 class="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -336,8 +336,8 @@ pub fn UserDetails() -> impl IntoView {
                                 } else {
                                     t_string!(i18n, users.detail.confirmDelete).to_string()
                                 }}
-                            </ui_button>
-                            <ui_button
+                            </Button>
+                            <Button
                                 on_click=move |_| set_show_delete_confirm.set(false)
                                 class="flex-1 border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                 disabled=Signal::derive(move || delete_form_state.get().is_submitting)
@@ -399,7 +399,7 @@ pub fn UserDetails() -> impl IntoView {
                                                 }
                                             >
                                                 <div class="mt-1">
-                                                    <ui_input
+                                                    <Input
                                                         value=edit_name.0
                                                         set_value=edit_name.1
                                                         placeholder="Full name"

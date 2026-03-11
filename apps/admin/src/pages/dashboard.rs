@@ -115,13 +115,13 @@ pub fn Dashboard() -> impl IntoView {
 
     view! {
         <section class="px-10 py-8">
-            <page_header
+            <PageHeader
                 title=title
                 eyebrow=t_string!(i18n, app.nav.dashboard).to_string()
                 subtitle=t_string!(i18n, app.dashboard.subtitle).to_string()
                 actions=view! {
-                    <ui_language_toggle />
-                    <ui_button
+                    <LanguageToggle />
+                    <Button
                         on_click=logout
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >

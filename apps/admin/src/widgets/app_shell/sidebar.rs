@@ -126,7 +126,7 @@ fn nav_link(href: &'static str, icon: &'static str, label: String) -> impl IntoV
                 if is_active() { "bg-accent text-accent-foreground shadow-sm" } else { "text-muted-foreground" }
             )
         >
-            {nav_icon(icon)}
+            <NavIcon d=icon />
             {label}
         </A>
     }

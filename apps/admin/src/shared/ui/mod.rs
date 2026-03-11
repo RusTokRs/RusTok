@@ -1,7 +1,8 @@
+use leptos::prelude::*;
 pub use leptos_ui::*;
 
 pub mod page_header;
-pub use page_header::page_header;
+pub use page_header::PageHeader;
 
 use crate::{use_i18n, Locale};
 
@@ -67,41 +68,34 @@ pub fn Input(
 pub fn LanguageToggle() -> impl IntoView {
     let i18n = use_i18n();
 
-    let current_locale = Signal::derive(move || {
-        match locale.locale.get() {
-            Locale::Ru => "ru",
-            Locale::En => "en",
-        }
-        .to_string()
-    });
 
     view! {
         <div class="flex gap-2">
             <button
                 type="button"
                 class=move || {
-                    let is_active = i18n.get_locale() == Locale::ru;
+                    let is_active = i18n.get_locale() == Locale::Ru;
                     if is_active {
                         "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     } else {
                         "inline-flex items-center justify-center rounded-md border border-input px-3 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     }
                 }
-                on:click=move |_| i18n.set_locale(Locale::ru)
+                on:click=move |_| i18n.set_locale(Locale::Ru)
             >
                 "RU"
             </button>
             <button
                 type="button"
                 class=move || {
-                    let is_active = i18n.get_locale() == Locale::en;
+                    let is_active = i18n.get_locale() == Locale::En;
                     if is_active {
                         "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     } else {
                         "inline-flex items-center justify-center rounded-md border border-input px-3 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     }
                 }
-                on:click=move |_| i18n.set_locale(Locale::en)
+                on:click=move |_| i18n.set_locale(Locale::En)
             >
                 "EN"
             </button>

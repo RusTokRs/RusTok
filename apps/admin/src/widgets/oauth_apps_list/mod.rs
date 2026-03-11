@@ -1,7 +1,7 @@
 use crate::entities::oauth_app::model::OAuthApp;
 use crate::entities::oauth_app::ui::badge::AppTypeBadge;
-use crate::shared::ui::ui_button;
-use leptos::*;
+use crate::shared::ui::ui_button as UiButton;
+use leptos::prelude::*;
 
 #[component]
 pub fn OAuthAppsList(
@@ -46,20 +46,20 @@ pub fn OAuthAppsList(
                                         {app.active_token_count}
                                     </td>
                                     <td class="px-4 py-3 text-right space-x-2">
-                                        <ui_button::Button
+                                        <UiButton
                                             variant=crate::shared::ui::ButtonVariant::Outline
                                             size=crate::shared::ui::Size::Sm
-                                            on:click=move |_| on_rotate_secret(app_clone1.clone())
+                                            on_click=Some(Box::new(move || on_rotate_secret(app_clone1.clone())))
                                         >
                                             "Rotate Secret"
-                                        </ui_button::Button>
-                                        <ui_button::Button
+                                        </UiButton>
+                                        <UiButton
                                             variant=crate::shared::ui::ButtonVariant::Destructive
                                             size=crate::shared::ui::Size::Sm
-                                            on:click=move |_| on_revoke_app(app_clone2.clone())
+                                            on_click=Some(Box::new(move || on_revoke_app(app_clone2.clone())))
                                         >
                                             "Revoke"
-                                        </ui_button::Button>
+                                        </UiButton>
                                     </td>
                                 </tr>
                             }

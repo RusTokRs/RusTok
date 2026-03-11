@@ -75,8 +75,7 @@ pub fn Profile() -> impl IntoView {
         let token_value = token.get();
         let tenant_value = tenant.get();
         if token_value.is_none() {
-            set_error.set(Some(t_string!(i18n, errors.auth.unauthorized).to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(t_string!(i18n, errors.auth.unauthorized).to_string()));
             return;
         }
 
@@ -107,8 +106,8 @@ pub fn Profile() -> impl IntoView {
                     if let Some(new_name) = response.update_profile.name {
                         set_name.set(new_name);
                     }
-                    set_error.set(None);
-                    set_status.set(Some(t_string!(i18n, profile.saved).to_string()));
+                    set_form_state.set(FormState::idle());
+                    set_success_message.set(Some(t_string!(i18n, profile.saved).to_string()));
                 }
                 Err(err) => {
                     let message = match err {
@@ -154,7 +153,7 @@ pub fn Profile() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">
                         {move || t_string!(i18n, profile.sectionSubtitle)}
                     </p>
-                    <ui_input
+                    <Input
                         value=name
                         set_value=set_name
                         placeholder="Alex Morgan"
@@ -168,7 +167,7 @@ pub fn Profile() -> impl IntoView {
                             {move || email.get()}
                         </p>
                     </div>
-                    <ui_input
+                    <Input
                         value=avatar
                         set_value=set_avatar
                         placeholder="https://cdn.rustok.io/avatar.png"
@@ -231,7 +230,7 @@ pub fn Profile() -> impl IntoView {
                                 {move || t_string!(i18n, profile.uiLocaleHint)}
                             </p>
                         </div>
-                        <ui_language_toggle />
+                        <LanguageToggle />
                     </div>
                     <div class="flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0">
                         <div>
@@ -251,7 +250,7 @@ pub fn Profile() -> impl IntoView {
                                 {move || t_string!(i18n, profile.auditHint)}
                             </p>
                         </div>
-                        <ui_button
+                        <Button
                             on_click=move |_| {}
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >

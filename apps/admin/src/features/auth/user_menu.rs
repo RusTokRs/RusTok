@@ -128,7 +128,7 @@ fn dropdown_link(href: &'static str, icon: &'static str, children: Children) -> 
             href=href
             attr:class="flex items-center gap-3 px-4 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-            <menu_icon icon=icon />
+            <MenuIcon icon=icon />
             <span>{children()}</span>
         </A>
     }

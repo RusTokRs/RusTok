@@ -1,6 +1,6 @@
 use crate::entities::oauth_app::model::{AppType, OAuthApp};
-use crate::shared::ui::{ui_badge, ui_button, ui_input, ui_success_message, ui_textarea};
-use leptos::*;
+use crate::shared::ui::{ui_badge, ui_button as UiButton, ui_input as UiInput, ui_success_message as UiSuccessMessage, ui_textarea as UiTextarea};
+use leptos::prelude::*;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
@@ -70,25 +70,25 @@ pub fn CreateAppForm(
             <h3 class="text-lg font-medium">"Create New Connected App"</h3>
             <div class="space-y-2">
                 <label>"App Name"</label>
-                <ui_input::Input
-                    type_="text"
-                    prop:value=name
-                    on:input=move |ev| set_name.set(event_target_value(&ev))
+                <UiInput
+                    r#type="text"
+                    value=Some(name)
+                    set_value=Some(set_name)
                 />
             </div>
             <div class="space-y-2">
                 <label>"Slug/Identifier"</label>
-                <ui_input::Input
-                    type_="text"
-                    prop:value=slug
-                    on:input=move |ev| set_slug.set(event_target_value(&ev))
+                <UiInput
+                    r#type="text"
+                    value=Some(slug)
+                    set_value=Some(set_slug)
                 />
             </div>
             <div class="space-y-2">
                 <label>"Description"</label>
-                <ui_textarea::Textarea
-                    prop:value=description
-                    on:input=move |ev| set_description.set(event_target_value(&ev))
+                <UiTextarea
+                    value=Some(description)
+                    set_value=Some(set_description)
                 />
             </div>
             <div class="space-y-2">
@@ -105,17 +105,17 @@ pub fn CreateAppForm(
                 </select>
             </div>
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button
-                    on:click=move |_| create_action.dispatch(())
+                <UiButton
+                    on_click=Some(Box::new(move || create_action.dispatch(())))
                 >
                     "Create App"
-                </ui_button::Button>
-                <ui_button::Button
+                </UiButton>
+                <UiButton
                     variant=crate::shared::ui::ButtonVariant::Outline
-                    on:click=move |_| on_cancel()
+                    on_click=Some(Box::new(move || on_cancel()))
                 >
                     "Cancel"
-                </ui_button::Button>
+                </UiButton>
             </div>
         </div>
     }
