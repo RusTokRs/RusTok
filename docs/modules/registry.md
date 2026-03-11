@@ -12,7 +12,6 @@ graph TD
         SF[apps/storefront - Leptos Storefront]
         NEXT_ADMIN[apps/next-admin - Next.js Admin]
         NEXT_SF[apps/next-frontend - Next.js Storefront]
-        MCP_APP[apps/mcp - MCP stdio server]
     end
 
     subgraph Domain Modules
@@ -69,7 +68,6 @@ graph TD
     SF --> L_UI
     SF --> L_GRAPHQL
 
-    MCP_APP --> MCP
 
     COMMERCE --> CORE
     COMMERCE --> EVENTS

@@ -17,5 +17,5 @@
 - `rustok-core`
 
 ## Частые ошибки ИИ
-- Путает app-wrapper `apps/mcp` и crate `rustok-mcp`.
+- Путает MCP runtime и crate `rustok-mcp`.
 - Нарушает формат MCP tool/result payload.

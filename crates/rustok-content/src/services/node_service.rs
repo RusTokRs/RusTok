@@ -35,12 +35,18 @@ impl NodeService {
         &self.event_bus
     }
 
-    fn kind_to_resource(kind: &str) -> Resource {
+    fn kind_to_resource(kind: &str) -> ContentResult<Resource> {
         match kind {
-            "post" => Resource::Posts,
-            "page" => Resource::Pages,
-            "comment" => Resource::Comments,
-            _ => Resource::Posts,
+            "post" | "article" | "custom" => Ok(Resource::Posts),
+            "page" => Ok(Resource::Pages),
+            "comment" => Ok(Resource::Comments),
+            "blog_post" => Ok(Resource::BlogPosts),
+            "forum_category" => Ok(Resource::ForumCategories),
+            "forum_topic" => Ok(Resource::ForumTopics),
+            "forum_reply" => Ok(Resource::ForumReplies),
+            _ => Err(ContentError::Validation(format!(
+                "Unsupported kind for RBAC mapping: {kind}"
+            ))),
         }
     }
 
@@ -139,7 +145,7 @@ impl NodeService {
             .validate()
             .map_err(|e| ContentError::Validation(e.to_string()))?;
 
-        let resource = Self::kind_to_resource(&input.kind);
+        let resource = Self::kind_to_resource(&input.kind)?;
         let scope = security.get_scope(resource, Action::Create);
 
         match scope {
@@ -299,7 +305,7 @@ impl NodeService {
 
         self.check_version(update.expected_version, node_model.version)?;
 
-        let resource = Self::kind_to_resource(&node_model.kind);
+        let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Update);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
@@ -476,7 +482,7 @@ impl NodeService {
             ));
         }
 
-        let resource = Self::kind_to_resource(&node_model.kind);
+        let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Update);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
@@ -681,7 +687,7 @@ impl NodeService {
     ) -> ContentResult<()> {
         let node_model = self.find_node(tenant_id, node_id).await?;
 
-        let resource = Self::kind_to_resource(&node_model.kind);
+        let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Delete);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
@@ -723,7 +729,7 @@ impl NodeService {
         }
 
         // Scope Enforcement
-        let resource = Self::kind_to_resource(&node_model.kind);
+        let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Update);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
@@ -775,7 +781,7 @@ impl NodeService {
         let node_model = self.find_node_with_deleted(tenant_id, node_id).await?;
 
         // Only admins can hard delete
-        let resource = Self::kind_to_resource(&node_model.kind);
+        let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Delete);
         if !matches!(scope, PermissionScope::All) {
             return Err(ContentError::Forbidden(
@@ -879,6 +885,7 @@ impl NodeService {
             .kind
             .as_deref()
             .map(Self::kind_to_resource)
+            .transpose()?
             .unwrap_or(Resource::Posts);
         let scope = security.get_scope(resource, Action::List);
 
@@ -953,6 +960,84 @@ impl NodeService {
             .collect();
 
         Ok((items, total))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NodeService;
+    use crate::dto::validation::validate_kind;
+    use crate::ContentModule;
+    use rustok_core::permissions::{Action, Resource};
+    use rustok_core::{RusToKModule, SecurityContext, UserRole};
+
+    #[test]
+    fn kind_to_resource_maps_all_allowed_kinds_from_validation() {
+        let cases = [
+            ("post", Resource::Posts),
+            ("page", Resource::Pages),
+            ("article", Resource::Posts),
+            ("custom", Resource::Posts),
+            ("forum_category", Resource::ForumCategories),
+            ("forum_topic", Resource::ForumTopics),
+            ("forum_reply", Resource::ForumReplies),
+            ("blog_post", Resource::BlogPosts),
+            ("comment", Resource::Comments),
+        ];
+
+        for (kind, expected_resource) in cases {
+            assert!(validate_kind(kind).is_ok(), "kind '{kind}' must stay valid");
+            let actual = NodeService::kind_to_resource(kind)
+                .unwrap_or_else(|_| panic!("kind '{kind}' must map to RBAC resource"));
+            assert_eq!(
+                actual, expected_resource,
+                "invalid mapping for kind '{kind}'"
+            );
+        }
+    }
+
+    #[test]
+    fn kind_to_resource_rejects_unknown_kind() {
+        assert!(NodeService::kind_to_resource("unknown_kind").is_err());
+    }
+
+    #[test]
+    fn kind_to_resource_mapping_is_covered_by_module_permissions_and_scope() {
+        let module = ContentModule;
+        let permissions = module.permissions();
+        let admin = SecurityContext::new(UserRole::Admin, None);
+
+        let cases = [
+            ("post", Resource::Posts),
+            ("page", Resource::Pages),
+            ("article", Resource::Posts),
+            ("custom", Resource::Posts),
+            ("forum_category", Resource::ForumCategories),
+            ("forum_topic", Resource::ForumTopics),
+            ("forum_reply", Resource::ForumReplies),
+            ("blog_post", Resource::BlogPosts),
+            ("comment", Resource::Comments),
+        ];
+
+        for (kind, resource) in cases {
+            for action in [
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+            ] {
+                assert!(
+                    permissions.iter().any(|p| p.resource == resource && p.action == action),
+                    "ContentModule::permissions must include {resource:?}:{action:?} for kind '{kind}'"
+                );
+                assert_ne!(
+                    admin.get_scope(resource, action),
+                    rustok_core::PermissionScope::None,
+                    "SecurityContext::get_scope returned None for admin on {resource:?}:{action:?}"
+                );
+            }
+        }
     }
 }
 
