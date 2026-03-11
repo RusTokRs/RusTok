@@ -42,7 +42,7 @@ impl TopicService {
                 "Topic title cannot be empty".to_string(),
             ));
         }
-        let create_format = input.body_format.as_deref().unwrap_or("markdown");
+        let create_format = input.body_format.as_str();
         if create_format != "rt_json_v1" && input.body.trim().is_empty() {
             return Err(ForumError::Validation(
                 "Topic body cannot be empty".to_string(),

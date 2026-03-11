@@ -6,6 +6,7 @@ use rustok_content::entities::{body, node};
 use rustok_core::{validate_and_sanitize_rt_json, RtJsonValidationConfig};
 use sea_orm::{
     sea_query::Expr, ColumnTrait, Condition, Database, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -55,7 +56,7 @@ async fn main() -> Result<()> {
         for (body_row, _node_row) in rows {
             metrics.processed += 1;
             let current_checkpoint = Checkpoint {
-                last_updated_at: body_row.updated_at,
+                last_updated_at: body_row.updated_at.into(),
                 last_body_id: body_row.id,
             };
 

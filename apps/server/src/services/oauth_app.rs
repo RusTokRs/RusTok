@@ -11,9 +11,7 @@ use crate::models::oauth_consents::{
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
 use loco_rs::{Error, Result};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -369,21 +367,14 @@ impl OAuthAppService {
 
         // Note: For user context via OAuth, we need to embed the real user_id.
         // The token needs to look like a normal user token but with `client_id` set.
-        let access_token = crate::auth::encode_access_token(
+        let access_token = crate::auth::encode_oauth_access_token(
             auth_config,
-            crate::auth::Claims {
-                sub: user_id,
-                tenant_id: app.tenant_id,
-                role: rustok_core::UserRole::Customer, // Simplified for now, should look up real role
-                session_id: Uuid::nil(), // No session ID for OAuth tokens explicitly mapped
-                iss: "rustok".to_string(),
-                aud: "rustok-api".to_string(),
-                exp: (chrono::Utc::now().timestamp() as usize) + (expires_in as usize),
-                iat: chrono::Utc::now().timestamp() as usize,
-                client_id: Some(app.client_id),
-                scopes: granted_scopes.to_vec(),
-                grant_type: "authorization_code".to_string(),
-            },
+            user_id,
+            app.tenant_id,
+            app.client_id,
+            granted_scopes,
+            "authorization_code",
+            expires_in,
         )?;
 
         // Generate refresh token

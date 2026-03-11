@@ -513,7 +513,7 @@ impl ContentOrchestrationService {
 
     fn ensure_safe_text(&self, field: &str, value: &str) -> ContentResult<()> {
         let validator = InputValidator::new();
-        match validator.validate_input(value) {
+        match validator.validate(value) {
             ValidationResult::Valid => Ok(()),
             ValidationResult::Invalid { reason } => Err(ContentError::Validation(format!(
                 "{field} contains unsafe payload: {reason}"
@@ -748,7 +748,7 @@ impl ContentOrchestrationService {
             .ok_or(ContentError::NodeNotFound(target_id))?;
 
         let mut active: node::ActiveModel = target.clone().into();
-        let mut metadata: Value = target.metadata;
+        let metadata: Value = target.metadata;
         let mut obj = metadata.as_object().cloned().unwrap_or_default();
         obj.insert(
             "canonical_node_id".to_string(),
