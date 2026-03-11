@@ -35,3 +35,22 @@
 - Добавить integration/e2e сценарии для каталога, карточки товара и поиска.
 - Расширить тесты SSR hydration consistency и i18n fallback.
 - Ввести регрессионные тесты для critical storefront маршрутов.
+
+## Паритет стеков (Leptos/Next.js)
+
+- Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
+
+### Checklist готовности фичи
+
+- [ ] Реализовано в Leptos-варианте.
+- [ ] Реализовано в Next.js-варианте.
+- [ ] Контракты API/UI совпадают.
+- [ ] Навигация и RBAC-поведение эквивалентны.
+
+### Текущий статус rich-text (blog/forum/pages)
+
+- **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
+- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
+- **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
+- **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
+
