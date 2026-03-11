@@ -1,26 +1,26 @@
-# Documentation Map
+# Карта документации
 
-This file is the canonical map of RusToK documentation.
+Этот файл — каноническая карта документации RusToK.
 
-It covers both centralized docs (`docs/`) and distributed docs located inside apps, modules, and shared libraries.
+Он охватывает как централизованную документацию (`docs/`), так и распределённую документацию внутри приложений, модулей и общих библиотек.
 
-## Why a "documentation tree" is needed
+## Зачем нужно «дерево документации»
 
 Да, нам нужен единый файл-карта. Документация реально распределена по репозиторию (`docs/`, `apps/*`, `crates/*`), и без общей схемы новые участники часто не находят нужный контекст.
 
 Этот `docs/index.md` играет роль такой карты и должен обновляться при изменениях архитектуры, API, UI-контрактов и модулей.
 
-## Graphical documentation map
+## Графическая карта документации
 
 ```mermaid
 graph TD
     ROOT[docs/index.md]
 
     ROOT --> D[docs/*]
-    ROOT --> A[apps/* docs]
-    ROOT --> C[crates/* docs]
-    ROOT --> P[packages/* docs]
-    ROOT --> R[Root docs]
+    ROOT --> A[документация apps/*]
+    ROOT --> C[документация crates/*]
+    ROOT --> P[документация packages/*]
+    ROOT --> R[корневые документы]
 
     D --> DARCH[docs/architecture/*]
     D --> DGUIDE[docs/guides/*]
@@ -43,209 +43,209 @@ graph TD
     R --> RAGENTS[AGENTS.md]
 ```
 
-## AI session start (обязательно)
+## Старт AI-сессии (обязательно)
 
 - [AI Context](./AI_CONTEXT.md) — обязательный стартовый контекст для AI-сессий перед анализом и генерацией кода.
 
-## Platform Verification
+## Верификация платформы
 
-- [Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md) — Глобальный чеклист верификации всей платформы (21 фаза, 400+ проверок). Включает реестр найденных проблем (Фаза 21).
-- [Verification Plans](./verification/README.md) — Каталог специализированных планов верификации (включая rolling-верификацию Leptos-библиотек).
+- [План верификации платформы](./PLATFORM_VERIFICATION_PLAN.md) — глобальный чеклист верификации всей платформы (21 фаза, 400+ проверок). Включает реестр найденных проблем (Фаза 21).
+- [Планы верификации](./verification/README.md) — каталог специализированных планов верификации (включая rolling-верификацию Leptos-библиотек).
 
-## Root Documents
+## Корневые документы
 
-- [System Manifest](../RUSTOK_MANIFEST.md) — Философия, принципы и архитектурные инварианты платформы.
-- [Agent Rules](../AGENTS.md) — Правила для AI-агентов и контрибьюторов.
-- [Architecture Decisions](../DECISIONS/README.md) — Реестр архитектурных решений (ADR).
-- [Contributing](../CONTRIBUTING.md) — Инструкция по участию в разработке.
-- [Changelog](../CHANGELOG.md) — История версий и релизов.
-- [Roadmap](./roadmap.md) — Текущая дорожная карта и история релизов.
-- [License](../LICENSE) — MIT License.
+- [Системный манифест](../RUSTOK_MANIFEST.md) — философия, принципы и архитектурные инварианты платформы.
+- [Правила агентов](../AGENTS.md) — правила для AI-агентов и контрибьюторов.
+- [Архитектурные решения](../DECISIONS/README.md) — реестр архитектурных решений (ADR).
+- [Участие в разработке](../CONTRIBUTING.md) — инструкция по участию в разработке.
+- [Журнал изменений](../CHANGELOG.md) — история версий и релизов.
+- [Дорожная карта](./roadmap.md) — текущая дорожная карта и история релизов.
+- [Лицензия](../LICENSE) — лицензия MIT.
 
-## Central docs (`docs/`)
+## Централизованная документация (`docs/`)
 
-### Architecture (`docs/architecture/`)
+### Архитектура (`docs/architecture/`)
 
-- [Overview](./architecture/overview.md)
-- [Matryoshka Architecture (7 Layers)](./architecture/matryoshka.md) — Foundational vision: the 7-layer platform model (RusToK / Alloy / Graal)
-- [Database Schema](./architecture/database.md)
-- [API Architecture](./architecture/api.md)
+- [Обзор](./architecture/overview.md)
+- [Архитектура «Матрёшка» (7 слоёв)](./architecture/matryoshka.md) — базовое видение: семислойная модель платформы (RusToK / Alloy / Graal).
+- [Схема базы данных](./architecture/database.md)
+- [Архитектура API](./architecture/api.md)
   - включает раздел Rich-text input contract (`markdown` + `rt_json_v1`/`content_json`) для blog/forum/pages
   - включает актуальный раздел по auth lifecycle consistency и release-gate (`AuthLifecycleService` + `scripts/auth_release_gate.sh`)
-- [RBAC Enforcement](./architecture/rbac.md)
-- [RBAC Relation Migration Plan](./architecture/rbac-relation-migration-plan.md)
-- [Dataloader](./architecture/dataloader.md)
-- [Modules Overview](./architecture/modules.md)
-- [Routing Policy](./architecture/routing.md)
-- [Events & Outbox](./architecture/events.md) — событийная модель, outbox и incident runbook для backlog/DLQ/reindex
-- [Transactional Publishing](./architecture/events-transactional.md)
-- [Event Flow Contract](./architecture/event-flow-contract.md) — канонический event-path и runtime contract для consumer loops
-- [Tenancy](./architecture/tenancy.md)
+- [Применение RBAC](./architecture/rbac.md)
+- [План миграции связей RBAC](./architecture/rbac-relation-migration-plan.md)
+- [DataLoader](./architecture/dataloader.md)
+- [Обзор модулей](./architecture/modules.md)
+- [Политика маршрутизации](./architecture/routing.md)
+- [События и Outbox](./architecture/events.md) — событийная модель, outbox и runbook инцидентов для backlog/DLQ/reindex.
+- [Транзакционная публикация](./architecture/events-transactional.md)
+- [Контракт потока событий](./architecture/event-flow-contract.md) — канонический event-path и runtime-contract для consumer-loops.
+- [Многотенантность](./architecture/tenancy.md)
 - [Локализация (i18n)](./architecture/i18n.md)
-- [Principles](./architecture/principles.md)
-- [Improvement Recommendations](./architecture/improvement-recommendations.md) (живой backlog архитектурных улучшений, обновлено 2026-03-08)
+- [Принципы](./architecture/principles.md)
+- [Рекомендации по улучшению](./architecture/improvement-recommendations.md) (живой backlog архитектурных улучшений, обновлено 2026-03-08).
 
-### Guides (`docs/guides/`)
+### Руководства (`docs/guides/`)
 
-- [Quick Start](./guides/quickstart.md)
-- [Observability](./guides/observability-quickstart.md)
-- [Circuit Breaker](./guides/circuit-breaker.md)
-- [State Machines](./guides/state-machine.md)
-- [Error Handling](./guides/error-handling.md)
-- [Input Validation](./guides/input-validation.md)
-- [Rate Limiting](./guides/rate-limiting.md)
-- [Module Metrics](./guides/module-metrics.md)
-- [Testing](./guides/testing.md)
-- [Integration Testing](./guides/testing-integration.md)
-- [Property Testing](./guides/testing-property.md)
-- [Security Audit](./guides/security-audit.md)
-- [Lockfile Troubleshooting](./guides/lockfile-troubleshooting.md)
-- [Connect External Apps](./guides/connect-external-apps.md)
+- [Быстрый старт](./guides/quickstart.md)
+- [Наблюдаемость](./guides/observability-quickstart.md)
+- [Паттерн Circuit Breaker](./guides/circuit-breaker.md)
+- [Машины состояний](./guides/state-machine.md)
+- [Обработка ошибок](./guides/error-handling.md)
+- [Валидация ввода](./guides/input-validation.md)
+- [Ограничение частоты](./guides/rate-limiting.md)
+- [Метрики модулей](./guides/module-metrics.md)
+- [Тестирование](./guides/testing.md)
+- [Интеграционное тестирование](./guides/testing-integration.md)
+- [Тестирование на основе свойств (property-based)](./guides/testing-property.md)
+- [Аудит безопасности](./guides/security-audit.md)
+- [Устранение проблем lockfile](./guides/lockfile-troubleshooting.md)
+- [Подключение внешних приложений](./guides/connect-external-apps.md)
 
-### Modules (`docs/modules/`)
+### Модули (`docs/modules/`)
 
-- [Overview](./modules/overview.md)
-- [Registry](./modules/registry.md)
-- [Rustok crates registry](./modules/crates-registry.md)
-- [Manifest](./modules/manifest.md)
+- [Обзор](./modules/overview.md)
+- [Реестр](./modules/registry.md)
+- [Реестр crate-ов RusToK](./modules/crates-registry.md)
+- [Манифест](./modules/manifest.md)
 - [План внедрения Tiptap/Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
-- [Module Docs Index](./modules/_index.md)
+- [Индекс модульной документации](./modules/_index.md)
 
-### Standards (`docs/standards/`)
+### Стандарты (`docs/standards/`)
 
-- [Coding Standards](./standards/coding.md)
-- [Patterns vs Antipatterns](./standards/patterns-vs-antipatterns.md) — **сводная таблица** правильных и неправильных подходов
-- [Forbidden Actions (NEVER DO)](./standards/forbidden-actions.md) — **жёсткие запреты** с объяснением последствий
-- [Error Handling](./standards/errors.md)
-- [Security](./standards/security.md)
-- [Logging](./standards/logging.md)
-- [Performance](./standards/performance.md)
-- [Distributed Tracing](./standards/distributed-tracing.md)
-- [OpenTelemetry Integration](./standards/opentelemetry-integration.md)
-- [Instrumentation Examples](./standards/instrumentation-examples.md)
-- [Transactional Outbox](./standards/transactional-outbox.md)
+- [Стандарты кодирования](./standards/coding.md)
+- [Паттерны и антипаттерны](./standards/patterns-vs-antipatterns.md) — **сводная таблица** правильных и неправильных подходов.
+- [Запрещённые действия (НЕ ДЕЛАТЬ)](./standards/forbidden-actions.md) — **жёсткие запреты** с объяснением последствий.
+- [Обработка ошибок](./standards/errors.md)
+- [Безопасность](./standards/security.md)
+- [Логирование](./standards/logging.md)
+- [Производительность](./standards/performance.md)
+- [Распределённая трассировка](./standards/distributed-tracing.md)
+- [Интеграция OpenTelemetry](./standards/opentelemetry-integration.md)
+- [Примеры инструментирования](./standards/instrumentation-examples.md)
+- [Транзакционный Outbox](./standards/transactional-outbox.md)
 - [Спецификация rt_json_v1](./standards/rt-json-v1.md)
 
 ### AI (`docs/ai/`)
 
-- [Session Template](./ai/SESSION_TEMPLATE.md)
-- [Known Pitfalls](./ai/KNOWN_PITFALLS.md)
+- [Шаблон сессии](./ai/SESSION_TEMPLATE.md)
+- [Известные подводные камни](./ai/KNOWN_PITFALLS.md)
 
 ### Alloy (`docs/`)
 
-- [Alloy Concept](./alloy-concept.md) — стратегическое видение: Self-Evolving Integration Runtime
-- [Alloy Technical Review](./alloy-review.md) — ревью текущей реализации alloy-scripting, проблемы и рекомендации
+- [Концепция Alloy](./alloy-concept.md) — стратегическое видение: Self-Evolving Integration Runtime.
+- [Техническое ревью Alloy](./alloy-review.md) — обзор текущей реализации `alloy-scripting`, проблемы и рекомендации.
 
-### References (`docs/references/`)
+### Справочные материалы (`docs/references/`)
 
-- [Loco reference package](./references/loco/README.md)
-- [Iggy reference package](./references/iggy/README.md)
-- [MCP reference package](./references/mcp/README.md)
-- [Outbox reference package](./references/outbox/README.md)
-- [Telemetry reference package](./references/telemetry/README.md)
+- [Справочный пакет Loco](./references/loco/README.md)
+- [Справочный пакет Iggy](./references/iggy/README.md)
+- [Справочный пакет MCP](./references/mcp/README.md)
+- [Справочный пакет Outbox](./references/outbox/README.md)
+- [Справочный пакет Telemetry](./references/telemetry/README.md)
 
 ### UI (`docs/UI/`)
 
-- [UI Overview](./UI/README.md)
-- [GraphQL Architecture](./UI/graphql-architecture.md)
-- [Admin ↔ Server Connection](./UI/admin-server-connection-quickstart.md)
-- [Leptos Storefront Notes](./UI/storefront.md)
-- [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
-- [FSD Restructuring Plan](./UI/fsd-restructuring-plan.md)
-- [IU API Contracts](../UI/docs/api-contracts.md)
+- [Обзор UI](./UI/README.md)
+- [Архитектура GraphQL](./UI/graphql-architecture.md)
+- [Подключение Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
+- [Заметки по Leptos Storefront](./UI/storefront.md)
+- [Каталог UI-компонентов Rust](./UI/rust-ui-component-catalog.md)
+- [План реструктуризации FSD](./UI/fsd-restructuring-plan.md)
+- [Контракты IU API](../UI/docs/api-contracts.md)
 
-## Distributed docs (`apps/*`, `crates/*`)
+## Распределённая документация (`apps/*`, `crates/*`)
 
-### Application docs
+### Документация приложений
 
 - **Стандарт для всех приложений `apps/*` (обязательный минимум):**
   - `README.md`
   - `docs/README.md`
   - `docs/implementation-plan.md`
 
-- [Server docs](../apps/server/docs/README.md) (includes mandatory/critical core modules baseline for agents (6 modules), Loco feature matrix, auth password-reset email delivery, dev seed behavior notes, and build-request event publication wiring)
-- [Server implementation plan](../apps/server/docs/implementation-plan.md)
-- [Loco governance register](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по Loco capabilities в server runtime.
-- [Leptos Admin docs](../apps/admin/docs/README.md)
-- [Leptos Admin implementation plan](../apps/admin/docs/implementation-plan.md)
-- [Next.js Admin README](../apps/next-admin/README.md)
-- [Next.js Admin docs](../apps/next-admin/docs/README.md)
-- [Next.js Admin implementation plan](../apps/next-admin/docs/implementation-plan.md)
-- [Next.js Admin RBAC doc](../apps/next-admin/docs/nav-rbac.md)
-- [Next.js Admin Clerk setup](../apps/next-admin/docs/clerk_setup.md)
-- [Next.js Admin themes](../apps/next-admin/docs/themes.md)
-- [Leptos Storefront README](../apps/storefront/README.md)
-- [Leptos Storefront docs](../apps/storefront/docs/README.md)
-- [Leptos Storefront implementation plan](../apps/storefront/docs/implementation-plan.md)
-- [Next.js Storefront docs](../apps/next-frontend/docs/README.md)
-- [Next.js Storefront implementation plan](../apps/next-frontend/docs/implementation-plan.md)
-- [MCP crate docs](../crates/rustok-mcp/docs/README.md)
+- [Документация Server](../apps/server/docs/README.md) (включает обязательный/критичный базовый набор core-модулей для агентов (6 модулей), матрицу возможностей Loco, доставку писем для сброса пароля в auth, заметки по поведению dev seed и схему публикации событий build-request).
+- [План реализации Server](../apps/server/docs/implementation-plan.md)
+- [Реестр Loco governance](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по возможностям Loco в server runtime.
+- [Документация Leptos Admin](../apps/admin/docs/README.md)
+- [План реализации Leptos Admin](../apps/admin/docs/implementation-plan.md)
+- [README Next.js Admin](../apps/next-admin/README.md)
+- [Документация Next.js Admin](../apps/next-admin/docs/README.md)
+- [План реализации Next.js Admin](../apps/next-admin/docs/implementation-plan.md)
+- [Документ Next.js Admin RBAC](../apps/next-admin/docs/nav-rbac.md)
+- [Настройка Clerk для Next.js Admin](../apps/next-admin/docs/clerk_setup.md)
+- [Темы Next.js Admin](../apps/next-admin/docs/themes.md)
+- [README Leptos Storefront](../apps/storefront/README.md)
+- [Документация Leptos Storefront](../apps/storefront/docs/README.md)
+- [План реализации Leptos Storefront](../apps/storefront/docs/implementation-plan.md)
+- [Документация Next.js Storefront](../apps/next-frontend/docs/README.md)
+- [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
+- [Документация crate `rustok-mcp`](../crates/rustok-mcp/docs/README.md)
 
-### Module and crate docs
+### Документация модулей и crate-ов
 
-- [Domain module registry map](./modules/registry.md)
-- [Platform core README](../crates/rustok-core/README.md)
-- [Platform core implementation plan](../crates/rustok-core/docs/implementation-plan.md)
-- [Event contracts crate README](../crates/rustok-events/README.md)
-- [Event contracts crate docs](../crates/rustok-events/docs/README.md)
-- [Event contracts implementation plan](../crates/rustok-events/docs/implementation-plan.md)
-- [Content module docs](../crates/rustok-content/docs/README.md)
-- [Content module implementation plan](../crates/rustok-content/docs/implementation-plan.md)
-- [Commerce module docs](../crates/rustok-commerce/docs/README.md)
-- [Commerce module implementation plan](../crates/rustok-commerce/docs/implementation-plan.md)
-- [Blog module docs](../crates/rustok-blog/docs/README.md)
-- [Blog admin UI package](../crates/rustok-blog/ui/admin/README.md) *(if present in branch)*
-- [Blog module implementation plan](../crates/rustok-blog/docs/implementation-plan.md)
-- [Forum module docs](../crates/rustok-forum/docs/README.md)
-- [Forum module implementation plan](../crates/rustok-forum/docs/implementation-plan.md)
-- [Pages module docs](../crates/rustok-pages/docs/README.md)
-- [Pages module implementation plan](../crates/rustok-pages/docs/implementation-plan.md)
-- [Index module docs](../crates/rustok-index/docs/README.md)
-- [Index module implementation plan](../crates/rustok-index/docs/implementation-plan.md)
-- [MCP integration crate docs](../crates/rustok-mcp/docs/README.md)
-- [MCP implementation plan](../crates/rustok-mcp/docs/implementation-plan.md)
-- [Tenant module docs](../crates/rustok-tenant/docs/README.md)
-- [Tenant module implementation plan](../crates/rustok-tenant/docs/implementation-plan.md)
-- [RBAC module docs](../crates/rustok-rbac/docs/README.md)
-- [RBAC module implementation plan](../crates/rustok-rbac/docs/implementation-plan.md)
-- [Iggy connector crate docs](../crates/rustok-iggy-connector/docs/README.md)
-- [Iggy connector implementation plan](../crates/rustok-iggy-connector/docs/implementation-plan.md)
-- [Iggy runtime docs](../crates/rustok-iggy/docs/README.md)
-- [Iggy runtime implementation plan](../crates/rustok-iggy/docs/implementation-plan.md)
-- [Outbox module docs](../crates/rustok-outbox/docs/README.md)
-- [Outbox module implementation plan](../crates/rustok-outbox/docs/implementation-plan.md)
-- [Telemetry docs](../crates/rustok-telemetry/docs/README.md)
-- [Telemetry implementation plan](../crates/rustok-telemetry/docs/implementation-plan.md)
-- [Test utils docs](../crates/rustok-test-utils/docs/README.md)
-- [Test utils implementation plan](../crates/rustok-test-utils/docs/implementation-plan.md)
+- [Карта реестра доменных модулей](./modules/registry.md)
+- [README платформенного ядра](../crates/rustok-core/README.md)
+- [План реализации платформенного ядра](../crates/rustok-core/docs/implementation-plan.md)
+- [README crate-контрактов событий](../crates/rustok-events/README.md)
+- [Документация crate-контрактов событий](../crates/rustok-events/docs/README.md)
+- [План реализации контрактов событий](../crates/rustok-events/docs/implementation-plan.md)
+- [Документация модуля Content](../crates/rustok-content/docs/README.md)
+- [План реализации модуля Content](../crates/rustok-content/docs/implementation-plan.md)
+- [Документация модуля Commerce](../crates/rustok-commerce/docs/README.md)
+- [План реализации модуля Commerce](../crates/rustok-commerce/docs/implementation-plan.md)
+- [Документация модуля Blog](../crates/rustok-blog/docs/README.md)
+- [Пакет админского UI для Blog](../crates/rustok-blog/ui/admin/README.md) *(если присутствует в ветке)*
+- [План реализации модуля Blog](../crates/rustok-blog/docs/implementation-plan.md)
+- [Документация модуля Forum](../crates/rustok-forum/docs/README.md)
+- [План реализации модуля Forum](../crates/rustok-forum/docs/implementation-plan.md)
+- [Документация модуля Pages](../crates/rustok-pages/docs/README.md)
+- [План реализации модуля Pages](../crates/rustok-pages/docs/implementation-plan.md)
+- [Документация модуля Index](../crates/rustok-index/docs/README.md)
+- [План реализации модуля Index](../crates/rustok-index/docs/implementation-plan.md)
+- [Документация интеграционного crate MCP](../crates/rustok-mcp/docs/README.md)
+- [План реализации MCP](../crates/rustok-mcp/docs/implementation-plan.md)
+- [Документация модуля Tenant](../crates/rustok-tenant/docs/README.md)
+- [План реализации модуля Tenant](../crates/rustok-tenant/docs/implementation-plan.md)
+- [Документация модуля RBAC](../crates/rustok-rbac/docs/README.md)
+- [План реализации модуля RBAC](../crates/rustok-rbac/docs/implementation-plan.md)
+- [Документация crate-коннектора Iggy](../crates/rustok-iggy-connector/docs/README.md)
+- [План реализации коннектора Iggy](../crates/rustok-iggy-connector/docs/implementation-plan.md)
+- [Документация рантайма Iggy](../crates/rustok-iggy/docs/README.md)
+- [План реализации рантайма Iggy](../crates/rustok-iggy/docs/implementation-plan.md)
+- [Документация модуля Outbox](../crates/rustok-outbox/docs/README.md)
+- [План реализации модуля Outbox](../crates/rustok-outbox/docs/implementation-plan.md)
+- [Документация Telemetry](../crates/rustok-telemetry/docs/README.md)
+- [План реализации Telemetry](../crates/rustok-telemetry/docs/implementation-plan.md)
+- [Документация test-utils](../crates/rustok-test-utils/docs/README.md)
+- [План реализации test-utils](../crates/rustok-test-utils/docs/implementation-plan.md)
 
-### Custom frontend libraries docs
+### Документация внутренних фронтенд-библиотек
 
-**Rust/Leptos (in `crates/`)** — internal libraries used by `apps/admin` and `apps/storefront`:
+**Rust/Leptos (в `crates/`)** — внутренние библиотеки, используемые `apps/admin` и `apps/storefront`:
 
-- [leptos-auth docs](../crates/leptos-auth/docs/README.md)
-- [leptos-graphql docs](../crates/leptos-graphql/docs/README.md)
-- [leptos-hook-form docs](../crates/leptos-hook-form/docs/README.md)
-- [leptos-shadcn-pagination docs](../crates/leptos-shadcn-pagination/docs/README.md)
-- [leptos-table docs](../crates/leptos-table/docs/README.md)
-- [leptos-zod docs](../crates/leptos-zod/docs/README.md)
-- [leptos-zustand docs](../crates/leptos-zustand/docs/README.md)
+- [Документация leptos-auth](../crates/leptos-auth/docs/README.md)
+- [Документация leptos-graphql](../crates/leptos-graphql/docs/README.md)
+- [Документация leptos-hook-form](../crates/leptos-hook-form/docs/README.md)
+- [Документация leptos-shadcn-pagination](../crates/leptos-shadcn-pagination/docs/README.md)
+- [Документация leptos-table](../crates/leptos-table/docs/README.md)
+- [Документация leptos-zod](../crates/leptos-zod/docs/README.md)
+- [Документация leptos-zustand](../crates/leptos-zustand/docs/README.md)
 
-**JavaScript/TypeScript (in `packages/`)** — internal packages used by `apps/next-admin` and `apps/next-frontend`:
+**JavaScript/TypeScript (в `packages/`)** — внутренние пакеты, используемые `apps/next-admin` и `apps/next-frontend`:
 
 - [packages/leptos-auth](../packages/leptos-auth/README.md)
-- [packages/leptos-graphql](../packages/leptos-graphql/README.md) — shared GraphQL helpers for all frontends
+- [packages/leptos-graphql](../packages/leptos-graphql/README.md) — общие GraphQL-хелперы для всех фронтендов
 - [packages/leptos-hook-form](../packages/leptos-hook-form/README.md)
 - [packages/leptos-table](../packages/leptos-table/README.md)
 - [packages/leptos-zod](../packages/leptos-zod/README.md)
 - [packages/leptos-zustand](../packages/leptos-zustand/README.md)
 
 
-## Full distributed documentation inventory (repo-wide)
+## Полный реестр распределённой документации (по всему репозиторию)
 
 Ниже — быстрый реестр по **всем приложениям и crate’ам**, чтобы можно было пройтись по коду и не пропустить локальные документы.
 
-### Apps (`apps/*`)
+### Приложения (`apps/*`)
 
 - `apps/admin`
   - [README](../apps/admin/README.md)
@@ -271,7 +271,7 @@ graph TD
   - [docs/README](../apps/storefront/docs/README.md)
   - [docs/implementation-plan](../apps/storefront/docs/implementation-plan.md)
 
-### Crates (`crates/*`)
+### Крейты (`crates/*`)
 
 - `alloy-scripting`: [README](../crates/alloy-scripting/README.md), [docs/README](../crates/alloy-scripting/docs/README.md)
 - `leptos-auth`: [README](../crates/leptos-auth/README.md), [docs/README](../crates/leptos-auth/docs/README.md)
@@ -284,7 +284,7 @@ graph TD
 - `leptos-zod`: [README](../crates/leptos-zod/README.md), [docs/README](../crates/leptos-zod/docs/README.md)
 - `leptos-zustand`: [README](../crates/leptos-zustand/README.md), [docs/README](../crates/leptos-zustand/docs/README.md)
 - `iu-leptos` (UI/leptos): [README](../UI/leptos/README.md)
-- `UI/next/components`: [index](../UI/next/components/index.ts) — React/Next.js IU wrappers
+- `UI/next/components`: [index](../UI/next/components/index.ts) — обёртки IU для React/Next.js.
 - `rustok-blog`: [README](../crates/rustok-blog/README.md), [docs/README](../crates/rustok-blog/docs/README.md), [docs/implementation-plan](../crates/rustok-blog/docs/implementation-plan.md)
 - `rustok-commerce`: [README](../crates/rustok-commerce/README.md), [docs/README](../crates/rustok-commerce/docs/README.md), [docs/implementation-plan](../crates/rustok-commerce/docs/implementation-plan.md)
 - `rustok-content`: [README](../crates/rustok-content/README.md), [docs/README](../crates/rustok-content/docs/README.md), [docs/implementation-plan](../crates/rustok-content/docs/implementation-plan.md)
@@ -303,9 +303,9 @@ graph TD
 - `rustok-test-utils`: [README](../crates/rustok-test-utils/README.md)
 - `utoipa-swagger-ui-vendored`: [README](../crates/utoipa-swagger-ui-vendored/README.md), [docs/README](../crates/utoipa-swagger-ui-vendored/docs/README.md)
 
-### Packages (`packages/*`)
+### Пакеты (`packages/*`)
 
-JavaScript/TypeScript internal packages for Next.js applications:
+Внутренние пакеты JavaScript/TypeScript для приложений Next.js:
 
 - `leptos-auth`: [README](../packages/leptos-auth/README.md)
 - `leptos-graphql`: [README](../packages/leptos-graphql/README.md)
@@ -313,11 +313,11 @@ JavaScript/TypeScript internal packages for Next.js applications:
 - `leptos-zod`: [README](../packages/leptos-zod/README.md)
 - `leptos-zustand`: [README](../packages/leptos-zustand/README.md)
 
-## Maintenance checklist
+## Чеклист сопровождения
 
-When changing architecture/API/events/modules/tenancy/routing/UI contracts/observability:
+При изменениях архитектуры/API/событий/модулей/тенантности/маршрутизации/UI-контрактов/наблюдаемости:
 
-1. Update the relevant local docs in the changed component (`apps/*` or `crates/*`).
-2. Update the related central docs in `docs/`.
-3. Update this file (`docs/index.md`) so the map remains accurate.
-4. If module/app names changed, update [`docs/modules/registry.md`](./modules/registry.md).
+1. Обновите релевантную локальную документацию в изменённом компоненте (`apps/*` или `crates/*`).
+2. Обновите соответствующую централизованную документацию в `docs/`.
+3. Обновите этот файл (`docs/index.md`), чтобы карта оставалась актуальной.
+4. Если изменились названия модулей/приложений, обновите [`docs/modules/registry.md`](./modules/registry.md).
