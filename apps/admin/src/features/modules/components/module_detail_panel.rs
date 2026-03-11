@@ -12,12 +12,13 @@ pub fn module_detail_panel(
     let title = module
         .as_ref()
         .map(|m| m.name.clone())
-        .unwrap_or_else(|| selected_slug.clone());
+        .unwrap_or(selected_slug);
+
     view! {
         <div class="rounded-xl border border-border bg-card p-4">
-            <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center justify-between">
                 <h3 class="font-semibold">{title}</h3>
-                <button class="text-sm underline" on:click=move |_| on_close.run(())>"Close"</button>
+                <button class="text-xs underline" on:click=move |_| on_close.run(())>"Close"</button>
             </div>
         </div>
     }
