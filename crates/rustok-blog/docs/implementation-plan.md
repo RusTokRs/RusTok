@@ -277,3 +277,5 @@ or observability expectations:
 ### Rich-text admin integration (update)
 
 - [x] Integration in admin package and GraphQL surfaces (post form + PageBuilder + ForumReplyEditor exports).
+
+- [x] Navigation entry points split by domain: blog workflows stay under Blog menu, forum workflows moved to Forum menu (`/dashboard/forum/reply`).

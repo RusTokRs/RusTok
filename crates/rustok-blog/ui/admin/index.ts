@@ -1,5 +1,5 @@
 import { registerAdminModule } from '@/modules/registry';
-import { blogNavItems } from './nav';
+import { blogNavItems, forumNavItems } from './nav';
 
 registerAdminModule({
   id: 'blog',
@@ -7,8 +7,14 @@ registerAdminModule({
   navItems: blogNavItems
 });
 
+registerAdminModule({
+  id: 'forum',
+  name: 'Forum',
+  navItems: forumNavItems
+});
+
 // Re-export everything consumers might need
-export { blogNavItems } from './nav';
+export { blogNavItems, forumNavItems } from './nav';
 export { default as PostsPage } from './pages/posts-page';
 export { default as PostDetailPage } from './pages/post-detail-page';
 export { default as PostFormPage } from './pages/post-form-page';
