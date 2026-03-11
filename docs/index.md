@@ -172,6 +172,8 @@ graph TD
 - [Platform core README](../crates/rustok-core/README.md)
 - [Platform core implementation plan](../crates/rustok-core/docs/implementation-plan.md)
 - [Event contracts crate README](../crates/rustok-events/README.md)
+- [Event contracts crate docs](../crates/rustok-events/docs/README.md)
+- [Event contracts implementation plan](../crates/rustok-events/docs/implementation-plan.md)
 - [Content module docs](../crates/rustok-content/docs/README.md)
 - [Content module implementation plan](../crates/rustok-content/docs/implementation-plan.md)
 - [Commerce module docs](../crates/rustok-commerce/docs/README.md)
@@ -198,6 +200,8 @@ graph TD
 - [Outbox module implementation plan](../crates/rustok-outbox/docs/implementation-plan.md)
 - [Telemetry docs](../crates/rustok-telemetry/docs/README.md)
 - [Telemetry implementation plan](../crates/rustok-telemetry/docs/implementation-plan.md)
+- [Test utils docs](../crates/rustok-test-utils/docs/README.md)
+- [Test utils implementation plan](../crates/rustok-test-utils/docs/implementation-plan.md)
 
 ### Custom frontend libraries docs
 
