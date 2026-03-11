@@ -18,6 +18,7 @@ thiserror.workspace = true
 tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 uuid.workspace = true
+url = "2.5"
 
 [dev-dependencies]
 tokio.workspace = true
