@@ -15,17 +15,17 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
 #[component]
 pub fn ModuleCard(
     module: ModuleInfo,
-    #[prop(optional)] catalog_module: Option<MarketplaceModule>,
+    #[prop(default = None)] catalog_module: Option<MarketplaceModule>,
     #[prop(into)] tenant_loading: Signal<bool>,
     #[prop(into)] platform_loading: Signal<bool>,
     #[prop(into)] platform_installed: Signal<bool>,
     #[prop(default = Signal::derive(|| false))] platform_busy: Signal<bool>,
     #[prop(default = Signal::derive(|| None))] platform_version: Signal<Option<String>>,
     #[prop(default = Signal::derive(|| None))] recommended_version: Signal<Option<String>>,
-    #[prop(optional)] on_toggle: Option<Callback<(String, bool)>>,
-    #[prop(optional)] on_install: Option<Callback<(String, String)>>,
-    #[prop(optional)] on_inspect: Option<Callback<String>>,
-    #[prop(optional)] on_uninstall: Option<Callback<String>>,
+    #[prop(default = None)] on_toggle: Option<Callback<(String, bool)>>,
+    #[prop(default = None)] on_install: Option<Callback<(String, String)>>,
+    #[prop(default = None)] on_inspect: Option<Callback<String>>,
+    #[prop(default = None)] on_uninstall: Option<Callback<String>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let is_core = module.is_core();
@@ -333,18 +333,23 @@ pub fn ModuleCard(
                                         }
                                     }
                                 >
+                                    {
+                                        let uninstall_slug = slug_for_uninstall_action.clone();
+                                        view! {
                                     <button
                                         type="button"
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || platform_busy.get() || platform_loading.get()
                                         on:click=move |_| {
                                             if let Some(cb) = on_uninstall.clone() {
-                                                cb.run(slug_for_uninstall_action.clone());
+                                                cb.run(uninstall_slug.clone());
                                             }
                                         }
                                     >
                                         {move || if platform_loading.get() { "Queueing..." } else { "Uninstall" }}
                                     </button>
+                                        }
+                                    }
                                 </Show>
                             </div>
                         </div>

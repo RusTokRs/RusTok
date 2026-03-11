@@ -5,7 +5,7 @@ use leptos::prelude::*;
 #[component]
 pub fn RevokeAppDialog(
     app: OAuthApp,
-    on_success: impl Fn() + 'static + Clone,
+    on_success: impl Fn() + Send + Sync + 'static + Clone,
     on_cancel: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
     let name = app.name.clone();

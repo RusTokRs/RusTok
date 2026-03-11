@@ -34,8 +34,8 @@ pub fn ModuleDetailPanel(
     on_close: Callback<()>,
 ) -> impl IntoView {
     let detail = module.clone();
-    let detail_for_body = module;
-    let admin_surface_for_body = admin_surface.clone();
+    let detail_for_body = StoredValue::new(module.clone());
+    let admin_surface_for_body = StoredValue::new(admin_surface.clone());
 
     view! {
         <div class="rounded-xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
@@ -74,17 +74,19 @@ pub fn ModuleDetailPanel(
                 }
             >
                 {move || {
-                    detail_for_body.clone().map(|module| {
+                    detail_for_body.get_value().as_ref().map(|module| {
+                        let module = module.clone();
                         let version_trail = module.versions.clone().into_iter().take(5).collect::<Vec<_>>();
                         let checksum = short_checksum(module.checksum_sha256.as_deref());
+                        let admin_surface = admin_surface_for_body.get_value();
                         let primary_here = module
                             .recommended_admin_surfaces
                             .iter()
-                            .any(|surface| surface == &admin_surface_for_body);
+                            .any(|surface| surface == &admin_surface);
                         let showcase_here = module
                             .showcase_admin_surfaces
                             .iter()
-                            .any(|surface| surface == &admin_surface_for_body);
+                            .any(|surface| surface == &admin_surface);
                         view! {
                             <div class="mt-4 space-y-4">
                                 <div class="space-y-2">

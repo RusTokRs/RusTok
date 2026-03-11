@@ -307,7 +307,7 @@ pub fn ModulesList(
     let resume_live_polling = live_polling.resume.clone();
 
     Effect::new(move |_| {
-        let module_from_query = query.get().get("module").cloned();
+        let module_from_query = query.get().get("module");
         if module_from_query != selected_module_slug.get() {
             set_selected_module_slug.set(module_from_query.clone());
             if module_from_query.is_none() {
@@ -651,6 +651,8 @@ pub fn ModulesList(
             .or_else(|| build_history_state.get().into_iter().next())
     };
 
+    let admin_surface_for_detail = StoredValue::new(admin_surface.clone());
+
     view! {
         <div class="space-y-8">
             <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
@@ -899,10 +901,11 @@ pub fn ModulesList(
             </div>
             <Show when=move || selected_module_slug.get().is_some()>
                 {move || {
+                    let admin_surface_value = admin_surface_for_detail.get_value();
                     selected_module_slug.get().map(|slug| {
                         view! {
                             <ModuleDetailPanel
-                                admin_surface=admin_surface.clone()
+                                admin_surface=admin_surface_value.clone()
                                 selected_slug=slug
                                 module=selected_module_detail.get()
                                 loading=Signal::derive(move || module_detail_loading.get())
@@ -926,8 +929,15 @@ pub fn ModulesList(
                                     {move || build_history_state.get().into_iter().map(|build| {
                                         let primary = if build.modules_delta.is_empty() { build.reason.clone().unwrap_or_else(|| build.id.clone()) } else { build.modules_delta.clone() };
                                         let release_id = build.release_id.clone();
+                                        let release_id_for_badge = release_id.clone();
+                                        let release_id_for_badge_text = release_id.clone();
+                                        let release_id_for_active = release_id.clone();
+                                        let release_id_for_rollback = release_id.clone();
                                         let logs_url = build.logs_url.clone();
                                         let error_message = build.error_message.clone();
+                                        let build_id = StoredValue::new(build.id.clone());
+                                        let build_id_for_loading = build_id;
+                                        let build_id_for_label = build_id;
                                         view! {
                                             <div class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
                                                 <div class="space-y-1">
@@ -937,12 +947,12 @@ pub fn ModulesList(
                                                         <p class="text-xs text-destructive">{error_message.clone().unwrap_or_default()}</p>
                                                     </Show>
                                                     <div class="flex flex-wrap items-center gap-2 text-xs">
-                                                        <Show when=move || release_id.is_some()>
+                                                        <Show when=move || release_id_for_badge.is_some()>
                                                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
-                                                                {move || format!("Release {}", release_id.clone().unwrap_or_default())}
+                                                                {format!("Release {}", release_id_for_badge_text.clone().unwrap_or_default())}
                                                             </span>
                                                         </Show>
-                                                        <Show when=move || active_release_state.get().as_ref().and_then(|release| release_id.as_ref().map(|id| release.id == *id)).unwrap_or(false)>
+                                                        <Show when=move || active_release_state.get().as_ref().and_then(|release| release_id_for_active.as_ref().map(|id| release.id == *id)).unwrap_or(false)>
                                                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                                                 "Active release"
                                                             </span>
@@ -957,15 +967,15 @@ pub fn ModulesList(
                                                 <div class="space-y-2 text-right">
                                                     <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{humanize_label(&build.status)}</span>
                                                     <p class="text-xs text-muted-foreground">{build.created_at.clone()}</p>
-                                                    <Show when=move || active_release_state.get().as_ref().is_some_and(|release| release.previous_release_id.is_some() && release_id.as_ref().is_some_and(|id| release.id == *id))>
+                                                    <Show when=move || active_release_state.get().as_ref().is_some_and(|release| release.previous_release_id.is_some() && release_id_for_rollback.as_ref().is_some_and(|id| release.id == *id))>
                                                         <button
                                                             type="button"
                                                             class="text-primary text-xs font-medium underline-offset-4 hover:underline disabled:no-underline disabled:opacity-50"
-                                                            disabled=move || rollback_loading_build_id.get().as_deref() == Some(build.id.as_str()) || active_build_state.get().is_some()
-                                                            on:click=move |_| on_rollback.run(build.id.clone())
+                                                            disabled=move || rollback_loading_build_id.get().as_deref() == Some(build_id_for_loading.get_value().as_str()) || active_build_state.get().is_some()
+                                                            on:click=move |_| on_rollback.run(build_id.get_value())
                                                         >
                                                             {move || {
-                                                                if rollback_loading_build_id.get().as_deref() == Some(build.id.as_str()) {
+                                                                if rollback_loading_build_id.get().as_deref() == Some(build_id_for_label.get_value().as_str()) {
                                                                     "Rolling back...".to_string()
                                                                 } else {
                                                                     "Rollback".to_string()
@@ -1047,7 +1057,7 @@ pub fn ModulesList(
                                 {move || update_candidates().into_iter().map(|(module, installed_module)| {
                                     let slug = module.slug.clone();
                                     let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
-                                    view! { <ModuleUpdateCard module=module installed_module=installed_module platform_loading=platform_loading platform_busy=Signal::derive(|| active_build_state.get().is_some()) on_inspect=Some(on_inspect) on_upgrade=on_upgrade /> }
+                                    view! { <ModuleUpdateCard module=module installed_module=installed_module platform_loading=platform_loading platform_busy=Signal::derive(|| active_build_state.get().is_some()) on_inspect=on_inspect on_upgrade=on_upgrade /> }
                                 }).collect_view()}
                             </div>
                         </Show>

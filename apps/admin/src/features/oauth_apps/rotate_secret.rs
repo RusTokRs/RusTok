@@ -1,11 +1,11 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::shared::ui::{ui_button as UiButton, ui_input as UiInput, ui_success_message as UiSuccessMessage};
+use crate::shared::ui::ui_button as UiButton;
 use leptos::prelude::*;
 
 #[component]
 pub fn RotateSecretDialog(
     app: OAuthApp,
-    on_success: impl Fn(String) + 'static + Clone,
+    on_success: impl Fn(String) + Send + Sync + 'static + Clone,
     on_cancel: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
     let name = app.name.clone();

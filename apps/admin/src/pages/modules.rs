@@ -7,6 +7,7 @@ use crate::entities::module::{
 };
 use crate::features::modules::api;
 use crate::features::modules::components::ModulesList;
+use crate::shared::api::ApiError;
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
@@ -88,7 +89,9 @@ pub fn Modules() -> impl IntoView {
                 }
             >
                 {move || {
-                    modules_resource.get().map(|result| {
+                    modules_resource
+                        .get()
+                        .map(|result: Result<ModulesPageData, ApiError>| {
                         match result {
                             Ok(data) => {
                                 view! {

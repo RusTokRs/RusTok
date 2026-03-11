@@ -1,7 +1,7 @@
 use crate::entities::oauth_app::model::{AppType, OAuthApp};
-use crate::shared::ui::{ui_badge, ui_button as UiButton, ui_input as UiInput, ui_success_message as UiSuccessMessage, ui_textarea as UiTextarea};
+use crate::shared::ui::{ui_button as UiButton, ui_input as UiInput, ui_textarea as UiTextarea};
 use leptos::prelude::*;
-use log::{error, info};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 // This simulates the GraphQL result
@@ -13,7 +13,7 @@ pub struct CreateOAuthAppResult {
 
 #[component]
 pub fn CreateAppForm(
-    on_success: impl Fn(CreateOAuthAppResult) + 'static + Clone,
+    on_success: impl Fn(CreateOAuthAppResult) + Send + Sync + 'static + Clone,
     on_cancel: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
     let (name, set_name) = create_signal("".to_string());
@@ -72,23 +72,23 @@ pub fn CreateAppForm(
                 <label>"App Name"</label>
                 <UiInput
                     r#type="text"
-                    value=Some(name)
-                    set_value=Some(set_name)
+                    value=name
+                    set_value=set_name
                 />
             </div>
             <div class="space-y-2">
                 <label>"Slug/Identifier"</label>
                 <UiInput
                     r#type="text"
-                    value=Some(slug)
-                    set_value=Some(set_slug)
+                    value=slug
+                    set_value=set_slug
                 />
             </div>
             <div class="space-y-2">
                 <label>"Description"</label>
                 <UiTextarea
-                    value=Some(description)
-                    set_value=Some(set_description)
+                    value=description
+                    set_value=set_description
                 />
             </div>
             <div class="space-y-2">
