@@ -105,6 +105,7 @@ graph TD
 
 - [Overview](./modules/overview.md)
 - [Registry](./modules/registry.md)
+- [Rustok crates registry](./modules/crates-registry.md)
 - [Manifest](./modules/manifest.md)
 - [Module Docs Index](./modules/_index.md)
 
