@@ -45,6 +45,8 @@
 | `TagAttached` (`target_type = "node"`) | контентные/связанные сервисы | `rustok-index::ContentIndexer` | `tag_id`, `target_type`, `target_id` | Повтор должен быть no-op, если связь уже учтена в индексе. |
 | `TagDetached` (`target_type = "node"`) | контентные/связанные сервисы | `rustok-index::ContentIndexer` | `tag_id`, `target_type`, `target_id` | Повтор должен быть безопасным (detach-if-exists). |
 | `CategoryUpdated` | сервисы категорий контента | `rustok-index::ContentIndexer` | `category_id` | Повтор инициирует повторный пересчет контентного индекса без побочных эффектов. |
+| `CanonicalUrlChanged` | content orchestration / routing policy сервисы | `rustok-index::ContentIndexer` | `target_id`, `target_kind`, `locale`, `new_canonical_url`, `old_urls[]` | Повтор должен переиндексировать canonical-документ без дублирования; источник истины — актуальный canonical mapping. |
+| `UrlAliasPurged` | content orchestration / routing policy сервисы | `rustok-index::ContentIndexer` + cache/search invalidation listeners | `target_id`, `locale`, `urls[]` | Повтор должен быть безопасным (purge-if-exists) и не возвращать alias URL в индекс. |
 
 ### Коммерческие события
 
@@ -76,6 +78,9 @@
 - **External consumer policy**: loops поверх внешнего runtime/pubsub не должны завершаться после первой ошибки подключения; для них обязателен supervised resubscribe с явным backoff и наблюдаемым restart signal.
 - **Readiness policy**: для внешних consumers должен существовать хотя бы один текущий state signal (`healthy/degraded/...`) в `/health/ready` или эквивалентном health endpoint, а не только исторические counters.
 - **Требование к consumer-логике**: использовать идемпотентные операции (`upsert`, `delete-if-exists`, пересчет по source-of-truth), чтобы безопасно переживать at-least-once delivery.
+
+- Для URL-policy сценариев (`topic ↔ post` conversion, slug collision resolution, locale-specific slug migration) смена canonical URL обязана сопровождаться парой событий: `CanonicalUrlChanged` (reindex новой canonical-цели) и `UrlAliasPurged` (deindex/purge устаревших URL alias).
+- Redirect/canonical-tag policy и event-flow должны ссылаться на один canonical mapping; при рассинхронизации routing считается деградировавшим до устранения инцидента.
 
 
 ## Какие модули обязаны ссылаться на этот контракт
