@@ -62,6 +62,8 @@ pub struct TopicResponse {
     pub title: String,
     pub slug: String,
     pub body: String,
+    pub body_format: String,
+    pub content_json: Option<Value>,
     pub status: String,
     pub tags: Vec<String>,
     pub is_pinned: bool,
@@ -85,4 +87,58 @@ pub struct TopicListItem {
     pub is_locked: bool,
     pub reply_count: i32,
     pub created_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TopicResponse;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn sample(
+        body: &str,
+        body_format: &str,
+        content_json: Option<serde_json::Value>,
+    ) -> TopicResponse {
+        TopicResponse {
+            id: Uuid::new_v4(),
+            locale: "en".into(),
+            effective_locale: "en".into(),
+            available_locales: vec!["en".into()],
+            category_id: Uuid::new_v4(),
+            author_id: None,
+            title: "title".into(),
+            slug: "slug".into(),
+            body: body.into(),
+            body_format: body_format.into(),
+            content_json,
+            status: "open".into(),
+            tags: vec![],
+            is_pinned: false,
+            is_locked: false,
+            reply_count: 0,
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: "2024-01-01T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn topic_response_serde_markdown() {
+        let r = sample("plain", "markdown", None);
+        let v = serde_json::to_value(&r).expect("serialize");
+        assert_eq!(v["body_format"], "markdown");
+        assert_eq!(v["content_json"], serde_json::Value::Null);
+        let d: TopicResponse = serde_json::from_value(v).expect("deserialize");
+        assert_eq!(d.body, "plain");
+        assert!(d.content_json.is_none());
+    }
+
+    #[test]
+    fn topic_response_serde_rt_json_v1() {
+        let rich = json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
+        let r = sample(&rich.to_string(), "rt_json_v1", Some(rich.clone()));
+        let v = serde_json::to_value(&r).expect("serialize");
+        assert_eq!(v["body_format"], "rt_json_v1");
+        assert_eq!(v["content_json"], rich);
+    }
 }

@@ -1,4 +1,5 @@
 use async_graphql::{InputObject, SimpleObject};
+use serde_json::Value;
 
 use crate::graphql::connection::ListConnection;
 use uuid::Uuid;
@@ -57,6 +58,8 @@ pub struct CreateForumTopicInput {
     pub title: String,
     pub slug: Option<String>,
     pub body: String,
+    pub body_format: Option<String>,
+    pub content_json: Option<Value>,
     pub tags: Vec<String>,
 }
 
@@ -65,6 +68,8 @@ pub struct UpdateForumTopicInput {
     pub locale: String,
     pub title: Option<String>,
     pub body: Option<String>,
+    pub body_format: Option<String>,
+    pub content_json: Option<Value>,
     pub tags: Option<Vec<String>>,
 }
 
@@ -72,6 +77,8 @@ pub struct UpdateForumTopicInput {
 pub struct CreateForumReplyInput {
     pub locale: String,
     pub content: String,
+    pub content_format: Option<String>,
+    pub content_json: Option<Value>,
     pub parent_reply_id: Option<Uuid>,
 }
 

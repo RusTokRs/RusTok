@@ -46,14 +46,16 @@ impl PostService {
         if input.title.len() > 512 {
             return Err(BlogError::validation("Title cannot exceed 512 characters"));
         }
-        if input.body.trim().is_empty() {
-            return Err(BlogError::validation("Body cannot be empty"));
-        }
         if input.locale.trim().is_empty() {
             return Err(BlogError::validation("Locale cannot be empty"));
         }
         if input.tags.len() > 20 {
             return Err(BlogError::validation("Cannot have more than 20 tags"));
+        }
+
+        let create_format = input.body_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.body.trim().is_empty() {
+            return Err(BlogError::validation("Body cannot be empty"));
         }
 
         let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
@@ -433,6 +435,16 @@ impl PostService {
             .get("seo_description")
             .and_then(|v| v.as_str())
             .map(String::from);
+
+        let body = body_resp.and_then(|b| b.body.clone()).unwrap_or_default();
+        let body_format = body_resp
+            .map(|b| b.format.clone())
+            .unwrap_or_else(|| "markdown".to_string());
+        let content_json = if body_format == "rt_json_v1" {
+            serde_json::from_str(&body).ok()
+        } else {
+            None
+        };
 
         Ok(PostResponse {
             id: node.id,

@@ -42,10 +42,6 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
-        if input.content.trim().is_empty() {
-            return Err(BlogError::validation("Comment content cannot be empty"));
-        }
-
         let post_node = self
             .nodes
             .get_node(tenant_id, post_id)
@@ -53,6 +49,11 @@ impl CommentService {
             .map_err(BlogError::from)?;
         if post_node.kind != KIND_POST {
             return Err(BlogError::post_not_found(post_id));
+        }
+
+        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
+            return Err(BlogError::validation("Comment content cannot be empty"));
         }
 
         let locale = input.locale.clone();
@@ -292,16 +293,31 @@ impl CommentService {
     ) -> CommentResponse {
         let resolved = resolve_body(&node.bodies, locale);
 
+        let content = resolved
+            .body
+            .as_ref()
+            .and_then(|b| b.body.clone())
+            .unwrap_or_default();
+        let content_format = resolved
+            .body
+            .as_ref()
+            .map(|b| b.format.clone())
+            .unwrap_or_else(|| "markdown".to_string());
+        let content_json = if content_format == "rt_json_v1" {
+            serde_json::from_str(&content).ok()
+        } else {
+            None
+        };
+
         CommentResponse {
             id: node.id,
             locale: locale.to_string(),
             effective_locale: resolved.effective_locale,
             post_id,
             author_id: node.author_id,
-            content: resolved
-                .body
-                .and_then(|b| b.body.clone())
-                .unwrap_or_default(),
+            content,
+            content_format,
+            content_json,
             status: node
                 .metadata
                 .get("comment_status")
@@ -326,5 +342,47 @@ impl CommentService {
         } else {
             preview
         }
+    }
+}
+
+#[cfg(test)]
+mod rich_content_tests {
+    use super::*;
+    use crate::constants::KIND_COMMENT;
+    use rustok_content::dto::{BodyResponse, NodeResponse};
+    use rustok_content::entities::node::ContentStatus;
+
+    #[test]
+    fn node_to_comment_extracts_rt_json_content_json() {
+        let rich = serde_json::json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
+        let node = NodeResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            kind: KIND_COMMENT.to_string(),
+            status: ContentStatus::Published,
+            parent_id: Some(Uuid::new_v4()),
+            author_id: None,
+            category_id: None,
+            position: 0,
+            depth: 0,
+            reply_count: 0,
+            metadata: serde_json::json!({}),
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: "2024-01-01T00:00:00Z".into(),
+            published_at: None,
+            deleted_at: None,
+            version: 1,
+            translations: vec![],
+            bodies: vec![BodyResponse {
+                locale: "en".into(),
+                body: Some(rich.to_string()),
+                format: "rt_json_v1".into(),
+                updated_at: "2024-01-01T00:00:00Z".into(),
+            }],
+        };
+
+        let result = CommentService::node_to_comment(node, Uuid::new_v4(), "en");
+        assert_eq!(result.content_format, "rt_json_v1");
+        assert_eq!(result.content_json, Some(rich));
     }
 }

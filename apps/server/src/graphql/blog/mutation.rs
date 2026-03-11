@@ -87,6 +87,8 @@ impl BlogMutation {
             locale: input.locale,
             title: input.title,
             body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
             excerpt: input.excerpt,
             slug: input.slug,
             tags: input.tags,

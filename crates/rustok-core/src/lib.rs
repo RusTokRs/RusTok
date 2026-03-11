@@ -74,7 +74,10 @@ pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState, RetryPolicy,
     RetryStrategy,
 };
-pub use rt_json::{validate_and_sanitize_rt_json, RtJsonValidationConfig, RtJsonValidationResult};
+pub use rt_json::{
+    sanitize_rt_json_before_html_render, validate_and_sanitize_rt_json, RtJsonValidationConfig,
+    RtJsonValidationResult,
+};
 pub use scripting::ScriptingContext;
 pub use security::{
     audit::AuditEventType, headers::FrameOptions, run_security_audit, AuditEvent, AuditLogger,

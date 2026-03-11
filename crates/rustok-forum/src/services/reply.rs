@@ -36,12 +36,6 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        if input.content.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Reply content cannot be empty".to_string(),
-            ));
-        }
-
         let topic_node = self.nodes.get_node(tenant_id, topic_id).await?;
         if topic_node.kind != KIND_TOPIC {
             return Err(ForumError::TopicNotFound(topic_id));
@@ -58,6 +52,13 @@ impl ReplyService {
         }
         if topic_status_value == topic_status::ARCHIVED {
             return Err(ForumError::TopicArchived);
+        }
+
+        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
+            return Err(ForumError::Validation(
+                "Reply content cannot be empty".to_string(),
+            ));
         }
 
         let author_id = security.user_id;
@@ -280,16 +281,31 @@ impl ReplyService {
         let resolved = resolve_body(&node.bodies, locale);
         let metadata = node.metadata;
 
+        let content = resolved
+            .body
+            .as_ref()
+            .and_then(|b| b.body.clone())
+            .unwrap_or_default();
+        let content_format = resolved
+            .body
+            .as_ref()
+            .map(|b| b.format.clone())
+            .unwrap_or_else(|| "markdown".to_string());
+        let content_json = if content_format == "rt_json_v1" {
+            serde_json::from_str(&content).ok()
+        } else {
+            None
+        };
+
         ReplyResponse {
             id: node.id,
             locale: locale.to_string(),
             effective_locale: resolved.effective_locale,
             topic_id,
             author_id: node.author_id,
-            content: resolved
-                .body
-                .and_then(|b| b.body.clone())
-                .unwrap_or_default(),
+            content,
+            content_format,
+            content_json,
             status: metadata
                 .get("reply_status")
                 .and_then(|v| v.as_str())
@@ -379,6 +395,8 @@ mod tests {
         assert_eq!(result.topic_id, topic_id);
         assert_eq!(result.author_id, Some(author_id));
         assert_eq!(result.content, "Hello!");
+        assert_eq!(result.content_format, "markdown");
+        assert!(result.content_json.is_none());
         assert_eq!(result.status, reply_status::APPROVED);
         assert_eq!(result.parent_reply_id, Some(parent_reply_id));
         assert_eq!(result.effective_locale, "en");
@@ -395,6 +413,41 @@ mod tests {
         assert_eq!(result.status, reply_status::PENDING);
         assert_eq!(result.parent_reply_id, None);
         assert!(result.author_id.is_none());
+    }
+
+    #[test]
+    fn node_to_reply_extracts_rt_json_content_json() {
+        let topic_id = Uuid::new_v4();
+        let rich = serde_json::json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
+        let node = NodeResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
+            kind: KIND_REPLY.to_string(),
+            status: ContentStatus::Published,
+            parent_id: Some(topic_id),
+            author_id: None,
+            category_id: None,
+            position: 0,
+            depth: 0,
+            reply_count: 0,
+            metadata: serde_json::json!({"reply_status": reply_status::APPROVED}),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+            published_at: None,
+            deleted_at: None,
+            version: 1,
+            translations: vec![],
+            bodies: vec![BodyResponse {
+                locale: "en".to_string(),
+                body: Some(rich.to_string()),
+                format: "rt_json_v1".to_string(),
+                updated_at: "2024-01-01T00:00:00Z".to_string(),
+            }],
+        };
+
+        let result = ReplyService::node_to_reply(node, topic_id, "en");
+        assert_eq!(result.content_format, "rt_json_v1");
+        assert_eq!(result.content_json, Some(rich));
     }
 
     #[test]

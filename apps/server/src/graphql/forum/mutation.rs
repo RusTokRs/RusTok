@@ -54,6 +54,8 @@ impl ForumMutation {
             title: input.title,
             slug: input.slug,
             body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
             tags: input.tags,
         };
 
@@ -115,6 +117,8 @@ impl ForumMutation {
             locale: input.locale,
             title: input.title,
             body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
             tags: input.tags,
         };
 
@@ -214,6 +218,8 @@ impl ForumMutation {
         let domain_input = rustok_forum::CreateReplyInput {
             locale: input.locale,
             content: input.content,
+            content_format: input.content_format,
+            content_json: input.content_json,
             parent_reply_id: input.parent_reply_id,
         };
 

@@ -65,6 +65,7 @@ pub struct PostResponse {
     pub available_locales: Vec<String>,
     pub body: String,
     pub body_format: String,
+    pub content_json: Option<Value>,
     pub excerpt: Option<String>,
     pub status: BlogPostStatus,
     pub category_id: Option<Uuid>,
@@ -80,6 +81,77 @@ pub struct PostResponse {
     pub updated_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
     pub version: i32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PostResponse;
+    use crate::state_machine::BlogPostStatus;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn sample_post_response(
+        body: &str,
+        body_format: &str,
+        content_json: Option<serde_json::Value>,
+    ) -> PostResponse {
+        PostResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            author_id: Uuid::new_v4(),
+            title: "title".to_string(),
+            slug: "slug".to_string(),
+            locale: "en".to_string(),
+            effective_locale: "en".to_string(),
+            available_locales: vec!["en".to_string()],
+            body: body.to_string(),
+            body_format: body_format.to_string(),
+            content_json,
+            excerpt: None,
+            status: BlogPostStatus::Draft,
+            category_id: None,
+            category_name: None,
+            tags: vec![],
+            featured_image_url: None,
+            seo_title: None,
+            seo_description: None,
+            metadata: json!({}),
+            comment_count: 0,
+            view_count: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            published_at: None,
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn post_response_serde_markdown() {
+        let response = sample_post_response("plain text", "markdown", None);
+        let encoded = serde_json::to_value(&response).expect("serialize post response");
+        assert_eq!(encoded["body_format"], "markdown");
+        assert_eq!(encoded["content_json"], serde_json::Value::Null);
+
+        let decoded: PostResponse =
+            serde_json::from_value(encoded).expect("deserialize post response");
+        assert_eq!(decoded.body, "plain text");
+        assert_eq!(decoded.body_format, "markdown");
+        assert!(decoded.content_json.is_none());
+    }
+
+    #[test]
+    fn post_response_serde_rt_json_v1() {
+        let rich = json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
+        let response = sample_post_response(&rich.to_string(), "rt_json_v1", Some(rich.clone()));
+        let encoded = serde_json::to_value(&response).expect("serialize post response");
+        assert_eq!(encoded["body_format"], "rt_json_v1");
+        assert_eq!(encoded["content_json"], rich);
+
+        let decoded: PostResponse =
+            serde_json::from_value(encoded).expect("deserialize post response");
+        assert_eq!(decoded.body_format, "rt_json_v1");
+        assert_eq!(decoded.content_json, Some(rich));
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

@@ -56,6 +56,8 @@ export interface CreatePostInput {
   locale: string;
   title: string;
   body: string;
+  bodyFormat?: 'markdown' | 'rt_json_v1';
+  contentJson?: Record<string, unknown>;
   excerpt?: string;
   slug?: string;
   publish: boolean;
@@ -70,6 +72,8 @@ export interface UpdatePostInput {
   locale?: string;
   title?: string;
   body?: string;
+  bodyFormat?: 'markdown' | 'rt_json_v1';
+  contentJson?: Record<string, unknown>;
   excerpt?: string;
   slug?: string;
   status?: BlogPostStatus;
@@ -224,6 +228,10 @@ export async function getPost(
   return data.post;
 }
 
+/**
+ * Example (legacy): { bodyFormat: "markdown", body: "# Title" }
+ * Example (rich): { bodyFormat: "rt_json_v1", contentJson: { type: "doc", content: [] }, body: "" }
+ */
 export async function createPost(
   input: CreatePostInput,
   opts: GqlOpts = {}
@@ -240,6 +248,10 @@ export async function createPost(
   return data.createPost;
 }
 
+/**
+ * Example (legacy): { bodyFormat: "markdown", body: "Updated markdown" }
+ * Example (rich): { bodyFormat: "rt_json_v1", contentJson: { type: "doc", content: [] } }
+ */
 export async function updatePost(
   id: string,
   input: UpdatePostInput,

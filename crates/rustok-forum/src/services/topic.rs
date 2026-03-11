@@ -42,7 +42,8 @@ impl TopicService {
                 "Topic title cannot be empty".to_string(),
             ));
         }
-        if input.body.trim().is_empty() {
+        let create_format = input.body_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.body.trim().is_empty() {
             return Err(ForumError::Validation(
                 "Topic body cannot be empty".to_string(),
             ));
@@ -289,6 +290,22 @@ impl TopicService {
         let locales = available_locales(&node.translations);
         let metadata = node.metadata;
 
+        let body = resolved_body
+            .body
+            .as_ref()
+            .and_then(|b| b.body.clone())
+            .unwrap_or_default();
+        let body_format = resolved_body
+            .body
+            .as_ref()
+            .map(|b| b.format.clone())
+            .unwrap_or_else(|| "markdown".to_string());
+        let content_json = if body_format == "rt_json_v1" {
+            serde_json::from_str(&body).ok()
+        } else {
+            None
+        };
+
         TopicResponse {
             id: node.id,
             locale: locale.to_string(),
@@ -304,10 +321,9 @@ impl TopicService {
                 .translation
                 .and_then(|t| t.slug.clone())
                 .unwrap_or_default(),
-            body: resolved_body
-                .body
-                .and_then(|b| b.body.clone())
-                .unwrap_or_default(),
+            body,
+            body_format,
+            content_json,
             status: metadata
                 .get("forum_status")
                 .and_then(|v| v.as_str())
@@ -420,6 +436,8 @@ mod tests {
         assert_eq!(result.title, "Hello World");
         assert_eq!(result.slug, "hello-world");
         assert_eq!(result.body, "Body text");
+        assert_eq!(result.body_format, "markdown");
+        assert!(result.content_json.is_none());
         assert_eq!(result.category_id, category_id);
         assert_eq!(result.author_id, Some(author_id));
         assert_eq!(result.tags, vec!["rust", "forum"]);
@@ -479,6 +497,28 @@ mod tests {
         let result = TopicService::node_to_topic(node, "ru");
         assert_eq!(result.effective_locale, "en");
         assert_eq!(result.title, "Fallback EN");
+    }
+
+    #[test]
+    fn node_to_topic_extracts_rt_json_content_json() {
+        let rich = serde_json::json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
+        let node = make_node(
+            KIND_TOPIC,
+            None,
+            None,
+            serde_json::json!({}),
+            vec![tr("en", "Title", "title")],
+            vec![BodyResponse {
+                locale: "en".to_string(),
+                body: Some(rich.to_string()),
+                format: "rt_json_v1".to_string(),
+                updated_at: "2024-01-01T00:00:00Z".to_string(),
+            }],
+        );
+
+        let result = TopicService::node_to_topic(node, "en");
+        assert_eq!(result.body_format, "rt_json_v1");
+        assert_eq!(result.content_json, Some(rich));
     }
 
     #[test]

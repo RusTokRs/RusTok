@@ -62,6 +62,15 @@ scripts/auth_release_gate.sh --require-all-gates \
 - формирует markdown gate-report и логи,
 - завершает прогон с non-zero exit code при падении любого локального auth-среза или при незакрытых обязательных gate.
 
+## Rich-text input contract (blog/forum)
+
+Для create/update операций в blog/forum transport-слои (GraphQL/REST) поддерживают:
+
+- legacy режим: `body_format`/`content_format = "markdown"` + текстовое `body`/`content`;
+- rich режим: `body_format`/`content_format = "rt_json_v1"` + обязательное `content_json`.
+
+Для `rt_json_v1` backend выполняет обязательную server-side валидацию и sanitize через RT JSON pipeline перед записью.
+
 ## GraphQL схема
 
 GraphQL схема формируется из per-domain объектов через `MergedObject`:

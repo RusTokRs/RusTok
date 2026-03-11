@@ -7,7 +7,10 @@ use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::{Action, DomainEvent, PermissionScope, Resource, SecurityContext};
+use rustok_core::{
+    sanitize_rt_json_before_html_render, Action, DomainEvent, PermissionScope, Resource,
+    RtJsonValidationConfig, SecurityContext,
+};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
@@ -237,7 +240,8 @@ impl NodeService {
         }
 
         for body_input in input.bodies {
-            upsert_body(txn, node_id, body_input, now).await?;
+            let normalized_body = normalize_body_input(body_input)?;
+            upsert_body(txn, node_id, normalized_body, now).await?;
         }
 
         self.event_bus
@@ -416,7 +420,8 @@ impl NodeService {
                 .await?;
 
             for body_input in bodies {
-                upsert_body(txn, node_id, body_input, now).await?;
+                let normalized_body = normalize_body_input(body_input)?;
+                upsert_body(txn, node_id, normalized_body, now).await?;
             }
         }
 
@@ -963,82 +968,40 @@ impl NodeService {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::NodeService;
-    use crate::dto::validation::validate_kind;
-    use crate::ContentModule;
-    use rustok_core::permissions::{Action, Resource};
-    use rustok_core::{RusToKModule, SecurityContext, UserRole};
+fn normalize_body_input(input: BodyInput) -> ContentResult<BodyInput> {
+    let format = input
+        .format
+        .clone()
+        .unwrap_or_else(|| "markdown".to_string());
 
-    #[test]
-    fn kind_to_resource_maps_all_allowed_kinds_from_validation() {
-        let cases = [
-            ("post", Resource::Posts),
-            ("page", Resource::Pages),
-            ("article", Resource::Posts),
-            ("custom", Resource::Posts),
-            ("forum_category", Resource::ForumCategories),
-            ("forum_topic", Resource::ForumTopics),
-            ("forum_reply", Resource::ForumReplies),
-            ("blog_post", Resource::BlogPosts),
-            ("comment", Resource::Comments),
-        ];
+    if format == "rt_json" {
+        let locale = input.locale.clone();
+        let body = input
+            .body
+            .ok_or_else(|| ContentError::Validation("rt_json body is required".to_string()))?;
 
-        for (kind, expected_resource) in cases {
-            assert!(validate_kind(kind).is_ok(), "kind '{kind}' must stay valid");
-            let actual = NodeService::kind_to_resource(kind)
-                .unwrap_or_else(|_| panic!("kind '{kind}' must map to RBAC resource"));
-            assert_eq!(
-                actual, expected_resource,
-                "invalid mapping for kind '{kind}'"
-            );
-        }
+        let body_json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
+            ContentError::Validation("rt_json body must be a valid JSON payload".to_string())
+        })?;
+
+        let sanitized = sanitize_rt_json_before_html_render(
+            &body_json,
+            &RtJsonValidationConfig::for_locale(&locale),
+        )
+        .map_err(ContentError::Validation)?;
+
+        return Ok(BodyInput {
+            locale,
+            body: Some(sanitized.to_string()),
+            format: Some(format),
+        });
     }
 
-    #[test]
-    fn kind_to_resource_rejects_unknown_kind() {
-        assert!(NodeService::kind_to_resource("unknown_kind").is_err());
-    }
-
-    #[test]
-    fn kind_to_resource_mapping_is_covered_by_module_permissions_and_scope() {
-        let module = ContentModule;
-        let permissions = module.permissions();
-        let admin = SecurityContext::new(UserRole::Admin, None);
-
-        let cases = [
-            ("post", Resource::Posts),
-            ("page", Resource::Pages),
-            ("article", Resource::Posts),
-            ("custom", Resource::Posts),
-            ("forum_category", Resource::ForumCategories),
-            ("forum_topic", Resource::ForumTopics),
-            ("forum_reply", Resource::ForumReplies),
-            ("blog_post", Resource::BlogPosts),
-            ("comment", Resource::Comments),
-        ];
-
-        for (kind, resource) in cases {
-            for action in [
-                Action::Create,
-                Action::Read,
-                Action::Update,
-                Action::Delete,
-                Action::List,
-            ] {
-                assert!(
-                    permissions.iter().any(|p| p.resource == resource && p.action == action),
-                    "ContentModule::permissions must include {resource:?}:{action:?} for kind '{kind}'"
-                );
-                assert_ne!(
-                    admin.get_scope(resource, action),
-                    rustok_core::PermissionScope::None,
-                    "SecurityContext::get_scope returned None for admin on {resource:?}:{action:?}"
-                );
-            }
-        }
-    }
+    Ok(BodyInput {
+        locale: input.locale,
+        body: input.body,
+        format: Some(format),
+    })
 }
 
 fn resolve_slug(

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormInput, FormTextarea, FormSwitch } from '@/shared/ui/forms';
+import { FormInput, FormTextarea, FormSwitch, FormSelect } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form } from '@/components/ui/form';
@@ -12,18 +12,49 @@ import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 
-const formSchema = z.object({
-  title: z.string().min(2, 'Title must be at least 2 characters.'),
-  slug: z.string().optional(),
-  locale: z.string().min(2).default('en'),
-  body: z.string().min(10, 'Body must be at least 10 characters.'),
-  excerpt: z.string().optional(),
-  tags: z.string().optional(),
-  featuredImageUrl: z.string().url().optional().or(z.literal('')),
-  seoTitle: z.string().optional(),
-  seoDescription: z.string().optional(),
-  publish: z.boolean().default(false)
-});
+const formSchema = z
+  .object({
+    title: z.string().min(2, 'Title must be at least 2 characters.'),
+    slug: z.string().optional(),
+    locale: z.string().min(2).default('en'),
+    bodyFormat: z.enum(['markdown', 'rt_json_v1']).default('markdown'),
+    body: z.string().default(''),
+    contentJson: z.string().optional(),
+    excerpt: z.string().optional(),
+    tags: z.string().optional(),
+    featuredImageUrl: z.string().url().optional().or(z.literal('')),
+    seoTitle: z.string().optional(),
+    seoDescription: z.string().optional(),
+    publish: z.boolean().default(false)
+  })
+  .superRefine((values, ctx) => {
+    if (values.bodyFormat === 'markdown' && !values.body.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body'],
+        message: 'Body is required for markdown format.'
+      });
+    }
+    if (values.bodyFormat === 'rt_json_v1' && !values.contentJson?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['contentJson'],
+        message: 'content_json is required for rt_json_v1 format.'
+      });
+    }
+    if (values.bodyFormat === 'rt_json_v1' && values.contentJson?.trim()) {
+      try {
+        JSON.parse(values.contentJson);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['contentJson'],
+          message: 'content_json must be valid JSON.'
+        });
+      }
+    }
+  });
+
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -42,7 +73,9 @@ export default function PostForm({
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: 'en',
+    bodyFormat: 'markdown',
     body: initialData?.body ?? '',
+    contentJson: '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
     featuredImageUrl: initialData?.featuredImageUrl ?? '',
@@ -68,6 +101,10 @@ export default function PostForm({
           slug: values.slug || undefined,
           locale: values.locale,
           body: values.body,
+          bodyFormat: values.bodyFormat,
+          contentJson: values.bodyFormat === 'rt_json_v1' && values.contentJson
+            ? JSON.parse(values.contentJson)
+            : undefined,
           excerpt: values.excerpt || undefined,
           tags,
           featuredImageUrl: values.featuredImageUrl || undefined,
@@ -81,6 +118,10 @@ export default function PostForm({
           slug: values.slug || undefined,
           locale: values.locale,
           body: values.body,
+          bodyFormat: values.bodyFormat,
+          contentJson: values.bodyFormat === 'rt_json_v1' && values.contentJson
+            ? JSON.parse(values.contentJson)
+            : undefined,
           excerpt: values.excerpt || undefined,
           publish: values.publish,
           tags,
@@ -142,6 +183,16 @@ export default function PostForm({
             />
           </div>
 
+          <FormSelect
+            control={form.control}
+            name='bodyFormat'
+            label='Body format'
+            options={[
+              { label: 'Markdown (legacy)', value: 'markdown' },
+              { label: 'RT JSON v1 (rich editor)', value: 'rt_json_v1' }
+            ]}
+          />
+
           <FormTextarea
             control={form.control}
             name='body'
@@ -150,6 +201,17 @@ export default function PostForm({
             required
             config={{ rows: 12 }}
           />
+
+          {form.watch('bodyFormat') === 'rt_json_v1' && (
+            <FormTextarea
+              control={form.control}
+              name='contentJson'
+              label='Content JSON (rt_json_v1)'
+              placeholder='{"type":"doc","content":[]}'
+              required
+              config={{ rows: 8 }}
+            />
+          )}
 
           <FormTextarea
             control={form.control}

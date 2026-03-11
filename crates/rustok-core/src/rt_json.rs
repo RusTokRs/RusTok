@@ -2,6 +2,7 @@ use serde_json::{json, Map, Value};
 use url::Url;
 
 const SUPPORTED_VERSION: &str = "rt_json_v1";
+const KNOWN_FUTURE_VERSION: &str = "rt_json_v2";
 const MAX_DEPTH: usize = 8;
 const MAX_NODES: usize = 2000;
 const MAX_TEXT_CHARS: usize = 100_000;
@@ -72,8 +73,13 @@ pub fn validate_and_sanitize_rt_json(
         .and_then(Value::as_str)
         .ok_or_else(|| "rt_json payload.version must be a string".to_string())?;
     if version != SUPPORTED_VERSION {
+        if version == KNOWN_FUTURE_VERSION {
+            return Err(format!(
+                "rt_json version '{version}' is recognized but not supported by this backend yet"
+            ));
+        }
         return Err(format!(
-            "Unsupported rt_json version '{version}', supported version is '{SUPPORTED_VERSION}'"
+            "Unsupported rt_json version '{version}'. Known versions: '{SUPPORTED_VERSION}', '{KNOWN_FUTURE_VERSION}'"
         ));
     }
 
@@ -122,6 +128,16 @@ pub fn validate_and_sanitize_rt_json(
     })
 }
 
+/// Backend sanitize/normalization gate for rt_json before HTML rendering.
+///
+/// Renderers should operate only on this sanitized payload.
+pub fn sanitize_rt_json_before_html_render(
+    payload: &Value,
+    config: &RtJsonValidationConfig,
+) -> Result<Value, String> {
+    validate_and_sanitize_rt_json(payload, config).map(|result| result.sanitized)
+}
+
 #[derive(Default)]
 struct Stats {
     node_count: usize,
@@ -146,9 +162,10 @@ fn sanitize_node(
     let node_type = obj
         .get("type")
         .and_then(Value::as_str)
-        .ok_or_else(|| "rt_json node.type is required".to_string())?;
+        .ok_or_else(|| "rt_json node.type is required".to_string())?
+        .to_string();
 
-    if !is_allowed_node(node_type) {
+    if !is_allowed_node(&node_type) {
         return Ok(None);
     }
 
@@ -169,7 +186,7 @@ fn sanitize_node(
         }
     }
 
-    sanitize_attrs(node_type, &mut obj)?;
+    sanitize_attrs(&node_type, &mut obj)?;
 
     if let Some(content) = obj.get("content") {
         let list = content
@@ -367,6 +384,71 @@ mod tests {
             validate_and_sanitize_rt_json(&payload, &RtJsonValidationConfig::for_locale("en"))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn rejects_known_future_version_with_explicit_message() {
+        let payload =
+            json!({"version":"rt_json_v2","locale":"en","doc":{"type":"doc","content":[]}});
+        let err =
+            validate_and_sanitize_rt_json(&payload, &RtJsonValidationConfig::for_locale("en"))
+                .expect_err("v2 must be rejected by v1 backend");
+        assert!(err.contains("recognized but not supported"));
+    }
+
+    #[test]
+    fn rejects_unsafe_payload_link() {
+        let payload = json!({
+            "version":"rt_json_v1",
+            "locale":"en",
+            "doc":{
+                "type":"doc",
+                "content":[
+                    {"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"javascript:alert(1)"}}]}]}
+                ]
+            }
+        });
+        assert!(
+            validate_and_sanitize_rt_json(&payload, &RtJsonValidationConfig::for_locale("en"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_oversized_payload() {
+        let text = "a".repeat(100_001);
+        let payload = json!({
+            "version":"rt_json_v1",
+            "locale":"en",
+            "doc":{
+                "type":"doc",
+                "content":[{"type":"paragraph","content":[{"type":"text","text":text}]}]
+            }
+        });
+        assert!(
+            validate_and_sanitize_rt_json(&payload, &RtJsonValidationConfig::for_locale("en"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn sanitize_before_html_render_uses_same_policy() {
+        let payload = json!({
+            "version":"rt_json_v1",
+            "locale":"en",
+            "doc":{
+                "type":"doc",
+                "content":[{"type":"unknown"},{"type":"paragraph","content":[{"type":"text","text":"ok"}]}]
+            }
+        });
+
+        let sanitized = sanitize_rt_json_before_html_render(
+            &payload,
+            &RtJsonValidationConfig::for_locale("en"),
+        )
+        .expect("payload should sanitize before render");
+
+        assert_eq!(sanitized["doc"]["content"].as_array().unwrap().len(), 1);
     }
 
     #[test]
