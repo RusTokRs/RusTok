@@ -88,7 +88,7 @@ compatibility with platform-level contracts.
 
 ### Phase 3 — Productionization (planned)
 
-- [ ] CommentService implementation
+- [x] CommentService implementation
 - [ ] CategoryService implementation
 - [ ] TagService implementation
 - [ ] RBAC enforcement: check permissions in service layer
@@ -109,7 +109,7 @@ compatibility with platform-level contracts.
 | `state_machine.rs` | ✅ Complete | Type-safe post states, comment status |
 | `state_machine_proptest.rs` | ✅ Complete | Property-based tests |
 | `services/post.rs` | ✅ Complete | Full CRUD + i18n + events |
-| `services/comment.rs` | ⬜ TODO | Comment moderation |
+| `services/comment.rs` | ✅ Complete | CRUD + locale fallback + threaded comments |
 | `services/category.rs` | ⬜ TODO | Blog categories |
 | `services/tag.rs` | ⬜ TODO | Tag management |
 | `dto/post.rs` | ✅ Complete | All fields, i18n, SEO, pagination |

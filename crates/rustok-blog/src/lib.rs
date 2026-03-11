@@ -56,7 +56,7 @@ pub use dto::{
     CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput,
 };
 pub use error::{BlogError, BlogResult};
-pub use services::PostService;
+pub use services::{CommentService, PostService};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
 };

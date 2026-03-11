@@ -35,7 +35,59 @@ impl PostService {
 }
 ```
 
+
+### CommentService
+```rust
+pub struct CommentService {
+    nodes: NodeService,
+    event_bus: TransactionalEventBus,
+}
+
+impl CommentService {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self;
+    pub async fn create_comment(tenant_id, security, post_id, input: CreateCommentInput) -> BlogResult<CommentResponse>;
+    pub async fn get_comment(tenant_id, comment_id, locale: &str) -> BlogResult<CommentResponse>;
+    pub async fn update_comment(tenant_id, comment_id, security, input: UpdateCommentInput) -> BlogResult<CommentResponse>;
+    pub async fn delete_comment(tenant_id, comment_id, security) -> BlogResult<()>;
+    pub async fn list_for_post(tenant_id, security, post_id, filter: ListCommentsFilter) -> BlogResult<(Vec<CommentListItem>, u64)>;
+}
+```
+
 ### DTO
+
+
+#### CreateCommentInput
+```rust
+pub struct CreateCommentInput {
+    pub locale: String,
+    pub content: String,
+    pub parent_comment_id: Option<Uuid>,
+}
+```
+
+#### UpdateCommentInput
+```rust
+pub struct UpdateCommentInput {
+    pub locale: String,
+    pub content: Option<String>,
+}
+```
+
+#### CommentResponse
+```rust
+pub struct CommentResponse {
+    pub id: Uuid,
+    pub locale: String,
+    pub effective_locale: String,
+    pub post_id: Uuid,
+    pub author_id: Option<Uuid>,
+    pub content: String,
+    pub status: String,
+    pub parent_comment_id: Option<Uuid>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+```
 
 #### CreatePostInput
 ```rust
