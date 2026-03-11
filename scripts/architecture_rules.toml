@@ -1,18 +1,12 @@
 [apps]
+# Only backend app(s) are checked by this rule. Frontend apps intentionally use
+# dedicated UI libs from the workspace and are not constrained by rustok-* only.
+target_packages = ["rustok-server"]
 allowed_internal_dep_prefixes = ["rustok-"]
 allowed_internal_dep_exceptions = [
-  # Workspace app/libs outside rustok-* naming kept for compatibility.
+  # Shared backend infra still outside rustok-* naming.
   "migration",
   "alloy-scripting",
-  "leptos-auth",
-  "leptos-forms",
-  "leptos-graphql",
-  "leptos-hook-form",
-  "leptos-shadcn-pagination",
-  "leptos-table",
-  "leptos-ui",
-  "leptos-zod",
-  "leptos-zustand",
 ]
 
 [domain]
@@ -33,6 +27,9 @@ allowed_edges = [
 ]
 
 [imports]
+# Restrict only backend app(s) from reaching internal crate modules.
+target_packages = ["rustok-server"]
+
 # use rustok_*::<segment>::... where <segment> below is considered internal.
 deny_internal_segments = [
   "entities",
@@ -46,7 +43,7 @@ deny_internal_segments = [
   "adapters",
 ]
 
-# Explicitly allowed nested paths from apps/* (must be reviewed intentionally).
+# Explicitly allowed nested paths from backend app(s) (must be reviewed intentionally).
 explicitly_allowed_paths = [
   "rustok_commerce::entities",
   "rustok_content::entities",
