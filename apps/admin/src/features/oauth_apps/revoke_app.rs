@@ -28,18 +28,18 @@ pub fn RevokeAppDialog(
             </p>
 
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button
+                <Button
                     variant=crate::shared::ui::ButtonVariant::Destructive
                     on:click=move |_| revoke_action.dispatch(())
                 >
                     "Revoke Application"
-                </ui_button::Button>
-                <ui_button::Button
+                </Button>
+                <Button
                     variant=crate::shared::ui::ButtonVariant::Outline
                     on:click=move |_| on_cancel()
                 >
                     "Cancel"
-                </ui_button::Button>
+                </Button>
             </div>
         </div>
     }

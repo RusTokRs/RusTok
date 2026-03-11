@@ -3,5 +3,3 @@ pub mod modules;
 pub mod oauth_apps;
 pub mod profile;
 pub mod users;
-
-pub use auth::user_menu;

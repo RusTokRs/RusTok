@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
+use serde::{Deserialize, Serialize};
 
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo,
@@ -9,7 +10,7 @@ use crate::features::modules::components::ModulesList;
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct ModulesPageData {
     modules: Vec<ModuleInfo>,
     marketplace_modules: Vec<MarketplaceModule>,
@@ -91,7 +92,7 @@ pub fn Modules() -> impl IntoView {
                         match result {
                             Ok(data) => {
                                 view! {
-                                    {modules_list(
+                                    {ModulesList(
                                         "leptos-admin".to_string(),
                                         data.modules,
                                         data.marketplace_modules,

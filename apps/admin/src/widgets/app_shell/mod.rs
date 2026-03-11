@@ -2,6 +2,6 @@ mod app_layout;
 mod header;
 mod sidebar;
 
-pub use app_layout::app_layout;
-pub use header::header;
-pub use sidebar::sidebar;
+pub use app_layout::AppLayout;
+pub use header::Header;
+pub use sidebar::Sidebar;

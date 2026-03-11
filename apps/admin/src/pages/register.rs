@@ -18,6 +18,8 @@ pub fn Register() -> impl IntoView {
     let (name, set_name) = signal(String::new());
     let (password, set_password) = signal(String::new());
     let (form_state, set_form_state) = signal(FormState::idle());
+    let (error, set_error) = signal::<Option<String>>(None);
+    let (status, set_status) = signal::<Option<String>>(None);
 
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
@@ -93,25 +95,25 @@ pub fn Register() -> impl IntoView {
                             {move || form_state.get().form_error.unwrap_or_default()}
                         </div>
                     </Show>
-                    <ui_input
+                    <Input
                         value=tenant
                         set_value=set_tenant
                         placeholder="demo"
                         label=move || t_string!(i18n, register.tenantLabel)
                     />
-                    <ui_input
+                    <Input
                         value=email
                         set_value=set_email
                         placeholder="admin@rustok.io"
                         label=move || t_string!(i18n, register.emailLabel)
                     />
-                    <ui_input
+                    <Input
                         value=name
                         set_value=set_name
                         placeholder="Alex Morgan"
                         label=move || t_string!(i18n, register.nameLabel)
                     />
-                    <ui_input
+                    <Input
                         value=password
                         set_value=set_password
                         placeholder="••••••••"

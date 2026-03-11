@@ -69,6 +69,8 @@ pub fn Profile() -> impl IntoView {
     let (timezone, set_timezone) = signal(String::from("Europe/Moscow"));
     let (preferred_locale, set_preferred_locale) = signal(String::from("ru"));
     let (form_state, set_form_state) = signal(FormState::idle());
+    let (error, set_error) = signal::<Option<String>>(None);
+    let (status, set_status) = signal::<Option<String>>(None);
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_save = move |_| {
@@ -154,7 +156,7 @@ pub fn Profile() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">
                         {move || t_string!(i18n, profile.sectionSubtitle)}
                     </p>
-                    <ui_input
+                    <Input
                         value=name
                         set_value=set_name
                         placeholder="Alex Morgan"
@@ -168,7 +170,7 @@ pub fn Profile() -> impl IntoView {
                             {move || email.get()}
                         </p>
                     </div>
-                    <ui_input
+                    <Input
                         value=avatar
                         set_value=set_avatar
                         placeholder="https://cdn.rustok.io/avatar.png"
@@ -231,7 +233,7 @@ pub fn Profile() -> impl IntoView {
                                 {move || t_string!(i18n, profile.uiLocaleHint)}
                             </p>
                         </div>
-                        <ui_language_toggle />
+                        <LanguageToggle />
                     </div>
                     <div class="flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0">
                         <div>
@@ -251,7 +253,7 @@ pub fn Profile() -> impl IntoView {
                                 {move || t_string!(i18n, profile.auditHint)}
                             </p>
                         </div>
-                        <ui_button
+                        <Button
                             on_click=move |_| {}
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >

@@ -40,9 +40,9 @@ pub fn OAuthAppsPage() -> impl IntoView {
                         "Manage third-party applications, API clients, and external integrations."
                     </p>
                 </div>
-                <ui_button::Button on:click=move |_| set_modal_state.set(ModalState::CreateApp)>
+                <Button on:click=move |_| set_modal_state.set(ModalState::CreateApp)>
                     "Create New App"
-                </ui_button::Button>
+                </Button>
             </div>
 
             <OAuthAppsList
@@ -105,11 +105,11 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                         <div class="p-3 bg-slate-100 rounded border font-mono text-sm break-all">
                                             {secret}
                                         </div>
-                                        <ui_success_message::SuccessMessage message="Store this secret safely. You will not be able to see it again." />
+                                        <SuccessMessage message="Store this secret safely. You will not be able to see it again." />
 
-                                        <ui_button::Button class="w-full" on:click=move |_| close()>
+                                        <Button class="w-full" on:click=move |_| close()>
                                             "I have saved it"
-                                        </ui_button::Button>
+                                        </Button>
                                     </div>
                                 }.into_view()
                             },

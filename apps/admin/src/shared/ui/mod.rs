@@ -1,7 +1,9 @@
+use leptos::prelude::*;
+
 pub use leptos_ui::*;
 
 pub mod page_header;
-pub use page_header::page_header;
+pub use page_header::PageHeader;
 
 use crate::{use_i18n, Locale};
 
@@ -67,12 +69,9 @@ pub fn Input(
 pub fn LanguageToggle() -> impl IntoView {
     let i18n = use_i18n();
 
-    let current_locale = Signal::derive(move || {
-        match locale.locale.get() {
-            Locale::Ru => "ru",
-            Locale::En => "en",
-        }
-        .to_string()
+    let current_locale = Signal::derive(move || match i18n.get_locale() {
+        Locale::ru => "ru",
+        Locale::en => "en",
     });
 
     view! {
@@ -80,7 +79,7 @@ pub fn LanguageToggle() -> impl IntoView {
             <button
                 type="button"
                 class=move || {
-                    let is_active = i18n.get_locale() == Locale::ru;
+                    let is_active = current_locale.get() == "ru";
                     if is_active {
                         "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     } else {
@@ -94,7 +93,7 @@ pub fn LanguageToggle() -> impl IntoView {
             <button
                 type="button"
                 class=move || {
-                    let is_active = i18n.get_locale() == Locale::en;
+                    let is_active = current_locale.get() == "en";
                     if is_active {
                         "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     } else {

@@ -32,18 +32,18 @@ pub fn RotateSecretDialog(
             </p>
 
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button
+                <Button
                     variant=crate::shared::ui::ButtonVariant::Destructive
                     on:click=move |_| rotate_action.dispatch(())
                 >
                     "Yes, Rotate Secret"
-                </ui_button::Button>
-                <ui_button::Button
+                </Button>
+                <Button
                     variant=crate::shared::ui::ButtonVariant::Outline
                     on:click=move |_| on_cancel()
                 >
                     "Cancel"
-                </ui_button::Button>
+                </Button>
             </div>
         </div>
     }

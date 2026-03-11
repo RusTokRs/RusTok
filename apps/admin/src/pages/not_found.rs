@@ -1,19 +1,21 @@
-use crate::shared::providers::locale::translate;
-use crate::shared::ui::ui_button;
+use leptos::prelude::*;
 use leptos_router::components::A;
 
+use crate::shared::ui::Button;
+
+
 #[component]
-pub fn not_found() -> impl IntoView {
+pub fn NotFound() -> impl IntoView {
     view! {
         <section class="flex min-h-screen items-center justify-center bg-background">
             <div class="grid gap-4 rounded-xl border border-border bg-card p-10 text-center shadow-md">
                 <h1 class="text-5xl font-semibold text-card-foreground">"404"</h1>
-                <p class="text-muted-foreground">{move || translate("app.not_found.text")}</p>
+                <p class="text-muted-foreground">"Page not found"</p>
                 <div class="flex justify-center">
                     <A href="/dashboard">
-                        <ui_button>
-                            {move || translate("app.not_found.back")}
-                        </ui_button>
+                        <Button on_click=move |_| {}>
+                            "Back to dashboard"
+                        </Button>
                     </A>
                 </div>
             </div>

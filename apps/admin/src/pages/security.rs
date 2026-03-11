@@ -51,6 +51,8 @@ pub fn Security() -> impl IntoView {
     let (current_password, set_current_password) = signal(String::new());
     let (new_password, set_new_password) = signal(String::new());
     let (form_state, set_form_state) = signal(FormState::idle());
+    let (error, set_error) = signal::<Option<String>>(None);
+    let (status, set_status) = signal::<Option<String>>(None);
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_change_password = move |_| {
@@ -133,7 +135,7 @@ pub fn Security() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <ui_button
+                    <Button
                         on_click=on_sign_out_all
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
@@ -150,14 +152,14 @@ pub fn Security() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">
                         {move || t_string!(i18n, security.passwordSubtitle)}
                     </p>
-                     <ui_input
+                     <Input
                         value=current_password
                         set_value=set_current_password
                         placeholder="••••••••"
                         type_="password"
                         label=move || t_string!(i18n, security.currentPasswordLabel)
                     />
-                    <ui_input
+                    <Input
                         value=new_password
                         set_value=set_new_password
                         placeholder="••••••••"

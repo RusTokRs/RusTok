@@ -70,7 +70,7 @@ pub fn CreateAppForm(
             <h3 class="text-lg font-medium">"Create New Connected App"</h3>
             <div class="space-y-2">
                 <label>"App Name"</label>
-                <ui_input::Input
+                <Input
                     type_="text"
                     prop:value=name
                     on:input=move |ev| set_name.set(event_target_value(&ev))
@@ -78,7 +78,7 @@ pub fn CreateAppForm(
             </div>
             <div class="space-y-2">
                 <label>"Slug/Identifier"</label>
-                <ui_input::Input
+                <Input
                     type_="text"
                     prop:value=slug
                     on:input=move |ev| set_slug.set(event_target_value(&ev))
@@ -86,7 +86,7 @@ pub fn CreateAppForm(
             </div>
             <div class="space-y-2">
                 <label>"Description"</label>
-                <ui_textarea::Textarea
+                <Textarea
                     prop:value=description
                     on:input=move |ev| set_description.set(event_target_value(&ev))
                 />
@@ -105,17 +105,17 @@ pub fn CreateAppForm(
                 </select>
             </div>
             <div class="flex items-center gap-2 pt-4">
-                <ui_button::Button
+                <Button
                     on:click=move |_| create_action.dispatch(())
                 >
                     "Create App"
-                </ui_button::Button>
-                <ui_button::Button
+                </Button>
+                <Button
                     variant=crate::shared::ui::ButtonVariant::Outline
                     on:click=move |_| on_cancel()
                 >
                     "Cancel"
-                </ui_button::Button>
+                </Button>
             </div>
         </div>
     }

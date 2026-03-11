@@ -1,6 +1,6 @@
-use super::module_card::module_card;
-use super::module_detail_panel::module_detail_panel;
-use super::module_update_card::module_update_card;
+use super::module_card::ModuleCard;
+use super::module_detail_panel::ModuleDetailPanel;
+use super::module_update_card::ModuleUpdateCard;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo,
@@ -901,7 +901,7 @@ pub fn ModulesList(
                 {move || {
                     selected_module_slug.get().map(|slug| {
                         view! {
-                            {module_detail_panel(
+                            {ModuleDetailPanel(
                                 admin_surface.clone(),
                                 slug,
                                 selected_module_detail.get(),
@@ -993,7 +993,7 @@ pub fn ModulesList(
                                     let platform_version = Signal::derive(move || installed_module_list.get().iter().find(|item| item.slug == slug_for_version).and_then(|item| item.version.clone()));
                                     let recommended_version = Signal::derive(move || Some(recommended.clone()));
                                     let catalog_module = catalog_for_slug(&slug_for_version);
-                                    view! { {module_card(module, catalog_module, tenant_loading, platform_loading, Signal::derive(|| true), Signal::derive(|| active_build_state.get().is_some()), platform_version, recommended_version, None, None, Some(on_inspect), None)} }
+                                    view! { {ModuleCard(module, catalog_module, tenant_loading, platform_loading, Signal::derive(|| true), Signal::derive(|| active_build_state.get().is_some()), platform_version, recommended_version, None, None, Some(on_inspect), None)} }
                                 }).collect_view()}
                             </div>
                         </div>
@@ -1013,7 +1013,7 @@ pub fn ModulesList(
                                         let platform_version = Signal::derive(move || installed_module_list.get().iter().find(|item| item.slug == slug_for_version).and_then(|item| item.version.clone()));
                                         let recommended_version = Signal::derive(move || Some(recommended.clone()));
                                         let catalog_module = catalog_for_slug(&slug_for_version);
-                                        view! { {module_card(module, catalog_module, tenant_loading, platform_loading, platform_installed, Signal::derive(|| active_build_state.get().is_some()), platform_version, recommended_version, Some(on_toggle), None, Some(on_inspect), Some(on_uninstall))} }
+                                        view! { {ModuleCard(module, catalog_module, tenant_loading, platform_loading, platform_installed, Signal::derive(|| active_build_state.get().is_some()), platform_version, recommended_version, Some(on_toggle), None, Some(on_inspect), Some(on_uninstall))} }
                                     }).collect_view()}
                                 </div>
                             </Show>
@@ -1033,7 +1033,7 @@ pub fn ModulesList(
                                     let tenant_loading = Signal::derive(move || loading_slug.get().as_deref() == Some(&slug_for_loading));
                                     let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
                                     let recommended_version = Signal::derive(move || Some(recommended.clone()));
-                                    view! { {module_card(module_info, Some(module.clone()), tenant_loading, platform_loading, Signal::derive(|| false), Signal::derive(|| active_build_state.get().is_some()), Signal::derive(|| None), recommended_version, None, Some(on_install), Some(on_inspect), None)} }
+                                    view! { {ModuleCard(module_info, Some(module.clone()), tenant_loading, platform_loading, Signal::derive(|| false), Signal::derive(|| active_build_state.get().is_some()), Signal::derive(|| None), recommended_version, None, Some(on_install), Some(on_inspect), None)} }
                                 }).collect_view()}
                             </div>
                         </Show>
@@ -1047,7 +1047,7 @@ pub fn ModulesList(
                                 {move || update_candidates().into_iter().map(|(module, installed_module)| {
                                     let slug = module.slug.clone();
                                     let platform_loading = Signal::derive(move || platform_loading_slug.get().as_deref() == Some(&slug));
-                                    view! { {module_update_card(module, installed_module, platform_loading, Signal::derive(|| active_build_state.get().is_some()), Some(on_inspect), on_upgrade)} }
+                                    view! { {ModuleUpdateCard(module, installed_module, platform_loading, Signal::derive(|| active_build_state.get().is_some()), Some(on_inspect), on_upgrade)} }
                                 }).collect_view()}
                             </div>
                         </Show>
