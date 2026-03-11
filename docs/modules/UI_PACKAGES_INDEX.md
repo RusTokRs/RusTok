@@ -8,11 +8,13 @@
 - **[Быстрый старт](UI_PACKAGES_QUICKSTART.md)** — Создайте свой первый модуль с UI за 10 минут
 
 ### Для разработчиков
-- **[Полное руководство](MODULE_UI_PACKAGES_INSTALLATION.md)** — Всё о системе установки модулей с UI
+- **[Индекс документации модулей](_index.md)** — Навигация по актуальным документам модульной системы
+- **[Манифест модулей](manifest.md)** — Каноническая спецификация формата `modules.toml`
 
 ### Для архитекторов
-- **[Манифест модулей](module-manifest.md)** — Спецификация формата modules.toml
-- **[Реализация системы установки](INSTALLATION_IMPLEMENTATION.md)** — Техническая реализация
+- **[Реестр модулей](registry.md)** — Lifecycle, toggle, guards и ответственные зоны
+- **[План пересборки модулей](module-rebuild-plan.md)** — Технический roadmap install/uninstall
+- **[Архитектура модулей](../architecture/modules.md)** — Общая архитектурная модель модульной платформы
 
 ## 🎯 Основные концепты
 
@@ -100,9 +102,9 @@ leptos-commerce-storefront/    # Storefront UI
 ## 🔗 Связанная документация
 
 ### Модули
-- [Обзор модулей](modules.md) — Карта всех модулей в проекте
-- [Матрица модулей](MODULE_MATRIX.md) — Полная карта с зависимостями
-- [Реестр модулей](module-registry.md) — Lifecycle, toggle, guards
+- [Обзор модулей](overview.md) — Карта всех модулей в проекте
+- [Реестр модулей](registry.md) — Lifecycle, toggle, guards
+- [Реестр crate-модулей](crates-registry.md) — Карта crate-структуры и статусов
 - [План пересборки](module-rebuild-plan.md) — Roadmap install/uninstall
 
 ### UI и Frontend
@@ -112,7 +114,7 @@ leptos-commerce-storefront/    # Storefront UI
 - [GraphQL интеграция](../../crates/leptos-graphql/README.md) — GraphQL хуки
 
 ### Архитектура
-- [Архитектурный гайд](../ARCHITECTURE_GUIDE.md) — Принципы и решения
+- [Обзор архитектуры](../architecture/overview.md) — Принципы и решения платформы
 - [Манифест платформы](../../RUSTOK_MANIFEST.md) — Философия и стек
 
 ## 🚀 Быстрое начало
@@ -141,14 +143,14 @@ cargo build --release --features mymodule
 
 - Начните с [Быстрого старта](UI_PACKAGES_QUICKSTART.md)
 - Используйте готовые компоненты из `leptos-ui`
-- Следуйте best practices из [Полного руководства](MODULE_UI_PACKAGES_INSTALLATION.md)
-- Смотрите примеры готовых модулей (commerce, blog)
+- Сверяйтесь с [индексом документации модулей](_index.md), если материал переехал
+- Смотрите примеры готовых модулей в [реестре модулей](registry.md)
 
 ## 🆘 Нужна помощь?
 
-- **Проблемы с компиляцией** → [Troubleshooting](MODULE_UI_PACKAGES_INSTALLATION.md#troubleshooting)
-- **Вопросы по API** → [API для управления](MODULE_UI_PACKAGES_INSTALLATION.md#api-для-управления-установкой-модулей)
-- **Архитектурные вопросы** → [Архитектура системы](MODULE_UI_PACKAGES_INSTALLATION.md#архитектура-системы)
+- **Проблемы с компиляцией** → [Руководство по тестированию и диагностике](../guides/testing.md)
+- **Вопросы по API** → [Архитектура API](../architecture/api.md)
+- **Архитектурные вопросы** → [Архитектура модулей](../architecture/modules.md)
 
 ---
 
