@@ -160,7 +160,8 @@ async fn persist_manifest_and_request_build(
         Err(err) => {
             if let Err(restore_err) = ManifestManager::save(&original_manifest) {
                 return Err(<FieldError as GraphQLError>::internal_error(&format!(
-                    "failed to request build after manifest update: {err}; rollback failed: {restore_err}"
+                    "failed to request build after manifest update: {:?}; rollback failed: {:?}",
+                    err, restore_err
                 )));
             }
             Err(err)
