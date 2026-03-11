@@ -26,6 +26,12 @@ graph TD
         ALLOY[crates/alloy-scripting]
     end
 
+    subgraph Module UI Packages
+        BLOG_UI_ADMIN[crates/rustok-blog/ui/admin]
+        BLOG_UI_FRONT[crates/rustok-blog/ui/frontend]
+        OPTIONAL_UI[crates/rustok-<module>/ui/* (target)]
+    end
+
     subgraph Platform Core Crates
         CORE[crates/rustok-core]
         EVENTS[crates/rustok-events]
@@ -82,6 +88,15 @@ graph TD
     IGGY --> IGGY_CONN
     ALLOY --> CORE
 
+    BLOG --> BLOG_UI_ADMIN
+    BLOG --> BLOG_UI_FRONT
+    BLOG_UI_ADMIN --> NEXT_ADMIN
+    BLOG_UI_FRONT --> NEXT_SF
+    OPTIONAL_UI -. optional contracts .-> ADMIN
+    OPTIONAL_UI -. optional contracts .-> NEXT_ADMIN
+    OPTIONAL_UI -. optional contracts .-> SF
+    OPTIONAL_UI -. optional contracts .-> NEXT_SF
+
     Domain Modules -.-> TELEMETRY
 ```
 
@@ -132,6 +147,31 @@ The core baseline includes `ModuleKind::Core` modules and additional mandatory c
 
 
 > Mandatory core modules (platform baseline, all critical): `rustok-index`, `rustok-tenant`, `rustok-rbac`, `rustok-core`, `rustok-outbox`, `rustok-telemetry`.
+
+### Module UI Packages Layer (`crates/*/ui/*`)
+
+This layer contains UI packages shipped by domain modules.
+For `ModuleKind::Optional`, UI composition must come from module-owned UI packages (screens, nav items, guards, editors) instead of hardcoded app-level features.
+
+Core exceptions: `index`, `tenant`, `rbac`, and platform core crates (`rustok-core`, `rustok-outbox`, `rustok-telemetry`) are not required to follow this UI packaging pattern.
+
+Recommended package shape:
+
+- `crates/rustok-<module>/ui/admin`
+- `crates/rustok-<module>/ui/frontend`
+
+Recommended entry-point exports:
+
+- `adminNavItems` (or equivalent admin contract)
+- `frontendNavItems` (or equivalent storefront contract)
+
+Admin and storefront runtimes (`apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`) should consume these packages through one modular contract/registry layer (e.g., `registerAdminModule` / `registerStorefrontModule` and Leptos registry equivalents).
+
+| Path | Module | UI Scope | Status |
+|------|--------|----------|--------|
+| `crates/rustok-blog/ui/admin` | Blog (+forum composition currently colocated) | Admin | Existing |
+| `crates/rustok-blog/ui/frontend` | Blog | Frontend | Existing |
+| `crates/rustok-<module>/ui/*` | Content/Commerce/Forum/Pages/Alloy scripting | Admin + Frontend | Planned / partial |
 
 ### Internal Frontend Libraries (`crates/`)
 
