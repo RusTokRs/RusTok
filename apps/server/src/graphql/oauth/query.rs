@@ -16,6 +16,11 @@ use super::{
 #[derive(Default)]
 pub struct OAuthQuery;
 
+fn require_auth_context(ctx: &Context<'_>) -> Result<&AuthContext> {
+    ctx.data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
+}
+
 #[Object]
 impl OAuthQuery {
     /// List OAuth apps for the current tenant (admin only)
@@ -24,9 +29,7 @@ impl OAuthQuery {
         ctx: &Context<'_>,
         app_type: Option<AppType>,
     ) -> Result<Vec<OAuthAppGql>> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         // Require admin permissions
@@ -50,9 +53,7 @@ impl OAuthQuery {
 
     /// Get a specific OAuth app by ID (admin only)
     async fn oauth_app(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<OAuthAppGql>> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -73,16 +74,9 @@ impl OAuthQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<Vec<super::types::AuthorizedAppGql>> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
-
-        // Require authenticated user
-        if auth.user_id.is_none() {
-            return Err("Authentication required".into());
-        }
-        let user_id = auth.user_id.unwrap();
+        let user_id = auth.user_id;
 
         // Find active consents joined with apps
         use crate::models::oauth_apps;
@@ -116,5 +110,67 @@ impl OAuthQuery {
         }
 
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
+    use sea_orm::Database;
+
+    use super::OAuthQuery;
+    use crate::context::AuthContext;
+
+    fn auth_context() -> AuthContext {
+        AuthContext {
+            user_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            permissions: vec![],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn my_authorized_apps_requires_auth_context() {
+        let schema =
+            Schema::build(OAuthQuery::default(), EmptyMutation, EmptySubscription).finish();
+
+        let response = schema
+            .execute(Request::new("{ myAuthorizedApps { scopes } }"))
+            .await;
+
+        let code = response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code"))
+            .and_then(|value| value.as_str());
+
+        assert_eq!(code, Some("UNAUTHENTICATED"));
+    }
+
+    #[tokio::test]
+    async fn my_authorized_apps_with_auth_context_is_not_unauthenticated() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let schema = Schema::build(OAuthQuery::default(), EmptyMutation, EmptySubscription)
+            .data(db)
+            .finish();
+
+        let response = schema
+            .execute(Request::new("{ myAuthorizedApps { scopes } }").data(auth_context()))
+            .await;
+
+        if let Some(err) = response.errors.first() {
+            let code = err
+                .extensions
+                .as_ref()
+                .and_then(|ext| ext.get("code"))
+                .and_then(|value| value.as_str());
+            assert_ne!(code, Some("UNAUTHENTICATED"));
+        } else {
+            assert!(response.errors.is_empty());
+        }
     }
 }

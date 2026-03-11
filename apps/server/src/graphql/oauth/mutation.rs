@@ -17,6 +17,11 @@ use super::types::{
 #[derive(Default)]
 pub struct OAuthMutation;
 
+fn require_auth_context(ctx: &Context<'_>) -> Result<&AuthContext> {
+    ctx.data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
+}
+
 #[Object]
 impl OAuthMutation {
     /// Create a new OAuth app (admin only).
@@ -26,9 +31,7 @@ impl OAuthMutation {
         ctx: &Context<'_>,
         input: CreateOAuthAppInput,
     ) -> Result<CreateOAuthAppResultGql> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -60,9 +63,7 @@ impl OAuthMutation {
         ctx: &Context<'_>,
         id: Uuid,
     ) -> Result<RotateSecretResultGql> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -90,9 +91,7 @@ impl OAuthMutation {
 
     /// Revoke an OAuth app — deactivates the app and all its tokens (admin only).
     async fn revoke_oauth_app(&self, ctx: &Context<'_>, id: Uuid) -> Result<OAuthAppGql> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -122,16 +121,9 @@ impl OAuthMutation {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<bool> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
-
-        // Require authenticated user
-        if auth.user_id.is_none() {
-            return Err("Authentication required".into());
-        }
-        let user_id = auth.user_id.unwrap();
+        let user_id = auth.user_id;
 
         // Ensure app belongs to same tenant and is active
         let app = crate::models::oauth_apps::Entity::find_by_id(app_id)
@@ -153,21 +145,80 @@ impl OAuthMutation {
 
     /// Revoke consent to an application (also revokes tokens)
     async fn revoke_app_consent(&self, ctx: &Context<'_>, app_id: Uuid) -> Result<bool> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
-
-        // Require authenticated user
-        if auth.user_id.is_none() {
-            return Err("Authentication required".into());
-        }
-        let user_id = auth.user_id.unwrap();
+        let user_id = auth.user_id;
 
         OAuthAppService::revoke_user_consent(db, app_id, user_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Failed to revoke consent: {e}")))?;
 
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use async_graphql::{EmptyQuery, EmptySubscription, Request, Schema};
+    use sea_orm::Database;
+
+    use super::OAuthMutation;
+    use crate::context::AuthContext;
+
+    fn auth_context() -> AuthContext {
+        AuthContext {
+            user_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            permissions: vec![],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn revoke_app_consent_requires_auth_context() {
+        let schema =
+            Schema::build(EmptyQuery, OAuthMutation::default(), EmptySubscription).finish();
+
+        let response = schema
+            .execute(Request::new(
+                "mutation { revokeAppConsent(appId: \"550e8400-e29b-41d4-a716-446655440000\") }",
+            ))
+            .await;
+
+        let code = response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code"))
+            .and_then(|value| value.as_str());
+
+        assert_eq!(code, Some("UNAUTHENTICATED"));
+    }
+
+    #[tokio::test]
+    async fn revoke_app_consent_with_auth_context_is_not_unauthenticated() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let schema = Schema::build(EmptyQuery, OAuthMutation::default(), EmptySubscription)
+            .data(db)
+            .finish();
+
+        let response = schema
+            .execute(
+                Request::new(
+                    "mutation { revokeAppConsent(appId: \"550e8400-e29b-41d4-a716-446655440000\") }",
+                )
+                .data(auth_context()),
+            )
+            .await;
+
+        assert!(!response.errors.is_empty());
+        let code = response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code"))
+            .and_then(|value| value.as_str());
+        assert_ne!(code, Some("UNAUTHENTICATED"));
     }
 }
