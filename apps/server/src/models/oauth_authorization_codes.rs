@@ -5,7 +5,10 @@ pub use super::_entities::oauth_authorization_codes::{ActiveModel, Column, Entit
 
 impl Model {
     pub fn is_active(&self) -> bool {
-        self.used_at.is_none() && self.expires_at > chrono::Utc::now().into()
+        let now_utc = chrono::Utc::now();
+        let expires_at_utc = self.expires_at.with_timezone(&chrono::Utc);
+
+        self.used_at.is_none() && expires_at_utc > now_utc
     }
 
     pub fn scopes_list(&self) -> Vec<String> {

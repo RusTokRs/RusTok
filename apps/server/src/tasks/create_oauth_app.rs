@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use loco_rs::app::AppContext;
 use loco_rs::task::{Task, Vars};
-use std::collections::BTreeMap;
 use tracing::info;
 
 use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
@@ -20,9 +19,11 @@ impl Task for CreateOAuthAppTask {
     async fn run(&self, app_context: &AppContext, vars: &Vars) -> loco_rs::Result<()> {
         let name = vars
             .cli_arg("name")
+            .map(|value| value.to_string())
             .unwrap_or_else(|_| "Development App".to_string());
         let slug = vars
             .cli_arg("slug")
+            .map(|value| value.to_string())
             .unwrap_or_else(|_| "dev-app".to_string());
 
         info!("Creating OAuth app: {} (slug: {})", name, slug);
