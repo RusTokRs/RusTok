@@ -156,6 +156,30 @@ Track errors by module.
 | `rustok_module_errors_total` | Counter | `module`, `error_type`, `severity` | Errors by module |
 | `rustok_module_error_rate` | Gauge | `module` | Error rate (errors/sec) |
 
+### Module Entrypoint Adoption Metrics
+
+Track whether key module entry points go through rustok libraries or bypass paths.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `rustok_module_entrypoint_calls_total` | Counter | `module`, `entry_point`, `path` | Calls split by `path=library|bypass` |
+
+**PromQL examples:**
+
+```promql
+# Library adoption rate by module (0..100)
+100 *
+sum by (module) (increase(rustok_module_entrypoint_calls_total{path="library"}[7d]))
+/
+clamp_min(
+  sum by (module) (increase(rustok_module_entrypoint_calls_total{path=~"library|bypass"}[7d])),
+  1
+)
+
+# New bypass points in last 7 days
+sum by (module, entry_point) (increase(rustok_module_entrypoint_calls_total{path="bypass"}[7d])) > 0
+```
+
 ### Database Metrics
 
 Monitor database performance.
@@ -643,3 +667,23 @@ Open Prometheus → Alerts: http://localhost:9090/alerts
 ---
 
 **Task 3.3: Metrics Dashboard ✅ Complete**
+
+### Weekly module adoption report
+
+Use the helper script to build a weekly report artifact from `/metrics`:
+
+```bash
+scripts/module_path_adoption_report.sh \
+  --metrics-url http://localhost:5150/metrics \
+  --baseline artifacts/verification/module_path_snapshot_prev.json \
+  --snapshot-out artifacts/verification/module_path_snapshot_current.json \
+  --out artifacts/verification/module_path_weekly.md \
+  --window weekly
+```
+
+The report includes:
+- `% scenarios through rustok libraries` by module
+- `library vs bypass` ratio by entry point
+- new bypass points vs baseline snapshot
+
+Recommended use: attach this report to the platform verification cycle evidence bundle.

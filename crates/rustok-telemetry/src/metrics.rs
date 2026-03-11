@@ -255,6 +255,20 @@ lazy_static! {
 // ============================================================================
 
 lazy_static! {
+    /// Module entry-point invocations split by integration path.
+    ///
+    /// `path` label values:
+    /// - `library`: call goes through rustok module/library API.
+    /// - `bypass`: direct/legacy path that bypasses shared module API.
+    pub static ref MODULE_ENTRYPOINT_CALLS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_module_entrypoint_calls_total",
+            "Total module entry-point invocations by integration path"
+        ),
+        &["module", "entry_point", "path"]
+    )
+    .expect("Failed to create module_entrypoint_calls_total");
+
     /// Errors by module
     pub static ref MODULE_ERRORS_TOTAL: IntCounterVec = IntCounterVec::new(
         Opts::new(
@@ -394,6 +408,7 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(SPANS_WITH_ERRORS_TOTAL.clone()))?;
 
     // Errors
+    registry.register(Box::new(MODULE_ENTRYPOINT_CALLS_TOTAL.clone()))?;
     registry.register(Box::new(MODULE_ERRORS_TOTAL.clone()))?;
     registry.register(Box::new(MODULE_ERROR_RATE.clone()))?;
 
@@ -557,6 +572,13 @@ pub fn record_span_error(operation: &str, error_type: &str) {
 pub fn record_module_error(module: &str, error_type: &str, severity: &str) {
     MODULE_ERRORS_TOTAL
         .with_label_values(&[module, error_type, severity])
+        .inc();
+}
+
+/// Record module entry-point invocation path (`library` or `bypass`).
+pub fn record_module_entrypoint_call(module: &str, entry_point: &str, path: &str) {
+    MODULE_ENTRYPOINT_CALLS_TOTAL
+        .with_label_values(&[module, entry_point, path])
         .inc();
 }
 
