@@ -1,10 +1,11 @@
 //! GraphQL mutations for OAuth App management
 
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::errors::GraphQLError;
 use crate::services::oauth_app::{self, OAuthAppService};
 
 use super::ensure_oauth_admin;
@@ -25,7 +26,9 @@ impl OAuthMutation {
         ctx: &Context<'_>,
         input: CreateOAuthAppInput,
     ) -> Result<CreateOAuthAppResultGql> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -57,7 +60,9 @@ impl OAuthMutation {
         ctx: &Context<'_>,
         id: Uuid,
     ) -> Result<RotateSecretResultGql> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -85,7 +90,9 @@ impl OAuthMutation {
 
     /// Revoke an OAuth app — deactivates the app and all its tokens (admin only).
     async fn revoke_oauth_app(&self, ctx: &Context<'_>, id: Uuid) -> Result<OAuthAppGql> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         ensure_oauth_admin(auth, db).await?;
@@ -115,7 +122,9 @@ impl OAuthMutation {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<bool> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         // Require authenticated user
@@ -144,7 +153,9 @@ impl OAuthMutation {
 
     /// Revoke consent to an application (also revokes tokens)
     async fn revoke_app_consent(&self, ctx: &Context<'_>, app_id: Uuid) -> Result<bool> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         // Require authenticated user
