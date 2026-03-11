@@ -34,6 +34,7 @@ fn test_register_all_metrics() {
 
     // Cache metrics
     assert!(metric_names.contains(&"rustok_cache_operations_total".to_string()));
+    assert!(metric_names.contains(&"rustok_module_entrypoint_calls_total".to_string()));
 }
 
 #[test]
@@ -119,6 +120,13 @@ fn test_module_error_metrics() {
     // Record module errors
     metrics::record_module_error("commerce", "ValidationError", "warning");
     metrics::record_module_error("content", "DatabaseError", "critical");
+}
+
+#[test]
+fn test_module_entrypoint_metrics() {
+    metrics::record_module_entrypoint_call("rbac", "has_permission", "library");
+    metrics::record_module_entrypoint_call("rbac", "replace_user_role_via_store", "core_runtime");
+    metrics::record_module_entrypoint_call("rbac", "legacy_shadow_check", "bypass");
 }
 
 #[test]
