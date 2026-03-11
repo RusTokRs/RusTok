@@ -1,7 +1,7 @@
 //! GraphQL mutations for OAuth App management
 
 use async_graphql::{Context, FieldError, Object, Result};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, EntityTrait};
 use uuid::Uuid;
 
 use crate::context::AuthContext;

@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
 use crate::services::oauth_app::OAuthAppService;
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, EntityTrait};
 
 use super::{
     ensure_oauth_admin,
@@ -81,7 +81,7 @@ impl OAuthQuery {
         // Find active consents joined with apps
         use crate::models::oauth_apps;
         use crate::models::oauth_consents;
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
         let active_consents: Vec<(oauth_consents::Model, Option<oauth_apps::Model>)> =
             oauth_consents::Entity::find()
