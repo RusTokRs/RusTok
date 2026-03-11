@@ -69,7 +69,7 @@ graph TD
 - [Matryoshka Architecture (7 Layers)](./architecture/matryoshka.md) — Foundational vision: the 7-layer platform model (RusToK / Alloy / Graal)
 - [Database Schema](./architecture/database.md)
 - [API Architecture](./architecture/api.md)
-  - включает раздел Rich-text input contract (`markdown` + `rt_json_v1`/`content_json`) для blog/forum
+  - включает раздел Rich-text input contract (`markdown` + `rt_json_v1`/`content_json`) для blog/forum/pages
   - включает актуальный раздел по auth lifecycle consistency и release-gate (`AuthLifecycleService` + `scripts/auth_release_gate.sh`)
 - [RBAC Enforcement](./architecture/rbac.md)
 - [RBAC Relation Migration Plan](./architecture/rbac-relation-migration-plan.md)

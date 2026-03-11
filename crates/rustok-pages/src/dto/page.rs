@@ -31,6 +31,7 @@ pub struct PageBodyInput {
     pub locale: String,
     pub content: String,
     pub format: Option<String>,
+    pub content_json: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
@@ -88,6 +89,7 @@ pub struct PageBodyResponse {
     pub locale: String,
     pub content: String,
     pub format: String,
+    pub content_json: Option<Value>,
     pub updated_at: String,
 }
 

@@ -1,4 +1,5 @@
 use async_graphql::{InputObject, SimpleObject};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -28,6 +29,7 @@ pub struct GqlPageBody {
     pub locale: String,
     pub content: String,
     pub format: String,
+    pub content_json: Option<Value>,
     pub updated_at: String,
 }
 
@@ -76,6 +78,7 @@ pub struct GqlPageBodyInput {
     pub locale: String,
     pub content: String,
     pub format: Option<String>,
+    pub content_json: Option<Value>,
 }
 
 #[derive(InputObject)]
@@ -120,6 +123,7 @@ impl From<rustok_pages::PageBodyResponse> for GqlPageBody {
             locale: r.locale,
             content: r.content,
             format: r.format,
+            content_json: r.content_json,
             updated_at: r.updated_at,
         }
     }

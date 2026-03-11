@@ -32,6 +32,7 @@
 //!         locale: "en".to_string(),
 //!         content: "Welcome to our company!".to_string(),
 //!         format: Some("markdown".to_string()),
+//!         content_json: None,
 //!     }),
 //!     blocks: None,
 //!     publish: false,

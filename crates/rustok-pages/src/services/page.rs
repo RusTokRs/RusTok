@@ -5,7 +5,9 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::SecurityContext;
+use rustok_core::{
+    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_RT_JSON_V1,
+};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
@@ -41,16 +43,40 @@ impl PageService {
 
         let metadata = build_page_metadata(&template, &input.translations, None);
 
-        let bodies = input
-            .body
-            .map(|body| {
-                vec![BodyInput {
-                    locale: body.locale,
-                    body: Some(body.content),
-                    format: body.format,
-                }]
-            })
-            .unwrap_or_default();
+        let bodies = if let Some(body) = input.body {
+            let format =
+                normalize_content_format(body.format.as_deref()).map_err(PagesError::validation)?;
+            if format == CONTENT_FORMAT_RT_JSON_V1
+                && body.content_json.is_none()
+                && body.content.trim().is_empty()
+            {
+                return Err(PagesError::validation(
+                    "content_json is required for rt_json_v1 format",
+                ));
+            }
+            let markdown_source = if body.content.trim().is_empty() {
+                None
+            } else {
+                Some(body.content.as_str())
+            };
+
+            let prepared_body = prepare_content_payload(
+                Some(&format),
+                markdown_source,
+                body.content_json.as_ref(),
+                &body.locale,
+                "Body",
+            )
+            .map_err(PagesError::validation)?;
+
+            vec![BodyInput {
+                locale: body.locale,
+                body: Some(prepared_body.body),
+                format: Some(prepared_body.format),
+            }]
+        } else {
+            Vec::new()
+        };
 
         let node = self
             .nodes
@@ -220,13 +246,40 @@ impl PageService {
             Some(&existing.metadata),
         );
 
-        let bodies = input.body.map(|body| {
-            vec![BodyInput {
+        let bodies = if let Some(body) = input.body {
+            let format =
+                normalize_content_format(body.format.as_deref()).map_err(PagesError::validation)?;
+            if format == CONTENT_FORMAT_RT_JSON_V1
+                && body.content_json.is_none()
+                && body.content.trim().is_empty()
+            {
+                return Err(PagesError::validation(
+                    "content_json is required for rt_json_v1 format",
+                ));
+            }
+            let markdown_source = if body.content.trim().is_empty() {
+                None
+            } else {
+                Some(body.content.as_str())
+            };
+
+            let prepared_body = prepare_content_payload(
+                Some(&format),
+                markdown_source,
+                body.content_json.as_ref(),
+                &body.locale,
+                "Body",
+            )
+            .map_err(PagesError::validation)?;
+
+            Some(vec![BodyInput {
                 locale: body.locale,
-                body: Some(body.content),
-                format: body.format,
-            }]
-        });
+                body: Some(prepared_body.body),
+                format: Some(prepared_body.format),
+            }])
+        } else {
+            None
+        };
 
         self.nodes
             .update_node(
@@ -378,11 +431,22 @@ fn node_to_page(
         })
         .collect();
 
-    let body = node.bodies.into_iter().next().map(|body| PageBodyResponse {
-        locale: body.locale,
-        content: body.body.unwrap_or_default(),
-        format: body.format,
-        updated_at: body.updated_at,
+    let body = node.bodies.into_iter().next().map(|body| {
+        let content = body.body.unwrap_or_default();
+        let format = body.format;
+        let content_json = if format == "rt_json_v1" {
+            serde_json::from_str(&content).ok()
+        } else {
+            None
+        };
+
+        PageBodyResponse {
+            locale: body.locale,
+            content,
+            format,
+            content_json,
+            updated_at: body.updated_at,
+        }
     });
 
     PageResponse {
