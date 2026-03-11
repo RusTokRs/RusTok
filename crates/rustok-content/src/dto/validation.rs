@@ -8,7 +8,7 @@ use validator::ValidationError;
 /// Custom validator for body format
 pub fn validate_body_format(format: &str) -> Result<(), ValidationError> {
     match format {
-        "markdown" | "html" | "plain" | "json" => Ok(()),
+        "markdown" | "html" | "plain" | "json" | "rt_json" => Ok(()),
         _ => Err(ValidationError::new("invalid_format")),
     }
 }
@@ -146,6 +146,7 @@ mod tests {
         assert!(validate_body_format("html").is_ok());
         assert!(validate_body_format("plain").is_ok());
         assert!(validate_body_format("json").is_ok());
+        assert!(validate_body_format("rt_json").is_ok());
     }
 
     #[test]

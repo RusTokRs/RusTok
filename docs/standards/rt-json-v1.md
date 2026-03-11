@@ -69,6 +69,13 @@
 - Unknown nodes и marks не сохраняются (drop во время sanitize).
 - Если после sanitize документ становится пустым/некорректным — запрос отклоняется как validation error.
 
+
+## Форматные версии
+
+- `rt_json_v1` — текущая поддерживаемая версия для записи и рендера в backend.
+- `rt_json_v2` — зарезервирована (known-but-unsupported): backend v1 её распознаёт, но отклоняет с явной ошибкой несовместимости.
+- Любая другая версия считается неизвестной и отклоняется (`reject`).
+
 ## Версионирование и совместимость
 
 - **Backward compatibility (legacy -> v1)**: если `version` отсутствует, backend пытается трансформировать payload в `rt_json_v1`:
@@ -84,4 +91,5 @@
 
 1. schema validation (`version/locale/doc`, allowed nodes/marks, limits, URL/embed policy),
 2. sanitize (drop unknown nodes/marks, normalize attrs),
-3. сохранение только sanitized JSON.
+3. сохранение только sanitized JSON,
+4. повторный sanitize/normalization перед HTML-рендером (defense in depth).

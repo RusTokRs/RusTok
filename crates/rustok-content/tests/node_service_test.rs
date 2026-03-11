@@ -919,3 +919,117 @@ async fn test_list_nodes_does_not_leak_across_tenants() {
         "tenant_b must see zero nodes, not tenant_a's"
     );
 }
+
+#[tokio::test]
+async fn test_create_node_rejects_unsafe_rt_json_payload() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let mut input = create_test_input();
+    input.bodies = vec![BodyInput {
+        locale: "en".to_string(),
+        body: Some(
+            serde_json::json!({
+                "version":"rt_json_v1",
+                "locale":"en",
+                "doc":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"javascript:alert(1)"}}]}]}]}
+            })
+            .to_string(),
+        ),
+        format: Some("rt_json".to_string()),
+    }];
+
+    let result = service.create_node(tenant_id, security, input).await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ContentError::Validation(msg) => assert!(msg.contains("link URL is not allowed")),
+        _ => panic!("Expected validation error"),
+    }
+}
+
+#[tokio::test]
+async fn test_create_node_sanitizes_unknown_rt_json_nodes() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let mut input = create_test_input();
+    input.bodies = vec![BodyInput {
+        locale: "en".to_string(),
+        body: Some(
+            serde_json::json!({
+                "version":"rt_json_v1",
+                "locale":"en",
+                "doc":{"type":"doc","content":[{"type":"unknown"},{"type":"paragraph","content":[{"type":"text","text":"ok"}]}]}
+            })
+            .to_string(),
+        ),
+        format: Some("rt_json".to_string()),
+    }];
+
+    let created = service
+        .create_node(tenant_id, security, input)
+        .await
+        .expect("create must succeed");
+
+    let body_raw = created.bodies[0].body.clone().expect("body");
+    let body_json: serde_json::Value = serde_json::from_str(&body_raw).expect("json");
+    assert_eq!(body_json["doc"]["content"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_create_node_rejects_oversized_rt_json_payload() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let mut input = create_test_input();
+    let big_text = "a".repeat(100_001);
+    input.bodies = vec![BodyInput {
+        locale: "en".to_string(),
+        body: Some(
+            serde_json::json!({
+                "version":"rt_json_v1",
+                "locale":"en",
+                "doc":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":big_text}]}]}
+            })
+            .to_string(),
+        ),
+        format: Some("rt_json".to_string()),
+    }];
+
+    let result = service.create_node(tenant_id, security, input).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_create_node_legacy_rt_json_payload_gets_wrapped_to_v1() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let security = admin_context();
+
+    let mut input = create_test_input();
+    input.bodies = vec![BodyInput {
+        locale: "en".to_string(),
+        body: Some(
+            serde_json::json!({
+                "type":"doc",
+                "content":[{"type":"paragraph","content":[{"type":"text","text":"legacy"}]}]
+            })
+            .to_string(),
+        ),
+        format: Some("rt_json".to_string()),
+    }];
+
+    let created = service
+        .create_node(tenant_id, security, input)
+        .await
+        .expect("create must succeed");
+
+    let body_raw = created.bodies[0].body.clone().expect("body");
+    let body_json: serde_json::Value = serde_json::from_str(&body_raw).expect("json");
+    assert_eq!(body_json["version"], "rt_json_v1");
+    assert_eq!(body_json["locale"], "en");
+}

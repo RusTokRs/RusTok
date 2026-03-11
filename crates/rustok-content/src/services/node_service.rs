@@ -7,7 +7,10 @@ use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::{Action, DomainEvent, PermissionScope, Resource, SecurityContext};
+use rustok_core::{
+    sanitize_rt_json_before_html_render, Action, DomainEvent, PermissionScope, Resource,
+    RtJsonValidationConfig, SecurityContext,
+};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
@@ -237,7 +240,8 @@ impl NodeService {
         }
 
         for body_input in input.bodies {
-            upsert_body(txn, node_id, body_input, now).await?;
+            let normalized_body = normalize_body_input(body_input)?;
+            upsert_body(txn, node_id, normalized_body, now).await?;
         }
 
         self.event_bus
@@ -416,7 +420,8 @@ impl NodeService {
                 .await?;
 
             for body_input in bodies {
-                upsert_body(txn, node_id, body_input, now).await?;
+                let normalized_body = normalize_body_input(body_input)?;
+                upsert_body(txn, node_id, normalized_body, now).await?;
             }
         }
 
@@ -960,6 +965,42 @@ impl NodeService {
 
         Ok((items, total))
     }
+}
+
+fn normalize_body_input(input: BodyInput) -> ContentResult<BodyInput> {
+    let format = input
+        .format
+        .clone()
+        .unwrap_or_else(|| "markdown".to_string());
+
+    if format == "rt_json" {
+        let locale = input.locale.clone();
+        let body = input
+            .body
+            .ok_or_else(|| ContentError::Validation("rt_json body is required".to_string()))?;
+
+        let body_json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
+            ContentError::Validation("rt_json body must be a valid JSON payload".to_string())
+        })?;
+
+        let sanitized = sanitize_rt_json_before_html_render(
+            &body_json,
+            &RtJsonValidationConfig::for_locale(&locale),
+        )
+        .map_err(ContentError::Validation)?;
+
+        return Ok(BodyInput {
+            locale,
+            body: Some(sanitized.to_string()),
+            format: Some(format),
+        });
+    }
+
+    Ok(BodyInput {
+        locale: input.locale,
+        body: input.body,
+        format: Some(format),
+    })
 }
 
 fn resolve_slug(
