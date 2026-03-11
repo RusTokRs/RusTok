@@ -448,6 +448,38 @@ pub async fn handler() -> loco_rs::Result<Json<Data>> { }
 
 ---
 
+### 6.3 Framework deviation criteria (обязательные критерии отклонения)
+
+**SEVERITY: HIGH**
+
+Любое осознанное отклонение от framework/runtime baseline (например, отказ от стандартного механизма Loco в пользу custom реализации) допустимо только при явном прохождении минимальных критериев:
+
+1. **Reliability semantics** — зафиксирована модель delivery/consistency (at-most-once / at-least-once / exactly-once where applicable), границы идемпотентности и допущения.
+2. **Backpressure** — описан контроль нагрузки (ограничение очередей, concurrency limits, fail-fast/timeout policy), чтобы исключить неограниченный рост latency и memory.
+3. **Replay** — определена стратегия безопасного повторного проигрывания (replay window, deduplication/idempotency contract, порядок восстановления).
+4. **Multi-tenant guarantees** — показано, что tenant isolation, routing и authz-проверки не деградируют при новом пути исполнения.
+5. **Operational runbook impact** — обновлён incident/runbook контур: сигналы, метрики, алерты, triage-процедуры и on-call шаги.
+
+Отклонение без покрытия всех пяти пунктов считается архитектурно неподтверждённым и не принимается.
+
+---
+
+### 6.4 Framework deviation checklist (обязателен для каждого нового отклонения)
+
+Перед merge обязан быть заполнен следующий checklist:
+
+- [ ] **Benchmark evidence**: приложены воспроизводимые benchmark-результаты (baseline vs proposed), входные данные и методика.
+- [ ] **Failure-mode table**: есть таблица failure modes (симптом, blast radius, detection signal, mitigation, owner).
+- [ ] **Rollback strategy**: зафиксирован rollback path (триггеры отката, шаги, expected recovery time, residual risk).
+- [ ] **Owner sign-off**: есть явное подтверждение владельца домена/платформы на выбранное отклонение.
+
+Checklist является обязательным gate и должен быть отражён:
+
+- в PR checklist процесса контрибуции: [`CONTRIBUTING.md`](../../CONTRIBUTING.md#pr-checklist);
+- в server governance-документации: [`apps/server/docs/README.md`](../../apps/server/docs/README.md).
+
+---
+
 ## 7. MCP
 
 ### 7.1 ЗАПРЕЩЕНО: Бизнес-логика в MCP адаптере

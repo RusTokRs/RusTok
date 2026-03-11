@@ -249,6 +249,7 @@ cd docs && mdbook build
 - [ ] Documentation updated
 - [ ] DOCS_MAP.md updated when docs triggers were touched
 - [ ] CHANGELOG.md updated
+- [ ] Framework deviation checklist completed for every new framework/runtime deviation (benchmark evidence, failure-mode table, rollback strategy, owner sign-off); see `docs/standards/forbidden-actions.md#64-framework-deviation-checklist-обязателен-для-каждого-нового-отклонения`
 - [ ] All CI checks pass
 - [ ] No breaking changes (or properly documented)
 
