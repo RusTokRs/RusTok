@@ -247,6 +247,9 @@ cd docs && mdbook build
 - [ ] Event-flow changes include integration tests for `event -> handler -> projection/index`
 - [ ] Every new `DomainEvent` has happy-path + idempotency/repeat integration tests
 - [ ] Documentation updated
+- [ ] Review: «Есть ли новый код в app-слое, который должен жить в библиотеке?»
+- [ ] Review: «Есть ли изменения в docs модуля и `docs/index.md` при изменении контракта?»
+- [ ] For critical domains (content/commerce/blog/forum/pages/index/rbac/tenant), any intentional bypass of module-first DoD has explicit architecture approval
 - [ ] DOCS_MAP.md updated when docs triggers were touched
 - [ ] CHANGELOG.md updated
 - [ ] Framework deviation checklist completed for every new framework/runtime deviation (benchmark evidence, failure-mode table, rollback strategy, owner sign-off); see `docs/standards/forbidden-actions.md#64-framework-deviation-checklist-обязателен-для-каждого-нового-отклонения`
