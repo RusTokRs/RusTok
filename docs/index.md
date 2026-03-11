@@ -155,6 +155,7 @@ graph TD
 ### Application docs
 
 - [Server docs](../apps/server/docs/README.md) (includes mandatory/critical core modules baseline for agents (6 modules), Loco feature matrix, auth password-reset email delivery, dev seed behavior notes, and build-request event publication wiring)
+- [Loco governance register](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по Loco capabilities в server runtime.
 - [Leptos Admin docs](../apps/admin/docs/README.md)
 - [Next.js Admin README](../apps/next-admin/README.md)
 - [Next.js Admin RBAC doc](../apps/next-admin/docs/nav-rbac.md)

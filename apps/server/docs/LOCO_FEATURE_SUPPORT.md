@@ -23,6 +23,25 @@
 | Кэширование tenancy | N/A (project concern) | custom tenant cache + negative cache + invalidation + metrics | **RusToK custom** | Низкий | Оставить самопис (platform-specific) |
 | Event bus / outbox transport | N/A (project architecture) | memory/outbox/iggy transport + relay worker | **RusToK custom** | Низкий | Оставить самопис |
 
+## Governance register
+
+Реестр ниже — обязательная входная точка для архитектурных решений по Loco-capabilities в `apps/server`.
+
+| Capability | Runtime owner (current) | Source of truth (target) | ADR / reference (required) | Decision status | Next review date | Кодовые точки |
+|---|---|---|---|---|---|---|
+| Application hooks (`Hooks`) | `apps/server` + `loco_rs` runtime | Loco hooks contract + `apps/server/src/app.rs` as integration layer | `apps/server/docs/loco/README.md`; `DECISIONS/2026-02-19-core-server-module-bundles-routing.md` | Accepted | 2026-06-01 | `apps/server/src/app.rs` |
+| Конфигурация приложения (`Config` + `settings.rustok.*`) | `apps/server` | Loco config (`config/*.yaml`) + typed settings in server | `apps/server/docs/loco/README.md`; `docs/architecture/overview.md` | Accepted | 2026-06-01 | `apps/server/src/common/settings.rs`; `apps/server/config/development.yaml`; `apps/server/config/test.yaml` |
+| REST/GraphQL routing | `apps/server` | Loco `AppRoutes` + server controllers/graphql modules | `DECISIONS/2026-02-19-core-server-module-bundles-routing.md`; `docs/architecture/api.md` | Accepted | 2026-06-01 | `apps/server/src/app.rs`; `apps/server/src/controllers/mod.rs`; `apps/server/src/graphql/mod.rs` |
+| ORM/migrations/entities | `apps/server` migration + SeaORM entities | SeaORM stack in server app + migration crate | `docs/architecture/database.md`; `apps/server/docs/README.md` | Accepted | 2026-06-01 | `apps/server/migration/src/lib.rs`; `apps/server/src/models/mod.rs` |
+| Auth framework primitives (JWT/sessions/reset/RBAC wiring) | `apps/server` + `rustok-core` + `rustok-rbac` | Domain auth logic поверх Loco runtime | `DECISIONS/2026-02-26-auth-lifecycle-unification-session-invalidation.md`; `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md` | Accepted | 2026-05-20 | `apps/server/src/services/auth.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/controllers/auth.rs` |
+| Tasks (`cargo loco task`) | `apps/server` via Loco task runtime | Loco tasks API with server task registration | `apps/server/docs/README.md`; `docs/guides/quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/tasks/mod.rs`; `apps/server/src/tasks/cleanup.rs`; `apps/server/src/app.rs` |
+| Initializers | `apps/server` via Loco initializer runtime | Loco initializer API + project initializers | `apps/server/docs/README.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/initializers/mod.rs`; `apps/server/src/initializers/telemetry.rs`; `apps/server/src/app.rs` |
+| Mailer subsystem | `apps/server` (custom `EmailService` on `lettre`) | **Loco Mailer API** (+ provider config in `settings`) | `apps/server/docs/loco/README.md`; `docs/architecture/api.md` | Proposed | 2026-04-15 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
+| Workers/queue subsystem | `apps/server` + `rustok-outbox` | RusToK event-driven worker runtime (без Loco queue duplication) | `docs/architecture/event-flow-contract.md`; `docs/standards/transactional-outbox.md` | Accepted | 2026-05-01 | `apps/server/src/app.rs`; `apps/server/src/services/event_transport_factory.rs`; `crates/rustok-outbox/src/relay.rs` |
+| Storage abstraction (uploads/assets) | `apps/server` (частичные ad-hoc use-cases) | **Loco Storage** shared policy/adapters for modules | `apps/server/docs/loco/README.md`; `docs/architecture/modules.md` | Needs review | 2026-04-15 | `apps/server/src/app.rs`; `apps/server/src/controllers/content.rs`; `apps/server/src/controllers/pages.rs` |
+| Tenancy caching | `apps/server` + `rustok-core` cache backends | RusToK custom tenancy cache (`tenant.rs`) + shared cache backend contract | `docs/architecture/tenancy.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-05-01 | `apps/server/src/middleware/tenant.rs`; `apps/server/src/middleware/tenant_cache_v3.rs`; `crates/rustok-core/src/cache.rs` |
+| Event bus / transport (`memory|outbox|iggy`) | `apps/server` + `rustok-events` + `rustok-outbox` | RusToK event transport contract + transactional outbox flow | `DECISIONS/2026-02-19-rustok-events-canonical-contract.md`; `docs/architecture/events.md`; `apps/server/docs/event-transport.md` | Accepted | 2026-05-01 | `apps/server/src/services/event_transport_factory.rs`; `apps/server/src/services/build_request_events.rs`; `apps/server/src/workers/outbox_relay.rs` |
+
 ---
 
 ## 2) Что реализовано в сервере (полный функциональный срез)
