@@ -418,7 +418,7 @@ attached mode       = iaijutsu (быстрый удар — расширение
 standalone mode     = kenjutsu (полноценный бой — создание новых сущностей)
 ```
 
-Подробный план: `crates/rustok-custom-fields/docs/implementation-plan.md`
+Подробный план: `docs/architecture/flex.md`
 
 ---
 
@@ -426,5 +426,5 @@ standalone mode     = kenjutsu (полноценный бой — создани
 
 - [ARCHITECTURE_GUIDE.md](../ARCHITECTURE_GUIDE.md) — общая архитектура
 - [ROADMAP.md](../ROADMAP.md) — фазы разработки
-- [Field Schema Plan](../../crates/rustok-custom-fields/docs/implementation-plan.md) — план реализации
+- [Flex Architecture](../architecture/flex.md) — план реализации
 

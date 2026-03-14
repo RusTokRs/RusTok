@@ -1,4 +1,4 @@
-# Field Schema & Flex — Implementation Plan
+# Flex — Implementation Plan
 
 > **Статус:** Draft v3 (2026-03-14)
 > **Архитектурное решение:** Flex — библиотека-инструмент, не модуль.
