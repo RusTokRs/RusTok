@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use rustok_core::permissions::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+use rustok_core::RusToKModule;
 
 pub mod dto;
 pub mod entities;
@@ -100,12 +99,6 @@ impl RusToKModule for ContentModule {
             Permission::new(Resource::BlogPosts, Action::List),
             Permission::new(Resource::BlogPosts, Action::Moderate),
         ]
-    }
-}
-
-impl MigrationSource for ContentModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new() // Migrations are currently handled by the main app
     }
 }
 

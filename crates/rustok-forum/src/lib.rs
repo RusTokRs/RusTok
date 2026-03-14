@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+use rustok_core::RusToKModule;
 
 pub mod constants;
 pub mod dto;
@@ -36,12 +35,6 @@ impl RusToKModule for ForumModule {
 
     fn dependencies(&self) -> &[&'static str] {
         &["content"]
-    }
-}
-
-impl MigrationSource for ForumModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
     }
 }
 

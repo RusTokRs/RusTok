@@ -57,16 +57,9 @@ pub use services::shadow_runtime::{
 };
 
 use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+use rustok_core::module::{HealthStatus, ModuleKind, RusToKModule};
 
 pub struct RbacModule;
-
-impl MigrationSource for RbacModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
-    }
-}
 
 #[async_trait]
 impl RusToKModule for RbacModule {

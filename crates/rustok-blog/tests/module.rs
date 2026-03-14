@@ -2,7 +2,7 @@
 
 use rustok_blog::BlogModule;
 use rustok_core::permissions::{Action, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::RusToKModule;
 
 #[test]
 fn module_metadata() {
