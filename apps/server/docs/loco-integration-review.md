@@ -282,35 +282,38 @@ pub struct Query(
 
 ## 4. Что вынести как модуль, а что оставить в server
 
-### 4.1 Текущая архитектура: модульный монолит
+### 4.1 Текущая архитектура и паттерн leaf crates
 
-Проект уже модульный: 16 rustok-crates + server как оркестратор. Всё компилируется в один бинарь. Вопрос не «монолит vs модули», а **куда положить новый код**.
+Проект уже модульный: 16 rustok-crates + server как оркестратор. Ключевой паттерн — **leaf crates**:
 
 ```
-rustok-core (12.7K lines) ── контракты, общие утилиты
-  ├── rustok-events (2K) ── события (leaf, без зависимостей)
-  ├── rustok-telemetry (1.5K) ── метрики/трейсинг (leaf)
-  └── alloy-scripting ── скриптовый движок
+Leaf crates (БЕЗ зависимости от core):
+  rustok-events (2K)      ── события, DomainEvent
+  rustok-telemetry (1.5K) ── метрики, трейсинг
 
-rustok-outbox (600) ── transactional outbox
-  └── зависит от: core, events
+rustok-core (12.7K) ── агрегатор + платформенные контракты
+  ├── зависит от rustok-events    (re-export)
+  ├── зависит от rustok-telemetry (re-export)
+  └── предоставляет: CacheBackend, ModuleRegistry, RBAC, i18n, ...
 
-Доменные модули:
-  rustok-content (4K) ── CMS ядро (nodes, bodies, translations)
-    ├── rustok-blog (3.3K) ── поверх content
-    ├── rustok-forum (2.5K) ── поверх content
-    └── rustok-pages (2.4K) ── поверх content
-  rustok-commerce (3K) ── каталог, инвентарь, цены (независим от content)
-  rustok-tenant (400) ── мультитенантность
-  rustok-rbac (4K) ── RBAC
-  rustok-index (2.1K) ── CQRS read models
+Core-модули (ModuleKind::Core — нельзя выключить):
+  rustok-tenant (400)  ── мультитенантность
+  rustok-rbac (4K)     ── RBAC
+  rustok-index (2.1K)  ── CQRS read models
+
+Доменные модули (ModuleKind::Optional — toggle per-tenant):
+  rustok-content (4K)  ── CMS ядро
+    ├── rustok-blog (3.3K)
+    ├── rustok-forum (2.5K)
+    └── rustok-pages (2.4K)
+  rustok-commerce (3K) ── каталог, инвентарь, цены
 
 apps/server ── Loco + Axum, оркестрирует всё
 ```
 
-### 4.2 Что уже есть для медиа (важная находка!)
+### 4.2 Что уже есть для медиа и storage
 
-При ревью обнаружено, что **инфраструктура для медиа уже частично заложена**, но разбросана:
+При ревью обнаружено, что инфраструктура для медиа **уже частично заложена**:
 
 | Что | Где | Статус |
 |-----|-----|--------|
@@ -320,81 +323,162 @@ apps/server ── Loco + Axum, оркестрирует всё
 | Events: `MediaUploaded`, `MediaDeleted` | `rustok-events` | ✅ Готово |
 | Permissions: `Resource::Media` (Create, Read, Update, Delete, List) | `rustok-content` | ✅ Готово |
 | `ProductImage.media_id` (FK на media) | `rustok-commerce` | ✅ Готово |
+| Файловое хранилище (storage backend) | Нигде | ❌ Отсутствует |
 | `MediaService` (upload, download, CRUD) | Нигде | ❌ Отсутствует |
-| `StorageAdapter` trait | Нигде | ❌ Отсутствует |
 | REST/GraphQL endpoints для media | Нигде | ❌ Отсутствует |
 | Thumbnail generation | Нигде | ❌ Отсутствует |
 
-**Вывод:** Схема БД и события готовы. Не хватает сервисного слоя, storage-адаптера и API.
+**Важно:** Loco RS 0.16 **не имеет встроенного Storage** — нечего расширять. Файловая реализация полностью наша, с нуля.
 
-### 4.3 Принцип разделения
+### 4.3 Архитектурное решение: `rustok-storage` как leaf crate
 
-| Критерий | → Server (infra) | → Crate (модуль) |
-|----------|------------------|-------------------|
-| Используется **всеми** модулями как контракт | | ✅ → `rustok-core` |
-| Используется **несколькими** модулями как сервис | | ✅ → отдельный crate |
-| Привязан к **Loco API** / HTTP-слою | ✅ | |
-| Содержит **доменную логику** | | ✅ |
-| Может быть **отключён** per-tenant | | ✅ (optional module) |
-| **Stateless** инфраструктурный сервис | ✅ | |
-| Требует **собственных миграций** и моделей | | ✅ |
+> **Принцип:** Storage и Media — core-модули платформы. Они являются частью ядра, всегда активны, не могут быть отключены.
 
-### 4.4 Рекомендация: вынести `rustok-media` как отдельный crate
+**`rustok-storage` — leaf crate**, по аналогии с `rustok-events` и `rustok-telemetry`.
 
-**Почему отдельный crate, а не в server:**
+**Почему leaf (без зависимости от core):**
 
-1. **Кросс-модульная зависимость.** Commerce уже ссылается на `media_id` через `ProductImage`. Content/Blog/Pages будут вставлять медиа в контент. Если `MediaService` живёт в server — модули не смогут его импортировать (server зависит от них, не наоборот). Циклическая зависимость.
+1. **Паттерн проекта.** `rustok-events` не зависит от core → core зависит от events и ре-экспортирует. Storage — такой же фундаментальный контракт.
 
-2. **Собственная схема БД.** Миграция `media` + `media_translations` уже есть. Это не инфраструктура — это доменная сущность с metadata, переводами, связями.
+2. **Минимальные зависимости.** Storage на своём уровне — «положи байты по пути, отдай байты по пути». Ему нужны: `async-trait`, `uuid`, `serde`, `tokio`, `bytes`. Не нужны: ORM, RBAC, events, i18n, cache (12.7K строк и 30+ dependencies от core).
 
-3. **Объём кода.** MediaService + thumbnail generation + quota management + MIME validation — это ~2-3K lines. Слишком много для «просто ещё один файл в server».
+3. **Переиспользуемость.** Leaf crate можно использовать в CLI-утилитах, migration tools, standalone backup скриптах — без подтягивания всего core.
 
-4. **Паттерн проекта.** Blog, Forum, Pages — всё отдельные crates поверх Content. Media — такая же горизонтальная concern, используемая несколькими вертикалями.
+4. **Core агрегирует, а не владеет.** Core = агрегатор контрактов. Storage trait определяется в leaf crate, core зависит от него и ре-экспортирует. Все модули получают storage через core.
+
+**`rustok-media` — Core модуль** (`ModuleKind::Core`), по аналогии с `rustok-tenant`, `rustok-rbac`, `rustok-index`.
+
+### 4.4 Итоговая архитектура: два новых crate
 
 ```
-                    rustok-core
-                   ┌─────┴──────┐
-                   │ StorageAdapter trait (контракт)
-                   │ MediaAsset struct (types)
-                   └─────┬──────┘
-                         │
-                   rustok-media (НОВЫЙ)
-                   ┌─────┴──────┐
-                   │ MediaService         │
-                   │ ThumbnailService     │
-                   │ QuotaService         │
-                   │ MediaRepository      │
-                   │ миграции (уже есть)  │
-                   └──┬────┬────┬────┬───┘
-                      │    │    │    │
-              content blog commerce pages
-              (вставка медиа в контент)
-                      │    │    │    │
-                   apps/server
-                   ┌─────┴──────┐
-                   │ LocoStorageAdapter (impl) │
-                   │ Media REST controller     │
-                   │ Media GraphQL resolvers   │
-                   │ Multipart upload handler  │
-                   └────────────┘
+Leaf crates (БЕЗ зависимости от core):
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│rustok-events │  │rustok-storage│  │rustok-       │
+│  (leaf)      │  │  (leaf, NEW) │  │telemetry     │
+│              │  │              │  │  (leaf)       │
+│ DomainEvent  │  │StorageBackend│  │              │
+│ EventEnvelope│  │ LocalBackend │  │ metrics,     │
+│ 40+ events   │  │ S3Backend    │  │ tracing      │
+│              │  │ StoragePolicy│  │              │
+└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+       │                 │                 │
+       ▼                 ▼                 ▼
+┌──────────────────────────────────────────────────────┐
+│  rustok-core (агрегатор + платформенные контракты)    │
+│                                                       │
+│  pub use rustok_events::*;                            │
+│  pub use rustok_storage::*;    ← НОВОЕ               │
+│  pub use rustok_telemetry::*;                         │
+│                                                       │
+│  + CacheBackend, ModuleRegistry, RusToKModule,        │
+│    RBAC, i18n, SecurityContext, ...                   │
+└──────────────────────┬───────────────────────────────┘
+                       │
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│rustok-media │ │rustok-tenant│ │rustok-rbac  │
+│ (Core, NEW) │ │ (Core)      │ │ (Core)      │
+│             │ │             │ │             │
+│MediaService │ │TenantModule │ │RbacModule   │
+│Thumbnails   │ │             │ │             │
+│Quota        │ │             │ │             │
+│             │ │             │ │             │
+│зависит от:  │ └─────────────┘ └─────────────┘
+│ core (→     │
+│  storage)   │
+│ events      │
+│ outbox      │
+└──────┬──────┘
+       │
+┌──────┼──────────┬───────────┬───────────┐
+▼      ▼          ▼           ▼           ▼
+content blog   commerce   forum       pages
 ```
 
-**Разделение ответственности:**
+### 4.5 Разделение ответственности
 
-| Компонент | Где | Почему |
-|-----------|-----|--------|
-| `StorageAdapter` trait | `rustok-core` | Контракт, аналогичен `CacheBackend`, `EventBus` |
-| `MediaAsset`, `UploadFile`, `ThumbnailSize` structs | `rustok-core` | Типы, используемые в контракте |
-| `MediaService` (CRUD metadata, quota check) | `rustok-media` | Доменная логика, нужна модулям |
-| `ThumbnailService` | `rustok-media` | Доменная логика (image processing) |
-| `MediaRepository` (SeaORM queries) | `rustok-media` | Persistence layer |
-| Миграции `media` + `media_translations` | `rustok-media` | Переносятся из server migration |
-| `LocoStorageAdapter` (impl StorageAdapter) | `apps/server` | Привязан к Loco Storage API |
-| Multipart upload handler | `apps/server` | Привязан к Axum/HTTP |
-| REST: `/api/media/*` | `apps/server` | HTTP layer |
-| GraphQL: `uploadMedia`, `mediaAssets`, etc. | `apps/server` | HTTP layer |
+#### `rustok-storage` (leaf crate)
 
-### 4.5 Остальные компоненты: server vs crate
+**Содержит:** инфраструктуру файлового хранения — КАК хранить.
+
+```rust
+// Контракт
+#[async_trait]
+pub trait StorageBackend: Send + Sync {
+    async fn put(&self, path: &StoragePath, bytes: Bytes) -> Result<()>;
+    async fn get(&self, path: &StoragePath) -> Result<Bytes>;
+    async fn delete(&self, path: &StoragePath) -> Result<()>;
+    async fn exists(&self, path: &StoragePath) -> Result<bool>;
+    async fn list(&self, prefix: &StoragePath) -> Result<Vec<StorageEntry>>;
+    fn public_url(&self, path: &StoragePath) -> Option<String>;
+}
+
+// Политика
+pub struct StoragePolicy { ... }
+impl StoragePolicy {
+    pub fn resolve_path(&self, tenant_id: Uuid, filename: &str) -> StoragePath;
+    pub fn validate_mime(&self, mime: &str, whitelist: &[String]) -> Result<()>;
+}
+
+// Backends
+pub struct LocalStorageBackend { ... }
+#[cfg(feature = "s3")]
+pub struct S3StorageBackend { ... }
+#[cfg(feature = "gcp")]
+pub struct GcpStorageBackend { ... }
+
+// Для тестов
+pub struct InMemoryStorageBackend { ... }
+```
+
+| Зависимости | Версия |
+|-------------|--------|
+| `async-trait` | workspace |
+| `uuid` | workspace |
+| `serde` | workspace |
+| `tokio` | workspace |
+| `bytes` | 1.x |
+| `thiserror` | workspace |
+| `aws-sdk-s3` | optional, feature `s3` |
+| `google-cloud-storage` | optional, feature `gcp` |
+
+**НЕ содержит:** ORM, events, RBAC, i18n, thumbnails, quota — ничего доменного.
+
+#### `rustok-media` (Core модуль)
+
+**Содержит:** доменную логику медиа — ЧТО хранить и зачем.
+
+| Компонент | Ответственность |
+|-----------|-----------------|
+| `MediaModule` | `impl RusToKModule`, `ModuleKind::Core`, миграции, permissions, event listeners |
+| `MediaService` | CRUD метаданных, вызов `StorageBackend.put/get/delete`, emit events |
+| `ThumbnailService` | Ресайз изображений (через `image` crate), lazy generation |
+| `QuotaService` | `SUM(size_bytes)` per tenant, лимиты из settings |
+| `MediaRepository` | SeaORM queries: `media`, `media_translations` |
+| Entities | `media.rs`, `media_translations.rs` (SeaORM) |
+| Миграции | Перенос из `apps/server/migration/m20250130_000009_create_media.rs` |
+
+| Зависимости | Источник |
+|-------------|----------|
+| `rustok-core` → `rustok-storage` | Получает `StorageBackend` через core |
+| `rustok-events` | `MediaUploaded`, `MediaDeleted` |
+| `rustok-outbox` | Transactional event publishing |
+| `sea-orm` | Persistence |
+| `image` | Thumbnail generation |
+
+#### `apps/server` (оркестратор)
+
+| Компонент | Ответственность |
+|-----------|-----------------|
+| Выбор backend | Конфигурация: `LocalStorageBackend` / `S3StorageBackend` по `platform_settings` |
+| Инжекция в `AppContext` | `StorageBackend` как shared resource (аналогично `CacheBackend`) |
+| Multipart upload handler | HTTP-специфичная обработка `multipart/form-data` |
+| REST endpoints | `POST /api/media/upload`, `GET/PUT/DELETE /api/media/{id}`, `GET /api/media/{id}/thumbnail/{size}` |
+| GraphQL resolvers | `uploadMedia`, `updateMedia`, `deleteMedia`, `mediaAssets`, `mediaAsset` |
+| Регистрация `MediaModule` | `.register(MediaModule)` в `build_registry()` |
+
+### 4.6 Остальные компоненты: server vs crate
 
 #### Оставить в server (инфраструктура)
 
@@ -486,31 +570,57 @@ apps/server ── Loco + Axum, оркестрирует всё
 
 ---
 
-### Фаза 3 — Storage + Media (~3 нед, было ~2 нед)
+### Фаза 3 — Storage + Media (~3.5 нед, было ~2 нед)
 
-> **Ключевое решение:** Media выносится в отдельный crate `rustok-media`.
-> Миграция `media` + `media_translations` уже существует в server — её нужно перенести.
-> `StorageAdapter` trait — в `rustok-core` (контракт). Реализация — в server.
+> **Архитектурное решение:**
+> - `rustok-storage` — **leaf crate** (без зависимости от core, аналогично `rustok-events`)
+> - `rustok-core` зависит от `rustok-storage` и ре-экспортирует
+> - `rustok-media` — **Core модуль** (`ModuleKind::Core`, нельзя отключить)
+> - Loco RS 0.16 не имеет встроенного Storage — реализация полностью наша, с нуля
+> - Миграция `media` + `media_translations` уже существует в server — перенести в `rustok-media`
+
+#### Подфаза 3a — `rustok-storage` (leaf crate, ~1 нед)
 
 | # | Шаг | Файлы | Тип | Детали |
 |---|-----|-------|-----|--------|
-| 3.1 | `StorageAdapter` trait в core | `crates/rustok-core/src/storage.rs` | Новое | `upload`, `download`, `delete`, `soft_delete`, `public_url`, `check_quota`, `thumbnail`, `gc_orphans`. Типы: `MediaAsset`, `UploadFile`, `ThumbnailSize`. |
-| 3.2 | Создать crate `rustok-media` | `crates/rustok-media/` | Новое | `Cargo.toml` с зависимостями: `rustok-core`, `rustok-events`, `rustok-outbox`, `sea-orm`, `image`. |
-| 3.3 | Перенести миграцию media из server | `crates/rustok-media/src/migration/` | Перенос | Перенести `m20250130_000009_create_media.rs`. Добавить `deleted_at` колонку для soft delete. |
-| 3.4 | SeaORM entities в rustok-media | `crates/rustok-media/src/entities/` | Новое | `media.rs`, `media_translations.rs`. Entity + scopes (by_tenant, not_deleted, by_mime). |
-| 3.5 | `MediaService` в rustok-media | `crates/rustok-media/src/service.rs` | Новое | CRUD metadata, связь с `StorageAdapter` через DI. Валидация MIME. Emit `MediaUploaded`/`MediaDeleted` events. |
-| 3.6 | `ThumbnailService` в rustok-media | `crates/rustok-media/src/thumbnails.rs` | Новое | Lazy generation через `image` crate. Размеры из настроек. Кэширование рядом с оригиналом. |
-| 3.7 | `QuotaService` в rustok-media | `crates/rustok-media/src/quota.rs` | Новое | `SUM(size_bytes)` per tenant. Configurable limits. |
-| 3.8 | `MediaModule` (impl RusToKModule) | `crates/rustok-media/src/module.rs` | Новое | `slug: "media"`, `kind: Core` (всегда активен). Регистрация миграций, permissions, event listeners. |
-| 3.9 | `LocoStorageAdapter` impl в server | `apps/server/src/services/storage.rs` | Новое | Реализация `StorageAdapter` поверх Loco Storage. Tenant isolation через path prefix. UUID naming. Date-based directories. CDN URL rewrite. |
-| 3.10 | Подключить `rustok-media` к модулям | `rustok-content`, `rustok-commerce` | Модификация | Добавить `rustok-media` как dependency. Commerce `ProductImage` уже имеет `media_id` — подключить `MediaService`. |
-| 3.11 | Зарегистрировать `MediaModule` | `apps/server/src/modules/mod.rs` | Модификация | `.register(MediaModule)` в `build_registry()`. |
-| 3.12 | REST API для media | `apps/server/src/controllers/media.rs` | Новое | `POST /api/media/upload` (multipart), `GET /api/media`, `GET /api/media/{id}`, `PUT /api/media/{id}`, `DELETE /api/media/{id}`, `GET /api/media/{id}/thumbnail/{size}`. |
-| 3.13 | GraphQL API для media | `apps/server/src/graphql/media/` | Новое | `uploadMedia`, `updateMedia`, `deleteMedia`, `mediaAssets(filter, pagination)`, `mediaAsset(id)`. |
-| 3.14 | GC orphan files task | `crates/rustok-media/src/tasks/` | Новое | Очистка soft-deleted и orphan файлов старше retention period. Регистрация как `ScheduledTask` (или Loco Task до Фазы 6). |
-| 3.15 | Страница Media в админке | Frontend | Новое | File manager: upload (drag-and-drop), browse grid/list, preview, alt-text edit, quota meter. |
-| 3.16 | Storage settings в Settings UI | Frontend | Модификация | Provider, bucket, CDN URL, MIME whitelist, quota, thumbnail sizes. |
-| 3.17 | Тесты | `tests/` + `crates/rustok-media/tests/` | Новое | Upload/download/delete, quota enforcement, tenant isolation, thumbnail, GC, MIME validation. |
+| 3a.1 | Создать crate `rustok-storage` | `crates/rustok-storage/` | Новое | Leaf crate. `Cargo.toml`: `async-trait`, `uuid`, `serde`, `tokio`, `bytes`, `thiserror`. Без `rustok-core`. |
+| 3a.2 | `StorageBackend` trait | `crates/rustok-storage/src/backend.rs` | Новое | `put`, `get`, `delete`, `exists`, `list`, `public_url`. Чистый контракт без доменной семантики. |
+| 3a.3 | Типы: `StoragePath`, `StorageEntry`, `StorageConfig` | `crates/rustok-storage/src/types.rs` | Новое | Path = typed string. Entry = path + size + modified_at. Config = provider + bucket + region + CDN URL. |
+| 3a.4 | `StoragePolicy` | `crates/rustok-storage/src/policy.rs` | Новое | Path generation: `{tenant_id}/YYYY/MM/{uuid}.{ext}`. MIME whitelist validation. Tenant isolation. |
+| 3a.5 | `LocalStorageBackend` | `crates/rustok-storage/src/backends/local.rs` | Новое | Реализация через `tokio::fs`. Автосоздание директорий. |
+| 3a.6 | `S3StorageBackend` (feature-gated) | `crates/rustok-storage/src/backends/s3.rs` | Новое | `#[cfg(feature = "s3")]`. Через `aws-sdk-s3` или `opendal`. |
+| 3a.7 | `InMemoryStorageBackend` | `crates/rustok-storage/src/backends/memory.rs` | Новое | Для тестов. `HashMap<StoragePath, Bytes>`. |
+| 3a.8 | CDN URL rewrite | `crates/rustok-storage/src/cdn.rs` | Новое | Если `cdn_base_url` в конфиге — подменять URL в `public_url()`. |
+| 3a.9 | Подключить в `rustok-core` | `crates/rustok-core/Cargo.toml` + `lib.rs` | Модификация | Добавить `rustok-storage.workspace = true`. Ре-экспорт: `pub use rustok_storage;`. |
+| 3a.10 | Тесты | `crates/rustok-storage/tests/` | Новое | Все backends: put/get/delete/exists/list, policy path generation, MIME validation, CDN rewrite. |
+
+#### Подфаза 3b — `rustok-media` (Core модуль, ~1.5 нед)
+
+| # | Шаг | Файлы | Тип | Детали |
+|---|-----|-------|-----|--------|
+| 3b.1 | Создать crate `rustok-media` | `crates/rustok-media/` | Новое | `Cargo.toml`: `rustok-core` (→ storage), `rustok-events`, `rustok-outbox`, `sea-orm`, `image`. |
+| 3b.2 | Перенести миграцию из server | `crates/rustok-media/src/migration/` | Перенос | Перенести `m20250130_000009_create_media.rs`. Добавить `deleted_at` для soft delete. |
+| 3b.3 | SeaORM entities | `crates/rustok-media/src/entities/` | Новое | `media.rs`, `media_translations.rs`. Scopes: `by_tenant`, `not_deleted`, `by_mime`. |
+| 3b.4 | `MediaService` | `crates/rustok-media/src/service.rs` | Новое | CRUD metadata. Вызывает `StorageBackend.put/get/delete` через DI. Emit `MediaUploaded`/`MediaDeleted`. |
+| 3b.5 | `ThumbnailService` | `crates/rustok-media/src/thumbnails.rs` | Новое | Lazy generation через `image` crate. Хранение thumbnails через `StorageBackend` рядом с оригиналом. |
+| 3b.6 | `QuotaService` | `crates/rustok-media/src/quota.rs` | Новое | `SUM(size_bytes)` per tenant. Лимиты из module settings. Reject upload при превышении. |
+| 3b.7 | `MediaModule` | `crates/rustok-media/src/module.rs` | Новое | `impl RusToKModule`: `slug: "media"`, `kind: Core`, миграции, permissions, event listeners. |
+| 3b.8 | GC task | `crates/rustok-media/src/gc.rs` | Новое | Очистка soft-deleted файлов старше retention. Orphan detection. |
+| 3b.9 | Подключить к доменным модулям | `rustok-content`, `rustok-commerce` | Модификация | Добавить `rustok-media` в dependencies. Commerce `ProductImage` → `MediaService`. |
+| 3b.10 | Тесты | `crates/rustok-media/tests/` | Новое | Upload/download/delete через `InMemoryStorageBackend`, quota, thumbnails, soft delete, GC. |
+
+#### Подфаза 3c — Server integration (~1 нед)
+
+| # | Шаг | Файлы | Тип | Детали |
+|---|-----|-------|-----|--------|
+| 3c.1 | Выбор и инжекция backend | `apps/server/src/app.rs` | Модификация | Конфигурация: `LocalStorageBackend` / `S3StorageBackend` по `platform_settings.storage`. Инжекция в `AppContext` (аналогично `CacheBackend`). |
+| 3c.2 | Зарегистрировать `MediaModule` | `apps/server/src/modules/mod.rs` | Модификация | `.register(MediaModule)` в `build_registry()`. |
+| 3c.3 | REST API для media | `apps/server/src/controllers/media.rs` | Новое | `POST /api/media/upload` (multipart), `GET /api/media` (paginated), `GET /api/media/{id}`, `PUT /api/media/{id}`, `DELETE /api/media/{id}`, `GET /api/media/{id}/thumbnail/{size}`. |
+| 3c.4 | GraphQL API для media | `apps/server/src/graphql/media/` | Новое | `uploadMedia`, `updateMedia`, `deleteMedia`, `mediaAssets(filter, pagination)`, `mediaAsset(id)`. |
+| 3c.5 | Multipart upload handler | `apps/server/src/controllers/media.rs` | Новое | Парсинг `multipart/form-data`, streaming в `StorageBackend`. |
+| 3c.6 | Страница Media в админке | Frontend | Новое | File manager: upload (drag-and-drop), browse grid/list, preview, alt-text, quota meter. |
+| 3c.7 | Storage settings в Settings UI | Frontend | Модификация | Provider, bucket, CDN URL, MIME whitelist, quota, thumbnail sizes. |
+| 3c.8 | Integration тесты | `apps/server/tests/` | Новое | E2E: upload через REST/GraphQL, quota enforcement, tenant isolation, thumbnail. |
 
 ---
 
@@ -570,7 +680,7 @@ apps/server ── Loco + Axum, оркестрирует всё
 | 1. Settings API | ~2 нед | ~2.5 нед | +0.5 | Versioning, validation, hot-reload |
 | **1.5. API Parity** | — | **~1 нед** | **+1** | **Новая фаза: logout, me, sessions, REST users** |
 | 2. Loco Mailer | ~1 нед | ~1.5 нед | +0.5 | `EmailTemplateProvider`, модульные шаблоны |
-| 3. Storage + Media | ~2 нед | ~3 нед | +1 | `rustok-media` crate, delete/GC, перенос миграции |
+| 3. Storage + Media | ~2 нед | ~3.5 нед | +1.5 | `rustok-storage` leaf crate + `rustok-media` Core модуль + server integration |
 | 4. Module Settings | ~2 нед | ~2 нед | — | — |
 | 5. Observability | ~1 нед | ~1.5 нед | +0.5 | Alerting, retention |
 | 6. Advanced Loco | ~2 нед | ~2.5 нед | +0.5 | Graceful shutdown, leader election |
@@ -595,9 +705,10 @@ graph LR
     P5 --> P6[Фаза 6: Advanced Loco<br/>~2.5 нед]
 ```
 
-**Итого:** ~15.5 нед последовательно; ~10 нед с параллелизацией.
+**Итого:** ~16 нед последовательно; ~10.5 нед с параллелизацией.
 
 Фаза 1.5 параллелится с Фазами 2 и 4, но должна завершиться до Фазы 3 (media GraphQL endpoints зависят от паритетного паттерна).
+Подфазы 3a (storage) → 3b (media) → 3c (server) выполняются последовательно внутри Фазы 3.
 
 ---
 
@@ -626,23 +737,28 @@ graph LR
 
 ### Рекомендации по модульности:
 
-**Новый crate `rustok-media`** (вынести обязательно):
-- Миграция `media` + `media_translations` уже существует в server
-- Commerce уже ссылается на `media_id` через `ProductImage`
-- Content/Blog/Pages будут вставлять медиа — нужна кросс-модульная зависимость
-- Если оставить в server — модули не смогут импортировать `MediaService` (циклическая зависимость)
-- В crate: `MediaService`, `ThumbnailService`, `QuotaService`, `MediaRepository`, миграции
-- В server: `LocoStorageAdapter`, multipart upload handler, REST/GraphQL endpoints
+**Новый leaf crate `rustok-storage`** (аналогично `rustok-events`):
+- Без зависимости от core — чистый контракт: `StorageBackend` trait + backends (Local, S3, InMemory)
+- Core зависит от него и ре-экспортирует (`pub use rustok_storage;`)
+- `StoragePolicy` (path generation, MIME validation, tenant isolation) — часть этого crate
+- Loco RS 0.16 не имеет Storage — реализация полностью наша
 
-**Вынести в `rustok-core` (контракты):**
-- `StorageAdapter` trait (аналогично `CacheBackend`, `EventBus`)
+**Новый Core модуль `rustok-media`** (`ModuleKind::Core`):
+- Зависит от core (→ получает storage), events, outbox
+- `MediaService`, `ThumbnailService`, `QuotaService`
+- Миграция `media` + `media_translations` уже существует — перенести из server
+- Commerce уже ссылается на `media_id`; content/blog/pages будут зависеть от media
+
+**Добавить в `rustok-core` (контракты через ре-экспорт leaf crates):**
+- `rustok-storage` — ре-экспорт (как `rustok-events`)
 - `EmailTemplateProvider` trait
 - `TranslationBundle` struct
 - `ScheduledTask` trait
 
-**Оставить в server:**
+**Оставить в server (HTTP/оркестрация):**
+- Выбор storage backend по конфигу, инжекция в AppContext
 - Settings API, Mailer adapter, i18n middleware
 - Observability dashboard, Scheduler runtime, Channels runtime
-- GraphQL schema builder, все REST/GraphQL endpoints
+- GraphQL schema builder, все REST/GraphQL endpoints, multipart upload handler
 
 **Не трогать:** CacheBackend, Event bus/outbox, RBAC engine — осознанные решения, задокументированы
