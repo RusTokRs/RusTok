@@ -24,6 +24,7 @@ graph TD
         RBAC[crates/rustok-rbac]
         TENANT[crates/rustok-tenant]
         ALLOY[crates/alloy-scripting]
+        MEDIA[crates/rustok-media - planned Core]
     end
 
     subgraph Module UI Packages
@@ -35,7 +36,9 @@ graph TD
     subgraph Platform Core Crates
         CORE[crates/rustok-core]
         EVENTS[crates/rustok-events]
+        STORAGE[crates/rustok-storage - planned leaf]
         OUTBOX[crates/rustok-outbox - Core Infra]
+        CACHE[crates/rustok-cache]
         IGGY[crates/rustok-iggy]
         IGGY_CONN[crates/rustok-iggy-connector]
         MCP[crates/rustok-mcp]
@@ -78,8 +81,10 @@ graph TD
     COMMERCE --> CORE
     COMMERCE --> EVENTS
     COMMERCE --> OUTBOX
+    COMMERCE --> MEDIA
     CONTENT --> CORE
     CONTENT --> OUTBOX
+    CONTENT --> MEDIA
     BLOG --> CONTENT
     FORUM --> CONTENT
     PAGES --> CORE
@@ -87,6 +92,11 @@ graph TD
     OUTBOX --> IGGY
     IGGY --> IGGY_CONN
     ALLOY --> CORE
+    CACHE --> CORE
+    STORAGE --> CORE
+    MEDIA --> CORE
+    MEDIA --> STORAGE
+    MEDIA --> OUTBOX
 
     BLOG --> BLOG_UI_ADMIN
     BLOG --> BLOG_UI_FRONT
@@ -114,17 +124,31 @@ graph TD
 
 ### Core Platform Crates (`crates/`)
 
+#### Leaf контракты (уровень 0 — без зависимости от core)
+
+Не реализуют `RusToKModule`. Предоставляют чистые типы и трейты. Core зависит от них и ре-экспортирует.
+
 | Path | Name | Description |
 |------|------|-------------|
-| `crates/rustok-core` | **Core (critical)** | Shared traits, base entities, events, cache abstractions, circuit breaker, RBAC primitives. Not a `RusToKModule`. ([CRATE_API](../../crates/rustok-core/CRATE_API.md)) |
-| `crates/rustok-events` | **Events Contracts** | Stable import point for `DomainEvent`/`EventEnvelope` (re-exports from core). ([CRATE_API](../../crates/rustok-events/CRATE_API.md)) |
+| `crates/rustok-events` | **Events Contracts** | Leaf. Stable import point for `DomainEvent`/`EventEnvelope`. Core re-exports. ([CRATE_API](../../crates/rustok-events/CRATE_API.md)) |
+| `crates/rustok-telemetry` | **Telemetry** | Leaf. Observability setup (OTLP, Tracing, Prometheus metrics). Core re-exports. Not a `RusToKModule`. ([CRATE_API](../../crates/rustok-telemetry/CRATE_API.md)) |
+| `crates/rustok-storage` | **Storage** *(planned)* | Leaf. `StorageBackend` trait + Local/S3/GCP/InMemory backends, `StoragePolicy`. No ORM, no domain logic. Core will re-export. Not a `RusToKModule`. |
+
+#### Core агрегатор (уровень 1)
+
+| Path | Name | Description |
+|------|------|-------------|
+| `crates/rustok-core` | **Core (critical)** | Aggregator. Re-exports leaf contracts, provides `CacheBackend`, `ModuleRegistry`, `RusToKModule`, RBAC primitives, i18n, `SecurityContext`, circuit breaker. Not a `RusToKModule`. ([CRATE_API](../../crates/rustok-core/CRATE_API.md)) |
+
+#### Инфраструктурные crates (не модули)
+
+| Path | Name | Description |
+|------|------|-------------|
+| `crates/rustok-cache` | **Cache** | Redis connection lifecycle, `CacheModule` + `CacheService`. `CacheBackend` (Moka + Redis + Fallback): circuit breaker, anti-stampede coalescing, negative cache, Redis pub/sub invalidation, metrics. ([docs](../../crates/rustok-cache/docs/README.md)) |
 | `crates/rustok-outbox` | **Outbox (Core, critical)** | Core event delivery (`TransactionalEventBus`). Not a `RusToKModule` — initialized via `build_event_runtime()`. ([CRATE_API](../../crates/rustok-outbox/CRATE_API.md)) |
 | `crates/rustok-iggy` | **Iggy Transport** | L2 streaming `EventTransport` implementation with serialization, topology, DLQ, replay. ([CRATE_API](../../crates/rustok-iggy/CRATE_API.md)) |
 | `crates/rustok-iggy-connector` | **Iggy Connector** | Embedded/Remote mode switching, connection lifecycle, message I/O. ([CRATE_API](../../crates/rustok-iggy-connector/CRATE_API.md)) |
 | `crates/rustok-mcp` | **MCP** | MCP adapter crate with embedded `rustok-mcp-server` binary. Exposes RusToK tools/resources via the MCP protocol using the `rmcp` SDK. ([CRATE_API](../../crates/rustok-mcp/CRATE_API.md)) |
-| `crates/rustok-telemetry` | **Telemetry (Core, critical)** | Observability setup (OTLP, Tracing, Prometheus metrics). Mandatory core crate, not a `RusToKModule`. ([CRATE_API](../../crates/rustok-telemetry/CRATE_API.md)) |
-| `crates/rustok-tenant` | **Tenant** | Multi-tenancy isolation and management logic. Registered as `ModuleKind::Core`. ([CRATE_API](../../crates/rustok-tenant/CRATE_API.md)) |
-| `crates/rustok-rbac` | **RBAC** | Role-based access control engine. Registered as `ModuleKind::Core`. ([CRATE_API](../../crates/rustok-rbac/CRATE_API.md)) |
 | `crates/rustok-test-utils` | **Test Utils** | Shared testing helpers and mocks. `[dev-dependencies]` only — never in production binary. ([CRATE_API](../../crates/rustok-test-utils/CRATE_API.md)) |
 
 ### Domain Modules (`crates/`)
@@ -133,20 +157,33 @@ These implement `RusToKModule` and are registered via `ModuleRegistry` in `apps/
 Core modules are mandatory for the platform runtime; optional modules are additive domain capabilities.
 The core baseline includes `ModuleKind::Core` modules and additional mandatory core crates.
 
+#### Core-модули (уровень 2 — `ModuleKind::Core`, нельзя отключить)
+
 | Path | Name | Kind | Depends on |
 |------|------|------|-----------|
-| `crates/rustok-index` | **Index** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-index/CRATE_API.md)) |
 | `crates/rustok-tenant` | **Tenant** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-tenant/CRATE_API.md)) |
 | `crates/rustok-rbac` | **RBAC** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-rbac/CRATE_API.md)) |
-| `crates/rustok-content` | **Content** | `Optional` | `rustok-core` ([CRATE_API](../../crates/rustok-content/CRATE_API.md)) |
-| `crates/rustok-commerce` | **Commerce** | `Optional` | `rustok-core` ([CRATE_API](../../crates/rustok-commerce/CRATE_API.md)) |
+| `crates/rustok-index` | **Index** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-index/CRATE_API.md)) |
+| `crates/rustok-media` | **Media** *(planned)* | `Core` (mandatory) | `rustok-core` → `rustok-storage`, `rustok-events`, `rustok-outbox`. `MediaService`, `ThumbnailService`, `QuotaService`. Зарегистрирован через `StorageModule`-паттерн. |
+
+#### Optional-модули (уровень 3 — `ModuleKind::Optional`, toggle per-tenant)
+
+| Path | Name | Kind | Depends on |
+|------|------|------|-----------|
+| `crates/rustok-content` | **Content** | `Optional` | `rustok-core`, `rustok-media` ([CRATE_API](../../crates/rustok-content/CRATE_API.md)) |
+| `crates/rustok-commerce` | **Commerce** | `Optional` | `rustok-core`, `rustok-media` ([CRATE_API](../../crates/rustok-commerce/CRATE_API.md)) |
 | `crates/rustok-blog` | **Blog** | `Optional` | `rustok-content` ([CRATE_API](../../crates/rustok-blog/CRATE_API.md)) |
 | `crates/rustok-forum` | **Forum** | `Optional` | `rustok-content` ([CRATE_API](../../crates/rustok-forum/CRATE_API.md)) |
 | `crates/rustok-pages` | **Pages** | `Optional` | `rustok-core` ([CRATE_API](../../crates/rustok-pages/CRATE_API.md)) |
 | `crates/alloy-scripting` | **Alloy Scripting** | `Optional` | `rustok-core` (registered via `AlloyModule` in `apps/server/src/modules/alloy.rs`) |
 
-
-> Mandatory core modules (platform baseline, all critical): `rustok-index`, `rustok-tenant`, `rustok-rbac`, `rustok-core`, `rustok-outbox`, `rustok-telemetry`.
+> **4-уровневая архитектура платформы:**
+> - Уровень 0 (leaf контракты): `rustok-events`, `rustok-telemetry`, `rustok-storage` *(planned)*
+> - Уровень 1 (core агрегатор): `rustok-core` (зависит от leaf, ре-экспортирует их)
+> - Уровень 2 (Core модули, всегда активны): `rustok-tenant`, `rustok-rbac`, `rustok-index`, `rustok-media` *(planned)*
+> - Уровень 3 (Optional модули, toggle per-tenant): `content`, `commerce`, `blog`, `forum`, `pages`, `alloy-scripting`
+>
+> Обязательный базис платформы: `rustok-core`, `rustok-outbox`, `rustok-telemetry`, `rustok-tenant`, `rustok-rbac`, `rustok-index` + инфраструктурные crates (`rustok-cache`, `rustok-events`).
 
 ### Module UI Packages Layer (`crates/*/ui/*`)
 
@@ -194,9 +231,9 @@ They are not published to crates.io. Treat them as first-party code — changes 
 | `crates/leptos-zod` | **Leptos Zod** | `apps/admin` | Zod-like validation helpers. |
 | `crates/leptos-zustand` | **Leptos Zustand** | `apps/admin` | Lightweight state management utilities. |
 | `crates/utoipa-swagger-ui-vendored` | **Swagger UI** | `apps/server` | Vendored Swagger UI static assets. |
-| `crates/tailwind-rs` | **Tailwind RS** | Build-time | Tailwind CSS utility generation core. |
-| `crates/tailwind-css` | **Tailwind CSS** | Build-time | CSS value and property types for Tailwind. |
-| `crates/tailwind-ast` | **Tailwind AST** | Build-time | AST and parser for Tailwind class expressions. |
+| `crates/rustok-cache` | **Cache** | `apps/server` | Redis/Moka cache backends, `CacheModule`, `CacheService`. Выделен из `rustok-core`. |
+| `crates/rustok-storage` | **Storage** *(planned)* | `rustok-core` → `rustok-media` | Leaf crate: `StorageBackend` trait + Local/S3/GCP/InMemory backends, `StoragePolicy`. |
+| `crates/rustok-media` | **Media** *(planned)* | `apps/server`, `rustok-content`, `rustok-commerce` | Core module: `MediaService`, `ThumbnailService`, `QuotaService`, SeaORM entities. |
 
 ## Maintenance Rule
 

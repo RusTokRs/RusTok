@@ -183,6 +183,8 @@ graph TD
 - [Документация Next.js Storefront](../apps/next-frontend/docs/README.md)
 - [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
 - [Документация crate `rustok-mcp`](../crates/rustok-mcp/docs/README.md)
+- [Документация crate `rustok-cache`](../crates/rustok-cache/docs/README.md)
+- [План реализации crate `rustok-cache`](../crates/rustok-cache/docs/implementation-plan.md)
 
 ### Документация модулей и crate-ов
 
@@ -211,6 +213,8 @@ graph TD
 - [План реализации модуля Tenant](../crates/rustok-tenant/docs/implementation-plan.md)
 - [Документация модуля RBAC](../crates/rustok-rbac/docs/README.md)
 - [План реализации модуля RBAC](../crates/rustok-rbac/docs/implementation-plan.md)
+- Документация `rustok-storage` *(planned)* — `crates/rustok-storage/docs/README.md`
+- Документация `rustok-media` *(planned)* — `crates/rustok-media/docs/README.md`
 - [Документация crate-коннектора Iggy](../crates/rustok-iggy-connector/docs/README.md)
 - [План реализации коннектора Iggy](../crates/rustok-iggy-connector/docs/implementation-plan.md)
 - [Документация рантайма Iggy](../crates/rustok-iggy/docs/README.md)
@@ -304,6 +308,9 @@ graph TD
 - `rustok-tenant`: [README](../crates/rustok-tenant/README.md), [docs/README](../crates/rustok-tenant/docs/README.md), [docs/implementation-plan](../crates/rustok-tenant/docs/implementation-plan.md)
 - `rustok-test-utils`: [README](../crates/rustok-test-utils/README.md)
 - `utoipa-swagger-ui-vendored`: [README](../crates/utoipa-swagger-ui-vendored/README.md), [docs/README](../crates/utoipa-swagger-ui-vendored/docs/README.md)
+- `rustok-cache`: [README](../crates/rustok-cache/README.md), [docs/README](../crates/rustok-cache/docs/README.md), [docs/implementation-plan](../crates/rustok-cache/docs/implementation-plan.md)
+- `rustok-storage` *(planned)*: `crates/rustok-storage/` — leaf crate, `StorageBackend` trait + backends
+- `rustok-media` *(planned)*: `crates/rustok-media/` — Core module, `MediaService`/`ThumbnailService`/`QuotaService`
 
 ### Пакеты (`packages/*`)
 
