@@ -1,5 +1,5 @@
 use rustok_commerce::CommerceModule;
-use rustok_core::RusToKModule;
+use rustok_core::{MigrationSource, RusToKModule};
 
 #[test]
 fn module_metadata() {

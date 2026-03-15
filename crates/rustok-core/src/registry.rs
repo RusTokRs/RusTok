@@ -11,13 +11,11 @@ use crate::module::{EventListener, ModuleKind, RusToKModule};
 /// - `optional_modules` — `ModuleKind::Optional`: per-tenant toggle via `ModuleLifecycleService`.
 ///
 /// # Core modules (DO NOT REMOVE OR RECLASSIFY without an ADR)
-/// | slug      | crate            | reason                                        |
-/// |-----------|------------------|-----------------------------------------------|
-/// | `index`   | rustok-index     | CQRS read-path, storefront depends on it      |
-/// | `tenant`  | rustok-tenant    | tenant resolution, every request passes here  |
-/// | `rbac`    | rustok-rbac      | RBAC enforcement on all CRUD handlers         |
-/// | `media`   | rustok-media     | media library for all file assets              |
-/// | `storage` | rustok-storage   | file storage backends (local, S3, etc.)        |
+/// | slug     | crate            | reason                                        |
+/// |----------|------------------|-----------------------------------------------|
+/// | `index`  | rustok-index     | CQRS read-path, storefront depends on it      |
+/// | `tenant` | rustok-tenant    | tenant resolution, every request passes here  |
+/// | `rbac`   | rustok-rbac      | RBAC enforcement on all CRUD handlers         |
 #[derive(Clone, Default)]
 pub struct ModuleRegistry {
     core_modules: Arc<HashMap<String, Arc<dyn RusToKModule>>>,

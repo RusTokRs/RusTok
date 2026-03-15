@@ -1,5 +1,5 @@
 use rustok_core::permissions::{Action, Resource};
-use rustok_core::RusToKModule;
+use rustok_core::{MigrationSource, RusToKModule};
 use rustok_pages::PagesModule;
 
 #[test]
