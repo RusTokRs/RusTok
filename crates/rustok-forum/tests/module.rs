@@ -1,4 +1,4 @@
-use rustok_core::RusToKModule;
+use rustok_core::{MigrationSource, RusToKModule};
 use rustok_forum::ForumModule;
 
 #[test]

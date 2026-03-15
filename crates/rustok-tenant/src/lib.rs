@@ -10,9 +10,16 @@ pub use error::TenantError;
 pub use services::TenantService;
 
 use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, ModuleKind, RusToKModule};
+use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use sea_orm_migration::MigrationTrait;
 
 pub struct TenantModule;
+
+impl MigrationSource for TenantModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
+    }
+}
 
 #[async_trait]
 impl RusToKModule for TenantModule {

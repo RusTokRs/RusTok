@@ -1,6 +1,7 @@
 use async_trait::async_trait;
+use sea_orm_migration::MigrationTrait;
 
-use rustok_core::module::RusToKModule;
+use rustok_core::module::{MigrationSource, RusToKModule};
 use rustok_core::registry::ModuleRegistry;
 use rustok_mcp::tools::{
     list_modules, list_modules_filtered, module_details, module_exists, McpState, McpToolResponse,
@@ -9,6 +10,18 @@ use rustok_mcp::tools::{
 
 struct DemoModule;
 struct ExtraModule;
+
+impl MigrationSource for DemoModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
+    }
+}
+
+impl MigrationSource for ExtraModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
+    }
+}
 
 #[async_trait]
 impl RusToKModule for DemoModule {

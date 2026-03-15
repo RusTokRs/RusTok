@@ -53,7 +53,8 @@ pub use services::{BlockService, MenuService, PageService};
 
 use async_trait::async_trait;
 use rustok_core::permissions::{Action, Permission, Resource};
-use rustok_core::RusToKModule;
+use rustok_core::{MigrationSource, RusToKModule};
+use sea_orm_migration::MigrationTrait;
 
 /// Pages module instance
 pub struct PagesModule;
@@ -92,6 +93,13 @@ impl RusToKModule for PagesModule {
             Permission::new(Resource::Nodes, Action::Delete),
             Permission::new(Resource::Nodes, Action::List),
         ]
+    }
+}
+
+impl MigrationSource for PagesModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        // Pages module uses content module tables, no own migrations
+        Vec::new()
     }
 }
 

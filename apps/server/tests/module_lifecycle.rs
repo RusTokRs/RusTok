@@ -6,6 +6,7 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, Statement,
 };
+use sea_orm_migration::MigrationTrait;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -31,6 +32,12 @@ impl TestModule {
     fn with_enable_failure(mut self) -> Self {
         self.should_fail_enable = true;
         self
+    }
+}
+
+impl rustok_core::MigrationSource for TestModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
     }
 }
 

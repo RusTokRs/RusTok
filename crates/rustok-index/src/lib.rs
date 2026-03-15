@@ -3,7 +3,8 @@
 //! Denormalized indexes for fast reads and full-text search.
 
 use async_trait::async_trait;
-use rustok_core::{ModuleKind, RusToKModule};
+use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
+use sea_orm_migration::MigrationTrait;
 
 pub mod content;
 pub mod error;
@@ -36,6 +37,12 @@ impl RusToKModule for IndexModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+}
+
+impl MigrationSource for IndexModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
     }
 }
 

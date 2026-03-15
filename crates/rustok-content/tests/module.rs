@@ -1,5 +1,5 @@
 use rustok_content::ContentModule;
-use rustok_core::{Action, Permission, Resource, RusToKModule};
+use rustok_core::{Action, MigrationSource, Permission, Resource, RusToKModule};
 
 #[test]
 fn module_metadata() {
