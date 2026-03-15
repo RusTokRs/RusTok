@@ -283,6 +283,6 @@ mYYYYMMDD_<module>_<nnn>_<description>.rs
 ## См. также
 
 - [ROADMAP.md](../ROADMAP.md) — фазы разработки
-- [modules/flex.md](../modules/flex.md) — подробная спецификация Flex
+- [architecture/flex.md](./flex.md) — спецификация и план реализации Flex
 - [MANIFEST_ADDENDUM.md](../MANIFEST_ADDENDUM.md) — дополнения к манифесту
 

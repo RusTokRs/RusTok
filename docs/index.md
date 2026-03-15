@@ -113,7 +113,7 @@ graph TD
 - [Манифест](./modules/manifest.md)
 - [Plan внедрения Tiptap/Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Индекс модульной документации](./modules/_index.md)
-- [Спецификация Flex](./modules/flex.md) — кастомные поля: Attached mode (в `rustok-core`) + Standalone mode (`rustok-flex`, planned)
+- [Flex](./architecture/flex.md) — кастомные поля: план реализации
 - [План реализации Flex](./architecture/flex.md)
 
 ### Стандарты (`docs/standards/`)

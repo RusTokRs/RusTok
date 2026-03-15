@@ -143,7 +143,7 @@ graph TD
 > **Flex** — набор типов, валидаторов и migration-хелперов внутри `rustok-core`.
 > Не является отдельным модулем и не имеет своих таблиц — данные живут внутри модуля-потребителя.
 > Режим **Attached** (кастомные поля для сущностей) — в core. Режим **Standalone** (`rustok-flex` crate) — запланирован.
-> Спецификация: [`docs/modules/flex.md`](../modules/flex.md). План реализации: [`docs/architecture/flex.md`](../architecture/flex.md).
+> План реализации: [`docs/architecture/flex.md`](../architecture/flex.md).
 
 #### Инфраструктурные crates (не модули)
 

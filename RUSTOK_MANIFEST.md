@@ -30,7 +30,6 @@
 | [docs/architecture/i18n.md](docs/architecture/i18n.md) | i18n/multi-language архитектура |
 | [docs/modules/registry.md](docs/modules/registry.md) | Реестр всех модулей и приложений |
 | [docs/modules/manifest.md](docs/modules/manifest.md) | Манифест модулей и rebuild |
-| [docs/modules/flex.md](docs/modules/flex.md) | Спецификация Flex модуля |
 | [docs/architecture/rbac.md](docs/architecture/rbac.md) | RBAC система прав доступа |
 | [docs/architecture/events.md](docs/architecture/events.md) | Event system и transactional publishing |
 | [docs/architecture/improvement-recommendations.md](docs/architecture/improvement-recommendations.md) | Актуальные рекомендации по архитектуре |
@@ -1044,7 +1043,6 @@ m20250201_commerce_002_create_variants.rs
 
 - [**docs/index.md**](docs/index.md) — Главная карта документации.
 - [docs/architecture/overview.md](docs/architecture/overview.md) — Технический обзор.
-- [docs/modules/flex.md](docs/modules/flex.md) — Гибкий контент.
 
 > Этот документ описывает архитектурные принципы и инварианты платформы.  
 > Для текущего состояния кода и живой документации используйте [docs/index.md](docs/index.md).
