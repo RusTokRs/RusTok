@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use rustok_core::{
-    module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule},
+    module::{HealthStatus, ModuleKind, RusToKModule},
     permissions::{Action, Permission, Resource},
 };
 use sea_orm::{DatabaseConnection, EntityTrait};
 use sea_orm_migration::MigrationTrait;
+
 
 pub struct AlloyModule {
     db: Option<DatabaseConnection>,
@@ -23,15 +24,6 @@ impl AlloyModule {
 
     pub fn with_db(db: DatabaseConnection) -> Self {
         Self { db: Some(db) }
-    }
-}
-
-impl MigrationSource for AlloyModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![
-            Box::new(alloy_scripting::ScriptsMigration),
-            Box::new(alloy_scripting::ScriptExecutionsMigration),
-        ]
     }
 }
 
@@ -55,6 +47,13 @@ impl RusToKModule for AlloyModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Optional
+    }
+
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![
+            Box::new(alloy_scripting::ScriptsMigration),
+            Box::new(alloy_scripting::ScriptExecutionsMigration),
+        ]
     }
 
     fn permissions(&self) -> Vec<Permission> {

@@ -13,6 +13,8 @@ pub struct ModuleContext<'a> {
 
 pub trait EventListener: crate::events::EventHandler {}
 
+/// Legacy trait kept for backward compatibility.
+/// New modules should implement `RusToKModule::migrations()` directly.
 pub trait MigrationSource: Send + Sync {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>>;
 }
@@ -32,6 +34,8 @@ pub enum HealthStatus {
 /// - `index`   — CQRS read-path; storefront reads from index tables
 /// - `tenant`  — tenant resolution middleware; every HTTP request passes through it
 /// - `rbac`    — RBAC enforcement; all CRUD handlers check permissions here
+/// - `media`   — media library; all modules depend on it for file assets
+/// - `storage` — file storage backend; media and platform depend on it
 ///
 /// Removing or downgrading any of these to `Optional` will break platform guarantees.
 /// Any such change requires an ADR in `DECISIONS/`.
@@ -44,8 +48,16 @@ pub enum ModuleKind {
     Optional,
 }
 
+/// Core trait for all platform modules.
+///
+/// A module can be anything: a domain feature with its own DB tables (content, commerce),
+/// an infrastructure service without DB (storage, telemetry integrations),
+/// or a lightweight extension (webhooks, custom validators).
+///
+/// Not all modules need migrations, permissions, or event listeners —
+/// all methods have sensible defaults. Implement only what your module needs.
 #[async_trait]
-pub trait RusToKModule: Send + Sync + MigrationSource {
+pub trait RusToKModule: Send + Sync {
     fn slug(&self) -> &'static str;
 
     fn name(&self) -> &'static str;
@@ -62,6 +74,12 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
 
     fn dependencies(&self) -> &[&'static str] {
         &[]
+    }
+
+    /// Database migrations this module provides.
+    /// Returns empty vec for modules without their own tables (e.g. storage, webhooks).
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
     }
 
     /// Returns the list of permissions this module declares.
