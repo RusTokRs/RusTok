@@ -1,5 +1,6 @@
 use axum::{extract::State, routing::get, Extension, Json};
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::controller::Routes;
 use std::sync::Arc;
 
 use crate::common::RequestContext;

@@ -3,7 +3,8 @@
 
 use crate::auth::auth_config_from_ctx;
 use axum::{extract::State, routing::get, Json};
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::controller::Routes;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]

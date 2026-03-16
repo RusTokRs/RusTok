@@ -3,7 +3,9 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::Error;
+use loco_rs::Result;
 use rustok_telemetry::metrics;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

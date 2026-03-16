@@ -7,7 +7,8 @@ use axum::{
     routing::{get, post},
     Json,
 };
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::controller::Routes;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

@@ -2,7 +2,12 @@
 
 use axum::routing::get;
 use axum::Extension;
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::controller::format;
+use loco_rs::controller::Routes;
+use loco_rs::Result;
+use axum::extract::State;
+use axum::response::Response;
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
 use sea_orm::DatabaseConnection;

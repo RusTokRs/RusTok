@@ -1,4 +1,5 @@
-use loco_rs::prelude::*;
+use loco_rs::Error;
+use loco_rs::Result;
 use sea_orm::{
     sea_query::OnConflict, ActiveValue, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };

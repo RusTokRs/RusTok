@@ -3,7 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::controller::Routes;
+use loco_rs::Error;
+use loco_rs::Result;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

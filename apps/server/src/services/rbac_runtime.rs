@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use loco_rs::prelude::*;
+use loco_rs::Error;
+use loco_rs::Result;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};

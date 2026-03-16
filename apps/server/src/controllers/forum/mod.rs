@@ -1,4 +1,5 @@
-use loco_rs::prelude::*;
+use loco_rs::controller::Routes;
+use axum::routing::{get, post};
 
 pub mod categories;
 pub mod replies;

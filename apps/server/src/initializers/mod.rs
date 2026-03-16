@@ -10,12 +10,10 @@ use loco_rs::{
 use std::vec::Vec;
 
 pub mod superadmin;
-pub mod telemetry;
 
 /// Create and return all initializers
 pub async fn create(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
     let initializers: Vec<Box<dyn Initializer>> = vec![
-        Box::new(telemetry::TelemetryInitializer),
         Box::new(superadmin::SuperAdminInitializer),
     ];
 

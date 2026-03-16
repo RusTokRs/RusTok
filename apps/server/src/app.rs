@@ -80,6 +80,7 @@ impl Hooks for App {
                 loco_rs::Error::BadRequest(format!("Invalid rustok settings: {error}"))
             })?;
         let runtime = bootstrap_app_runtime(ctx, &rustok_settings).await?;
+        connect_runtime_workers(ctx).await?;
 
         Ok(compose_application_router(router, ctx, runtime))
     }
@@ -126,8 +127,9 @@ impl Hooks for App {
         initializers::create(ctx).await
     }
 
-    async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        connect_runtime_workers(ctx).await
+    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
+        // Workers are started in after_routes where the full runtime is available.
+        Ok(())
     }
 
     async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {

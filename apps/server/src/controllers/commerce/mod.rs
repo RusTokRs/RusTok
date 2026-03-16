@@ -3,7 +3,7 @@ pub mod products;
 pub mod variants;
 
 use axum::routing::{get, post, put};
-use loco_rs::prelude::*;
+use loco_rs::controller::Routes;
 
 pub fn routes() -> Routes {
     Routes::new()
