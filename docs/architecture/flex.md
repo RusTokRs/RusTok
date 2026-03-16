@@ -596,7 +596,7 @@ impl HasCustomFields for product::Model {
 | rustok-commerce | `product_field_definitions`     | `"product"`  | `products.metadata`  |
 | rustok-commerce | `order_field_definitions`       | `"order"`    | `orders.metadata`    |
 | rustok-content  | `node_field_definitions`        | `"node"`     | `nodes.metadata`     |
-| rustok-forum    | `topic_field_definitions`       | `"topic"`    | `topics.metadata`    |
+| rustok-forum    | `topic_field_definitions`       | `"topic"`    | `nodes.metadata` (`kind=topic`) |
 
 Все таблицы **структурно идентичны**, но **физически изолированы** в своём модуле.
 
@@ -717,11 +717,11 @@ type SchemaCache = DashMap<(Uuid, &'static str), (Instant, CustomFieldsSchema)>;
 | nodes    | ✅ Есть  | m20250130_000005 | Готово |
 | tenants  | ✅ Есть  | m20250101_000006 | Готово |
 | orders   | ❌ Нет   | Таблица orders не найдена | **Нужна миграция** |
-| topics   | ⚠️ ?     | Миграции в crates/rustok-forum/ (децентрализованные) | **Проверить** |
+| topics   | ✅ Есть (через `nodes`) | m20250130_000005 (`nodes.metadata`) | Готово |
 
 **Действия перед Phase 4:**
 - [ ] Создать миграцию для `orders` таблицы с metadata колонкой (или добавить ALTER TABLE)
-- [ ] Проверить `crates/rustok-forum/` — есть ли metadata в topics
+- [x] Проверить `crates/rustok-forum/` — темы хранятся в `rustok_content::nodes`, `metadata` уже используется сервисами forum
 - [ ] Если нет — добавить миграцию в крейте forum
 
 **Важно:** Forum использует **децентрализованные миграции** (в крейте, не в apps/server).
@@ -1044,10 +1044,10 @@ impl SchemaCache {
 
 ### Phase 4 — Commerce, Content, Forum
 - [ ] **Pre-req:** добавить `metadata` колонку в `orders` таблицу (§8)
-- [ ] **Pre-req:** проверить `topics.metadata` в crates/rustok-forum/ (§8)
-- [ ] `product_field_definitions` (через helper)
+- [x] **Pre-req:** проверить `topics.metadata` в crates/rustok-forum/ (§8) *(форум использует `nodes.metadata` для `kind=topic`)*
+- [x] `product_field_definitions` (через helper; `apps/server/migration` `m20260316_000002`) + entity/model/service/registry в `apps/server`
 - [ ] `order_field_definitions` (через helper, после миграции)
-- [ ] `node_field_definitions` (через helper)
+- [x] `node_field_definitions` (через helper; `apps/server/migration` `m20260316_000003`)
 - [ ] `topic_field_definitions` (через helper, после проверки)
 - [ ] Каждый модуль: 5 шагов, ~50 строк + регистрация в FieldDefRegistry
 

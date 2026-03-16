@@ -4,6 +4,7 @@ pub mod oauth_authorization_codes;
 pub mod oauth_consents;
 pub mod oauth_tokens;
 pub mod permissions;
+pub mod product_field_definitions;
 pub mod role_permissions;
 pub mod roles;
 pub mod sessions;
@@ -26,3 +27,5 @@ pub use tenant_modules::Entity as TenantModules;
 pub use tenants::Entity as Tenants;
 pub use user_roles::Entity as UserRoles;
 pub use users::Entity as Users;
+
+pub use product_field_definitions::Entity as ProductFieldDefinitions;
