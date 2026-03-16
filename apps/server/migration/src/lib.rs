@@ -42,6 +42,7 @@ mod m20260316_000001_create_platform_settings;
 mod m20260316_000002_create_product_field_definitions;
 mod m20260316_000003_create_node_field_definitions;
 mod m20260316_000004_create_topic_field_definitions;
+mod m20260316_000005_create_order_field_definitions;
 
 pub struct Migrator;
 
@@ -89,6 +90,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260316_000002_create_product_field_definitions::Migration),
             Box::new(m20260316_000003_create_node_field_definitions::Migration),
             Box::new(m20260316_000004_create_topic_field_definitions::Migration),
+            Box::new(m20260316_000005_create_order_field_definitions::Migration),
         ]
     }
 }

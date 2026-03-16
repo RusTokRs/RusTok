@@ -156,4 +156,5 @@ rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
 rustok-media = { path = "crates/rustok-media" }
+flex = { path = "crates/flex" }
 alloy-scripting = { path = "crates/alloy-scripting" }

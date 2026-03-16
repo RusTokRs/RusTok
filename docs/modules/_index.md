@@ -22,6 +22,7 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | `rustok-iggy` | [docs](../../crates/rustok-iggy/docs/README.md) | [plan](../../crates/rustok-iggy/docs/implementation-plan.md) |
 | `rustok-iggy-connector` | [docs](../../crates/rustok-iggy-connector/docs/README.md) | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) |
 | `rustok-mcp` | [docs](../../crates/rustok-mcp/docs/README.md) | [plan](../../crates/rustok-mcp/docs/implementation-plan.md) |
+| `flex` | [docs](../../crates/flex/docs/README.md) | n/a (Phase 4.5 extraction) |
 
 ## Domain modules
 

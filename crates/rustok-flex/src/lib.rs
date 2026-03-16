@@ -1,7 +1,9 @@
-//! Temporary compatibility re-export.
-//! Flex registry contracts were moved to `flex` (Phase 4.5 extraction).
+//! Flex attached-mode shared contracts.
+//! Extracted from `apps/server` as part of Phase 4.5.
 
-pub use flex::{
+pub mod registry;
+
+pub use registry::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
     UpdateFieldDefinitionCommand,
 };

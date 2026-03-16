@@ -1,0 +1,17 @@
+[package]
+name = "rustok-flex"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Flex attached-mode contracts and orchestration primitives for RusToK"
+
+[dependencies]
+rustok-core.workspace = true
+rustok-events.workspace = true
+sea-orm.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

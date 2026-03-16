@@ -607,7 +607,7 @@ impl HasCustomFields for product::Model {
 1. **Attached mode** — кастомные поля к существующим сущностям → **это то, что описано выше**
 2. **Standalone mode** — произвольные схемы и записи (лендинги, формы, справочники)
 
-Standalone mode — это **отдельный модуль `rustok-flex`**, который:
+Standalone mode — это **отдельный модуль `flex`**, который:
 - Имеет свои таблицы (`flex_schemas`, `flex_entries`) — это его "domain"
 - Использует `FieldType`, `ValidationRule`, `CustomFieldsSchema` из core
 - Является **опциональным** — можно не подключать
@@ -617,7 +617,7 @@ Standalone mode — это **отдельный модуль `rustok-flex`**, к
 Attached mode (field_schema в core):
   "Дай мне кастомные поля для users" → user_field_definitions + users.metadata
 
-Standalone mode (rustok-flex модуль):
+Standalone mode (flex модуль):
   "Дай мне произвольную сущность 'landing-page'" → flex_schemas + flex_entries
 ```
 
@@ -1046,12 +1046,31 @@ impl SchemaCache {
 - [ ] **Pre-req:** добавить `metadata` колонку в `orders` таблицу (§8)
 - [x] **Pre-req:** проверить `topics.metadata` в crates/rustok-forum/ (§8) *(форум использует `nodes.metadata` для `kind=topic`)*
 - [x] `product_field_definitions` (через helper; `apps/server/migration` `m20260316_000002`) + entity/model/service/registry в `apps/server`
-- [ ] `order_field_definitions` (через helper, после миграции)
+- [x] `order_field_definitions` (через helper; `apps/server/migration` `m20260316_000005`) + entity/model/service/registry в `apps/server`
 - [x] `node_field_definitions` (через helper; `apps/server/migration` `m20260316_000003`)
 - [x] `topic_field_definitions` (через helper; `apps/server/migration` `m20260316_000004_create_topic_field_definitions`) + entity/model/service/registry в `apps/server`
 - [ ] Каждый модуль: 5 шагов, ~50 строк + регистрация в FieldDefRegistry
 
-### Phase 5 — Flex standalone (rustok-flex крейт, future)
+### Phase 4.5 — Вынос Flex в отдельный модуль (Attached mode)
+
+> **Ответ на вопрос "когда переносим":** начинаем сразу после закрытия оставшихся pre-req/test-долгов Phase 4.
+> Целевой слот: **следующий delivery-цикл (ориентир: 2026-Q2)**.
+
+- [x] Создать `crates/flex` как optional crate (без обязательной зависимости для доменных модулей) *(инициализирован: registry contracts вынесены, `apps/server` использует re-export compatibility layer)*
+- [ ] Перенести generic-контракты attached-mode из `apps/server` в crate:
+  - registry contracts (`FieldDefinitionService`, `FieldDefRegistry` adapter layer)
+  - generic CRUD orchestration + cache invalidation hooks
+  - transport-agnostic error mapping
+- [ ] Оставить в `apps/server` только transport/adapters (GraphQL, RBAC gate, bootstrap wiring)
+- [ ] Перевести `user/product/order/topic` сервисы на новый crate API без изменения GraphQL-контрактов
+- [ ] Подготовить migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
+
+**Go/No-Go критерии для старта выноса**
+1. Закрыт pre-req по `orders.metadata`.
+2. Есть полный интеграционный прогон Flex GraphQL CRUD + cache invalidation.
+3. Нет незакрытых P1-багов по текущей registry маршрутизации.
+
+### Phase 5 — Flex standalone (flex, после выноса attached mode)
 - [ ] `flex_schemas` + `flex_entries` — свои таблицы
 - [ ] Использует `FieldType`, `ValidationRule`, `CustomFieldsSchema` из core
 - [ ] Standalone CRUD (лендинги, формы, справочники)

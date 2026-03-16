@@ -1,7 +1,8 @@
 # Flex Module Specification
 
 > **Новый концепт из архитектурного обсуждения 2026-02-06**  
-> **Статус:** Concept / Draft
+> **Статус:** Concept / Draft (standalone) + Attached mode в активной реализации через `apps/server`  
+> **План выноса:** Phase 4.5 начат — создан `crates/flex` для shared attached-mode contracts; дальнейший перенос orchestration/adapter-слоёв продолжается по `docs/architecture/flex.md`.
 
 ---
 
@@ -62,10 +63,10 @@ Flex нужен для редких кастомных кейсов, когда:
 ```text
 rustok-core
     ↑
-rustok-flex (optional)
+flex (optional)
     
-rustok-commerce ←✗→ rustok-flex  (NO dependency!)
-rustok-content  ←✗→ rustok-flex  (NO dependency!)
+rustok-commerce ←✗→ flex  (NO dependency!)
+rustok-content  ←✗→ flex  (NO dependency!)
 ```
 
 ---
@@ -365,7 +366,7 @@ impl EventHandler for FlexIndexer {
 
 | # | Задача | Статус |
 |---|--------|--------|
-| 11.1 | Создать crate `rustok-flex` | ⬜ TODO |
+| 11.1 | Создать crate `flex` | ✅ Done (Phase 4.5 bootstrap) |
 | 11.2 | Миграции для `flex_schemas`, `flex_entries` | ⬜ TODO |
 | 11.3 | SeaORM entities | ⬜ TODO |
 | 11.4 | Validation service | ⬜ TODO |
