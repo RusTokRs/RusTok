@@ -362,7 +362,10 @@ impl CustomFieldsSchema {
 
 /// Validate a single non-null field value against its definition.
 /// Returns zero or more errors.
-fn validate_field_value(def: &FieldDefinition, value: &serde_json::Value) -> Vec<FieldValidationError> {
+fn validate_field_value(
+    def: &FieldDefinition,
+    value: &serde_json::Value,
+) -> Vec<FieldValidationError> {
     let mut errors = Vec::new();
     let key = &def.field_key;
     let rule = def.validation.as_ref();
@@ -528,10 +531,7 @@ fn validate_field_value(def: &FieldDefinition, value: &serde_json::Value) -> Vec
                     if n < min {
                         errors.push(FieldValidationError {
                             field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' must be at least {}",
-                                key, min as i64
-                            ),
+                            message: format!("Field '{}' must be at least {}", key, min as i64),
                             error_code: FieldErrorCode::BelowMinimum,
                         });
                     }
@@ -540,10 +540,7 @@ fn validate_field_value(def: &FieldDefinition, value: &serde_json::Value) -> Vec
                     if n > max {
                         errors.push(FieldValidationError {
                             field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' must be at most {}",
-                                key, max as i64
-                            ),
+                            message: format!("Field '{}' must be at most {}", key, max as i64),
                             error_code: FieldErrorCode::AboveMaximum,
                         });
                     }
@@ -629,10 +626,7 @@ fn validate_field_value(def: &FieldDefinition, value: &serde_json::Value) -> Vec
             if !valid {
                 errors.push(FieldValidationError {
                     field_key: key.clone(),
-                    message: format!(
-                        "Field '{}' is not a valid ISO 8601 datetime",
-                        key
-                    ),
+                    message: format!("Field '{}' is not a valid ISO 8601 datetime", key),
                     error_code: FieldErrorCode::InvalidFormat,
                 });
             }
@@ -653,10 +647,7 @@ fn validate_field_value(def: &FieldDefinition, value: &serde_json::Value) -> Vec
                     if !options.iter().any(|o| o.value == s) {
                         errors.push(FieldValidationError {
                             field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' has an invalid option value '{}'",
-                                key, s
-                            ),
+                            message: format!("Field '{}' has an invalid option value '{}'", key, s),
                             error_code: FieldErrorCode::InvalidOption,
                         });
                     }
@@ -679,10 +670,7 @@ fn validate_field_value(def: &FieldDefinition, value: &serde_json::Value) -> Vec
                 if !item.is_string() {
                     errors.push(FieldValidationError {
                         field_key: key.clone(),
-                        message: format!(
-                            "Field '{}' item at index {} must be a string",
-                            key, i
-                        ),
+                        message: format!("Field '{}' item at index {} must be a string", key, i),
                         error_code: FieldErrorCode::InvalidType,
                     });
                 }
@@ -820,7 +808,10 @@ impl std::fmt::Display for FlexError {
         match self {
             Self::UnknownEntityType(t) => write!(f, "Unknown entity type: {t}"),
             Self::TooManyFields { entity_type, max } => {
-                write!(f, "Too many field definitions for {entity_type} (max {max})")
+                write!(
+                    f,
+                    "Too many field definitions for {entity_type} (max {max})"
+                )
             }
             Self::InvalidFieldKey(k) => write!(f, "Invalid field key: {k}"),
             Self::DuplicateFieldKey(k) => write!(f, "Field key already exists: {k}"),
@@ -832,6 +823,93 @@ impl std::fmt::Display for FlexError {
 }
 
 impl std::error::Error for FlexError {}
+
+// ---------------------------------------------------------------------------
+// JSONB query helpers — Phase 1
+// ---------------------------------------------------------------------------
+
+/// Builds a SQL condition equivalent to `metadata->>'key' = 'value'` for PostgreSQL JSONB.
+///
+/// `column` should point to a JSON/JSONB column, typically `Column::Metadata`.
+pub fn json_field_eq(
+    column: impl Into<sea_orm::sea_query::SimpleExpr>,
+    key: &str,
+    value: &str,
+) -> sea_orm::Condition {
+    use sea_orm::sea_query::{Expr, Value};
+
+    let column = Expr::expr(column.into());
+    let expr = Expr::cust_with_exprs(
+        "$1->>$2 = $3",
+        [
+            column.into(),
+            Expr::value(Value::String(Some(Box::new(key.to_string())))).into(),
+            Expr::value(Value::String(Some(Box::new(value.to_string())))).into(),
+        ],
+    );
+
+    sea_orm::Condition::all().add(expr)
+}
+
+/// Builds a SQL condition equivalent to `metadata ? 'key'` (key existence in JSONB object).
+pub fn json_field_exists(
+    column: impl Into<sea_orm::sea_query::SimpleExpr>,
+    key: &str,
+) -> sea_orm::Condition {
+    use sea_orm::sea_query::{Expr, Value};
+
+    let column = Expr::expr(column.into());
+    let expr = Expr::cust_with_exprs(
+        "$1 ? $2",
+        [
+            column.into(),
+            Expr::value(Value::String(Some(Box::new(key.to_string())))).into(),
+        ],
+    );
+
+    sea_orm::Condition::all().add(expr)
+}
+
+/// Builds a SQL expression equivalent to `metadata->>'key'` for custom ORDER BY / projection.
+pub fn json_field_extract(
+    column: impl Into<sea_orm::sea_query::SimpleExpr>,
+    key: &str,
+) -> sea_orm::sea_query::SimpleExpr {
+    use sea_orm::sea_query::{Expr, Value};
+
+    let column = Expr::expr(column.into());
+    Expr::cust_with_exprs(
+        "$1->>$2",
+        [
+            column.into(),
+            Expr::value(Value::String(Some(Box::new(key.to_string())))).into(),
+        ],
+    )
+    .into()
+}
+
+/// Builds a SQL condition equivalent to `metadata @> '{"key": value}'::jsonb`.
+pub fn json_field_contains(
+    column: impl Into<sea_orm::sea_query::SimpleExpr>,
+    key: &str,
+    value: serde_json::Value,
+) -> sea_orm::Condition {
+    use sea_orm::sea_query::{Expr, Value};
+
+    let payload = serde_json::json!({ key: value });
+    let payload = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+    let column = Expr::expr(column.into());
+
+    let expr = Expr::cust_with_exprs(
+        "$1 @> $2::jsonb",
+        [
+            column.into(),
+            Expr::value(Value::String(Some(Box::new(payload)))).into(),
+        ],
+    );
+
+    sea_orm::Condition::all().add(expr)
+}
 
 // ---------------------------------------------------------------------------
 // Migration helpers — Phase 1
@@ -902,11 +980,7 @@ pub async fn create_field_definitions_table(
                         .string_len(32)
                         .not_null(),
                 )
-                .col(
-                    ColumnDef::new(Alias::new("label"))
-                        .json_binary()
-                        .not_null(),
-                )
+                .col(ColumnDef::new(Alias::new("label")).json_binary().not_null())
                 .col(ColumnDef::new(Alias::new("description")).json_binary())
                 .col(
                     ColumnDef::new(Alias::new("is_required"))
@@ -1010,7 +1084,12 @@ mod tests {
         }
     }
 
-    fn typed_def(key: &str, field_type: FieldType, required: bool, rule: Option<ValidationRule>) -> FieldDefinition {
+    fn typed_def(
+        key: &str,
+        field_type: FieldType,
+        required: bool,
+        rule: Option<ValidationRule>,
+    ) -> FieldDefinition {
         FieldDefinition {
             field_key: key.to_string(),
             field_type,
@@ -1054,7 +1133,10 @@ mod tests {
 
     #[test]
     fn validate_text_min_length() {
-        let rule = ValidationRule { min: Some(5.0), ..Default::default() };
+        let rule = ValidationRule {
+            min: Some(5.0),
+            ..Default::default()
+        };
         let schema = CustomFieldsSchema::new(vec![text_def("bio", false, Some(rule))]);
         let errors = schema.validate(&json!({"bio": "hi"}));
         assert_eq!(errors.len(), 1);
@@ -1063,7 +1145,10 @@ mod tests {
 
     #[test]
     fn validate_text_max_length() {
-        let rule = ValidationRule { max: Some(3.0), ..Default::default() };
+        let rule = ValidationRule {
+            max: Some(3.0),
+            ..Default::default()
+        };
         let schema = CustomFieldsSchema::new(vec![text_def("tag", false, Some(rule))]);
         let errors = schema.validate(&json!({"tag": "toolong"}));
         assert_eq!(errors.len(), 1);
@@ -1097,16 +1182,33 @@ mod tests {
 
     #[test]
     fn validate_integer_in_range() {
-        let rule = ValidationRule { min: Some(1.0), max: Some(100.0), ..Default::default() };
-        let schema = CustomFieldsSchema::new(vec![typed_def("age", FieldType::Integer, false, Some(rule))]);
+        let rule = ValidationRule {
+            min: Some(1.0),
+            max: Some(100.0),
+            ..Default::default()
+        };
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "age",
+            FieldType::Integer,
+            false,
+            Some(rule),
+        )]);
         let errors = schema.validate(&json!({"age": 42}));
         assert!(errors.is_empty());
     }
 
     #[test]
     fn validate_integer_below_minimum() {
-        let rule = ValidationRule { min: Some(18.0), ..Default::default() };
-        let schema = CustomFieldsSchema::new(vec![typed_def("age", FieldType::Integer, false, Some(rule))]);
+        let rule = ValidationRule {
+            min: Some(18.0),
+            ..Default::default()
+        };
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "age",
+            FieldType::Integer,
+            false,
+            Some(rule),
+        )]);
         let errors = schema.validate(&json!({"age": 10}));
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_code, FieldErrorCode::BelowMinimum);
@@ -1114,8 +1216,16 @@ mod tests {
 
     #[test]
     fn validate_integer_above_maximum() {
-        let rule = ValidationRule { max: Some(100.0), ..Default::default() };
-        let schema = CustomFieldsSchema::new(vec![typed_def("score", FieldType::Integer, false, Some(rule))]);
+        let rule = ValidationRule {
+            max: Some(100.0),
+            ..Default::default()
+        };
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "score",
+            FieldType::Integer,
+            false,
+            Some(rule),
+        )]);
         let errors = schema.validate(&json!({"score": 150}));
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_code, FieldErrorCode::AboveMaximum);
@@ -1125,8 +1235,17 @@ mod tests {
 
     #[test]
     fn validate_decimal_precision() {
-        let rule = ValidationRule { min: Some(0.0), max: Some(1.0), ..Default::default() };
-        let schema = CustomFieldsSchema::new(vec![typed_def("ratio", FieldType::Decimal, false, Some(rule))]);
+        let rule = ValidationRule {
+            min: Some(0.0),
+            max: Some(1.0),
+            ..Default::default()
+        };
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "ratio",
+            FieldType::Decimal,
+            false,
+            Some(rule),
+        )]);
         // In range
         assert!(schema.validate(&json!({"ratio": 0.75})).is_empty());
         // Above max
@@ -1142,7 +1261,12 @@ mod tests {
             options: Some(options(&["red", "green", "blue"])),
             ..Default::default()
         };
-        let schema = CustomFieldsSchema::new(vec![typed_def("color", FieldType::Select, false, Some(rule))]);
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "color",
+            FieldType::Select,
+            false,
+            Some(rule),
+        )]);
         assert!(schema.validate(&json!({"color": "red"})).is_empty());
     }
 
@@ -1152,7 +1276,12 @@ mod tests {
             options: Some(options(&["red", "green", "blue"])),
             ..Default::default()
         };
-        let schema = CustomFieldsSchema::new(vec![typed_def("color", FieldType::Select, false, Some(rule))]);
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "color",
+            FieldType::Select,
+            false,
+            Some(rule),
+        )]);
         let errors = schema.validate(&json!({"color": "yellow"}));
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_code, FieldErrorCode::InvalidOption);
@@ -1166,7 +1295,12 @@ mod tests {
             options: Some(options(&["a", "b", "c"])),
             ..Default::default()
         };
-        let schema = CustomFieldsSchema::new(vec![typed_def("tags", FieldType::MultiSelect, false, Some(rule))]);
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "tags",
+            FieldType::MultiSelect,
+            false,
+            Some(rule),
+        )]);
         assert!(schema.validate(&json!({"tags": ["a", "b"]})).is_empty());
     }
 
@@ -1176,7 +1310,12 @@ mod tests {
             options: Some(options(&["a", "b", "c"])),
             ..Default::default()
         };
-        let schema = CustomFieldsSchema::new(vec![typed_def("tags", FieldType::MultiSelect, false, Some(rule))]);
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "tags",
+            FieldType::MultiSelect,
+            false,
+            Some(rule),
+        )]);
         let errors = schema.validate(&json!({"tags": ["a", "z"]}));
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_code, FieldErrorCode::InvalidOption);
@@ -1189,22 +1328,33 @@ mod tests {
             options: Some(options(&["a", "b", "c", "d"])),
             ..Default::default()
         };
-        let schema = CustomFieldsSchema::new(vec![typed_def("tags", FieldType::MultiSelect, false, Some(rule))]);
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "tags",
+            FieldType::MultiSelect,
+            false,
+            Some(rule),
+        )]);
         let errors = schema.validate(&json!({"tags": ["a", "b", "c"]}));
-        assert!(errors.iter().any(|e| e.error_code == FieldErrorCode::TooLong));
+        assert!(errors
+            .iter()
+            .any(|e| e.error_code == FieldErrorCode::TooLong));
     }
 
     // ── Email ─────────────────────────────────────────────────────────────────
 
     #[test]
     fn validate_email_valid() {
-        let schema = CustomFieldsSchema::new(vec![typed_def("email", FieldType::Email, false, None)]);
-        assert!(schema.validate(&json!({"email": "user@example.com"})).is_empty());
+        let schema =
+            CustomFieldsSchema::new(vec![typed_def("email", FieldType::Email, false, None)]);
+        assert!(schema
+            .validate(&json!({"email": "user@example.com"}))
+            .is_empty());
     }
 
     #[test]
     fn validate_email_invalid() {
-        let schema = CustomFieldsSchema::new(vec![typed_def("email", FieldType::Email, false, None)]);
+        let schema =
+            CustomFieldsSchema::new(vec![typed_def("email", FieldType::Email, false, None)]);
         let errors = schema.validate(&json!({"email": "not-an-email"}));
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_code, FieldErrorCode::InvalidFormat);
@@ -1215,7 +1365,9 @@ mod tests {
     #[test]
     fn validate_url_valid() {
         let schema = CustomFieldsSchema::new(vec![typed_def("site", FieldType::Url, false, None)]);
-        assert!(schema.validate(&json!({"site": "https://example.com"})).is_empty());
+        assert!(schema
+            .validate(&json!({"site": "https://example.com"}))
+            .is_empty());
     }
 
     #[test]
@@ -1246,9 +1398,14 @@ mod tests {
 
     #[test]
     fn validate_datetime_valid() {
-        let schema = CustomFieldsSchema::new(vec![typed_def("ts", FieldType::DateTime, false, None)]);
-        assert!(schema.validate(&json!({"ts": "2024-06-01T12:00:00Z"})).is_empty());
-        assert!(schema.validate(&json!({"ts": "2024-06-01T12:00:00"})).is_empty());
+        let schema =
+            CustomFieldsSchema::new(vec![typed_def("ts", FieldType::DateTime, false, None)]);
+        assert!(schema
+            .validate(&json!({"ts": "2024-06-01T12:00:00Z"}))
+            .is_empty());
+        assert!(schema
+            .validate(&json!({"ts": "2024-06-01T12:00:00"}))
+            .is_empty());
     }
 
     // ── Color ─────────────────────────────────────────────────────────────────
@@ -1272,7 +1429,8 @@ mod tests {
 
     #[test]
     fn validate_boolean_type_mismatch() {
-        let schema = CustomFieldsSchema::new(vec![typed_def("active", FieldType::Boolean, false, None)]);
+        let schema =
+            CustomFieldsSchema::new(vec![typed_def("active", FieldType::Boolean, false, None)]);
         let errors = schema.validate(&json!({"active": "yes"}));
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_code, FieldErrorCode::InvalidType);
@@ -1286,7 +1444,12 @@ mod tests {
             pattern: Some(r"^\+?[0-9\s\-]{7,20}$".to_string()),
             ..Default::default()
         };
-        let schema = CustomFieldsSchema::new(vec![typed_def("phone", FieldType::Phone, false, Some(rule))]);
+        let schema = CustomFieldsSchema::new(vec![typed_def(
+            "phone",
+            FieldType::Phone,
+            false,
+            Some(rule),
+        )]);
         assert!(schema.validate(&json!({"phone": "+1-555-0100"})).is_empty());
         let errors = schema.validate(&json!({"phone": "abc"}));
         assert_eq!(errors[0].error_code, FieldErrorCode::PatternMismatch);
@@ -1297,7 +1460,9 @@ mod tests {
     #[test]
     fn validate_json_accepts_anything() {
         let schema = CustomFieldsSchema::new(vec![typed_def("meta", FieldType::Json, false, None)]);
-        assert!(schema.validate(&json!({"meta": {"nested": [1, 2, 3]}})).is_empty());
+        assert!(schema
+            .validate(&json!({"meta": {"nested": [1, 2, 3]}}))
+            .is_empty());
         assert!(schema.validate(&json!({"meta": true})).is_empty());
         assert!(schema.validate(&json!({"meta": 42})).is_empty());
         assert!(schema.validate(&json!({"meta": "anything"})).is_empty());
@@ -1310,7 +1475,9 @@ mod tests {
         let def = FieldDefinition {
             field_key: "tier".to_string(),
             field_type: FieldType::Text,
-            label: [("en".to_string(), "Tier".to_string())].into_iter().collect(),
+            label: [("en".to_string(), "Tier".to_string())]
+                .into_iter()
+                .collect(),
             description: None,
             is_required: false,
             default_value: Some(json!("free")),
@@ -1329,7 +1496,9 @@ mod tests {
         let def = FieldDefinition {
             field_key: "tier".to_string(),
             field_type: FieldType::Text,
-            label: [("en".to_string(), "Tier".to_string())].into_iter().collect(),
+            label: [("en".to_string(), "Tier".to_string())]
+                .into_iter()
+                .collect(),
             description: None,
             is_required: false,
             default_value: Some(json!("free")),
@@ -1424,9 +1593,9 @@ mod tests {
     #[test]
     fn field_key_guardrail_invalid() {
         assert!(!is_valid_field_key(""));
-        assert!(!is_valid_field_key("1name"));      // starts with digit
-        assert!(!is_valid_field_key("_name"));      // starts with underscore
-        assert!(!is_valid_field_key("CamelCase"));  // uppercase
+        assert!(!is_valid_field_key("1name")); // starts with digit
+        assert!(!is_valid_field_key("_name")); // starts with underscore
+        assert!(!is_valid_field_key("CamelCase")); // uppercase
         assert!(!is_valid_field_key("has-hyphen")); // hyphen not allowed
         let too_long = format!("a{}", "b".repeat(128)); // 129 chars total
         assert!(!is_valid_field_key(&too_long));
@@ -1443,10 +1612,108 @@ mod tests {
 
     #[test]
     fn locale_key_guardrail_invalid() {
-        assert!(!is_valid_locale_key("EN"));       // uppercase lang
-        assert!(!is_valid_locale_key("en-us"));    // lowercase country
-        assert!(!is_valid_locale_key("english"));  // too long
-        assert!(!is_valid_locale_key("e"));        // too short
-        assert!(!is_valid_locale_key("en_US"));    // underscore separator
+        assert!(!is_valid_locale_key("EN")); // uppercase lang
+        assert!(!is_valid_locale_key("en-us")); // lowercase country
+        assert!(!is_valid_locale_key("english")); // too long
+        assert!(!is_valid_locale_key("e")); // too short
+        assert!(!is_valid_locale_key("en_US")); // underscore separator
+    }
+
+    #[test]
+    fn json_field_eq_builds_postgres_operator_expression() {
+        use sea_orm::sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let condition = json_field_eq(Expr::col(Alias::new("metadata")), "phone", "123");
+        let sql = Query::select()
+            .column((Alias::new("users"), Alias::new("id")))
+            .from(Alias::new("users"))
+            .cond_where(condition)
+            .to_string(PostgresQueryBuilder);
+
+        assert!(sql.contains("->>"));
+        assert!(sql.contains("metadata"));
+    }
+
+    #[test]
+    fn json_field_exists_builds_key_existence_expression() {
+        use sea_orm::sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let condition = json_field_exists(Expr::col(Alias::new("metadata")), "phone");
+        let sql = Query::select()
+            .column((Alias::new("users"), Alias::new("id")))
+            .from(Alias::new("users"))
+            .cond_where(condition)
+            .to_string(PostgresQueryBuilder);
+
+        assert!(sql.contains(" ? "));
+        assert!(sql.contains("metadata"));
+    }
+
+    #[test]
+    fn json_field_extract_builds_projection_expression() {
+        use sea_orm::sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let extracted = json_field_extract(Expr::col(Alias::new("metadata")), "phone");
+        let sql = Query::select()
+            .expr(extracted)
+            .from(Alias::new("users"))
+            .to_string(PostgresQueryBuilder);
+
+        assert!(sql.contains("->>"));
+        assert!(sql.contains("metadata"));
+    }
+
+    #[test]
+    fn json_field_contains_builds_jsonb_contains_expression() {
+        use sea_orm::sea_query::{Alias, Expr, PostgresQueryBuilder, Query};
+
+        let condition = json_field_contains(Expr::col(Alias::new("metadata")), "age", json!(42));
+        let sql = Query::select()
+            .column((Alias::new("users"), Alias::new("id")))
+            .from(Alias::new("users"))
+            .cond_where(condition)
+            .to_string(PostgresQueryBuilder);
+
+        assert!(sql.contains("@>"));
+        assert!(sql.contains("jsonb"));
+    }
+
+    #[tokio::test]
+    async fn create_and_drop_field_definitions_table_sqlite() {
+        use sea_orm::{ConnectionTrait, Database, Statement};
+        use sea_orm_migration::prelude::SchemaManager;
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection should work");
+        let manager = SchemaManager::new(&db);
+
+        create_field_definitions_table(&manager, "user", "users")
+            .await
+            .expect("table creation should succeed");
+
+        let exists_after_create = db
+            .query_one(Statement::from_string(
+                db.get_database_backend(),
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='user_field_definitions'"
+                    .to_string(),
+            ))
+            .await
+            .expect("table lookup should succeed");
+        assert!(exists_after_create.is_some());
+
+        drop_field_definitions_table(&manager, "user")
+            .await
+            .expect("table drop should succeed");
+
+        let exists_after_drop = db
+            .query_one(Statement::from_string(
+                db.get_database_backend(),
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='user_field_definitions'"
+                    .to_string(),
+            ))
+            .await
+            .expect("table lookup should succeed");
+        assert!(exists_after_drop.is_none());
     }
 }

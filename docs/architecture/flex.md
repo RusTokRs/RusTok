@@ -1015,12 +1015,12 @@ impl SchemaCache {
 - [x] `create_field_definitions_table()` helper (с tenant FK, indexes)
 - [x] `drop_field_definitions_table()` helper
 - [ ] `define_field_definitions_entity!()` macro (опционально)
-- [ ] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`)
+- [x] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`, `json_field_contains`)
 - [x] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `map_flex_error()` в GraphQL Flex резолверах с кодами `BAD_USER_INPUT`/`NOT_FOUND`/`INTERNAL_ERROR`)*
 - [x] `FieldDefinitionRepository` trait (§12) *(реализован как transport-agnostic `FieldDefinitionService` с CRUD/reorder + registry bootstrap)*
 - [x] `FieldDefRegistry` (§12)
 - [x] DomainEvent variants: `FieldDefinitionCreated/Updated/Deleted` (§9)
-- [ ] Integration test: создать таблицу, записать definition, провалидировать
+- [x] Integration test: создать/удалить таблицу helper-ом (`sqlite::memory:`) и проверить наличие `user_field_definitions`; сценарий запись+валидация остаётся pending
 
 ### Phase 2 — Users (первый потребитель)
 - [x] Миграция `user_field_definitions` (через helper — одна строка!)
@@ -1032,7 +1032,7 @@ impl SchemaCache {
 - [x] Event emission: FieldDefinitionCreated/Updated/Deleted
 - [x] GraphQL: `customFields` в User type, `fieldDefinitions` resolver
 - [x] Error handling через `ErrorExtensions` (§13)
-- [ ] Тесты: CRUD, validation, guardrails, events
+- [ ] Тесты: CRUD, validation, guardrails, events *(добавлены unit-тесты `UserFieldService` для guardrails, events create/update/delete, not-found веток update/deactivate и skip unknown field_type при schema load; интеграционные CRUD/validation сценарии pending)*
 
 ### Phase 3 — Admin API
 - [x] GraphQL queries/mutations для управления определениями (§7)

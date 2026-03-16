@@ -9,15 +9,12 @@
 //! - Event emission: `FieldDefinitionCreated/Updated/Deleted`
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder,
 };
 use uuid::Uuid;
 
-use rustok_core::field_schema::{
-    CustomFieldsSchema, FieldType, FlexError,
-    is_valid_field_key,
-};
+use rustok_core::field_schema::{is_valid_field_key, CustomFieldsSchema, FieldType, FlexError};
 use rustok_events::types::{DomainEvent, EventEnvelope};
 
 use crate::models::user_field_definitions::{
@@ -296,5 +293,292 @@ impl UserFieldService {
             .one(db)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UserFieldService;
+    use crate::models::user_field_definitions::{Model, MAX_FIELDS_PER_TENANT};
+    use chrono::Utc;
+    use rustok_core::field_schema::{FieldType, FlexError};
+    use rustok_events::types::DomainEvent;
+    use sea_orm::{DatabaseBackend, MockDatabase};
+    use serde_json::json;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    fn create_input(
+        field_key: &str,
+    ) -> crate::models::user_field_definitions::CreateFieldDefinitionInput {
+        crate::models::user_field_definitions::CreateFieldDefinitionInput {
+            field_key: field_key.to_string(),
+            field_type: FieldType::Text,
+            label: HashMap::from([("en".to_string(), "Label".to_string())]),
+            description: None,
+            is_required: false,
+            default_value: None,
+            validation: None,
+            position: None,
+        }
+    }
+
+    fn row(tenant_id: Uuid, field_key: &str) -> Model {
+        let now = Utc::now().into();
+        Model {
+            id: Uuid::new_v4(),
+            tenant_id,
+            field_key: field_key.to_string(),
+            field_type: "text".to_string(),
+            label: json!({"en": "Label"}),
+            description: None,
+            is_required: false,
+            default_value: None,
+            validation: None,
+            position: 0,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_invalid_field_key_without_hitting_database() {
+        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+        let tenant_id = Uuid::new_v4();
+
+        let err = UserFieldService::create(
+            &db,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            create_input("invalid-key"),
+        )
+        .await
+        .expect_err("invalid field key should fail before db access");
+
+        match err {
+            FlexError::InvalidFieldKey(key) => assert_eq!(key, "invalid-key"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_duplicate_field_key() {
+        let tenant_id = Uuid::new_v4();
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([vec![row(tenant_id, "phone")]])
+            .into_connection();
+
+        let err =
+            UserFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
+                .await
+                .expect_err("duplicate key should fail");
+
+        match err {
+            FlexError::DuplicateFieldKey(key) => assert_eq!(key, "phone"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_enforces_max_active_fields_guardrail() {
+        let tenant_id = Uuid::new_v4();
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([Vec::<Model>::new()])
+            .append_query_results([vec![(MAX_FIELDS_PER_TENANT as i64)]])
+            .into_connection();
+
+        let err =
+            UserFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
+                .await
+                .expect_err("max fields guardrail should fail");
+
+        match err {
+            FlexError::TooManyFields { entity_type, max } => {
+                assert_eq!(entity_type, "user");
+                assert_eq!(max, MAX_FIELDS_PER_TENANT);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_emits_field_definition_created_event() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let created = row(tenant_id, "phone");
+
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([Vec::<Model>::new()])
+            .append_query_results([vec![(0_i64)]])
+            .append_query_results([vec![created.clone()]])
+            .into_connection();
+
+        let (model, envelope) =
+            UserFieldService::create(&db, tenant_id, Some(actor_id), create_input("phone"))
+                .await
+                .expect("create should succeed");
+
+        assert_eq!(model.field_key, "phone");
+        assert_eq!(envelope.tenant_id, tenant_id);
+        assert_eq!(envelope.actor_id, Some(actor_id));
+        match envelope.event {
+            DomainEvent::FieldDefinitionCreated {
+                tenant_id: event_tenant,
+                entity_type,
+                field_key,
+                field_type,
+            } => {
+                assert_eq!(event_tenant, tenant_id);
+                assert_eq!(entity_type, "user");
+                assert_eq!(field_key, "phone");
+                assert_eq!(field_type, "text");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_emits_field_definition_updated_event() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let existing = row(tenant_id, "phone");
+        let id = existing.id;
+
+        let mut updated = existing.clone();
+        updated.is_required = true;
+
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([vec![existing]])
+            .append_query_results([vec![updated.clone()]])
+            .into_connection();
+
+        let input = crate::models::user_field_definitions::UpdateFieldDefinitionInput {
+            is_required: Some(true),
+            ..Default::default()
+        };
+
+        let (model, envelope) = UserFieldService::update(&db, tenant_id, Some(actor_id), id, input)
+            .await
+            .expect("update should succeed");
+
+        assert!(model.is_required);
+        assert_eq!(envelope.tenant_id, tenant_id);
+        assert_eq!(envelope.actor_id, Some(actor_id));
+        match envelope.event {
+            DomainEvent::FieldDefinitionUpdated {
+                tenant_id: event_tenant,
+                entity_type,
+                field_key,
+            } => {
+                assert_eq!(event_tenant, tenant_id);
+                assert_eq!(entity_type, "user");
+                assert_eq!(field_key, "phone");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_schema_skips_unknown_field_type_rows() {
+        let tenant_id = Uuid::new_v4();
+        let mut invalid = row(tenant_id, "legacy");
+        invalid.field_type = "legacy_custom".to_string();
+
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([vec![row(tenant_id, "phone"), invalid]])
+            .into_connection();
+
+        let schema = UserFieldService::get_schema(&db, tenant_id)
+            .await
+            .expect("schema should load");
+
+        let errors = schema.validate(&json!({"phone": "ok", "legacy": 123}));
+        assert!(
+            errors.is_empty(),
+            "unknown field type rows should be skipped"
+        );
+
+        let only_legacy = schema.validate(&json!({"legacy": 123}));
+        assert!(only_legacy.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_returns_not_found_for_missing_definition() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([Vec::<Model>::new()])
+            .into_connection();
+
+        let err = UserFieldService::update(
+            &db,
+            tenant_id,
+            Some(actor_id),
+            id,
+            crate::models::user_field_definitions::UpdateFieldDefinitionInput::default(),
+        )
+        .await
+        .expect_err("missing row should return not found");
+
+        match err {
+            FlexError::NotFound(missing_id) => assert_eq!(missing_id, id),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn deactivate_returns_not_found_for_missing_definition() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([Vec::<Model>::new()])
+            .into_connection();
+
+        let err = UserFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
+            .await
+            .expect_err("missing row should return not found");
+
+        match err {
+            FlexError::NotFound(missing_id) => assert_eq!(missing_id, id),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn deactivate_emits_field_definition_deleted_event() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let model = row(tenant_id, "phone");
+        let id = model.id;
+
+        let mut deactivated = model.clone();
+        deactivated.is_active = false;
+
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([vec![model]])
+            .append_query_results([vec![deactivated]])
+            .into_connection();
+
+        let envelope = UserFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
+            .await
+            .expect("deactivate should succeed");
+
+        assert_eq!(envelope.tenant_id, tenant_id);
+        assert_eq!(envelope.actor_id, Some(actor_id));
+        match envelope.event {
+            DomainEvent::FieldDefinitionDeleted {
+                tenant_id: e_tenant,
+                entity_type,
+                field_key,
+            } => {
+                assert_eq!(e_tenant, tenant_id);
+                assert_eq!(entity_type, "user");
+                assert_eq!(field_key, "phone");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 }
