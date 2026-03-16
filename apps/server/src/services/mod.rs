@@ -23,3 +23,4 @@ pub mod settings_service;
 pub mod redis_runtime;
 pub mod release_backend;
 pub mod runtime_guardrails;
+pub mod user_field_service;

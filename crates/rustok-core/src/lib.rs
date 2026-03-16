@@ -6,6 +6,7 @@ pub mod content_format;
 pub mod context;
 pub mod error;
 pub mod events;
+pub mod field_schema;
 pub mod health;
 pub mod i18n;
 pub mod id;
@@ -51,6 +52,11 @@ pub use context::{AppContext, CacheBackend, SearchBackend};
 pub use error::{
     Error, ErrorContext, ErrorKind, ErrorResponse, FieldError, Result, RichError,
     ValidationErrorBuilder,
+};
+pub use field_schema::{
+    create_field_definitions_table, drop_field_definitions_table, is_valid_field_key,
+    is_valid_locale_key, CustomFieldsSchema, FieldDefinition, FieldErrorCode, FieldType,
+    FieldValidationError, FlexError, HasCustomFields, SelectOption, ValidationRule,
 };
 pub use events::{
     event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventConsumerRuntime,
@@ -99,6 +105,9 @@ pub use utils::{
 };
 
 pub mod prelude {
+    pub use crate::field_schema::{
+        CustomFieldsSchema, FieldDefinition, FieldType, HasCustomFields,
+    };
     pub use crate::async_utils::{batch, parallel, retry, BackoffConfig, RetryError, Throttler};
     pub use crate::config::{ConfigLoader, ConfigSource, Secret};
     pub use crate::domain_err;

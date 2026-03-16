@@ -20,12 +20,56 @@ use crate::services::build_service::{BuildRequest, BuildService};
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
 use crate::services::rbac_service::RbacService;
+use crate::services::user_field_service::UserFieldService;
 use rustok_core::{Action, ModuleRegistry, Permission, Resource};
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Default)]
 pub struct RootMutation;
+
+/// Validate `custom_fields` against the active Flex schema for the tenant.
+///
+/// Applies defaults, then validates. Returns the processed metadata on success,
+/// or a [`FieldError`] listing all validation failures.
+async fn validate_custom_fields(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    custom_fields: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>> {
+    let schema = UserFieldService::get_schema(db, tenant_id)
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+    // Nothing to validate when no schema and no input
+    if schema.active_definitions().is_empty() {
+        return Ok(custom_fields);
+    }
+
+    let mut metadata = custom_fields.unwrap_or(serde_json::json!({}));
+
+    schema.apply_defaults(&mut metadata);
+
+    let errors = schema.validate(&metadata);
+    if !errors.is_empty() {
+        let messages: Vec<String> = errors
+            .iter()
+            .map(|e| format!("{}: {}", e.field_key, e.message))
+            .collect();
+        return Err(FieldError::new(format!(
+            "Custom field validation failed: {}",
+            messages.join("; ")
+        ))
+        .extend_with(|_, ext| {
+            ext.set("code", "CUSTOM_FIELD_VALIDATION_FAILED");
+            if let Ok(v) = serde_json::to_value(&errors) {
+                ext.set("fields", v);
+            }
+        }));
+    }
+
+    Ok(Some(metadata))
+}
 
 fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
     match err {
@@ -202,8 +246,12 @@ impl RootMutation {
             .map(Into::into)
             .unwrap_or(rustok_core::UserRole::Customer);
 
+        // Validate custom_fields before creating the user (fail fast)
+        let validated_metadata =
+            validate_custom_fields(&app_ctx.db, tenant.id, input.custom_fields).await?;
+
         let status = input.status.map(Into::into);
-        let user = AuthLifecycleService::create_user(
+        let mut user = AuthLifecycleService::create_user(
             app_ctx,
             tenant.id,
             &input.email,
@@ -214,6 +262,16 @@ impl RootMutation {
         )
         .await
         .map_err(map_create_user_error)?;
+
+        // Apply validated custom_fields to metadata
+        if let Some(metadata) = validated_metadata {
+            let mut active: users::ActiveModel = user.into();
+            active.metadata = Set(metadata);
+            user = active
+                .update(&app_ctx.db)
+                .await
+                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        }
 
         Ok(User::from(&user))
     }
@@ -289,6 +347,14 @@ impl RootMutation {
             let password_hash = hash_password(&password)
                 .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
             model.password_hash = Set(password_hash);
+        }
+
+        // Validate and apply custom_fields if provided
+        let validated_metadata =
+            validate_custom_fields(&app_ctx.db, tenant.id, input.custom_fields).await?;
+
+        if let Some(metadata) = validated_metadata {
+            model.metadata = Set(metadata);
         }
 
         let tx = app_ctx

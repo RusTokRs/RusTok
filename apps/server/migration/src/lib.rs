@@ -37,6 +37,7 @@ mod m20260308_000002_create_oauth_tokens;
 mod m20260308_000003_create_oauth_codes;
 mod m20260308_000004_create_oauth_consents;
 mod m20260311_000001_create_content_orchestration_tables;
+mod m20260315_000001_create_user_field_definitions;
 mod m20260316_000001_create_platform_settings;
 
 pub struct Migrator;
@@ -80,6 +81,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260308_000003_create_oauth_codes::Migration),
             Box::new(m20260308_000004_create_oauth_consents::Migration),
             Box::new(m20260311_000001_create_content_orchestration_tables::Migration),
+            Box::new(m20260315_000001_create_user_field_definitions::Migration),
             Box::new(m20260316_000001_create_platform_settings::Migration),
         ]
     }

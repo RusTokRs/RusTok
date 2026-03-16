@@ -1,5 +1,6 @@
 use sea_orm::prelude::*;
 
+use rustok_core::field_schema::HasCustomFields;
 use rustok_core::{generate_id, UserStatus};
 
 use super::_entities::users::{self};
@@ -48,6 +49,20 @@ impl ActiveModel {
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
         }
+    }
+}
+
+impl HasCustomFields for Model {
+    fn entity_type() -> &'static str {
+        "user"
+    }
+
+    fn metadata(&self) -> &serde_json::Value {
+        &self.metadata
+    }
+
+    fn set_metadata(&mut self, value: serde_json::Value) {
+        self.metadata = value;
     }
 }
 

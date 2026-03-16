@@ -23,6 +23,7 @@ use super::blog::{BlogMutation, BlogQuery};
 use super::commerce::{CommerceMutation, CommerceQuery};
 #[cfg(feature = "mod-content")]
 use super::content::{ContentMutation, ContentQuery};
+use super::flex::{FlexMutation, FlexQuery};
 #[cfg(feature = "mod-forum")]
 use super::forum::{ForumMutation, ForumQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
@@ -57,6 +58,7 @@ pub struct Query(
     OAuthQuery,
     SettingsQuery,
     SystemQuery,
+    FlexQuery,
     #[cfg(feature = "mod-commerce")] CommerceQuery,
     #[cfg(feature = "mod-content")]  ContentQuery,
     #[cfg(feature = "mod-blog")]     BlogQuery,
@@ -72,6 +74,7 @@ pub struct Mutation(
     AuthMutation,
     OAuthMutation,
     SettingsMutation,
+    FlexMutation,
     #[cfg(feature = "mod-commerce")] CommerceMutation,
     #[cfg(feature = "mod-content")]  ContentMutation,
     #[cfg(feature = "mod-blog")]     BlogMutation,

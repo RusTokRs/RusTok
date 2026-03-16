@@ -31,6 +31,9 @@ pub struct User {
     pub created_at: String,
     #[graphql(skip)]
     pub tenant_id: Uuid,
+    /// Custom fields stored in `users.metadata` — validated by the active
+    /// schema for this tenant. Returns `null` if metadata is missing/null.
+    pub custom_fields: Option<serde_json::Value>,
 }
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -84,6 +87,8 @@ pub struct CreateUserInput {
     pub name: Option<String>,
     pub role: Option<GqlUserRole>,
     pub status: Option<GqlUserStatus>,
+    /// Optional custom fields validated against the tenant's active schema.
+    pub custom_fields: Option<serde_json::Value>,
 }
 
 #[derive(InputObject, Debug, Clone)]
@@ -93,6 +98,8 @@ pub struct UpdateUserInput {
     pub name: Option<String>,
     pub role: Option<GqlUserRole>,
     pub status: Option<GqlUserStatus>,
+    /// Optional custom fields patch — merged into existing metadata.
+    pub custom_fields: Option<serde_json::Value>,
 }
 
 #[ComplexObject]
@@ -126,6 +133,11 @@ impl User {
 
 impl From<&users::Model> for User {
     fn from(model: &users::Model) -> Self {
+        let custom_fields = if model.metadata.is_object() {
+            Some(model.metadata.clone())
+        } else {
+            None
+        };
         Self {
             id: model.id,
             email: model.email.clone(),
@@ -133,6 +145,7 @@ impl From<&users::Model> for User {
             status: model.status.to_string(),
             created_at: model.created_at.to_rfc3339(),
             tenant_id: model.tenant_id,
+            custom_fields,
         }
     }
 }

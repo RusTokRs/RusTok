@@ -558,6 +558,39 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         description: "Locale disabled for tenant.",
         fields: LOCALE_FIELDS,
     },
+
+    // ── Flex — field definition events ──────────────────────────────────
+    EventSchema {
+        event_type: "field_definition.created",
+        version: 1,
+        description: "A custom field definition was created for an entity type.",
+        fields: &[
+            FieldSchema { name: "tenant_id", data_type: "string", optional: false },
+            FieldSchema { name: "entity_type", data_type: "string", optional: false },
+            FieldSchema { name: "field_key", data_type: "string", optional: false },
+            FieldSchema { name: "field_type", data_type: "string", optional: false },
+        ],
+    },
+    EventSchema {
+        event_type: "field_definition.updated",
+        version: 1,
+        description: "A custom field definition was updated.",
+        fields: &[
+            FieldSchema { name: "tenant_id", data_type: "string", optional: false },
+            FieldSchema { name: "entity_type", data_type: "string", optional: false },
+            FieldSchema { name: "field_key", data_type: "string", optional: false },
+        ],
+    },
+    EventSchema {
+        event_type: "field_definition.deleted",
+        version: 1,
+        description: "A custom field definition was soft-deleted.",
+        fields: &[
+            FieldSchema { name: "tenant_id", data_type: "string", optional: false },
+            FieldSchema { name: "entity_type", data_type: "string", optional: false },
+            FieldSchema { name: "field_key", data_type: "string", optional: false },
+        ],
+    },
 ];
 
 pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {

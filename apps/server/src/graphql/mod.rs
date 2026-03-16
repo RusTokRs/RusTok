@@ -10,6 +10,7 @@ pub mod connection;
 #[cfg(any(feature = "mod-content", feature = "mod-blog"))]
 pub mod content;
 pub mod errors;
+pub mod flex;
 #[cfg(feature = "mod-forum")]
 pub mod forum;
 #[cfg(feature = "mod-media")]
