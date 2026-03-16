@@ -74,6 +74,9 @@ impl From<FieldDefinitionView> for FieldDefinitionObject {
 /// Input for `createFieldDefinition`.
 #[derive(Debug, Clone, InputObject)]
 pub struct CreateFieldDefinitionInput {
+    /// Target entity type, e.g. "user", "product".
+    /// Optional for backward-compatibility (`"user"` is used when omitted).
+    pub entity_type: Option<String>,
     pub field_key: String,
     /// Serialised field type, e.g. `"text"`, `"select"`, `"integer"`.
     pub field_type: String,
@@ -90,6 +93,9 @@ pub struct CreateFieldDefinitionInput {
 /// Input for `updateFieldDefinition`.
 #[derive(Debug, Clone, InputObject)]
 pub struct UpdateFieldDefinitionInput {
+    /// Target entity type, e.g. "user", "product".
+    /// Optional for backward-compatibility (`"user"` is used when omitted).
+    pub entity_type: Option<String>,
     pub label: Option<JsonValue>,
     pub description: Option<JsonValue>,
     pub is_required: Option<bool>,
