@@ -4,6 +4,7 @@ pub mod _entities;
 pub mod build;
 pub mod oauth_apps;
 pub mod platform_settings;
+pub mod product_field_definitions;
 pub mod oauth_authorization_codes;
 pub mod oauth_consents;
 pub mod oauth_tokens;
