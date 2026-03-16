@@ -1059,6 +1059,51 @@ pub async fn drop_field_definitions_table(
         .await
 }
 
+/// Generates a SeaORM entity model for a `*_field_definitions` table.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// rustok_core::define_field_definitions_entity!("user_field_definitions");
+/// ```
+#[macro_export]
+macro_rules! define_field_definitions_entity {
+    ($table_name:literal) => {
+        #[derive(
+            Clone,
+            Debug,
+            PartialEq,
+            sea_orm::entity::prelude::DeriveEntityModel,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
+        #[sea_orm(table_name = $table_name)]
+        pub struct Model {
+            #[sea_orm(primary_key, auto_increment = false)]
+            pub id: sea_orm::entity::prelude::Uuid,
+            pub tenant_id: sea_orm::entity::prelude::Uuid,
+            pub field_key: String,
+            pub field_type: String,
+            pub label: sea_orm::entity::prelude::Json,
+            pub description: Option<sea_orm::entity::prelude::Json>,
+            pub is_required: bool,
+            pub default_value: Option<sea_orm::entity::prelude::Json>,
+            pub validation: Option<sea_orm::entity::prelude::Json>,
+            pub position: i32,
+            pub is_active: bool,
+            pub created_at: sea_orm::entity::prelude::DateTimeWithTimeZone,
+            pub updated_at: sea_orm::entity::prelude::DateTimeWithTimeZone,
+        }
+
+        #[derive(
+            Copy, Clone, Debug, sea_orm::entity::prelude::EnumIter, sea_orm::DeriveRelation,
+        )]
+        pub enum Relation {}
+
+        impl sea_orm::entity::prelude::ActiveModelBehavior for ActiveModel {}
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
@@ -1676,6 +1721,20 @@ mod tests {
 
         assert!(sql.contains("@>"));
         assert!(sql.contains("jsonb"));
+    }
+
+    mod macro_smoke {
+        crate::define_field_definitions_entity!("macro_smoke_field_definitions");
+    }
+
+    #[test]
+    fn define_field_definitions_entity_macro_sets_table_name() {
+        use sea_orm::entity::base_entity::EntityName;
+
+        assert_eq!(
+            macro_smoke::Entity.table_name(),
+            "macro_smoke_field_definitions"
+        );
     }
 
     #[tokio::test]

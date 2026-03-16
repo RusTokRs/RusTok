@@ -30,7 +30,7 @@ pub struct RootMutation;
 
 /// Validate `custom_fields` against the active Flex schema for the tenant.
 ///
-/// Applies defaults, then validates. Returns the processed metadata on success,
+/// Applies defaults, strips unknown keys, then validates. Returns the processed metadata on success,
 /// or a [`FieldError`] listing all validation failures.
 async fn validate_custom_fields(
     db: &sea_orm::DatabaseConnection,
@@ -49,6 +49,7 @@ async fn validate_custom_fields(
     let mut metadata = custom_fields.unwrap_or(serde_json::json!({}));
 
     schema.apply_defaults(&mut metadata);
+    schema.strip_unknown(&mut metadata);
 
     let errors = schema.validate(&metadata);
     if !errors.is_empty() {
@@ -683,7 +684,46 @@ impl RootMutation {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_create_user_error, map_manifest_error, AuthLifecycleError, ManifestError};
+    use super::{
+        map_create_user_error, map_manifest_error, validate_custom_fields, AuthLifecycleError,
+        ManifestError,
+    };
+    use crate::models::user_field_definitions::Model as UserFieldDefinitionModel;
+    use sea_orm::{entity::prelude::DateTimeWithTimeZone, DatabaseBackend, MockDatabase};
+    use uuid::Uuid;
+
+    fn field_definition_model(
+        tenant_id: Uuid,
+        field_key: &str,
+        field_type: &str,
+        is_required: bool,
+        default_value: Option<serde_json::Value>,
+    ) -> UserFieldDefinitionModel {
+        let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+        UserFieldDefinitionModel {
+            id: Uuid::new_v4(),
+            tenant_id,
+            field_key: field_key.to_string(),
+            field_type: field_type.to_string(),
+            label: serde_json::json!({"en": field_key}),
+            description: None,
+            is_required,
+            default_value,
+            validation: None,
+            position: 0,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn db_with_definitions(
+        definitions: Vec<UserFieldDefinitionModel>,
+    ) -> sea_orm::DatabaseConnection {
+        MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([definitions])
+            .into_connection()
+    }
 
     #[test]
     fn create_user_maps_email_exists() {
@@ -703,5 +743,126 @@ mod tests {
     fn manifest_error_maps_validation_errors_to_user_messages() {
         let err = map_manifest_error(ManifestError::RequiredModule("pages".to_string()));
         assert!(err.message.contains("required"));
+    }
+
+    #[tokio::test]
+    async fn validate_custom_fields_applies_defaults() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(vec![field_definition_model(
+            tenant_id,
+            "department",
+            "text",
+            false,
+            Some(serde_json::json!("sales")),
+        )]);
+
+        let result = validate_custom_fields(&db, tenant_id, Some(serde_json::json!({})))
+            .await
+            .expect("defaults should be applied");
+
+        assert_eq!(result, Some(serde_json::json!({"department": "sales"})));
+    }
+
+    #[tokio::test]
+    async fn validate_custom_fields_strips_unknown_keys() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(vec![field_definition_model(
+            tenant_id,
+            "department",
+            "text",
+            false,
+            None,
+        )]);
+
+        let result = validate_custom_fields(
+            &db,
+            tenant_id,
+            Some(serde_json::json!({"department": "sales", "unknown": "drop"})),
+        )
+        .await
+        .expect("unknown keys should be stripped");
+
+        assert_eq!(result, Some(serde_json::json!({"department": "sales"})));
+    }
+
+    #[tokio::test]
+    async fn validate_custom_fields_returns_input_when_schema_empty() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(Vec::<UserFieldDefinitionModel>::new());
+        let payload = Some(serde_json::json!({"nickname": "neo"}));
+
+        let result = validate_custom_fields(&db, tenant_id, payload.clone())
+            .await
+            .expect("without schema payload should pass through");
+
+        assert_eq!(result, payload);
+    }
+
+    #[tokio::test]
+    async fn validate_custom_fields_error_contains_field_details() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(vec![field_definition_model(
+            tenant_id, "phone", "text", true, None,
+        )]);
+
+        let err = validate_custom_fields(&db, tenant_id, Some(serde_json::json!({})))
+            .await
+            .expect_err("missing required field must fail");
+
+        let fields = err
+            .extensions
+            .get("fields")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(!fields.is_empty());
+        let first_field = &fields[0];
+        let key = first_field
+            .get("field_key")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let code = first_field
+            .get("error_code")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert_eq!(key, "phone");
+        assert_eq!(code, "required");
+    }
+    #[tokio::test]
+    async fn validate_custom_fields_applies_defaults_when_input_is_none() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(vec![field_definition_model(
+            tenant_id,
+            "department",
+            "text",
+            false,
+            Some(serde_json::json!("sales")),
+        )]);
+
+        let result = validate_custom_fields(&db, tenant_id, None)
+            .await
+            .expect("defaults should be applied for empty input");
+
+        assert_eq!(result, Some(serde_json::json!({"department": "sales"})));
+    }
+
+    #[tokio::test]
+    async fn validate_custom_fields_returns_graphql_error_for_required_field() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(vec![field_definition_model(
+            tenant_id, "phone", "text", true, None,
+        )]);
+
+        let err = validate_custom_fields(&db, tenant_id, Some(serde_json::json!({})))
+            .await
+            .expect_err("missing required field must fail");
+
+        assert!(err.message.contains("Custom field validation failed"));
+        let code = err
+            .extensions
+            .get("code")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert_eq!(code, "CUSTOM_FIELD_VALIDATION_FAILED");
     }
 }

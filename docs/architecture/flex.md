@@ -1014,7 +1014,7 @@ impl SchemaCache {
 ### Phase 1 — Migration helper + infrastructure
 - [x] `create_field_definitions_table()` helper (с tenant FK, indexes)
 - [x] `drop_field_definitions_table()` helper
-- [ ] `define_field_definitions_entity!()` macro (опционально)
+- [x] `define_field_definitions_entity!()` macro (опционально)
 - [x] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`, `json_field_contains`)
 - [x] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `map_flex_error()` в GraphQL Flex резолверах с кодами `BAD_USER_INPUT`/`NOT_FOUND`/`INTERNAL_ERROR`)*
 - [x] `FieldDefinitionRepository` trait (§12) *(реализован как transport-agnostic `FieldDefinitionService` с CRUD/reorder + registry bootstrap)*
@@ -1032,7 +1032,7 @@ impl SchemaCache {
 - [x] Event emission: FieldDefinitionCreated/Updated/Deleted
 - [x] GraphQL: `customFields` в User type, `fieldDefinitions` resolver
 - [x] Error handling через `ErrorExtensions` (§13)
-- [ ] Тесты: CRUD, validation, guardrails, events *(добавлены unit-тесты `UserFieldService` для guardrails, events create/update/delete, not-found веток update/deactivate и skip unknown field_type при schema load; интеграционные CRUD/validation сценарии pending)*
+- [ ] Тесты: CRUD, validation, guardrails, events *(добавлены unit-тесты `UserFieldService` для guardrails, events create/update/delete, not-found веток update/deactivate и skip unknown field_type при schema load; GraphQL helper `validate_custom_fields` покрыт кейсами passthrough без схемы, default application (включая `custom_fields = None`), strip unknown keys, required validation и payload `fields` в error extensions; интеграционные CRUD/validation сценарии pending)*
 
 ### Phase 3 — Admin API
 - [x] GraphQL queries/mutations для управления определениями (§7)
