@@ -14,6 +14,8 @@ use super::types::{
     UpdateScriptInput,
 };
 use crate::context::TenantContext;
+use crate::graphql::common::require_module_enabled;
+use crate::graphql::schema::module_slug;
 
 use super::{dynamic_to_json, json_to_dynamic, require_admin, AlloyState};
 
@@ -35,6 +37,7 @@ impl AlloyMutation {
         ctx: &Context<'_>,
         input: CreateScriptInput,
     ) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         validate_cron_trigger(&input.trigger)?;
         let state = ctx.data::<AlloyState>()?;
@@ -74,6 +77,7 @@ impl AlloyMutation {
         id: Uuid,
         input: UpdateScriptInput,
     ) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let mut script = state
@@ -129,6 +133,7 @@ impl AlloyMutation {
     }
 
     async fn delete_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         state
@@ -145,6 +150,7 @@ impl AlloyMutation {
         ctx: &Context<'_>,
         input: RunScriptInput,
     ) -> Result<GqlExecutionResult> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         let auth = require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let user_id = Some(auth.user_id.to_string());
@@ -208,6 +214,7 @@ impl AlloyMutation {
     }
 
     async fn activate_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let mut script = state
@@ -227,6 +234,7 @@ impl AlloyMutation {
     }
 
     async fn pause_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let mut script = state
@@ -248,6 +256,7 @@ impl AlloyMutation {
     }
 
     async fn disable_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let mut script = state
@@ -267,6 +276,7 @@ impl AlloyMutation {
     }
 
     async fn archive_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let mut script = state
@@ -286,6 +296,7 @@ impl AlloyMutation {
     }
 
     async fn reset_script_errors(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let mut script = state

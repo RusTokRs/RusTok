@@ -5,7 +5,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
+use crate::graphql::schema::module_slug;
 use crate::services::rbac_service::RbacService;
 use rustok_commerce::CatalogService;
 use rustok_core::Permission;
@@ -25,6 +27,7 @@ impl CommerceMutation {
         user_id: Uuid,
         input: CreateProductInput,
     ) -> Result<GqlProduct> {
+        require_module_enabled(ctx, module_slug::COMMERCE).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -63,6 +66,7 @@ impl CommerceMutation {
         id: Uuid,
         input: UpdateProductInput,
     ) -> Result<GqlProduct> {
+        require_module_enabled(ctx, module_slug::COMMERCE).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -121,6 +125,7 @@ impl CommerceMutation {
         user_id: Uuid,
         id: Uuid,
     ) -> Result<GqlProduct> {
+        require_module_enabled(ctx, module_slug::COMMERCE).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -155,6 +160,7 @@ impl CommerceMutation {
         user_id: Uuid,
         id: Uuid,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::COMMERCE).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx

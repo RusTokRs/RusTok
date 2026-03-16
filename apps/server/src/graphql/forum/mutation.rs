@@ -3,7 +3,9 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
+use crate::graphql::schema::module_slug;
 use crate::services::rbac_service::RbacService;
 use rustok_core::{Permission, CONTENT_FORMAT_MARKDOWN};
 use rustok_forum::{CategoryService, ReplyService, TopicService};
@@ -22,6 +24,7 @@ impl ForumMutation {
         tenant_id: Uuid,
         input: CreateForumTopicInput,
     ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -90,6 +93,7 @@ impl ForumMutation {
         id: Uuid,
         input: UpdateForumTopicInput,
     ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -155,6 +159,7 @@ impl ForumMutation {
         tenant_id: Uuid,
         id: Uuid,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -193,6 +198,7 @@ impl ForumMutation {
         topic_id: Uuid,
         input: CreateForumReplyInput,
     ) -> Result<GqlForumReply> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -254,6 +260,7 @@ impl ForumMutation {
         tenant_id: Uuid,
         input: CreateForumCategoryInput,
     ) -> Result<GqlForumCategory> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx

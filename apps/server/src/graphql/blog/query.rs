@@ -9,7 +9,8 @@ use rustok_blog::{BlogError, PostService};
 use rustok_content::NodeService;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::graphql::common::resolve_graphql_locale;
+use crate::graphql::common::{require_module_enabled, resolve_graphql_locale};
+use crate::graphql::schema::module_slug;
 
 use super::types::*;
 
@@ -25,6 +26,7 @@ impl BlogQuery {
         id: Uuid,
         locale: Option<String>,
     ) -> Result<Option<GqlPost>> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -57,6 +59,7 @@ impl BlogQuery {
         tenant_id: Uuid,
         filter: Option<PostsFilter>,
     ) -> Result<GqlPostList> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
 

@@ -8,7 +8,9 @@ use uuid::Uuid;
 use rustok_commerce::CatalogService;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::common::resolve_graphql_locale;
+use crate::graphql::schema::module_slug;
 use crate::services::product_search::product_translation_title_search_condition;
 
 use super::types::*;
@@ -25,6 +27,7 @@ impl CommerceQuery {
         id: Uuid,
         locale: Option<String>,
     ) -> Result<Option<GqlProduct>> {
+        require_module_enabled(ctx, module_slug::COMMERCE).await?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -57,6 +60,7 @@ impl CommerceQuery {
         locale: Option<String>,
         filter: Option<ProductsFilter>,
     ) -> Result<GqlProductList> {
+        require_module_enabled(ctx, module_slug::COMMERCE).await?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = filter.unwrap_or(ProductsFilter {

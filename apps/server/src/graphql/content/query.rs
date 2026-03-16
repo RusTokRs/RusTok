@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use crate::context::TenantContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::common::resolve_graphql_locale;
+use crate::graphql::schema::module_slug;
 use rustok_content::NodeService;
 use rustok_core::{SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
@@ -25,6 +27,7 @@ impl ContentQuery {
         id: Uuid,
         locale: Option<String>,
     ) -> Result<Option<GqlNode>> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -48,6 +51,7 @@ impl ContentQuery {
         tenant_id: Uuid,
         filter: Option<NodesFilter>,
     ) -> Result<GqlNodeList> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
 

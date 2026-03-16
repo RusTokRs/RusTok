@@ -9,6 +9,9 @@ use rustok_blog::{PostService, UpdatePostInput as DomainUpdatePostInput};
 use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::graphql::common::require_module_enabled;
+use crate::graphql::schema::module_slug;
+
 use super::types::*;
 
 #[derive(Default)]
@@ -22,6 +25,7 @@ impl BlogMutation {
         tenant_id: Uuid,
         input: CreatePostInput,
     ) -> Result<Uuid> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -59,6 +63,7 @@ impl BlogMutation {
         tenant_id: Uuid,
         input: UpdatePostInput,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -108,6 +113,7 @@ impl BlogMutation {
     }
 
     async fn delete_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -137,6 +143,7 @@ impl BlogMutation {
     }
 
     async fn publish_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -169,6 +176,7 @@ impl BlogMutation {
     }
 
     async fn unpublish_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -207,6 +215,7 @@ impl BlogMutation {
         tenant_id: Uuid,
         reason: Option<String>,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::BLOG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx

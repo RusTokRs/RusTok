@@ -8,7 +8,9 @@ use alloy_scripting::ScriptRegistry;
 use super::{
     require_admin, AlloyState, GqlEventType, GqlScript, GqlScriptConnection, GqlScriptStatus,
 };
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::common::PaginationInput;
+use crate::graphql::schema::module_slug;
 
 #[derive(Default)]
 pub struct AlloyQuery;
@@ -21,6 +23,7 @@ impl AlloyQuery {
         status: Option<GqlScriptStatus>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<GqlScriptConnection> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let requested_limit = pagination.requested_limit();
@@ -57,6 +60,7 @@ impl AlloyQuery {
     }
 
     async fn script(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<GqlScript>> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         match state.storage.get(id).await {
@@ -66,6 +70,7 @@ impl AlloyQuery {
     }
 
     async fn script_by_name(&self, ctx: &Context<'_>, name: String) -> Result<Option<GqlScript>> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         match state.storage.get_by_name(&name).await {
@@ -81,6 +86,7 @@ impl AlloyQuery {
         event: GqlEventType,
         limit: Option<i32>,
     ) -> Result<Vec<GqlScript>> {
+        require_module_enabled(ctx, module_slug::ALLOY).await?;
         require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let requested_limit = limit.map(|value| value.max(0) as u64);

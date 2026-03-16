@@ -6,8 +6,10 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use crate::context::TenantContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::common::resolve_graphql_locale;
 use crate::graphql::errors::GraphQLError;
+use crate::graphql::schema::module_slug;
 use crate::services::rbac_service::RbacService;
 use rustok_core::Permission;
 use rustok_forum::{CategoryService, ReplyService, TopicService};
@@ -28,6 +30,7 @@ impl ForumQuery {
         locale: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumCategoryConnection> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -120,6 +123,7 @@ impl ForumQuery {
         locale: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumTopicConnection> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -219,6 +223,7 @@ impl ForumQuery {
         locale: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumReplyConnection> {
+        require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx

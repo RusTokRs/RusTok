@@ -6,11 +6,29 @@ license.workspace = true
 description.workspace = true
 
 [features]
-default = ["redis-cache", "embed-admin", "embed-storefront"]
+default = [
+    "redis-cache",
+    "embed-admin",
+    "embed-storefront",
+    "mod-commerce",
+    "mod-content",
+    "mod-blog",
+    "mod-forum",
+    "mod-pages",
+    "mod-alloy",
+]
 redis-cache = []
 embed-admin = ["embed-admin-assets"]
 embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
+# Domain module feature flags — compile the module into the binary;
+# resolvers additionally check is_enabled(tenant_id) at runtime.
+mod-commerce = ["dep:rustok-commerce"]
+mod-content  = ["dep:rustok-content"]
+mod-blog     = ["dep:rustok-blog", "dep:rustok-content"]
+mod-forum    = ["dep:rustok-forum"]
+mod-pages    = ["dep:rustok-pages"]
+mod-alloy    = ["dep:alloy-scripting"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
@@ -19,18 +37,18 @@ rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-email.workspace = true
 rustok-events.workspace = true
 rustok-storefront = { path = "../storefront", optional = true }
-rustok-commerce.workspace = true
-rustok-blog.workspace = true
-rustok-content.workspace = true
-rustok-forum.workspace = true
-rustok-pages.workspace = true
+rustok-commerce  = { workspace = true, optional = true }
+rustok-blog      = { workspace = true, optional = true }
+rustok-content   = { workspace = true, optional = true }
+rustok-forum     = { workspace = true, optional = true }
+rustok-pages     = { workspace = true, optional = true }
 rustok-index.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox.workspace = true
-alloy-scripting.workspace = true
+alloy-scripting  = { workspace = true, optional = true }
 
 loco-rs.workspace = true
 tokio.workspace = true

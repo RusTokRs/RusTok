@@ -3,7 +3,9 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
+use crate::graphql::schema::module_slug;
 use crate::services::rbac_service::RbacService;
 use rustok_content::NodeService;
 use rustok_core::Permission;
@@ -23,6 +25,7 @@ impl ContentMutation {
         author_id: Option<Uuid>,
         input: CreateNodeInput,
     ) -> Result<GqlNode> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -92,6 +95,7 @@ impl ContentMutation {
         author_id: Option<Uuid>,
         input: UpdateNodeInput,
     ) -> Result<GqlNode> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -161,6 +165,7 @@ impl ContentMutation {
         tenant_id: Uuid,
         _author_id: Option<Uuid>,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx

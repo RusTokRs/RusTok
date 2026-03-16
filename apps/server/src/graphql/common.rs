@@ -1,7 +1,11 @@
-use async_graphql::{Context, InputObject, Result, SimpleObject};
+use async_graphql::{Context, ErrorExtensions, InputObject, Result, SimpleObject};
 use rustok_content::PLATFORM_FALLBACK_LOCALE;
+use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 use crate::common::RequestContext;
+use crate::context::TenantContext;
+use crate::models::_entities::tenant_modules;
 
 #[derive(SimpleObject, Debug, Clone)]
 pub struct PageInfo {
@@ -98,6 +102,37 @@ pub fn decode_cursor(s: &str) -> Option<i64> {
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|value| value.parse().ok())
+}
+
+/// Guard that returns a GraphQL error when the given module is not enabled for
+/// the current tenant.  Call this at the top of every resolver exposed by an
+/// optional domain module.
+///
+/// ```rust,ignore
+/// async fn posts(&self, ctx: &Context<'_>, ...) -> Result<...> {
+///     require_module_enabled(ctx, module_slug::BLOG).await?;
+///     // ...
+/// }
+/// ```
+pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()> {
+    let db = ctx.data::<DatabaseConnection>()?;
+    let tenant = ctx.data::<TenantContext>()?;
+
+    let enabled = tenant_modules::Entity::is_enabled(db, tenant.id, slug)
+        .await
+        .map_err(|e| {
+            async_graphql::Error::new(format!("Module check failed: {e}"))
+                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
+        })?;
+
+    if !enabled {
+        return Err(async_graphql::Error::new(format!(
+            "Module '{slug}' is not enabled for this tenant"
+        ))
+        .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")));
+    }
+
+    Ok(())
 }
 
 pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> String {

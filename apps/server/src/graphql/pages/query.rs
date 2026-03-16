@@ -9,7 +9,9 @@ use rustok_pages::PageService;
 
 use crate::context::AuthContext;
 use crate::context::TenantContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::common::resolve_graphql_locale;
+use crate::graphql::schema::module_slug;
 use rustok_core::SecurityContext;
 
 use super::types::*;
@@ -26,6 +28,7 @@ impl PagesQuery {
         id: Uuid,
         locale: Option<String>,
     ) -> Result<Option<GqlPage>> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = auth_context_to_security(ctx);
@@ -56,6 +59,7 @@ impl PagesQuery {
         locale: Option<String>,
         slug: String,
     ) -> Result<Option<GqlPage>> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = auth_context_to_security(ctx);
@@ -83,6 +87,7 @@ impl PagesQuery {
         tenant_id: Uuid,
         filter: Option<ListGqlPagesFilter>,
     ) -> Result<GqlPageList> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = auth_context_to_security(ctx);

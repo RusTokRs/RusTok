@@ -9,7 +9,9 @@ use rustok_pages::{
 };
 
 use crate::context::AuthContext;
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
+use crate::graphql::schema::module_slug;
 use crate::services::rbac_service::RbacService;
 use rustok_core::Permission;
 
@@ -26,6 +28,7 @@ impl PagesMutation {
         tenant_id: Uuid,
         input: CreateGqlPageInput,
     ) -> Result<GqlPage> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -97,6 +100,7 @@ impl PagesMutation {
         id: Uuid,
         input: UpdateGqlPageInput,
     ) -> Result<GqlPage> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -155,6 +159,7 @@ impl PagesMutation {
     }
 
     async fn publish_page(&self, ctx: &Context<'_>, tenant_id: Uuid, id: Uuid) -> Result<GqlPage> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -192,6 +197,7 @@ impl PagesMutation {
         tenant_id: Uuid,
         id: Uuid,
     ) -> Result<GqlPage> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -224,6 +230,7 @@ impl PagesMutation {
     }
 
     async fn delete_page(&self, ctx: &Context<'_>, tenant_id: Uuid, id: Uuid) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -262,6 +269,7 @@ impl PagesMutation {
         page_id: Uuid,
         input: CreateGqlBlockInput,
     ) -> Result<GqlBlock> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -291,6 +299,7 @@ impl PagesMutation {
         block_id: Uuid,
         input: UpdateGqlBlockInput,
     ) -> Result<GqlBlock> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -323,6 +332,7 @@ impl PagesMutation {
         tenant_id: Uuid,
         block_id: Uuid,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
@@ -347,6 +357,7 @@ impl PagesMutation {
         page_id: Uuid,
         input: ReorderBlocksInput,
     ) -> Result<bool> {
+        require_module_enabled(ctx, module_slug::PAGES).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
