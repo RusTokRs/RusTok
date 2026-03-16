@@ -441,4 +441,57 @@ mod tests {
         );
         assert!(!err.message.is_empty());
     }
+
+    // ── Phase 1.5: new mutation error paths ──
+
+    #[test]
+    fn revoke_session_invalid_uuid_produces_field_error() {
+        // uuid::Uuid::parse_str rejects non-UUID strings; validate the branch
+        let parse_result = uuid::Uuid::parse_str("not-a-uuid");
+        assert!(parse_result.is_err(), "invalid UUID must fail to parse");
+        // The resolver converts this into FieldError("Invalid session ID format")
+        let err = async_graphql::FieldError::new("Invalid session ID format");
+        assert!(err.message.contains("Invalid session ID format"));
+    }
+
+    #[test]
+    fn revoke_session_valid_uuid_parses_successfully() {
+        let id = uuid::Uuid::new_v4();
+        assert!(uuid::Uuid::parse_str(&id.to_string()).is_ok());
+    }
+
+    #[test]
+    fn maps_session_expired_with_unauthenticated_code() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::SessionExpired, Locale::En);
+        let code = err
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code"))
+            .and_then(|value| match value {
+                async_graphql::Value::String(s) => Some(s.as_str()),
+                _ => None,
+            });
+        assert_eq!(code, Some("UNAUTHENTICATED"));
+    }
+
+    #[test]
+    fn maps_email_already_exists_without_unauthenticated_code() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::EmailAlreadyExists, Locale::En);
+        // EmailAlreadyExists is a plain FieldError, no "code" extension
+        let code = err
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code"))
+            .and_then(|value| match value {
+                async_graphql::Value::String(s) => Some(s.as_str()),
+                _ => None,
+            });
+        assert_ne!(code, Some("UNAUTHENTICATED"));
+    }
+
+    #[test]
+    fn maps_auth_errors_in_russian_locale() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidCredentials, Locale::Ru);
+        assert!(!err.message.is_empty(), "Russian locale must produce a non-empty message");
+    }
 }

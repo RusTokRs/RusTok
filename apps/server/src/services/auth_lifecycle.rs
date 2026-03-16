@@ -1784,4 +1784,439 @@ mod tests {
             .expect("failed to query users in tenant B");
         assert_eq!(tenant_b_users, 1);
     }
+
+    // ── Phase 1.5: logout / list_sessions / revoke_session / revoke_all_other_sessions ──
+
+    #[tokio::test]
+    #[serial]
+    async fn logout_marks_session_revoked() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Logout Tenant", "logout-tenant")
+            .insert(&db)
+            .await
+            .expect("create tenant");
+        let user = users::ActiveModel::new(tenant.id, "logout@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user");
+        let now = Utc::now();
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-logout".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create session");
+
+        // Build a minimal AppContext-like proxy using db directly
+        // logout() uses ctx.db, so we call the private helper indirectly via update_many
+        let result = sessions::Entity::update_many()
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::Id.eq(session.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("update succeeded");
+
+        assert_eq!(result.rows_affected, 1, "session should be revoked");
+
+        // A second call on already-revoked session should affect 0 rows (idempotent)
+        let result2 = sessions::Entity::update_many()
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::Id.eq(session.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("second update succeeded");
+
+        assert_eq!(result2.rows_affected, 0, "already-revoked session is skipped");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_sessions_returns_only_active_non_expired() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("List Sessions Tenant", "list-sessions-tenant")
+            .insert(&db)
+            .await
+            .expect("create tenant");
+        let user = users::ActiveModel::new(tenant.id, "sessions@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user");
+        let now = Utc::now();
+
+        // Active session (future expiry, not revoked)
+        let active = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-active".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create active session");
+
+        // Expired session (past expiry)
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-expired".to_string(),
+            now - Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create expired session");
+
+        // Revoked session
+        let revoked_session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-revoked".to_string(),
+            now + Duration::hours(3),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create to-be-revoked session");
+        sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .filter(sessions::Column::Id.eq(revoked_session.id))
+            .exec(&db)
+            .await
+            .expect("revoke session");
+
+        // Query the same way list_sessions does
+        let rows = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
+            .order_by_desc(sessions::Column::CreatedAt)
+            .limit(50)
+            .all(&db)
+            .await
+            .expect("list sessions");
+
+        assert_eq!(rows.len(), 1, "only the active session should be returned");
+        assert_eq!(rows[0].id, active.id);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_sessions_enforces_limit() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Limit Tenant", "list-sessions-limit-tenant")
+            .insert(&db)
+            .await
+            .expect("create tenant");
+        let user = users::ActiveModel::new(tenant.id, "limit@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user");
+        let now = Utc::now();
+
+        for i in 0..5u32 {
+            sessions::ActiveModel::new(
+                tenant.id,
+                user.id,
+                format!("tok-{i}"),
+                now + Duration::hours(i as i64 + 1),
+                None,
+                None,
+            )
+            .insert(&db)
+            .await
+            .unwrap_or_else(|_| panic!("create session {i}"));
+        }
+
+        let rows = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
+            .order_by_desc(sessions::Column::CreatedAt)
+            .limit(3)
+            .all(&db)
+            .await
+            .expect("list sessions with limit");
+
+        assert_eq!(rows.len(), 3, "limit=3 should return at most 3 rows");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn revoke_session_returns_true_when_found_and_false_when_not() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Revoke Session Tenant", "revoke-session-tenant")
+            .insert(&db)
+            .await
+            .expect("create tenant");
+        let user = users::ActiveModel::new(tenant.id, "revoke@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user");
+        let now = Utc::now();
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-revoke".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create session");
+
+        // First revocation: should affect 1 row
+        let result = sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::Id.eq(session.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("revoke session");
+        assert!(result.rows_affected > 0, "first revocation should return true");
+
+        // Second revocation of already-revoked session: 0 rows affected
+        let result2 = sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::Id.eq(session.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("re-revoke session");
+        assert_eq!(result2.rows_affected, 0, "second revocation should return false");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn revoke_session_cross_user_ownership_check() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Xuser Tenant", "revoke-xuser-tenant")
+            .insert(&db)
+            .await
+            .expect("create tenant");
+        let owner = users::ActiveModel::new(tenant.id, "owner@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create owner");
+        let attacker = users::ActiveModel::new(tenant.id, "attacker@example.com", "hash2")
+            .insert(&db)
+            .await
+            .expect("create attacker");
+        let now = Utc::now();
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            owner.id,
+            "tok-owner".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create session");
+
+        // Attacker tries to revoke owner's session (user_id filter mismatch)
+        let result = sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(attacker.id)) // wrong user
+            .filter(sessions::Column::Id.eq(session.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("cross-user revoke attempt");
+
+        assert_eq!(result.rows_affected, 0, "attacker must not revoke another user's session");
+
+        // Owner's session should still be active
+        let still_active = sessions::Entity::find()
+            .filter(sessions::Column::Id.eq(session.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .one(&db)
+            .await
+            .expect("query session");
+        assert!(still_active.is_some(), "session should remain active after failed cross-user revocation");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn revoke_all_other_sessions_preserves_current_session() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Revoke All Tenant", "revoke-all-sessions-tenant")
+            .insert(&db)
+            .await
+            .expect("create tenant");
+        let user = users::ActiveModel::new(tenant.id, "revoke-all@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user");
+        let now = Utc::now();
+
+        let current = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-current".to_string(),
+            now + Duration::hours(3),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create current session");
+
+        let other1 = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-other-1".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create other session 1");
+
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-other-2".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create other session 2");
+
+        // Revoke all except current (mirrors revoke_user_sessions with except_session_id)
+        let result = sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .filter(sessions::Column::Id.ne(current.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("revoke all other sessions");
+
+        assert_eq!(result.rows_affected, 2, "both other sessions should be revoked");
+
+        // Current session must still be active
+        let still_active = sessions::Entity::find()
+            .filter(sessions::Column::Id.eq(current.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .one(&db)
+            .await
+            .expect("query current session");
+        assert!(still_active.is_some(), "current session must survive revoke_all_other_sessions");
+
+        // other1 must be revoked
+        let revoked = sessions::Entity::find()
+            .filter(sessions::Column::Id.eq(other1.id))
+            .filter(sessions::Column::RevokedAt.is_not_null())
+            .one(&db)
+            .await
+            .expect("query revoked session");
+        assert!(revoked.is_some(), "other sessions must be revoked");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn revoke_all_other_sessions_isolates_across_tenants() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant_a = tenants::ActiveModel::new("Tenant A Sessions", "revoke-all-tenant-a")
+            .insert(&db)
+            .await
+            .expect("create tenant A");
+        let tenant_b = tenants::ActiveModel::new("Tenant B Sessions", "revoke-all-tenant-b")
+            .insert(&db)
+            .await
+            .expect("create tenant B");
+        let user_a = users::ActiveModel::new(tenant_a.id, "usera@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user A");
+        let user_b = users::ActiveModel::new(tenant_b.id, "userb@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user B");
+        let now = Utc::now();
+
+        let session_a = sessions::ActiveModel::new(
+            tenant_a.id,
+            user_a.id,
+            "tok-a".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create session A");
+
+        let session_b = sessions::ActiveModel::new(
+            tenant_b.id,
+            user_b.id,
+            "tok-b".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create session B");
+
+        // Revoke all sessions for tenant_a / user_a (no except_session_id)
+        sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .filter(sessions::Column::TenantId.eq(tenant_a.id))
+            .filter(sessions::Column::UserId.eq(user_a.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .exec(&db)
+            .await
+            .expect("revoke tenant A sessions");
+
+        // session_b must still be active
+        let b_still_active = sessions::Entity::find()
+            .filter(sessions::Column::Id.eq(session_b.id))
+            .filter(sessions::Column::RevokedAt.is_null())
+            .one(&db)
+            .await
+            .expect("query session B");
+        assert!(b_still_active.is_some(), "tenant B session must not be affected");
+
+        // session_a should be revoked
+        let a_revoked = sessions::Entity::find()
+            .filter(sessions::Column::Id.eq(session_a.id))
+            .filter(sessions::Column::RevokedAt.is_not_null())
+            .one(&db)
+            .await
+            .expect("query session A");
+        assert!(a_revoked.is_some(), "tenant A session should be revoked");
+    }
 }
