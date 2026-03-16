@@ -127,6 +127,7 @@ pub fn compose_application_router(
     .layer(axum_middleware::from_fn(
         middleware::security_headers::security_headers,
     ))
+    .layer(axum_middleware::from_fn(middleware::locale::resolve_locale))
 }
 
 #[cfg(test)]

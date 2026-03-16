@@ -102,7 +102,7 @@ impl User {
     }
 
     async fn role(&self, ctx: &Context<'_>) -> Result<String> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let role = RbacService::get_user_role(&app_ctx.db, &self.tenant_id, &self.id)
             .await
             .map_err(|err| err.to_string())?;
@@ -110,7 +110,7 @@ impl User {
     }
 
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let permission = Permission::from_str(&action).map_err(|err| err.to_string())?;
 
         RbacService::has_permission(&app_ctx.db, &self.tenant_id, &self.id, &permission)

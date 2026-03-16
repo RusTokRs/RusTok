@@ -4,6 +4,7 @@ use loco_rs::controller::Routes;
 use std::sync::Arc;
 
 use crate::common::RequestContext;
+use rustok_core::i18n::Locale;
 use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::OptionalCurrentUser;
 use crate::graphql::persisted::is_admin_persisted_hash;
@@ -17,6 +18,7 @@ async fn graphql_handler(
     tenant_ctx: TenantContext,
     request_context: RequestContext,
     OptionalCurrentUser(current_user): OptionalCurrentUser,
+    Extension(locale): Extension<Locale>,
     Json(req): Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
     if is_critical_admin_operation(&req) {
@@ -35,7 +37,8 @@ async fn graphql_handler(
         .data(ctx)
         .data(tenant_ctx)
         .data(request_context)
-        .data(registry);
+        .data(registry)
+        .data(locale);
 
     if let Some(current_user) = current_user {
         let auth_ctx = AuthContext {

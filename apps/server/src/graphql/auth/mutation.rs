@@ -1,4 +1,5 @@
 use async_graphql::{Context, FieldError, Object, Result};
+use rustok_core::i18n::{Locale, translate};
 use loco_rs::app::AppContext;
 use crate::error::Error;
 
@@ -25,21 +26,39 @@ fn unauthenticated_auth_error(message: &str) -> FieldError {
     })
 }
 
-fn map_auth_lifecycle_error(error: AuthLifecycleError) -> FieldError {
+fn map_auth_lifecycle_error(error: AuthLifecycleError, locale: Locale) -> FieldError {
+    let t = |key: &str| translate(locale, key);
     match error {
-        AuthLifecycleError::EmailAlreadyExists => FieldError::new("Email already exists"),
-        AuthLifecycleError::InvalidCredentials => unauthenticated_auth_error("Invalid credentials"),
-        AuthLifecycleError::UserInactive => unauthenticated_auth_error("User is inactive"),
-        AuthLifecycleError::InvalidRefreshToken => {
-            unauthenticated_auth_error("Invalid refresh token")
+        AuthLifecycleError::EmailAlreadyExists => {
+            FieldError::new(t("auth.email_already_exists"))
         }
-        AuthLifecycleError::SessionExpired => unauthenticated_auth_error("Session expired"),
-        AuthLifecycleError::UserNotFound => unauthenticated_auth_error("User not found"),
-        AuthLifecycleError::InvalidResetToken => unauthenticated_auth_error("Invalid reset token"),
+        AuthLifecycleError::InvalidCredentials => {
+            unauthenticated_auth_error(&t("auth.invalid_credentials"))
+        }
+        AuthLifecycleError::UserInactive => {
+            unauthenticated_auth_error(&t("auth.user_inactive"))
+        }
+        AuthLifecycleError::InvalidRefreshToken => {
+            unauthenticated_auth_error(&t("auth.invalid_refresh_token"))
+        }
+        AuthLifecycleError::SessionExpired => {
+            unauthenticated_auth_error(&t("auth.session_expired"))
+        }
+        AuthLifecycleError::UserNotFound => {
+            unauthenticated_auth_error(&t("auth.user_not_found"))
+        }
+        AuthLifecycleError::InvalidResetToken => {
+            unauthenticated_auth_error(&t("auth.invalid_reset_token"))
+        }
         AuthLifecycleError::Internal(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
     }
+}
+
+
+fn locale_from_ctx(ctx: &Context<'_>) -> Locale {
+    ctx.data::<Locale>().copied().unwrap_or_default()
 }
 
 #[derive(Default)]
@@ -61,7 +80,7 @@ impl AuthMutation {
             None,
         )
         .await
-        .map_err(map_auth_lifecycle_error)?;
+        .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(AuthPayload {
             access_token: tokens.access_token,
@@ -91,7 +110,7 @@ impl AuthMutation {
             input.name,
         )
         .await
-        .map_err(map_auth_lifecycle_error)?;
+        .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(AuthPayload {
             access_token: tokens.access_token,
@@ -120,7 +139,7 @@ impl AuthMutation {
         let (user, tokens) =
             AuthLifecycleService::refresh(app_ctx, tenant.id, &input.refresh_token)
                 .await
-                .map_err(map_auth_lifecycle_error)?;
+                .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(AuthPayload {
             access_token: tokens.access_token,
@@ -203,7 +222,7 @@ impl AuthMutation {
         let updated =
             AuthLifecycleService::update_profile(app_ctx, tenant.id, auth.user_id, input.name)
                 .await
-                .map_err(map_auth_lifecycle_error)?;
+                .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(AuthUser {
             id: updated.id.to_string(),
@@ -235,7 +254,7 @@ impl AuthMutation {
             &input.new_password,
         )
         .await
-        .map_err(map_auth_lifecycle_error)?;
+        .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(ChangePasswordPayload { success: true })
     }
@@ -256,7 +275,7 @@ impl AuthMutation {
             &input.new_password,
         )
         .await
-        .map_err(map_auth_lifecycle_error)?;
+        .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(ResetPasswordPayload { success: true })
     }
@@ -264,35 +283,36 @@ impl AuthMutation {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_auth_lifecycle_error, AuthLifecycleError};
+    use super::{map_auth_lifecycle_error, locale_from_ctx, AuthLifecycleError};
+    use rustok_core::i18n::Locale;
 
     #[test]
     fn maps_invalid_refresh_token_message() {
-        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidRefreshToken);
+        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidRefreshToken, Locale::En);
         assert!(err.message.contains("Invalid refresh token"));
     }
 
     #[test]
     fn maps_user_inactive_message() {
-        let err = map_auth_lifecycle_error(AuthLifecycleError::UserInactive);
+        let err = map_auth_lifecycle_error(AuthLifecycleError::UserInactive, Locale::En);
         assert!(err.message.contains("User is inactive"));
     }
 
     #[test]
     fn maps_invalid_reset_token_message() {
-        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidResetToken);
+        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidResetToken, Locale::En);
         assert!(err.message.contains("Invalid reset token"));
     }
 
     #[test]
     fn maps_user_not_found_message() {
-        let err = map_auth_lifecycle_error(AuthLifecycleError::UserNotFound);
+        let err = map_auth_lifecycle_error(AuthLifecycleError::UserNotFound, Locale::En);
         assert!(err.message.contains("User not found"));
     }
 
     #[test]
     fn maps_auth_errors_with_unauthenticated_code() {
-        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidCredentials);
+        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidCredentials, Locale::En);
         let code = err
             .extensions
             .as_ref()
@@ -306,9 +326,10 @@ mod tests {
 
     #[test]
     fn maps_internal_to_internal_graphql_error() {
-        let err = map_auth_lifecycle_error(AuthLifecycleError::Internal(
-            loco_rs::prelude::Error::InternalServerError,
-        ));
+        let err = map_auth_lifecycle_error(
+            AuthLifecycleError::Internal(crate::error::Error::InternalServerError),
+            Locale::En,
+        );
         assert!(!err.message.is_empty());
     }
 }

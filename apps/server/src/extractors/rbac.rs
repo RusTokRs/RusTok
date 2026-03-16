@@ -49,7 +49,7 @@ macro_rules! define_permission_extractor {
         impl<S> axum::extract::FromRequestParts<S> for $name
         where
             S: Send + Sync,
-            loco_rs::prelude::AppContext: axum::extract::FromRef<S>,
+            loco_rs::app::AppContext: axum::extract::FromRef<S>,
         {
             type Rejection = (axum::http::StatusCode, String);
 

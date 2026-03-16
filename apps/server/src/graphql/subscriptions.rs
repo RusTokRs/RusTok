@@ -15,7 +15,7 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+    let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
     let tenant = ctx.data::<TenantContext>()?;
 
     let can_read_modules = RbacService::has_any_permission(

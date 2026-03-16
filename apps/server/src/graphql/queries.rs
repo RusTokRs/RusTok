@@ -406,7 +406,7 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+    let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
     let tenant = ctx.data::<TenantContext>()?;
 
     let can_read_modules = RbacService::has_any_permission(
@@ -432,7 +432,7 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
 }
 
 async fn load_marketplace_catalog(
-    app_ctx: &loco_rs::prelude::AppContext,
+    app_ctx: &loco_rs::app::AppContext,
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
 ) -> Result<Vec<crate::modules::CatalogManifestModule>> {
@@ -465,7 +465,7 @@ impl RootQuery {
     }
 
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
@@ -499,7 +499,7 @@ impl RootQuery {
         ctx: &Context<'_>,
         limit: Option<i32>,
     ) -> Result<Vec<ModuleRegistryItem>> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
@@ -572,7 +572,7 @@ impl RootQuery {
         ctx: &Context<'_>,
         limit: Option<i32>,
     ) -> Result<Vec<TenantModule>> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
@@ -646,7 +646,7 @@ impl RootQuery {
     ) -> Result<Vec<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
@@ -719,7 +719,7 @@ impl RootQuery {
     ) -> Result<Option<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
         let manifest = ManifestManager::load()
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -738,7 +738,7 @@ impl RootQuery {
     async fn active_build(&self, ctx: &Context<'_>) -> Result<Option<BuildJob>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let build = BuildService::new(app_ctx.db.clone())
             .active_build()
             .await
@@ -755,7 +755,7 @@ impl RootQuery {
     ) -> Result<Vec<BuildJob>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;
         let offset = offset.max(0) as u64;
@@ -784,7 +784,7 @@ impl RootQuery {
     async fn active_release(&self, ctx: &Context<'_>) -> Result<Option<ReleaseInfo>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let release = ReleaseEntity::find()
             .filter(ReleaseColumn::Status.eq(ReleaseStatus::Active))
             .order_by_desc(ReleaseColumn::UpdatedAt)
@@ -803,7 +803,7 @@ impl RootQuery {
     ) -> Result<Vec<ReleaseInfo>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;
         let offset = offset.max(0) as u64;
@@ -837,7 +837,7 @@ impl RootQuery {
             Some(auth) => auth,
             None => return Ok(None),
         };
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let user = users::Entity::find()
@@ -855,7 +855,7 @@ impl RootQuery {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
 
         let can_read_users = RbacService::has_permission(
             &app_ctx.db,
@@ -892,7 +892,7 @@ impl RootQuery {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
 
         let can_list_users = RbacService::has_permission(
             &app_ctx.db,
@@ -993,7 +993,7 @@ impl RootQuery {
     }
 
     async fn dashboard_stats(&self, ctx: &Context<'_>) -> Result<DashboardStats> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let now = Utc::now();
@@ -1089,7 +1089,7 @@ impl RootQuery {
         ctx: &Context<'_>,
         #[graphql(default)] limit: i64,
     ) -> Result<Vec<ActivityItem>> {
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let requested_limit = limit.max(0) as u64;
