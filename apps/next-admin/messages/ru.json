@@ -47,7 +47,10 @@
       "profile": "Профиль",
       "security": "Безопасность",
       "modules": "Модули",
-      "users": "Пользователи"
+      "users": "Пользователи",
+      "language": "Язык",
+      "languageEn": "Английский",
+      "languageRu": "Русский"
     },
     "menu": {
       "defaultUser": "Пользователь",

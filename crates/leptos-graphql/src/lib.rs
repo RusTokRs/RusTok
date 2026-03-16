@@ -8,6 +8,7 @@ pub use hooks::{use_lazy_query, use_mutation, use_query, MutationResult, QueryRe
 pub const GRAPHQL_ENDPOINT: &str = "/api/graphql";
 pub const TENANT_HEADER: &str = "X-Tenant-Slug";
 pub const AUTH_HEADER: &str = "Authorization";
+pub const ACCEPT_LANGUAGE_HEADER: &str = "Accept-Language";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GraphqlRequest<V = Value> {
@@ -70,6 +71,7 @@ pub async fn execute<V, T>(
     request: GraphqlRequest<V>,
     token: Option<String>,
     tenant_slug: Option<String>,
+    locale: Option<String>,
 ) -> Result<T, GraphqlHttpError>
 where
     V: Serialize,
@@ -84,6 +86,10 @@ where
 
     if let Some(slug) = tenant_slug {
         req = req.header(TENANT_HEADER, slug);
+    }
+
+    if let Some(locale) = locale {
+        req = req.header(ACCEPT_LANGUAGE_HEADER, locale);
     }
 
     let res = req.send().await.map_err(|_| GraphqlHttpError::Network)?;

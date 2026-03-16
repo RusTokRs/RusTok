@@ -27,6 +27,21 @@ pub fn get_graphql_url() -> String {
 
 pub type ApiError = GraphqlHttpError;
 
+/// Read the admin UI locale from LocalStorage.
+/// Returns None in non-WASM environments or if the key is absent.
+fn get_stored_locale() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        gloo_storage::LocalStorage::get::<String>("rustok-admin-locale").ok()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+
+
 pub async fn request<V, T>(
     query: &str,
     variables: V,
@@ -42,6 +57,7 @@ where
         GraphqlRequest::new(query, Some(variables)),
         token,
         tenant_slug,
+        get_stored_locale(),
     )
     .await
 }
@@ -63,6 +79,7 @@ where
             .with_extensions(persisted_query_extension(sha256_hash)),
         token,
         tenant_slug,
+        get_stored_locale(),
     )
     .await
 }

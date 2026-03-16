@@ -47,7 +47,9 @@
       "profile": "Profile",
       "security": "Security",
       "modules": "Modules",
-      "users": "Users"
+      "users": "Users",
+      "apps": "App Connections",
+      "modulePlugins": "Modules"
     },
     "menu": {
       "defaultUser": "User",

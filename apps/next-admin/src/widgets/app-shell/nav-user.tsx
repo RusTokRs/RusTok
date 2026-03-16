@@ -5,11 +5,16 @@ import {
   IconBell,
   IconChevronsDown,
   IconCreditCard,
+  IconWorld,
   IconLogout,
   IconSparkles
 } from '@tabler/icons-react';
 import { signOut } from 'next-auth/react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useTransition } from 'react';
 
+import { setLocale } from '@/shared/lib/set-locale-action';
+import { type Locale } from '@/i18n/request';
 import { Avatar, AvatarFallback, AvatarImage } from '@/shared/ui/shadcn/avatar';
 import {
   DropdownMenu,
@@ -17,7 +22,12 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/shared/ui/shadcn/dropdown-menu';
 import {
@@ -37,6 +47,15 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const t = useTranslations('app.nav');
+  const locale = useLocale() as Locale;
+  const [, startTransition] = useTransition();
+
+  function handleLocaleChange(value: string) {
+    startTransition(async () => {
+      await setLocale(value as Locale);
+    });
+  }
 
   return (
     <SidebarMenu>
@@ -98,6 +117,19 @@ export function NavUser({
                 Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <IconWorld className='mr-2 h-4 w-4' />
+                {t('language')}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={locale} onValueChange={handleLocaleChange}>
+                  <DropdownMenuRadioItem value='en'>{t('languageEn')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value='ru'>{t('languageRu')}</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/auth/sign-in' })}>
               <IconLogout className='mr-2 h-4 w-4' />

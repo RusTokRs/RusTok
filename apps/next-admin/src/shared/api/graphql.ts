@@ -26,6 +26,13 @@ export class GraphqlError extends Error {
   }
 }
 
+/** Read the admin UI locale from the browser cookie (client-side only). */
+function getClientLocale(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(/rustok-admin-locale=([^;]+)/);
+  return match?.[1];
+}
+
 export async function graphqlRequest<V, T>(
   query: string,
   variables?: V,
@@ -42,6 +49,12 @@ export async function graphqlRequest<V, T>(
 
   if (tenantSlug) {
     headers['X-Tenant-Slug'] = tenantSlug;
+  }
+
+  // Forward the admin UI locale so the server returns localised error messages.
+  const locale = getClientLocale();
+  if (locale) {
+    headers['Accept-Language'] = locale;
   }
 
   const body: GraphqlRequest<V> = { query };

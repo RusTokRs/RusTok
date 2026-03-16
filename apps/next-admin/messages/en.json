@@ -47,7 +47,10 @@
       "profile": "Profile",
       "security": "Security",
       "modules": "Modules",
-      "users": "Users"
+      "users": "Users",
+      "language": "Language",
+      "languageEn": "English",
+      "languageRu": "Russian"
     },
     "menu": {
       "defaultUser": "User",
