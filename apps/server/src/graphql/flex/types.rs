@@ -5,6 +5,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::models::user_field_definitions::Model;
+use crate::services::field_definition_registry::FieldDefinitionView;
 
 /// GraphQL representation of a field definition.
 #[derive(Debug, Clone, SimpleObject)]
@@ -45,6 +46,25 @@ impl From<Model> for FieldDefinitionObject {
             is_active: m.is_active,
             created_at: m.created_at.to_rfc3339(),
             updated_at: m.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<FieldDefinitionView> for FieldDefinitionObject {
+    fn from(m: FieldDefinitionView) -> Self {
+        Self {
+            id: m.id,
+            field_key: m.field_key,
+            field_type: m.field_type,
+            label: m.label,
+            description: m.description,
+            is_required: m.is_required,
+            default_value: m.default_value,
+            validation: m.validation,
+            position: m.position,
+            is_active: m.is_active,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
         }
     }
 }

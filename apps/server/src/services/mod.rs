@@ -24,3 +24,7 @@ pub mod redis_runtime;
 pub mod release_backend;
 pub mod runtime_guardrails;
 pub mod user_field_service;
+
+pub mod field_definition_registry;
+pub mod field_definition_registry_bootstrap;
+pub mod field_definition_cache;

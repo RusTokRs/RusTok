@@ -674,6 +674,9 @@ fn resolve_table(entity_type: &str) -> Result<Box<dyn FieldDefinitionRepository>
 
 Или через trait object / registry pattern — модули регистрируют свои entity_types при старте.
 
+**Требование к реализации registry:** сам Flex-layer не зависит от конкретных модулей (`users`, `products`, ...).
+Регистрация адаптеров выполняется в composition root (server startup / module bootstrap), чтобы при росте до 100+ модулей core-контракт оставался неизменным.
+
 ### 7.3 RBAC
 
 - Управление определениями: `Admin`, `SuperAdmin`
@@ -983,48 +986,48 @@ impl SchemaCache {
 ## 15. Delivery Phases
 
 ### Phase 0 — Core types & validation ⭐ START HERE
-- [ ] Создать `rustok-core/src/field_schema.rs`
-- [ ] `FieldType` enum с helper methods (`requires_options()`, `supports_pattern()`)
-- [ ] `ValidationRule`, `SelectOption`
-- [ ] `FieldDefinition` (portable DTO)
-- [ ] `HasCustomFields` trait
-- [ ] `CustomFieldsSchema` с `validate()`, `apply_defaults()`, `strip_unknown()`
-- [ ] `FieldValidationError`, `FieldErrorCode`
-- [ ] `validate_field_value()` — внутренняя функция, все 14 типов
-- [ ] Guardrails: field_key regex validation, locale key validation
-- [ ] Unit-тесты (30+ test cases, см. §3.11)
-- [ ] Exports в `lib.rs` и `prelude`
+- [x] Создать `rustok-core/src/field_schema.rs`
+- [x] `FieldType` enum с helper methods (`requires_options()`, `supports_pattern()`)
+- [x] `ValidationRule`, `SelectOption`
+- [x] `FieldDefinition` (portable DTO)
+- [x] `HasCustomFields` trait
+- [x] `CustomFieldsSchema` с `validate()`, `apply_defaults()`, `strip_unknown()`
+- [x] `FieldValidationError`, `FieldErrorCode`
+- [x] `validate_field_value()` — внутренняя функция, все 14 типов
+- [x] Guardrails: field_key regex validation, locale key validation
+- [x] Unit-тесты (30+ test cases, см. §3.11)
+- [x] Exports в `lib.rs` и `prelude`
 
 ### Phase 1 — Migration helper + infrastructure
-- [ ] `create_field_definitions_table()` helper (с tenant FK, indexes)
-- [ ] `drop_field_definitions_table()` helper
+- [x] `create_field_definitions_table()` helper (с tenant FK, indexes)
+- [x] `drop_field_definitions_table()` helper
 - [ ] `define_field_definitions_entity!()` macro (опционально)
 - [ ] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`)
-- [ ] `FlexError` enum с `ErrorExtensions` (§13)
+- [ ] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `FlexError`, интеграция с `ErrorExtensions` ещё pending)*
 - [ ] `FieldDefinitionRepository` trait (§12)
-- [ ] `FieldDefRegistry` (§12)
-- [ ] DomainEvent variants: `FieldDefinitionCreated/Updated/Deleted` (§9)
+- [x] `FieldDefRegistry` (§12)
+- [x] DomainEvent variants: `FieldDefinitionCreated/Updated/Deleted` (§9)
 - [ ] Integration test: создать таблицу, записать definition, провалидировать
 
 ### Phase 2 — Users (первый потребитель)
-- [ ] Миграция `user_field_definitions` (через helper — одна строка!)
-- [ ] SeaORM entity
-- [ ] `impl HasCustomFields for User`
-- [ ] `UserFieldService` + регистрация в `FieldDefRegistry`
-- [ ] Guardrail: max 50 fields per tenant (§10)
-- [ ] Validation flow в create/update user мутациях
-- [ ] Event emission: FieldDefinitionCreated/Updated/Deleted
-- [ ] GraphQL: `customFields` в User type, `fieldDefinitions` resolver
+- [x] Миграция `user_field_definitions` (через helper — одна строка!)
+- [x] SeaORM entity
+- [x] `impl HasCustomFields for User`
+- [x] `UserFieldService` + регистрация в `FieldDefRegistry`
+- [x] Guardrail: max 50 fields per tenant (§10)
+- [x] Validation flow в create/update user мутациях
+- [x] Event emission: FieldDefinitionCreated/Updated/Deleted
+- [x] GraphQL: `customFields` в User type, `fieldDefinitions` resolver
 - [ ] Error handling через `ErrorExtensions` (§13)
 - [ ] Тесты: CRUD, validation, guardrails, events
 
 ### Phase 3 — Admin API
-- [ ] GraphQL queries/mutations для управления определениями (§7)
-- [ ] Routing по entityType через `FieldDefRegistry` (§12)
-- [ ] RBAC: role check Admin/SuperAdmin (§11)
-- [ ] `SchemaCache` с event-driven invalidation (§14)
-- [ ] Pagination через существующий `PaginationInput` (cursor-based)
-- [ ] Тесты: RBAC, cache invalidation, pagination
+- [x] GraphQL queries/mutations для управления определениями (§7)
+- [x] Routing по entityType через `FieldDefRegistry` (§12) *(apps/server GraphQL: `fieldDefinitions`, `fieldDefinition`, `reorderFieldDefinitions`)*
+- [x] RBAC: role check Admin/SuperAdmin (§11)
+- [x] `SchemaCache` с event-driven invalidation (§14) *(Moka cache + invalidation на мутациях + invalidation listener на `FieldDefinition*` событиях EventBus)*
+- [x] Pagination через существующий `PaginationInput` (cursor-based) *(реализовано в `fieldDefinitions` query)*
+- [ ] Тесты: RBAC, cache invalidation, pagination *(unit: RBAC + pagination + cache есть; интеграционные GraphQL/cache-invalidation сценарии pending)*
 
 ### Phase 4 — Commerce, Content, Forum
 - [ ] **Pre-req:** добавить `metadata` колонку в `orders` таблицу (§8)
