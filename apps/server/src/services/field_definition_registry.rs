@@ -29,6 +29,31 @@ pub struct FieldDefinitionView {
     pub updated_at: String,
 }
 
+/// Transport-agnostic input for creating a field definition.
+#[derive(Debug, Clone)]
+pub struct CreateFieldDefinitionCommand {
+    pub field_key: String,
+    pub field_type: rustok_core::field_schema::FieldType,
+    pub label: std::collections::HashMap<String, String>,
+    pub description: Option<std::collections::HashMap<String, String>>,
+    pub is_required: bool,
+    pub default_value: Option<JsonValue>,
+    pub validation: Option<rustok_core::field_schema::ValidationRule>,
+    pub position: Option<i32>,
+}
+
+/// Transport-agnostic input for updating a field definition.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateFieldDefinitionCommand {
+    pub label: Option<std::collections::HashMap<String, String>>,
+    pub description: Option<std::collections::HashMap<String, String>>,
+    pub is_required: Option<bool>,
+    pub default_value: Option<JsonValue>,
+    pub validation: Option<rustok_core::field_schema::ValidationRule>,
+    pub position: Option<i32>,
+    pub is_active: Option<bool>,
+}
+
 /// Runtime contract for read/reorder operations on field definitions.
 #[async_trait]
 pub trait FieldDefinitionService: Send + Sync {
@@ -54,6 +79,31 @@ pub trait FieldDefinitionService: Send + Sync {
         tenant_id: Uuid,
         ids: &[Uuid],
     ) -> Result<Vec<FieldDefinitionView>, FlexError>;
+
+    async fn create(
+        &self,
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        input: CreateFieldDefinitionCommand,
+    ) -> Result<(FieldDefinitionView, rustok_events::types::EventEnvelope), FlexError>;
+
+    async fn update(
+        &self,
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        id: Uuid,
+        input: UpdateFieldDefinitionCommand,
+    ) -> Result<(FieldDefinitionView, rustok_events::types::EventEnvelope), FlexError>;
+
+    async fn deactivate(
+        &self,
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<rustok_events::types::EventEnvelope, FlexError>;
 }
 
 /// Registry that resolves `entity_type -> service`.

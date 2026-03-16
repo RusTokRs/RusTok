@@ -9,12 +9,12 @@ use crate::graphql::errors::GraphQLError;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry::FieldDefRegistry;
 
-use super::types::FieldDefinitionObject;
+use super::{resolve_entity_type, types::FieldDefinitionObject};
 
 /// Queries for field definitions.
 ///
-/// Currently routes `entity_type = "user"` only.  Further entity types will be
-/// added in Phase 4 via a registry (§12 of the Flex spec).
+/// Routed by `entity_type` through `FieldDefRegistry`.
+/// For backward-compatibility, omitted `entity_type` defaults to `"user"`.
 #[derive(Default)]
 pub struct FlexQuery;
 
@@ -22,18 +22,19 @@ pub struct FlexQuery;
 impl FlexQuery {
     /// List all field definitions for the authenticated tenant.
     ///
-    /// `entity_type` is accepted for forward-compatibility but only `"user"` is
-    /// supported at this phase.
+    /// `entity_type` routes the query to a module-specific service.
+    /// When omitted, defaults to `"user"` for backward-compatibility.
     async fn field_definitions(
         &self,
         ctx: &Context<'_>,
-        entity_type: String,
+        entity_type: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<Vec<FieldDefinitionObject>> {
         ctx.data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let entity_type = resolve_entity_type(entity_type)?;
 
         let cache = ctx.data::<FieldDefinitionCache>()?;
         if let Some(rows) = cache.get(tenant.id, &entity_type).await {
@@ -59,13 +60,14 @@ impl FlexQuery {
     async fn field_definition(
         &self,
         ctx: &Context<'_>,
-        entity_type: String,
+        entity_type: Option<String>,
         id: Uuid,
     ) -> Result<Option<FieldDefinitionObject>> {
         ctx.data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
         let service = registry

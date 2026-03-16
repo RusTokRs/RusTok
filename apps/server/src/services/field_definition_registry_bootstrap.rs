@@ -8,10 +8,15 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use rustok_core::field_schema::FlexError;
+use rustok_events::types::EventEnvelope;
 
-use crate::models::user_field_definitions::Model;
+use crate::models::user_field_definitions::{
+    CreateFieldDefinitionInput as UserCreateInput, Model,
+    UpdateFieldDefinitionInput as UserUpdateInput,
+};
 use crate::services::field_definition_registry::{
-    FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
+    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
+    UpdateFieldDefinitionCommand,
 };
 use crate::services::user_field_service::UserFieldService;
 
@@ -50,6 +55,61 @@ impl FieldDefinitionService for UserFieldDefinitionService {
     ) -> Result<Vec<FieldDefinitionView>, FlexError> {
         let rows = UserFieldService::reorder(db, tenant_id, ids).await?;
         Ok(rows.into_iter().map(FieldDefinitionView::from).collect())
+    }
+
+    async fn create(
+        &self,
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        input: CreateFieldDefinitionCommand,
+    ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
+        let user_input = UserCreateInput {
+            field_key: input.field_key,
+            field_type: input.field_type,
+            label: input.label,
+            description: input.description,
+            is_required: input.is_required,
+            default_value: input.default_value,
+            validation: input.validation,
+            position: input.position,
+        };
+
+        let (row, event) = UserFieldService::create(db, tenant_id, actor_id, user_input).await?;
+        Ok((FieldDefinitionView::from(row), event))
+    }
+
+    async fn update(
+        &self,
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        id: Uuid,
+        input: UpdateFieldDefinitionCommand,
+    ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
+        let user_input = UserUpdateInput {
+            label: input.label,
+            description: input.description,
+            is_required: input.is_required,
+            default_value: input.default_value,
+            validation: input.validation,
+            position: input.position,
+            is_active: input.is_active,
+        };
+
+        let (row, event) =
+            UserFieldService::update(db, tenant_id, actor_id, id, user_input).await?;
+        Ok((FieldDefinitionView::from(row), event))
+    }
+
+    async fn deactivate(
+        &self,
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<EventEnvelope, FlexError> {
+        UserFieldService::deactivate(db, tenant_id, actor_id, id).await
     }
 }
 

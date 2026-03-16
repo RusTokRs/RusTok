@@ -636,17 +636,18 @@ type Mutation {
     # "product" → product_field_definitions
     createFieldDefinition(input: CreateFieldDefinitionInput!): FieldDefinition!
     updateFieldDefinition(id: UUID!, input: UpdateFieldDefinitionInput!): FieldDefinition!
-    deleteFieldDefinition(id: UUID!): Boolean!
-    reorderFieldDefinitions(entityType: String!, ids: [UUID!]!): [FieldDefinition!]!
+    deleteFieldDefinition(entityType: String, id: UUID!): Boolean!
+    reorderFieldDefinitions(entityType: String, ids: [UUID!]!): [FieldDefinition!]!
 }
 
 type Query {
-    fieldDefinitions(entityType: String!): [FieldDefinition!]!
-    fieldDefinition(id: UUID!): FieldDefinition
+    fieldDefinitions(entityType: String): [FieldDefinition!]!
+    fieldDefinition(entityType: String, id: UUID!): FieldDefinition
 }
 
 input CreateFieldDefinitionInput {
-    entityType: String!
+    entityType: String # optional for backward-compatibility (defaults to "user")
+    # формат: snake_case, ^[a-z][a-z0-9_]{0,127}$
     fieldKey: String!
     fieldType: String!
     label: JSON!
@@ -655,6 +656,18 @@ input CreateFieldDefinitionInput {
     defaultValue: JSON
     validation: JSON
     position: Int
+}
+
+input UpdateFieldDefinitionInput {
+    entityType: String # optional for backward-compatibility (defaults to "user")
+    # формат: snake_case, ^[a-z][a-z0-9_]{0,127}$
+    label: JSON
+    description: JSON
+    isRequired: Boolean
+    defaultValue: JSON
+    validation: JSON
+    position: Int
+    isActive: Boolean
 }
 ```
 
@@ -1004,7 +1017,7 @@ impl SchemaCache {
 - [ ] `define_field_definitions_entity!()` macro (опционально)
 - [ ] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`)
 - [ ] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `FlexError`, интеграция с `ErrorExtensions` ещё pending)*
-- [ ] `FieldDefinitionRepository` trait (§12)
+- [x] `FieldDefinitionRepository` trait (§12) *(реализован как transport-agnostic `FieldDefinitionService` с CRUD/reorder + registry bootstrap)*
 - [x] `FieldDefRegistry` (§12)
 - [x] DomainEvent variants: `FieldDefinitionCreated/Updated/Deleted` (§9)
 - [ ] Integration test: создать таблицу, записать definition, провалидировать
@@ -1023,7 +1036,7 @@ impl SchemaCache {
 
 ### Phase 3 — Admin API
 - [x] GraphQL queries/mutations для управления определениями (§7)
-- [x] Routing по entityType через `FieldDefRegistry` (§12) *(apps/server GraphQL: `fieldDefinitions`, `fieldDefinition`, `reorderFieldDefinitions`)*
+- [x] Routing по entityType через `FieldDefRegistry` (§12) *(apps/server GraphQL: `fieldDefinitions`, `fieldDefinition`, `createFieldDefinition`, `updateFieldDefinition`, `deleteFieldDefinition`, `reorderFieldDefinitions`)*
 - [x] RBAC: role check Admin/SuperAdmin (§11)
 - [x] `SchemaCache` с event-driven invalidation (§14) *(Moka cache + invalidation на мутациях + invalidation listener на `FieldDefinition*` событиях EventBus)*
 - [x] Pagination через существующий `PaginationInput` (cursor-based) *(реализовано в `fieldDefinitions` query)*

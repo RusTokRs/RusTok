@@ -5,23 +5,24 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use uuid::Uuid;
 
-use rustok_core::{UserRole, field_schema::FieldType};
+use rustok_core::{field_schema::FieldType, UserRole};
 use rustok_events::types::EventEnvelope;
 
-use crate::context::{AuthContext, TenantContext, infer_user_role_from_permissions};
+use crate::context::{infer_user_role_from_permissions, AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
-use crate::models::user_field_definitions::{
-    CreateFieldDefinitionInput as ServiceCreate, UpdateFieldDefinitionInput as ServiceUpdate,
-};
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::field_definition_cache::FieldDefinitionCache;
-use crate::services::field_definition_registry::FieldDefRegistry;
+use crate::services::field_definition_registry::{
+    CreateFieldDefinitionCommand, FieldDefRegistry, UpdateFieldDefinitionCommand,
+};
 use crate::services::rbac_service::RbacService;
-use crate::services::user_field_service::UserFieldService;
 
-use super::types::{
-    CreateFieldDefinitionInput, DeleteFieldDefinitionPayload, FieldDefinitionObject,
-    UpdateFieldDefinitionInput,
+use super::{
+    resolve_entity_type,
+    types::{
+        CreateFieldDefinitionInput, DeleteFieldDefinitionPayload, FieldDefinitionObject,
+        UpdateFieldDefinitionInput,
+    },
 };
 
 #[derive(Default)]
@@ -42,7 +43,7 @@ impl FlexMutation {
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
         let field_type: FieldType =
-            serde_json::from_value(serde_json::Value::String(input.field_type))
+            serde_json::from_value(serde_json::Value::String(input.field_type.clone()))
                 .map_err(|_| FieldError::new("Unknown field_type value"))?;
 
         let label = serde_json::from_value(input.label)
@@ -64,7 +65,14 @@ impl FlexMutation {
             })
             .transpose()?;
 
-        let service_input = ServiceCreate {
+        let entity_type = resolve_entity_type(input.entity_type)?;
+
+        let registry = ctx.data::<FieldDefRegistry>()?;
+        let service = registry
+            .get(&entity_type)
+            .map_err(|e| FieldError::new(e.to_string()))?;
+
+        let service_input = CreateFieldDefinitionCommand {
             field_key: input.field_key,
             field_type,
             label,
@@ -75,13 +83,13 @@ impl FlexMutation {
             position: input.position,
         };
 
-        let (model, event) =
-            UserFieldService::create(&app_ctx.db, tenant.id, Some(auth.user_id), service_input)
-                .await
-                .map_err(|e| FieldError::new(e.to_string()))?;
+        let (model, event) = service
+            .create(&app_ctx.db, tenant.id, Some(auth.user_id), service_input)
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         publish_event(ctx, event);
-        invalidate_field_def_cache(ctx, tenant.id, "user");
+        invalidate_field_def_cache(ctx, tenant.id, &entity_type);
 
         Ok(FieldDefinitionObject::from(model))
     }
@@ -123,7 +131,14 @@ impl FlexMutation {
             })
             .transpose()?;
 
-        let service_input = ServiceUpdate {
+        let entity_type = resolve_entity_type(input.entity_type)?;
+
+        let registry = ctx.data::<FieldDefRegistry>()?;
+        let service = registry
+            .get(&entity_type)
+            .map_err(|e| FieldError::new(e.to_string()))?;
+
+        let service_input = UpdateFieldDefinitionCommand {
             label,
             description,
             is_required: input.is_required,
@@ -133,18 +148,19 @@ impl FlexMutation {
             is_active: input.is_active,
         };
 
-        let (model, event) = UserFieldService::update(
-            &app_ctx.db,
-            tenant.id,
-            Some(auth.user_id),
-            id,
-            service_input,
-        )
-        .await
-        .map_err(|e| FieldError::new(e.to_string()))?;
+        let (model, event) = service
+            .update(
+                &app_ctx.db,
+                tenant.id,
+                Some(auth.user_id),
+                id,
+                service_input,
+            )
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         publish_event(ctx, event);
-        invalidate_field_def_cache(ctx, tenant.id, "user");
+        invalidate_field_def_cache(ctx, tenant.id, &entity_type);
 
         Ok(FieldDefinitionObject::from(model))
     }
@@ -155,18 +171,27 @@ impl FlexMutation {
     async fn delete_field_definition(
         &self,
         ctx: &Context<'_>,
+        entity_type: Option<String>,
         id: Uuid,
     ) -> Result<DeleteFieldDefinitionPayload> {
         let auth = require_super_admin(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        let event = UserFieldService::deactivate(&app_ctx.db, tenant.id, Some(auth.user_id), id)
+        let entity_type = resolve_entity_type(entity_type)?;
+
+        let registry = ctx.data::<FieldDefRegistry>()?;
+        let service = registry
+            .get(&entity_type)
+            .map_err(|e| FieldError::new(e.to_string()))?;
+
+        let event = service
+            .deactivate(&app_ctx.db, tenant.id, Some(auth.user_id), id)
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
 
         publish_event(ctx, event);
-        invalidate_field_def_cache(ctx, tenant.id, "user");
+        invalidate_field_def_cache(ctx, tenant.id, &entity_type);
 
         Ok(DeleteFieldDefinitionPayload { success: true })
     }
@@ -177,12 +202,14 @@ impl FlexMutation {
     async fn reorder_field_definitions(
         &self,
         ctx: &Context<'_>,
-        entity_type: String,
+        entity_type: Option<String>,
         ids: Vec<Uuid>,
     ) -> Result<Vec<FieldDefinitionObject>> {
         require_admin(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+
+        let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
         let service = registry
