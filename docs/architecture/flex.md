@@ -1057,10 +1057,11 @@ impl SchemaCache {
 > Целевой слот: **следующий delivery-цикл (ориентир: 2026-Q2)**.
 
 - [x] Создать `crates/flex` как optional crate (без обязательной зависимости для доменных модулей) *(инициализирован: registry contracts вынесены, `apps/server` использует re-export compatibility layer)*
-- [ ] Перенести generic-контракты attached-mode из `apps/server` в crate:
-  - registry contracts (`FieldDefinitionService`, `FieldDefRegistry` adapter layer)
-  - generic CRUD orchestration + cache invalidation hooks
-  - transport-agnostic error mapping
+- [~] Перенести generic-контракты attached-mode из `apps/server` в crate:
+  - [x] registry contracts (`FieldDefinitionService`, `FieldDefRegistry` adapter layer)
+  - [x] generic CRUD orchestration helpers (registry lookup + CRUD/reorder call routing)
+  - [ ] cache invalidation hooks (abstraction-level port готов, но `apps/server` пока держит конкретный cache implementation)
+  - [ ] transport-agnostic error mapping
 - [ ] Оставить в `apps/server` только transport/adapters (GraphQL, RBAC gate, bootstrap wiring)
 - [ ] Перевести `user/product/order/topic` сервисы на новый crate API без изменения GraphQL-контрактов
 - [ ] Подготовить migration guide: `apps/server/docs/` + cross-link в `docs/index.md`

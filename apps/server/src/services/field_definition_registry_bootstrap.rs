@@ -8,7 +8,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use rustok_core::field_schema::FlexError;
-use rustok_events::types::EventEnvelope;
+use rustok_events::EventEnvelope;
 
 use crate::models::order_field_definitions::{
     CreateFieldDefinitionInput as OrderCreateInput, Model as OrderModel,

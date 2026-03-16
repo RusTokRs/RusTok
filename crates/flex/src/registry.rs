@@ -86,7 +86,7 @@ pub trait FieldDefinitionService: Send + Sync {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionCommand,
-    ) -> Result<(FieldDefinitionView, rustok_events::types::EventEnvelope), FlexError>;
+    ) -> Result<(FieldDefinitionView, rustok_events::EventEnvelope), FlexError>;
 
     async fn update(
         &self,
@@ -95,7 +95,7 @@ pub trait FieldDefinitionService: Send + Sync {
         actor_id: Option<Uuid>,
         id: Uuid,
         input: UpdateFieldDefinitionCommand,
-    ) -> Result<(FieldDefinitionView, rustok_events::types::EventEnvelope), FlexError>;
+    ) -> Result<(FieldDefinitionView, rustok_events::EventEnvelope), FlexError>;
 
     async fn deactivate(
         &self,
@@ -103,7 +103,7 @@ pub trait FieldDefinitionService: Send + Sync {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         id: Uuid,
-    ) -> Result<rustok_events::types::EventEnvelope, FlexError>;
+    ) -> Result<rustok_events::EventEnvelope, FlexError>;
 }
 
 /// Registry that resolves `entity_type -> service`.
