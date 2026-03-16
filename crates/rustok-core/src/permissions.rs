@@ -33,6 +33,9 @@ pub enum Resource {
     ForumReplies,
     // Scripting (alloy)
     Scripts,
+    // Workflow automation
+    Workflows,
+    WorkflowExecutions,
 }
 
 impl fmt::Display for Resource {
@@ -62,6 +65,8 @@ impl fmt::Display for Resource {
             Self::ForumTopics => "forum_topics",
             Self::ForumReplies => "forum_replies",
             Self::Scripts => "scripts",
+            Self::Workflows => "workflows",
+            Self::WorkflowExecutions => "workflow_executions",
         };
         write!(f, "{value}")
     }
@@ -96,6 +101,8 @@ impl FromStr for Resource {
             "forum_topics" => Ok(Self::ForumTopics),
             "forum_replies" => Ok(Self::ForumReplies),
             "scripts" => Ok(Self::Scripts),
+            "workflows" => Ok(Self::Workflows),
+            "workflow_executions" => Ok(Self::WorkflowExecutions),
             _ => Err(format!("Unknown resource: {value}")),
         }
     }
@@ -115,6 +122,7 @@ pub enum Action {
     Manage,
     Publish,
     Moderate,
+    Execute,
 }
 
 impl fmt::Display for Action {
@@ -130,6 +138,7 @@ impl fmt::Display for Action {
             Self::Manage => "manage",
             Self::Publish => "publish",
             Self::Moderate => "moderate",
+            Self::Execute => "execute",
         };
         write!(f, "{value}")
     }
@@ -150,6 +159,7 @@ impl FromStr for Action {
             "manage" | "*" => Ok(Self::Manage),
             "publish" => Ok(Self::Publish),
             "moderate" => Ok(Self::Moderate),
+            "execute" => Ok(Self::Execute),
             _ => Err(format!("Unknown action: {value}")),
         }
     }
@@ -282,4 +292,17 @@ impl Permission {
     pub const SCRIPTS_DELETE: Self = Self::new(Resource::Scripts, Action::Delete);
     pub const SCRIPTS_LIST: Self = Self::new(Resource::Scripts, Action::List);
     pub const SCRIPTS_MANAGE: Self = Self::new(Resource::Scripts, Action::Manage);
+
+    pub const WORKFLOWS_CREATE: Self = Self::new(Resource::Workflows, Action::Create);
+    pub const WORKFLOWS_READ: Self = Self::new(Resource::Workflows, Action::Read);
+    pub const WORKFLOWS_UPDATE: Self = Self::new(Resource::Workflows, Action::Update);
+    pub const WORKFLOWS_DELETE: Self = Self::new(Resource::Workflows, Action::Delete);
+    pub const WORKFLOWS_LIST: Self = Self::new(Resource::Workflows, Action::List);
+    pub const WORKFLOWS_EXECUTE: Self = Self::new(Resource::Workflows, Action::Execute);
+    pub const WORKFLOWS_MANAGE: Self = Self::new(Resource::Workflows, Action::Manage);
+
+    pub const WORKFLOW_EXECUTIONS_READ: Self =
+        Self::new(Resource::WorkflowExecutions, Action::Read);
+    pub const WORKFLOW_EXECUTIONS_LIST: Self =
+        Self::new(Resource::WorkflowExecutions, Action::List);
 }

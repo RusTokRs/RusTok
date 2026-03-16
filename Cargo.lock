@@ -10018,6 +10018,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-workflow"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"

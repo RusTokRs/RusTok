@@ -157,3 +157,4 @@ rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
 rustok-media = { path = "crates/rustok-media" }
 alloy-scripting = { path = "crates/alloy-scripting" }
+rustok-workflow = { path = "crates/rustok-workflow" }
