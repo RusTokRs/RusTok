@@ -1016,7 +1016,7 @@ impl SchemaCache {
 - [x] `drop_field_definitions_table()` helper
 - [ ] `define_field_definitions_entity!()` macro (опционально)
 - [ ] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`)
-- [ ] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `FlexError`, интеграция с `ErrorExtensions` ещё pending)*
+- [x] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `map_flex_error()` в GraphQL Flex резолверах с кодами `BAD_USER_INPUT`/`NOT_FOUND`/`INTERNAL_ERROR`)*
 - [x] `FieldDefinitionRepository` trait (§12) *(реализован как transport-agnostic `FieldDefinitionService` с CRUD/reorder + registry bootstrap)*
 - [x] `FieldDefRegistry` (§12)
 - [x] DomainEvent variants: `FieldDefinitionCreated/Updated/Deleted` (§9)
@@ -1031,7 +1031,7 @@ impl SchemaCache {
 - [x] Validation flow в create/update user мутациях
 - [x] Event emission: FieldDefinitionCreated/Updated/Deleted
 - [x] GraphQL: `customFields` в User type, `fieldDefinitions` resolver
-- [ ] Error handling через `ErrorExtensions` (§13)
+- [x] Error handling через `ErrorExtensions` (§13)
 - [ ] Тесты: CRUD, validation, guardrails, events
 
 ### Phase 3 — Admin API
