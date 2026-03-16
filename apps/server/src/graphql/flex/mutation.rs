@@ -18,7 +18,7 @@ use crate::services::field_definition_registry::{
 use crate::services::rbac_service::RbacService;
 
 use super::{
-    resolve_entity_type,
+    bad_user_input, map_flex_error, resolve_entity_type,
     types::{
         CreateFieldDefinitionInput, DeleteFieldDefinitionPayload, FieldDefinitionObject,
         UpdateFieldDefinitionInput,
@@ -44,16 +44,16 @@ impl FlexMutation {
 
         let field_type: FieldType =
             serde_json::from_value(serde_json::Value::String(input.field_type.clone()))
-                .map_err(|_| FieldError::new("Unknown field_type value"))?;
+                .map_err(|_| bad_user_input("Unknown field_type value"))?;
 
         let label = serde_json::from_value(input.label)
-            .map_err(|_| FieldError::new("label must be a JSON object {\"en\": \"…\"}"))?;
+            .map_err(|_| bad_user_input("label must be a JSON object {\"en\": \"…\"}"))?;
 
         let description = input
             .description
             .map(|v| {
                 serde_json::from_value(v)
-                    .map_err(|_| FieldError::new("description must be a JSON object"))
+                    .map_err(|_| bad_user_input("description must be a JSON object"))
             })
             .transpose()?;
 
@@ -61,16 +61,14 @@ impl FlexMutation {
             .validation
             .map(|v| {
                 serde_json::from_value(v)
-                    .map_err(|_| FieldError::new("validation must be a valid ValidationRule JSON"))
+                    .map_err(|_| bad_user_input("validation must be a valid ValidationRule JSON"))
             })
             .transpose()?;
 
         let entity_type = resolve_entity_type(input.entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry
-            .get(&entity_type)
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let service_input = CreateFieldDefinitionCommand {
             field_key: input.field_key,
@@ -86,7 +84,7 @@ impl FlexMutation {
         let (model, event) = service
             .create(&app_ctx.db, tenant.id, Some(auth.user_id), service_input)
             .await
-            .map_err(|e| FieldError::new(e.to_string()))?;
+            .map_err(map_flex_error)?;
 
         publish_event(ctx, event);
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
@@ -110,8 +108,7 @@ impl FlexMutation {
         let label = input
             .label
             .map(|v| {
-                serde_json::from_value(v)
-                    .map_err(|_| FieldError::new("label must be a JSON object"))
+                serde_json::from_value(v).map_err(|_| bad_user_input("label must be a JSON object"))
             })
             .transpose()?;
 
@@ -119,7 +116,7 @@ impl FlexMutation {
             .description
             .map(|v| {
                 serde_json::from_value(v)
-                    .map_err(|_| FieldError::new("description must be a JSON object"))
+                    .map_err(|_| bad_user_input("description must be a JSON object"))
             })
             .transpose()?;
 
@@ -127,16 +124,14 @@ impl FlexMutation {
             .validation
             .map(|v| {
                 serde_json::from_value(v)
-                    .map_err(|_| FieldError::new("validation must be a valid ValidationRule JSON"))
+                    .map_err(|_| bad_user_input("validation must be a valid ValidationRule JSON"))
             })
             .transpose()?;
 
         let entity_type = resolve_entity_type(input.entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry
-            .get(&entity_type)
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let service_input = UpdateFieldDefinitionCommand {
             label,
@@ -157,7 +152,7 @@ impl FlexMutation {
                 service_input,
             )
             .await
-            .map_err(|e| FieldError::new(e.to_string()))?;
+            .map_err(map_flex_error)?;
 
         publish_event(ctx, event);
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
@@ -181,14 +176,12 @@ impl FlexMutation {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry
-            .get(&entity_type)
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let event = service
             .deactivate(&app_ctx.db, tenant.id, Some(auth.user_id), id)
             .await
-            .map_err(|e| FieldError::new(e.to_string()))?;
+            .map_err(map_flex_error)?;
 
         publish_event(ctx, event);
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
@@ -212,14 +205,12 @@ impl FlexMutation {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry
-            .get(&entity_type)
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let rows = service
             .reorder(&app_ctx.db, tenant.id, &ids)
             .await
-            .map_err(|e| FieldError::new(e.to_string()))?;
+            .map_err(map_flex_error)?;
 
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
 

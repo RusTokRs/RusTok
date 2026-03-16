@@ -9,7 +9,7 @@ use crate::graphql::errors::GraphQLError;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry::FieldDefRegistry;
 
-use super::{resolve_entity_type, types::FieldDefinitionObject};
+use super::{map_flex_error, resolve_entity_type, types::FieldDefinitionObject};
 
 /// Queries for field definitions.
 ///
@@ -42,14 +42,12 @@ impl FlexQuery {
         }
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry
-            .get(&entity_type)
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let rows = service
             .list_all(&app_ctx.db, tenant.id)
             .await
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+            .map_err(map_flex_error)?;
 
         cache.set(tenant.id, &entity_type, rows.clone()).await;
 
@@ -70,15 +68,13 @@ impl FlexQuery {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry
-            .get(&entity_type)
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         service
             .find_by_id(&app_ctx.db, tenant.id, id)
             .await
             .map(|row| row.map(FieldDefinitionObject::from))
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))
+            .map_err(map_flex_error)
     }
 }
 
