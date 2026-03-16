@@ -10,6 +10,37 @@ pub fn register_components() {
         order: 10,
         render: module_status_card,
     });
+    register_component(AdminComponentRegistration {
+        id: "workflow-nav",
+        module_slug: Some("workflow"),
+        slot: AdminSlot::NavItem,
+        order: 20,
+        render: workflow_nav_item,
+    });
+}
+
+fn workflow_nav_item() -> AnyView {
+    use leptos_router::components::A;
+    use leptos_router::hooks::use_location;
+
+    let location = use_location();
+    let is_active = move || location.pathname.get().starts_with("/workflows");
+
+    view! {
+        <A
+            href="/workflows"
+            attr:class=move || format!(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground {}",
+                if is_active() { "bg-accent text-accent-foreground shadow-sm" } else { "text-muted-foreground" }
+            )
+        >
+            <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            "Workflows"
+        </A>
+    }
+    .into_any()
 }
 
 fn module_status_card() -> AnyView {

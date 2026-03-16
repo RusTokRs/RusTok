@@ -9,3 +9,5 @@ pub mod reset;
 pub mod security;
 pub mod user_details;
 pub mod users;
+pub mod workflow_detail;
+pub mod workflows;

@@ -105,11 +105,11 @@ export interface UpdateStepInput {
   timeoutMs?: number;
 }
 
-// ---------- GraphQL operations ----------
+// ---------- GraphQL operations (tenantId resolved server-side from headers) ----------
 
 const WORKFLOWS_QUERY = `
-query Workflows($tenantId: UUID!) {
-  workflows(tenantId: $tenantId) {
+query Workflows {
+  workflows {
     id
     tenantId
     name
@@ -121,8 +121,8 @@ query Workflows($tenantId: UUID!) {
 }`;
 
 const WORKFLOW_QUERY = `
-query Workflow($tenantId: UUID!, $id: UUID!) {
-  workflow(tenantId: $tenantId, id: $id) {
+query Workflow($id: UUID!) {
+  workflow(id: $id) {
     id
     tenantId
     name
@@ -147,8 +147,8 @@ query Workflow($tenantId: UUID!, $id: UUID!) {
 }`;
 
 const WORKFLOW_EXECUTIONS_QUERY = `
-query WorkflowExecutions($tenantId: UUID!, $workflowId: UUID!) {
-  workflowExecutions(tenantId: $tenantId, workflowId: $workflowId) {
+query WorkflowExecutions($workflowId: UUID!) {
+  workflowExecutions(workflowId: $workflowId) {
     id
     workflowId
     tenantId
@@ -168,117 +168,102 @@ query WorkflowExecutions($tenantId: UUID!, $workflowId: UUID!) {
 }`;
 
 const CREATE_WORKFLOW_MUTATION = `
-mutation CreateWorkflow($tenantId: UUID!, $input: GqlCreateWorkflowInput!) {
-  createWorkflow(tenantId: $tenantId, input: $input)
+mutation CreateWorkflow($input: GqlCreateWorkflowInput!) {
+  createWorkflow(input: $input)
 }`;
 
 const UPDATE_WORKFLOW_MUTATION = `
-mutation UpdateWorkflow($tenantId: UUID!, $id: UUID!, $input: GqlUpdateWorkflowInput!) {
-  updateWorkflow(tenantId: $tenantId, id: $id, input: $input)
+mutation UpdateWorkflow($id: UUID!, $input: GqlUpdateWorkflowInput!) {
+  updateWorkflow(id: $id, input: $input)
 }`;
 
 const DELETE_WORKFLOW_MUTATION = `
-mutation DeleteWorkflow($tenantId: UUID!, $id: UUID!) {
-  deleteWorkflow(tenantId: $tenantId, id: $id)
+mutation DeleteWorkflow($id: UUID!) {
+  deleteWorkflow(id: $id)
 }`;
 
 const ACTIVATE_WORKFLOW_MUTATION = `
-mutation ActivateWorkflow($tenantId: UUID!, $id: UUID!) {
-  activateWorkflow(tenantId: $tenantId, id: $id)
+mutation ActivateWorkflow($id: UUID!) {
+  activateWorkflow(id: $id)
 }`;
 
 const PAUSE_WORKFLOW_MUTATION = `
-mutation PauseWorkflow($tenantId: UUID!, $id: UUID!) {
-  pauseWorkflow(tenantId: $tenantId, id: $id)
+mutation PauseWorkflow($id: UUID!) {
+  pauseWorkflow(id: $id)
 }`;
 
 const TRIGGER_WORKFLOW_MUTATION = `
-mutation TriggerWorkflow($tenantId: UUID!, $id: UUID!, $payload: JSON, $force: Boolean) {
-  triggerWorkflow(tenantId: $tenantId, id: $id, payload: $payload, force: $force)
+mutation TriggerWorkflow($id: UUID!, $payload: JSON, $force: Boolean) {
+  triggerWorkflow(id: $id, payload: $payload, force: $force)
 }`;
 
 const ADD_STEP_MUTATION = `
-mutation AddWorkflowStep($tenantId: UUID!, $workflowId: UUID!, $input: GqlCreateStepInput!) {
-  addWorkflowStep(tenantId: $tenantId, workflowId: $workflowId, input: $input)
+mutation AddWorkflowStep($workflowId: UUID!, $input: GqlCreateStepInput!) {
+  addWorkflowStep(workflowId: $workflowId, input: $input)
 }`;
 
 const UPDATE_STEP_MUTATION = `
-mutation UpdateWorkflowStep($tenantId: UUID!, $workflowId: UUID!, $stepId: UUID!, $input: GqlUpdateStepInput!) {
-  updateWorkflowStep(tenantId: $tenantId, workflowId: $workflowId, stepId: $stepId, input: $input)
+mutation UpdateWorkflowStep($workflowId: UUID!, $stepId: UUID!, $input: GqlUpdateStepInput!) {
+  updateWorkflowStep(workflowId: $workflowId, stepId: $stepId, input: $input)
 }`;
 
 const DELETE_STEP_MUTATION = `
-mutation DeleteWorkflowStep($tenantId: UUID!, $workflowId: UUID!, $stepId: UUID!) {
-  deleteWorkflowStep(tenantId: $tenantId, workflowId: $workflowId, stepId: $stepId)
+mutation DeleteWorkflowStep($workflowId: UUID!, $stepId: UUID!) {
+  deleteWorkflowStep(workflowId: $workflowId, stepId: $stepId)
 }`;
 
 // ---------- API functions ----------
 
 export async function listWorkflows(opts: GqlOpts = {}): Promise<WorkflowSummary[]> {
-  const data = await graphqlRequest<
-    { tenantId: string },
-    { workflows: WorkflowSummary[] }
-  >(WORKFLOWS_QUERY, { tenantId: opts.tenantId! }, opts.token, opts.tenantSlug);
+  const data = await graphqlRequest<Record<string, never>, { workflows: WorkflowSummary[] }>(
+    WORKFLOWS_QUERY, {}, opts.token, opts.tenantSlug
+  );
   return data.workflows;
 }
 
 export async function getWorkflow(id: string, opts: GqlOpts = {}): Promise<WorkflowResponse | null> {
-  const data = await graphqlRequest<
-    { tenantId: string; id: string },
-    { workflow: WorkflowResponse | null }
-  >(WORKFLOW_QUERY, { tenantId: opts.tenantId!, id }, opts.token, opts.tenantSlug);
+  const data = await graphqlRequest<{ id: string }, { workflow: WorkflowResponse | null }>(
+    WORKFLOW_QUERY, { id }, opts.token, opts.tenantSlug
+  );
   return data.workflow;
 }
 
-export async function listWorkflowExecutions(
-  workflowId: string,
-  opts: GqlOpts = {}
-): Promise<WorkflowExecution[]> {
-  const data = await graphqlRequest<
-    { tenantId: string; workflowId: string },
-    { workflowExecutions: WorkflowExecution[] }
-  >(WORKFLOW_EXECUTIONS_QUERY, { tenantId: opts.tenantId!, workflowId }, opts.token, opts.tenantSlug);
+export async function listWorkflowExecutions(workflowId: string, opts: GqlOpts = {}): Promise<WorkflowExecution[]> {
+  const data = await graphqlRequest<{ workflowId: string }, { workflowExecutions: WorkflowExecution[] }>(
+    WORKFLOW_EXECUTIONS_QUERY, { workflowId }, opts.token, opts.tenantSlug
+  );
   return data.workflowExecutions;
 }
 
 export async function createWorkflow(input: CreateWorkflowInput, opts: GqlOpts = {}): Promise<string> {
-  const data = await graphqlRequest<
-    { tenantId: string; input: CreateWorkflowInput },
-    { createWorkflow: string }
-  >(CREATE_WORKFLOW_MUTATION, { tenantId: opts.tenantId!, input }, opts.token, opts.tenantSlug);
+  const data = await graphqlRequest<{ input: CreateWorkflowInput }, { createWorkflow: string }>(
+    CREATE_WORKFLOW_MUTATION, { input }, opts.token, opts.tenantSlug
+  );
   return data.createWorkflow;
 }
 
-export async function updateWorkflow(
-  id: string,
-  input: UpdateWorkflowInput,
-  opts: GqlOpts = {}
-): Promise<void> {
-  await graphqlRequest<
-    { tenantId: string; id: string; input: UpdateWorkflowInput },
-    { updateWorkflow: boolean }
-  >(UPDATE_WORKFLOW_MUTATION, { tenantId: opts.tenantId!, id, input }, opts.token, opts.tenantSlug);
+export async function updateWorkflow(id: string, input: UpdateWorkflowInput, opts: GqlOpts = {}): Promise<void> {
+  await graphqlRequest<{ id: string; input: UpdateWorkflowInput }, { updateWorkflow: boolean }>(
+    UPDATE_WORKFLOW_MUTATION, { id, input }, opts.token, opts.tenantSlug
+  );
 }
 
 export async function deleteWorkflow(id: string, opts: GqlOpts = {}): Promise<void> {
-  await graphqlRequest<
-    { tenantId: string; id: string },
-    { deleteWorkflow: boolean }
-  >(DELETE_WORKFLOW_MUTATION, { tenantId: opts.tenantId!, id }, opts.token, opts.tenantSlug);
+  await graphqlRequest<{ id: string }, { deleteWorkflow: boolean }>(
+    DELETE_WORKFLOW_MUTATION, { id }, opts.token, opts.tenantSlug
+  );
 }
 
 export async function activateWorkflow(id: string, opts: GqlOpts = {}): Promise<void> {
-  await graphqlRequest<
-    { tenantId: string; id: string },
-    { activateWorkflow: boolean }
-  >(ACTIVATE_WORKFLOW_MUTATION, { tenantId: opts.tenantId!, id }, opts.token, opts.tenantSlug);
+  await graphqlRequest<{ id: string }, { activateWorkflow: boolean }>(
+    ACTIVATE_WORKFLOW_MUTATION, { id }, opts.token, opts.tenantSlug
+  );
 }
 
 export async function pauseWorkflow(id: string, opts: GqlOpts = {}): Promise<void> {
-  await graphqlRequest<
-    { tenantId: string; id: string },
-    { pauseWorkflow: boolean }
-  >(PAUSE_WORKFLOW_MUTATION, { tenantId: opts.tenantId!, id }, opts.token, opts.tenantSlug);
+  await graphqlRequest<{ id: string }, { pauseWorkflow: boolean }>(
+    PAUSE_WORKFLOW_MUTATION, { id }, opts.token, opts.tenantSlug
+  );
 }
 
 export async function triggerWorkflow(
@@ -288,43 +273,27 @@ export async function triggerWorkflow(
   opts: GqlOpts = {}
 ): Promise<string> {
   const data = await graphqlRequest<
-    { tenantId: string; id: string; payload?: Record<string, unknown>; force?: boolean },
+    { id: string; payload?: Record<string, unknown>; force?: boolean },
     { triggerWorkflow: string }
-  >(TRIGGER_WORKFLOW_MUTATION, { tenantId: opts.tenantId!, id, payload, force }, opts.token, opts.tenantSlug);
+  >(TRIGGER_WORKFLOW_MUTATION, { id, payload, force }, opts.token, opts.tenantSlug);
   return data.triggerWorkflow;
 }
 
-export async function addWorkflowStep(
-  workflowId: string,
-  input: CreateStepInput,
-  opts: GqlOpts = {}
-): Promise<string> {
-  const data = await graphqlRequest<
-    { tenantId: string; workflowId: string; input: CreateStepInput },
-    { addWorkflowStep: string }
-  >(ADD_STEP_MUTATION, { tenantId: opts.tenantId!, workflowId, input }, opts.token, opts.tenantSlug);
+export async function addWorkflowStep(workflowId: string, input: CreateStepInput, opts: GqlOpts = {}): Promise<string> {
+  const data = await graphqlRequest<{ workflowId: string; input: CreateStepInput }, { addWorkflowStep: string }>(
+    ADD_STEP_MUTATION, { workflowId, input }, opts.token, opts.tenantSlug
+  );
   return data.addWorkflowStep;
 }
 
-export async function updateWorkflowStep(
-  workflowId: string,
-  stepId: string,
-  input: UpdateStepInput,
-  opts: GqlOpts = {}
-): Promise<void> {
-  await graphqlRequest<
-    { tenantId: string; workflowId: string; stepId: string; input: UpdateStepInput },
-    { updateWorkflowStep: boolean }
-  >(UPDATE_STEP_MUTATION, { tenantId: opts.tenantId!, workflowId, stepId, input }, opts.token, opts.tenantSlug);
+export async function updateWorkflowStep(workflowId: string, stepId: string, input: UpdateStepInput, opts: GqlOpts = {}): Promise<void> {
+  await graphqlRequest<{ workflowId: string; stepId: string; input: UpdateStepInput }, { updateWorkflowStep: boolean }>(
+    UPDATE_STEP_MUTATION, { workflowId, stepId, input }, opts.token, opts.tenantSlug
+  );
 }
 
-export async function deleteWorkflowStep(
-  workflowId: string,
-  stepId: string,
-  opts: GqlOpts = {}
-): Promise<void> {
-  await graphqlRequest<
-    { tenantId: string; workflowId: string; stepId: string },
-    { deleteWorkflowStep: boolean }
-  >(DELETE_STEP_MUTATION, { tenantId: opts.tenantId!, workflowId, stepId }, opts.token, opts.tenantSlug);
+export async function deleteWorkflowStep(workflowId: string, stepId: string, opts: GqlOpts = {}): Promise<void> {
+  await graphqlRequest<{ workflowId: string; stepId: string }, { deleteWorkflowStep: boolean }>(
+    DELETE_STEP_MUTATION, { workflowId, stepId }, opts.token, opts.tenantSlug
+  );
 }
