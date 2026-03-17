@@ -7,6 +7,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod locale;
+pub mod migrations;
 pub mod services;
 
 pub use constants::*;
@@ -41,7 +42,7 @@ impl RusToKModule for ForumModule {
 
 impl MigrationSource for ForumModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
     }
 }
 

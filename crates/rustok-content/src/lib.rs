@@ -7,6 +7,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod locale;
+pub mod migrations;
 pub mod services;
 pub mod state_machine;
 
@@ -105,7 +106,7 @@ impl RusToKModule for ContentModule {
 
 impl MigrationSource for ContentModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new() // Migrations are currently handled by the main app
+        migrations::migrations()
     }
 }
 

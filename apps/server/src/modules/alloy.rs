@@ -28,10 +28,7 @@ impl AlloyModule {
 
 impl MigrationSource for AlloyModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![
-            Box::new(alloy_scripting::ScriptsMigration),
-            Box::new(alloy_scripting::ScriptExecutionsMigration),
-        ]
+        alloy_scripting::migrations::migrations()
     }
 }
 

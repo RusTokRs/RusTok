@@ -27,6 +27,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migration;
+pub mod migrations;
 pub mod services;
 pub mod steps;
 pub mod templates;
@@ -79,10 +80,7 @@ impl RusToKModule for WorkflowModule {
 
 impl MigrationSource for WorkflowModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        vec![
-            Box::new(WorkflowsMigration),
-            Box::new(WorkflowPhase4Migration),
-        ]
+        migrations::migrations()
     }
 }
 

@@ -1,7 +1,8 @@
+use super::shared::*;
 use sea_orm_migration::prelude::*;
 
-use super::m20250101_000001_create_tenants::Tenants;
-use super::m20250130_000009_create_media::Media;
+
+
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

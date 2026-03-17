@@ -6883,7 +6883,13 @@ name = "migration"
 version = "0.1.0"
 dependencies = [
  "alloy-scripting",
+ "rustok-auth",
+ "rustok-commerce",
+ "rustok-content",
  "rustok-core",
+ "rustok-forum",
+ "rustok-index",
+ "rustok-workflow",
  "sea-orm-migration",
  "uuid",
 ]

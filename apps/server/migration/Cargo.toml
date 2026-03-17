@@ -8,5 +8,13 @@ description.workspace = true
 [dependencies]
 sea-orm-migration.workspace = true
 uuid.workspace = true
-alloy-scripting = { path = "../../../crates/alloy-scripting" }
+# Platform-core dependencies
 rustok-core = { path = "../../../crates/rustok-core" }
+# Module crates — each owns its own migration files
+alloy-scripting = { path = "../../../crates/alloy-scripting" }
+rustok-auth = { path = "../../../crates/rustok-auth" }
+rustok-commerce = { path = "../../../crates/rustok-commerce" }
+rustok-content = { path = "../../../crates/rustok-content" }
+rustok-forum = { path = "../../../crates/rustok-forum" }
+rustok-index = { path = "../../../crates/rustok-index" }
+rustok-workflow = { path = "../../../crates/rustok-workflow" }

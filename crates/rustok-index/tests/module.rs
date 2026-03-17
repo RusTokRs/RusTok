@@ -11,7 +11,10 @@ fn module_metadata() {
 }
 
 #[test]
-fn module_migrations_empty() {
+fn module_has_migrations() {
     let module = IndexModule;
-    assert!(module.migrations().is_empty());
+    let migrations = module.migrations();
+    assert!(!migrations.is_empty(), "IndexModule must own its migrations");
+    let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
+    assert!(names.iter().any(|n| n.contains("create_index_content")));
 }

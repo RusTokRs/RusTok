@@ -6,6 +6,7 @@ use sea_orm_migration::MigrationTrait;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod migrations;
 pub mod services;
 pub mod state_machine;
 
@@ -72,7 +73,7 @@ impl RusToKModule for CommerceModule {
 
 impl MigrationSource for CommerceModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
     }
 }
 

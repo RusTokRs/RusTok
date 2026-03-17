@@ -6,6 +6,7 @@ pub mod error;
 pub mod execution_log;
 pub mod integration;
 pub mod migration;
+pub mod migrations;
 pub mod model;
 pub mod runner;
 pub mod scheduler;
