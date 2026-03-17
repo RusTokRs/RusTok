@@ -33,6 +33,8 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
 | `rustok-index` | [docs](../../crates/rustok-index/docs/README.md) | [plan](../../crates/rustok-index/docs/implementation-plan.md) |
+| `alloy-scripting` | [docs](../../crates/alloy-scripting/docs/README.md) | [plan](../../crates/alloy-scripting/docs/implementation-plan.md) |
+| `rustok-workflow` | [docs](../../crates/rustok-workflow/docs/README.md) | [plan](../../crates/rustok-workflow/docs/implementation-plan.md) |
 
 ## Module template
 
