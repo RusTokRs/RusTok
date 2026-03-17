@@ -1,8 +1,8 @@
 # Workflow — визуальная автоматизация на платформенной очереди
 
-> **Статус:** Planned
-> **Модуль:** `rustok-workflow`
-> **Вид:** Начинает как модуль-библиотека, станет полноценным модулем с таблицами
+> **Статус:** Реализован ✅
+> **Модуль:** `rustok-workflow` ([docs](../../crates/rustok-workflow/docs/README.md) · [CRATE_API](../../crates/rustok-workflow/CRATE_API.md))
+> **Вид:** `ModuleKind::Optional` — полноценный модуль с таблицами, зарегистрирован в `apps/server`
 
 ---
 
@@ -190,42 +190,10 @@ self.event_bus.publish_in_tx(
 
 ---
 
-## 9. Фазы реализации
+## 9. Статус реализации
 
-### Фаза 1 — Foundation
-
-- [ ] Модель данных (таблицы, entities, миграции)
-- [ ] `WorkflowModule` реализация `RusToKModule`
-- [ ] CRUD API для workflows и steps
-- [ ] `WorkflowEngine` — линейное выполнение цепочки шагов
-- [ ] Event trigger: подписка на `DomainEvent`
-- [ ] Базовые шаги: `action`, `emit_event`, `condition`
-- [ ] Таблицы execution log
-
-### Фаза 2 — Alloy + Advanced Steps
-
-- [ ] Шаг `alloy_script` — интеграция с Alloy engine
-- [ ] Шаг `http` — внешние вызовы
-- [ ] Шаг `delay` — отложенное выполнение через `EventTransport`
-- [ ] Шаг `notify` — уведомления
-- [ ] Cron trigger
-- [ ] Manual trigger
-- [ ] Error handling: retry, fallback step, auto-disable
-
-### Фаза 3 — Visual Editor
-
-- [ ] UI компонент в next-admin: граф-редактор
-- [ ] Drag & drop шагов
-- [ ] Execution history viewer
-- [ ] Real-time execution monitoring
-
-### Фаза 4 — Alloy Synergy
-
-- [ ] Alloy генерирует workflow из описания на натуральном языке
-- [ ] Alloy создаёт Rhai-скрипты для шагов workflow
-- [ ] Webhook trigger — входящие внешние события
-- [ ] Marketplace шаблонов workflow
-- [ ] Версионирование workflow
+Все четыре фазы реализованы. Детальный план с чеклистами:
+[`crates/rustok-workflow/docs/implementation-plan.md`](../../crates/rustok-workflow/docs/implementation-plan.md)
 
 ---
 

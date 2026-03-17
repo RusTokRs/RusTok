@@ -15,6 +15,8 @@ use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 #[cfg(not(feature = "mod-alloy"))]
 #[derive(Clone, Default)]
 pub struct AlloyState;
+#[cfg(feature = "mod-workflow")]
+use super::workflow::{WorkflowMutation, WorkflowQuery};
 
 use super::auth::{AuthMutation, AuthQuery};
 #[cfg(feature = "mod-blog")]
@@ -51,6 +53,7 @@ pub mod module_slug {
     pub const PAGES: &str = "pages";
     pub const ALLOY: &str = "alloy";
     pub const MEDIA: &str = "media";
+    pub const WORKFLOW: &str = "workflow";
 }
 
 #[derive(MergedObject, Default)]
@@ -68,6 +71,7 @@ pub struct Query(
     #[cfg(feature = "mod-pages")] PagesQuery,
     #[cfg(feature = "mod-alloy")] AlloyQuery,
     #[cfg(feature = "mod-media")] MediaQuery,
+    #[cfg(feature = "mod-workflow")] WorkflowQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -84,6 +88,7 @@ pub struct Mutation(
     #[cfg(feature = "mod-pages")] PagesMutation,
     #[cfg(feature = "mod-alloy")] AlloyMutation,
     #[cfg(feature = "mod-media")] MediaMutation,
+    #[cfg(feature = "mod-workflow")] WorkflowMutation,
 );
 
 #[derive(MergedSubscription, Default)]

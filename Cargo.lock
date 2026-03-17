@@ -9914,6 +9914,7 @@ dependencies = [
  "rustok-telemetry",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-workflow",
  "sea-orm",
  "sea-orm-migration",
  "semver",
@@ -10029,6 +10030,27 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-workflow"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "cron 0.15.0",
+ "reqwest 0.13.2",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 

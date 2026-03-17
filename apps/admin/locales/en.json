@@ -325,5 +325,22 @@
     "error": {
       "load": "Failed to load modules"
     }
+  },
+  "workflows": {
+    "title": "Workflows",
+    "eyebrow": "Automation",
+    "subtitle": "Build and manage automated workflows triggered by events, schedules, or manually.",
+    "new": "New Workflow",
+    "back": "Back to workflows",
+    "edit": "Edit",
+    "steps": "Steps",
+    "executions": "Execution History",
+    "not_found": "Workflow not found.",
+    "error": {
+      "load": "Failed to load workflows"
+    },
+    "templates": "Templates",
+    "versions": "Versions",
+    "restore": "Restore"
   }
 }

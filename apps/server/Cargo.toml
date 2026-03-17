@@ -17,6 +17,7 @@ default = [
     "mod-pages",
     "mod-alloy",
     "mod-media",
+    "mod-workflow",
 ]
 redis-cache = []
 embed-admin = ["embed-admin-assets"]
@@ -24,13 +25,14 @@ embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
 # Domain module feature flags — compile the module into the binary;
 # resolvers additionally check is_enabled(tenant_id) at runtime.
-mod-commerce = ["dep:rustok-commerce"]
-mod-content  = ["dep:rustok-content"]
-mod-blog     = ["dep:rustok-blog", "dep:rustok-content"]
-mod-forum    = ["dep:rustok-forum"]
-mod-pages    = ["dep:rustok-pages"]
-mod-alloy    = ["dep:alloy-scripting"]
-mod-media    = ["dep:rustok-media", "dep:rustok-storage"]
+mod-commerce  = ["dep:rustok-commerce"]
+mod-content   = ["dep:rustok-content"]
+mod-blog      = ["dep:rustok-blog", "dep:rustok-content"]
+mod-forum     = ["dep:rustok-forum"]
+mod-pages     = ["dep:rustok-pages"]
+mod-alloy     = ["dep:alloy-scripting"]
+mod-media     = ["dep:rustok-media", "dep:rustok-storage"]
+mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
@@ -54,6 +56,7 @@ rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox.workspace = true
 alloy-scripting  = { workspace = true, optional = true }
+rustok-workflow  = { workspace = true, optional = true }
 
 loco-rs.workspace = true
 tokio.workspace = true

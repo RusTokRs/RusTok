@@ -89,6 +89,9 @@ pub async fn bootstrap_app_runtime(
     #[cfg(feature = "mod-media")]
     init_storage(ctx, settings);
 
+    #[cfg(feature = "mod-workflow")]
+    init_workflow_runtime(ctx);
+
     let alloy = init_alloy_runtime(ctx);
     let graphql_schema = init_graphql_schema(ctx, alloy.graphql_state.clone());
     let rate_limits = init_rate_limit_layers(ctx, settings)?;
@@ -157,6 +160,36 @@ fn init_alloy_runtime(ctx: &AppContext) -> AlloyBootstrap {
         graphql_state,
         rest_router: controllers::alloy::router(alloy_app_state),
     }
+}
+
+#[cfg(feature = "mod-workflow")]
+fn init_workflow_runtime(ctx: &AppContext) {
+    use rustok_core::events::EventDispatcher;
+    use rustok_workflow::{WorkflowCronScheduler, WorkflowTriggerHandler};
+
+    let bus = crate::services::event_bus::event_bus_from_context(ctx);
+    let db = ctx.db.clone();
+
+    // Register the event-trigger handler
+    let mut dispatcher = EventDispatcher::new(bus);
+    dispatcher.register(WorkflowTriggerHandler::new(db.clone()));
+    let running = dispatcher.start();
+    tokio::spawn(async move {
+        if let Err(error) = running.join().await {
+            tracing::error!("Workflow event dispatcher panicked: {:?}", error);
+        }
+    });
+
+    // Start the cron scheduler
+    let scheduler = WorkflowCronScheduler::new(db);
+    let handle = scheduler.start();
+    tokio::spawn(async move {
+        if let Err(error) = handle.await {
+            tracing::error!("Workflow cron scheduler panicked: {:?}", error);
+        }
+    });
+
+    tracing::info!("Workflow runtime initialized (event trigger + cron scheduler)");
 }
 
 struct RateLimitLayers {

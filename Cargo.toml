@@ -158,3 +158,4 @@ rustok-storage = { path = "crates/rustok-storage" }
 rustok-media = { path = "crates/rustok-media" }
 flex = { path = "crates/flex" }
 alloy-scripting = { path = "crates/alloy-scripting" }
+rustok-workflow = { path = "crates/rustok-workflow" }

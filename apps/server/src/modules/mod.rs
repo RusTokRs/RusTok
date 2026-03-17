@@ -36,4 +36,5 @@ pub fn build_registry() -> ModuleRegistry {
         .register(ForumModule)
         .register(PagesModule)
         .register(AlloyModule::new())
+        .register(rustok_workflow::WorkflowModule)
 }
