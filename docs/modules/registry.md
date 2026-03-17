@@ -183,7 +183,7 @@ graph TD
 | `crates/rustok-forum` | **Forum** | `Optional` | `rustok-content` ([CRATE_API](../../crates/rustok-forum/CRATE_API.md)) |
 | `crates/rustok-pages` | **Pages** | `Optional` | `rustok-core` ([CRATE_API](../../crates/rustok-pages/CRATE_API.md)) |
 | `crates/alloy-scripting` | **Alloy Scripting** | `Optional` | `rustok-core` (registered via `AlloyModule` in `apps/server/src/modules/alloy.rs`) |
-| `crates/rustok-workflow` | **Workflow** | `Optional` | `rustok-core`, `alloy-scripting`. Визуальная автоматизация на платформенной очереди. Горизонтальный модуль. ([docs](../../crates/rustok-workflow/docs/README.md)) ([CRATE_API](../../crates/rustok-workflow/CRATE_API.md)) ([arch](../architecture/workflow.md)) |
+| `crates/rustok-workflow` | **Workflow** | `Optional` | `rustok-core`, `alloy-scripting`. Визуальная автоматизация на платформенной очереди. Горизонтальный модуль. ([docs](../../crates/rustok-workflow/docs/README.md) · [CRATE_API](../../crates/rustok-workflow/CRATE_API.md) · [arch](../architecture/workflow.md)) |
 
 > **4-уровневая архитектура платформы:**
 > - Уровень 0 (модули-библиотеки, leaf): `rustok-events`, `rustok-telemetry`, `rustok-storage`

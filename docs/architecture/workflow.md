@@ -1,7 +1,7 @@
 # Workflow — визуальная автоматизация на платформенной очереди
 
 > **Статус:** Реализован ✅
-> **Модуль:** `rustok-workflow` ([docs](../../crates/rustok-workflow/docs/README.md) · [plan](../../crates/rustok-workflow/docs/implementation-plan.md) · [CRATE_API](../../crates/rustok-workflow/CRATE_API.md))
+> **Модуль:** `rustok-workflow` ([docs](../../crates/rustok-workflow/docs/README.md) · [CRATE_API](../../crates/rustok-workflow/CRATE_API.md))
 > **Вид:** `ModuleKind::Optional` — полноценный модуль с таблицами, зарегистрирован в `apps/server`
 
 ---

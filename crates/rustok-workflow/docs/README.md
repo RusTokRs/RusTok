@@ -92,7 +92,6 @@ Trigger: order.paid
 
 ## Связанные документы
 
-- [Implementation plan](./implementation-plan.md)
 - [CRATE_API](../CRATE_API.md)
 - [Архитектурное описание](../../../docs/architecture/workflow.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
@@ -102,14 +101,24 @@ Trigger: order.paid
 Модуль публикует события через `emit_event`-шаг. Контракт событий определяется
 конфигурацией конкретного workflow — не зашит в код модуля.
 
-Системные события (будущее):
+Системные события (backlog):
 - `workflow.execution.started`
 - `workflow.execution.completed`
 - `workflow.execution.failed`
 
-## Roadmap / статус
+## Статус реализации
+
+Все четыре фазы реализованы:
 
 - ✅ Phase 1 — Foundation: таблицы, entities, `WorkflowService`, `WorkflowEngine`, event trigger, базовые шаги
 - ✅ Phase 2 — Advanced Steps: `alloy_script`, `http`, `delay`, `notify`, cron trigger, manual trigger, error handling
 - ✅ Phase 3 — Admin UI: граф-редактор в Next.js, execution history, Leptos GraphQL API
 - ✅ Phase 4 — Alloy Synergy: webhook trigger, версионирование, marketplace шаблоны, Alloy-генерация workflow
+
+### Backlog
+
+- Integration-тесты с реальной БД (sqlite in-memory).
+- Полная реализация `alloy_script` шага (сейчас stub + `ScriptRunner` trait).
+- Полная реализация `notify` шага (сейчас stub + `NotificationSender` trait).
+- DAG вместо линейной цепочки шагов.
+- Системные события `workflow.execution.*` в outbox.
