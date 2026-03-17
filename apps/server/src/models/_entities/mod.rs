@@ -1,3 +1,5 @@
+pub mod flex_entries;
+pub mod flex_schemas;
 pub mod oauth_apps;
 pub mod oauth_authorization_codes;
 pub mod oauth_consents;
@@ -16,6 +18,8 @@ pub mod user_field_definitions;
 pub mod user_roles;
 pub mod users;
 
+pub use flex_entries::Entity as FlexEntries;
+pub use flex_schemas::Entity as FlexSchemas;
 pub use oauth_apps::Entity as OAuthApps;
 pub use oauth_authorization_codes::Entity as OAuthAuthorizationCodes;
 pub use oauth_consents::Entity as OAuthConsents;

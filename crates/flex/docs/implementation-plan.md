@@ -121,10 +121,10 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 
 ### Checklist
 
-- [ ] Миграции для `flex_schemas`, `flex_entries`
-- [ ] SeaORM entities
-- [ ] Validation service (использует `CustomFieldsSchema` из core)
-- [ ] CRUD services
+- [x] Миграции для `flex_schemas`, `flex_entries` *(добавлена migration `m20260317_000001_create_flex_standalone_tables` в `apps/server/migration`)*
+- [x] SeaORM entities *(добавлены `flex_schemas` и `flex_entries` в `apps/server/src/models/_entities` + re-export в `models/`)*
+- [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
+- [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
 - [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
 - [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/:slug/entries`
 - [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations

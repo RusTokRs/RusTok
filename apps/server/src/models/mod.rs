@@ -2,6 +2,8 @@
 
 pub mod _entities;
 pub mod build;
+pub mod flex_entries;
+pub mod flex_schemas;
 pub mod oauth_apps;
 pub mod oauth_authorization_codes;
 pub mod oauth_consents;
