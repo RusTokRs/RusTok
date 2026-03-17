@@ -662,6 +662,83 @@ routes_fn = "controllers::routes"
 
 ---
 
+### ⬜ UI тоже должен пересобираться — admin WASM и storefront WASM
+
+**Ключевой факт**: Leptos компилируется в WASM. Как сервер → бинарник,
+так admin и storefront → `.wasm`. Динамически подгрузить новый Rust-код
+в runtime невозможно. Любой новый модуль = пересборка WASM.
+
+**Что прошито вручную в admin**:
+
+```
+apps/admin/src/
+├── pages/mod.rs         ← mod workflows; mod workflow_detail;  (явные объявления)
+├── pages/workflows.rs   ← страница Workflows
+├── pages/workflow_detail.rs
+├── features/workflow/   ← компоненты workflow (400+ строк)
+└── app/router.rs        ← Route path="/workflows" view=Workflows
+```
+
+Для стороннего `rustok-podcast`: нет ни `/podcasts` маршрута,
+ни `PodcastsPage`, ни `features/podcast/`.
+
+**Что динамично** (слот-система):
+- `AdminSlot::NavItem` — nav items регистрируются через `register_component()` ✅
+- `AdminSlot::DashboardSection` — виджеты дашборда ✅
+- `StorefrontSlot::*` — слоты витрины ✅
+
+Но даже для слотов: функция `render: fn() -> AnyView` должна быть
+**скомпилирована в WASM заранее**. Слот-система управляет видимостью,
+а не загрузкой кода.
+
+**Что нужно сделать**:
+
+1. **Перенести UI в модульные крейты** (аналогично GraphQL/REST):
+```
+crates/rustok-workflow/
+└── ui/
+    ├── admin/
+    │   ├── pages/          ← WorkflowsPage, WorkflowDetailPage
+    │   ├── features/       ← компоненты
+    │   └── mod.rs          ← pub fn register_routes() + pub fn register_components()
+    └── storefront/
+        └── mod.rs          ← pub fn register_slot_components()
+```
+
+2. **`apps/admin/build.rs`** генерирует из `modules.toml`:
+```rust
+// generated/routes.rs
+<Route path=path!("/workflows") view=rustok_workflow::ui::admin::WorkflowsPage />
+<Route path=path!("/workflows/:id") view=rustok_workflow::ui::admin::WorkflowDetailPage />
+```
+
+3. **`apps/storefront/build.rs`** генерирует вызовы `register_component()`:
+```rust
+// generated/registrations.rs
+rustok_workflow::ui::storefront::register_slot_components();
+```
+
+4. **`BuildExecutor`** собирает три артефакта:
+```
+cargo build -p rustok-server          // бинарник сервера (сейчас ✅)
+wasm-pack build apps/admin            // admin WASM         (⬜ не реализовано)
+cargo build -p rustok-storefront      // storefront         (⬜ не реализовано)
+```
+
+**`rustok-module.toml`** объявляет UI точки входа:
+```toml
+[provides.admin_ui]
+routes_fn    = "ui::admin::register_routes"
+components_fn = "ui::admin::register_components"
+
+[provides.storefront_ui]
+components_fn = "ui::storefront::register_slot_components"
+```
+
+**Зависит от**: кодогенерации `build.rs` (п.6 выше).
+
+---
+
 ## 9. Приоритет незавершённого
 
 | # | Задача | Сложность | Ценность |
@@ -670,10 +747,12 @@ routes_fn = "controllers::routes"
 | 2 | `updateModuleSettings` мутация | Малая | Высокая — `[settings]` уже везде есть |
 | 3 | Build progress → subscription | Малая | Средняя — UX, инфраструктура уже есть |
 | 4 | Docker deploy в BuildExecutor | Средняя | Высокая — без этого install не prod-ready |
-| 5 | `rustok-api` + перенос GraphQL/REST | Большая | Критическая — блокирует 3rd party |
-| 6 | Кодогенерация регистрации (`build.rs`) | Большая | Критическая — блокирует 3rd party |
-| 7 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
-| 8 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
+| 5 | `rustok-api` + перенос GraphQL/REST в крейты | Большая | Критическая — блокирует 3rd party |
+| 6 | Перенос UI (admin/storefront) в модульные крейты | Большая | Критическая — блокирует 3rd party |
+| 7 | `build.rs` кодогенерация (сервер + admin + storefront) | Большая | Критическая — блокирует 3rd party |
+| 8 | `BuildExecutor`: сборка admin WASM + storefront | Средняя | Критическая — без этого install неполный |
+| 9 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
+| 10 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
 
-> Пп. 5 и 6 — взаимозависимы. `rustok-api` нужен для переноса GraphQL/REST,
-> `build.rs` нужен чтобы сервер не трогался вручную. Делать вместе.
+> Пп. 5, 6, 7, 8 — единый блок. Все четыре нужны вместе, чтобы
+> сторонний модуль полноценно заработал (сервер + UI).
