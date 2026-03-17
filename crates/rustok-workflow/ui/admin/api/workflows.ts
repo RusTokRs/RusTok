@@ -21,6 +21,7 @@ export interface WorkflowSummary {
   tenantId: string;
   name: string;
   status: WorkflowStatus;
+  webhookSlug: string | null;
   failureCount: number;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +44,7 @@ export interface WorkflowResponse {
   description: string | null;
   status: WorkflowStatus;
   triggerConfig: Record<string, unknown>;
+  webhookSlug: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +82,7 @@ export interface CreateWorkflowInput {
   name: string;
   description?: string;
   triggerConfig: Record<string, unknown>;
+  webhookSlug?: string | null;
 }
 
 export interface UpdateWorkflowInput {
@@ -87,6 +90,22 @@ export interface UpdateWorkflowInput {
   description?: string;
   status?: WorkflowStatus;
   triggerConfig?: Record<string, unknown>;
+  webhookSlug?: string | null;
+}
+
+// ---------- Phase 4 Types ----------
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface WorkflowVersionSummary {
+  version: number;
+  createdAt: string;
+  createdBy: string | null;
 }
 
 export interface CreateStepInput {
@@ -114,6 +133,7 @@ query Workflows {
     tenantId
     name
     status
+    webhookSlug
     failureCount
     createdAt
     updatedAt
@@ -129,6 +149,7 @@ query Workflow($id: UUID!) {
     description
     status
     triggerConfig
+    webhookSlug
     createdBy
     createdAt
     updatedAt
@@ -296,4 +317,96 @@ export async function deleteWorkflowStep(workflowId: string, stepId: string, opt
   await graphqlRequest<{ workflowId: string; stepId: string }, { deleteWorkflowStep: boolean }>(
     DELETE_STEP_MUTATION, { workflowId, stepId }, opts.token, opts.tenantSlug
   );
+}
+
+// ---------- Phase 4: Templates ----------
+
+const WORKFLOW_TEMPLATES_QUERY = `
+query WorkflowTemplates {
+  workflowTemplates {
+    id
+    name
+    description
+    category
+  }
+}`;
+
+const CREATE_FROM_TEMPLATE_MUTATION = `
+mutation CreateWorkflowFromTemplate($templateId: String!, $name: String!) {
+  createWorkflowFromTemplate(templateId: $templateId, name: $name)
+}`;
+
+const GENERATE_WORKFLOW_MUTATION = `
+mutation GenerateWorkflowFromDescription($description: String!) {
+  generateWorkflowFromDescription(description: $description)
+}`;
+
+// ---------- Phase 4: Versions ----------
+
+const WORKFLOW_VERSIONS_QUERY = `
+query WorkflowVersions($workflowId: UUID!) {
+  workflowVersions(workflowId: $workflowId) {
+    version
+    createdAt
+    createdBy
+  }
+}`;
+
+const RESTORE_VERSION_MUTATION = `
+mutation RestoreWorkflowVersion($workflowId: UUID!, $version: Int!) {
+  restoreWorkflowVersion(workflowId: $workflowId, version: $version)
+}`;
+
+// ---------- Phase 4 API functions ----------
+
+export async function listWorkflowTemplates(opts: GqlOpts = {}): Promise<WorkflowTemplate[]> {
+  const data = await graphqlRequest<Record<string, never>, { workflowTemplates: WorkflowTemplate[] }>(
+    WORKFLOW_TEMPLATES_QUERY, {}, opts.token, opts.tenantSlug
+  );
+  return data.workflowTemplates;
+}
+
+export async function createWorkflowFromTemplate(
+  templateId: string,
+  name: string,
+  opts: GqlOpts = {}
+): Promise<string> {
+  const data = await graphqlRequest<
+    { templateId: string; name: string },
+    { createWorkflowFromTemplate: string }
+  >(CREATE_FROM_TEMPLATE_MUTATION, { templateId, name }, opts.token, opts.tenantSlug);
+  return data.createWorkflowFromTemplate;
+}
+
+export async function generateWorkflowFromDescription(
+  description: string,
+  opts: GqlOpts = {}
+): Promise<string> {
+  const data = await graphqlRequest<
+    { description: string },
+    { generateWorkflowFromDescription: string }
+  >(GENERATE_WORKFLOW_MUTATION, { description }, opts.token, opts.tenantSlug);
+  return data.generateWorkflowFromDescription;
+}
+
+export async function listWorkflowVersions(
+  workflowId: string,
+  opts: GqlOpts = {}
+): Promise<WorkflowVersionSummary[]> {
+  const data = await graphqlRequest<
+    { workflowId: string },
+    { workflowVersions: WorkflowVersionSummary[] }
+  >(WORKFLOW_VERSIONS_QUERY, { workflowId }, opts.token, opts.tenantSlug);
+  return data.workflowVersions;
+}
+
+export async function restoreWorkflowVersion(
+  workflowId: string,
+  version: number,
+  opts: GqlOpts = {}
+): Promise<void> {
+  await graphqlRequest<
+    { workflowId: string; version: number },
+    { restoreWorkflowVersion: boolean }
+  >(RESTORE_VERSION_MUTATION, { workflowId, version }, opts.token, opts.tenantSlug);
 }

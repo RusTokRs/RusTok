@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import type { GqlOpts } from '../api/workflows';
-import { getWorkflow, listWorkflowExecutions } from '../api/workflows';
+import { getWorkflow, listWorkflowExecutions, listWorkflowVersions } from '../api/workflows';
 import { WorkflowStepEditor } from '../components/workflow-step-editor';
 import { ExecutionHistory } from '../components/execution-history';
+import { VersionHistory } from '../components/version-history';
 
 interface WorkflowDetailPageProps {
   id: string;
@@ -18,9 +19,10 @@ export default async function WorkflowDetailPage({
   tenantId
 }: WorkflowDetailPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
-  const [workflow, executions] = await Promise.all([
+  const [workflow, executions, versions] = await Promise.all([
     getWorkflow(id, opts),
-    listWorkflowExecutions(id, opts)
+    listWorkflowExecutions(id, opts),
+    listWorkflowVersions(id, opts).catch(() => []),
   ]);
 
   if (!workflow) {
@@ -78,6 +80,11 @@ export default async function WorkflowDetailPage({
       <section>
         <h2 className="mb-3 text-lg font-semibold">Execution History</h2>
         <ExecutionHistory executions={executions} />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">Version History</h2>
+        <VersionHistory workflowId={id} versions={versions} opts={opts} />
       </section>
     </div>
   );

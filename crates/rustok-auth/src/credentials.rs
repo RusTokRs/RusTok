@@ -1,15 +1,15 @@
-use argon2::{PasswordHasher, PasswordVerifier};
-use password_hash::rand_core::{OsRng, RngCore};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
 use sha2::{Digest, Sha256};
 
 use crate::error::{AuthError, Result};
 
 /// Hash a password with Argon2id and a random salt.
 pub fn hash_password(password: &str) -> Result<String> {
-    let salt = password_hash::SaltString::generate(&mut OsRng);
-    let argon2 = argon2::Argon2::default();
-
-    argon2
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|_| AuthError::PasswordHashFailed)
@@ -17,18 +17,17 @@ pub fn hash_password(password: &str) -> Result<String> {
 
 /// Verify a password against an Argon2 hash.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
-    let parsed = password_hash::PasswordHash::new(password_hash)
-        .map_err(|_| AuthError::InvalidCredentials)?;
-    Ok(argon2::Argon2::default()
+    let parsed = PasswordHash::new(password_hash).map_err(|_| AuthError::InvalidCredentials)?;
+    Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
 }
 
 /// Generate a cryptographically secure 256-bit refresh token (64 hex chars).
 pub fn generate_refresh_token() -> String {
+    use argon2::password_hash::rand_core::RngCore;
     let mut bytes = [0u8; 32];
-    let mut rng = OsRng;
-    rng.fill_bytes(&mut bytes);
+    OsRng.fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
