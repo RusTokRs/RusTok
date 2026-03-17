@@ -26,14 +26,14 @@ use crate::models::user_field_definitions::{
     CreateFieldDefinitionInput as UserCreateInput, Model as UserModel,
     UpdateFieldDefinitionInput as UserUpdateInput,
 };
-use crate::services::field_definition_registry::{
-    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
-    UpdateFieldDefinitionCommand,
-};
 use crate::services::order_field_service::OrderFieldService;
 use crate::services::product_field_service::ProductFieldService;
 use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
+use flex::{
+    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
+    UpdateFieldDefinitionCommand,
+};
 
 struct UserFieldDefinitionService;
 struct OrderFieldDefinitionService;

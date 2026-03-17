@@ -3,13 +3,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use loco_rs::app::AppContext;
 use moka::future::Cache;
 use rustok_core::{DomainEvent, EventBus, EventConsumerRuntime};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::services::field_definition_registry::FieldDefinitionView;
+use flex::FieldDefinitionView;
 
 const FIELD_DEFINITION_CACHE_TTL: Duration = Duration::from_secs(30);
 
@@ -116,10 +117,25 @@ pub fn field_definition_cache_from_context(
     (*cache).clone()
 }
 
+#[async_trait]
+impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
+    async fn get(&self, tenant_id: Uuid, entity_type: &str) -> Option<Vec<FieldDefinitionView>> {
+        FieldDefinitionCache::get(self, tenant_id, entity_type).await
+    }
+
+    async fn set(&self, tenant_id: Uuid, entity_type: &str, rows: Vec<FieldDefinitionView>) {
+        FieldDefinitionCache::set(self, tenant_id, entity_type, rows).await;
+    }
+
+    fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
+        FieldDefinitionCache::invalidate(self, tenant_id, entity_type);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::FieldDefinitionCache;
-    use crate::services::field_definition_registry::FieldDefinitionView;
+    use flex::FieldDefinitionView;
     use serde_json::json;
     use uuid::Uuid;
 

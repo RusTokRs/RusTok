@@ -172,6 +172,7 @@ graph TD
 
 - [Документация Server](../apps/server/docs/README.md) (включает обязательный/критичный базовый набор core-модулей для агентов (6 модулей), матрицу возможностей Loco, доставку писем для сброса пароля в auth, заметки по поведению dev seed и схему публикации событий build-request).
 - [План реализации Server](../apps/server/docs/implementation-plan.md)
+- [Migration guide Flex Phase 4.5 (Server)](../apps/server/docs/flex-phase45-migration-guide.md)
 - [Реестр Loco governance](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по возможностям Loco в server runtime.
 - [Документация Leptos Admin](../apps/admin/docs/README.md)
 - [План реализации Leptos Admin](../apps/admin/docs/implementation-plan.md)

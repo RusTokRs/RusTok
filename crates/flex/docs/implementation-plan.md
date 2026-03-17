@@ -54,20 +54,20 @@
 - [x] `crates/flex` создан
 - [x] Registry contracts (`FieldDefinitionService`, `FieldDefRegistry` adapter layer)
 - [x] Generic CRUD orchestration helpers (registry lookup + CRUD/reorder routing)
-- [x] `apps/server` использует re-export compatibility layer
+- [x] `apps/server` использует прямые импорты из `flex` (без compatibility re-export)
 
 ### Что осталось перенести
 
-- [ ] Cache invalidation hooks
-  - Порт на уровне абстракции готов
-  - `apps/server` пока держит конкретный cache implementation
-- [ ] Transport-agnostic error mapping
-  - Сейчас `map_flex_error()` живёт в `apps/server/src/graphql/`
-  - Нужно переместить в `crates/flex`
-- [ ] Перевести `user/product/order/topic` сервисы на новый crate API
-  - Без изменения GraphQL-контрактов
+- [x] Cache invalidation hooks
+  - В `crates/flex` добавлены orchestration helpers `list_field_definitions_with_cache()` и `invalidate_field_definition_cache()`
+  - `apps/server` реализует `FieldDefinitionCachePort` как adapter над текущим cache implementation
+- [x] Transport-agnostic error mapping
+  - `map_flex_error()` перенесён в `crates/flex/src/errors.rs`
+  - `apps/server` использует mapping из agnostic-модуля
+- [x] Перевести `user/product/order/topic` сервисы на новый crate API
+  - Bootstrap/GraphQL используют прямой API `flex` без изменения GraphQL-контрактов
 - [ ] Убрать дублирование между `apps/server` и `crates/flex`
-- [ ] Написать migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
+- [x] Написать migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
 
 ---
 

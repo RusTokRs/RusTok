@@ -434,7 +434,7 @@ pub struct SchemaCache {
 }
 ```
 
-Реализация: Moka cache + event-driven invalidation на мутациях + listener на `FieldDefinition*` событиях EventBus.
+Реализация: Moka cache + event-driven invalidation на мутациях + listener на `FieldDefinition*` событиях EventBus. В agnostic-слое доступны helper-ы `list_field_definitions_with_cache()` и `invalidate_field_definition_cache()` + порт `FieldDefinitionCachePort`.
 
 ---
 
@@ -452,7 +452,7 @@ pub enum FlexError {
 }
 ```
 
-Все ошибки маппятся через `map_flex_error()` в GraphQL-резолверах с соответствующими кодами в error extensions.
+Все ошибки маппятся через transport-agnostic `flex::map_flex_error()`; в GraphQL выполняется только адаптация в `FieldError` с соответствующими кодами в error extensions.
 
 ---
 

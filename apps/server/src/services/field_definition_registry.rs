@@ -1,7 +1,0 @@
-//! Temporary compatibility re-export.
-//! Flex registry contracts were moved to `flex` (Phase 4.5 extraction).
-
-pub use flex::{
-    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
-    UpdateFieldDefinitionCommand,
-};
