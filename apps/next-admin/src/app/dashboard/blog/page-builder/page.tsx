@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { PageBuilder } from '@rustok/blog-admin';
+import { PageBuilder } from '@/features/blog';
 
 export const metadata = {
   title: 'Dashboard: Page Builder'

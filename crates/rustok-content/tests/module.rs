@@ -66,7 +66,13 @@ fn module_permissions_cover_orchestration_runtime_checks() {
 }
 
 #[test]
-fn module_migrations_empty() {
+fn module_has_migrations() {
     let module = ContentModule;
-    assert!(module.migrations().is_empty());
+    let migrations = module.migrations();
+    assert!(!migrations.is_empty(), "ContentModule must own its migrations");
+    // Verify key migration names are present
+    let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
+    assert!(names.iter().any(|n| n.contains("create_nodes")));
+    assert!(names.iter().any(|n| n.contains("create_categories")));
+    assert!(names.iter().any(|n| n.contains("create_tags")));
 }

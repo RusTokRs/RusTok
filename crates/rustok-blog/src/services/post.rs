@@ -523,26 +523,37 @@ impl PostService {
             .or_else(|| fallback_locale.map(str::to_string))
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
 
+        // When filtering by tag, fetch all matching posts and apply in-memory filter.
+        // Tags are stored in node metadata as a JSON array and are not queryable at
+        // the DB level without a dedicated tags table. Full-text search via
+        // rustok-index (Phase 3, P2) will supersede this approach.
+        let tag_filter = query.tag.clone();
+        let (db_page, db_per_page) = if tag_filter.is_some() {
+            (1u64, 1000u64)
+        } else {
+            (query.page() as u64, query.per_page() as u64)
+        };
+
         let filter = ListNodesFilter {
             kind: Some(KIND_POST.to_string()),
             status: query.status.map(map_blog_status_to_content),
             locale: Some(locale.clone()),
             author_id: query.author_id,
             category_id: query.category_id,
-            page: query.page() as u64,
-            per_page: query.per_page() as u64,
+            page: db_page,
+            per_page: db_per_page,
             ..Default::default()
         };
 
-        let (node_list, total) = self
+        let (node_list, db_total) = self
             .nodes
             .list_nodes_with_locale_fallback(tenant_id, security.clone(), filter, fallback_locale)
             .await
             .map_err(BlogError::from)?;
 
-        let mut items = Vec::with_capacity(node_list.len());
+        let mut all_items = Vec::with_capacity(node_list.len());
         for item in node_list {
-            let tags = item
+            let tags: Vec<String> = item
                 .metadata
                 .get("tags")
                 .and_then(|t| t.as_array())
@@ -552,6 +563,12 @@ impl PostService {
                         .collect()
                 })
                 .unwrap_or_default();
+
+            if let Some(ref tag) = tag_filter {
+                if !tags.iter().any(|t| t == tag) {
+                    continue;
+                }
+            }
 
             let category_id = item.category_id.or_else(|| {
                 item.metadata
@@ -566,7 +583,7 @@ impl PostService {
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            items.push(PostSummary {
+            all_items.push(PostSummary {
                 id: item.id,
                 title: item.title.unwrap_or_default(),
                 slug: item.slug.unwrap_or_default(),
@@ -588,6 +605,20 @@ impl PostService {
                     .unwrap_or_else(|_| chrono::Utc::now()),
             });
         }
+
+        let (total, items) = if tag_filter.is_some() {
+            let filtered_total = all_items.len() as u64;
+            let offset = query.offset() as usize;
+            let per_page = query.per_page() as usize;
+            let page_items = all_items
+                .into_iter()
+                .skip(offset)
+                .take(per_page)
+                .collect();
+            (filtered_total, page_items)
+        } else {
+            (db_total, all_items)
+        };
 
         Ok(PostListResponse::new(items, total, &query))
     }

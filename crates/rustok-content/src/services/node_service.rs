@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, Set, TransactionTrait,
+    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, Set,
+    TransactionTrait,
 };
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
@@ -17,9 +18,16 @@ use crate::dto::{
     BodyInput, BodyResponse, CreateNodeInput, ListNodesFilter, NodeListItem, NodeResponse,
     NodeTranslationResponse, UpdateNodeInput,
 };
+use rustok_core::json_object_depth;
+use rustok_telemetry::metrics;
+
 use crate::entities::{body, node, node_translation};
 use crate::error::{ContentError, ContentResult};
 use crate::locale::{resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE};
+use crate::state_machine::validate_status_transition;
+
+/// Maximum allowed JSON nesting depth for the `metadata` field.
+const METADATA_MAX_DEPTH: usize = 5;
 
 pub struct NodeService {
     db: DatabaseConnection,
@@ -48,6 +56,8 @@ impl NodeService {
             "forum_category" => Ok(Resource::ForumCategories),
             "forum_topic" => Ok(Resource::ForumTopics),
             "forum_reply" => Ok(Resource::ForumReplies),
+            "category" => Ok(Resource::Categories),
+            "tag" => Ok(Resource::Tags),
             _ => Err(ContentError::Validation(format!(
                 "Unsupported kind for RBAC mapping: {kind}"
             ))),
@@ -126,11 +136,20 @@ impl NodeService {
         input: CreateNodeInput,
     ) -> ContentResult<NodeResponse> {
         info!("Creating node");
+        let started = std::time::Instant::now();
         let txn = self.db.begin().await?;
-        let node_id = self
+        let result = self
             .create_node_in_tx(&txn, tenant_id, security, input)
-            .await?;
+            .await;
+        let node_id = match result {
+            Ok(id) => id,
+            Err(e) => {
+                metrics::record_span_error("content.node.create", &e.kind());
+                return Err(e);
+            }
+        };
         txn.commit().await?;
+        metrics::record_span_duration("content.node.create", started.elapsed().as_secs_f64());
         info!(node_id = %node_id, "Node created successfully");
         let response = self.get_node(tenant_id, node_id).await?;
         Ok(response)
@@ -172,6 +191,13 @@ impl NodeService {
             .status
             .unwrap_or(crate::entities::node::ContentStatus::Draft);
         let metadata = input.metadata;
+
+        let depth = json_object_depth(&metadata);
+        if depth > METADATA_MAX_DEPTH {
+            return Err(ContentError::Validation(format!(
+                "metadata exceeds maximum nesting depth ({depth} > {METADATA_MAX_DEPTH})"
+            )));
+        }
 
         if input.translations.is_empty() {
             error!("Node creation failed: no translations provided");
@@ -270,11 +296,14 @@ impl NodeService {
         update: UpdateNodeInput,
     ) -> ContentResult<NodeResponse> {
         info!("Updating node");
+        let started = std::time::Instant::now();
         let txn = self.db.begin().await?;
         let updated = self
             .update_node_in_tx(&txn, tenant_id, node_id, security, update)
-            .await?;
+            .await
+            .inspect_err(|e| metrics::record_span_error("content.node.update", e.kind()))?;
         txn.commit().await?;
+        metrics::record_span_duration("content.node.update", started.elapsed().as_secs_f64());
         let translations = node_translation::Entity::find()
             .filter(node_translation::Column::NodeId.eq(node_id))
             .all(&self.db)
@@ -300,7 +329,7 @@ impl NodeService {
             .validate()
             .map_err(|e| ContentError::Validation(e.to_string()))?;
 
-        let node_model = self.find_node(tenant_id, node_id).await?;
+        let node_model = Self::find_node_on(txn, tenant_id, node_id).await?;
 
         if node_model.deleted_at.is_some() {
             return Err(ContentError::Validation(
@@ -356,6 +385,12 @@ impl NodeService {
             active.reply_count = Set(reply_count);
         }
         if let Some(metadata) = update.metadata {
+            let depth = json_object_depth(&metadata);
+            if depth > METADATA_MAX_DEPTH {
+                return Err(ContentError::Validation(format!(
+                    "metadata exceeds maximum nesting depth ({depth} > {METADATA_MAX_DEPTH})"
+                )));
+            }
             active.metadata = Set(metadata);
         }
 
@@ -452,11 +487,19 @@ impl NodeService {
         new_status: node::ContentStatus,
         events: Vec<DomainEvent>,
     ) -> ContentResult<NodeResponse> {
+        let op = match new_status {
+            node::ContentStatus::Published => "content.node.publish",
+            node::ContentStatus::Draft => "content.node.unpublish",
+            node::ContentStatus::Archived => "content.node.archive",
+        };
+        let started = std::time::Instant::now();
         let txn = self.db.begin().await?;
         let updated = self
             .transition_status_in_tx(&txn, tenant_id, node_id, security, new_status, events)
-            .await?;
+            .await
+            .inspect_err(|e| metrics::record_span_error(op, e.kind()))?;
         txn.commit().await?;
+        metrics::record_span_duration(op, started.elapsed().as_secs_f64());
 
         let translations = node_translation::Entity::find()
             .filter(node_translation::Column::NodeId.eq(node_id))
@@ -480,13 +523,16 @@ impl NodeService {
         new_status: node::ContentStatus,
         events: Vec<DomainEvent>,
     ) -> ContentResult<node::Model> {
-        let node_model = self.find_node(tenant_id, node_id).await?;
+        let node_model = Self::find_node_on(txn, tenant_id, node_id).await?;
 
         if node_model.deleted_at.is_some() {
             return Err(ContentError::Validation(
                 "Cannot change status of deleted node".to_string(),
             ));
         }
+
+        validate_status_transition(&node_model.status, &new_status)
+            .map_err(|e| ContentError::Validation(e.to_string()))?;
 
         let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Update);
@@ -602,7 +648,7 @@ impl NodeService {
         node_id: Uuid,
         security: SecurityContext,
     ) -> ContentResult<node::Model> {
-        let kind = self.find_node(tenant_id, node_id).await?.kind;
+        let kind = Self::find_node_on(txn, tenant_id, node_id).await?.kind;
         self.transition_status_in_tx(
             txn,
             tenant_id,
@@ -628,7 +674,7 @@ impl NodeService {
         node_id: Uuid,
         security: SecurityContext,
     ) -> ContentResult<node::Model> {
-        let kind = self.find_node(tenant_id, node_id).await?.kind;
+        let kind = Self::find_node_on(txn, tenant_id, node_id).await?.kind;
         self.transition_status_in_tx(
             txn,
             tenant_id,
@@ -654,7 +700,7 @@ impl NodeService {
         node_id: Uuid,
         security: SecurityContext,
     ) -> ContentResult<node::Model> {
-        let kind = self.find_node(tenant_id, node_id).await?.kind;
+        let kind = Self::find_node_on(txn, tenant_id, node_id).await?.kind;
         self.transition_status_in_tx(
             txn,
             tenant_id,
@@ -691,7 +737,7 @@ impl NodeService {
         node_id: Uuid,
         security: SecurityContext,
     ) -> ContentResult<()> {
-        let node_model = self.find_node(tenant_id, node_id).await?;
+        let node_model = Self::find_node_on(txn, tenant_id, node_id).await?;
 
         let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Delete);
@@ -815,10 +861,18 @@ impl NodeService {
     }
 
     pub async fn find_node(&self, tenant_id: Uuid, node_id: Uuid) -> ContentResult<node::Model> {
+        Self::find_node_on(&self.db, tenant_id, node_id).await
+    }
+
+    async fn find_node_on(
+        conn: &impl ConnectionTrait,
+        tenant_id: Uuid,
+        node_id: Uuid,
+    ) -> ContentResult<node::Model> {
         node::Entity::find_by_id(node_id)
             .filter(node::Column::TenantId.eq(tenant_id))
             .filter(node::Column::DeletedAt.is_null())
-            .one(&self.db)
+            .one(conn)
             .await?
             .ok_or(ContentError::NodeNotFound(node_id))
     }

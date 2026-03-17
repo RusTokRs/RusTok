@@ -4,7 +4,7 @@ use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use serde_json::Value as JsonValue;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::content::model::IndexContentModel;
@@ -367,8 +367,24 @@ impl Indexer for ContentIndexer {
     async fn index_one(&self, ctx: &IndexerContext, entity_id: Uuid) -> IndexResult<()> {
         let locales = self.get_tenant_locales(ctx).await?;
 
-        for locale in locales {
-            self.index_locale(ctx, entity_id, &locale).await?;
+        let mut failed = 0usize;
+        for locale in &locales {
+            if let Err(err) = self.index_locale(ctx, entity_id, locale).await {
+                failed += 1;
+                warn!(
+                    node_id = %entity_id,
+                    locale = locale,
+                    error = %err,
+                    "Failed to index content locale; continuing with remaining locales"
+                );
+            }
+        }
+
+        if failed > 0 && failed == locales.len() {
+            return Err(crate::error::IndexError::Index(format!(
+                "Failed to index node {entity_id} in all {} locale(s)",
+                locales.len()
+            )));
         }
 
         Ok(())

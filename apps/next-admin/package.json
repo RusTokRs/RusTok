@@ -97,7 +97,6 @@
     "vaul": "^1.1.2",
     "zod": "^4.1.8",
     "zustand": "^5.0.2",
-    "@rustok/blog-admin": "file:../../crates/rustok-blog/ui/admin"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.3.0",

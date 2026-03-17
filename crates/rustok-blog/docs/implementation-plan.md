@@ -86,16 +86,18 @@ compatibility with platform-level contracts.
   - [x] `CreatePostInput` includes SEO and featured_image fields
 - [x] Swagger updated with all new types
 
-### Phase 3 — Productionization (planned)
+### Phase 3 — Productionization (in progress)
 
 - [x] CommentService implementation
-- [ ] CategoryService implementation (service not started; requirements decomposed below)
-- [ ] TagService implementation (service not started; requirements decomposed below)
+- [x] CategoryService implementation (`services/category.rs` — full CRUD, tenant isolation, slug auto-generation)
+- [x] TagService implementation (`services/tag.rs` — full CRUD, slug normalization)
+- [x] Integration tests with test database (all 5 post lifecycle tests + 2 new category/tag tests now green)
+- [x] `category` and `tag` kinds registered in content module validation and RBAC
+- [x] In-memory tag filtering in `PostService::list_posts` (pre-index fallback)
 - [ ] RBAC enforcement: check permissions in service layer
 - [ ] Rate limiting for post creation
-- [ ] Full-text search integration via rustok-index
+- [ ] Full-text search integration via rustok-index (will supersede in-memory tag filtering)
 - [ ] Performance testing and optimization
-- [ ] Integration tests with test database (partially implemented: comment/post flows)
 - [ ] View counter via redis/atomic increment
 - [ ] category_name denormalization in list responses
 
@@ -110,17 +112,17 @@ compatibility with platform-level contracts.
 | `state_machine_proptest.rs` | ✅ Complete | Property-based tests |
 | `services/post.rs` | ✅ Complete | Full CRUD + i18n + events |
 | `services/comment.rs` | ✅ Complete | CRUD + locale fallback + threaded comments |
-| `services/category.rs` | ⬜ TODO (not created) | No file yet; implementation tracked in roadmap block below |
-| `services/tag.rs` | ⬜ TODO (not created) | No file yet; implementation tracked in roadmap block below |
+| `services/category.rs` | ✅ Complete | CRUD + tenant isolation + slug auto-generation |
+| `services/tag.rs` | ✅ Complete | CRUD + slug normalization |
 | `dto/post.rs` | ✅ Complete | All fields, i18n, SEO, pagination |
 | `entities/` | ✅ Complete | Re-exports from content module |
 | Tests (unit) | ✅ Complete | State machine, DTOs, errors, locale, service |
-| Tests (integration) | 🟨 In progress | Runnable sqlite integration tests exist; several DB-dependent lifecycle tests still ignored |
+| Tests (integration) | ✅ Complete | All lifecycle and category/tag tests green; 18 integration tests pass |
 | Documentation | ✅ Complete | README, CRATE_API, docs |
 
 ## Open TODO decomposition
 
-### `services/category.rs` — ⬜ TODO (Phase 3 / Priority: P1)
+### `services/category.rs` — ✅ DONE (Phase 3 / Priority: P1)
 
 **Scope of work**
 - Add `CategoryService` with CRUD + list API (`create_category`, `get_category`, `update_category`, `delete_category`, `list_categories`) aligned with blog tenancy model.
@@ -148,7 +150,7 @@ compatibility with platform-level contracts.
 - Error contract already present: [`src/error.rs`](../src/error.rs).
 - Category identifier already present in post DTO/service payloads: [`src/dto/post.rs`](../src/dto/post.rs), [`src/services/post.rs`](../src/services/post.rs).
 
-### `services/tag.rs` — ⬜ TODO (Phase 3 / Priority: P1)
+### `services/tag.rs` — ✅ DONE (Phase 3 / Priority: P1)
 
 **Scope of work**
 - Add `TagService` with CRUD/list + optional slug normalization.
@@ -176,7 +178,7 @@ compatibility with platform-level contracts.
 - Tag-related errors already defined: [`src/error.rs`](../src/error.rs).
 - Existing post tag flow + filtering API: [`src/services/post.rs`](../src/services/post.rs), [`src/dto/post.rs`](../src/dto/post.rs).
 
-### Tests (integration) — 🟨 Partial implementation (Phase 3 / Priority: P0)
+### Tests (integration) — ✅ DONE (Phase 3 / Priority: P0)
 
 **Actual status in code**
 - File `tests/integration.rs` already includes working sqlite-backed integration coverage for comment/thread workflows and event checks.
@@ -271,7 +273,7 @@ or observability expectations:
 
 ## Last Updated
 
-2026-03-11 — TODO decomposition updated for Category/Tag services and integration-test status synced with actual code
+2026-03-17 — Phase 3: CategoryService, TagService implemented; all integration tests green; tag/category kinds registered in content validation and RBAC
 
 
 ### Rich-text admin integration (update)

@@ -58,7 +58,9 @@ impl ContentMutation {
             position: input.position,
             depth: input.depth,
             reply_count: input.reply_count,
-            metadata: serde_json::Value::Object(Default::default()),
+            metadata: input
+                .metadata
+                .unwrap_or_else(|| serde_json::Value::Object(Default::default())),
             translations: input
                 .translations
                 .into_iter()
@@ -148,7 +150,7 @@ impl ContentMutation {
                     })
                     .collect()
             }),
-            expected_version: None,
+            expected_version: input.expected_version,
         };
 
         let node: rustok_content::dto::NodeResponse = service
@@ -192,5 +194,145 @@ impl ContentMutation {
         service.delete_node(tenant_id, id, security).await?;
 
         Ok(true)
+    }
+
+    async fn publish_node(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<GqlNode> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = RbacService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_UPDATE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:update required",
+            ));
+        }
+
+        let security = auth.security_context();
+        let service = NodeService::new(db.clone(), event_bus.clone());
+        let node = service.publish_node(tenant_id, id, security).await?;
+
+        Ok(node.into())
+    }
+
+    async fn unpublish_node(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<GqlNode> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = RbacService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_UPDATE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:update required",
+            ));
+        }
+
+        let security = auth.security_context();
+        let service = NodeService::new(db.clone(), event_bus.clone());
+        let node = service.unpublish_node(tenant_id, id, security).await?;
+
+        Ok(node.into())
+    }
+
+    async fn archive_node(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<GqlNode> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = RbacService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_UPDATE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:update required",
+            ));
+        }
+
+        let security = auth.security_context();
+        let service = NodeService::new(db.clone(), event_bus.clone());
+        let node = service.archive_node(tenant_id, id, security).await?;
+
+        Ok(node.into())
+    }
+
+    async fn restore_node(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<GqlNode> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = RbacService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_UPDATE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:update required",
+            ));
+        }
+
+        let security = auth.security_context();
+        let service = NodeService::new(db.clone(), event_bus.clone());
+        let node = service.restore_node(tenant_id, id, security).await?;
+
+        Ok(node.into())
     }
 }

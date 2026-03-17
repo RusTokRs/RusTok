@@ -8,6 +8,7 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod content;
 pub mod error;
+pub mod migrations;
 pub mod product;
 pub mod search;
 pub mod traits;
@@ -42,7 +43,7 @@ impl RusToKModule for IndexModule {
 
 impl MigrationSource for IndexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
     }
 }
 

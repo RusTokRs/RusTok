@@ -18,6 +18,12 @@ pub enum ContentError {
     #[error("Node not found: {0}")]
     NodeNotFound(Uuid),
 
+    #[error("Category not found: {0}")]
+    CategoryNotFound(Uuid),
+
+    #[error("Tag not found: {0}")]
+    TagNotFound(Uuid),
+
     #[error("Translation not found for node {node_id} and locale {locale}")]
     TranslationNotFound { node_id: Uuid, locale: String },
 
@@ -54,6 +60,18 @@ impl From<ContentError> for RichError {
                     .with_user_message("The requested content does not exist")
                     .with_field("node_id", id.to_string())
                     .with_error_code("NODE_NOT_FOUND")
+            }
+            ContentError::CategoryNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Category {} not found", id))
+                    .with_user_message("The requested category does not exist")
+                    .with_field("category_id", id.to_string())
+                    .with_error_code("CATEGORY_NOT_FOUND")
+            }
+            ContentError::TagNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Tag {} not found", id))
+                    .with_user_message("The requested tag does not exist")
+                    .with_field("tag_id", id.to_string())
+                    .with_error_code("TAG_NOT_FOUND")
             }
             ContentError::TranslationNotFound { node_id, locale } => RichError::new(
                 ErrorKind::NotFound,
@@ -110,6 +128,14 @@ impl ContentError {
         ContentError::NodeNotFound(node_id)
     }
 
+    pub fn category_not_found(id: Uuid) -> Self {
+        ContentError::CategoryNotFound(id)
+    }
+
+    pub fn tag_not_found(id: Uuid) -> Self {
+        ContentError::TagNotFound(id)
+    }
+
     /// Create a translation not found error with rich context
     pub fn translation_not_found(node_id: Uuid, locale: impl Into<String>) -> Self {
         ContentError::TranslationNotFound {
@@ -139,6 +165,24 @@ impl ContentError {
     /// Create a concurrent modification error
     pub fn concurrent_modification(expected: i32, actual: i32) -> Self {
         ContentError::ConcurrentModification { expected, actual }
+    }
+
+    /// Return a short, stable string identifying the error class.
+    /// Used as a label in telemetry metrics.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            ContentError::Database(_) => "database",
+            ContentError::Core(_) => "core",
+            ContentError::NodeNotFound(_) => "not_found",
+            ContentError::CategoryNotFound(_) => "not_found",
+            ContentError::TagNotFound(_) => "not_found",
+            ContentError::TranslationNotFound { .. } => "not_found",
+            ContentError::DuplicateSlug { .. } => "conflict",
+            ContentError::ConcurrentModification { .. } => "conflict",
+            ContentError::Forbidden(_) => "forbidden",
+            ContentError::Validation(_) => "validation",
+            ContentError::Rich(_) => "rich",
+        }
     }
 }
 

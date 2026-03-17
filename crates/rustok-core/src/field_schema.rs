@@ -9,6 +9,22 @@
 //! Flex is a library inside `rustok-core` — like `serde`, it provides types and
 //! a trait, while each consuming module owns its own tables and data.
 //!
+//! ## Guardrails
+//!
+//! | Guardrail | Value | Where enforced |
+//! |-----------|-------|----------------|
+//! | Max fields per entity type per tenant | 50 | `CustomFieldDefinitionService::create()` |
+//! | Max JSON nesting depth (`FieldType::Json`) | [`MAX_JSON_NESTING_DEPTH`] = 2 | `validate_field_value()` |
+//! | `field_key` format | `^[a-z][a-z0-9_]{0,127}$` | [`is_valid_field_key`] |
+//! | Locale key format | BCP 47 short form | [`is_valid_locale_key`] |
+//!
+//! ### JSON depth counting — Variant A (arrays transparent)
+//!
+//! For `FieldType::Json`, only JSON *objects* (`{…}`) contribute to depth.
+//! Arrays (`[…]`) are transparent. This means the common pattern
+//! `{"items": [{"id": 1}]}` has object-depth **2** (not 3), staying within the
+//! limit. Use [`json_object_depth`] to compute the depth programmatically.
+//!
 //! ## Usage
 //!
 //! ```rust
@@ -56,6 +72,75 @@ static LOCALE_KEY_REGEX: Lazy<Regex> =
 
 static COLOR_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^#[0-9A-Fa-f]{6}$").expect("valid regex"));
+
+// ---------------------------------------------------------------------------
+// JSON nesting depth guardrail
+// ---------------------------------------------------------------------------
+
+/// Maximum allowed object-nesting depth for `FieldType::Json` values.
+///
+/// **Counting method: Variant A — arrays are transparent.**
+///
+/// Only JSON *objects* (`{…}`) create a depth level. JSON arrays (`[…]`) are
+/// treated as transparent containers and do not add to the depth count.
+/// This means a list of objects is counted the same as a single object at the
+/// same position, which covers the common CMS pattern `{"items": [{"id": 1}]}`
+/// without requiring a higher limit.
+///
+/// | Value | Object depth |
+/// |-------|-------------|
+/// | `42` / `"hello"` / `true` | 0 |
+/// | `[1, 2, 3]` | 0 |
+/// | `{"key": "value"}` | 1 |
+/// | `{"items": [1, 2, 3]}` | 1 |
+/// | `{"address": {"city": "NY"}}` | 2 ← limit |
+/// | `{"items": [{"id": 1, "name": "x"}]}` | 2 ← limit (array transparent) |
+/// | `{"a": {"b": {"c": 1}}}` | 3 ← **rejected** |
+///
+/// Rationale: keeping nesting shallow prevents `FieldType::Json` from being
+/// used as a full document store, which would bypass the schema system and
+/// hurt JSONB query performance. For deeper structures, a proper entity/table
+/// is the right tool.
+pub const MAX_JSON_NESTING_DEPTH: usize = 2;
+
+/// Compute the maximum object-nesting depth of a JSON value.
+///
+/// Arrays do **not** contribute to depth (Variant A). See [`MAX_JSON_NESTING_DEPTH`]
+/// for the rationale and a full example table.
+///
+/// ```rust
+/// use rustok_core::field_schema::json_object_depth;
+/// use serde_json::json;
+///
+/// assert_eq!(json_object_depth(&json!(42)), 0);
+/// assert_eq!(json_object_depth(&json!([1, 2, 3])), 0);
+/// assert_eq!(json_object_depth(&json!({"key": "value"})), 1);
+/// assert_eq!(json_object_depth(&json!({"items": [1, 2, 3]})), 1);
+/// assert_eq!(json_object_depth(&json!({"address": {"city": "NY"}})), 2);
+/// assert_eq!(json_object_depth(&json!({"items": [{"id": 1}]})), 2);
+/// assert_eq!(json_object_depth(&json!({"a": {"b": {"c": 1}}})), 3);
+/// ```
+pub fn json_object_depth(value: &serde_json::Value) -> usize {
+    match value {
+        // Each object adds exactly one level; recurse into values.
+        serde_json::Value::Object(map) => {
+            1 + map
+                .values()
+                .map(json_object_depth)
+                .max()
+                .unwrap_or(0)
+        }
+        // Arrays are transparent: their depth equals the deepest element's depth.
+        serde_json::Value::Array(arr) => {
+            arr.iter()
+                .map(json_object_depth)
+                .max()
+                .unwrap_or(0)
+        }
+        // Primitives (string, number, bool, null) have depth 0.
+        _ => 0,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // FieldType
@@ -245,6 +330,11 @@ pub enum FieldErrorCode {
     InvalidOption,
     /// Value does not satisfy format constraints (URL, email, date, color, …).
     InvalidFormat,
+    /// `FieldType::Json` value exceeds the maximum allowed object-nesting depth.
+    ///
+    /// See [`MAX_JSON_NESTING_DEPTH`] and [`json_object_depth`] for the exact
+    /// counting rules (Variant A — arrays are transparent).
+    NestingTooDeep,
 }
 
 /// A single field-level validation error produced by [`CustomFieldsSchema::validate`].
@@ -748,7 +838,23 @@ fn validate_field_value(
 
         // ── Json ──────────────────────────────────────────────────────────────
         FieldType::Json => {
-            // Accepts any JSON value — no type constraints
+            // Accept any JSON type, but enforce the object-nesting depth limit.
+            // Arrays are transparent (Variant A) — see `json_object_depth` and
+            // `MAX_JSON_NESTING_DEPTH` for full rationale and examples.
+            let depth = json_object_depth(value);
+            if depth > MAX_JSON_NESTING_DEPTH {
+                errors.push(FieldValidationError {
+                    field_key: key.clone(),
+                    message: format!(
+                        "Field '{}' exceeds maximum JSON nesting depth \
+                         ({} object levels, limit is {}). \
+                         Arrays are transparent — only {{…}} objects count. \
+                         Flatten the structure or use a dedicated entity.",
+                        key, depth, MAX_JSON_NESTING_DEPTH
+                    ),
+                    error_code: FieldErrorCode::NestingTooDeep,
+                });
+            }
         }
     }
 
@@ -1500,17 +1606,138 @@ mod tests {
         assert_eq!(errors[0].error_code, FieldErrorCode::PatternMismatch);
     }
 
-    // ── Json ──────────────────────────────────────────────────────────────────
+    // ── Json — depth validation (Variant A: arrays transparent) ──────────────
+
+    // Helper: schema with a single Json field.
+    fn json_schema() -> CustomFieldsSchema {
+        CustomFieldsSchema::new(vec![typed_def("meta", FieldType::Json, false, None)])
+    }
 
     #[test]
-    fn validate_json_accepts_anything() {
-        let schema = CustomFieldsSchema::new(vec![typed_def("meta", FieldType::Json, false, None)]);
-        assert!(schema
-            .validate(&json!({"meta": {"nested": [1, 2, 3]}}))
+    fn json_depth_0_primitives_ok() {
+        let s = json_schema();
+        assert!(s.validate(&json!({"meta": true})).is_empty());
+        assert!(s.validate(&json!({"meta": 42})).is_empty());
+        assert!(s.validate(&json!({"meta": "anything"})).is_empty());
+        assert!(s.validate(&json!({"meta": null})).is_empty());
+    }
+
+    #[test]
+    fn json_depth_0_flat_array_ok() {
+        // Array of primitives has object-depth 0 (array is transparent).
+        let s = json_schema();
+        assert!(s.validate(&json!({"meta": [1, 2, 3]})).is_empty());
+        assert!(s.validate(&json!({"meta": ["a", "b"]})).is_empty());
+    }
+
+    #[test]
+    fn json_depth_1_flat_object_ok() {
+        let s = json_schema();
+        assert!(s.validate(&json!({"meta": {"key": "value"}})).is_empty());
+    }
+
+    #[test]
+    fn json_depth_1_object_with_array_of_primitives_ok() {
+        // {"items": [1, 2, 3]} → depth 1 (array transparent).
+        let s = json_schema();
+        assert!(s
+            .validate(&json!({"meta": {"items": [1, 2, 3]}}))
             .is_empty());
-        assert!(schema.validate(&json!({"meta": true})).is_empty());
-        assert!(schema.validate(&json!({"meta": 42})).is_empty());
-        assert!(schema.validate(&json!({"meta": "anything"})).is_empty());
+    }
+
+    #[test]
+    fn json_depth_2_nested_object_ok() {
+        // {"address": {"city": "NY"}} → depth 2, at the limit.
+        let s = json_schema();
+        assert!(s
+            .validate(&json!({"meta": {"address": {"city": "NY"}}}))
+            .is_empty());
+    }
+
+    #[test]
+    fn json_depth_2_array_of_objects_ok() {
+        // {"items": [{"id": 1, "name": "x"}]} → depth 2 (array transparent).
+        // This is the key Variant-A case: a list of objects stays within limit.
+        let s = json_schema();
+        assert!(s
+            .validate(&json!({"meta": {"items": [{"id": 1, "name": "x"}]}}))
+            .is_empty());
+    }
+
+    #[test]
+    fn json_depth_3_rejected() {
+        // {"a": {"b": {"c": 1}}} → depth 3, exceeds limit.
+        let s = json_schema();
+        let errors = s.validate(&json!({"meta": {"a": {"b": {"c": 1}}}}));
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_code, FieldErrorCode::NestingTooDeep);
+        assert_eq!(errors[0].field_key, "meta");
+        assert!(errors[0].message.contains("limit is 2"));
+    }
+
+    #[test]
+    fn json_depth_3_via_array_rejected() {
+        // {"a": {"b": [{"c": 1}]}} → depth 3 (a=1, b=2, c-object=3, array transparent).
+        let s = json_schema();
+        let errors = s.validate(&json!({"meta": {"a": {"b": [{"c": 1}]}}}));
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_code, FieldErrorCode::NestingTooDeep);
+    }
+
+    // ── json_object_depth unit tests ──────────────────────────────────────────
+
+    #[test]
+    fn depth_primitives() {
+        assert_eq!(json_object_depth(&json!(42)), 0);
+        assert_eq!(json_object_depth(&json!("hello")), 0);
+        assert_eq!(json_object_depth(&json!(true)), 0);
+        assert_eq!(json_object_depth(&json!(null)), 0);
+    }
+
+    #[test]
+    fn depth_flat_array() {
+        assert_eq!(json_object_depth(&json!([1, 2, 3])), 0);
+    }
+
+    #[test]
+    fn depth_flat_object() {
+        assert_eq!(json_object_depth(&json!({"key": "value"})), 1);
+    }
+
+    #[test]
+    fn depth_object_with_flat_array() {
+        assert_eq!(json_object_depth(&json!({"items": [1, 2, 3]})), 1);
+    }
+
+    #[test]
+    fn depth_nested_object() {
+        assert_eq!(
+            json_object_depth(&json!({"address": {"city": "NY"}})),
+            2
+        );
+    }
+
+    #[test]
+    fn depth_array_of_objects() {
+        // Core Variant-A case: array is transparent.
+        assert_eq!(
+            json_object_depth(&json!({"items": [{"id": 1}]})),
+            2
+        );
+    }
+
+    #[test]
+    fn depth_triple_nesting() {
+        assert_eq!(
+            json_object_depth(&json!({"a": {"b": {"c": 1}}})),
+            3
+        );
+    }
+
+    #[test]
+    fn depth_empty_object_and_array() {
+        assert_eq!(json_object_depth(&json!({})), 1);
+        assert_eq!(json_object_depth(&json!([])), 0);
     }
 
     // ── apply_defaults ────────────────────────────────────────────────────────

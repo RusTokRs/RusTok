@@ -217,6 +217,53 @@ fn sample_events() -> Vec<DomainEvent> {
             tenant_id: id(81),
             locale: "fr".to_string(),
         },
+        DomainEvent::FieldDefinitionCreated {
+            tenant_id: id(82),
+            entity_type: "user".to_string(),
+            field_key: "nickname".to_string(),
+            field_type: "text".to_string(),
+        },
+        DomainEvent::FieldDefinitionUpdated {
+            tenant_id: id(83),
+            entity_type: "product".to_string(),
+            field_key: "sku_extra".to_string(),
+        },
+        DomainEvent::FieldDefinitionDeleted {
+            tenant_id: id(84),
+            entity_type: "order".to_string(),
+            field_key: "legacy_note".to_string(),
+        },
+        DomainEvent::FlexSchemaCreated {
+            tenant_id: id(85),
+            schema_id: id(86),
+            slug: "faq".to_string(),
+        },
+        DomainEvent::FlexSchemaUpdated {
+            tenant_id: id(87),
+            schema_id: id(88),
+            slug: "faq".to_string(),
+        },
+        DomainEvent::FlexSchemaDeleted {
+            tenant_id: id(89),
+            schema_id: id(90),
+        },
+        DomainEvent::FlexEntryCreated {
+            tenant_id: id(91),
+            schema_id: id(92),
+            entry_id: id(93),
+            entity_type: Some("product".to_string()),
+            entity_id: Some(id(94)),
+        },
+        DomainEvent::FlexEntryUpdated {
+            tenant_id: id(95),
+            schema_id: id(96),
+            entry_id: id(97),
+        },
+        DomainEvent::FlexEntryDeleted {
+            tenant_id: id(98),
+            schema_id: id(99),
+            entry_id: id(100),
+        },
     ]
 }
 

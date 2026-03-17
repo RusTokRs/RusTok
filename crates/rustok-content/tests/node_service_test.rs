@@ -9,7 +9,11 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_content::services::NodeService;
 use rustok_content::ContentError;
 use rustok_test_utils::{
-    db::setup_test_db, helpers::admin_context, helpers::manager_context, helpers::unique_slug,
+    db::setup_test_db,
+    helpers::admin_context,
+    helpers::customer_context,
+    helpers::manager_context,
+    helpers::unique_slug,
     mock_transactional_event_bus,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
@@ -1174,4 +1178,153 @@ async fn test_create_node_rt_json_alias_payload_gets_wrapped_to_v1() {
     let body_json: serde_json::Value = serde_json::from_str(&body_raw).expect("json");
     assert_eq!(body_json["version"], "rt_json_v1");
     assert_eq!(body_json["locale"], "en");
+}
+
+// =============================================================================
+// Phase 3 — RBAC runtime enforcement tests
+// Verify that PermissionScope::None produces ContentError::Forbidden for all
+// mutating operations. customer_context() has read-only node permissions.
+// =============================================================================
+
+#[tokio::test]
+async fn test_create_node_forbidden_for_customer() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let customer = customer_context();
+
+    let result = service
+        .create_node(tenant_id, customer, create_test_input())
+        .await;
+
+    assert!(
+        matches!(result.unwrap_err(), ContentError::Forbidden(_)),
+        "Customer must not create nodes"
+    );
+}
+
+#[tokio::test]
+async fn test_update_node_forbidden_for_customer() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let admin = admin_context();
+    let customer = customer_context();
+
+    let node = service
+        .create_node(tenant_id, admin, create_test_input())
+        .await
+        .expect("admin can create");
+
+    let update = UpdateNodeInput {
+        translations: Some(vec![NodeTranslationInput {
+            locale: "en".to_string(),
+            title: Some("Hacked".to_string()),
+            slug: None,
+            excerpt: None,
+        }]),
+        ..UpdateNodeInput::default()
+    };
+
+    let result = service.update_node(tenant_id, node.id, customer, update).await;
+
+    assert!(
+        matches!(result.unwrap_err(), ContentError::Forbidden(_)),
+        "Customer must not update nodes"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_node_forbidden_for_customer() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let admin = admin_context();
+    let customer = customer_context();
+
+    let node = service
+        .create_node(tenant_id, admin, create_test_input())
+        .await
+        .expect("admin can create");
+
+    let result = service.delete_node(tenant_id, node.id, customer).await;
+
+    assert!(
+        matches!(result.unwrap_err(), ContentError::Forbidden(_)),
+        "Customer must not delete nodes"
+    );
+}
+
+#[tokio::test]
+async fn test_publish_node_forbidden_for_customer() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let admin = admin_context();
+    let customer = customer_context();
+
+    let node = service
+        .create_node(tenant_id, admin, create_test_input())
+        .await
+        .expect("admin can create");
+
+    let result = service.publish_node(tenant_id, node.id, customer).await;
+
+    assert!(
+        matches!(result.unwrap_err(), ContentError::Forbidden(_)),
+        "Customer must not publish nodes"
+    );
+}
+
+#[tokio::test]
+async fn test_tenant_isolation_node_not_found_in_other_tenant() {
+    let (_db, service) = setup().await;
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    let admin = admin_context();
+
+    let node = service
+        .create_node(tenant_a, admin.clone(), create_test_input())
+        .await
+        .expect("admin can create in tenant A");
+
+    // Attempt to read node from tenant A using tenant B context
+    let result = service.get_node(tenant_b, node.id).await;
+
+    assert!(
+        matches!(result.unwrap_err(), ContentError::NodeNotFound(_)),
+        "Node from tenant A must not be visible to tenant B"
+    );
+}
+
+#[tokio::test]
+async fn test_metadata_depth_guard_rejects_deep_json() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let admin = admin_context();
+
+    let mut input = create_test_input();
+    // Build a 6-level deep object (exceeds METADATA_MAX_DEPTH = 5)
+    input.metadata = serde_json::json!({
+        "a": { "b": { "c": { "d": { "e": { "f": "too deep" } } } } }
+    });
+
+    let result = service.create_node(tenant_id, admin, input).await;
+
+    assert!(
+        matches!(result.unwrap_err(), ContentError::Validation(_)),
+        "Metadata exceeding max depth must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn test_metadata_depth_guard_allows_shallow_json() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let admin = admin_context();
+
+    let mut input = create_test_input();
+    input.metadata = serde_json::json!({
+        "seo": { "title": "My Page", "og_image": "https://example.com/img.png" },
+        "flags": { "featured": true }
+    });
+
+    let result = service.create_node(tenant_id, admin, input).await;
+    assert!(result.is_ok(), "Shallow metadata must be accepted");
 }

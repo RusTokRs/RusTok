@@ -5,7 +5,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::models::user_field_definitions::Model;
-use crate::services::field_definition_registry::FieldDefinitionView;
+use flex::FieldDefinitionView;
 
 /// GraphQL representation of a field definition.
 #[derive(Debug, Clone, SimpleObject)]

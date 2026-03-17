@@ -7,10 +7,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_blog::dto::CreateCommentInput;
-use rustok_blog::dto::{CreatePostInput, ListCommentsFilter, PostListQuery, UpdateCommentInput};
+use rustok_blog::dto::{
+    CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
+    ListTagsFilter, PostListQuery, UpdateCommentInput,
+};
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::BlogError;
-use rustok_blog::{CommentService, PostService};
+use rustok_blog::{CategoryService, CommentService, PostService, TagService};
 use rustok_content::ContentError;
 use rustok_core::{
     DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole,
@@ -31,100 +34,445 @@ struct TestContext {
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires database/migrations + indexer wiring"]
 async fn test_post_lifecycle() -> TestResult<()> {
-    let _ctx = test_context().await?;
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
 
-    let input = CreatePostInput {
-        locale: "en".to_string(),
-        title: "Test Post".to_string(),
-        body: "Hello, Blog!".to_string(),
-        body_format: "markdown".to_string(),
-        content_json: None,
-        excerpt: Some("Short excerpt".to_string()),
-        slug: None,
-        publish: false,
-        tags: vec!["rust".to_string()],
-        category_id: None,
-        featured_image_url: None,
-        seo_title: None,
-        seo_description: None,
-        metadata: None,
-    };
+    let transport = MemoryTransport::new();
+    let mut receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
 
-    let _post_id = Uuid::new_v4();
-    let _ = input;
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Test Post".to_string(),
+                body: "Hello, Blog!".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: Some("Short excerpt".to_string()),
+                slug: None,
+                publish: false,
+                tags: vec!["rust".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let post = post_service.get_post(tenant_id, post_id, "en").await?;
+    assert_eq!(post.title, "Test Post");
+    assert_eq!(post.status, BlogPostStatus::Draft);
+    assert_eq!(post.tags, vec!["rust"]);
+
+    post_service
+        .publish_post(tenant_id, post_id, admin.clone())
+        .await?;
+    let published = post_service.get_post(tenant_id, post_id, "en").await?;
+    assert_eq!(published.status, BlogPostStatus::Published);
+    assert!(published.published_at.is_some());
+
+    post_service
+        .archive_post(tenant_id, post_id, admin.clone(), Some("outdated".to_string()))
+        .await?;
+    let archived = post_service.get_post(tenant_id, post_id, "en").await?;
+    assert_eq!(archived.status, BlogPostStatus::Archived);
+
+    let event_types = drain_event_types(&mut receiver);
+    assert!(event_types.iter().any(|e| e == "blog.post.created"));
+    assert!(event_types.iter().any(|e| e == "blog.post.published"));
+    assert!(event_types.iter().any(|e| e == "blog.post.archived"));
 
     Ok(())
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires database"]
 async fn test_create_and_publish_post() -> TestResult<()> {
-    let _ctx = test_context().await?;
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
 
-    let input = CreatePostInput {
-        locale: "en".to_string(),
-        title: "Draft Post".to_string(),
-        body: "Content".to_string(),
-        body_format: "markdown".to_string(),
-        content_json: None,
-        excerpt: None,
-        slug: Some("draft-post".to_string()),
-        publish: false,
-        tags: vec![],
-        category_id: None,
-        featured_image_url: None,
-        seo_title: None,
-        seo_description: None,
-        metadata: None,
-    };
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
 
-    let _ = input;
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Draft Post".to_string(),
+                body: "Content".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: None,
+                slug: Some("draft-post".to_string()),
+                publish: false,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let draft = post_service.get_post(tenant_id, post_id, "en").await?;
+    assert_eq!(draft.status, BlogPostStatus::Draft);
+    assert!(draft.published_at.is_none());
+
+    post_service
+        .publish_post(tenant_id, post_id, admin.clone())
+        .await?;
+
+    let published = post_service.get_post(tenant_id, post_id, "en").await?;
+    assert_eq!(published.status, BlogPostStatus::Published);
+    assert!(published.published_at.is_some());
+    assert_eq!(published.slug, "draft-post");
 
     Ok(())
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires database"]
 async fn test_list_posts_with_pagination() -> TestResult<()> {
-    let _ctx = test_context().await?;
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
 
-    let query = PostListQuery {
-        page: Some(1),
-        per_page: Some(10),
-        ..Default::default()
-    };
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
 
-    let _ = query;
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    for i in 0..5 {
+        post_service
+            .create_post(
+                tenant_id,
+                admin.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: format!("Post {i}"),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    excerpt: None,
+                    slug: None,
+                    publish: false,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    metadata: None,
+                },
+            )
+            .await?;
+    }
+
+    let page1 = post_service
+        .list_posts(
+            tenant_id,
+            admin.clone(),
+            PostListQuery {
+                page: Some(1),
+                per_page: Some(2),
+                ..Default::default()
+            },
+        )
+        .await?;
+    assert_eq!(page1.total, 5);
+    assert_eq!(page1.items.len(), 2);
+    assert_eq!(page1.total_pages, 3);
+
+    let page3 = post_service
+        .list_posts(
+            tenant_id,
+            admin.clone(),
+            PostListQuery {
+                page: Some(3),
+                per_page: Some(2),
+                ..Default::default()
+            },
+        )
+        .await?;
+    assert_eq!(page3.items.len(), 1);
 
     Ok(())
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires database"]
 async fn test_filter_posts_by_tag() -> TestResult<()> {
-    let _ctx = test_context().await?;
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
 
-    let query = PostListQuery {
-        tag: Some("rust".to_string()),
-        ..Default::default()
-    };
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
 
-    let _ = query;
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Rust Post".to_string(),
+                body: "Body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: None,
+                slug: None,
+                publish: false,
+                tags: vec!["rust".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Go Post".to_string(),
+                body: "Body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: None,
+                slug: None,
+                publish: false,
+                tags: vec!["go".to_string()],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let rust_posts = post_service
+        .get_posts_by_tag(tenant_id, admin.clone(), "rust".to_string(), 1, 10)
+        .await?;
+
+    assert_eq!(rust_posts.total, 1);
+    assert_eq!(rust_posts.items[0].tags, vec!["rust"]);
 
     Ok(())
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires database"]
 async fn test_cannot_delete_published_post() -> TestResult<()> {
-    let _ctx = test_context().await?;
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Published Post".to_string(),
+                body: "Content".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: None,
+                slug: None,
+                publish: true,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let err = post_service
+        .delete_post(tenant_id, post_id, admin.clone())
+        .await
+        .expect_err("deleting a published post must fail");
+
+    assert!(
+        matches!(err, BlogError::CannotDeletePublished),
+        "expected CannotDeletePublished, got: {err}"
+    );
 
     Ok(())
 }
 
-async fn test_context() -> TestResult<TestContext> {
+#[tokio::test]
+async fn test_category_crud() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let category_service = CategoryService::new(db.clone());
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let category_id = category_service
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "Technology".to_string(),
+                slug: None,
+                description: Some("Tech articles".to_string()),
+                parent_id: None,
+                position: None,
+                settings: serde_json::json!({}),
+            },
+        )
+        .await?;
+
+    let category = category_service.get(tenant_id, category_id, "en").await?;
+    assert_eq!(category.name, "Technology");
+    assert_eq!(category.slug, "technology");
+    assert_eq!(category.description.as_deref(), Some("Tech articles"));
+
+    let (list, total) = category_service
+        .list(
+            tenant_id,
+            admin.clone(),
+            ListCategoriesFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await?;
+    assert_eq!(total, 1);
+    assert_eq!(list[0].name, "Technology");
+
+    category_service
+        .delete(tenant_id, category_id, admin.clone())
+        .await?;
+
+    let not_found = category_service
+        .get(tenant_id, category_id, "en")
+        .await
+        .expect_err("deleted category should not be found");
+    assert!(matches!(
+        not_found,
+        ContentError::CategoryNotFound(_)
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let tag_service = TagService::new(db.clone());
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let tag_id = tag_service
+        .create_tag(
+            tenant_id,
+            admin.clone(),
+            CreateTagInput {
+                locale: "en".to_string(),
+                name: "Rust Language".to_string(),
+                slug: None,
+            },
+        )
+        .await?;
+
+    let tag = tag_service.get_tag(tenant_id, tag_id, "en").await?;
+    assert_eq!(tag.name, "Rust Language");
+    assert_eq!(tag.slug, "rust-language");
+
+    let tag_id2 = tag_service
+        .create_tag(
+            tenant_id,
+            admin.clone(),
+            CreateTagInput {
+                locale: "en".to_string(),
+                name: "Web".to_string(),
+                slug: Some("web-custom".to_string()),
+            },
+        )
+        .await?;
+
+    let (list, total) = tag_service
+        .list_tags(
+            tenant_id,
+            admin.clone(),
+            ListTagsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await?;
+    assert_eq!(total, 2);
+
+    tag_service
+        .delete_tag(tenant_id, tag_id2, admin.clone())
+        .await?;
+
+    let (list_after, total_after) = tag_service
+        .list_tags(
+            tenant_id,
+            admin.clone(),
+            ListTagsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await?;
+    assert_eq!(total_after, 1);
+    assert_eq!(list_after[0].slug, "rust-language");
+
+    let _ = list;
+
+    Ok(())
+}
+
+async fn _unused_test_context() -> TestResult<TestContext> {
     let (_event_sender, event_receiver) = broadcast::channel(128);
 
     Ok(TestContext {
@@ -211,6 +559,84 @@ async fn ensure_blog_schema(db: &DatabaseConnection) {
     ))
     .await
     .expect("failed to create bodies table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS categories (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            parent_id TEXT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            depth INTEGER NOT NULL DEFAULT 0,
+            node_count INTEGER NOT NULL DEFAULT 0,
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create categories table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS category_translations (
+            id TEXT PRIMARY KEY,
+            category_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            description TEXT NULL,
+            FOREIGN KEY(category_id) REFERENCES categories(id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create category_translations table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS tags (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            use_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create tags table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS tag_translations (
+            id TEXT PRIMARY KEY,
+            tag_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            FOREIGN KEY(tag_id) REFERENCES tags(id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create tag_translations table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS taggables (
+            tag_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(tag_id, target_type, target_id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create taggables table");
 }
 
 fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<String> {

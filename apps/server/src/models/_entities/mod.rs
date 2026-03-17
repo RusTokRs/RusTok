@@ -1,7 +1,10 @@
+pub mod flex_entries;
+pub mod flex_schemas;
 pub mod oauth_apps;
 pub mod oauth_authorization_codes;
 pub mod oauth_consents;
 pub mod oauth_tokens;
+pub mod order_field_definitions;
 pub mod permissions;
 pub mod platform_settings;
 pub mod product_field_definitions;
@@ -15,10 +18,13 @@ pub mod user_field_definitions;
 pub mod user_roles;
 pub mod users;
 
+pub use flex_entries::Entity as FlexEntries;
+pub use flex_schemas::Entity as FlexSchemas;
 pub use oauth_apps::Entity as OAuthApps;
 pub use oauth_authorization_codes::Entity as OAuthAuthorizationCodes;
 pub use oauth_consents::Entity as OAuthConsents;
 pub use oauth_tokens::Entity as OAuthTokens;
+pub use order_field_definitions::Entity as OrderFieldDefinitions;
 pub use permissions::Entity as Permissions;
 pub use platform_settings::Entity as PlatformSettings;
 pub use role_permissions::Entity as RolePermissions;

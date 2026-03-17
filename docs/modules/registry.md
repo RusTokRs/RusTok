@@ -24,7 +24,7 @@ graph TD
         RBAC[crates/rustok-rbac]
         TENANT[crates/rustok-tenant]
         ALLOY[crates/alloy-scripting]
-        WORKFLOW[crates/rustok-workflow - planned]
+        WORKFLOW[crates/rustok-workflow]
         MEDIA[crates/rustok-media]
     end
 
@@ -45,6 +45,7 @@ graph TD
         MCP[crates/rustok-mcp]
         TELEMETRY[crates/rustok-telemetry]
         TEST_UTILS[crates/rustok-test-utils]
+        FLEX[crates/flex]
     end
 
     subgraph Frontend Libraries - internal custom
@@ -68,6 +69,7 @@ graph TD
     SERVER --> FORUM
     SERVER --> PAGES
     SERVER --> ALLOY
+    SERVER --> WORKFLOW
 
     ADMIN --> L_AUTH
     ADMIN --> L_UI
@@ -93,11 +95,14 @@ graph TD
     OUTBOX --> IGGY
     IGGY --> IGGY_CONN
     ALLOY --> CORE
+    WORKFLOW --> CORE
+    WORKFLOW --> ALLOY
     CACHE --> CORE
     STORAGE --> CORE
     MEDIA --> CORE
     MEDIA --> STORAGE
     MEDIA --> OUTBOX
+    FLEX --> CORE
 
     BLOG --> BLOG_UI_ADMIN
     BLOG --> BLOG_UI_FRONT
@@ -142,7 +147,7 @@ graph TD
 | `crates/rustok-core` | **Core (critical)** | Модуль-библиотека (агрегатор). Re-exports leaf contracts, provides `CacheBackend`, `ModuleRegistry`, `RusToKModule`, RBAC primitives, i18n, `SecurityContext`, circuit breaker. Содержит **Flex** — набор типов, валидаторов и migration-хелперов для кастомных полей (`field_schema.rs`, `HasCustomFields`). ([CRATE_API](../../crates/rustok-core/CRATE_API.md)) |
 
 > **Flex** — часть модуля `rustok-core`. Сейчас — набор типов и хелперов (модуль-библиотека). Данные живут внутри модуля-потребителя.
-> Режим **Attached** (кастомные поля для сущностей) — в core. Режим **Standalone** (`rustok-flex`) — запланирован.
+> Режим **Attached** (кастомные поля для сущностей) — в core. Режим **Standalone** (`flex`) — запланирован.
 > План реализации: [`docs/architecture/flex.md`](../architecture/flex.md).
 
 #### Инфраструктурные модули-библиотеки
@@ -180,13 +185,13 @@ graph TD
 | `crates/rustok-forum` | **Forum** | `Optional` | `rustok-content` ([CRATE_API](../../crates/rustok-forum/CRATE_API.md)) |
 | `crates/rustok-pages` | **Pages** | `Optional` | `rustok-core` ([CRATE_API](../../crates/rustok-pages/CRATE_API.md)) |
 | `crates/alloy-scripting` | **Alloy Scripting** | `Optional` | `rustok-core` (registered via `AlloyModule` in `apps/server/src/modules/alloy.rs`) |
-| `crates/rustok-workflow` | **Workflow** *(planned)* | `Optional` | `rustok-core`, `alloy-scripting`. Визуальная автоматизация на платформенной очереди (outbox → iggy). Горизонтальный модуль. ([Plan](../architecture/workflow.md)) |
+| `crates/rustok-workflow` | **Workflow** | `Optional` | `rustok-core`, `alloy-scripting`. Визуальная автоматизация на платформенной очереди. Горизонтальный модуль. ([docs](../../crates/rustok-workflow/docs/README.md) · [CRATE_API](../../crates/rustok-workflow/CRATE_API.md) · [arch](../architecture/workflow.md)) |
 
 > **4-уровневая архитектура платформы:**
 > - Уровень 0 (модули-библиотеки, leaf): `rustok-events`, `rustok-telemetry`, `rustok-storage`
 > - Уровень 1 (модуль-агрегатор): `rustok-core` (зависит от leaf, ре-экспортирует их)
 > - Уровень 2 (полноценные Core-модули, всегда активны): `rustok-tenant`, `rustok-rbac`, `rustok-index`, `rustok-media`
-> - Уровень 3 (полноценные Optional-модули, toggle per-tenant): `content`, `commerce`, `blog`, `forum`, `pages`, `alloy-scripting`, `workflow` *(planned)*
+> - Уровень 3 (полноценные Optional-модули, toggle per-tenant): `content`, `commerce`, `blog`, `forum`, `pages`, `alloy-scripting`, `workflow`
 >
 > Обязательный базис платформы: `rustok-core`, `rustok-outbox`, `rustok-telemetry`, `rustok-tenant`, `rustok-rbac`, `rustok-index` + инфраструктурные модули (`rustok-cache`, `rustok-events`).
 >
@@ -241,7 +246,7 @@ They are not published to crates.io. Treat them as first-party code — changes 
 | `crates/rustok-cache` | **Cache** | `apps/server` | Redis/Moka cache backends, `CacheModule`, `CacheService`. Выделен из `rustok-core`. |
 | `crates/rustok-storage` | **Storage** | `rustok-media`, `apps/server` | Leaf crate: `StorageBackend` async trait + `LocalStorage` impl, `StorageService` wrapper. ([docs](../../crates/rustok-storage/docs/README.md)) |
 | `crates/rustok-media` | **Media** | `apps/server`, `rustok-content`, `rustok-commerce` | Core module: `MediaService`, SeaORM entities `media` + `media_translations`. Feature: `mod-media`. ([docs](../../crates/rustok-media/docs/README.md)) |
-| `crates/rustok-flex` | **Flex Standalone** *(planned, future)* | Optional modules | Отдельный crate для режима Standalone Flex (произвольные схемы, формы, справочники). Режим Attached уже в `rustok-core`. |
+| `crates/flex` | **Flex Contracts** *(Phase 4.5, in progress)* | `apps/server` (Attached mode) | Optional crate для выноса Flex attached-mode контрактов (`FieldDefinitionService`, `FieldDefRegistry`, DTOs). Standalone режим планируется следующим этапом. |
 
 ## Maintenance Rule
 

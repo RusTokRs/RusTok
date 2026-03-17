@@ -6,17 +6,153 @@
 //! - Data access events (sensitive data access)
 //! - System events (configuration changes, errors)
 //! - Security violations (rate limiting, validation failures)
+//!
+//! SIEM integration supports forwarding events to external systems via HTTP
+//! webhook (compatible with Splunk HEC, Logstash, Datadog Logs API, and any
+//! generic HTTP endpoint that accepts JSON payloads).
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{SecurityCategory, SecurityFinding, Severity};
 use crate::security::SecurityConfig;
+
+// ─── SIEM Configuration ──────────────────────────────────────────────────────
+
+/// Configuration for forwarding audit events to an external SIEM system.
+///
+/// Supported transport: HTTP webhook compatible with Splunk HEC, Logstash,
+/// Datadog Logs, and any system accepting JSON POST requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SiemConfig {
+    /// SIEM forwarding disabled (default)
+    Disabled,
+
+    /// Forward events to an HTTP webhook endpoint
+    Webhook(SiemWebhookConfig),
+}
+
+impl Default for SiemConfig {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
+
+/// HTTP webhook configuration for SIEM forwarding
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiemWebhookConfig {
+    /// Destination URL — e.g. `https://splunk:8088/services/collector/event`
+    /// or `https://http-intake.logs.datadoghq.com/api/v2/logs`
+    pub url: String,
+
+    /// Optional `Authorization` header value (e.g. `"Splunk <token>"`, `"Bearer <api_key>"`)
+    pub auth_header: Option<String>,
+
+    /// Additional static headers to include in every request (e.g. `DD-API-KEY`)
+    #[serde(default)]
+    pub extra_headers: HashMap<String, String>,
+
+    /// How many events to accumulate before flushing in a single HTTP call
+    /// (minimum 1, default 10)
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
+
+    /// HTTP request timeout in seconds (default 5)
+    #[serde(default = "default_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+fn default_batch_size() -> usize {
+    10
+}
+fn default_timeout_secs() -> u64 {
+    5
+}
+
+// ─── SIEM Exporter ───────────────────────────────────────────────────────────
+
+/// Forwards batches of `AuditEvent`s to an HTTP webhook.
+struct SiemWebhookExporter {
+    client: reqwest::Client,
+    config: SiemWebhookConfig,
+}
+
+impl SiemWebhookExporter {
+    fn new(config: SiemWebhookConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(config.timeout_secs))
+            .build()
+            .unwrap_or_default();
+
+        Self { client, config }
+    }
+
+    /// Send a batch of events to the webhook.
+    ///
+    /// Uses a JSON array payload — compatible with Logstash and Datadog.
+    /// For Splunk HEC the caller should use a single-event envelope; this
+    /// implementation wraps events in an array which works with most SIEM
+    /// HTTP inputs.
+    async fn send_batch(&self, events: &[AuditEvent]) {
+        if events.is_empty() {
+            return;
+        }
+
+        let payload = match serde_json::to_value(events) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "SIEM: failed to serialize audit events");
+                return;
+            }
+        };
+
+        let mut req = self
+            .client
+            .post(&self.config.url)
+            .json(&payload);
+
+        if let Some(auth) = &self.config.auth_header {
+            req = req.header(reqwest::header::AUTHORIZATION, auth);
+        }
+
+        for (k, v) in &self.config.extra_headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::debug!(
+                    url = %self.config.url,
+                    count = events.len(),
+                    "SIEM: batch sent successfully"
+                );
+            }
+            Ok(resp) => {
+                warn!(
+                    url = %self.config.url,
+                    status = %resp.status(),
+                    count = events.len(),
+                    "SIEM: webhook returned non-success status"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    url = %self.config.url,
+                    error = %e,
+                    count = events.len(),
+                    "SIEM: failed to send audit events to webhook"
+                );
+            }
+        }
+    }
+}
 
 /// Security audit event
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,13 +417,23 @@ impl AuditLogger {
 pub struct SecurityAudit {
     logger: AuditLogger,
     receiver: mpsc::Receiver<AuditEvent>,
+    siem: SiemConfig,
 }
 
 impl SecurityAudit {
-    /// Create new security audit
+    /// Create new security audit (SIEM disabled)
     pub fn new(enabled: bool) -> Self {
+        Self::with_siem(enabled, SiemConfig::Disabled)
+    }
+
+    /// Create new security audit with optional SIEM forwarding
+    pub fn with_siem(enabled: bool, siem: SiemConfig) -> Self {
         let (logger, receiver) = AuditLogger::new(enabled);
-        Self { logger, receiver }
+        Self {
+            logger,
+            receiver,
+            siem,
+        }
     }
 
     /// Get logger instance
@@ -295,12 +441,34 @@ impl SecurityAudit {
         &self.logger
     }
 
-    /// Process audit events (run in background task)
+    /// Process audit events (run in background task).
+    ///
+    /// Events are:
+    /// 1. Written to local structured tracing (`security_audit` target)
+    /// 2. Forwarded in batches to the configured SIEM endpoint (if any)
     pub async fn run(mut self) {
-        while let Some(event) = self.receiver.recv().await {
-            // Write to persistent storage or SIEM
-            let json = serde_json::to_string(&event).unwrap_or_default();
+        let exporter = match &self.siem {
+            SiemConfig::Webhook(cfg) => {
+                tracing::info!(
+                    url = %cfg.url,
+                    batch_size = cfg.batch_size,
+                    "SIEM: webhook exporter enabled"
+                );
+                Some(SiemWebhookExporter::new(cfg.clone()))
+            }
+            SiemConfig::Disabled => None,
+        };
 
+        let batch_size = match &self.siem {
+            SiemConfig::Webhook(cfg) => cfg.batch_size.max(1),
+            SiemConfig::Disabled => 1,
+        };
+
+        let mut batch: Vec<AuditEvent> = Vec::with_capacity(batch_size);
+
+        while let Some(event) = self.receiver.recv().await {
+            // 1. Write to local structured log
+            let json = serde_json::to_string(&event).unwrap_or_default();
             match event.severity {
                 Severity::Critical | Severity::High => {
                     warn!(target: "security_audit", "{}", json);
@@ -310,7 +478,21 @@ impl SecurityAudit {
                 }
             }
 
-            // TODO: Send to external SIEM if configured
+            // 2. Accumulate for SIEM batch
+            if let Some(ref exp) = exporter {
+                batch.push(event);
+                if batch.len() >= batch_size {
+                    exp.send_batch(&batch).await;
+                    batch.clear();
+                }
+            }
+        }
+
+        // Flush remaining events when channel closes
+        if let Some(ref exp) = exporter {
+            if !batch.is_empty() {
+                exp.send_batch(&batch).await;
+            }
         }
     }
 

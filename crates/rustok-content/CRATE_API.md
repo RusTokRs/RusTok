@@ -9,6 +9,8 @@
 - `pub struct Node`, `pub struct NodeTranslation`, `pub struct Body`
 - `pub struct ContentNode<S>` + состояния `Draft`, `Published`, `Archived`
 - `pub type ContentResult<T>`, `pub enum ContentError`
+- `pub fn validate_status_transition(current: &ContentStatus, target: &ContentStatus) -> Result<(), InvalidStatusTransition>`
+- `pub struct InvalidStatusTransition { from: ContentStatus, to: ContentStatus }`
 
 ## События
 - Публикует доменные события контента через `TransactionalEventBus` (создание/обновление/публикация/архивация node).
@@ -20,14 +22,28 @@
 - (dev) `rustok-test-utils`
 
 ## Частые ошибки ИИ
-- Нарушает state-machine (`Draft -> Published -> Archived`) прямым изменением статуса.
+- Нарушает state-machine прямым изменением статуса — теперь `transition_status_in_tx` выбросит `Validation` на недопустимый переход.
 - Путает `entities::Model` SeaORM и DTO ответа API.
 - Пропускает `tenant_id` в фильтрах запросов.
+- Передаёт глубоко вложенный JSON в поле `metadata` — максимум 5 уровней вложенности.
 
 ## Публичный контракт ошибок
 - `ContentError::DuplicateSlug { slug, locale }` — конфликт уникальности slug в пределах `tenant_id + locale`.
 - `ContentError::ConcurrentModification { expected, actual }` — optimistic locking при `UpdateNodeInput.expected_version`.
-- Оба варианта конвертируются в `RichError` с `ErrorKind::Conflict` и кодами `DUPLICATE_SLUG` / `CONCURRENT_MODIFICATION`.
+- `ContentError::Validation(String)` — в том числе: недопустимый переход статусов (напр. `Draft → Archived`), превышение глубины вложенности `metadata` (> 5 уровней).
+- Первые два варианта конвертируются в `RichError` с `ErrorKind::Conflict` и кодами `DUPLICATE_SLUG` / `CONCURRENT_MODIFICATION`.
+
+## State machine — допустимые переходы статусов
+Единственным источником правды является `validate_status_transition` из `state_machine.rs`:
+
+| Из          | В           | Метод              |
+|-------------|-------------|-------------------|
+| `Draft`     | `Published` | `publish()`       |
+| `Published` | `Draft`     | `unpublish()`     |
+| `Published` | `Archived`  | `archive(reason)` |
+| `Archived`  | `Draft`     | `restore_to_draft()` |
+
+Все остальные комбинации (`Draft → Archived`, `Archived → Published`, self-переходы) возвращают `ContentError::Validation`.
 
 ## Минимальный набор контрактов
 

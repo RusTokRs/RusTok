@@ -1,7 +1,7 @@
 //! GraphQL module for Flex — custom field definitions (Phase 2).
 
 use async_graphql::{FieldError, Result};
-use rustok_core::field_schema::{is_valid_field_key, FlexError};
+use rustok_core::field_schema::is_valid_field_key;
 
 use crate::graphql::errors::GraphQLError;
 
@@ -16,21 +16,17 @@ pub(super) fn bad_user_input(message: impl AsRef<str>) -> FieldError {
     <FieldError as GraphQLError>::bad_user_input(message.as_ref())
 }
 
-pub(super) fn map_flex_error(error: FlexError) -> FieldError {
-    match error {
-        FlexError::Database(_) => {
-            <FieldError as GraphQLError>::internal_error("Internal server error")
+pub(super) fn map_flex_error(error: rustok_core::field_schema::FlexError) -> FieldError {
+    let mapped = flex::map_flex_error(error);
+
+    match mapped.kind {
+        flex::FlexMappedErrorKind::Internal => {
+            <FieldError as GraphQLError>::internal_error(&mapped.message)
         }
-        FlexError::NotFound(id) => {
-            <FieldError as GraphQLError>::not_found(&format!("Field definition not found: {id}"))
+        flex::FlexMappedErrorKind::NotFound => {
+            <FieldError as GraphQLError>::not_found(&mapped.message)
         }
-        FlexError::UnknownEntityType(message)
-        | FlexError::InvalidFieldKey(message)
-        | FlexError::DuplicateFieldKey(message) => bad_user_input(message),
-        FlexError::TooManyFields { entity_type, max } => bad_user_input(format!(
-            "Too many field definitions for {entity_type} (max {max})"
-        )),
-        FlexError::ValidationFailed(_) => bad_user_input("Custom field validation failed"),
+        flex::FlexMappedErrorKind::BadUserInput => bad_user_input(mapped.message),
     }
 }
 

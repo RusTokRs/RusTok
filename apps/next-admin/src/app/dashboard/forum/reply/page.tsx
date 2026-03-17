@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { ForumReplyEditor } from '@rustok/blog-admin';
+import { ForumReplyEditor } from '@/features/blog';
 
 export const metadata = {
   title: 'Dashboard: Forum Reply Composer'

@@ -2,6 +2,7 @@ pub mod config;
 pub mod credentials;
 pub mod error;
 pub mod jwt;
+pub mod migrations;
 
 // Re-exports for convenience
 pub use config::{AuthConfig, AuthSettingsOverrides};
@@ -26,7 +27,7 @@ pub struct AuthModule;
 
 impl MigrationSource for AuthModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
     }
 }
 

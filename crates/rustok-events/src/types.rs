@@ -365,6 +365,37 @@ pub enum DomainEvent {
         entity_type: String,
         field_key: String,
     },
+    FlexSchemaCreated {
+        tenant_id: Uuid,
+        schema_id: Uuid,
+        slug: String,
+    },
+    FlexSchemaUpdated {
+        tenant_id: Uuid,
+        schema_id: Uuid,
+        slug: String,
+    },
+    FlexSchemaDeleted {
+        tenant_id: Uuid,
+        schema_id: Uuid,
+    },
+    FlexEntryCreated {
+        tenant_id: Uuid,
+        schema_id: Uuid,
+        entry_id: Uuid,
+        entity_type: Option<String>,
+        entity_id: Option<Uuid>,
+    },
+    FlexEntryUpdated {
+        tenant_id: Uuid,
+        schema_id: Uuid,
+        entry_id: Uuid,
+    },
+    FlexEntryDeleted {
+        tenant_id: Uuid,
+        schema_id: Uuid,
+        entry_id: Uuid,
+    },
 }
 
 impl DomainEvent {
@@ -441,6 +472,12 @@ impl DomainEvent {
             Self::FieldDefinitionCreated { .. } => "field_definition.created",
             Self::FieldDefinitionUpdated { .. } => "field_definition.updated",
             Self::FieldDefinitionDeleted { .. } => "field_definition.deleted",
+            Self::FlexSchemaCreated { .. } => "flex.schema.created",
+            Self::FlexSchemaUpdated { .. } => "flex.schema.updated",
+            Self::FlexSchemaDeleted { .. } => "flex.schema.deleted",
+            Self::FlexEntryCreated { .. } => "flex.entry.created",
+            Self::FlexEntryUpdated { .. } => "flex.entry.updated",
+            Self::FlexEntryDeleted { .. } => "flex.entry.deleted",
         }
     }
 
@@ -533,6 +570,12 @@ impl DomainEvent {
             Self::FieldDefinitionCreated { .. } => 1,
             Self::FieldDefinitionUpdated { .. } => 1,
             Self::FieldDefinitionDeleted { .. } => 1,
+            Self::FlexSchemaCreated { .. } => 1,
+            Self::FlexSchemaUpdated { .. } => 1,
+            Self::FlexSchemaDeleted { .. } => 1,
+            Self::FlexEntryCreated { .. } => 1,
+            Self::FlexEntryUpdated { .. } => 1,
+            Self::FlexEntryDeleted { .. } => 1,
         }
     }
 
@@ -1094,6 +1137,73 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_max_length("field_key", field_key, 128)?;
                 Ok(())
             }
+            Self::FlexSchemaCreated {
+                tenant_id,
+                schema_id,
+                slug,
+            }
+            | Self::FlexSchemaUpdated {
+                tenant_id,
+                schema_id,
+                slug,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("schema_id", schema_id)?;
+                validators::validate_not_empty("slug", slug)?;
+                validators::validate_max_length("slug", slug, 64)?;
+                Ok(())
+            }
+            Self::FlexSchemaDeleted {
+                tenant_id,
+                schema_id,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("schema_id", schema_id)?;
+                Ok(())
+            }
+            Self::FlexEntryCreated {
+                tenant_id,
+                schema_id,
+                entry_id,
+                entity_type,
+                entity_id,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("schema_id", schema_id)?;
+                validators::validate_not_nil_uuid("entry_id", entry_id)?;
+
+                match (entity_type, entity_id) {
+                    (Some(entity_type), Some(entity_id)) => {
+                        validators::validate_not_empty("entity_type", entity_type)?;
+                        validators::validate_max_length("entity_type", entity_type, 64)?;
+                        validators::validate_not_nil_uuid("entity_id", entity_id)?;
+                    }
+                    (None, None) => {}
+                    _ => {
+                        return Err(EventValidationError::InvalidValue(
+                            "entity_binding",
+                            "entity_type and entity_id must be provided together".to_string(),
+                        ));
+                    }
+                }
+
+                Ok(())
+            }
+            Self::FlexEntryUpdated {
+                tenant_id,
+                schema_id,
+                entry_id,
+            }
+            | Self::FlexEntryDeleted {
+                tenant_id,
+                schema_id,
+                entry_id,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("schema_id", schema_id)?;
+                validators::validate_not_nil_uuid("entry_id", entry_id)?;
+                Ok(())
+            }
         }
     }
 }
@@ -1296,6 +1406,32 @@ mod tests {
         let event = DomainEvent::BuildRequested {
             build_id: Uuid::new_v4(),
             requested_by: "".to_string(),
+        };
+
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_flex_entry_created_valid_standalone_binding() {
+        let event = DomainEvent::FlexEntryCreated {
+            tenant_id: Uuid::new_v4(),
+            schema_id: Uuid::new_v4(),
+            entry_id: Uuid::new_v4(),
+            entity_type: None,
+            entity_id: None,
+        };
+
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_flex_entry_created_invalid_partial_binding() {
+        let event = DomainEvent::FlexEntryCreated {
+            tenant_id: Uuid::new_v4(),
+            schema_id: Uuid::new_v4(),
+            entry_id: Uuid::new_v4(),
+            entity_type: Some("product".to_string()),
+            entity_id: None,
         };
 
         assert!(event.validate().is_err());

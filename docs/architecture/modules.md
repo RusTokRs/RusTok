@@ -74,11 +74,99 @@ modules.toml → cargo build → ModuleRegistry::register() → on_enable() → 
 Изменение состава модулей = изменение `modules.toml` + пересборка бинарника.
 Runtime hot-plug отсутствует намеренно (compile-time safety).
 
+---
+
+## Два уровня операций
+
+| Уровень | Действие | Время | Механизм |
+|---|---|---|---|
+| **Platform-level** | Установить / удалить модуль | 2–5 мин (сборка) | `ManifestManager` → `BuildService` → `BuildExecutor` |
+| **Tenant-level** | Включить / отключить для тенанта | Мгновенно | `ModuleLifecycleService` → `tenant_modules` |
+
+**Инвариант**: tenant-level toggle работает только над модулями, уже скомпилированными
+в бинарник (присутствующими в `ModuleRegistry`).
+
+### Platform-level: install/uninstall
+
+```
+GraphQL installModule(slug, version)
+  └─ ManifestManager::install_builtin_module()  → apps/server/src/modules/manifest.rs
+       ├─ Добавить в modules.toml
+       ├─ validate(manifest)
+       ├─ save(manifest)
+       └─ BuildService::request_build()          → apps/server/src/services/build_service.rs
+            ├─ Хешировать modules_delta (SHA-256, дедупликация)
+            ├─ INSERT INTO builds (status=queued)
+            └─ Publish BuildRequested event
+
+BuildExecutor::execute_next_queued_build()       → apps/server/src/services/build_executor.rs
+  ├─ cargo build -p rustok-server --features=[modules]
+  ├─ UPDATE builds SET stage=..., progress=...
+  └─ INSERT INTO releases (status=active)
+       ← Миграции новых модулей прогоняются при старте бинарника
+         через registry.migrations() → MigrationSource каждого модуля
+```
+
+Каждый модуль несёт миграции внутри своего crate (`src/migrations/`), реализуя
+`MigrationSource`. Добавлять миграции в `apps/server/migration/` вручную не нужно.
+
+### Tenant-level: toggle
+
+```
+GraphQL toggleModule(moduleSlug, enabled)
+  └─ ModuleLifecycleService::toggle_module()     → apps/server/src/services/module_lifecycle.rs
+       ├─ slug ∈ ModuleRegistry?                 (UnknownModule)
+       ├─ не Core?                               (CoreModuleCannotBeDisabled)
+       ├─ enabled=true:  все depends_on включены  (MissingDependencies)
+       ├─ enabled=false: нет зависящих от него    (HasDependents)
+       ├─ BEGIN TRANSACTION
+       │    UPDATE tenant_modules SET enabled=?
+       │    module.on_enable() / on_disable()
+       └─ COMMIT  ─── или ─── ROLLBACK при HookFailed → откат состояния
+```
+
+---
+
+## Marketplace каталог
+
+`MarketplaceCatalogService` агрегирует модули из нескольких провайдеров:
+
+```
+MarketplaceCatalogService                        → apps/server/src/services/marketplace_catalog.rs
+  ├─ LocalManifestMarketplaceProvider            — встроенные path-модули из modules.toml
+  └─ RegistryMarketplaceProvider                 — внешний реестр (env: RUSTOK_MARKETPLACE_REGISTRY_URL)
+       └─ moka cache (TTL: RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS, default 60s)
+```
+
+Дедупликация: если модуль есть у нескольких провайдеров — побеждает первый.
+Fallback: при недоступности реестра — возвращает только local-manifest.
+
+GraphQL:
+- `marketplace(search, category, source, installed, trust_level, compatible_only)` — каталог
+- `marketplaceModule(slug)` — детальная карточка с историей версий
+
+---
+
+## Runtime-гарантии для UI
+
+**`EnabledModulesProvider`** (`apps/admin/src/shared/context/enabled_modules.rs`)
+Загружает `enabledModules` при старте, предоставляет контекст всему приложению.
+
+**`<ModuleGuard slug="blog">`**
+Рендерит children только если модуль включён для текущего тенанта. Иначе —
+placeholder "Module unavailable".
+
+**`components_for_slot(slot_id, enabled_modules)`** (`apps/storefront/src/modules/registry.rs`)
+Фильтрует slot-компоненты витрины по включённым модулям тенанта.
+
+---
+
 ## Связанные документы
 
 - [Module overview](../modules/overview.md) — что зарегистрировано в сервере
 - [Module & application registry](../modules/registry.md) — полный реестр компонентов
 - [Module manifest](../modules/manifest.md) — формат `modules.toml` и rebuild lifecycle
+- [Module system plan](../modules/module-system-plan.md) — что ещё не реализовано
 - [Architecture overview](./overview.md)
 - [Events and outbox](./events.md)
 - [WebSocket-каналы](./channels.md)

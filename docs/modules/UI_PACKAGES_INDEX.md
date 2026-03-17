@@ -13,7 +13,7 @@
 
 ### Для архитекторов
 - **[Реестр модулей](registry.md)** — Lifecycle, toggle, guards и ответственные зоны
-- **[План пересборки модулей](module-rebuild-plan.md)** — Технический roadmap install/uninstall
+- **[Система модулей: маркетплейс и жизненный цикл](module-system-plan.md)** — Единый план: install/uninstall, marketplace, tenant toggle
 - **[Архитектура модулей](../architecture/modules.md)** — Общая архитектурная модель модульной платформы
 
 ## 🎯 Основные концепты
@@ -105,7 +105,7 @@ leptos-commerce-storefront/    # Storefront UI
 - [Обзор модулей](overview.md) — Карта всех модулей в проекте
 - [Реестр модулей](registry.md) — Lifecycle, toggle, guards
 - [Реестр crate-модулей](crates-registry.md) — Карта crate-структуры и статусов
-- [План пересборки](module-rebuild-plan.md) — Roadmap install/uninstall
+- [Система модулей](module-system-plan.md) — Единый план: marketplace, install/uninstall, toggle
 
 ### UI и Frontend
 - [Admin UI документация](../../docs/UI/README.md) — Админка документация

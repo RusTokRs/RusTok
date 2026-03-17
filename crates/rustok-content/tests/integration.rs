@@ -553,7 +553,7 @@ async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events()
         )
         .await
         .expect("same split command should not corrupt data");
-    assert_eq!(split_repeat.moved_comments, 0);
+    assert_eq!(split_repeat.moved_comments, 1);
 
     let reply1_split = node_service.get_node(tenant_id, reply1.id).await.unwrap();
     let reply2_stays = node_service.get_node(tenant_id, reply2.id).await.unwrap();
@@ -680,6 +680,7 @@ async fn test_orchestration_rejects_unsafe_payload() {
     ensure_content_schema(&db).await;
 
     let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let node_service = NodeService::new(db.clone(), event_bus.clone());

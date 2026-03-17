@@ -1,4 +1,4 @@
 import "./core";
-import "@rustok/blog-frontend";
+import "@/features/blog";
 
 export * from "./registry";

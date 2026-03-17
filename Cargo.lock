@@ -3698,6 +3698,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "flex"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "rustok-events",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "float-cmp"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6870,7 +6883,13 @@ name = "migration"
 version = "0.1.0"
 dependencies = [
  "alloy-scripting",
+ "rustok-auth",
+ "rustok-commerce",
+ "rustok-content",
  "rustok-core",
+ "rustok-forum",
+ "rustok-index",
+ "rustok-workflow",
  "sea-orm-migration",
  "uuid",
 ]
@@ -9606,6 +9625,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-telemetry",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -9639,6 +9659,7 @@ dependencies = [
  "rand 0.10.0",
  "redis 1.0.5",
  "regex",
+ "reqwest 0.13.2",
  "rhai",
  "rustok-events",
  "rustok-outbox",
@@ -9865,6 +9886,7 @@ dependencies = [
  "bytes",
  "chrono",
  "eyre",
+ "flex",
  "futures-util",
  "hex",
  "jsonwebtoken 10.3.0",
@@ -9900,6 +9922,7 @@ dependencies = [
  "rustok-telemetry",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-workflow",
  "sea-orm",
  "sea-orm-migration",
  "semver",
@@ -10015,6 +10038,27 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-workflow"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "cron 0.15.0",
+ "reqwest 0.13.2",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 

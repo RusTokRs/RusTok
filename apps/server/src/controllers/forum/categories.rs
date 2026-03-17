@@ -20,7 +20,6 @@ use crate::extractors::rbac::{
     RequireForumCategoriesCreate, RequireForumCategoriesDelete, RequireForumCategoriesList,
     RequireForumCategoriesUpdate,
 };
-use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::{common::RequestContext, context::TenantContext};
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -56,7 +55,7 @@ pub async fn list_categories(
         .as_ref()
         .map(|pagination| pagination.per_page);
     let pagination = params.pagination.unwrap_or_default();
-    let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CategoryService::new(ctx.db.clone());
     let list_started_at = Instant::now();
     let (categories, _) = service
         .list_paginated_with_locale_fallback(
@@ -114,7 +113,7 @@ pub async fn get_category(
     let locale = params
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CategoryService::new(ctx.db.clone());
     let category = service
         .get_with_locale_fallback(tenant.id, id, &locale, Some(tenant.default_locale.as_str()))
         .await
@@ -140,7 +139,7 @@ pub async fn create_category(
     RequireForumCategoriesCreate(user): RequireForumCategoriesCreate,
     Json(input): Json<CreateCategoryInput>,
 ) -> Result<(StatusCode, Json<CategoryResponse>)> {
-    let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CategoryService::new(ctx.db.clone());
     let category = service
         .create(tenant.id, user.security_context(), input)
         .await
@@ -170,7 +169,7 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> Result<Json<CategoryResponse>> {
-    let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CategoryService::new(ctx.db.clone());
     let category = service
         .update(tenant.id, id, user.security_context(), input)
         .await
@@ -198,7 +197,7 @@ pub async fn delete_category(
     RequireForumCategoriesDelete(user): RequireForumCategoriesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CategoryService::new(ctx.db.clone());
     service
         .delete(tenant.id, id, user.security_context())
         .await

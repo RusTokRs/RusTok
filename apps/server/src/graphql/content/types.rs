@@ -102,6 +102,7 @@ pub struct CreateNodeInput {
     pub position: Option<i32>,
     pub depth: Option<i32>,
     pub reply_count: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
     pub translations: Vec<NodeTranslationInput>,
     pub bodies: Vec<BodyInput>,
 }
@@ -115,7 +116,7 @@ pub struct UpdateNodeInput {
     pub position: Option<i32>,
     pub depth: Option<i32>,
     pub reply_count: Option<i32>,
-    pub published_at: Option<String>,
+    pub expected_version: Option<i32>,
     pub translations: Option<Vec<NodeTranslationInput>>,
     pub bodies: Option<Vec<BodyInput>>,
 }

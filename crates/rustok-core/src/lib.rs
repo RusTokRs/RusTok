@@ -62,8 +62,9 @@ pub use events::{
 pub use field_schema::{
     create_field_definitions_table, drop_field_definitions_table, is_valid_field_key,
     is_valid_locale_key, json_field_contains, json_field_eq, json_field_exists, json_field_extract,
-    CustomFieldsSchema, FieldDefinition, FieldErrorCode, FieldType, FieldValidationError,
-    FlexError, HasCustomFields, SelectOption, ValidationRule,
+    json_object_depth, CustomFieldsSchema, FieldDefinition, FieldErrorCode, FieldType,
+    FieldValidationError, FlexError, HasCustomFields, SelectOption, ValidationRule,
+    MAX_JSON_NESTING_DEPTH,
 };
 pub use health::{
     checks::{DatabaseHealthCheck, FnHealthCheck},

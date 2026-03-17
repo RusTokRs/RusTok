@@ -558,17 +558,32 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         description: "Locale disabled for tenant.",
         fields: LOCALE_FIELDS,
     },
-
     // ── Flex — field definition events ──────────────────────────────────
     EventSchema {
         event_type: "field_definition.created",
         version: 1,
         description: "A custom field definition was created for an entity type.",
         fields: &[
-            FieldSchema { name: "tenant_id", data_type: "string", optional: false },
-            FieldSchema { name: "entity_type", data_type: "string", optional: false },
-            FieldSchema { name: "field_key", data_type: "string", optional: false },
-            FieldSchema { name: "field_type", data_type: "string", optional: false },
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entity_type",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "field_key",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "field_type",
+                data_type: "string",
+                optional: false,
+            },
         ],
     },
     EventSchema {
@@ -576,9 +591,21 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A custom field definition was updated.",
         fields: &[
-            FieldSchema { name: "tenant_id", data_type: "string", optional: false },
-            FieldSchema { name: "entity_type", data_type: "string", optional: false },
-            FieldSchema { name: "field_key", data_type: "string", optional: false },
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entity_type",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "field_key",
+                data_type: "string",
+                optional: false,
+            },
         ],
     },
     EventSchema {
@@ -586,9 +613,158 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A custom field definition was soft-deleted.",
         fields: &[
-            FieldSchema { name: "tenant_id", data_type: "string", optional: false },
-            FieldSchema { name: "entity_type", data_type: "string", optional: false },
-            FieldSchema { name: "field_key", data_type: "string", optional: false },
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entity_type",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "field_key",
+                data_type: "string",
+                optional: false,
+            },
+        ],
+    },
+    EventSchema {
+        event_type: "flex.schema.created",
+        version: 1,
+        description: "A standalone flex schema was created.",
+        fields: &[
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "schema_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "slug",
+                data_type: "string",
+                optional: false,
+            },
+        ],
+    },
+    EventSchema {
+        event_type: "flex.schema.updated",
+        version: 1,
+        description: "A standalone flex schema was updated.",
+        fields: &[
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "schema_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "slug",
+                data_type: "string",
+                optional: false,
+            },
+        ],
+    },
+    EventSchema {
+        event_type: "flex.schema.deleted",
+        version: 1,
+        description: "A standalone flex schema was deleted.",
+        fields: &[
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "schema_id",
+                data_type: "string",
+                optional: false,
+            },
+        ],
+    },
+    EventSchema {
+        event_type: "flex.entry.created",
+        version: 1,
+        description: "A standalone flex entry was created.",
+        fields: &[
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "schema_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entry_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entity_type",
+                data_type: "string",
+                optional: true,
+            },
+            FieldSchema {
+                name: "entity_id",
+                data_type: "string",
+                optional: true,
+            },
+        ],
+    },
+    EventSchema {
+        event_type: "flex.entry.updated",
+        version: 1,
+        description: "A standalone flex entry was updated.",
+        fields: &[
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "schema_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entry_id",
+                data_type: "string",
+                optional: false,
+            },
+        ],
+    },
+    EventSchema {
+        event_type: "flex.entry.deleted",
+        version: 1,
+        description: "A standalone flex entry was deleted.",
+        fields: &[
+            FieldSchema {
+                name: "tenant_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "schema_id",
+                data_type: "string",
+                optional: false,
+            },
+            FieldSchema {
+                name: "entry_id",
+                data_type: "string",
+                optional: false,
+            },
         ],
     },
 ];

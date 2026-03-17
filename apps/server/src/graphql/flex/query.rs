@@ -7,7 +7,7 @@ use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::PaginationInput;
 use crate::graphql::errors::GraphQLError;
 use crate::services::field_definition_cache::FieldDefinitionCache;
-use crate::services::field_definition_registry::FieldDefRegistry;
+use flex::{FieldDefRegistry, FieldDefinitionView};
 
 use super::{map_flex_error, resolve_entity_type, types::FieldDefinitionObject};
 
@@ -37,19 +37,17 @@ impl FlexQuery {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let cache = ctx.data::<FieldDefinitionCache>()?;
-        if let Some(rows) = cache.get(tenant.id, &entity_type).await {
-            return paginate_rows(rows, &pagination);
-        }
-
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
-        let rows = service
-            .list_all(&app_ctx.db, tenant.id)
-            .await
-            .map_err(map_flex_error)?;
-
-        cache.set(tenant.id, &entity_type, rows.clone()).await;
+        let rows = flex::list_field_definitions_with_cache(
+            registry,
+            &app_ctx.db,
+            cache,
+            tenant.id,
+            &entity_type,
+        )
+        .await
+        .map_err(map_flex_error)?;
 
         paginate_rows(rows, &pagination)
     }
@@ -68,10 +66,8 @@ impl FlexQuery {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
-        service
-            .find_by_id(&app_ctx.db, tenant.id, id)
+        flex::find_field_definition(registry, &app_ctx.db, tenant.id, &entity_type, id)
             .await
             .map(|row| row.map(FieldDefinitionObject::from))
             .map_err(map_flex_error)
@@ -79,7 +75,7 @@ impl FlexQuery {
 }
 
 fn paginate_rows(
-    rows: Vec<crate::services::field_definition_registry::FieldDefinitionView>,
+    rows: Vec<FieldDefinitionView>,
     pagination: &PaginationInput,
 ) -> Result<Vec<FieldDefinitionObject>> {
     let (offset, limit) = pagination.normalize()?;
@@ -101,7 +97,7 @@ fn paginate_rows(
 mod tests {
     use super::paginate_rows;
     use crate::graphql::common::PaginationInput;
-    use crate::services::field_definition_registry::FieldDefinitionView;
+    use flex::FieldDefinitionView;
     use serde_json::json;
     use uuid::Uuid;
 

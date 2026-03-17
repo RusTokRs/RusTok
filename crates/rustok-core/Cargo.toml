@@ -37,6 +37,7 @@ serde_yaml = "0.9"
 toml = "1.0"
 hex = "0.4"
 base64 = "0.22"
+reqwest = { workspace = true }
 
 [features]
 redis-cache = ["redis"]

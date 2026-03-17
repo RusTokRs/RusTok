@@ -17,7 +17,7 @@ pub mod headers;
 pub mod rate_limit;
 pub mod validation;
 
-pub use audit::{AuditEvent, AuditEventType, AuditLogger, SecurityAudit};
+pub use audit::{AuditEvent, AuditEventType, AuditLogger, SecurityAudit, SiemConfig};
 pub use headers::{FrameOptions, SecurityHeaders, SecurityHeadersConfig};
 pub use rate_limit::{RateLimitConfig, RateLimitResult, RateLimiter};
 pub use validation::{InputValidator, SsrfProtection, ValidationResult};
@@ -37,6 +37,9 @@ pub struct SecurityConfig {
     pub allowed_hosts: Vec<String>,
     /// Audit log configuration
     pub audit_logging: bool,
+    /// External SIEM endpoint for audit event forwarding
+    #[serde(default)]
+    pub siem: SiemConfig,
 }
 
 impl Default for SecurityConfig {
@@ -47,6 +50,7 @@ impl Default for SecurityConfig {
             enforce_https: true,
             allowed_hosts: vec![],
             audit_logging: true,
+            siem: SiemConfig::default(),
         }
     }
 }

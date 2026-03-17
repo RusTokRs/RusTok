@@ -9,7 +9,7 @@
 /// - **Self-documenting**: State diagram visible in type system
 ///
 /// State Diagram:
-/// ```
+/// ```text
 ///  ┌───────┐
 ///  │ Draft │──────────────────┐
 ///  └───┬───┘                  │
@@ -26,7 +26,7 @@
 /// ```
 ///
 /// Usage:
-/// ```rust
+/// ```rust,ignore
 /// // Create new node in draft state
 /// let node = ContentNode::new_draft(id, tenant_id, author_id);
 ///
@@ -155,6 +155,30 @@ impl ContentNode<Draft> {
 // ============================================================================
 
 impl ContentNode<Published> {
+    /// Unpublish content back to draft (Published → Draft)
+    pub fn unpublish(self) -> ContentNode<Draft> {
+        let now = Utc::now();
+
+        tracing::info!(
+            node_id = %self.id,
+            tenant_id = %self.tenant_id,
+            "Content node: Published → Draft"
+        );
+
+        ContentNode {
+            id: self.id,
+            tenant_id: self.tenant_id,
+            author_id: self.author_id,
+            parent_id: self.parent_id,
+            kind: self.kind,
+            category_id: self.category_id,
+            state: Draft {
+                created_at: now,
+                updated_at: now,
+            },
+        }
+    }
+
     /// Archive published content (Published → Archived)
     pub fn archive(self, reason: String) -> ContentNode<Archived> {
         let archived_at = Utc::now();
@@ -275,6 +299,58 @@ impl ToContentStatus for ContentNode<Archived> {
 }
 
 // ============================================================================
+// Transition Validation (runtime guard, single source of truth)
+// ============================================================================
+
+/// Validate that a status transition is allowed by the state machine rules.
+///
+/// Valid transitions:
+/// - `Draft`     → `Published`  (publish)
+/// - `Published` → `Draft`      (unpublish)
+/// - `Published` → `Archived`   (archive)
+/// - `Archived`  → `Draft`      (restore to draft)
+///
+/// Everything else is invalid.
+pub fn validate_status_transition(
+    current: &ContentStatus,
+    target: &ContentStatus,
+) -> Result<(), InvalidStatusTransition> {
+    let valid = matches!(
+        (current, target),
+        (ContentStatus::Draft, ContentStatus::Published)
+            | (ContentStatus::Published, ContentStatus::Draft)
+            | (ContentStatus::Published, ContentStatus::Archived)
+            | (ContentStatus::Archived, ContentStatus::Draft)
+    );
+
+    if valid {
+        Ok(())
+    } else {
+        Err(InvalidStatusTransition {
+            from: current.clone(),
+            to: target.clone(),
+        })
+    }
+}
+
+/// Error returned when a status transition is not allowed.
+#[derive(Debug, Clone)]
+pub struct InvalidStatusTransition {
+    pub from: ContentStatus,
+    pub to: ContentStatus,
+}
+
+impl std::fmt::Display for InvalidStatusTransition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Invalid status transition: {:?} → {:?}",
+            self.from, self.to
+        )
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -358,6 +434,56 @@ mod tests {
         let node = node.update();
 
         assert!(node.state.updated_at > created_at);
+    }
+
+    #[test]
+    fn test_published_to_draft_unpublish() {
+        let node = ContentNode::new_draft(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            "article".to_string(),
+        )
+        .publish()
+        .unpublish();
+
+        assert_eq!(node.to_status(), ContentStatus::Draft);
+    }
+
+    // --- validate_status_transition ---
+
+    #[test]
+    fn test_valid_transitions() {
+        assert!(validate_status_transition(&ContentStatus::Draft, &ContentStatus::Published).is_ok());
+        assert!(validate_status_transition(&ContentStatus::Published, &ContentStatus::Draft).is_ok());
+        assert!(validate_status_transition(&ContentStatus::Published, &ContentStatus::Archived).is_ok());
+        assert!(validate_status_transition(&ContentStatus::Archived, &ContentStatus::Draft).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_draft_to_archived() {
+        assert!(validate_status_transition(&ContentStatus::Draft, &ContentStatus::Archived).is_err());
+    }
+
+    #[test]
+    fn test_invalid_archived_to_published() {
+        assert!(validate_status_transition(&ContentStatus::Archived, &ContentStatus::Published).is_err());
+    }
+
+    #[test]
+    fn test_invalid_same_status_transitions() {
+        assert!(validate_status_transition(&ContentStatus::Draft, &ContentStatus::Draft).is_err());
+        assert!(validate_status_transition(&ContentStatus::Published, &ContentStatus::Published).is_err());
+        assert!(validate_status_transition(&ContentStatus::Archived, &ContentStatus::Archived).is_err());
+    }
+
+    #[test]
+    fn test_transition_error_message() {
+        let err = validate_status_transition(&ContentStatus::Draft, &ContentStatus::Archived)
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Draft"));
+        assert!(msg.contains("Archived"));
     }
 
     // Compile-time safety tests (these should NOT compile if uncommented)

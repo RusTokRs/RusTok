@@ -286,7 +286,7 @@ impl ForumMutation {
         }
 
         let security = auth.security_context();
-        let service = CategoryService::new(db.clone(), event_bus.clone());
+        let service = CategoryService::new(db.clone());
         let domain_input = rustok_forum::CreateCategoryInput {
             locale: input.locale,
             name: input.name,

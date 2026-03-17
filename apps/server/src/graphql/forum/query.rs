@@ -57,7 +57,7 @@ impl ForumQuery {
 
         let security = auth.security_context();
         let tenant = ctx.data::<TenantContext>()?;
-        let service = CategoryService::new(db.clone(), event_bus.clone());
+        let service = CategoryService::new(db.clone());
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;

@@ -22,6 +22,8 @@ pub mod observability;
 #[cfg(feature = "mod-pages")]
 pub mod pages;
 pub mod persisted;
+#[cfg(feature = "mod-workflow")]
+pub mod workflow;
 pub mod queries;
 pub mod schema;
 pub mod settings;

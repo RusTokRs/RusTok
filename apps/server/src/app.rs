@@ -119,6 +119,13 @@ impl Hooks for App {
             routes = routes.add_route(controllers::media::routes());
         }
 
+        #[cfg(feature = "mod-workflow")]
+        {
+            routes = routes
+                .add_route(controllers::workflow::routes())
+                .add_route(controllers::workflow::webhook_routes());
+        }
+
         routes = routes.add_route(channels::builds::routes());
 
         routes

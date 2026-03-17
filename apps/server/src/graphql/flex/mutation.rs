@@ -6,16 +6,14 @@ use async_graphql::{Context, FieldError, Object, Result};
 use uuid::Uuid;
 
 use rustok_core::{field_schema::FieldType, UserRole};
-use rustok_events::types::EventEnvelope;
+use rustok_events::EventEnvelope;
 
 use crate::context::{infer_user_role_from_permissions, AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::field_definition_cache::FieldDefinitionCache;
-use crate::services::field_definition_registry::{
-    CreateFieldDefinitionCommand, FieldDefRegistry, UpdateFieldDefinitionCommand,
-};
 use crate::services::rbac_service::RbacService;
+use flex::{CreateFieldDefinitionCommand, FieldDefRegistry, UpdateFieldDefinitionCommand};
 
 use super::{
     bad_user_input, map_flex_error, resolve_entity_type,
@@ -68,7 +66,6 @@ impl FlexMutation {
         let entity_type = resolve_entity_type(input.entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let service_input = CreateFieldDefinitionCommand {
             field_key: input.field_key,
@@ -81,10 +78,16 @@ impl FlexMutation {
             position: input.position,
         };
 
-        let (model, event) = service
-            .create(&app_ctx.db, tenant.id, Some(auth.user_id), service_input)
-            .await
-            .map_err(map_flex_error)?;
+        let (model, event) = flex::create_field_definition(
+            registry,
+            &app_ctx.db,
+            tenant.id,
+            &entity_type,
+            Some(auth.user_id),
+            service_input,
+        )
+        .await
+        .map_err(map_flex_error)?;
 
         publish_event(ctx, event);
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
@@ -131,7 +134,6 @@ impl FlexMutation {
         let entity_type = resolve_entity_type(input.entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
         let service_input = UpdateFieldDefinitionCommand {
             label,
@@ -143,16 +145,17 @@ impl FlexMutation {
             is_active: input.is_active,
         };
 
-        let (model, event) = service
-            .update(
-                &app_ctx.db,
-                tenant.id,
-                Some(auth.user_id),
-                id,
-                service_input,
-            )
-            .await
-            .map_err(map_flex_error)?;
+        let (model, event) = flex::update_field_definition(
+            registry,
+            &app_ctx.db,
+            tenant.id,
+            &entity_type,
+            Some(auth.user_id),
+            id,
+            service_input,
+        )
+        .await
+        .map_err(map_flex_error)?;
 
         publish_event(ctx, event);
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
@@ -176,12 +179,17 @@ impl FlexMutation {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
-        let event = service
-            .deactivate(&app_ctx.db, tenant.id, Some(auth.user_id), id)
-            .await
-            .map_err(map_flex_error)?;
+        let event = flex::deactivate_field_definition(
+            registry,
+            &app_ctx.db,
+            tenant.id,
+            &entity_type,
+            Some(auth.user_id),
+            id,
+        )
+        .await
+        .map_err(map_flex_error)?;
 
         publish_event(ctx, event);
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
@@ -205,12 +213,11 @@ impl FlexMutation {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
-        let rows = service
-            .reorder(&app_ctx.db, tenant.id, &ids)
-            .await
-            .map_err(map_flex_error)?;
+        let rows =
+            flex::reorder_field_definitions(registry, &app_ctx.db, tenant.id, &entity_type, &ids)
+                .await
+                .map_err(map_flex_error)?;
 
         invalidate_field_def_cache(ctx, tenant.id, &entity_type);
 
@@ -256,7 +263,7 @@ fn can_delete_definitions(role: UserRole) -> bool {
 
 fn invalidate_field_def_cache(ctx: &Context<'_>, tenant_id: Uuid, entity_type: &str) {
     if let Ok(cache) = ctx.data::<FieldDefinitionCache>() {
-        cache.invalidate(tenant_id, entity_type);
+        flex::invalidate_field_definition_cache(cache, tenant_id, entity_type);
     }
 }
 
