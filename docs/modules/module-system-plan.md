@@ -743,16 +743,42 @@ components_fn = "ui::storefront::register_slot_components"
 
 | # | Задача | Сложность | Ценность |
 |---|---|---|---|
-| 1 | Semver + conflict валидация | Малая | Высокая — защита от broken installs |
-| 2 | `updateModuleSettings` мутация | Малая | Высокая — `[settings]` уже везде есть |
-| 3 | Build progress → subscription | Малая | Средняя — UX, инфраструктура уже есть |
-| 4 | Docker deploy в BuildExecutor | Средняя | Высокая — без этого install не prod-ready |
-| 5 | `rustok-api` + перенос GraphQL/REST в крейты | Большая | Критическая — блокирует 3rd party |
-| 6 | Перенос UI (admin/storefront) в модульные крейты | Большая | Критическая — блокирует 3rd party |
-| 7 | `build.rs` кодогенерация (сервер + admin + storefront) | Большая | Критическая — блокирует 3rd party |
-| 8 | `BuildExecutor`: сборка admin WASM + storefront | Средняя | Критическая — без этого install неполный |
-| 9 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
-| 10 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
+| **1** | **Audit документации** — привести в соответствие с решениями от 2026-03-17 | Средняя | Критическая — документация напрямую определяет как разрабатываются модули и маркетплейс |
+| 2 | Semver + conflict валидация | Малая | Высокая — защита от broken installs |
+| 3 | `updateModuleSettings` мутация | Малая | Высокая — `[settings]` уже везде есть |
+| 4 | Build progress → subscription | Малая | Средняя — UX, инфраструктура уже есть |
+| 5 | Docker deploy в BuildExecutor | Средняя | Высокая — без этого install не prod-ready |
+| 6 | `rustok-api` + перенос GraphQL/REST в крейты | Большая | Критическая — блокирует 3rd party |
+| 7 | Перенос UI (admin/storefront) в модульные крейты | Большая | Критическая — блокирует 3rd party |
+| 8 | `build.rs` кодогенерация (сервер + admin + storefront) | Большая | Критическая — блокирует 3rd party |
+| 9 | `BuildExecutor`: сборка admin WASM + storefront | Средняя | Критическая — без этого install неполный |
+| 10 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
+| 11 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
 
-> Пп. 5, 6, 7, 8 — единый блок. Все четыре нужны вместе, чтобы
+> Пп. 6, 7, 8, 9 — единый блок. Все четыре нужны вместе, чтобы
 > сторонний модуль полноценно заработал (сервер + UI).
+
+### Что изменилось (2026-03-17) — ориентир для audit документации
+
+Принятые решения, которые расходятся с текущей документацией:
+
+1. **UI в одном крейте** — Leptos UI (admin + storefront) живёт внутри `crates/rustok-<module>/src/`
+   через feature flags, не в `crates/rustok-<module>/ui/` и не в отдельных крейтах:
+   ```
+   crates/rustok-blog/src/
+     services/    [feature = "server"]
+     admin/       [feature = "leptos-admin"]
+     storefront/  [feature = "leptos-storefront"]
+   ```
+
+2. **Next.js — "batteries included"** — весь Next.js UI перенесён из `crates/` в приложения:
+   ```
+   apps/next-admin/src/features/blog/
+   apps/next-admin/src/features/workflow/
+   apps/next-frontend/src/features/blog/
+   ```
+   Нет отдельных npm-пакетов `@rustok/*`. Авто-установка только для Leptos.
+
+3. **Режимы деплоя** — любая комбинация features, не фиксированный список сценариев.
+
+Связанный DECISION: `DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md`
