@@ -188,6 +188,7 @@ graph TD
 - [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
 - [Документация crate `rustok-mcp`](../crates/rustok-mcp/docs/README.md)
 - [Документация crate `rustok-cache`](../crates/rustok-cache/docs/README.md)
+- [Документация crate `flex`](../crates/flex/docs/README.md)
 - [План реализации crate `rustok-cache`](../crates/rustok-cache/docs/implementation-plan.md)
 
 ### Документация модулей и crate-ов
@@ -313,9 +314,10 @@ graph TD
 - `rustok-test-utils`: [README](../crates/rustok-test-utils/README.md)
 - `utoipa-swagger-ui-vendored`: [README](../crates/utoipa-swagger-ui-vendored/README.md), [docs/README](../crates/utoipa-swagger-ui-vendored/docs/README.md)
 - `rustok-cache`: [README](../crates/rustok-cache/README.md), [docs/README](../crates/rustok-cache/docs/README.md), [docs/implementation-plan](../crates/rustok-cache/docs/implementation-plan.md)
+- `flex`: [README](../crates/flex/README.md), [docs/README](../crates/flex/docs/README.md) — extracted attached-mode registry contracts
 - `rustok-storage`: [README](../crates/rustok-storage/README.md), [docs/README](../crates/rustok-storage/docs/README.md) — leaf crate, `StorageBackend` trait + `LocalStorage` backend
 - `rustok-media`: [docs/README](../crates/rustok-media/docs/README.md) — Core module, `MediaService` + SeaORM entities, REST + GraphQL API
-- `rustok-flex` *(planned, future)*: `crates/rustok-flex/` — Standalone Flex mode (произвольные схемы, формы); Attached mode уже в `rustok-core`
+- `flex`: `crates/flex/` — optional crate, Phase 4.5 extraction target for Attached-mode contracts; Standalone mode planned later
 
 ### Пакеты (`packages/*`)
 

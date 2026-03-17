@@ -3698,6 +3698,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "flex"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "rustok-events",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "float-cmp"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9865,6 +9878,7 @@ dependencies = [
  "bytes",
  "chrono",
  "eyre",
+ "flex",
  "futures-util",
  "hex",
  "jsonwebtoken 10.3.0",

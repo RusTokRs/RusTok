@@ -40,6 +40,7 @@ rustok-auth.workspace = true
 rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-email.workspace = true
 rustok-events.workspace = true
+flex.workspace = true
 rustok-storefront = { path = "../storefront", optional = true }
 rustok-commerce  = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }

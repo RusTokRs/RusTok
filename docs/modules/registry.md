@@ -45,6 +45,7 @@ graph TD
         MCP[crates/rustok-mcp]
         TELEMETRY[crates/rustok-telemetry]
         TEST_UTILS[crates/rustok-test-utils]
+        FLEX[crates/flex]
     end
 
     subgraph Frontend Libraries - internal custom
@@ -101,6 +102,7 @@ graph TD
     MEDIA --> CORE
     MEDIA --> STORAGE
     MEDIA --> OUTBOX
+    FLEX --> CORE
 
     BLOG --> BLOG_UI_ADMIN
     BLOG --> BLOG_UI_FRONT
@@ -145,7 +147,7 @@ graph TD
 | `crates/rustok-core` | **Core (critical)** | Модуль-библиотека (агрегатор). Re-exports leaf contracts, provides `CacheBackend`, `ModuleRegistry`, `RusToKModule`, RBAC primitives, i18n, `SecurityContext`, circuit breaker. Содержит **Flex** — набор типов, валидаторов и migration-хелперов для кастомных полей (`field_schema.rs`, `HasCustomFields`). ([CRATE_API](../../crates/rustok-core/CRATE_API.md)) |
 
 > **Flex** — часть модуля `rustok-core`. Сейчас — набор типов и хелперов (модуль-библиотека). Данные живут внутри модуля-потребителя.
-> Режим **Attached** (кастомные поля для сущностей) — в core. Режим **Standalone** (`rustok-flex`) — запланирован.
+> Режим **Attached** (кастомные поля для сущностей) — в core. Режим **Standalone** (`flex`) — запланирован.
 > План реализации: [`docs/architecture/flex.md`](../architecture/flex.md).
 
 #### Инфраструктурные модули-библиотеки
@@ -244,7 +246,7 @@ They are not published to crates.io. Treat them as first-party code — changes 
 | `crates/rustok-cache` | **Cache** | `apps/server` | Redis/Moka cache backends, `CacheModule`, `CacheService`. Выделен из `rustok-core`. |
 | `crates/rustok-storage` | **Storage** | `rustok-media`, `apps/server` | Leaf crate: `StorageBackend` async trait + `LocalStorage` impl, `StorageService` wrapper. ([docs](../../crates/rustok-storage/docs/README.md)) |
 | `crates/rustok-media` | **Media** | `apps/server`, `rustok-content`, `rustok-commerce` | Core module: `MediaService`, SeaORM entities `media` + `media_translations`. Feature: `mod-media`. ([docs](../../crates/rustok-media/docs/README.md)) |
-| `crates/rustok-flex` | **Flex Standalone** *(planned, future)* | Optional modules | Отдельный crate для режима Standalone Flex (произвольные схемы, формы, справочники). Режим Attached уже в `rustok-core`. |
+| `crates/flex` | **Flex Contracts** *(Phase 4.5, in progress)* | `apps/server` (Attached mode) | Optional crate для выноса Flex attached-mode контрактов (`FieldDefinitionService`, `FieldDefRegistry`, DTOs). Standalone режим планируется следующим этапом. |
 
 ## Maintenance Rule
 

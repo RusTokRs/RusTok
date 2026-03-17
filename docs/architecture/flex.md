@@ -596,7 +596,7 @@ impl HasCustomFields for product::Model {
 | rustok-commerce | `product_field_definitions`     | `"product"`  | `products.metadata`  |
 | rustok-commerce | `order_field_definitions`       | `"order"`    | `orders.metadata`    |
 | rustok-content  | `node_field_definitions`        | `"node"`     | `nodes.metadata`     |
-| rustok-forum    | `topic_field_definitions`       | `"topic"`    | `topics.metadata`    |
+| rustok-forum    | `topic_field_definitions`       | `"topic"`    | `nodes.metadata` (`kind=topic`) |
 
 Все таблицы **структурно идентичны**, но **физически изолированы** в своём модуле.
 
@@ -607,7 +607,7 @@ impl HasCustomFields for product::Model {
 1. **Attached mode** — кастомные поля к существующим сущностям → **это то, что описано выше**
 2. **Standalone mode** — произвольные схемы и записи (лендинги, формы, справочники)
 
-Standalone mode — это **отдельный модуль `rustok-flex`**, который:
+Standalone mode — это **отдельный модуль `flex`**, который:
 - Имеет свои таблицы (`flex_schemas`, `flex_entries`) — это его "domain"
 - Использует `FieldType`, `ValidationRule`, `CustomFieldsSchema` из core
 - Является **опциональным** — можно не подключать
@@ -617,7 +617,7 @@ Standalone mode — это **отдельный модуль `rustok-flex`**, к
 Attached mode (field_schema в core):
   "Дай мне кастомные поля для users" → user_field_definitions + users.metadata
 
-Standalone mode (rustok-flex модуль):
+Standalone mode (flex модуль):
   "Дай мне произвольную сущность 'landing-page'" → flex_schemas + flex_entries
 ```
 
@@ -717,11 +717,11 @@ type SchemaCache = DashMap<(Uuid, &'static str), (Instant, CustomFieldsSchema)>;
 | nodes    | ✅ Есть  | m20250130_000005 | Готово |
 | tenants  | ✅ Есть  | m20250101_000006 | Готово |
 | orders   | ❌ Нет   | Таблица orders не найдена | **Нужна миграция** |
-| topics   | ⚠️ ?     | Миграции в crates/rustok-forum/ (децентрализованные) | **Проверить** |
+| topics   | ✅ Есть (через `nodes`) | m20250130_000005 (`nodes.metadata`) | Готово |
 
 **Действия перед Phase 4:**
 - [ ] Создать миграцию для `orders` таблицы с metadata колонкой (или добавить ALTER TABLE)
-- [ ] Проверить `crates/rustok-forum/` — есть ли metadata в topics
+- [x] Проверить `crates/rustok-forum/` — темы хранятся в `rustok_content::nodes`, `metadata` уже используется сервисами forum
 - [ ] Если нет — добавить миграцию в крейте forum
 
 **Важно:** Forum использует **децентрализованные миграции** (в крейте, не в apps/server).
@@ -1014,13 +1014,13 @@ impl SchemaCache {
 ### Phase 1 — Migration helper + infrastructure
 - [x] `create_field_definitions_table()` helper (с tenant FK, indexes)
 - [x] `drop_field_definitions_table()` helper
-- [ ] `define_field_definitions_entity!()` macro (опционально)
-- [ ] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`)
+- [x] `define_field_definitions_entity!()` macro (опционально)
+- [x] JSONB query helpers (`json_field_eq`, `json_field_exists`, `json_field_extract`, `json_field_contains`)
 - [x] `FlexError` enum с `ErrorExtensions` (§13) *(реализован `map_flex_error()` в GraphQL Flex резолверах с кодами `BAD_USER_INPUT`/`NOT_FOUND`/`INTERNAL_ERROR`)*
 - [x] `FieldDefinitionRepository` trait (§12) *(реализован как transport-agnostic `FieldDefinitionService` с CRUD/reorder + registry bootstrap)*
 - [x] `FieldDefRegistry` (§12)
 - [x] DomainEvent variants: `FieldDefinitionCreated/Updated/Deleted` (§9)
-- [ ] Integration test: создать таблицу, записать definition, провалидировать
+- [x] Integration test: создать/удалить таблицу helper-ом (`sqlite::memory:`) и проверить наличие `user_field_definitions`; сценарий запись+валидация остаётся pending
 
 ### Phase 2 — Users (первый потребитель)
 - [x] Миграция `user_field_definitions` (через helper — одна строка!)
@@ -1032,7 +1032,7 @@ impl SchemaCache {
 - [x] Event emission: FieldDefinitionCreated/Updated/Deleted
 - [x] GraphQL: `customFields` в User type, `fieldDefinitions` resolver
 - [x] Error handling через `ErrorExtensions` (§13)
-- [ ] Тесты: CRUD, validation, guardrails, events
+- [ ] Тесты: CRUD, validation, guardrails, events *(добавлены unit-тесты `UserFieldService` для guardrails, events create/update/delete, not-found веток update/deactivate и skip unknown field_type при schema load; GraphQL helper `validate_custom_fields` покрыт кейсами passthrough без схемы, default application (включая `custom_fields = None`), strip unknown keys, required validation и payload `fields` в error extensions; интеграционные CRUD/validation сценарии pending)*
 
 ### Phase 3 — Admin API
 - [x] GraphQL queries/mutations для управления определениями (§7)
@@ -1044,14 +1044,34 @@ impl SchemaCache {
 
 ### Phase 4 — Commerce, Content, Forum
 - [ ] **Pre-req:** добавить `metadata` колонку в `orders` таблицу (§8)
-- [ ] **Pre-req:** проверить `topics.metadata` в crates/rustok-forum/ (§8)
-- [ ] `product_field_definitions` (через helper)
-- [ ] `order_field_definitions` (через helper, после миграции)
-- [ ] `node_field_definitions` (через helper)
-- [ ] `topic_field_definitions` (через helper, после проверки)
+- [x] **Pre-req:** проверить `topics.metadata` в crates/rustok-forum/ (§8) *(форум использует `nodes.metadata` для `kind=topic`)*
+- [x] `product_field_definitions` (через helper; `apps/server/migration` `m20260316_000002`) + entity/model/service/registry в `apps/server`
+- [x] `order_field_definitions` (через helper; `apps/server/migration` `m20260316_000005`) + entity/model/service/registry в `apps/server`
+- [x] `node_field_definitions` (через helper; `apps/server/migration` `m20260316_000003`)
+- [x] `topic_field_definitions` (через helper; `apps/server/migration` `m20260316_000004_create_topic_field_definitions`) + entity/model/service/registry в `apps/server`
 - [ ] Каждый модуль: 5 шагов, ~50 строк + регистрация в FieldDefRegistry
 
-### Phase 5 — Flex standalone (rustok-flex крейт, future)
+### Phase 4.5 — Вынос Flex в отдельный модуль (Attached mode)
+
+> **Ответ на вопрос "когда переносим":** начинаем сразу после закрытия оставшихся pre-req/test-долгов Phase 4.
+> Целевой слот: **следующий delivery-цикл (ориентир: 2026-Q2)**.
+
+- [x] Создать `crates/flex` как optional crate (без обязательной зависимости для доменных модулей) *(инициализирован: registry contracts вынесены, `apps/server` использует re-export compatibility layer)*
+- [~] Перенести generic-контракты attached-mode из `apps/server` в crate:
+  - [x] registry contracts (`FieldDefinitionService`, `FieldDefRegistry` adapter layer)
+  - [x] generic CRUD orchestration helpers (registry lookup + CRUD/reorder call routing)
+  - [ ] cache invalidation hooks (abstraction-level port готов, но `apps/server` пока держит конкретный cache implementation)
+  - [ ] transport-agnostic error mapping
+- [ ] Оставить в `apps/server` только transport/adapters (GraphQL, RBAC gate, bootstrap wiring)
+- [ ] Перевести `user/product/order/topic` сервисы на новый crate API без изменения GraphQL-контрактов
+- [ ] Подготовить migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
+
+**Go/No-Go критерии для старта выноса**
+1. Закрыт pre-req по `orders.metadata`.
+2. Есть полный интеграционный прогон Flex GraphQL CRUD + cache invalidation.
+3. Нет незакрытых P1-багов по текущей registry маршрутизации.
+
+### Phase 5 — Flex standalone (flex, после выноса attached mode)
 - [ ] `flex_schemas` + `flex_entries` — свои таблицы
 - [ ] Использует `FieldType`, `ValidationRule`, `CustomFieldsSchema` из core
 - [ ] Standalone CRUD (лендинги, формы, справочники)

@@ -1,4 +1,4 @@
-//! Service for managing `user_field_definitions` — Flex Phase 2.
+//! Service for managing `order_field_definitions` — Flex Phase 4.
 //!
 //! Provides schema loading (with validation-ready [`CustomFieldsSchema`])
 //! and full CRUD for field definitions with:
@@ -17,15 +17,15 @@ use uuid::Uuid;
 use rustok_core::field_schema::{is_valid_field_key, CustomFieldsSchema, FieldType, FlexError};
 use rustok_events::types::{DomainEvent, EventEnvelope};
 
-use crate::models::user_field_definitions::{
+use crate::models::order_field_definitions::{
     ActiveModel, Column, CreateFieldDefinitionInput, Entity, Model, UpdateFieldDefinitionInput,
     MAX_FIELDS_PER_TENANT,
 };
 
-/// Service for user custom field definitions.
-pub struct UserFieldService;
+/// Service for order custom field definitions.
+pub struct OrderFieldService;
 
-impl UserFieldService {
+impl OrderFieldService {
     // ── Schema loading ────────────────────────────────────────────────────
 
     /// Load the active schema for a tenant from the database.
@@ -91,7 +91,7 @@ impl UserFieldService {
 
         if count >= MAX_FIELDS_PER_TENANT as u64 {
             return Err(FlexError::TooManyFields {
-                entity_type: "user".to_string(),
+                entity_type: "order".to_string(),
                 max: MAX_FIELDS_PER_TENANT,
             });
         }
@@ -133,7 +133,7 @@ impl UserFieldService {
             actor_id,
             DomainEvent::FieldDefinitionCreated {
                 tenant_id,
-                entity_type: "user".to_string(),
+                entity_type: "order".to_string(),
                 field_key: input.field_key,
                 field_type: field_type_str,
             },
@@ -194,7 +194,7 @@ impl UserFieldService {
             actor_id,
             DomainEvent::FieldDefinitionUpdated {
                 tenant_id,
-                entity_type: "user".to_string(),
+                entity_type: "order".to_string(),
                 field_key: field_key.clone(),
             },
         );
@@ -204,7 +204,7 @@ impl UserFieldService {
 
     /// Soft-delete a field definition (sets `is_active = false`).
     ///
-    /// Data already stored in `users.metadata` is preserved.
+    /// Data already stored in `orders.metadata` is preserved.
     pub async fn deactivate(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -231,7 +231,7 @@ impl UserFieldService {
             actor_id,
             DomainEvent::FieldDefinitionDeleted {
                 tenant_id,
-                entity_type: "user".to_string(),
+                entity_type: "order".to_string(),
                 field_key,
             },
         );
@@ -298,8 +298,8 @@ impl UserFieldService {
 
 #[cfg(test)]
 mod tests {
-    use super::UserFieldService;
-    use crate::models::user_field_definitions::{Model, MAX_FIELDS_PER_TENANT};
+    use super::OrderFieldService;
+    use crate::models::order_field_definitions::{Model, MAX_FIELDS_PER_TENANT};
     use chrono::Utc;
     use rustok_core::field_schema::{FieldType, FlexError};
     use rustok_events::types::DomainEvent;
@@ -310,8 +310,8 @@ mod tests {
 
     fn create_input(
         field_key: &str,
-    ) -> crate::models::user_field_definitions::CreateFieldDefinitionInput {
-        crate::models::user_field_definitions::CreateFieldDefinitionInput {
+    ) -> crate::models::order_field_definitions::CreateFieldDefinitionInput {
+        crate::models::order_field_definitions::CreateFieldDefinitionInput {
             field_key: field_key.to_string(),
             field_type: FieldType::Text,
             label: HashMap::from([("en".to_string(), "Label".to_string())]),
@@ -347,7 +347,7 @@ mod tests {
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
         let tenant_id = Uuid::new_v4();
 
-        let err = UserFieldService::create(
+        let err = OrderFieldService::create(
             &db,
             tenant_id,
             Some(Uuid::new_v4()),
@@ -370,7 +370,7 @@ mod tests {
             .into_connection();
 
         let err =
-            UserFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
+            OrderFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
                 .await
                 .expect_err("duplicate key should fail");
 
@@ -389,13 +389,13 @@ mod tests {
             .into_connection();
 
         let err =
-            UserFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
+            OrderFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
                 .await
                 .expect_err("max fields guardrail should fail");
 
         match err {
             FlexError::TooManyFields { entity_type, max } => {
-                assert_eq!(entity_type, "user");
+                assert_eq!(entity_type, "order");
                 assert_eq!(max, MAX_FIELDS_PER_TENANT);
             }
             other => panic!("unexpected error: {other:?}"),
@@ -415,7 +415,7 @@ mod tests {
             .into_connection();
 
         let (model, envelope) =
-            UserFieldService::create(&db, tenant_id, Some(actor_id), create_input("phone"))
+            OrderFieldService::create(&db, tenant_id, Some(actor_id), create_input("phone"))
                 .await
                 .expect("create should succeed");
 
@@ -430,7 +430,7 @@ mod tests {
                 field_type,
             } => {
                 assert_eq!(event_tenant, tenant_id);
-                assert_eq!(entity_type, "user");
+                assert_eq!(entity_type, "order");
                 assert_eq!(field_key, "phone");
                 assert_eq!(field_type, "text");
             }
@@ -453,14 +453,15 @@ mod tests {
             .append_query_results([vec![updated.clone()]])
             .into_connection();
 
-        let input = crate::models::user_field_definitions::UpdateFieldDefinitionInput {
+        let input = crate::models::order_field_definitions::UpdateFieldDefinitionInput {
             is_required: Some(true),
             ..Default::default()
         };
 
-        let (model, envelope) = UserFieldService::update(&db, tenant_id, Some(actor_id), id, input)
-            .await
-            .expect("update should succeed");
+        let (model, envelope) =
+            OrderFieldService::update(&db, tenant_id, Some(actor_id), id, input)
+                .await
+                .expect("update should succeed");
 
         assert!(model.is_required);
         assert_eq!(envelope.tenant_id, tenant_id);
@@ -472,7 +473,7 @@ mod tests {
                 field_key,
             } => {
                 assert_eq!(event_tenant, tenant_id);
-                assert_eq!(entity_type, "user");
+                assert_eq!(entity_type, "order");
                 assert_eq!(field_key, "phone");
             }
             other => panic!("unexpected event: {other:?}"),
@@ -489,7 +490,7 @@ mod tests {
             .append_query_results([vec![row(tenant_id, "phone"), invalid]])
             .into_connection();
 
-        let schema = UserFieldService::get_schema(&db, tenant_id)
+        let schema = OrderFieldService::get_schema(&db, tenant_id)
             .await
             .expect("schema should load");
 
@@ -512,12 +513,12 @@ mod tests {
             .append_query_results([Vec::<Model>::new()])
             .into_connection();
 
-        let err = UserFieldService::update(
+        let err = OrderFieldService::update(
             &db,
             tenant_id,
             Some(actor_id),
             id,
-            crate::models::user_field_definitions::UpdateFieldDefinitionInput::default(),
+            crate::models::order_field_definitions::UpdateFieldDefinitionInput::default(),
         )
         .await
         .expect_err("missing row should return not found");
@@ -537,7 +538,7 @@ mod tests {
             .append_query_results([Vec::<Model>::new()])
             .into_connection();
 
-        let err = UserFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
+        let err = OrderFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
             .await
             .expect_err("missing row should return not found");
 
@@ -562,7 +563,7 @@ mod tests {
             .append_query_results([vec![deactivated]])
             .into_connection();
 
-        let envelope = UserFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
+        let envelope = OrderFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
             .await
             .expect("deactivate should succeed");
 
@@ -575,7 +576,7 @@ mod tests {
                 field_key,
             } => {
                 assert_eq!(e_tenant, tenant_id);
-                assert_eq!(entity_type, "user");
+                assert_eq!(entity_type, "order");
                 assert_eq!(field_key, "phone");
             }
             other => panic!("unexpected event: {other:?}"),

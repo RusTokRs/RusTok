@@ -7,7 +7,7 @@ use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::PaginationInput;
 use crate::graphql::errors::GraphQLError;
 use crate::services::field_definition_cache::FieldDefinitionCache;
-use crate::services::field_definition_registry::FieldDefRegistry;
+use crate::services::field_definition_registry::{FieldDefRegistry, FieldDefinitionView};
 
 use super::{map_flex_error, resolve_entity_type, types::FieldDefinitionObject};
 
@@ -42,10 +42,7 @@ impl FlexQuery {
         }
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
-
-        let rows = service
-            .list_all(&app_ctx.db, tenant.id)
+        let rows = flex::list_field_definitions(registry, &app_ctx.db, tenant.id, &entity_type)
             .await
             .map_err(map_flex_error)?;
 
@@ -68,10 +65,8 @@ impl FlexQuery {
         let entity_type = resolve_entity_type(entity_type)?;
 
         let registry = ctx.data::<FieldDefRegistry>()?;
-        let service = registry.get(&entity_type).map_err(map_flex_error)?;
 
-        service
-            .find_by_id(&app_ctx.db, tenant.id, id)
+        flex::find_field_definition(registry, &app_ctx.db, tenant.id, &entity_type, id)
             .await
             .map(|row| row.map(FieldDefinitionObject::from))
             .map_err(map_flex_error)
@@ -79,7 +74,7 @@ impl FlexQuery {
 }
 
 fn paginate_rows(
-    rows: Vec<crate::services::field_definition_registry::FieldDefinitionView>,
+    rows: Vec<FieldDefinitionView>,
     pagination: &PaginationInput,
 ) -> Result<Vec<FieldDefinitionObject>> {
     let (offset, limit) = pagination.normalize()?;
