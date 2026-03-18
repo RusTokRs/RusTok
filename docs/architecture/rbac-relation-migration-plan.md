@@ -1,6 +1,6 @@
-﻿# План миграции RBAC на relation/Casbin runtime
+# План миграции RBAC на relation/Casbin runtime
 
-- Дата: 2026-02-26
+- Дата: 2026-03-18
 - Статус: In progress
 - Область: `apps/server`, `crates/rustok-rbac`, `crates/rustok-core`, `apps/server/migration`
 - Цель: завершить переход к модульной RBAC-схеме, где relation-данные остаются каноническим permission graph, а runtime проходит путь `relation_only -> casbin_shadow -> casbin_only`.
@@ -30,7 +30,7 @@
 
 ---
 
-## 2. Что уже завершено
+## 2. Что уже завершено (актуализировано на 2026-03-18)
 
 ### 2.1 Domain и runtime extraction
 
@@ -50,7 +50,8 @@
   - `rustok_rbac_engine_mismatch_total`
   - `rustok_rbac_engine_eval_duration_ms_total`
   - `rustok_rbac_engine_eval_duration_samples`
-- Baseline helper `scripts/rbac_cutover_baseline.sh` переведён на engine-mismatch gate.
+- Baseline helper `scripts/rbac_cutover_baseline.sh` переведён на engine-mismatch gate и теперь валидирует decision volume (`total_decisions_delta` / `permission_checks_total_delta`) вместе с reset detection по счётчикам.
+- Cutover gate helper `scripts/rbac_cutover_gate.sh` собирает единый Go/No-Go bundle из staging artifacts, cutover baseline и auth release-gate report и пишет markdown/json decision artifacts.
 
 ### 2.3 Cleanup уже выполненного legacy слоя
 
@@ -58,6 +59,7 @@
 - Удалены obsolete mismatch signals прошлой migration-схемы.
 - `shadow_runtime` сведён к relation-vs-casbin parity.
 - Актуальные server/library callsites используют `RbacService`.
+- Старый staging helper `scripts/rbac_relation_staging.sh` и его smoke-тесты больше не присутствуют в репозитории; staging rehearsal теперь рассматривается как artifact bundle (`artifacts/rbac-staging/*`), который валидируется на этапе `scripts/rbac_cutover_gate.sh`.
 
 ---
 
@@ -73,7 +75,7 @@
 
 ### Фаза B. Casbin parity
 
-Статус: в работе.
+Статус: в работе, но кодовая база для parity/cutover уже собрана.
 
 - `casbin_shadow_evaluator` и `shadow_runtime` уже модульные.
 - Server пишет parity telemetry и structured mismatch logs.
@@ -82,13 +84,13 @@
 
 Открытые задачи:
 
-1. Закрыть parity evidence на staging/production окне наблюдения.
-2. Подтвердить нулевой `engine_mismatch_delta` в baseline окне.
-3. Финализировать operational bundle для cutover decision.
+1. Закрыть parity evidence на staging/production окне наблюдения и сохранить timestamp-consistent artifacts в `artifacts/rbac-staging/*` и `artifacts/rbac-cutover/*`; `scripts/rbac_staging_rehearsal.sh` теперь собирает staging bundle с `rbac_relation_stage_report_<ts>.md`, `rbac_relation_stage_report_<ts>.json`, `rbac_report_pre_<ts>.json` и `rbac_report_post_<ts>.json`; `scripts/rbac_cutover_gate.sh` читает summary JSON как основной источник rehearsal metadata и fallback'ается на markdown только для legacy bundles (legacy alias `rbac_report_post_rollback_<ts>.json` всё ещё принимается gate-скриптом).
+2. Подтвердить нулевой `engine_mismatch_delta` и `shadow_compare_failures_delta` в baseline окне.
+3. Сформировать финальный Go/No-Go bundle через `scripts/rbac_cutover_gate.sh --auth-gate-report <report>` или единым orchestration path через `scripts/rbac_cutover_workflow.sh`.
 
 ### Фаза C. Casbin cutover
 
-Статус: не начато.
+Статус: не начато в production, но operational gate уже автоматизирован.
 
 Ожидаемый переход:
 
@@ -129,14 +131,15 @@ Go/No-Go условия описаны в ADR `DECISIONS/2026-03-05-rbac-relatio
    - `engine_mismatch_delta == 0`
    - `shadow_compare_failures_delta == 0`
    - decision volume >= `min-decision-delta`
-4. Пройти cutover gate и зафиксировать Go/No-Go decision.
+4. Пройти cutover gate (`scripts/rbac_cutover_gate.sh`) и зафиксировать Go/No-Go decision artifacts.
 
 ### 4.2 Можно делать параллельно
 
 1. Убирать остаточные текстовые упоминания старого column-based role path.
 2. Сжимать runbooks и verification docs под финальную модель.
 3. Подчищать naming вокруг relation/casbin runtime boundary.
-4. Держать app/module tests сериализованными там, где используется общий manifest env (`RUSTOK_MODULES_MANIFEST`).
+4. Удалять устаревшие упоминания `scripts/rbac_relation_staging.sh` и связанных smoke tests из локальной документации.
+5. Держать app/module tests сериализованными там, где используется общий manifest env (`RUSTOK_MODULES_MANIFEST`).
 
 ---
 
@@ -153,7 +156,18 @@ Go/No-Go условия описаны в ADR `DECISIONS/2026-03-05-rbac-relatio
 
 - `artifacts/rbac-staging/*`
 - `artifacts/rbac-cutover/*`
+- staging artifacts из `scripts/rbac_staging_rehearsal.sh`
+- decision artifacts из `scripts/rbac_cutover_gate.sh`
 - auth release-gate bundle из `scripts/auth_release_gate.sh --require-all-gates`
+
+### 5.3 Проверенные расхождения относительно старого плана
+
+При актуализации плана 2026-03-18 подтверждено следующее:
+
+- `RbacAuthzMode` по-прежнему поддерживает только `relation_only`, `casbin_shadow`, `casbin_only` и задокументированные aliases; fallback для неизвестных значений остаётся `RelationOnly`.
+- Server runtime уже пишет canonical engine counters и сохраняет compatibility aliases в `/metrics`, поэтому operational docs должны ссылаться на canonical метрики, а alias-метрики считать временным слоем совместимости.
+- В репозитории появился отдельный helper `scripts/rbac_cutover_gate.sh`, которого не было в ранних версиях плана; он фактически закрывает часть manual checklist из фаз B/C.
+- В репозитории больше нет `scripts/rbac_relation_staging.sh`, поэтому старые инструкции, завязанные на этот helper, считаются устаревшими и подлежат вычищению перед продолжением migration-doc work.
 
 ---
 

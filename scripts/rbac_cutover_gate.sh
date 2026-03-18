@@ -20,11 +20,12 @@ Options:
 
 Gate checks:
   1) Staging artifacts are validated as one timestamp-consistent rehearsal bundle
-  2) Staging post-rollback invariants are zero (users_without_roles/orphan_user_roles/orphan_role_permissions)
-  3) Cutover baseline artifacts are validated as one timestamp-consistent bundle (md+json)
-  4) Baseline json has gate_status=pass
-  5) Baseline json deltas mismatch/shadow failures are zero
-  6) Auth gate report artifact exists
+  2) Staging report must show rehearsal_status=passed|skipped and rehearsal_exit_code=0
+  3) Staging invariant snapshot (post-check) is present and zero for users_without_roles/orphan_user_roles/orphan_role_permissions
+  4) Cutover baseline artifacts are validated as one timestamp-consistent bundle (md+json)
+  5) Baseline json has gate_status=pass
+  6) Baseline json deltas mismatch/shadow failures are zero
+  7) Auth gate report artifact exists
 USAGE
 }
 
@@ -87,6 +88,15 @@ require_file() {
   fi
 }
 
+json_string_or_null() {
+  local value="${1:-}"
+  if [[ -n "$value" ]]; then
+    printf '"%s"' "$value"
+  else
+    printf 'null'
+  fi
+}
+
 extract_ts() {
   local path="$1"
   local prefix="$2"
@@ -137,14 +147,31 @@ stage_pre_json="$STAGING_ARTIFACTS_DIR/rbac_report_pre_${stage_ts}.json"
 stage_dry_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_dry_run_${stage_ts}.json"
 stage_apply_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_apply_${stage_ts}.json"
 stage_rollback_apply_json="$STAGING_ARTIFACTS_DIR/rbac_backfill_rollback_apply_${stage_ts}.json"
-stage_post_rollback_json="$STAGING_ARTIFACTS_DIR/rbac_report_post_rollback_${stage_ts}.json"
+stage_post_json="$STAGING_ARTIFACTS_DIR/rbac_report_post_${stage_ts}.json"
+stage_post_legacy_json="$STAGING_ARTIFACTS_DIR/rbac_report_post_rollback_${stage_ts}.json"
+stage_report_json="$STAGING_ARTIFACTS_DIR/rbac_relation_stage_report_${stage_ts}.json"
 
 require_file "$stage_report" "staging stage-report markdown"
 require_file "$stage_pre_json" "staging pre-check JSON (same timestamp as stage report)"
-require_file "$stage_dry_json" "staging dry-run JSON (same timestamp as stage report)"
-require_file "$stage_apply_json" "staging apply JSON (same timestamp as stage report)"
-require_file "$stage_rollback_apply_json" "staging rollback-apply JSON (same timestamp as stage report)"
-require_file "$stage_post_rollback_json" "staging post-rollback JSON (same timestamp as stage report)"
+
+if [[ -f "$stage_post_json" ]]; then
+  stage_post_check_json="$stage_post_json"
+elif [[ -f "$stage_post_legacy_json" ]]; then
+  stage_post_check_json="$stage_post_legacy_json"
+else
+  echo "Missing required artifact: staging post-check JSON (expected rbac_report_post_<ts>.json or legacy rbac_report_post_rollback_<ts>.json)" >&2
+  exit 1
+fi
+
+if [[ ! -f "$stage_dry_json" ]]; then
+  stage_dry_json=""
+fi
+if [[ ! -f "$stage_apply_json" ]]; then
+  stage_apply_json=""
+fi
+if [[ ! -f "$stage_rollback_apply_json" ]]; then
+  stage_rollback_apply_json=""
+fi
 
 if [[ -n "$CUTOVER_TS" ]]; then
   cutover_ts="$CUTOVER_TS"
@@ -177,7 +204,74 @@ fi
 MISMATCH_SAMPLE_PATH="$CUTOVER_ARTIFACTS_DIR/mismatch-sample.jsonl"
 touch "$MISMATCH_SAMPLE_PATH"
 
-python - "$stage_post_rollback_json" <<'PY'
+if [[ -f "$stage_report_json" ]]; then
+  stage_rehearsal_payload="$(python - "$stage_report_json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+status = payload.get('rehearsal_status')
+exit_code = payload.get('rehearsal_exit_code')
+
+if status not in {'passed', 'skipped'}:
+    raise SystemExit(f"staging report rehearsal_status must be passed|skipped, got: {status!r}")
+if not isinstance(exit_code, int):
+    raise SystemExit(f'staging report rehearsal_exit_code must be integer, got: {exit_code!r}')
+if exit_code != 0:
+    raise SystemExit(f'staging report rehearsal_exit_code must be 0, got: {exit_code}')
+
+print(status)
+print(exit_code)
+print('json')
+PY
+)"
+else
+  stage_rehearsal_payload="$(python - "$stage_report" <<'PY'
+import pathlib
+import re
+import sys
+
+report = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
+status_match = re.search(r'^- rehearsal_status: (.+)$', report, re.MULTILINE)
+exit_match = re.search(r'^- rehearsal_exit_code: (.+)$', report, re.MULTILINE)
+
+if status_match is None:
+    raise SystemExit('staging report must contain rehearsal_status')
+if exit_match is None:
+    raise SystemExit('staging report must contain rehearsal_exit_code')
+
+status = status_match.group(1).strip()
+exit_code_raw = exit_match.group(1).strip()
+
+if status not in {'passed', 'skipped'}:
+    raise SystemExit(f"staging report rehearsal_status must be passed|skipped, got: {status!r}")
+
+try:
+    exit_code = int(exit_code_raw)
+except ValueError as exc:
+    raise SystemExit(f'staging report rehearsal_exit_code must be integer, got: {exit_code_raw!r}') from exc
+
+if exit_code != 0:
+    raise SystemExit(f'staging report rehearsal_exit_code must be 0, got: {exit_code}')
+
+print(status)
+print(exit_code)
+print('markdown')
+PY
+)"
+fi
+
+mapfile -t stage_rehearsal_fields <<< "$stage_rehearsal_payload"
+if [[ "${#stage_rehearsal_fields[@]}" -ne 3 ]]; then
+  echo "unexpected staging rehearsal payload shape from parser" >&2
+  exit 1
+fi
+staging_rehearsal_status="${stage_rehearsal_fields[0]}"
+staging_rehearsal_exit_code="${stage_rehearsal_fields[1]}"
+staging_rehearsal_source="${stage_rehearsal_fields[2]}"
+
+python - "$stage_post_check_json" <<'PY'
 import json
 import sys
 
@@ -192,9 +286,9 @@ for key in (
 ):
     value = payload.get(key)
     if not isinstance(value, int):
-        raise SystemExit(f"staging post-rollback field must be integer: {key}")
+        raise SystemExit(f"staging post-check field must be integer: {key}")
     if value != 0:
-        raise SystemExit(f"staging post-rollback invariant must be 0 before relation-only cutover: {key}={value}")
+        raise SystemExit(f"staging post-check invariant must be 0 before relation-only cutover: {key}={value}")
 PY
 
 decision_volume_payload="$(python - "$cutover_json" <<'PY'
@@ -209,12 +303,22 @@ status = payload.get('gate_status')
 if status != 'pass':
     raise SystemExit(f"baseline gate_status must be 'pass', got: {status!r}")
 
-for key in ('mismatch_delta', 'shadow_compare_failures_delta'):
-    value = payload.get(key)
-    if not isinstance(value, int):
-        raise SystemExit(f"baseline field must be integer: {key}")
-    if value != 0:
-        raise SystemExit(f"baseline field must be 0 before relation-only cutover: {key}={value}")
+mismatch_delta = payload.get('mismatch_delta')
+if mismatch_delta is None:
+    mismatch_delta = payload.get('engine_mismatch_delta')
+if not isinstance(mismatch_delta, int):
+    raise SystemExit('baseline field must be integer: mismatch_delta or engine_mismatch_delta')
+if mismatch_delta != 0:
+    raise SystemExit(f'baseline field must be 0 before relation-only cutover: mismatch_delta={mismatch_delta}')
+
+shadow_compare_failures_delta = payload.get('shadow_compare_failures_delta')
+if not isinstance(shadow_compare_failures_delta, int):
+    raise SystemExit('baseline field must be integer: shadow_compare_failures_delta')
+if shadow_compare_failures_delta != 0:
+    raise SystemExit(
+        'baseline field must be 0 before relation-only cutover: '
+        f'shadow_compare_failures_delta={shadow_compare_failures_delta}'
+    )
 
 total_decisions_delta = payload.get('total_decisions_delta')
 permission_checks_total_delta = payload.get('permission_checks_total_delta')
@@ -263,11 +367,15 @@ fi
 echo "RBAC cutover gate: PASS"
 echo "- staging_ts: $stage_ts"
 echo "- staging_report: $stage_report"
+echo "- staging_report_json: ${stage_report_json:-n/a}"
+echo "- staging_rehearsal_status: $staging_rehearsal_status"
+echo "- staging_rehearsal_source: $staging_rehearsal_source"
+echo "- staging_rehearsal_exit_code: $staging_rehearsal_exit_code"
 echo "- staging_pre_json: $stage_pre_json"
-echo "- staging_dry_run_json: $stage_dry_json"
-echo "- staging_apply_json: $stage_apply_json"
-echo "- staging_rollback_apply_json: $stage_rollback_apply_json"
-echo "- staging_post_rollback_json: $stage_post_rollback_json"
+echo "- staging_dry_run_json: ${stage_dry_json:-n/a}"
+echo "- staging_apply_json: ${stage_apply_json:-n/a}"
+echo "- staging_rollback_apply_json: ${stage_rollback_apply_json:-n/a}"
+echo "- staging_post_check_json: $stage_post_check_json"
 echo "- baseline_ts: $cutover_ts"
 echo "- baseline_md: $cutover_md"
 echo "- baseline_json: $cutover_json"
@@ -284,6 +392,9 @@ cat > "$DECISION_OUTPUT" <<EOF
 - phase: $PHASE
 - decision: go
 - owner: $OWNER
+- staging_rehearsal_status: $staging_rehearsal_status
+- staging_rehearsal_exit_code: $staging_rehearsal_exit_code
+- staging_rehearsal_source: $staging_rehearsal_source
 
 ## Metrics snapshot
 - engine_mismatch_total: 0
@@ -310,6 +421,10 @@ cat > "$DECISION_OUTPUT" <<EOF
 - verification_step: n/a
 EOF
 
+stage_dry_json_value="$(json_string_or_null "$stage_dry_json")"
+stage_apply_json_value="$(json_string_or_null "$stage_apply_json")"
+stage_rollback_apply_json_value="$(json_string_or_null "$stage_rollback_apply_json")"
+
 mkdir -p "$(dirname "$DECISION_JSON_OUTPUT")"
 cat > "$DECISION_JSON_OUTPUT" <<EOF
 {
@@ -317,6 +432,9 @@ cat > "$DECISION_JSON_OUTPUT" <<EOF
   "generated_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "phase": "$PHASE",
   "owner": "$OWNER",
+  "staging_rehearsal_status": "$staging_rehearsal_status",
+  "staging_rehearsal_exit_code": ${staging_rehearsal_exit_code},
+  "staging_rehearsal_source": "$staging_rehearsal_source",
   "staging_ts": "$stage_ts",
   "baseline_ts": "$cutover_ts",
   "engine_mismatch_total": 0,
@@ -326,11 +444,12 @@ cat > "$DECISION_JSON_OUTPUT" <<EOF
   "latency_p99_delta": null,
   "rate_401_403_delta": null,
   "staging_report": "$stage_report",
+  "staging_report_json": $(json_string_or_null "$stage_report_json"),
   "staging_pre_json": "$stage_pre_json",
-  "staging_dry_run_json": "$stage_dry_json",
-  "staging_apply_json": "$stage_apply_json",
-  "staging_rollback_apply_json": "$stage_rollback_apply_json",
-  "staging_post_rollback_json": "$stage_post_rollback_json",
+  "staging_dry_run_json": ${stage_dry_json_value},
+  "staging_apply_json": ${stage_apply_json_value},
+  "staging_rollback_apply_json": ${stage_rollback_apply_json_value},
+  "staging_post_check_json": "$stage_post_check_json",
   "baseline_md": "$cutover_md",
   "baseline_json": "$cutover_json",
   "auth_gate_report": "$AUTH_GATE_REPORT",
