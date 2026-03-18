@@ -19,9 +19,7 @@ pub fn Workflows() -> impl IntoView {
 
     let workflows_resource = Resource::new(
         move || (token.get(), tenant.get()),
-        move |(token_val, tenant_val)| async move {
-            api::fetch_workflows(token_val, tenant_val).await
-        },
+        move |(token_val, tenant_val)| async move { api::fetch_workflows(token_val, tenant_val).await },
     );
 
     view! {

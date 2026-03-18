@@ -47,7 +47,6 @@ pub fn VersionHistory(
                                     let wf_id2 = workflow_id.clone();
                                     let tok2 = token.clone();
                                     let ts2 = tenant_slug.clone();
-                                    let on_restored = on_restored.clone();
                                     let is_restoring = restoring_ver == Some(ver);
 
                                     view! {
@@ -58,7 +57,7 @@ pub fn VersionHistory(
                                                 let wf_id3 = wf_id2.clone();
                                                 let tok3 = tok2.clone();
                                                 let ts3 = ts2.clone();
-                                                let on_restored = on_restored.clone();
+                                                let on_restored = on_restored;
                                                 set_restoring.set(Some(ver));
 
                                                 spawn_local(async move {

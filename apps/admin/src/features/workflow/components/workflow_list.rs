@@ -72,14 +72,8 @@ pub fn StatusBadge(status: WorkflowStatus) -> impl IntoView {
             "Paused",
             "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
         ),
-        WorkflowStatus::Archived => (
-            "Archived",
-            "bg-muted text-muted-foreground",
-        ),
-        WorkflowStatus::Draft | WorkflowStatus::Unknown => (
-            "Draft",
-            "bg-primary/10 text-primary",
-        ),
+        WorkflowStatus::Archived => ("Archived", "bg-muted text-muted-foreground"),
+        WorkflowStatus::Draft | WorkflowStatus::Unknown => ("Draft", "bg-primary/10 text-primary"),
     };
     view! {
         <span class=format!("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {}", cls)>

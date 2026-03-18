@@ -207,27 +207,10 @@ pub async fn fetch_installed_modules(
 pub async fn fetch_marketplace_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
-    search: Option<String>,
-    category: Option<String>,
-    source: Option<String>,
-    trust_level: Option<String>,
-    only_compatible: Option<bool>,
-    installed_only: Option<bool>,
+    variables: MarketplaceVariables,
 ) -> Result<Vec<MarketplaceModule>, ApiError> {
-    let response: MarketplaceResponse = request(
-        MARKETPLACE_QUERY,
-        MarketplaceVariables {
-            search,
-            category,
-            source,
-            trust_level,
-            only_compatible,
-            installed_only,
-        },
-        token,
-        tenant_slug,
-    )
-    .await?;
+    let response: MarketplaceResponse =
+        request(MARKETPLACE_QUERY, variables, token, tenant_slug).await?;
     Ok(response.marketplace)
 }
 

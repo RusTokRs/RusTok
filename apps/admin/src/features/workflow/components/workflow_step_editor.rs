@@ -4,8 +4,14 @@ use crate::entities::workflow::WorkflowStep;
 use crate::features::workflow::api;
 
 const STEP_TYPES: &[&str] = &[
-    "ACTION", "CONDITION", "DELAY", "ALLOY_SCRIPT",
-    "EMIT_EVENT", "HTTP", "NOTIFY", "TRANSFORM",
+    "ACTION",
+    "CONDITION",
+    "DELAY",
+    "ALLOY_SCRIPT",
+    "EMIT_EVENT",
+    "HTTP",
+    "NOTIFY",
+    "TRANSFORM",
 ];
 
 #[component]

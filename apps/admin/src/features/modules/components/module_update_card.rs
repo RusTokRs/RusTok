@@ -160,7 +160,7 @@ pub fn ModuleUpdateCard(
                             class="inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                             disabled=move || platform_loading.get()
                             on:click=move |_| {
-                                if let Some(cb) = on_inspect.clone() {
+                                if let Some(cb) = on_inspect {
                                     cb.run(module_slug_for_inspect.clone());
                                 }
                             }

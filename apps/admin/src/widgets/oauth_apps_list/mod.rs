@@ -30,8 +30,6 @@ pub fn OAuthAppsList(
                         .map(|app| {
                             let app_clone1 = app.clone();
                             let app_clone2 = app.clone();
-                            let on_rotate_secret = on_rotate_secret.clone();
-                            let on_revoke_app = on_revoke_app.clone();
 
                             view! {
                                 <tr class="hover:bg-muted/50 transition-colors">

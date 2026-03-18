@@ -57,7 +57,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
                     <div class="bg-background rounded-lg border shadow-lg w-full max-w-md p-6">
                         {move || match modal_state.get() {
                             ModalState::CreateApp => {
-                                let close = close_modal.clone();
+                                let close = close_modal;
                                 view! {
                                     <CreateAppForm
                                         on_success=move |res: CreateOAuthAppResult| {
@@ -69,7 +69,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                 }.into_any()
                             },
                             ModalState::RotateSecret(app) => {
-                                let close = close_modal.clone();
+                                let close = close_modal;
                                 view! {
                                     <RotateSecretDialog
                                         app=app
@@ -82,21 +82,22 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                 }.into_any()
                             },
                             ModalState::RevokeApp(app) => {
-                                let close = close_modal.clone();
+                                let close_for_success = close_modal;
+                                let close_for_cancel = close_modal;
                                 view! {
                                     <RevokeAppDialog
                                         app=app
                                         on_success=move || {
                                             // Mock remove
                                             // set_apps.update(|a| a.retain(|x| x.id != app.id));
-                                            close();
+                                            close_for_success();
                                         }
-                                        on_cancel=move || close()
+                                        on_cancel=close_for_cancel
                                     />
                                 }.into_any()
                             },
                             ModalState::SecretRevealed(secret) => {
-                                let close = close_modal.clone();
+                                let close = close_modal;
                                 view! {
                                     <div class="space-y-4">
                                         <h3 class="text-lg font-medium text-green-600">"Success!"</h3>
@@ -107,7 +108,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                         </div>
                                         <UiSuccessMessage message="Store this secret safely. You will not be able to see it again." />
 
-                                        <UiButton class="w-full" on_click=Box::new(move || close())>
+                                        <UiButton class="w-full" on_click=Box::new(close)>
                                             "I have saved it"
                                         </UiButton>
                                     </div>

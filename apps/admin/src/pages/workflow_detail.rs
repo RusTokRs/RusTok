@@ -5,7 +5,9 @@ use leptos_router::hooks::use_params;
 use leptos_router::params::Params;
 
 use crate::entities::workflow::{WorkflowDetail, WorkflowExecution};
-use crate::features::workflow::{api, ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor};
+use crate::features::workflow::{
+    api, ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor,
+};
 use crate::shared::api::ApiError;
 use crate::{t_string, use_i18n};
 
@@ -28,7 +30,12 @@ pub fn WorkflowDetailPage() -> impl IntoView {
     let params = use_params::<WorkflowParams>();
 
     let workflow_id = move || {
-        params.with(|p| p.as_ref().ok().and_then(|p| p.id.clone()).unwrap_or_default())
+        params.with(|p| {
+            p.as_ref()
+                .ok()
+                .and_then(|p| p.id.clone())
+                .unwrap_or_default()
+        })
     };
 
     let data_resource = Resource::new(
@@ -37,14 +44,18 @@ pub fn WorkflowDetailPage() -> impl IntoView {
             if wf_id.is_empty() {
                 return Err(ApiError::Graphql("No workflow id".to_string()));
             }
-            let workflow = api::fetch_workflow(token_val.clone(), tenant_val.clone(), wf_id.clone()).await?;
+            let workflow =
+                api::fetch_workflow(token_val.clone(), tenant_val.clone(), wf_id.clone()).await?;
             let executions = api::fetch_workflow_executions(token_val, tenant_val, wf_id).await?;
-            Ok::<_, ApiError>(workflow.map(|w| WorkflowPageData { workflow: w, executions }))
+            Ok::<_, ApiError>(workflow.map(|w| WorkflowPageData {
+                workflow: w,
+                executions,
+            }))
         },
     );
 
-    let token_sig = token.clone();
-    let tenant_sig = tenant.clone();
+    let token_sig = token;
+    let tenant_sig = tenant;
 
     view! {
         <section class="px-10 py-8">

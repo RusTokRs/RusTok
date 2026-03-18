@@ -89,24 +89,15 @@ fn is_build_active(build: &BuildJob) -> bool {
     matches!(build.status.as_str(), "QUEUED" | "RUNNING")
 }
 
-fn normalize_catalog_filters(
-    filters: &CatalogFilters,
-) -> (
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<bool>,
-    Option<bool>,
-) {
-    (
-        (!filters.search.trim().is_empty()).then(|| filters.search.trim().to_string()),
-        (filters.category != "all").then(|| filters.category.clone()),
-        (filters.source != "all").then(|| filters.source.clone()),
-        (filters.trust_level != "all").then(|| filters.trust_level.clone()),
-        filters.only_compatible.then_some(true),
-        filters.installed_only.then_some(true),
-    )
+fn normalize_catalog_filters(filters: &CatalogFilters) -> api::MarketplaceVariables {
+    api::MarketplaceVariables {
+        search: (!filters.search.trim().is_empty()).then(|| filters.search.trim().to_string()),
+        category: (filters.category != "all").then(|| filters.category.clone()),
+        source: (filters.source != "all").then(|| filters.source.clone()),
+        trust_level: (filters.trust_level != "all").then(|| filters.trust_level.clone()),
+        only_compatible: filters.only_compatible.then_some(true),
+        installed_only: filters.installed_only.then_some(true),
+    }
 }
 
 #[component]
@@ -185,19 +176,8 @@ pub fn ModulesList(
             set_catalog_refreshing.set(true);
         }
         spawn_local(async move {
-            let (search, category, source, trust_level, only_compatible, installed_only) =
-                normalize_catalog_filters(&filters);
-            let result = api::fetch_marketplace_modules(
-                token_value,
-                tenant_value,
-                search,
-                category,
-                source,
-                trust_level,
-                only_compatible,
-                installed_only,
-            )
-            .await;
+            let filters = normalize_catalog_filters(&filters);
+            let result = api::fetch_marketplace_modules(token_value, tenant_value, filters).await;
             if let Ok(marketplace) = result {
                 set_known_categories.update(|categories| {
                     for category in marketplace
@@ -252,19 +232,9 @@ pub fn ModulesList(
                 {
                     set_build_history_state.set(history);
                 }
-                let (search, category, source, trust_level, only_compatible, installed_only) =
-                    normalize_catalog_filters(&filters);
-                if let Ok(marketplace) = api::fetch_marketplace_modules(
-                    token_value,
-                    tenant_value,
-                    search,
-                    category,
-                    source,
-                    trust_level,
-                    only_compatible,
-                    installed_only,
-                )
-                .await
+                let filters = normalize_catalog_filters(&filters);
+                if let Ok(marketplace) =
+                    api::fetch_marketplace_modules(token_value, tenant_value, filters).await
                 {
                     set_known_categories.update(|categories| {
                         for category in marketplace
@@ -301,7 +271,7 @@ pub fn ModulesList(
         let tenant_value = tenant.get();
         refresh_orchestration_state(token_value, tenant_value, applied_catalog_filters.get());
     };
-    let live_polling = use_interval_fn(refresh_live_state.clone(), 5000);
+    let live_polling = use_interval_fn(refresh_live_state, 5000);
     (live_polling.pause)();
     let pause_live_polling = live_polling.pause.clone();
     let resume_live_polling = live_polling.resume.clone();

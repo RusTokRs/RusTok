@@ -50,7 +50,6 @@ pub fn TemplateGallery(
                                     let template_id = t.id.clone();
                                     let tok2 = token.clone();
                                     let ts2 = tenant_slug.clone();
-                                    let on_created = on_created.clone();
 
                                     let is_pending = pending.as_deref() == Some(&template_id);
 
@@ -64,7 +63,7 @@ pub fn TemplateGallery(
                                                 let id = template_id.clone();
                                                 let tok3 = tok2.clone();
                                                 let ts3 = ts2.clone();
-                                                let on_created = on_created.clone();
+                                                let on_created = on_created;
                                                 let nm = name_input.get_untracked();
                                                 set_pending_id.set(Some(id.clone()));
 
@@ -110,7 +109,9 @@ fn TemplateCard(
         "commerce" => "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
         "auth" => "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
         "reporting" => "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
-        "integrations" => "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+        "integrations" => {
+            "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+        }
         _ => "bg-muted text-muted-foreground",
     };
 

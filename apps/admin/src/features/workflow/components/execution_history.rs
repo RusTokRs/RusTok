@@ -56,22 +56,13 @@ pub fn ExecutionBadge(status: ExecutionStatus) -> impl IntoView {
             "Completed",
             "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
         ),
-        ExecutionStatus::Failed => (
-            "Failed",
-            "bg-destructive/10 text-destructive",
-        ),
-        ExecutionStatus::Running => (
-            "Running",
-            "bg-primary/10 text-primary",
-        ),
+        ExecutionStatus::Failed => ("Failed", "bg-destructive/10 text-destructive"),
+        ExecutionStatus::Running => ("Running", "bg-primary/10 text-primary"),
         ExecutionStatus::TimedOut => (
             "Timed out",
             "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
         ),
-        ExecutionStatus::Unknown => (
-            "Unknown",
-            "bg-muted text-muted-foreground",
-        ),
+        ExecutionStatus::Unknown => ("Unknown", "bg-muted text-muted-foreground"),
     };
     view! {
         <span class=format!("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {}", cls)>

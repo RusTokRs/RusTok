@@ -40,8 +40,6 @@ fn get_stored_locale() -> Option<String> {
     }
 }
 
-
-
 pub async fn request<V, T>(
     query: &str,
     variables: V,

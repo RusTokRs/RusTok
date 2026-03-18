@@ -112,7 +112,7 @@ pub fn CreateAppForm(
                 </UiButton>
                 <UiButton
                     variant=crate::shared::ui::ButtonVariant::Outline
-                    on_click=Box::new(move || on_cancel())
+                    on_click=Box::new(on_cancel)
                 >
                     "Cancel"
                 </UiButton>

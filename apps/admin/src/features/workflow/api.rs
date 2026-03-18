@@ -150,8 +150,7 @@ pub async fn fetch_workflow(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<Option<WorkflowDetail>, ApiError> {
-    let resp: WorkflowResponse =
-        request(WORKFLOW_QUERY, IdVars { id }, token, tenant_slug).await?;
+    let resp: WorkflowResponse = request(WORKFLOW_QUERY, IdVars { id }, token, tenant_slug).await?;
     Ok(resp.workflow)
 }
 
@@ -175,8 +174,13 @@ pub async fn create_workflow(
     tenant_slug: Option<String>,
     input: CreateWorkflowInput,
 ) -> Result<String, ApiError> {
-    let resp: CreateWorkflowResponse =
-        request(CREATE_WORKFLOW_MUTATION, CreateWorkflowVars { input }, token, tenant_slug).await?;
+    let resp: CreateWorkflowResponse = request(
+        CREATE_WORKFLOW_MUTATION,
+        CreateWorkflowVars { input },
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(resp.create_workflow)
 }
 
@@ -195,8 +199,13 @@ pub async fn activate_workflow(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    let _: serde_json::Value =
-        request(ACTIVATE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug).await?;
+    let _: serde_json::Value = request(
+        ACTIVATE_WORKFLOW_MUTATION,
+        IdVars { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(())
 }
 
@@ -234,7 +243,10 @@ pub async fn delete_step(
 ) -> Result<(), ApiError> {
     let _: serde_json::Value = request(
         DELETE_STEP_MUTATION,
-        DeleteStepVars { workflow_id, step_id },
+        DeleteStepVars {
+            workflow_id,
+            step_id,
+        },
         token,
         tenant_slug,
     )
@@ -244,7 +256,8 @@ pub async fn delete_step(
 
 // ── Phase 4 GQL documents ─────────────────────────────────────────────────────
 
-pub const WORKFLOW_TEMPLATES_QUERY: &str = "query WorkflowTemplates { workflowTemplates { id name description category triggerConfig } }";
+pub const WORKFLOW_TEMPLATES_QUERY: &str =
+    "query WorkflowTemplates { workflowTemplates { id name description category triggerConfig } }";
 
 pub const CREATE_FROM_TEMPLATE_MUTATION: &str = "mutation CreateWorkflowFromTemplate($templateId: String!, $name: String!) { createWorkflowFromTemplate(templateId: $templateId, name: $name) }";
 
@@ -321,8 +334,13 @@ pub async fn fetch_templates(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<WorkflowTemplateDto>, ApiError> {
-    let resp: TemplatesResponse =
-        request(WORKFLOW_TEMPLATES_QUERY, TemplatesVars {}, token, tenant_slug).await?;
+    let resp: TemplatesResponse = request(
+        WORKFLOW_TEMPLATES_QUERY,
+        TemplatesVars {},
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(resp.workflow_templates)
 }
 
@@ -365,7 +383,10 @@ pub async fn restore_version(
 ) -> Result<(), ApiError> {
     let _: serde_json::Value = request(
         RESTORE_VERSION_MUTATION,
-        RestoreVersionVars { workflow_id, version },
+        RestoreVersionVars {
+            workflow_id,
+            version,
+        },
         token,
         tenant_slug,
     )

@@ -229,7 +229,6 @@ pub fn ModuleCard(
                         }
                             .into_any()
                     } else {
-                        let on_toggle = on_toggle.clone();
                         view! {
                             <div class="flex items-center gap-2">
                                 <span class="text-xs text-muted-foreground">
@@ -255,7 +254,7 @@ pub fn ModuleCard(
                                     }
                                     disabled=move || tenant_loading.get() || platform_loading.get() || !platform_installed.get()
                                     on:click=move |_| {
-                                        if let Some(cb) = on_toggle.clone() {
+                                        if let Some(cb) = on_toggle {
                                             cb.run((slug_for_toggle.clone(), !tenant_enabled.get()));
                                         }
                                     }
@@ -278,9 +277,6 @@ pub fn ModuleCard(
                 </div>
 
                 {(!is_core).then(|| {
-                    let on_install = on_install.clone();
-                    let on_uninstall = on_uninstall.clone();
-                    let on_inspect = on_inspect.clone();
                     let slug_for_install_fallback = slug_for_install.clone();
                     let version_for_install_fallback = version_for_install.clone();
                     let slug_for_uninstall_action = slug_for_uninstall.clone();
@@ -291,7 +287,7 @@ pub fn ModuleCard(
                                 class="inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                 disabled=move || platform_loading.get()
                                 on:click=move |_| {
-                                    if let Some(cb) = on_inspect.clone() {
+                                    if let Some(cb) = on_inspect {
                                         cb.run(slug_for_inspect.clone());
                                     }
                                 }
@@ -314,7 +310,7 @@ pub fn ModuleCard(
                                 <Show
                                     when=move || platform_installed.get()
                                     fallback=move || {
-                                        let on_install = on_install.clone();
+                                        let on_install = on_install;
                                         let slug_for_install = slug_for_install_fallback.clone();
                                         let version_for_install = version_for_install_fallback.clone();
                                         view! {
@@ -323,7 +319,7 @@ pub fn ModuleCard(
                                                 class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
                                                 disabled=move || platform_busy.get() || platform_loading.get()
                                                 on:click=move |_| {
-                                                    if let Some(cb) = on_install.clone() {
+                                                    if let Some(cb) = on_install {
                                                         cb.run((slug_for_install.clone(), version_for_install.clone()));
                                                     }
                                                 }
@@ -341,7 +337,7 @@ pub fn ModuleCard(
                                         class="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                         disabled=move || platform_busy.get() || platform_loading.get()
                                         on:click=move |_| {
-                                            if let Some(cb) = on_uninstall.clone() {
+                                            if let Some(cb) = on_uninstall {
                                                 cb.run(uninstall_slug.clone());
                                             }
                                         }
@@ -356,7 +352,6 @@ pub fn ModuleCard(
                     }
                 })}
                 {is_core.then(|| {
-                    let on_inspect = on_inspect.clone();
                     view! {
                         <div class="flex items-center justify-between gap-3 border-t pt-3">
                             <button
@@ -364,7 +359,7 @@ pub fn ModuleCard(
                                 class="inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                                 disabled=move || platform_loading.get()
                                 on:click=move |_| {
-                                    if let Some(cb) = on_inspect.clone() {
+                                    if let Some(cb) = on_inspect {
                                         cb.run(slug.clone());
                                     }
                                 }

@@ -34,12 +34,14 @@ pub fn Modules() -> impl IntoView {
             let marketplace_modules = api::fetch_marketplace_modules(
                 token_value.clone(),
                 tenant_value.clone(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
+                api::MarketplaceVariables {
+                    search: None,
+                    category: None,
+                    source: None,
+                    trust_level: None,
+                    only_compatible: None,
+                    installed_only: None,
+                },
             )
             .await?;
             let installed_modules =
