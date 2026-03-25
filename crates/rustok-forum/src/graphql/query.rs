@@ -134,7 +134,10 @@ impl ForumQuery {
             total,
         );
 
-        let items = topics.into_iter().map(map_topic_list_item).collect::<Vec<_>>();
+        let items = topics
+            .into_iter()
+            .map(map_topic_list_item)
+            .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",
@@ -319,7 +322,10 @@ impl ForumQuery {
             total,
         );
 
-        let items = topics.into_iter().map(map_topic_list_item).collect::<Vec<_>>();
+        let items = topics
+            .into_iter()
+            .map(map_topic_list_item)
+            .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",

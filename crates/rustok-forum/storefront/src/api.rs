@@ -167,7 +167,11 @@ pub async fn fetch_storefront_forum(
     };
 
     let resolved_category_id = selected_category_id
-        .or_else(|| selected_topic.as_ref().map(|topic| topic.category_id.clone()))
+        .or_else(|| {
+            selected_topic
+                .as_ref()
+                .map(|topic| topic.category_id.clone())
+        })
         .or_else(|| {
             categories_response
                 .forum_storefront_categories

@@ -63,6 +63,7 @@ impl SearchConnectorDescriptor {
 pub struct SearchQuery {
     pub tenant_id: Option<Uuid>,
     pub locale: Option<String>,
+    pub original_query: String,
     pub query: String,
     pub limit: usize,
     pub offset: usize,

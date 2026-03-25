@@ -1,79 +1,51 @@
-# RusToK Module Manifest (EXAMPLE with UI Packages)
-# Это пример манифеста с UI пакетами для админки и фронтенда
-# Оригинальный манифест находится в modules.toml
+# RusToK Module Manifest (example)
+# Пример синхронизирован с текущей platform topology.
+# Канонический источник истины по активной конфигурации — `modules.toml`.
 
-schema = 1
+schema = 2
 app = "rustok-server"
 
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
-deployment_profile = "monolith" # monolith | headless
+
+[build.server]
+embed_admin = true
+embed_storefront = true
+
+[build.admin]
+stack = "leptos"
+public_url = "http://localhost:3001"
+redirect_uris = ["http://localhost:3001/auth/callback"]
+
+[[build.storefront]]
+id = "default"
+stack = "leptos"
+public_url = "http://localhost:3000"
+redirect_uris = ["http://localhost:3000/auth/callback"]
 
 [modules]
-# Core modules (required)
-content = {
-    crate = "rustok-content",
-    source = "path",
-    path = "crates/rustok-content"
-}
+# Core modules
+auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
+cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
+email = { crate = "rustok-email", source = "path", path = "crates/rustok-email", required = true }
+index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
+search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
+outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
+tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
+rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
 
-# Domain modules (optional)
-commerce = {
-    crate = "rustok-commerce",
-    source = "path",
-    path = "crates/rustok-commerce",
-    # UI пакеты для админки и витрины
-    admin_ui = "leptos-commerce-admin",
-    storefront_ui = "leptos-commerce-storefront",
-    admin_ui_path = "crates/leptos-commerce-admin",
-    storefront_ui_path = "crates/leptos-commerce-storefront",
-    admin_ui_version = "0.1.0",
-    storefront_ui_version = "0.1.0"
-}
-
-blog = {
-    crate = "rustok-blog",
-    source = "path",
-    path = "crates/rustok-blog",
-    # Только admin UI для блога
-    admin_ui = "leptos-blog-admin",
-    admin_ui_path = "crates/leptos-blog-admin",
-    admin_ui_version = "0.1.0"
-}
-
-forum = {
-    crate = "rustok-forum",
-    source = "path",
-    path = "crates/rustok-forum",
-    # UI пакеты интегрированы в приложения (не отдельные crates)
-    admin_ui = "integrated",
-    storefront_ui = "leptos-forum-storefront",
-    storefront_ui_path = "crates/leptos-forum-storefront",
-    storefront_ui_version = "0.1.0"
-}
-
-pages = {
-    crate = "rustok-pages",
-    source = "path",
-    path = "crates/rustok-pages"
-    # Без UI пакетов (использует стандартные компоненты)
-}
-
-# Infrastructure modules
-index = {
-    crate = "rustok-index",
-    source = "path",
-    path = "crates/rustok-index"
-    # Infra модули обычно не имеют UI
-}
-
-outbox = {
-    crate = "rustok-outbox",
-    source = "path",
-    path = "crates/rustok-outbox"
-    # Infra модули обычно не имеют UI
-}
+# Optional modules
+content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
+product = { crate = "rustok-product", source = "path", path = "crates/rustok-product" }
+pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
+inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
+commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["product", "pricing", "inventory"] }
+blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
+forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content"] }
+pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
+media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
+workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
 
 [settings]
-default_enabled = ["content", "commerce", "pages"]
+default_enabled = ["content", "product", "pricing", "inventory", "commerce", "pages"]

@@ -11,6 +11,9 @@ default = [
     "redis-cache",
     "embed-admin",
     "embed-storefront",
+    "mod-product",
+    "mod-pricing",
+    "mod-inventory",
     "mod-commerce",
     "mod-content",
     "mod-blog",
@@ -26,6 +29,9 @@ embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
 # Domain module feature flags — compile the module into the binary;
 # resolvers additionally check is_enabled(tenant_id) at runtime.
+mod-product   = ["dep:rustok-product"]
+mod-pricing   = ["dep:rustok-pricing"]
+mod-inventory = ["dep:rustok-inventory"]
 mod-commerce  = ["dep:rustok-commerce"]
 mod-content   = ["dep:rustok-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content"]
@@ -44,6 +50,9 @@ rustok-email.workspace = true
 rustok-events.workspace = true
 flex.workspace = true
 rustok-storefront = { path = "../storefront", optional = true }
+rustok-product   = { workspace = true, optional = true }
+rustok-pricing   = { workspace = true, optional = true }
+rustok-inventory = { workspace = true, optional = true }
 rustok-commerce  = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }

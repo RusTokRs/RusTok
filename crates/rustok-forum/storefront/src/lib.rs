@@ -190,7 +190,8 @@ fn ForumTopicFeed(
                     "Publish a topic from the forum admin package to light up this storefront feed."
                 </p>
             </section>
-        }.into_any();
+        }
+        .into_any();
     }
 
     view! {

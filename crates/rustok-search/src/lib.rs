@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use rustok_core::{module::HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod analytics;
 pub mod diagnostics;
+pub mod dictionaries;
 pub mod engine;
 pub mod ingestion;
 pub mod migrations;
@@ -11,7 +13,15 @@ pub mod pg_engine;
 pub mod projector;
 pub mod search_settings;
 
+pub use analytics::{
+    SearchAnalyticsInsightRow, SearchAnalyticsQueryRow, SearchAnalyticsService,
+    SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchClickRecord, SearchQueryLogRecord,
+};
 pub use diagnostics::{LaggingSearchDocument, SearchDiagnosticsService, SearchDiagnosticsSnapshot};
+pub use dictionaries::{
+    SearchDictionaryService, SearchDictionarySnapshot, SearchQueryRuleRecord, SearchQueryTransform,
+    SearchStopWordRecord, SearchSynonymRecord,
+};
 pub use engine::{SearchConnectorDescriptor, SearchEngine, SearchEngineKind, SearchQuery};
 pub use engine::{SearchResult, SearchResultItem};
 pub use ingestion::SearchIngestionHandler;

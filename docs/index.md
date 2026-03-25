@@ -110,7 +110,8 @@ graph TD
 - [Реестр crate-ов RusToK](./modules/crates-registry.md)
 - [Манифест](./modules/manifest.md)
 - [План развития модульной платформы](./modules/module-system-plan.md) — актуальный roadmap по marketplace, install/uninstall, build/release, real frontend artifacts и UI codegen.
-- [План реализации модуля Search](../crates/rustok-search/docs/implementation-plan.md) — канонический roadmap для `rustok-search`, включая архитектурную границу с `rustok-index`, Postgres-first runtime, admin/storefront UI и optional-коннекторы.
+- [План реализации модуля Search](../crates/rustok-search/docs/implementation-plan.md) — канонический roadmap для `rustok-search`, включая архитектурную границу с `rustok-index`, Postgres-first runtime, live dictionaries/query-rules UX, admin/storefront UI и optional-коннекторы.
+- [Runbook наблюдаемости модуля Search](../crates/rustok-search/docs/observability-runbook.md) — операторская инструкция по диагностике, lag/rebuild flow и Prometheus-метрикам `rustok-search`.
 - [Plan внедрения rich-text (Tiptap) и GrapesJS Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Индекс модульной документации](./modules/_index.md)
 
@@ -204,8 +205,12 @@ graph TD
 - [Пакет админского UI для Content](../crates/rustok-content/admin/README.md)
 - [Пакет storefront UI для Content](../crates/rustok-content/storefront/README.md)
 - [План реализации модуля Content](../crates/rustok-content/docs/implementation-plan.md)
-- [Документация модуля Commerce](../crates/rustok-commerce/docs/README.md)
-- [План реализации модуля Commerce](../crates/rustok-commerce/docs/implementation-plan.md)
+- [Документация модуля Product](../crates/rustok-product/docs/README.md)
+- [Документация модуля Pricing](../crates/rustok-pricing/docs/README.md)
+- [Документация модуля Inventory](../crates/rustok-inventory/docs/README.md)
+- [Документация модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/README.md)
+- [План реализации модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/implementation-plan.md) — перенесённый в docs исследовательский migration-plan по Medusa-подобной перестройке `commerce`, с backlog противоречий, текущим split на `product/pricing/inventory`, моделью `commerce` как root umbrella module и ссылками на актуальные Medusa v2 API
+- [Документация crate `rustok-commerce-foundation`](../crates/rustok-commerce-foundation/docs/README.md)
 - [Документация модуля Blog](../crates/rustok-blog/docs/README.md)
 - [Пакет админского UI для Blog](../crates/rustok-blog/admin/README.md)
 - [Пакет storefront UI для Blog](../crates/rustok-blog/storefront/README.md)

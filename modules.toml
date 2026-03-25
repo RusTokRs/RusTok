@@ -43,7 +43,10 @@ rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", re
 
 # Domain modules (optional)
 content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
-commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce" }
+product = { crate = "rustok-product", source = "path", path = "crates/rustok-product" }
+pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
+inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
+commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["product", "pricing", "inventory"] }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content"] }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
@@ -51,4 +54,4 @@ media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" 
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
 
 [settings]
-default_enabled = ["content", "commerce", "pages"]
+default_enabled = ["content", "product", "pricing", "inventory", "commerce", "pages"]

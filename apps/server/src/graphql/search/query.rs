@@ -1,18 +1,21 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::app::AppContext;
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::services::rbac_service::RbacService;
 use rustok_search::{
-    PgSearchEngine, SearchDiagnosticsService, SearchEngine, SearchModule, SearchQuery,
-    SearchSettingsService,
+    PgSearchEngine, SearchAnalyticsService, SearchDiagnosticsService, SearchDictionaryService,
+    SearchEngine, SearchModule, SearchQuery, SearchQueryLogRecord, SearchSettingsService,
 };
+use rustok_telemetry::metrics;
 
 use super::types::{
-    LaggingSearchDocumentPayload, SearchDiagnosticsPayload, SearchEngineDescriptor,
-    SearchPreviewInput, SearchPreviewPayload, SearchSettingsPayload,
+    LaggingSearchDocumentPayload, SearchAnalyticsPayload, SearchDiagnosticsPayload,
+    SearchDictionarySnapshotPayload, SearchEngineDescriptor, SearchPreviewInput,
+    SearchPreviewPayload, SearchSettingsPayload,
 };
 
 #[derive(Default)]
@@ -22,6 +25,8 @@ const MAX_SEARCH_QUERY_LEN: usize = 256;
 const MAX_FILTER_VALUES: usize = 10;
 const MAX_FILTER_VALUE_LEN: usize = 64;
 const MAX_LOCALE_LEN: usize = 16;
+const DEFAULT_ANALYTICS_WINDOW_DAYS: u32 = 7;
+const DEFAULT_ANALYTICS_LIMIT: usize = 10;
 
 #[Object]
 impl SearchQueryRoot {
@@ -104,6 +109,48 @@ impl SearchQueryRoot {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    /// Returns aggregated search analytics for the current tenant.
+    async fn search_analytics(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        days: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<SearchAnalyticsPayload> {
+        ensure_settings_read_permission(ctx).await?;
+
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let days = normalize_analytics_days(days);
+        let limit = normalize_analytics_limit(limit);
+
+        let snapshot = SearchAnalyticsService::snapshot(&app_ctx.db, tenant_id, days, limit)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        Ok(snapshot.into())
+    }
+
+    /// Returns the current tenant-owned search dictionaries and query rules.
+    async fn search_dictionary_snapshot(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<SearchDictionarySnapshotPayload> {
+        ensure_settings_read_permission(ctx).await?;
+
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+
+        let snapshot = SearchDictionaryService::snapshot(&app_ctx.db, tenant_id)
+            .await
+            .map_err(map_search_module_error)?;
+
+        Ok(snapshot.into())
+    }
+
     /// Executes a PostgreSQL-backed search preview over rustok-search owned search documents.
     async fn search_preview(
         &self,
@@ -115,28 +162,85 @@ impl SearchQueryRoot {
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
-        let tenant_id = Some(resolve_tenant_scope(
-            tenant,
-            parse_optional_uuid(input.tenant_id.as_deref())?,
-        )?);
+        let requested_limit = input.limit;
+        let effective_limit = requested_limit.unwrap_or(10).clamp(1, 50) as usize;
+        let tenant_id =
+            resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
+        let transform =
+            SearchDictionaryService::transform_query(&app_ctx.db, tenant_id, &input.query)
+                .await
+                .map_err(map_search_module_error)?;
         let engine = PgSearchEngine::new(app_ctx.db.clone());
+        let started_at = Instant::now();
+        let search_query = SearchQuery {
+            tenant_id: Some(tenant_id),
+            locale: input.locale,
+            original_query: transform.original_query,
+            query: transform.effective_query,
+            limit: effective_limit,
+            offset: input.offset.unwrap_or(0).max(0) as usize,
+            published_only: false,
+            entity_types: input.entity_types.unwrap_or_default(),
+            source_modules: input.source_modules.unwrap_or_default(),
+            statuses: input.statuses.unwrap_or_default(),
+        };
+        let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
+        finalize_search_result(
+            &app_ctx.db,
+            "search_preview",
+            &search_query,
+            requested_limit,
+            effective_limit,
+            started_at,
+            result,
+        )
+        .await
+    }
 
-        let result = engine
-            .search(SearchQuery {
-                tenant_id,
-                locale: input.locale,
-                query: input.query,
-                limit: input.limit.unwrap_or(10).clamp(1, 50) as usize,
-                offset: input.offset.unwrap_or(0).max(0) as usize,
-                published_only: false,
-                entity_types: input.entity_types.unwrap_or_default(),
-                source_modules: input.source_modules.unwrap_or_default(),
-                statuses: input.statuses.unwrap_or_default(),
-            })
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    /// Executes host-level admin search for global navigation and quick-open flows.
+    async fn admin_global_search(
+        &self,
+        ctx: &Context<'_>,
+        input: SearchPreviewInput,
+    ) -> Result<SearchPreviewPayload> {
+        ensure_settings_read_permission(ctx).await?;
 
-        Ok(result.into())
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let input = normalize_search_preview_input(input)?;
+        let requested_limit = input.limit;
+        let effective_limit = requested_limit.unwrap_or(8).clamp(1, 20) as usize;
+        let tenant_id =
+            resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
+        let transform =
+            SearchDictionaryService::transform_query(&app_ctx.db, tenant_id, &input.query)
+                .await
+                .map_err(map_search_module_error)?;
+        let engine = PgSearchEngine::new(app_ctx.db.clone());
+        let started_at = Instant::now();
+        let search_query = SearchQuery {
+            tenant_id: Some(tenant_id),
+            locale: input.locale,
+            original_query: transform.original_query,
+            query: transform.effective_query,
+            limit: effective_limit,
+            offset: input.offset.unwrap_or(0).max(0) as usize,
+            published_only: false,
+            entity_types: input.entity_types.unwrap_or_default(),
+            source_modules: input.source_modules.unwrap_or_default(),
+            statuses: input.statuses.unwrap_or_default(),
+        };
+        let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
+        finalize_search_result(
+            &app_ctx.db,
+            "admin_global_search",
+            &search_query,
+            requested_limit,
+            effective_limit,
+            started_at,
+            result,
+        )
+        .await
     }
 
     /// Executes public storefront search over published content and published products only.
@@ -149,23 +253,38 @@ impl SearchQueryRoot {
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
         let engine = PgSearchEngine::new(app_ctx.db.clone());
+        let requested_limit = input.limit;
+        let effective_limit = requested_limit.unwrap_or(12).clamp(1, 50) as usize;
+        let started_at = Instant::now();
+        let transform =
+            SearchDictionaryService::transform_query(&app_ctx.db, tenant.id, &input.query)
+                .await
+                .map_err(map_search_module_error)?;
 
-        let result = engine
-            .search(SearchQuery {
-                tenant_id: Some(tenant.id),
-                locale: input.locale,
-                query: input.query,
-                limit: input.limit.unwrap_or(12).clamp(1, 50) as usize,
-                offset: input.offset.unwrap_or(0).max(0) as usize,
-                published_only: true,
-                entity_types: input.entity_types.unwrap_or_default(),
-                source_modules: input.source_modules.unwrap_or_default(),
-                statuses: input.statuses.unwrap_or_default(),
-            })
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let search_query = SearchQuery {
+            tenant_id: Some(tenant.id),
+            locale: input.locale,
+            original_query: transform.original_query,
+            query: transform.effective_query,
+            limit: effective_limit,
+            offset: input.offset.unwrap_or(0).max(0) as usize,
+            published_only: true,
+            entity_types: input.entity_types.unwrap_or_default(),
+            source_modules: input.source_modules.unwrap_or_default(),
+            statuses: input.statuses.unwrap_or_default(),
+        };
 
-        Ok(result.into())
+        let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
+        finalize_search_result(
+            &app_ctx.db,
+            "storefront_search",
+            &search_query,
+            requested_limit,
+            effective_limit,
+            started_at,
+            result,
+        )
+        .await
     }
 }
 
@@ -293,4 +412,169 @@ fn normalize_filter_values(field_name: &str, values: Option<Vec<String>>) -> Res
             Ok(normalized)
         })
         .collect()
+}
+
+fn normalize_analytics_days(value: Option<i32>) -> u32 {
+    value
+        .unwrap_or(DEFAULT_ANALYTICS_WINDOW_DAYS as i32)
+        .clamp(1, 30) as u32
+}
+
+fn normalize_analytics_limit(value: Option<i32>) -> usize {
+    value.unwrap_or(DEFAULT_ANALYTICS_LIMIT as i32).clamp(1, 25) as usize
+}
+
+async fn finalize_search_result(
+    db: &sea_orm::DatabaseConnection,
+    surface: &str,
+    search_query: &SearchQuery,
+    requested_limit: Option<i32>,
+    effective_limit: usize,
+    started_at: Instant,
+    result: rustok_core::Result<rustok_search::SearchResult>,
+) -> Result<SearchPreviewPayload> {
+    let duration = started_at.elapsed();
+
+    match result {
+        Ok(result) => {
+            metrics::record_search_query(
+                surface,
+                result.engine.as_str(),
+                "success",
+                duration.as_secs_f64(),
+                result.items.len() as u64,
+            );
+            metrics::record_read_path_budget(
+                "graphql",
+                surface,
+                requested_limit.map(|value| value.max(0) as u64),
+                effective_limit as u64,
+                result.items.len(),
+            );
+            metrics::record_read_path_query(
+                "graphql",
+                surface,
+                "fts_search",
+                result.took_ms as f64 / 1000.0,
+                result.total,
+            );
+            let query_log_id = record_search_query_log(
+                db,
+                surface,
+                search_query,
+                result.engine.as_str(),
+                result.total,
+                result.took_ms,
+                "success",
+            )
+            .await;
+            let mut payload: SearchPreviewPayload = result.into();
+            payload.query_log_id = query_log_id.map(|value| value.to_string());
+            Ok(payload)
+        }
+        Err(error) => {
+            let error_type = classify_search_error(&error);
+            metrics::record_search_query(
+                surface,
+                "postgres",
+                error_type,
+                duration.as_secs_f64(),
+                0,
+            );
+            metrics::record_module_error("search", error_type, "error");
+            let _ = record_search_query_log(
+                db,
+                surface,
+                search_query,
+                "postgres",
+                0,
+                duration.as_millis() as u64,
+                error_type,
+            )
+            .await;
+
+            Err(<FieldError as GraphQLError>::internal_error(
+                &error.to_string(),
+            ))
+        }
+    }
+}
+
+async fn run_search_with_dictionaries(
+    db: &sea_orm::DatabaseConnection,
+    engine: &PgSearchEngine,
+    search_query: SearchQuery,
+) -> rustok_core::Result<rustok_search::SearchResult> {
+    let result = engine.search(search_query.clone()).await?;
+    SearchDictionaryService::apply_query_rules(db, &search_query, result).await
+}
+
+fn classify_search_error(error: &rustok_core::Error) -> &'static str {
+    match error {
+        rustok_core::Error::Database(_) => "database",
+        rustok_core::Error::Validation(_) => "validation",
+        rustok_core::Error::External(_) => "external",
+        rustok_core::Error::NotFound(_) => "not_found",
+        rustok_core::Error::Forbidden(_) => "forbidden",
+        rustok_core::Error::Auth(_) => "auth",
+        rustok_core::Error::Cache(_) => "cache",
+        rustok_core::Error::Serialization(_) => "serialization",
+        rustok_core::Error::Scripting(_) => "scripting",
+        rustok_core::Error::InvalidIdFormat(_) => "invalid_id",
+    }
+}
+
+async fn record_search_query_log(
+    db: &sea_orm::DatabaseConnection,
+    surface: &str,
+    search_query: &SearchQuery,
+    engine: &str,
+    result_count: u64,
+    took_ms: u64,
+    status: &str,
+) -> Option<i64> {
+    let Some(tenant_id) = search_query.tenant_id else {
+        return None;
+    };
+
+    let Some(engine_kind) = rustok_search::SearchEngineKind::try_from_str(engine) else {
+        return None;
+    };
+
+    let record = SearchQueryLogRecord {
+        tenant_id,
+        surface: surface.to_string(),
+        query: search_query.original_query.clone(),
+        locale: search_query.locale.clone(),
+        engine: engine_kind,
+        result_count,
+        took_ms,
+        status: status.to_string(),
+        entity_types: search_query.entity_types.clone(),
+        source_modules: search_query.source_modules.clone(),
+        statuses: search_query.statuses.clone(),
+    };
+
+    match SearchAnalyticsService::record_query(db, record).await {
+        Ok(log_id) => log_id,
+        Err(error) => {
+            metrics::record_module_error("search", classify_search_error(&error), "warning");
+            tracing::warn!(
+                surface,
+                tenant_id = %tenant_id,
+                error = %error,
+                "Failed to persist search analytics query log"
+            );
+            None
+        }
+    }
+}
+
+fn map_search_module_error(error: rustok_core::Error) -> FieldError {
+    match error {
+        rustok_core::Error::Validation(message)
+        | rustok_core::Error::NotFound(message)
+        | rustok_core::Error::InvalidIdFormat(message) => FieldError::new(message),
+        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+    }
 }

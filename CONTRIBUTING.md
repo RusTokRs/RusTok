@@ -156,7 +156,7 @@ Update documentation when:
 
 Core modules in `crates/`:
 - **rustok-core**: Platform foundation (auth, events, RBAC)
-- **rustok-commerce**: E-commerce functionality
+- **rustok-commerce**: Ecommerce umbrella/root module and compatibility surface
 - **rustok-content**: CMS core (nodes, categories)
 - **rustok-blog**: Blogging features
 - **rustok-index**: CQRS read models

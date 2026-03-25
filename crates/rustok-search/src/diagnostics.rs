@@ -57,7 +57,20 @@ impl SearchDiagnosticsService {
                 COUNT(*) FILTER (WHERE indexed_at < updated_at)::bigint AS stale_documents,
                 MAX(indexed_at) AS newest_indexed_at,
                 MIN(indexed_at) AS oldest_indexed_at,
-                COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM (updated_at - indexed_at)), 0)), 0)::bigint AS max_lag_seconds
+                COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM (updated_at - indexed_at)), 0)), 0)::bigint AS max_lag_seconds,
+                EXISTS(
+                    SELECT 1
+                    FROM nodes n
+                    JOIN node_translations nt ON nt.node_id = n.id
+                    WHERE n.tenant_id = $1
+                      AND n.deleted_at IS NULL
+                ) AS has_content_sources,
+                EXISTS(
+                    SELECT 1
+                    FROM products p
+                    JOIN product_translations pt ON pt.product_id = p.id
+                    WHERE p.tenant_id = $1
+                ) AS has_product_sources
             FROM search_documents
             WHERE tenant_id = $1
             "#,
@@ -82,14 +95,19 @@ impl SearchDiagnosticsService {
             .try_get::<i64>("", "max_lag_seconds")
             .map_err(Error::Database)?
             .max(0) as u64;
+        let has_indexable_sources = row
+            .try_get::<bool>("", "has_content_sources")
+            .map_err(Error::Database)?
+            || row
+                .try_get::<bool>("", "has_product_sources")
+                .map_err(Error::Database)?;
 
-        let state = if total_documents == 0 {
-            "bootstrap_pending"
-        } else if stale_documents > 0 || max_lag_seconds > 300 {
-            "lagging"
-        } else {
-            "healthy"
-        }
+        let state = compute_diagnostics_state(
+            total_documents,
+            stale_documents,
+            max_lag_seconds,
+            has_indexable_sources,
+        )
         .to_string();
 
         Ok(SearchDiagnosticsSnapshot {
@@ -193,5 +211,38 @@ impl SearchDiagnosticsService {
                 })
             })
             .collect()
+    }
+}
+
+fn compute_diagnostics_state(
+    total_documents: u64,
+    stale_documents: u64,
+    max_lag_seconds: u64,
+    has_indexable_sources: bool,
+) -> &'static str {
+    if total_documents == 0 && has_indexable_sources {
+        "bootstrap_pending"
+    } else if stale_documents > 0 || max_lag_seconds > 300 {
+        "lagging"
+    } else {
+        "healthy"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_diagnostics_state;
+
+    #[test]
+    fn empty_tenant_without_sources_is_healthy() {
+        assert_eq!(compute_diagnostics_state(0, 0, 0, false), "healthy");
+    }
+
+    #[test]
+    fn empty_tenant_with_sources_is_bootstrap_pending() {
+        assert_eq!(
+            compute_diagnostics_state(0, 0, 0, true),
+            "bootstrap_pending"
+        );
     }
 }

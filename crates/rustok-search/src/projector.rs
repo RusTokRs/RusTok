@@ -1,7 +1,12 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    TransactionTrait,
+};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use rustok_core::{Error, Result};
+use rustok_telemetry::metrics;
 
 #[derive(Clone)]
 pub struct SearchProjector {
@@ -39,39 +44,98 @@ impl SearchProjector {
 
     pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_tenant_documents(tenant_id).await?;
-        self.upsert_content_documents(tenant_id, None, None, None)
-            .await?;
-        self.upsert_product_documents(tenant_id, None).await?;
-        Ok(())
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_tenant_documents_in(&tx, tenant_id).await?;
+            self.upsert_content_documents_in(&tx, tenant_id, None, None, None)
+                .await?;
+            self.upsert_product_documents_in(&tx, tenant_id, None)
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "rebuild_tenant",
+            "tenant",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn rebuild_content_scope(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_documents(
-            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node'",
-            vec![tenant_id.into()],
-        )
-        .await?;
-        self.upsert_content_documents(tenant_id, None, None, None)
-            .await
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_documents_in(
+                &tx,
+                "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node'",
+                vec![tenant_id.into()],
+            )
+            .await?;
+            self.upsert_content_documents_in(&tx, tenant_id, None, None, None)
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "rebuild_content_scope",
+            "node",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn rebuild_product_scope(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_documents(
-            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product'",
-            vec![tenant_id.into()],
-        )
-        .await?;
-        self.upsert_product_documents(tenant_id, None).await
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_documents_in(
+                &tx,
+                "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product'",
+                vec![tenant_id.into()],
+            )
+            .await?;
+            self.upsert_product_documents_in(&tx, tenant_id, None)
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "rebuild_product_scope",
+            "product",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn upsert_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_node(tenant_id, node_id).await?;
-        self.upsert_content_documents(tenant_id, Some(node_id), None, None)
-            .await
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_node_in(&tx, tenant_id, node_id).await?;
+            self.upsert_content_documents_in(&tx, tenant_id, Some(node_id), None, None)
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "upsert_node",
+            "node",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn upsert_node_locale(
@@ -81,17 +145,28 @@ impl SearchProjector {
         locale: &str,
     ) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_node_locale(tenant_id, node_id, locale).await?;
-        self.upsert_content_documents(tenant_id, Some(node_id), Some(locale), None)
-            .await
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_node_locale_in(&tx, tenant_id, node_id, locale)
+                .await?;
+            self.upsert_content_documents_in(&tx, tenant_id, Some(node_id), Some(locale), None)
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "upsert_node_locale",
+            "node",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn delete_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
-        self.delete_documents(
-            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node' AND document_id = $2",
-            vec![tenant_id.into(), node_id.into()],
-        )
-        .await
+        self.delete_node_in(&self.db, tenant_id, node_id).await
     }
 
     pub async fn delete_node_locale(
@@ -100,47 +175,70 @@ impl SearchProjector {
         node_id: Uuid,
         locale: &str,
     ) -> Result<()> {
-        self.delete_documents(
-            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node' AND document_id = $2 AND locale = $3",
-            vec![tenant_id.into(), node_id.into(), locale.to_string().into()],
-        )
-        .await
+        self.delete_node_locale_in(&self.db, tenant_id, node_id, locale)
+            .await
     }
 
     pub async fn reindex_category(&self, tenant_id: Uuid, category_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_documents(
-            r#"
-            DELETE FROM search_documents
-            WHERE tenant_id = $1
-              AND entity_type = 'node'
-              AND document_id IN (
-                  SELECT id FROM nodes
-                  WHERE tenant_id = $1
-                    AND category_id = $2
-                    AND deleted_at IS NULL
-              )
-            "#,
-            vec![tenant_id.into(), category_id.into()],
-        )
-        .await?;
-        self.upsert_content_documents(tenant_id, None, None, Some(category_id))
-            .await
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_documents_in(
+                &tx,
+                r#"
+                DELETE FROM search_documents
+                WHERE tenant_id = $1
+                  AND entity_type = 'node'
+                  AND document_id IN (
+                      SELECT id FROM nodes
+                      WHERE tenant_id = $1
+                        AND category_id = $2
+                        AND deleted_at IS NULL
+                  )
+                "#,
+                vec![tenant_id.into(), category_id.into()],
+            )
+            .await?;
+            self.upsert_content_documents_in(&tx, tenant_id, None, None, Some(category_id))
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "reindex_category",
+            "node",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn upsert_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
-        self.delete_product(tenant_id, product_id).await?;
-        self.upsert_product_documents(tenant_id, Some(product_id))
-            .await
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_product_in(&tx, tenant_id, product_id).await?;
+            self.upsert_product_documents_in(&tx, tenant_id, Some(product_id))
+                .await?;
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "upsert_product",
+            "product",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
     }
 
     pub async fn delete_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
-        self.delete_documents(
-            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product' AND document_id = $2",
-            vec![tenant_id.into(), product_id.into()],
-        )
-        .await
+        self.delete_product_in(&self.db, tenant_id, product_id)
+            .await
     }
 
     fn ensure_postgres(&self) -> Result<()> {
@@ -153,27 +251,93 @@ impl SearchProjector {
         Ok(())
     }
 
-    async fn delete_tenant_documents(&self, tenant_id: Uuid) -> Result<()> {
-        self.delete_documents(
+    async fn begin_transaction(&self) -> Result<DatabaseTransaction> {
+        self.db.begin().await.map_err(Error::Database)
+    }
+
+    async fn commit_transaction(&self, tx: DatabaseTransaction) -> Result<()> {
+        tx.commit().await.map_err(Error::Database)
+    }
+
+    async fn delete_tenant_documents_in<C>(&self, conn: &C, tenant_id: Uuid) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        self.delete_documents_in(
+            conn,
             "DELETE FROM search_documents WHERE tenant_id = $1",
             vec![tenant_id.into()],
         )
         .await
     }
 
-    async fn delete_documents(&self, sql: &str, values: Vec<sea_orm::Value>) -> Result<()> {
+    async fn delete_node_in<C>(&self, conn: &C, tenant_id: Uuid, node_id: Uuid) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        self.delete_documents_in(
+            conn,
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node' AND document_id = $2",
+            vec![tenant_id.into(), node_id.into()],
+        )
+        .await
+    }
+
+    async fn delete_node_locale_in<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        node_id: Uuid,
+        locale: &str,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        self.delete_documents_in(
+            conn,
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node' AND document_id = $2 AND locale = $3",
+            vec![tenant_id.into(), node_id.into(), locale.to_string().into()],
+        )
+        .await
+    }
+
+    async fn delete_product_in<C>(&self, conn: &C, tenant_id: Uuid, product_id: Uuid) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        self.delete_documents_in(
+            conn,
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product' AND document_id = $2",
+            vec![tenant_id.into(), product_id.into()],
+        )
+        .await
+    }
+
+    async fn delete_documents_in<C>(
+        &self,
+        conn: &C,
+        sql: &str,
+        values: Vec<sea_orm::Value>,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        self.db.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
-    async fn upsert_content_documents(
+    async fn upsert_content_documents_in<C>(
         &self,
+        conn: &C,
         tenant_id: Uuid,
         node_id: Option<Uuid>,
         locale: Option<&str>,
         category_id: Option<Uuid>,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
         let mut values = vec![tenant_id.into()];
         let mut param = 2;
         let mut where_clause = String::from("WHERE n.tenant_id = $1 AND n.deleted_at IS NULL");
@@ -304,15 +468,19 @@ impl SearchProjector {
         );
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        self.db.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
-    async fn upsert_product_documents(
+    async fn upsert_product_documents_in<C>(
         &self,
+        conn: &C,
         tenant_id: Uuid,
         product_id: Option<Uuid>,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
         let mut values = vec![tenant_id.into()];
         let mut where_clause = String::from("WHERE p.tenant_id = $1");
 
@@ -416,7 +584,53 @@ impl SearchProjector {
         );
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        self.db.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute(stmt).await.map_err(Error::Database)?;
         Ok(())
+    }
+}
+
+fn record_projector_operation(
+    operation: &str,
+    entity: &str,
+    tenant_id: Uuid,
+    result: &Result<()>,
+    duration: Duration,
+) {
+    let status = if result.is_ok() { "success" } else { "error" };
+    metrics::record_search_indexing_operation(operation, entity, status, duration.as_secs_f64());
+
+    if let Err(error) = result {
+        metrics::record_module_error("search", classify_error(error), "error");
+        tracing::error!(
+            operation,
+            entity,
+            tenant_id = %tenant_id,
+            error = %error,
+            duration_ms = duration.as_millis() as u64,
+            "Search projector operation failed"
+        );
+    } else {
+        tracing::info!(
+            operation,
+            entity,
+            tenant_id = %tenant_id,
+            duration_ms = duration.as_millis() as u64,
+            "Search projector operation completed"
+        );
+    }
+}
+
+fn classify_error(error: &Error) -> &'static str {
+    match error {
+        Error::Database(_) => "database",
+        Error::Validation(_) => "validation",
+        Error::External(_) => "external",
+        Error::NotFound(_) => "not_found",
+        Error::Forbidden(_) => "forbidden",
+        Error::Auth(_) => "auth",
+        Error::Cache(_) => "cache",
+        Error::Serialization(_) => "serialization",
+        Error::Scripting(_) => "scripting",
+        Error::InvalidIdFormat(_) => "invalid_id",
     }
 }

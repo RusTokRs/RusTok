@@ -1,7 +1,9 @@
 use async_graphql::{InputObject, SimpleObject};
 use rustok_search::{
-    LaggingSearchDocument, SearchConnectorDescriptor, SearchDiagnosticsSnapshot, SearchResult,
-    SearchResultItem, SearchSettingsRecord,
+    LaggingSearchDocument, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
+    SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchConnectorDescriptor,
+    SearchDiagnosticsSnapshot, SearchDictionarySnapshot, SearchQueryRuleRecord, SearchResult,
+    SearchResultItem, SearchSettingsRecord, SearchStopWordRecord, SearchSynonymRecord,
 };
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -53,6 +55,20 @@ pub struct TriggerSearchRebuildPayload {
 }
 
 #[derive(Debug, Clone, InputObject)]
+pub struct TrackSearchClickInput {
+    pub query_log_id: String,
+    pub document_id: String,
+    pub position: Option<i32>,
+    pub href: Option<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct TrackSearchClickPayload {
+    pub success: bool,
+    pub tracked: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
 pub struct SearchPreviewInput {
     pub query: String,
     pub locale: Option<String>,
@@ -85,11 +101,13 @@ pub struct SearchPreviewResultItem {
     pub snippet: Option<String>,
     pub score: f64,
     pub locale: Option<String>,
+    pub url: Option<String>,
     pub payload: String,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
 pub struct SearchPreviewPayload {
+    pub query_log_id: Option<String>,
     pub items: Vec<SearchPreviewResultItem>,
     pub total: u64,
     pub took_ms: u64,
@@ -126,6 +144,156 @@ pub struct LaggingSearchDocumentPayload {
     pub lag_seconds: u64,
 }
 
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchAnalyticsSummaryPayload {
+    pub window_days: u32,
+    pub total_queries: u64,
+    pub successful_queries: u64,
+    pub zero_result_queries: u64,
+    pub zero_result_rate: f64,
+    pub avg_took_ms: f64,
+    pub avg_results_per_query: f64,
+    pub unique_queries: u64,
+    pub clicked_queries: u64,
+    pub total_clicks: u64,
+    pub click_through_rate: f64,
+    pub abandonment_queries: u64,
+    pub abandonment_rate: f64,
+    pub last_query_at: Option<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchAnalyticsQueryRowPayload {
+    pub query: String,
+    pub hits: u64,
+    pub zero_result_hits: u64,
+    pub clicks: u64,
+    pub avg_took_ms: f64,
+    pub avg_results: f64,
+    pub click_through_rate: f64,
+    pub abandonment_rate: f64,
+    pub last_seen_at: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchAnalyticsInsightRowPayload {
+    pub query: String,
+    pub hits: u64,
+    pub zero_result_hits: u64,
+    pub clicks: u64,
+    pub click_through_rate: f64,
+    pub abandonment_rate: f64,
+    pub recommendation: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchAnalyticsPayload {
+    pub summary: SearchAnalyticsSummaryPayload,
+    pub top_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    pub zero_result_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    pub low_ctr_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    pub abandonment_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    pub intelligence_candidates: Vec<SearchAnalyticsInsightRowPayload>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchSynonymPayload {
+    pub id: String,
+    pub term: String,
+    pub synonyms: Vec<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchStopWordPayload {
+    pub id: String,
+    pub value: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchQueryRulePayload {
+    pub id: String,
+    pub query_text: String,
+    pub query_normalized: String,
+    pub rule_kind: String,
+    pub document_id: String,
+    pub entity_type: String,
+    pub source_module: String,
+    pub title: String,
+    pub pinned_position: u32,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchDictionarySnapshotPayload {
+    pub synonyms: Vec<SearchSynonymPayload>,
+    pub stop_words: Vec<SearchStopWordPayload>,
+    pub query_rules: Vec<SearchQueryRulePayload>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpsertSearchSynonymInput {
+    pub tenant_id: Option<String>,
+    pub term: String,
+    pub synonyms: Vec<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct UpsertSearchSynonymPayload {
+    pub success: bool,
+    pub synonym: SearchSynonymPayload,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct DeleteSearchSynonymInput {
+    pub tenant_id: Option<String>,
+    pub synonym_id: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AddSearchStopWordInput {
+    pub tenant_id: Option<String>,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AddSearchStopWordPayload {
+    pub success: bool,
+    pub stop_word: SearchStopWordPayload,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct DeleteSearchStopWordInput {
+    pub tenant_id: Option<String>,
+    pub stop_word_id: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpsertSearchPinRuleInput {
+    pub tenant_id: Option<String>,
+    pub query_text: String,
+    pub document_id: String,
+    pub pinned_position: Option<i32>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct UpsertSearchPinRulePayload {
+    pub success: bool,
+    pub query_rule: SearchQueryRulePayload,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct DeleteSearchQueryRuleInput {
+    pub tenant_id: Option<String>,
+    pub query_rule_id: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct DeleteSearchDictionaryEntryPayload {
+    pub success: bool,
+}
+
 impl From<SearchConnectorDescriptor> for SearchEngineDescriptor {
     fn from(value: SearchConnectorDescriptor) -> Self {
         Self {
@@ -152,6 +320,7 @@ impl From<SearchSettingsRecord> for SearchSettingsPayload {
 
 impl From<SearchResultItem> for SearchPreviewResultItem {
     fn from(value: SearchResultItem) -> Self {
+        let url = derive_search_result_url(&value);
         Self {
             id: value.id.to_string(),
             entity_type: value.entity_type,
@@ -160,6 +329,7 @@ impl From<SearchResultItem> for SearchPreviewResultItem {
             snippet: value.snippet,
             score: value.score,
             locale: value.locale,
+            url,
             payload: value.payload.to_string(),
         }
     }
@@ -168,6 +338,7 @@ impl From<SearchResultItem> for SearchPreviewResultItem {
 impl From<SearchResult> for SearchPreviewPayload {
     fn from(value: SearchResult) -> Self {
         Self {
+            query_log_id: None,
             items: value.items.into_iter().map(Into::into).collect(),
             total: value.total,
             took_ms: value.took_ms,
@@ -223,5 +394,145 @@ impl From<LaggingSearchDocument> for LaggingSearchDocumentPayload {
             indexed_at: value.indexed_at.to_rfc3339(),
             lag_seconds: value.lag_seconds,
         }
+    }
+}
+
+impl From<SearchAnalyticsSummary> for SearchAnalyticsSummaryPayload {
+    fn from(value: SearchAnalyticsSummary) -> Self {
+        Self {
+            window_days: value.window_days,
+            total_queries: value.total_queries,
+            successful_queries: value.successful_queries,
+            zero_result_queries: value.zero_result_queries,
+            zero_result_rate: value.zero_result_rate,
+            avg_took_ms: value.avg_took_ms,
+            avg_results_per_query: value.avg_results_per_query,
+            unique_queries: value.unique_queries,
+            clicked_queries: value.clicked_queries,
+            total_clicks: value.total_clicks,
+            click_through_rate: value.click_through_rate,
+            abandonment_queries: value.abandonment_queries,
+            abandonment_rate: value.abandonment_rate,
+            last_query_at: value.last_query_at.map(|value| value.to_rfc3339()),
+        }
+    }
+}
+
+impl From<SearchAnalyticsQueryRow> for SearchAnalyticsQueryRowPayload {
+    fn from(value: SearchAnalyticsQueryRow) -> Self {
+        Self {
+            query: value.query,
+            hits: value.hits,
+            zero_result_hits: value.zero_result_hits,
+            clicks: value.clicks,
+            avg_took_ms: value.avg_took_ms,
+            avg_results: value.avg_results,
+            click_through_rate: value.click_through_rate,
+            abandonment_rate: value.abandonment_rate,
+            last_seen_at: value.last_seen_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<SearchAnalyticsInsightRow> for SearchAnalyticsInsightRowPayload {
+    fn from(value: SearchAnalyticsInsightRow) -> Self {
+        Self {
+            query: value.query,
+            hits: value.hits,
+            zero_result_hits: value.zero_result_hits,
+            clicks: value.clicks,
+            click_through_rate: value.click_through_rate,
+            abandonment_rate: value.abandonment_rate,
+            recommendation: value.recommendation,
+        }
+    }
+}
+
+impl From<SearchAnalyticsSnapshot> for SearchAnalyticsPayload {
+    fn from(value: SearchAnalyticsSnapshot) -> Self {
+        Self {
+            summary: value.summary.into(),
+            top_queries: value.top_queries.into_iter().map(Into::into).collect(),
+            zero_result_queries: value
+                .zero_result_queries
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            low_ctr_queries: value.low_ctr_queries.into_iter().map(Into::into).collect(),
+            abandonment_queries: value
+                .abandonment_queries
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            intelligence_candidates: value
+                .intelligence_candidates
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<SearchSynonymRecord> for SearchSynonymPayload {
+    fn from(value: SearchSynonymRecord) -> Self {
+        Self {
+            id: value.id.to_string(),
+            term: value.term,
+            synonyms: value.synonyms,
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<SearchStopWordRecord> for SearchStopWordPayload {
+    fn from(value: SearchStopWordRecord) -> Self {
+        Self {
+            id: value.id.to_string(),
+            value: value.value,
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<SearchQueryRuleRecord> for SearchQueryRulePayload {
+    fn from(value: SearchQueryRuleRecord) -> Self {
+        Self {
+            id: value.id.to_string(),
+            query_text: value.query_text,
+            query_normalized: value.query_normalized,
+            rule_kind: value.rule_kind,
+            document_id: value.document_id.to_string(),
+            entity_type: value.entity_type,
+            source_module: value.source_module,
+            title: value.title,
+            pinned_position: value.pinned_position,
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<SearchDictionarySnapshot> for SearchDictionarySnapshotPayload {
+    fn from(value: SearchDictionarySnapshot) -> Self {
+        Self {
+            synonyms: value.synonyms.into_iter().map(Into::into).collect(),
+            stop_words: value.stop_words.into_iter().map(Into::into).collect(),
+            query_rules: value.query_rules.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+fn derive_search_result_url(value: &SearchResultItem) -> Option<String> {
+    match value.entity_type.as_str() {
+        "product" => Some(format!("/store/products/{}", value.id)),
+        "node" => Some(format!(
+            "/modules/content?id={}{}",
+            value.id,
+            if value.source_module.is_empty() || value.source_module == "content" {
+                String::new()
+            } else {
+                format!("&kind={}", value.source_module)
+            }
+        )),
+        _ => None,
     }
 }

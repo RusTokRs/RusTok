@@ -23,11 +23,14 @@ pub struct SearchPreviewResultItem {
     pub snippet: Option<String>,
     pub score: f64,
     pub locale: Option<String>,
+    pub url: Option<String>,
     pub payload: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SearchPreviewPayload {
+    #[serde(rename = "queryLogId")]
+    pub query_log_id: Option<String>,
     pub items: Vec<SearchPreviewResultItem>,
     pub total: u64,
     #[serde(rename = "tookMs")]
@@ -41,4 +44,10 @@ pub struct SearchPreviewFilters {
     pub entity_types: Vec<String>,
     pub source_modules: Vec<String>,
     pub statuses: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TrackSearchClickPayload {
+    pub success: bool,
+    pub tracked: bool,
 }

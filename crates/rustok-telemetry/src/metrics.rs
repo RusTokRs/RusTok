@@ -478,6 +478,69 @@ lazy_static! {
     )
     .expect("Failed to create index_reindex_runtime_config");
 
+    /// Search query executions by surface/engine/status.
+    pub static ref SEARCH_QUERIES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_search_queries_total",
+            "Total search query executions"
+        ),
+        &["surface", "engine", "status"]
+    )
+    .expect("Failed to create search_queries_total");
+
+    /// Search query duration in seconds.
+    pub static ref SEARCH_QUERY_DURATION_SECONDS: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "rustok_search_query_duration_seconds",
+            "Search query duration in seconds"
+        )
+        .buckets(vec![0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5]),
+        &["surface", "engine"]
+    )
+    .expect("Failed to create search_query_duration_seconds");
+
+    /// Search results returned by surface/engine.
+    pub static ref SEARCH_RESULTS_RETURNED: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "rustok_search_results_returned",
+            "Search results returned"
+        )
+        .buckets(vec![0.0, 1.0, 5.0, 10.0, 20.0, 50.0, 100.0]),
+        &["surface", "engine"]
+    )
+    .expect("Failed to create search_results_returned");
+
+    /// Zero-result searches by surface/engine.
+    pub static ref SEARCH_ZERO_RESULTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_search_zero_results_total",
+            "Total zero-result search queries"
+        ),
+        &["surface", "engine"]
+    )
+    .expect("Failed to create search_zero_results_total");
+
+    /// Search indexing/rebuild operations by operation/entity/status.
+    pub static ref SEARCH_INDEXING_OPERATIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_search_indexing_operations_total",
+            "Total search indexing and rebuild operations"
+        ),
+        &["operation", "entity", "status"]
+    )
+    .expect("Failed to create search_indexing_operations_total");
+
+    /// Search indexing/rebuild duration in seconds.
+    pub static ref SEARCH_INDEXING_DURATION_SECONDS: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "rustok_search_indexing_duration_seconds",
+            "Search indexing and rebuild duration in seconds"
+        )
+        .buckets(vec![0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]),
+        &["operation", "entity"]
+    )
+    .expect("Failed to create search_indexing_duration_seconds");
+
     /// Current rate-limit backend health by namespace/backend
     pub static ref RATE_LIMIT_BACKEND_STATUS: IntGaugeVec = IntGaugeVec::new(
         Opts::new(
@@ -599,6 +662,12 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(INDEX_REINDEX_ENTITIES_TOTAL.clone()))?;
     registry.register(Box::new(INDEX_REINDEX_DURATION_SECONDS.clone()))?;
     registry.register(Box::new(INDEX_REINDEX_RUNTIME_CONFIG.clone()))?;
+    registry.register(Box::new(SEARCH_QUERIES_TOTAL.clone()))?;
+    registry.register(Box::new(SEARCH_QUERY_DURATION_SECONDS.clone()))?;
+    registry.register(Box::new(SEARCH_RESULTS_RETURNED.clone()))?;
+    registry.register(Box::new(SEARCH_ZERO_RESULTS_TOTAL.clone()))?;
+    registry.register(Box::new(SEARCH_INDEXING_OPERATIONS_TOTAL.clone()))?;
+    registry.register(Box::new(SEARCH_INDEXING_DURATION_SECONDS.clone()))?;
     registry.register(Box::new(RATE_LIMIT_BACKEND_STATUS.clone()))?;
     registry.register(Box::new(RATE_LIMIT_ACTIVE_CLIENTS.clone()))?;
     registry.register(Box::new(RATE_LIMIT_TOTAL_ENTRIES.clone()))?;
@@ -867,6 +936,45 @@ pub fn record_index_reindex_entities(indexer: &str, operation: &str, outcome: &s
 pub fn record_index_reindex_duration(indexer: &str, operation: &str, duration_secs: f64) {
     INDEX_REINDEX_DURATION_SECONDS
         .with_label_values(&[indexer, operation])
+        .observe(duration_secs);
+}
+
+/// Record a search query execution.
+pub fn record_search_query(
+    surface: &str,
+    engine: &str,
+    status: &str,
+    duration_secs: f64,
+    returned_items: u64,
+) {
+    SEARCH_QUERIES_TOTAL
+        .with_label_values(&[surface, engine, status])
+        .inc();
+    SEARCH_QUERY_DURATION_SECONDS
+        .with_label_values(&[surface, engine])
+        .observe(duration_secs);
+    SEARCH_RESULTS_RETURNED
+        .with_label_values(&[surface, engine])
+        .observe(returned_items as f64);
+    if returned_items == 0 && status == "success" {
+        SEARCH_ZERO_RESULTS_TOTAL
+            .with_label_values(&[surface, engine])
+            .inc();
+    }
+}
+
+/// Record a search indexing or rebuild operation.
+pub fn record_search_indexing_operation(
+    operation: &str,
+    entity: &str,
+    status: &str,
+    duration_secs: f64,
+) {
+    SEARCH_INDEXING_OPERATIONS_TOTAL
+        .with_label_values(&[operation, entity, status])
+        .inc();
+    SEARCH_INDEXING_DURATION_SECONDS
+        .with_label_values(&[operation, entity])
         .observe(duration_secs);
 }
 

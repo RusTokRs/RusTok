@@ -1,0 +1,10 @@
+[module]
+slug = "pricing"
+name = "Pricing"
+version = "0.1.0"
+description = "Default pricing submodule in the ecommerce family"
+ownership = "first_party"
+trust_level = "verified"
+
+[crate]
+entry_type = "PricingModule"

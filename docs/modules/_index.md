@@ -31,6 +31,9 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | Module | Docs | Implementation plan |
 |--------|------|-------------------|
 | `rustok-content` | [docs](../../crates/rustok-content/docs/README.md) | [plan](../../crates/rustok-content/docs/implementation-plan.md) |
+| `rustok-product` | [docs](../../crates/rustok-product/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
+| `rustok-pricing` | [docs](../../crates/rustok-pricing/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
+| `rustok-inventory` | [docs](../../crates/rustok-inventory/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-commerce` | [docs](../../crates/rustok-commerce/docs/README.md) | [plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |

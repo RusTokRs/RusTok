@@ -1,7 +1,10 @@
 mod api;
 mod model;
 
+use leptos::ev::MouseEvent;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos::web_sys;
 use rustok_api::UiRouteContext;
 
 use crate::model::{SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload};
@@ -104,6 +107,7 @@ fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView 
         .and_then(|item| item.locale.clone())
         .unwrap_or_else(|| "all".to_string());
     let SearchPreviewPayload {
+        query_log_id,
         items,
         total,
         took_ms,
@@ -113,7 +117,10 @@ fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView 
     let has_items = !items.is_empty();
     let item_views = items
         .into_iter()
-        .map(|item| {
+        .enumerate()
+        .map(|(index, item)| {
+            let query_log_id = query_log_id.clone();
+            let href = item.url.clone();
             view! {
                 <article class="rounded-2xl border border-border bg-background p-5">
                     <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -127,6 +134,7 @@ fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView 
                     <p class="mt-2 text-sm text-muted-foreground">
                         {item.snippet.unwrap_or_else(|| "No snippet returned.".to_string())}
                     </p>
+                    {render_result_action(query_log_id, item.id.clone(), href, index)}
                 </article>
             }
         })
@@ -187,6 +195,62 @@ fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView 
             </aside>
         </div>
     }
+}
+
+fn render_result_action(
+    query_log_id: Option<String>,
+    document_id: String,
+    href: Option<String>,
+    index: usize,
+) -> impl IntoView {
+    let Some(href_value) = href else {
+        return view! {
+            <p class="mt-4 text-xs text-muted-foreground">
+                "No storefront target is available for this result yet."
+            </p>
+        }
+        .into_any();
+    };
+
+    view! {
+        <a
+            class="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
+            href=href_value.clone()
+            on:click=move |ev| track_result_click(ev, query_log_id.clone(), document_id.clone(), href_value.clone(), index)
+        >
+            "Open result"
+        </a>
+    }
+    .into_any()
+}
+
+fn track_result_click(
+    ev: MouseEvent,
+    query_log_id: Option<String>,
+    document_id: String,
+    href: String,
+    index: usize,
+) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    let Some(query_log_id) = query_log_id else {
+        return;
+    };
+
+    ev.prevent_default();
+    spawn_local(async move {
+        let _ = api::track_search_click(
+            query_log_id,
+            document_id,
+            Some((index + 1) as i32),
+            Some(href.clone()),
+        )
+        .await;
+
+        let _ = window.location().set_href(&href);
+    });
 }
 
 #[component]

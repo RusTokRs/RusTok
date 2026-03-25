@@ -72,7 +72,7 @@ RusToK/
 ├── crates/
 │   ├── rustok-core/     # 🧠 Ядро (Auth, Events, RBAC)
 │   ├── rustok-content/  # 📝 CMS (Nodes, Categories)
-│   ├── rustok-commerce/ # 🛒 E-commerce (Products, Orders)
+│   ├── rustok-commerce/ # 🛒 Ecommerce umbrella (корень семейства e-commerce)
 │   ├── rustok-blog/     # 📰 Блог
 │   ├── rustok-forum/    # 👥 Форум
 │   ├── rustok-index/    # 🔎 Поиск и индексы

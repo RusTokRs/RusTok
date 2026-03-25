@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import RenderResults from './render-result';
+import AdminGlobalSearchActions from './admin-global-search';
 import useThemeSwitching from './use-theme-switching';
 import { useFilteredNavItems } from '@/shared/hooks/use-nav';
 
@@ -67,6 +68,7 @@ const KBarComponent = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <>
+      <AdminGlobalSearchActions />
       <KBarPortal>
         <KBarPositioner className='bg-background/80 fixed inset-0 z-99999 p-0! backdrop-blur-sm'>
           <KBarAnimator className='bg-card text-card-foreground relative mt-64! w-full max-w-[600px] -translate-y-12! overflow-hidden rounded-lg border shadow-lg'>

@@ -120,26 +120,44 @@ Already implemented:
 
 - dedicated `rustok-search` core module
 - module-local `search_documents` storage
+- module-local `search_query_logs` storage for persistent analytics
+- module-local `search_query_clicks` storage for CTR and abandonment analysis
+- module-local `search_synonyms`, `search_stop_words`, and `search_query_rules`
+  storage for search dictionaries and merchandising rules
 - PostgreSQL FTS runtime over `search_documents`
 - canonical search contracts and settings persistence
 - tenant-scoped GraphQL access and stricter search input validation
 - async ingestion from content and product events
 - queued rebuild flow for `search`, `content`, `product`, and optional target IDs
+- transactional rebuild execution and dispatcher retries for ingestion safety
+- Prometheus metrics for query volume, latency, zero-result rate, indexing
+  outcomes, and fleet-level lag/bootstrap visibility
 - admin diagnostics via `searchDiagnostics`
+- admin analytics via `searchAnalytics`
+- admin dictionary snapshot via `searchDictionarySnapshot`
+- admin CRUD mutations for synonyms, stop words, and exact-query pin rules
+- live admin settings editor for active/fallback engine selection and JSON config
+- public click tracking via `trackSearchClick`
 - raw stale-document diagnostics via `searchLaggingDocuments`
 - admin FTS preview via `searchPreview`
+- dedicated host-level admin quick search via `adminGlobalSearch`
 - public storefront search via `storefrontSearch`
 - read-only search query path without bootstrap rebuild side effects
+- healthier diagnostics state model for truly empty tenants
+- query-log-backed CTR, abandonment, low-CTR, and intelligence analytics
+- tenant-owned query normalization with stop-word removal and synonym expansion
+- exact-query pinned-result merchandising rules applied on admin/storefront search
+- local observability runbook for rebuilds, lag handling, and metrics
 - Leptos admin control plane with overview, playground, diagnostics, dictionaries
 - Next admin control plane mirroring the same contract
 - first-class sidebar entry in both Leptos admin and Next admin
+- Leptos header-level global admin search wired to `adminGlobalSearch`
+- Next KBar global admin search wired to `adminGlobalSearch`
+- fallback hand-off from host-level quick search into the full search control plane
 
 Not implemented yet:
 
-- global admin search UX
-- editor UI for engine settings
-- stop words and synonym dictionaries
-- analytics dashboards and query intelligence
+- analytics dashboards
 - external connector crates
 
 ## Delivery phases
@@ -183,8 +201,9 @@ Not implemented yet:
 
 - [x] Add GraphQL search queries
 - [x] Add admin/debug queries
+- [x] Add dedicated `adminGlobalSearch` query for host-level quick search
 - [x] Add rebuild mutation
-- [ ] Add settings mutation/editor flow beyond preview
+- [x] Add settings mutation/editor flow beyond preview
 - [ ] Decide whether any REST diagnostics endpoints are still needed
 
 ### Phase S5 - Storefront UI
@@ -199,36 +218,39 @@ Not implemented yet:
 
 - [x] Ship Leptos admin package
 - [x] Ship Next admin package
-- [x] Add overview, playground, diagnostics, dictionaries surfaces
+- [x] Add overview, playground, analytics, diagnostics, dictionaries surfaces
 - [x] Add scoped rebuild UI
 - [x] Add raw lagging document diagnostics
-- [ ] Add engine/settings editor
-- [ ] Build global admin search experience
+- [x] Add engine/settings editor
+- [x] Build global admin search experience
 
 ### Phase S7 - Standard search features
 
-- [ ] Stop words
-- [ ] Synonyms
-- [ ] Query normalization policy
+- [x] Stop words
+- [x] Synonyms
+- [x] Query normalization policy
 - [ ] Typo tolerance
 - [ ] Suggestions/autocomplete
 - [ ] Filter presets
 - [ ] Ranking profiles
 - [ ] Boost/bury rules
-- [ ] Query rules and redirects
+- [x] Query rules (exact pinned-result rules)
+- [ ] Redirects
 - [ ] Audit trail for search settings changes
 
 ### Phase S8 - Analytics and observability
 
-- [ ] Query volume metrics
-- [ ] Search latency metrics
-- [ ] Zero-result rate
+- [x] Query volume metrics
+- [x] Search latency metrics
+- [x] Zero-result rate
 - [ ] Slow-query rate
-- [ ] Indexing lag metrics
-- [ ] Failed indexing rate
-- [ ] Top queries and zero-result query analysis
-- [ ] CTR and abandonment analysis
-- [ ] Admin dashboards and operator runbooks
+- [x] Indexing lag metrics
+- [x] Failed indexing rate
+- [x] Top queries and zero-result query analysis
+- [x] CTR and abandonment analysis
+- [x] Query-intelligence candidates for tuning and merchandising work
+- [ ] Admin dashboards
+- [x] Operator runbooks
 
 ### Phase S9 - External engines
 
@@ -240,7 +262,7 @@ Not implemented yet:
 
 ### Phase S10 - Advanced features
 
-- [ ] Merchandising and pinned results
+- [x] Merchandising and pinned results
 - [ ] Hidden results
 - [ ] "Did you mean"
 - [ ] Curated landing/query rules
@@ -276,15 +298,14 @@ Minimum search document shape should support:
 - [x] Rebuild and diagnostics exist
 - [x] Baseline filters/facets exist
 - [ ] Storefront UX is fully polished on both hosts
-- [ ] Global admin search is implemented
-- [ ] Settings editor is complete
-- [ ] Telemetry and analytics are production-ready
+- [x] Global admin search is implemented
+- [x] Settings editor is complete
+- [ ] Telemetry and analytics are fully production-ready
 
 ## Open questions
 
 - Should any search ingestion paths still read from `rustok-index`, or should
   the module remain domain-event/domain-table first?
-- What is the exact MVP scope for global admin search?
 - Should synonyms and stop words be platform-level first, then tenant-level?
 - When external engines are enabled, what degraded-mode UX should operators see?
 

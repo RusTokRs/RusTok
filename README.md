@@ -409,7 +409,7 @@ RusToK/
 │   ├── rustok-core/            # 🧠 Infrastructure (Auth, Events, RBAC)
 │   ├── rustok-content/         # 📝 CMS Core (Nodes, Bodies, Categories)
 │   ├── rustok-blog/            # 📰 Blogging (Wraps Content)
-│   ├── rustok-commerce/        # 🛒 Shop (Products, Orders, Inventory)
+│   ├── rustok-commerce/        # 🛒 Ecommerce umbrella (family root, compatibility, orchestration)
 │   ├── rustok-index/           # 🔎 CQRS Read Models & Search
 │   ├── rustok-mcp/             # 🤖 MCP adapter (rmcp SDK)
 │   └── ...

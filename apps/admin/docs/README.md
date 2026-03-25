@@ -17,6 +17,7 @@
 - Текущий convention-based contract для publishable Leptos admin UI: `[provides.admin_ui].leptos_crate` плюс экспорт корневого компонента `<PascalSlug>Admin`.
 - Host регистрирует три generic surface-а без знания о конкретном модуле: `AdminSlot::DashboardSection`, `AdminSlot::NavItem` и `AdminPageRegistration`.
 - Для module-owned admin pages используется единый host route `/modules/:module_slug` и его nested-вариант `/modules/:module_slug/*module_path`: `ModuleAdminPage` резолвит модуль по generated registry, прокидывает generic `UiRouteContext` и рендерит root component, если модуль включён у tenant.
+- Header shell теперь также использует `rustok-search` как host-level capability: глобальный поиск по админке идёт через GraphQL `adminGlobalSearch`, показывает быстрые результаты прямо в shell и умеет передавать пользователя в полный search control plane.
 - `[provides.admin_ui]` может дополнительно задать `route_segment`, `nav_label` и `[[provides.admin_ui.pages]]` для manifest-driven secondary nav; если optional поля не указаны, host берёт `module.slug` и `module.name`.
 - Референсные publishable admin packages в workspace сейчас: `rustok-blog-admin`, `rustok-content-admin`, `rustok-forum-admin`, `rustok-workflow-admin` и `rustok-pages-admin`.
 - `rustok-pages-admin` остаётся первым честным working exemplar для базового page CRUD.

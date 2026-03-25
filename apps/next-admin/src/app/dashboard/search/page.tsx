@@ -8,10 +8,19 @@ export const metadata = {
   title: 'Dashboard: Search'
 };
 
-export default async function Page() {
+type PageProps = {
+  searchParams?: Promise<{
+    q?: string;
+  }>;
+};
+
+export default async function Page({ searchParams }: PageProps) {
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const initialQuery =
+    typeof resolvedSearchParams.q === 'string' ? resolvedSearchParams.q : '';
 
   return (
     <PageContainer
@@ -20,7 +29,12 @@ export default async function Page() {
       pageDescription='Inspect search diagnostics, queue rebuilds, and run PostgreSQL FTS previews'
     >
       <Suspense fallback={<div>Loading search control plane...</div>}>
-        <SearchAdminPage token={token} tenantSlug={tenantSlug} />
+        <SearchAdminPage
+          token={token}
+          tenantSlug={tenantSlug}
+          initialQuery={initialQuery}
+          initialTab={initialQuery ? 'playground' : 'overview'}
+        />
       </Suspense>
     </PageContainer>
   );

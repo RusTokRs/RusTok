@@ -6936,14 +6936,21 @@ name = "migration"
 version = "0.1.0"
 dependencies = [
  "alloy-scripting",
+ "rust_decimal",
  "rustok-auth",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
  "rustok-forum",
  "rustok-index",
+ "rustok-inventory",
+ "rustok-pricing",
+ "rustok-product",
+ "rustok-test-utils",
  "rustok-workflow",
  "sea-orm-migration",
+ "serde_json",
+ "tokio",
  "uuid",
 ]
 
@@ -9761,9 +9768,13 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "rustok-api",
+ "rustok-commerce-foundation",
  "rustok-core",
  "rustok-events",
+ "rustok-inventory",
  "rustok-outbox",
+ "rustok-pricing",
+ "rustok-product",
  "rustok-telemetry",
  "rustok-test-utils",
  "sea-orm",
@@ -9774,6 +9785,22 @@ dependencies = [
  "tokio",
  "tracing",
  "unicode-normalization",
+ "utoipa",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "rustok-commerce-foundation"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "rustok-core",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
  "utoipa",
  "uuid",
  "validator",
@@ -9997,6 +10024,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-inventory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-commerce-foundation",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-mcp"
 version = "0.1.0"
 dependencies = [
@@ -10105,6 +10148,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-pricing"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rust_decimal",
+ "rustok-commerce-foundation",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-product"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rust_decimal",
+ "rustok-commerce-foundation",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde_json",
+ "tracing",
+ "unicode-normalization",
+ "uuid",
+ "validator",
+]
+
+[[package]]
 name = "rustok-rbac"
 version = "0.1.0"
 dependencies = [
@@ -10128,6 +10207,7 @@ dependencies = [
  "chrono",
  "rustok-core",
  "rustok-events",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -10204,10 +10284,13 @@ dependencies = [
  "rustok-forum",
  "rustok-iggy",
  "rustok-index",
+ "rustok-inventory",
  "rustok-mcp",
  "rustok-media",
  "rustok-outbox",
  "rustok-pages",
+ "rustok-pricing",
+ "rustok-product",
  "rustok-rbac",
  "rustok-search",
  "rustok-storage",

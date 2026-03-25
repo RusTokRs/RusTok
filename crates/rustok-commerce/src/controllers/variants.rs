@@ -202,9 +202,17 @@ pub async fn create_variant(
         let price = price::ActiveModel {
             id: Set(generate_id()),
             variant_id: Set(variant_id),
+            price_list_id: Set(None),
             currency_code: Set(price_input.currency_code.clone()),
+            region_id: Set(None),
             amount: Set(price_input.amount),
             compare_at_amount: Set(price_input.compare_at_amount),
+            legacy_amount: Set(decimal_to_cents(price_input.amount)),
+            legacy_compare_at_amount: Set(
+                price_input.compare_at_amount.and_then(decimal_to_cents),
+            ),
+            min_quantity: Set(None),
+            max_quantity: Set(None),
         }
         .insert(&txn)
         .await
@@ -515,6 +523,7 @@ fn build_variant_response(
         sku: variant.sku,
         barcode: variant.barcode,
         title,
+        translations: Vec::new(),
         option1: variant.option1,
         option2: variant.option2,
         option3: variant.option3,
@@ -526,6 +535,14 @@ fn build_variant_response(
         weight_unit: variant.weight_unit,
         position: variant.position,
     }
+}
+
+fn decimal_to_cents(amount: rust_decimal::Decimal) -> Option<i64> {
+    use rust_decimal::prelude::ToPrimitive;
+
+    (amount * rust_decimal::Decimal::from(100))
+        .round_dp(0)
+        .to_i64()
 }
 
 fn generate_variant_title(variant: &crate::entities::product_variant::Model) -> String {

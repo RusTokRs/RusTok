@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "format:next-admin": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --write packages/search/src/index.tsx",
+    "format:next-admin:check": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --check packages/search/src/index.tsx"
+  },
   "dependencies": {
     "sharp": "^0.34.5"
   }

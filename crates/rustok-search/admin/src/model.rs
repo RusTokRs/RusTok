@@ -47,11 +47,14 @@ pub struct SearchPreviewResultItem {
     pub snippet: Option<String>,
     pub score: f64,
     pub locale: Option<String>,
+    pub url: Option<String>,
     pub payload: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SearchPreviewPayload {
+    #[serde(rename = "queryLogId")]
+    pub query_log_id: Option<String>,
     pub items: Vec<SearchPreviewResultItem>,
     pub total: u64,
     #[serde(rename = "tookMs")]
@@ -113,6 +116,12 @@ pub struct TriggerSearchRebuildPayload {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TrackSearchClickPayload {
+    pub success: bool,
+    pub tracked: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LaggingSearchDocumentPayload {
     #[serde(rename = "documentKey")]
     pub document_key: String,
@@ -133,4 +142,137 @@ pub struct LaggingSearchDocumentPayload {
     pub indexed_at: String,
     #[serde(rename = "lagSeconds")]
     pub lag_seconds: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchAnalyticsSummaryPayload {
+    #[serde(rename = "windowDays")]
+    pub window_days: u32,
+    #[serde(rename = "totalQueries")]
+    pub total_queries: u64,
+    #[serde(rename = "successfulQueries")]
+    pub successful_queries: u64,
+    #[serde(rename = "zeroResultQueries")]
+    pub zero_result_queries: u64,
+    #[serde(rename = "zeroResultRate")]
+    pub zero_result_rate: f64,
+    #[serde(rename = "avgTookMs")]
+    pub avg_took_ms: f64,
+    #[serde(rename = "avgResultsPerQuery")]
+    pub avg_results_per_query: f64,
+    #[serde(rename = "uniqueQueries")]
+    pub unique_queries: u64,
+    #[serde(rename = "clickedQueries")]
+    pub clicked_queries: u64,
+    #[serde(rename = "totalClicks")]
+    pub total_clicks: u64,
+    #[serde(rename = "clickThroughRate")]
+    pub click_through_rate: f64,
+    #[serde(rename = "abandonmentQueries")]
+    pub abandonment_queries: u64,
+    #[serde(rename = "abandonmentRate")]
+    pub abandonment_rate: f64,
+    #[serde(rename = "lastQueryAt")]
+    pub last_query_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchAnalyticsQueryRowPayload {
+    pub query: String,
+    pub hits: u64,
+    #[serde(rename = "zeroResultHits")]
+    pub zero_result_hits: u64,
+    pub clicks: u64,
+    #[serde(rename = "avgTookMs")]
+    pub avg_took_ms: f64,
+    #[serde(rename = "avgResults")]
+    pub avg_results: f64,
+    #[serde(rename = "clickThroughRate")]
+    pub click_through_rate: f64,
+    #[serde(rename = "abandonmentRate")]
+    pub abandonment_rate: f64,
+    #[serde(rename = "lastSeenAt")]
+    pub last_seen_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchAnalyticsInsightRowPayload {
+    pub query: String,
+    pub hits: u64,
+    #[serde(rename = "zeroResultHits")]
+    pub zero_result_hits: u64,
+    pub clicks: u64,
+    #[serde(rename = "clickThroughRate")]
+    pub click_through_rate: f64,
+    #[serde(rename = "abandonmentRate")]
+    pub abandonment_rate: f64,
+    pub recommendation: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchAnalyticsPayload {
+    pub summary: SearchAnalyticsSummaryPayload,
+    #[serde(rename = "topQueries")]
+    pub top_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    #[serde(rename = "zeroResultQueries")]
+    pub zero_result_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    #[serde(rename = "lowCtrQueries")]
+    pub low_ctr_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    #[serde(rename = "abandonmentQueries")]
+    pub abandonment_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    #[serde(rename = "intelligenceCandidates")]
+    pub intelligence_candidates: Vec<SearchAnalyticsInsightRowPayload>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchSynonymPayload {
+    pub id: String,
+    pub term: String,
+    pub synonyms: Vec<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchStopWordPayload {
+    pub id: String,
+    pub value: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchQueryRulePayload {
+    pub id: String,
+    #[serde(rename = "queryText")]
+    pub query_text: String,
+    #[serde(rename = "queryNormalized")]
+    pub query_normalized: String,
+    #[serde(rename = "ruleKind")]
+    pub rule_kind: String,
+    #[serde(rename = "documentId")]
+    pub document_id: String,
+    #[serde(rename = "entityType")]
+    pub entity_type: String,
+    #[serde(rename = "sourceModule")]
+    pub source_module: String,
+    pub title: String,
+    #[serde(rename = "pinnedPosition")]
+    pub pinned_position: u32,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchDictionarySnapshotPayload {
+    pub synonyms: Vec<SearchSynonymPayload>,
+    #[serde(rename = "stopWords")]
+    pub stop_words: Vec<SearchStopWordPayload>,
+    #[serde(rename = "queryRules")]
+    pub query_rules: Vec<SearchQueryRulePayload>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchDictionaryMutationPayload {
+    pub success: bool,
 }

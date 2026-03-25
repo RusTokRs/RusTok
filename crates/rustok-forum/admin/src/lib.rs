@@ -439,7 +439,11 @@ pub fn ForumAdmin() -> impl IntoView {
 }
 
 #[component]
-fn MetricCard(label: &'static str, value: Signal<String>, accent_class: &'static str) -> impl IntoView {
+fn MetricCard(
+    label: &'static str,
+    value: Signal<String>,
+    accent_class: &'static str,
+) -> impl IntoView {
     view! {
         <article class="rounded-[1.5rem] border border-border/80 bg-background/80 p-4 backdrop-blur">
             <div class="flex items-center gap-3">
@@ -1212,6 +1216,3 @@ fn reply_count_label(replies: Option<Result<Vec<ReplyListItem>, String>>) -> usi
         _ => 0,
     }
 }
-
-
-

@@ -38,6 +38,9 @@ graph TD
 
     subgraph OptionalModules["Optional modules"]
         CONTENT["rustok-content"]
+        PRODUCT["rustok-product"]
+        PRICING["rustok-pricing"]
+        INVENTORY["rustok-inventory"]
         COMMERCE["rustok-commerce"]
         BLOG["rustok-blog"]
         FORUM["rustok-forum"]
@@ -50,6 +53,7 @@ graph TD
         CORE["rustok-core"]
         API["rustok-api"]
         EVENTS["rustok-events"]
+        COMMERCE_FOUNDATION["rustok-commerce-foundation"]
         STORAGE["rustok-storage"]
         IGGY["rustok-iggy + connector"]
         TELEMETRY["rustok-telemetry"]
@@ -67,6 +71,9 @@ graph TD
     SERVER --> TENANT
     SERVER --> RBAC
     SERVER --> CONTENT
+    SERVER --> PRODUCT
+    SERVER --> PRICING
+    SERVER --> INVENTORY
     SERVER --> COMMERCE
     SERVER --> BLOG
     SERVER --> FORUM
@@ -74,6 +81,12 @@ graph TD
     SERVER --> MEDIA
     SERVER --> WORKFLOW
 
+    COMMERCE --> PRODUCT
+    COMMERCE --> PRICING
+    COMMERCE --> INVENTORY
+    PRODUCT --> COMMERCE_FOUNDATION
+    PRICING --> COMMERCE_FOUNDATION
+    INVENTORY --> COMMERCE_FOUNDATION
     BLOG --> CONTENT
     FORUM --> CONTENT
     PAGES --> CONTENT
@@ -100,7 +113,7 @@ Core modules всегда включены в платформу, отражен
 | `cache` | `rustok-cache` | Cache backend factory, Redis/in-memory fallback |
 | `email` | `rustok-email` | SMTP transport, templates, delivery lifecycle |
 | `index` | `rustok-index` | Cross-module indexing, links, denormalized read-model substrate |
-| `search` | `rustok-search` | Product-facing search, engine selection, connector-ready contracts |
+| `search` | `rustok-search` | Product-facing search, dictionaries/query rules, engine selection, connector-ready contracts |
 | `outbox` | `rustok-outbox` | Transactional event persistence, relay, retry, DLQ |
 | `tenant` | `rustok-tenant` | Tenant lifecycle и module enablement |
 | `rbac` | `rustok-rbac` | Permissions, authorization, role/policy runtime |
@@ -112,7 +125,10 @@ Optional modules компонуются в сборку и затем могут
 | Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
 | `content` | `rustok-content` | — | Базовый контентный домен |
-| `commerce` | `rustok-commerce` | — | Commerce/catalog/inventory |
+| `product` | `rustok-product` | — | Дефолтный каталоговый подмодуль семейства `commerce/ecommerce` |
+| `pricing` | `rustok-pricing` | `product` | Дефолтный pricing-подмодуль семейства `commerce/ecommerce` |
+| `inventory` | `rustok-inventory` | `product` | Дефолтный inventory-подмодуль семейства `commerce/ecommerce` |
+| `commerce` | `rustok-commerce` | `product`, `pricing`, `inventory` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade и верхний вход в commerce family |
 | `blog` | `rustok-blog` | `content` | Блог поверх content |
 | `forum` | `rustok-forum` | `content` | Форум поверх content |
 | `pages` | `rustok-pages` | `content` | Страницы, блоки и меню |
@@ -140,6 +156,7 @@ Optional modules компонуются в сборку и затем могут
 |---|---|
 | `rustok-core` | Базовые платформенные контракты и общие типы |
 | `rustok-api` | Общий host/API слой для transport-адаптеров |
+| `rustok-commerce-foundation` | Общий DTO/entity/error/search слой для split-модулей commerce |
 | `rustok-events` | Канонический import point для event contracts |
 | `rustok-storage` | Storage backend contracts |
 | `rustok-test-utils` | Тестовые хелперы |

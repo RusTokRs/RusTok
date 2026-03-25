@@ -13,8 +13,17 @@ rustok-core = { path = "../../../crates/rustok-core" }
 # Module crates — each owns its own migration files
 alloy-scripting = { path = "../../../crates/alloy-scripting" }
 rustok-auth = { path = "../../../crates/rustok-auth" }
+rustok-product = { path = "../../../crates/rustok-product" }
+rustok-pricing = { path = "../../../crates/rustok-pricing" }
+rustok-inventory = { path = "../../../crates/rustok-inventory" }
 rustok-commerce = { path = "../../../crates/rustok-commerce" }
 rustok-content = { path = "../../../crates/rustok-content" }
 rustok-forum = { path = "../../../crates/rustok-forum" }
 rustok-index = { path = "../../../crates/rustok-index" }
 rustok-workflow = { path = "../../../crates/rustok-workflow" }
+
+[dev-dependencies]
+rust_decimal.workspace = true
+rustok-test-utils = { path = "../../../crates/rustok-test-utils" }
+serde_json.workspace = true
+tokio.workspace = true

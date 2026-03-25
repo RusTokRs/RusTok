@@ -1,53 +1,80 @@
 # rustok-commerce / CRATE_API
 
-## Публичные модули
+## Public modules
+
 `controllers`, `dto`, `entities`, `error`, `graphql`, `services`, `state_machine`.
 
-## Основные публичные типы и сигнатуры
+## Primary public types and functions
+
 - `pub struct CommerceModule`
 - `pub struct CatalogService`, `pub struct InventoryService`, `pub struct PricingService`
 - `pub struct CommerceQuery`, `pub struct CommerceMutation`
 - `pub fn controllers::routes() -> Routes`
-- `pub struct Order<S>` + состояния `Pending`, `Confirmed`, `Paid`, `Shipped`, `Delivered`, `Cancelled`
+- `pub struct Order<S>` with states `Pending`, `Confirmed`, `Paid`, `Shipped`, `Delivered`, `Cancelled`
 - `pub enum CommerceError`, `pub type CommerceResult<T>`
 
-## События
-- Публикует: `DomainEvent::ProductCreated|Updated|Published|Deleted`, `DomainEvent::PriceUpdated`, события остатков/склада из `services/*`.
-- Потребляет: внешние события не подписывает напрямую (сервисный вызов).
+## Split boundary
 
-## Зависимости от других rustok-крейтов
+- `dto`, `entities`, `error`, and search helpers are re-exported from `rustok-commerce-foundation`.
+- `CatalogService` is re-exported from `rustok-product`.
+- `PricingService` is re-exported from `rustok-pricing`.
+- `InventoryService` is re-exported from `rustok-inventory`.
+- `graphql`, `controllers`, and `state_machine` remain in `rustok-commerce` as the legacy compatibility
+  and transport/orchestration facade of the ecommerce family.
+- `migrations()` exposes only umbrella-owned migrations that still remain in `rustok-commerce`.
+  Product, pricing, and inventory migrations stay owned by their dedicated submodules.
+- `ProductResponse` now keeps backward-compatible flat fields and also returns translation groups for
+  product options, variant titles, and image alt text when the normalized translation tables are populated.
+
+## Events
+
+- Publishes commerce domain events through the extracted services and outbox flow.
+- Does not subscribe directly to external events in this crate.
+
+## Dependencies on other RusToK crates
+
 - `rustok-core`
 - `rustok-api`
+- `rustok-commerce-foundation`
+- `rustok-product`
+- `rustok-pricing`
+- `rustok-inventory`
 - `rustok-events`
 - `rustok-outbox`
 - (dev) `rustok-test-utils`
 
-## Частые ошибки ИИ
-- Путает доменные ошибки валидации заказа и инфраструктурные `rustok_core::Error`.
-- Меняет статус заказа мимо state-machine.
-- Забивает на `ValidateEvent` перед публикацией событий.
-- Добавляет transport-адаптеры commerce обратно в `apps/server` вместо расширения
-  `crates/rustok-commerce/src/graphql/*` и `crates/rustok-commerce/src/controllers/*`.
+## Common mistakes
 
-## Минимальный набор контрактов
+- Re-introducing product, pricing, or inventory business logic back into `rustok-commerce` instead of the
+  dedicated split module.
+- Treating `rustok-commerce` as a low-level shared dependency of its own submodules. It is the umbrella/root
+  module of the family, not the bottom layer.
+- Changing order status outside the state machine.
+- Bypassing `ValidateEvent` or the transactional outbox when publishing events.
+- Moving transport adapters back into `apps/server` instead of extending
+  `crates/rustok-commerce/src/graphql/*` or `crates/rustok-commerce/src/controllers/*`.
 
-### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров `apps/server`.
-- GraphQL/HTTP transport entry points (`graphql::CommerceQuery`, `graphql::CommerceMutation`,
-  `controllers::routes`, публичные controller DTO для OpenAPI) тоже входят в публичный
-  контракт crate и должны развиваться внутри `rustok-commerce`.
+## Minimal contract surface
 
-### Доменные инварианты
-- Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
-- Transport-адаптеры обязаны выполнять permission-check через `AuthContext.permissions`
-  и tenant-scoped запросы/сервисы, не обходя границы арендатора.
+### Input DTOs and commands
 
-### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+- Public DTOs and command inputs are exported through this crate, even when implemented in
+  `rustok-commerce-foundation`.
+- Changes to public DTO fields are breaking changes and require synchronized updates in transport adapters.
+- GraphQL and HTTP entry points remain part of the crate's public API.
 
-### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
+### Domain invariants
+
+- Domain invariants remain enforced by services, DTO validation, and the order state machine.
+- Multi-tenant boundaries, permission checks, and tenant-scoped queries remain mandatory.
+
+### Events and outbox side effects
+
+- Domain events must keep using the transactional outbox flow.
+- Event payloads and event types must remain backward compatible for downstream consumers.
+
+### Errors and failure codes
+
+- `CommerceError` and `CommerceResult<T>` define the public failure contract of the crate.
+- Validation, auth, conflict, and not-found scenarios must preserve stable error semantics across
+  HTTP, GraphQL, and internal callers.

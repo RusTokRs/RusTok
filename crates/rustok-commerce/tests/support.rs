@@ -1,6 +1,7 @@
 use rustok_commerce::entities::{
-    price, product, product_image, product_option, product_translation, product_variant,
-    variant_translation,
+    price, product, product_image, product_image_translation, product_option,
+    product_option_translation, product_option_value, product_option_value_translation,
+    product_translation, product_variant, variant_translation,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
@@ -33,6 +34,24 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(product_option_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(product_option_value::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(product_option_value_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(product_variant::Entity),
     )
     .await;
@@ -47,6 +66,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(product_image::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(product_image_translation::Entity),
     )
     .await;
 }

@@ -3,7 +3,9 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use rustok_core::events::{EventHandler, HandlerResult};
+use rustok_core::Error;
 use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_telemetry::metrics;
 
 use crate::projector::SearchProjector;
 
@@ -145,6 +147,37 @@ impl EventHandler for SearchIngestionHandler {
             _ => Ok(()),
         }
     }
+
+    async fn on_error(&self, envelope: &EventEnvelope, error: &Error) {
+        let operation = match &envelope.event {
+            DomainEvent::ReindexRequested { target_type, .. } => match target_type.as_str() {
+                "content" => "rebuild_content_scope",
+                "product" => "rebuild_product_scope",
+                _ => "rebuild_tenant",
+            },
+            DomainEvent::ProductCreated { .. }
+            | DomainEvent::ProductUpdated { .. }
+            | DomainEvent::ProductPublished { .. }
+            | DomainEvent::ProductDeleted { .. }
+            | DomainEvent::VariantCreated { .. }
+            | DomainEvent::VariantUpdated { .. }
+            | DomainEvent::VariantDeleted { .. }
+            | DomainEvent::InventoryUpdated { .. }
+            | DomainEvent::PriceUpdated { .. } => "upsert_product",
+            _ => "upsert_node",
+        };
+
+        metrics::record_search_indexing_operation(operation, "event_handler", "error", 0.0);
+        metrics::record_module_error("search", classify_error(error), "error");
+        tracing::error!(
+            handler = self.name(),
+            event_id = %envelope.id,
+            event_type = envelope.event.event_type(),
+            tenant_id = %envelope.tenant_id,
+            error = %error,
+            "Search ingestion handler error"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -188,5 +221,20 @@ mod tests {
             total: 1000,
             currency: "USD".to_string(),
         }));
+    }
+}
+
+fn classify_error(error: &Error) -> &'static str {
+    match error {
+        Error::Database(_) => "database",
+        Error::Validation(_) => "validation",
+        Error::External(_) => "external",
+        Error::NotFound(_) => "not_found",
+        Error::Forbidden(_) => "forbidden",
+        Error::Auth(_) => "auth",
+        Error::Cache(_) => "cache",
+        Error::Serialization(_) => "serialization",
+        Error::Scripting(_) => "scripting",
+        Error::InvalidIdFormat(_) => "invalid_id",
     }
 }

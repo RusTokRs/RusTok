@@ -1,8 +1,8 @@
 [module]
 slug = "commerce"
-name = "Commerce"
+name = "Ecommerce"
 version = "0.1.0"
-description = "Catalog, pricing, and commerce module"
+description = "Umbrella/root module for the ecommerce family and compatibility surface"
 ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]

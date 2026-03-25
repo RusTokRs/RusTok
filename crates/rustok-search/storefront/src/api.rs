@@ -1,11 +1,12 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{SearchPreviewFilters, SearchPreviewPayload};
+use crate::model::{SearchPreviewFilters, SearchPreviewPayload, TrackSearchClickPayload};
 
 pub type ApiError = GraphqlHttpError;
 
-const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { total tookMs engine items { id entityType sourceModule title snippet score locale payload } facets { name buckets { value count } } } }";
+const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId total tookMs engine items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const TRACK_SEARCH_CLICK_MUTATION: &str = "mutation TrackSearchClick($input: TrackSearchClickInput!) { trackSearchClick(input: $input) { success tracked } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontSearchResponse {
@@ -16,6 +17,17 @@ struct StorefrontSearchResponse {
 #[derive(Debug, Serialize)]
 struct SearchPreviewVariables {
     input: SearchPreviewInput,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrackSearchClickResponse {
+    #[serde(rename = "trackSearchClick")]
+    track_search_click: TrackSearchClickPayload,
+}
+
+#[derive(Debug, Serialize)]
+struct TrackSearchClickVariables {
+    input: TrackSearchClickInput,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,6 +41,16 @@ struct SearchPreviewInput {
     #[serde(rename = "sourceModules")]
     source_modules: Option<Vec<String>>,
     statuses: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+struct TrackSearchClickInput {
+    #[serde(rename = "queryLogId")]
+    query_log_id: String,
+    #[serde(rename = "documentId")]
+    document_id: String,
+    position: Option<i32>,
+    href: Option<String>,
 }
 
 fn configured_tenant_slug() -> Option<String> {
@@ -108,4 +130,26 @@ pub async fn fetch_storefront_search(
     .await?;
 
     Ok(response.storefront_search)
+}
+
+pub async fn track_search_click(
+    query_log_id: String,
+    document_id: String,
+    position: Option<i32>,
+    href: Option<String>,
+) -> Result<TrackSearchClickPayload, ApiError> {
+    let response: TrackSearchClickResponse = request(
+        TRACK_SEARCH_CLICK_MUTATION,
+        TrackSearchClickVariables {
+            input: TrackSearchClickInput {
+                query_log_id,
+                document_id,
+                position,
+                href,
+            },
+        },
+    )
+    .await?;
+
+    Ok(response.track_search_click)
 }

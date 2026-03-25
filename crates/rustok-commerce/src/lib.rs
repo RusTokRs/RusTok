@@ -33,15 +33,19 @@ impl RusToKModule for CommerceModule {
     }
 
     fn name(&self) -> &'static str {
-        "Commerce"
+        "Ecommerce"
     }
 
     fn description(&self) -> &'static str {
-        "Products, Orders, Cart, Checkout"
+        "Ecommerce umbrella/root module for the commerce family, compatibility facade, and orchestration surface"
     }
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["product", "pricing", "inventory"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

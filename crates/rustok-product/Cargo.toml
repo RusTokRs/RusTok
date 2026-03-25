@@ -1,0 +1,22 @@
+[package]
+name = "rustok-product"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Product domain module extracted from rustok-commerce"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
+rustok-commerce-foundation.workspace = true
+rust_decimal.workspace = true
+serde_json.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tracing.workspace = true
+unicode-normalization.workspace = true
+uuid.workspace = true
+validator.workspace = true

@@ -62,6 +62,13 @@
     "brand": {
       "title": "RusToK"
     },
+    "search": {
+      "placeholder": "Search admin…",
+      "openFull": "Open full search",
+      "loading": "Searching across admin surfaces…",
+      "noResults": "No matching admin results",
+      "noResultsBody": "Try a broader term or open the full search control plane for filters and diagnostics."
+    },
     "time": {
       "justNow": "just now",
       "minutesAgo": "min ago",

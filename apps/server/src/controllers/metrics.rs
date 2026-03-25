@@ -51,6 +51,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             payload.push_str(&render_outbox_metrics(&ctx).await);
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
+            payload.push_str(&render_search_metrics(&ctx).await);
             payload.push_str(&render_runtime_guardrail_metrics(&ctx).await);
 
             Ok((
@@ -243,6 +244,82 @@ async fn render_rbac_metrics(ctx: &AppContext) -> String {
         consistency.orphan_user_roles_total,
         consistency.orphan_role_permissions_total,
     )
+}
+
+async fn render_search_metrics(ctx: &AppContext) -> String {
+    let stmt = Statement::from_string(
+        DbBackend::Postgres,
+        r#"
+        WITH source_tenants AS (
+            SELECT tenant_id FROM nodes WHERE deleted_at IS NULL
+            UNION
+            SELECT tenant_id FROM products
+        )
+        SELECT
+            COUNT(*)::bigint AS total_documents,
+            COUNT(*) FILTER (WHERE is_public)::bigint AS public_documents,
+            COUNT(*) FILTER (WHERE indexed_at < updated_at)::bigint AS stale_documents,
+            COUNT(DISTINCT tenant_id)::bigint AS tenants_with_documents,
+            COUNT(DISTINCT tenant_id) FILTER (WHERE indexed_at < updated_at)::bigint AS lagging_tenants,
+            COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM (updated_at - indexed_at)), 0)), 0)::bigint AS max_lag_seconds,
+            (
+                SELECT COUNT(*)::bigint
+                FROM source_tenants st
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM search_documents sd
+                    WHERE sd.tenant_id = st.tenant_id
+                )
+            ) AS bootstrap_pending_tenants
+        FROM search_documents
+        "#.to_string(),
+    );
+
+    match ctx.db.query_one(stmt).await {
+        Ok(Some(row)) => {
+            let read_metric =
+                |column: &str| -> i64 { row.try_get::<i64>("", column).unwrap_or(0).max(0) };
+
+            format!(
+                "rustok_search_metrics_collection_status 1\n\
+rustok_search_documents_total {total_documents}\n\
+rustok_search_public_documents_total {public_documents}\n\
+rustok_search_stale_documents_total {stale_documents}\n\
+rustok_search_tenants_with_documents_total {tenants_with_documents}\n\
+rustok_search_lagging_tenants_total {lagging_tenants}\n\
+rustok_search_bootstrap_pending_tenants_total {bootstrap_pending_tenants}\n\
+rustok_search_max_lag_seconds {max_lag_seconds}\n",
+                total_documents = read_metric("total_documents"),
+                public_documents = read_metric("public_documents"),
+                stale_documents = read_metric("stale_documents"),
+                tenants_with_documents = read_metric("tenants_with_documents"),
+                lagging_tenants = read_metric("lagging_tenants"),
+                bootstrap_pending_tenants = read_metric("bootstrap_pending_tenants"),
+                max_lag_seconds = read_metric("max_lag_seconds"),
+            )
+        }
+        Ok(None) => "rustok_search_metrics_collection_status 0\n\
+rustok_search_documents_total 0\n\
+rustok_search_public_documents_total 0\n\
+rustok_search_stale_documents_total 0\n\
+rustok_search_tenants_with_documents_total 0\n\
+rustok_search_lagging_tenants_total 0\n\
+rustok_search_bootstrap_pending_tenants_total 0\n\
+rustok_search_max_lag_seconds 0\n"
+            .to_string(),
+        Err(error) => {
+            warn!(error = %error, "failed to load search metrics snapshot");
+            "rustok_search_metrics_collection_status 0\n\
+rustok_search_documents_total 0\n\
+rustok_search_public_documents_total 0\n\
+rustok_search_stale_documents_total 0\n\
+rustok_search_tenants_with_documents_total 0\n\
+rustok_search_lagging_tenants_total 0\n\
+rustok_search_bootstrap_pending_tenants_total 0\n\
+rustok_search_max_lag_seconds 0\n"
+                .to_string()
+        }
+    }
 }
 
 fn render_auth_lifecycle_metrics() -> String {

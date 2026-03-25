@@ -1,0 +1,19 @@
+[package]
+name = "rustok-commerce-foundation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared commerce DTOs, entities, and errors for split RusToK commerce modules"
+
+[dependencies]
+rustok-core.workspace = true
+sea-orm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono", "decimal"] }
+chrono.workspace = true
+rust_decimal.workspace = true
+validator.workspace = true
+

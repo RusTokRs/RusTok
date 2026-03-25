@@ -1168,12 +1168,45 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             ),
         ),
         (
+            "product",
+            first_party_module(
+                "rustok-product",
+                "crates/rustok-product",
+                false,
+                &[],
+                &["leptos-admin"],
+                &[],
+            ),
+        ),
+        (
+            "pricing",
+            first_party_module(
+                "rustok-pricing",
+                "crates/rustok-pricing",
+                false,
+                &["product"],
+                &["leptos-admin"],
+                &[],
+            ),
+        ),
+        (
+            "inventory",
+            first_party_module(
+                "rustok-inventory",
+                "crates/rustok-inventory",
+                false,
+                &["product"],
+                &["leptos-admin"],
+                &[],
+            ),
+        ),
+        (
             "commerce",
             first_party_module(
                 "rustok-commerce",
                 "crates/rustok-commerce",
                 false,
-                &[],
+                &["product", "pricing", "inventory"],
                 &["leptos-admin"],
                 &[],
             ),
@@ -1237,7 +1270,14 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
 }
 
 fn builtin_default_enabled() -> HashSet<&'static str> {
-    HashSet::from(["content", "commerce", "pages"])
+    HashSet::from([
+        "content",
+        "product",
+        "pricing",
+        "inventory",
+        "commerce",
+        "pages",
+    ])
 }
 
 fn is_valid_module_ownership(value: &str) -> bool {
@@ -2194,7 +2234,16 @@ mod tests {
     fn allows_registry_superset_when_optional_module_is_removed_from_manifest() {
         let registry = build_registry();
         let manifest = manifest_with_modules(&[
-            "index", "outbox", "content", "commerce", "pages", "tenant", "rbac",
+            "index",
+            "outbox",
+            "content",
+            "product",
+            "pricing",
+            "inventory",
+            "commerce",
+            "pages",
+            "tenant",
+            "rbac",
         ]);
 
         let result = ManifestManager::validate_with_registry(&manifest, &registry);
@@ -2208,10 +2257,22 @@ mod tests {
     #[serial]
     fn uninstall_removes_default_enabled_entry() {
         let mut manifest = manifest_with_modules(&[
-            "index", "outbox", "content", "commerce", "pages", "tenant", "rbac",
+            "index",
+            "outbox",
+            "content",
+            "product",
+            "pricing",
+            "inventory",
+            "commerce",
+            "pages",
+            "tenant",
+            "rbac",
         ]);
         manifest.settings.default_enabled = vec![
             "content".to_string(),
+            "product".to_string(),
+            "pricing".to_string(),
+            "inventory".to_string(),
             "commerce".to_string(),
             "pages".to_string(),
         ];

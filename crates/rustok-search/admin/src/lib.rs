@@ -4,12 +4,15 @@ mod model;
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos::web_sys;
 use leptos_router::components::A;
 use rustok_api::UiRouteContext;
 
 use crate::model::{
-    LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchDiagnosticsPayload, SearchFacetGroup,
-    SearchPreviewFilters, SearchPreviewPayload,
+    LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
+    SearchDiagnosticsPayload, SearchDictionarySnapshotPayload, SearchFacetGroup,
+    SearchPreviewFilters, SearchPreviewPayload, SearchQueryRulePayload, SearchStopWordPayload,
+    SearchSynonymPayload,
 };
 
 #[component]
@@ -40,6 +43,11 @@ pub fn SearchAdmin() -> impl IntoView {
     let (rebuild_target_type, set_rebuild_target_type) = signal("search".to_string());
     let (rebuild_target_id, set_rebuild_target_id) = signal(String::new());
     let (busy, set_busy) = signal(false);
+    let (settings_active_engine, set_settings_active_engine) = signal("postgres".to_string());
+    let (settings_fallback_engine, set_settings_fallback_engine) = signal("postgres".to_string());
+    let (settings_config, set_settings_config) = signal("{}".to_string());
+    let (settings_busy, set_settings_busy) = signal(false);
+    let (settings_feedback, set_settings_feedback) = signal(Option::<String>::None);
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -53,6 +61,23 @@ pub fn SearchAdmin() -> impl IntoView {
             api::fetch_lagging_documents(token_value, tenant_value, Some(25)).await
         },
     );
+    let search_analytics = Resource::new(
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
+            api::fetch_search_analytics(token_value, tenant_value, Some(7), Some(10)).await
+        },
+    );
+
+    Effect::new(move |_| {
+        if let Some(Ok(bootstrap)) = bootstrap.get() {
+            set_settings_active_engine.set(bootstrap.search_settings_preview.active_engine.clone());
+            set_settings_fallback_engine
+                .set(bootstrap.search_settings_preview.fallback_engine.clone());
+            set_settings_config.set(pretty_json_string(
+                &bootstrap.search_settings_preview.config,
+            ));
+        }
+    });
 
     let run_preview = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -138,7 +163,7 @@ pub fn SearchAdmin() -> impl IntoView {
                 <div class="flex flex-wrap gap-2">
                     <A href=format!("/modules/{route_segment}") attr:class=tab_class(!on_playground && !on_diagnostics && !on_dictionaries)>"Overview"</A>
                     <A href=format!("/modules/{route_segment}/playground") attr:class=tab_class(on_playground)>"Playground"</A>
-                    <A href=format!("/modules/{route_segment}/analytics") attr:class=tab_class(on_diagnostics)>"Diagnostics"</A>
+                    <A href=format!("/modules/{route_segment}/analytics") attr:class=tab_class(on_diagnostics)>"Analytics"</A>
                     <A href=format!("/modules/{route_segment}/dictionaries") attr:class=tab_class(on_dictionaries)>"Dictionaries"</A>
                 </div>
             </header>
@@ -163,15 +188,77 @@ pub fn SearchAdmin() -> impl IntoView {
                                     run_preview,
                                 ).into_any()
                             } else if on_diagnostics {
-                                diagnostics_view(bootstrap.search_diagnostics, lagging_documents).into_any()
+                                analytics_view(
+                                    bootstrap.search_diagnostics,
+                                    lagging_documents,
+                                    search_analytics,
+                                )
+                                .into_any()
                             } else if on_dictionaries {
-                                placeholder_view(
-                                    "Search Dictionaries",
-                                    "Dictionary editors are still a later phase. Diagnostics and scoped rebuilds are already live.",
-                                ).into_any()
+                                view! { <DictionariesView /> }.into_any()
                             } else {
                                 overview_view(
                                     bootstrap,
+                                    settings_active_engine,
+                                    set_settings_active_engine,
+                                    settings_fallback_engine,
+                                    set_settings_fallback_engine,
+                                    settings_config,
+                                    set_settings_config,
+                                    settings_busy,
+                                    settings_feedback,
+                                    move |_| {
+                                        let config = settings_config.get_untracked();
+                                        if parse_json_for_editor(&config).is_none() {
+                                            set_settings_feedback.set(Some(
+                                                "Settings config must be valid JSON.".to_string(),
+                                            ));
+                                            return;
+                                        }
+
+                                        set_settings_busy.set(true);
+                                        set_settings_feedback.set(None);
+                                        spawn_local({
+                                            let token_value = token.get_untracked();
+                                            let tenant_value = tenant.get_untracked();
+                                            let active_engine =
+                                                settings_active_engine.get_untracked();
+                                            let fallback_engine =
+                                                settings_fallback_engine.get_untracked();
+                                            async move {
+                                                match api::update_search_settings(
+                                                    token_value,
+                                                    tenant_value,
+                                                    active_engine,
+                                                    Some(fallback_engine),
+                                                    config,
+                                                )
+                                                .await
+                                                {
+                                                    Ok(settings) => {
+                                                        set_settings_feedback.set(Some(
+                                                            "Search settings saved.".to_string(),
+                                                        ));
+                                                        set_settings_active_engine
+                                                            .set(settings.active_engine.clone());
+                                                        set_settings_fallback_engine
+                                                            .set(settings.fallback_engine.clone());
+                                                        set_settings_config.set(pretty_json_string(
+                                                            &settings.config,
+                                                        ));
+                                                        set_refresh_nonce
+                                                            .update(|value| *value += 1);
+                                                    }
+                                                    Err(err) => set_settings_feedback.set(Some(
+                                                        format!(
+                                                            "Failed to save search settings: {err}"
+                                                        ),
+                                                    )),
+                                                }
+                                                set_settings_busy.set(false);
+                                            }
+                                        });
+                                    },
                                     rebuild_target_type,
                                     set_rebuild_target_type,
                                     rebuild_target_id,
@@ -196,6 +283,15 @@ pub fn SearchAdmin() -> impl IntoView {
 
 fn overview_view(
     bootstrap: SearchAdminBootstrap,
+    settings_active_engine: ReadSignal<String>,
+    set_settings_active_engine: WriteSignal<String>,
+    settings_fallback_engine: ReadSignal<String>,
+    set_settings_fallback_engine: WriteSignal<String>,
+    settings_config: ReadSignal<String>,
+    set_settings_config: WriteSignal<String>,
+    settings_busy: ReadSignal<bool>,
+    settings_feedback: ReadSignal<Option<String>>,
+    save_settings: impl Fn(MouseEvent) + 'static + Copy,
     rebuild_target_type: ReadSignal<String>,
     set_rebuild_target_type: WriteSignal<String>,
     rebuild_target_id: ReadSignal<String>,
@@ -219,6 +315,46 @@ fn overview_view(
                 <InfoCard title="Stale docs" value=bootstrap.search_diagnostics.stale_documents.to_string() detail="Documents where indexed_at lags behind source updated_at." />
                 <InfoCard title="Max lag" value=format!("{}s", bootstrap.search_diagnostics.max_lag_seconds) detail="Worst-case lag between source update and search projection." />
             </div>
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h2 class="text-lg font-semibold text-card-foreground">"Engine Settings"</h2>
+                    <p class="text-sm text-muted-foreground">
+                        "Save the effective search engine selection and JSON config for the current tenant. Only engines installed in the runtime appear here."
+                    </p>
+                </div>
+                <div class="mt-5 grid gap-4 md:grid-cols-2">
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Active engine"</span>
+                        <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=settings_active_engine on:change=move |ev| set_settings_active_engine.set(event_target_value(&ev))>
+                            {bootstrap.available_search_engines.iter().map(|engine| view! {
+                                <option value=engine.kind.clone()>{format!("{} ({})", engine.label, engine.kind)}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Fallback engine"</span>
+                        <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=settings_fallback_engine on:change=move |ev| set_settings_fallback_engine.set(event_target_value(&ev))>
+                            {bootstrap.available_search_engines.iter().map(|engine| view! {
+                                <option value=engine.kind.clone()>{format!("{} ({})", engine.label, engine.kind)}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                </div>
+                <label class="mt-4 block space-y-2">
+                    <span class="text-sm font-medium text-card-foreground">"Engine config (JSON)"</span>
+                    <textarea class="min-h-[14rem] w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm" prop:value=settings_config on:input=move |ev| set_settings_config.set(event_target_value(&ev)) />
+                </label>
+                <Show when=move || settings_feedback.get().is_some()>
+                    <div class="mt-4 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                        {move || settings_feedback.get().unwrap_or_default()}
+                    </div>
+                </Show>
+                <div class="mt-4 flex justify-end">
+                    <button type="button" class="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || settings_busy.get() on:click=save_settings>
+                        {move || if settings_busy.get() { "Saving..." } else { "Save Search Settings" }}
+                    </button>
+                </div>
+            </section>
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1">
                     <h2 class="text-lg font-semibold text-card-foreground">"Scoped Rebuild"</h2>
@@ -287,9 +423,10 @@ fn playground_view(
     </section> }
 }
 
-fn diagnostics_view(
+fn analytics_view(
     diagnostics: SearchDiagnosticsPayload,
     lagging_documents: Resource<Result<Vec<LaggingSearchDocumentPayload>, api::ApiError>>,
+    search_analytics: Resource<Result<SearchAnalyticsPayload, api::ApiError>>,
 ) -> impl IntoView {
     view! {
         <section class="space-y-6">
@@ -300,6 +437,20 @@ fn diagnostics_view(
                 <InfoCard title="Newest indexed" value=diagnostics.newest_indexed_at.unwrap_or_else(|| "not indexed yet".to_string()) detail="Most recent index write in rustok-search storage." />
                 <InfoCard title="Oldest indexed" value=diagnostics.oldest_indexed_at.unwrap_or_else(|| "not indexed yet".to_string()) detail="Oldest surviving indexed document timestamp." />
             </div>
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h2 class="text-lg font-semibold text-card-foreground">"Search Analytics"</h2>
+                    <p class="text-sm text-muted-foreground">"CTR, abandonment, zero-result analysis, and query-intelligence candidates over the recent query log window."</p>
+                </div>
+                <div class="mt-5">
+                    <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
+                        {move || search_analytics.get().map(|result| match result {
+                            Ok(analytics) => analytics_panel(analytics).into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("Failed to load search analytics: {err}")}</div> }.into_any(),
+                        })}
+                    </Suspense>
+                </div>
+            </section>
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1"><h2 class="text-lg font-semibold text-card-foreground">"Lagging Documents"</h2><p class="text-sm text-muted-foreground">"Raw diagnostics for the most stale documents in search storage."</p></div>
                 <div class="mt-5">
@@ -315,18 +466,191 @@ fn diagnostics_view(
     }
 }
 
+fn analytics_panel(analytics: SearchAnalyticsPayload) -> impl IntoView {
+    let summary = analytics.summary.clone();
+    view! {
+        <div class="space-y-6">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <InfoCard title="Window" value=format!("{}d", summary.window_days) detail="Rolling analytics lookback window." />
+                <InfoCard title="Queries" value=summary.total_queries.to_string() detail="All logged search queries in the current window." />
+                <InfoCard title="CTR" value=format!("{:.1}%", summary.click_through_rate * 100.0) detail="Share of eligible successful queries that received at least one click." />
+                <InfoCard title="Abandonment" value=format!("{:.1}%", summary.abandonment_rate * 100.0) detail="Eligible successful queries that ended without any tracked click." />
+                <InfoCard title="Zero-result rate" value=format!("{:.1}%", summary.zero_result_rate * 100.0) detail="Share of successful queries that returned no results." />
+            </div>
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <InfoCard title="Avg latency" value=format!("{:.1} ms", summary.avg_took_ms) detail="Average PostgreSQL search execution time." />
+                <InfoCard title="Total clicks" value=summary.total_clicks.to_string() detail="All tracked result clicks in the current window." />
+                <InfoCard title="Abandoned queries" value=summary.abandonment_queries.to_string() detail="Successful queries older than the click-eval window with no clicks." />
+                <InfoCard title="Unique queries" value=summary.unique_queries.to_string() detail="Distinct normalized queries observed in the window." />
+            </div>
+            <div class="grid gap-6 xl:grid-cols-2">
+                <section class="rounded-xl border border-border bg-background p-4">
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Top Queries"</h3>
+                        <p class="text-sm text-muted-foreground">"Most frequent successful queries across admin and storefront search."</p>
+                    </div>
+                    <div class="mt-4">{analytics_rows_table(analytics.top_queries, "No successful queries recorded yet.")}</div>
+                </section>
+                <section class="rounded-xl border border-border bg-background p-4">
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Zero-Result Queries"</h3>
+                        <p class="text-sm text-muted-foreground">"Queries that repeatedly return nothing and are likely candidates for synonyms, redirects, or content gaps."</p>
+                    </div>
+                    <div class="mt-4">{analytics_rows_table(analytics.zero_result_queries, "No zero-result queries recorded in the current window.")}</div>
+                </section>
+            </div>
+            <div class="grid gap-6 xl:grid-cols-2">
+                <section class="rounded-xl border border-border bg-background p-4">
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Low CTR Queries"</h3>
+                        <p class="text-sm text-muted-foreground">"Frequent queries whose result sets are not attracting clicks."</p>
+                    </div>
+                    <div class="mt-4">{analytics_rows_table(analytics.low_ctr_queries, "No low-CTR queries detected in the current window.")}</div>
+                </section>
+                <section class="rounded-xl border border-border bg-background p-4">
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Abandonment Queries"</h3>
+                        <p class="text-sm text-muted-foreground">"Successful queries that tend to end without any click." </p>
+                    </div>
+                    <div class="mt-4">{analytics_rows_table(analytics.abandonment_queries, "No abandoned high-volume queries detected in the current window.")}</div>
+                </section>
+            </div>
+            <section class="rounded-xl border border-border bg-background p-4">
+                <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-card-foreground">"Query Intelligence"</h3>
+                    <p class="text-sm text-muted-foreground">"Queries that most likely need synonyms, redirects, pinning, or ranking adjustments."</p>
+                </div>
+                <div class="mt-4">{intelligence_table(analytics.intelligence_candidates)}</div>
+            </section>
+        </div>
+    }
+}
+
 fn preview_panel(payload: SearchPreviewPayload) -> impl IntoView {
     view! { <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div><h2 class="text-lg font-semibold text-card-foreground">"Preview Results"</h2><p class="text-sm text-muted-foreground">{format!("{} results in {} ms via {}", payload.total, payload.took_ms, payload.engine)}</p></div>
         <div class="mt-5 grid gap-4 lg:grid-cols-3">{payload.facets.iter().map(|facet| view! { <FacetCard facet=facet.clone() /> }).collect_view()}</div>
-        <div class="mt-6 space-y-3">{payload.items.into_iter().map(|item| view! {
+        <div class="mt-6 space-y-3">{payload.items.into_iter().enumerate().map(|(index, item)| view! {
             <article class="rounded-xl border border-border bg-background p-4">
                 <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"><span>{item.entity_type.clone()}</span><span>"|"</span><span>{item.source_module.clone()}</span><span>"|"</span><span>{format!("score {:.3}", item.score)}</span></div>
                 <h3 class="mt-2 text-base font-semibold text-card-foreground">{item.title}</h3>
                 <p class="mt-2 text-sm text-muted-foreground">{item.snippet.unwrap_or_else(|| "No snippet returned.".to_string())}</p>
+                {preview_result_action(payload.query_log_id.clone(), item.id.clone(), item.url.clone(), index)}
             </article>
         }).collect_view()}</div>
     </section> }
+}
+
+fn analytics_rows_table(
+    rows: Vec<crate::model::SearchAnalyticsQueryRowPayload>,
+    empty_message: &'static str,
+) -> impl IntoView {
+    if rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
+    }
+
+    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
+        <thead class="border-b border-border bg-muted/50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Query"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Hits"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Zero hits"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Clicks"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"CTR"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Abandonment"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Avg latency"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Avg results"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Last seen"</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
+            <tr class="transition-colors hover:bg-muted/30">
+                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.query}</div></td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}%", row.click_through_rate * 100.0)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}%", row.abandonment_rate * 100.0)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1} ms", row.avg_took_ms)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}", row.avg_results)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.last_seen_at}</td>
+            </tr>
+        }).collect_view()}</tbody>
+    </table></div> }.into_any()
+}
+
+fn intelligence_table(rows: Vec<crate::model::SearchAnalyticsInsightRowPayload>) -> impl IntoView {
+    if rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">"No query-intelligence candidates surfaced in the current window."</div> }.into_any();
+    }
+
+    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
+        <thead class="border-b border-border bg-muted/50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Query"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Hits"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Zero hits"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Clicks"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"CTR"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Recommendation"</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
+            <tr class="transition-colors hover:bg-muted/30">
+                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.query}</div></td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}%", row.click_through_rate * 100.0)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.recommendation}</td>
+            </tr>
+        }).collect_view()}</tbody>
+    </table></div> }.into_any()
+}
+
+fn preview_result_action(
+    query_log_id: Option<String>,
+    document_id: String,
+    url: Option<String>,
+    index: usize,
+) -> impl IntoView {
+    let Some(url) = url else {
+        return view! { <p class="mt-4 text-xs text-muted-foreground">"No target URL is available for this result yet."</p> }.into_any();
+    };
+
+    let token = leptos_auth::hooks::use_token();
+    let tenant = leptos_auth::hooks::use_tenant();
+
+    view! {
+        <a
+            class="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
+            href=url.clone()
+            on:click=move |ev| {
+                let Some(query_log_id) = query_log_id.clone() else {
+                    return;
+                };
+                let Some(window) = web_sys::window() else {
+                    return;
+                };
+                ev.prevent_default();
+                let token_value = token.get_untracked();
+                let tenant_value = tenant.get_untracked();
+                let document_id = document_id.clone();
+                let url = url.clone();
+                spawn_local(async move {
+                    let _ = api::track_search_click(
+                        token_value,
+                        tenant_value,
+                        query_log_id,
+                        document_id,
+                        Some((index + 1) as i32),
+                        Some(url.clone()),
+                    )
+                    .await;
+                    let _ = window.location().set_href(&url);
+                });
+            }
+        >
+            "Open result"
+        </a>
+    }
+    .into_any()
 }
 
 fn lagging_table(rows: Vec<LaggingSearchDocumentPayload>) -> impl IntoView {
@@ -355,8 +679,409 @@ fn lagging_table(rows: Vec<LaggingSearchDocumentPayload>) -> impl IntoView {
     </table></div> }.into_any()
 }
 
-fn placeholder_view(title: &'static str, body: &'static str) -> impl IntoView {
-    view! { <section class="rounded-2xl border border-dashed border-border bg-card p-10 text-center shadow-sm"><h2 class="text-xl font-semibold text-card-foreground">{title}</h2><p class="mt-3 text-sm text-muted-foreground">{body}</p></section> }
+#[component]
+fn DictionariesView() -> impl IntoView {
+    let token = leptos_auth::hooks::use_token();
+    let tenant = leptos_auth::hooks::use_tenant();
+    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (feedback, set_feedback) = signal(Option::<String>::None);
+    let (busy, set_busy) = signal(false);
+    let (synonym_term, set_synonym_term) = signal(String::new());
+    let (synonym_values, set_synonym_values) = signal(String::new());
+    let (stop_word_value, set_stop_word_value) = signal(String::new());
+    let (pin_query_text, set_pin_query_text) = signal(String::new());
+    let (pin_document_id, set_pin_document_id) = signal(String::new());
+    let (pin_position, set_pin_position) = signal("1".to_string());
+
+    let snapshot = Resource::new(
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
+            api::fetch_dictionary_snapshot(token_value, tenant_value).await
+        },
+    );
+
+    let submit_synonym = Callback::new(move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_busy.set(true);
+        set_feedback.set(None);
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            let term = synonym_term.get_untracked();
+            let synonyms = parse_csv(synonym_values.get_untracked());
+            async move {
+                match api::upsert_search_synonym(token_value, tenant_value, term, synonyms).await {
+                    Ok(_) => {
+                        set_feedback.set(Some("Synonym dictionary updated.".to_string()));
+                        set_synonym_term.set(String::new());
+                        set_synonym_values.set(String::new());
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => {
+                        set_feedback.set(Some(format!("Failed to save synonym: {err}")));
+                    }
+                }
+                set_busy.set(false);
+            }
+        });
+    });
+
+    let submit_stop_word = Callback::new(move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_busy.set(true);
+        set_feedback.set(None);
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            let value = stop_word_value.get_untracked();
+            async move {
+                match api::add_search_stop_word(token_value, tenant_value, value).await {
+                    Ok(_) => {
+                        set_feedback.set(Some("Stop-word dictionary updated.".to_string()));
+                        set_stop_word_value.set(String::new());
+                        set_refresh_nonce.update(|nonce| *nonce += 1);
+                    }
+                    Err(err) => {
+                        set_feedback.set(Some(format!("Failed to add stop word: {err}")));
+                    }
+                }
+                set_busy.set(false);
+            }
+        });
+    });
+
+    let submit_pin_rule = Callback::new(move |ev: SubmitEvent| {
+        ev.prevent_default();
+        let pinned_position = match optional_text(pin_position.get_untracked()) {
+            Some(value) => match value.parse::<i32>() {
+                Ok(parsed) => Some(parsed),
+                Err(_) => {
+                    set_feedback.set(Some(
+                        "Pinned position must be a positive integer.".to_string(),
+                    ));
+                    return;
+                }
+            },
+            None => Some(1),
+        };
+
+        set_busy.set(true);
+        set_feedback.set(None);
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            let query_text = pin_query_text.get_untracked();
+            let document_id = pin_document_id.get_untracked();
+            async move {
+                match api::upsert_search_pin_rule(
+                    token_value,
+                    tenant_value,
+                    query_text,
+                    document_id,
+                    pinned_position,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        set_feedback.set(Some("Pinned result rule updated.".to_string()));
+                        set_pin_query_text.set(String::new());
+                        set_pin_document_id.set(String::new());
+                        set_pin_position.set("1".to_string());
+                        set_refresh_nonce.update(|nonce| *nonce += 1);
+                    }
+                    Err(err) => {
+                        set_feedback.set(Some(format!("Failed to save pinned result rule: {err}")));
+                    }
+                }
+                set_busy.set(false);
+            }
+        });
+    });
+
+    let delete_synonym = Callback::new(move |synonym_id: String| {
+        set_busy.set(true);
+        set_feedback.set(None);
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            async move {
+                match api::delete_search_synonym(token_value, tenant_value, synonym_id).await {
+                    Ok(_) => {
+                        set_feedback.set(Some("Synonym removed.".to_string()));
+                        set_refresh_nonce.update(|nonce| *nonce += 1);
+                    }
+                    Err(err) => {
+                        set_feedback.set(Some(format!("Failed to remove synonym: {err}")));
+                    }
+                }
+                set_busy.set(false);
+            }
+        });
+    });
+
+    let delete_stop_word = Callback::new(move |stop_word_id: String| {
+        set_busy.set(true);
+        set_feedback.set(None);
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            async move {
+                match api::delete_search_stop_word(token_value, tenant_value, stop_word_id).await {
+                    Ok(_) => {
+                        set_feedback.set(Some("Stop word removed.".to_string()));
+                        set_refresh_nonce.update(|nonce| *nonce += 1);
+                    }
+                    Err(err) => {
+                        set_feedback.set(Some(format!("Failed to remove stop word: {err}")));
+                    }
+                }
+                set_busy.set(false);
+            }
+        });
+    });
+
+    let delete_query_rule = Callback::new(move |query_rule_id: String| {
+        set_busy.set(true);
+        set_feedback.set(None);
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            async move {
+                match api::delete_search_query_rule(token_value, tenant_value, query_rule_id).await
+                {
+                    Ok(_) => {
+                        set_feedback.set(Some("Pinned rule removed.".to_string()));
+                        set_refresh_nonce.update(|nonce| *nonce += 1);
+                    }
+                    Err(err) => {
+                        set_feedback.set(Some(format!("Failed to remove pinned rule: {err}")));
+                    }
+                }
+                set_busy.set(false);
+            }
+        });
+    });
+
+    view! {
+        <section class="space-y-6">
+            <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h2 class="text-lg font-semibold text-card-foreground">"Search Dictionaries"</h2>
+                    <p class="text-sm text-muted-foreground">
+                        "Tenant-owned stop words, synonyms, and exact-query pin rules. These dictionaries apply to both admin preview and storefront search on the shared backend contract."
+                    </p>
+                </div>
+                <Show when=move || feedback.get().is_some()>
+                    <div class="mt-4 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                        {move || feedback.get().unwrap_or_default()}
+                    </div>
+                </Show>
+            </div>
+
+            <div class="grid gap-6 xl:grid-cols-3">
+                <form class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm" on:submit=move |ev| submit_synonym.run(ev)>
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Synonyms"</h3>
+                        <p class="text-sm text-muted-foreground">"Expand exact tokens into equivalent search terms."</p>
+                    </div>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Canonical term"</span>
+                        <input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=synonym_term on:input=move |ev| set_synonym_term.set(event_target_value(&ev)) />
+                    </label>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Synonyms (CSV)"</span>
+                        <input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=synonym_values on:input=move |ev| set_synonym_values.set(event_target_value(&ev)) />
+                    </label>
+                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
+                        {move || if busy.get() { "Saving..." } else { "Save Synonym Group" }}
+                    </button>
+                </form>
+
+                <form class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm" on:submit=move |ev| submit_stop_word.run(ev)>
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Stop Words"</h3>
+                        <p class="text-sm text-muted-foreground">"Remove low-signal tokens before FTS execution."</p>
+                    </div>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Stop word"</span>
+                        <input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=stop_word_value on:input=move |ev| set_stop_word_value.set(event_target_value(&ev)) />
+                    </label>
+                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
+                        {move || if busy.get() { "Saving..." } else { "Add Stop Word" }}
+                    </button>
+                </form>
+
+                <form class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm" on:submit=move |ev| submit_pin_rule.run(ev)>
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Pinned Results"</h3>
+                        <p class="text-sm text-muted-foreground">"Pin an existing search document for an exact normalized query."</p>
+                    </div>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Query text"</span>
+                        <input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=pin_query_text on:input=move |ev| set_pin_query_text.set(event_target_value(&ev)) />
+                    </label>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Document ID"</span>
+                        <input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=pin_document_id on:input=move |ev| set_pin_document_id.set(event_target_value(&ev)) />
+                    </label>
+                    <label class="block space-y-2">
+                        <span class="text-sm font-medium text-card-foreground">"Pinned position"</span>
+                        <input type="number" min="1" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=pin_position on:input=move |ev| set_pin_position.set(event_target_value(&ev)) />
+                    </label>
+                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
+                        {move || if busy.get() { "Saving..." } else { "Save Pin Rule" }}
+                    </button>
+                </form>
+            </div>
+
+            <Suspense fallback=move || view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }>
+                {move || snapshot.get().map(|result| match result {
+                    Ok(snapshot) => dictionaries_tables(snapshot, busy, delete_synonym, delete_stop_word, delete_query_rule).into_any(),
+                    Err(err) => view! {
+                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                            {format!("Failed to load search dictionaries: {err}")}
+                        </div>
+                    }.into_any(),
+                })}
+            </Suspense>
+        </section>
+    }
+}
+
+fn dictionaries_tables(
+    snapshot: SearchDictionarySnapshotPayload,
+    busy: ReadSignal<bool>,
+    delete_synonym: Callback<String>,
+    delete_stop_word: Callback<String>,
+    delete_query_rule: Callback<String>,
+) -> impl IntoView {
+    view! {
+        <div class="space-y-6">
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-card-foreground">"Synonym Groups"</h3>
+                    <p class="text-sm text-muted-foreground">"Each group expands all included terms as equivalent tokens."</p>
+                </div>
+                <div class="mt-5">{synonyms_table(snapshot.synonyms, busy, delete_synonym)}</div>
+            </section>
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-card-foreground">"Stop Words"</h3>
+                    <p class="text-sm text-muted-foreground">"Terms removed from the effective FTS query."</p>
+                </div>
+                <div class="mt-5">{stop_words_table(snapshot.stop_words, busy, delete_stop_word)}</div>
+            </section>
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h3 class="text-base font-semibold text-card-foreground">"Pinned Query Rules"</h3>
+                    <p class="text-sm text-muted-foreground">"Exact normalized queries that promote specific documents to chosen positions."</p>
+                </div>
+                <div class="mt-5">{query_rules_table(snapshot.query_rules, busy, delete_query_rule)}</div>
+            </section>
+        </div>
+    }
+}
+
+fn synonyms_table(
+    rows: Vec<SearchSynonymPayload>,
+    busy: ReadSignal<bool>,
+    delete_synonym: Callback<String>,
+) -> impl IntoView {
+    if rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">"No synonym groups configured yet."</div> }.into_any();
+    }
+
+    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
+        <thead class="border-b border-border bg-muted/50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Term"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Synonyms"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Updated"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Actions"</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
+            let synonym_id = row.id.clone();
+            view! {
+                <tr class="transition-colors hover:bg-muted/30">
+                    <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.term}</div></td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.synonyms.join(", ")}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
+                    <td class="px-4 py-3 align-top">
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| delete_synonym.run(synonym_id.clone())>"Delete"</button>
+                    </td>
+                </tr>
+            }
+        }).collect_view()}</tbody>
+    </table></div> }.into_any()
+}
+
+fn stop_words_table(
+    rows: Vec<SearchStopWordPayload>,
+    busy: ReadSignal<bool>,
+    delete_stop_word: Callback<String>,
+) -> impl IntoView {
+    if rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">"No stop words configured yet."</div> }.into_any();
+    }
+
+    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
+        <thead class="border-b border-border bg-muted/50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Value"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Updated"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Actions"</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
+            let stop_word_id = row.id.clone();
+            view! {
+                <tr class="transition-colors hover:bg-muted/30">
+                    <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.value}</div></td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
+                    <td class="px-4 py-3 align-top">
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| delete_stop_word.run(stop_word_id.clone())>"Delete"</button>
+                    </td>
+                </tr>
+            }
+        }).collect_view()}</tbody>
+    </table></div> }.into_any()
+}
+
+fn query_rules_table(
+    rows: Vec<SearchQueryRulePayload>,
+    busy: ReadSignal<bool>,
+    delete_query_rule: Callback<String>,
+) -> impl IntoView {
+    if rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">"No pinned query rules configured yet."</div> }.into_any();
+    }
+
+    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
+        <thead class="border-b border-border bg-muted/50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Query"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Target"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Position"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Updated"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Actions"</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
+            let query_rule_id = row.id.clone();
+            view! {
+                <tr class="transition-colors hover:bg-muted/30">
+                    <td class="px-4 py-3 align-top">
+                        <div class="font-medium text-card-foreground">{row.query_text}</div>
+                        <div class="mt-1 text-xs text-muted-foreground">{row.query_normalized}</div>
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                        <div class="font-medium text-card-foreground">{row.title}</div>
+                        <div class="mt-1 text-xs text-muted-foreground">{format!("{} / {} / {}", row.document_id, row.source_module, row.entity_type)}</div>
+                    </td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.pinned_position}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
+                    <td class="px-4 py-3 align-top">
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| delete_query_rule.run(query_rule_id.clone())>"Delete"</button>
+                    </td>
+                </tr>
+            }
+        }).collect_view()}</tbody>
+    </table></div> }.into_any()
 }
 
 #[component]
@@ -403,6 +1128,16 @@ fn optional_text(value: String) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn pretty_json_string(value: &str) -> String {
+    parse_json_for_editor(value)
+        .and_then(|json| serde_json::to_string_pretty(&json).ok())
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn parse_json_for_editor(value: &str) -> Option<serde_json::Value> {
+    serde_json::from_str(value).ok()
 }
 
 fn tab_class(active: bool) -> &'static str {

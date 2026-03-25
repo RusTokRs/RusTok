@@ -8,6 +8,7 @@ description = "Core search module for RusTok - Postgres-first search contracts, 
 [dependencies]
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-telemetry.workspace = true
 async-trait.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

@@ -1,0 +1,10 @@
+[module]
+slug = "product"
+name = "Product"
+version = "0.1.0"
+description = "Default catalog submodule in the ecommerce family"
+ownership = "first_party"
+trust_level = "verified"
+
+[crate]
+entry_type = "ProductModule"

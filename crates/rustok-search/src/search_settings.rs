@@ -38,7 +38,7 @@ impl SearchSettingsService {
                 .one(db)
                 .await?
             {
-                return Ok(map_model(model));
+                return map_model(model);
             }
         }
 
@@ -48,7 +48,7 @@ impl SearchSettingsService {
             .one(db)
             .await?
         {
-            return Ok(map_model(model));
+            return map_model(model);
         }
 
         Ok(SearchSettingsRecord::default_for_tenant(tenant_id))
@@ -100,17 +100,50 @@ impl SearchSettingsService {
             }
         };
 
-        Ok(map_model(model))
+        map_model(model)
     }
 }
 
-fn map_model(model: Model) -> SearchSettingsRecord {
-    SearchSettingsRecord {
+fn map_model(model: Model) -> Result<SearchSettingsRecord, DbErr> {
+    Ok(SearchSettingsRecord {
         id: model.id,
         tenant_id: model.tenant_id,
-        active_engine: SearchEngineKind::from_db_value(&model.active_engine),
-        fallback_engine: SearchEngineKind::from_db_value(&model.fallback_engine),
+        active_engine: parse_engine_value("active_engine", &model.active_engine)?,
+        fallback_engine: parse_engine_value("fallback_engine", &model.fallback_engine)?,
         config: model.config,
         updated_at: model.updated_at.into(),
+    })
+}
+
+fn parse_engine_value(field_name: &str, value: &str) -> Result<SearchEngineKind, DbErr> {
+    SearchEngineKind::try_from_str(value).ok_or_else(|| {
+        DbErr::Custom(format!(
+            "search_settings.{field_name} contains unsupported engine value '{}'",
+            value
+        ))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{map_model, Model};
+    use sea_orm::prelude::Json;
+    use uuid::Uuid;
+
+    #[test]
+    fn map_model_rejects_invalid_engine_values() {
+        let model = Model {
+            id: Uuid::new_v4(),
+            tenant_id: None,
+            active_engine: "bogus".to_string(),
+            fallback_engine: "postgres".to_string(),
+            config: Json::from(serde_json::json!({})),
+            updated_at: chrono::Utc::now().into(),
+        };
+
+        let error = map_model(model).expect_err("invalid engine should fail");
+        let message = error.to_string();
+        assert!(message.contains("active_engine"));
+        assert!(message.contains("bogus"));
     }
 }

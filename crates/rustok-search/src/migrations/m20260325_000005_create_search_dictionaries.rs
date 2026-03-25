@@ -1,0 +1,229 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(SearchSynonyms::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SearchSynonyms::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SearchSynonyms::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SearchSynonyms::Term)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SearchSynonyms::Synonyms)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(SearchSynonyms::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_search_synonyms_tenant_term")
+                    .table(SearchSynonyms::Table)
+                    .col(SearchSynonyms::TenantId)
+                    .col(SearchSynonyms::Term)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SearchStopWords::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SearchStopWords::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SearchStopWords::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SearchStopWords::Value)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SearchStopWords::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_search_stop_words_tenant_value")
+                    .table(SearchStopWords::Table)
+                    .col(SearchStopWords::TenantId)
+                    .col(SearchStopWords::Value)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SearchQueryRules::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SearchQueryRules::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SearchQueryRules::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SearchQueryRules::QueryText)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SearchQueryRules::QueryNormalized)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SearchQueryRules::RuleKind)
+                            .string_len(64)
+                            .not_null()
+                            .default("pin_document"),
+                    )
+                    .col(
+                        ColumnDef::new(SearchQueryRules::DocumentId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SearchQueryRules::EntityType)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SearchQueryRules::SourceModule)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SearchQueryRules::Title).text().not_null())
+                    .col(
+                        ColumnDef::new(SearchQueryRules::PinnedPosition)
+                            .integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(SearchQueryRules::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_search_query_rules_lookup")
+                    .table(SearchQueryRules::Table)
+                    .col(SearchQueryRules::TenantId)
+                    .col(SearchQueryRules::QueryNormalized)
+                    .col(SearchQueryRules::RuleKind)
+                    .col(SearchQueryRules::PinnedPosition)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_search_query_rules_unique_pin")
+                    .table(SearchQueryRules::Table)
+                    .col(SearchQueryRules::TenantId)
+                    .col(SearchQueryRules::QueryNormalized)
+                    .col(SearchQueryRules::RuleKind)
+                    .col(SearchQueryRules::DocumentId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(SearchQueryRules::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SearchStopWords::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SearchSynonyms::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(Iden)]
+enum SearchSynonyms {
+    Table,
+    Id,
+    TenantId,
+    Term,
+    Synonyms,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SearchStopWords {
+    Table,
+    Id,
+    TenantId,
+    Value,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SearchQueryRules {
+    Table,
+    Id,
+    TenantId,
+    QueryText,
+    QueryNormalized,
+    RuleKind,
+    DocumentId,
+    EntityType,
+    SourceModule,
+    Title,
+    PinnedPosition,
+    UpdatedAt,
+}

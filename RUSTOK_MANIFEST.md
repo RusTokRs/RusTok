@@ -141,7 +141,7 @@ Each layer encapsulates those below it. This model has no direct analogue in the
 |-------|------|------|-------------|
 | `rustok-content` | `content` | Content | Core CMS Module (Nodes, Bodies, Categories) |
 | `rustok-blog` | `blog` | Blog | Posts, Pages, Comments |
-| `rustok-commerce` | `commerce` | Commerce | Products, Orders, Cart, Checkout |
+| `rustok-commerce` | `commerce` | Ecommerce | Umbrella/root module for the ecommerce family, compatibility facade, orchestration |
 | `rustok-pages` | `pages` | Pages | Static pages, menus, blocks |
 | `alloy-scripting` | `alloy` | Alloy Scripting | Rhai scripting engine, triggers, and script storage |
 | `rustok-tenant` | `tenant` | Tenant | Multi-tenancy helpers |
@@ -755,7 +755,7 @@ graph TD
 |-------|----------------|---------|
 | **Core** | users, tenants, tenant_modules | Universal foundation |
 | **Content** | nodes, bodies, categories, tags | CMS / Blog domain |
-| **Commerce** | products, variants, orders | E-commerce domain |
+| **Commerce / Ecommerce family** | root umbrella + product/pricing/inventory submodules | E-commerce domain family |
 | **Index** | index_products, index_content | CQRS read models |
 
 ---
@@ -811,9 +811,10 @@ graph TD
 - Статические страницы, меню, блоки.
 - Реализуется на основе content tables или собственных страниц.
 
-### 15.9 `rustok-commerce` (Commerce domain)
+### 15.9 `rustok-commerce` (Ecommerce umbrella/root module)
 
-- Commerce write model + события.
+- Root umbrella module семейства ecommerce.
+- Compatibility facade, orchestration surface и transport entry point.
 - Мульти-tenant фильтрация обязательна.
 
 ### 15.10 `rustok-index` (CQRS Read Model)

@@ -1,0 +1,19 @@
+[package]
+name = "rustok-inventory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Inventory domain module extracted from rustok-commerce"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
+rustok-commerce-foundation.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+

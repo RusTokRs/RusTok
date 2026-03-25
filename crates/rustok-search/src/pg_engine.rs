@@ -366,6 +366,7 @@ mod tests {
             &SearchQuery {
                 tenant_id: None,
                 locale: None,
+                original_query: "phone".to_string(),
                 query: "phone".to_string(),
                 limit: 10,
                 offset: 0,

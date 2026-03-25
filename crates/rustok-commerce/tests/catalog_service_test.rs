@@ -6,10 +6,12 @@ use rust_decimal::Decimal;
 use rustok_commerce::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
+use rustok_commerce::entities;
 use rustok_commerce::entities::product::ProductStatus;
 use rustok_commerce::services::CatalogService;
 use rustok_commerce::CommerceError;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
+use sea_orm::ActiveModelTrait;
 use sea_orm::DatabaseConnection;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -264,6 +266,114 @@ async fn test_create_product_with_multiple_translations() {
 // =============================================================================
 // Product Variant Tests
 // =============================================================================
+
+#[tokio::test]
+async fn test_create_product_populates_option_and_variant_translation_groups() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let mut input = create_test_product_input();
+    input.translations.push(ProductTranslationInput {
+        locale: "ru".to_string(),
+        title: "Тестовый продукт".to_string(),
+        description: Some("Русская локализация".to_string()),
+        handle: Some(unique_slug("test-product-ru")),
+        meta_title: None,
+        meta_description: None,
+    });
+    input.options = vec![rustok_commerce::dto::ProductOptionInput {
+        name: "Size".to_string(),
+        values: vec!["S".to_string(), "M".to_string()],
+    }];
+
+    let product = service
+        .create_product(tenant_id, actor_id, input)
+        .await
+        .expect("product with translation groups should be created");
+
+    assert_eq!(product.options.len(), 1);
+    assert_eq!(product.options[0].translations.len(), 2);
+    assert!(product.options[0]
+        .translations
+        .iter()
+        .any(|item| item.locale == "en" && item.name == "Size" && item.values == vec!["S", "M"]));
+    assert!(product.options[0]
+        .translations
+        .iter()
+        .any(|item| item.locale == "ru" && item.name == "Size" && item.values == vec!["S", "M"]));
+
+    assert_eq!(product.variants.len(), 1);
+    assert_eq!(product.variants[0].translations.len(), 2);
+    assert!(product.variants[0]
+        .translations
+        .iter()
+        .any(|item| item.locale == "en" && item.title.as_deref() == Some("Default")));
+    assert!(product.variants[0]
+        .translations
+        .iter()
+        .any(|item| item.locale == "ru" && item.title.as_deref() == Some("Default")));
+}
+
+#[tokio::test]
+async fn test_get_product_reads_image_translation_groups() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let product = service
+        .create_product(tenant_id, actor_id, create_test_product_input())
+        .await
+        .expect("product should be created");
+
+    let image_id = Uuid::new_v4();
+    let media_id = Uuid::new_v4();
+    entities::product_image::ActiveModel {
+        id: sea_orm::Set(image_id),
+        product_id: sea_orm::Set(product.id),
+        media_id: sea_orm::Set(media_id),
+        position: sea_orm::Set(0),
+        alt_text: sea_orm::Set(Some("Default image".to_string())),
+    }
+    .insert(&db)
+    .await
+    .expect("image should be inserted");
+
+    entities::product_image_translation::ActiveModel {
+        id: sea_orm::Set(Uuid::new_v4()),
+        image_id: sea_orm::Set(image_id),
+        locale: sea_orm::Set("en".to_string()),
+        alt_text: sea_orm::Set(Some("Front image".to_string())),
+    }
+    .insert(&db)
+    .await
+    .expect("english image translation should be inserted");
+
+    entities::product_image_translation::ActiveModel {
+        id: sea_orm::Set(Uuid::new_v4()),
+        image_id: sea_orm::Set(image_id),
+        locale: sea_orm::Set("ru".to_string()),
+        alt_text: sea_orm::Set(Some("Основное изображение".to_string())),
+    }
+    .insert(&db)
+    .await
+    .expect("russian image translation should be inserted");
+
+    let fetched = service
+        .get_product(tenant_id, product.id)
+        .await
+        .expect("product should be fetched");
+
+    assert_eq!(fetched.images.len(), 1);
+    assert_eq!(fetched.images[0].translations.len(), 2);
+    assert!(fetched.images[0]
+        .translations
+        .iter()
+        .any(|item| item.locale == "en" && item.alt_text.as_deref() == Some("Front image")));
+    assert!(fetched.images[0].translations.iter().any(
+        |item| item.locale == "ru" && item.alt_text.as_deref() == Some("Основное изображение")
+    ));
+}
 
 #[tokio::test]
 async fn test_create_product_with_multiple_variants() {

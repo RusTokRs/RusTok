@@ -1,5 +1,1 @@
-pub mod product;
-pub mod variant;
-
-pub use product::*;
-pub use variant::*;
+pub use rustok_commerce_foundation::dto::*;
