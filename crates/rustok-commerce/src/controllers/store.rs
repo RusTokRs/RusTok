@@ -1098,3 +1098,61 @@ struct StoreCartContextPatch {
     locale: Option<Option<String>>,
     selected_shipping_option_id: Option<Option<Uuid>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_store_cart_access;
+    use rust_decimal::Decimal;
+    use uuid::Uuid;
+
+    use crate::dto::CartResponse;
+
+    fn sample_cart(customer_id: Option<Uuid>) -> CartResponse {
+        CartResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            customer_id,
+            email: Some("buyer@example.com".to_string()),
+            region_id: None,
+            country_code: None,
+            locale_code: None,
+            selected_shipping_option_id: None,
+            status: "active".to_string(),
+            currency_code: "USD".to_string(),
+            total_amount: Decimal::ZERO,
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            completed_at: None,
+            line_items: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn guest_cart_allows_missing_customer_context() {
+        let cart = sample_cart(None);
+        assert!(ensure_store_cart_access(&cart, None).is_ok());
+    }
+
+    #[test]
+    fn customer_owned_cart_allows_matching_customer() {
+        let customer_id = Uuid::new_v4();
+        let cart = sample_cart(Some(customer_id));
+        assert!(ensure_store_cart_access(&cart, Some(customer_id)).is_ok());
+    }
+
+    #[test]
+    fn customer_owned_cart_rejects_missing_customer_context() {
+        let cart = sample_cart(Some(Uuid::new_v4()));
+        let error = ensure_store_cart_access(&cart, None).expect_err("customer auth required");
+        assert_eq!(error.to_string(), "Unauthorized: Cart belongs to another customer");
+    }
+
+    #[test]
+    fn customer_owned_cart_rejects_different_customer() {
+        let cart = sample_cart(Some(Uuid::new_v4()));
+        let error = ensure_store_cart_access(&cart, Some(Uuid::new_v4()))
+            .expect_err("foreign customer access must be rejected");
+        assert_eq!(error.to_string(), "Unauthorized: Cart belongs to another customer");
+    }
+}

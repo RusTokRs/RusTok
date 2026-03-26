@@ -366,7 +366,8 @@ flowchart LR
 - cart lifecycle получил промежуточный статус `checking_out` для race protection на checkout path;
 - `payment-collections` теперь переиспользуют активную collection для того же `cart_id`, а повторный
   checkout по уже завершенной корзине восстанавливает существующий `order/payment/fulfillment` response;
-- добавлены contract tests на наличие route-tree и OpenAPI wiring.
+- добавлены contract tests на наличие route-tree и OpenAPI wiring, включая store cart request/response
+  shape для `/store/carts`, `/store/carts/{id}`, `/store/carts/{id}/complete` и `/store/payment-collections`.
 
 Следующий обязательный checkpoint:
 
