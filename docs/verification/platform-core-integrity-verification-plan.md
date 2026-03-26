@@ -13,8 +13,7 @@
 Перед началом проверки должна быть доступна минимальная инфраструктура ядра:
 
 - [ ] PostgreSQL запущен и доступен (порт 5432) — `docker compose up -d db`
-- [ ] Iggy event broker запущен и доступен (TCP порт 8090) — `docker compose up -d iggy`
-  - `rustok-outbox` (Core) зависит от Iggy для relay событий; server не стартует без брокера при активном outbox relay.
+- [ ] Iggy event broker запущен (TCP порт 8090) — `docker compose up -d iggy` — **если сконфигурирован Iggy-транспорт** (`rustok-iggy` / `rustok-iggy-connector`). `rustok-outbox` transport-agnostic: при использовании другого транспорта или DB-режима Iggy не обязателен.
 - [ ] `docker compose config` проходит без ошибок.
 - [ ] `.env` или `.env.dev` содержит корректные переменные для соединения с DB и Iggy.
 
@@ -38,7 +37,7 @@
 - `rustok-cache` — абстракция кэша (in-memory / Redis)
 - `rustok-tenant` — multi-tenancy: резолюция, изоляция, cache
 - `rustok-events` — domain event definitions и contracts
-- `rustok-outbox` — transactional outbox, event relay
+- `rustok-outbox` — transactional outbox, transport-agnostic event relay; конкретный транспорт (Iggy и др.) подключается опционально через `rustok-iggy` / `rustok-iggy-connector`
 - `rustok-index` — CQRS read models, денормализация
 - `rustok-telemetry` — OpenTelemetry, tracing, Prometheus
 - `rustok-api` — shared host/API layer: TenantContext, AuthContext
