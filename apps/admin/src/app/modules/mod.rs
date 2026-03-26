@@ -6,6 +6,7 @@ mod registry;
 
 use std::cell::Cell;
 
+pub use generated_ui_codegen::core_module_slugs;
 pub use registry::{
     components_for_slot, page_for_route_segment, register_component, register_page,
     AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot,

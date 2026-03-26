@@ -9,7 +9,7 @@ This folder contains the local documentation for `crates/rustok-api`.
 ## Architectural Boundary
 
 - `rustok-api` stays intentionally thin.
-- It is the single shared host/API layer for request, tenant, auth, and GraphQL helper contracts.
+- It is the single shared host/API layer for request, tenant, auth, channel, and GraphQL helper contracts.
 - Generic UI host contracts such as `UiRouteContext` may live here too, as long as they stay module-agnostic and do not pull module behavior into the shared layer. Today this includes shared route segment, nested subpath, locale, and query param context for module-owned Leptos UI.
 - Do not introduce a second parallel implementation of the same layer inside `apps/server` or in per-module helper crates.
 - If a helper is module-specific, keep it inside that module. If it becomes a shared host contract, move it into `rustok-api`.

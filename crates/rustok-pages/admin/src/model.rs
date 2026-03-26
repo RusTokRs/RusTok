@@ -36,6 +36,8 @@ pub struct PageDetail {
     pub id: String,
     pub status: String,
     pub template: String,
+    #[serde(rename = "channelSlugs", default)]
+    pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
     pub body: Option<PageBody>,
 }
@@ -56,5 +58,6 @@ pub struct CreatePageDraft {
     pub slug: String,
     pub body: String,
     pub template: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub publish: bool,
 }

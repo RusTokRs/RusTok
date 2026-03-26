@@ -6939,6 +6939,7 @@ dependencies = [
  "rust_decimal",
  "rustok-auth",
  "rustok-cart",
+ "rustok-channel",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
@@ -6951,6 +6952,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-region",
  "rustok-test-utils",
  "rustok-workflow",
  "sea-orm-migration",
@@ -9620,6 +9622,7 @@ dependencies = [
  "reqwest 0.13.2",
  "rustok-api",
  "rustok-blog-admin",
+ "rustok-channel-admin",
  "rustok-commerce-admin",
  "rustok-content-admin",
  "rustok-forum-admin",
@@ -9705,11 +9708,13 @@ dependencies = [
  "loco-rs",
  "proptest",
  "rustok-api",
+ "rustok-channel",
  "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
  "rustok-telemetry",
+ "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -9777,8 +9782,40 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-channel"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-core",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-channel-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_router",
+ "reqwest 0.13.2",
+ "rustok-api",
+ "serde",
+ "serde_json",
+ "web-sys",
 ]
 
 [[package]]
@@ -9806,6 +9843,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-region",
  "rustok-telemetry",
  "rustok-test-utils",
  "sea-orm",
@@ -9964,6 +10002,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "utoipa",
  "uuid",
  "validator",
 ]
@@ -10060,6 +10099,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "utoipa",
  "uuid",
  "validator",
 ]
@@ -10192,6 +10232,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "utoipa",
  "uuid",
  "validator",
 ]
@@ -10223,6 +10264,7 @@ dependencies = [
  "base64 0.22.1",
  "loco-rs",
  "rustok-api",
+ "rustok-channel",
  "rustok-content",
  "rustok-core",
  "rustok-events",
@@ -10277,6 +10319,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "utoipa",
  "uuid",
  "validator",
 ]
@@ -10318,6 +10361,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-profiles"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-rbac"
 version = "0.1.0"
 dependencies = [
@@ -10331,6 +10393,28 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "rustok-region"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rust_decimal",
+ "rustok-commerce-foundation",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "validator",
 ]
 
 [[package]]
@@ -10411,6 +10495,7 @@ dependencies = [
  "rustok-blog",
  "rustok-cache",
  "rustok-cart",
+ "rustok-channel",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
@@ -10430,7 +10515,9 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-profiles",
  "rustok-rbac",
+ "rustok-region",
  "rustok-search",
  "rustok-storage",
  "rustok-storefront",

@@ -17,6 +17,8 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::BlockService;
 
 const PAGE_KIND: &str = "page";
+const CHANNEL_VISIBILITY_KEY: &str = "channel_visibility";
+const ALLOWED_CHANNEL_SLUGS_KEY: &str = "allowed_channel_slugs";
 
 pub struct PageService {
     nodes: NodeService,
@@ -43,7 +45,12 @@ impl PageService {
             .clone()
             .unwrap_or_else(|| "default".to_string());
 
-        let metadata = build_page_metadata(&template, &input.translations, None);
+        let metadata = build_page_metadata(
+            &template,
+            &input.translations,
+            input.channel_slugs.as_deref(),
+            None,
+        );
 
         let bodies = if let Some(body) = input.body {
             let format =
@@ -251,6 +258,7 @@ impl PageService {
                 template,
                 title: node.title,
                 slug: node.slug,
+                channel_slugs: extract_channel_slugs(&full_node.metadata),
                 updated_at: full_node.updated_at,
             });
         }
@@ -280,6 +288,7 @@ impl PageService {
         let metadata = build_page_metadata(
             &template,
             input.translations.as_deref().unwrap_or(&[]),
+            input.channel_slugs.as_deref(),
             Some(&existing.metadata),
         );
 
@@ -411,6 +420,7 @@ impl PageService {
 fn build_page_metadata(
     template: &str,
     translations: &[PageTranslationInput],
+    channel_slugs: Option<&[String]>,
     existing: Option<&serde_json::Value>,
 ) -> serde_json::Value {
     let mut metadata = existing
@@ -444,7 +454,64 @@ fn build_page_metadata(
         }
     }
 
+    if let Some(channel_slugs) = channel_slugs {
+        let normalized = normalize_channel_slugs(channel_slugs);
+        if normalized.is_empty() {
+            if let Some(object) = metadata.as_object_mut() {
+                object.remove(CHANNEL_VISIBILITY_KEY);
+            }
+        } else {
+            metadata[CHANNEL_VISIBILITY_KEY] = serde_json::json!({
+                ALLOWED_CHANNEL_SLUGS_KEY: normalized,
+            });
+        }
+    }
+
     metadata
+}
+
+pub(crate) fn extract_channel_slugs(metadata: &serde_json::Value) -> Vec<String> {
+    metadata
+        .get(CHANNEL_VISIBILITY_KEY)
+        .and_then(|value| value.get(ALLOWED_CHANNEL_SLUGS_KEY))
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            normalize_channel_slugs(
+                &items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn is_page_visible_for_channel(
+    metadata: &serde_json::Value,
+    channel_slug: Option<&str>,
+) -> bool {
+    let allowed_channel_slugs = extract_channel_slugs(metadata);
+    if allowed_channel_slugs.is_empty() {
+        return true;
+    }
+
+    let Some(channel_slug) = channel_slug else {
+        return false;
+    };
+
+    let normalized = channel_slug.trim().to_ascii_lowercase();
+    !normalized.is_empty() && allowed_channel_slugs.iter().any(|item| item == &normalized)
+}
+
+fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
+    let mut normalized = channel_slugs
+        .iter()
+        .map(|item| item.trim().to_ascii_lowercase())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
 }
 
 fn node_to_page(
@@ -537,6 +604,7 @@ fn node_to_page_internal(
         translation: selected_translation,
         translations,
         body,
+        channel_slugs: extract_channel_slugs(&node.metadata),
         blocks,
         metadata: node.metadata,
     }
@@ -717,5 +785,33 @@ mod tests {
                 "styles": [],
             }))
         );
+    }
+
+    #[test]
+    fn build_page_metadata_normalizes_channel_slugs() {
+        let metadata = build_page_metadata(
+            "default",
+            &[],
+            Some(&[" Web ".to_string(), "mobile".to_string(), "web".to_string()]),
+            None,
+        );
+
+        assert_eq!(
+            extract_channel_slugs(&metadata),
+            vec!["mobile".to_string(), "web".to_string()]
+        );
+    }
+
+    #[test]
+    fn page_visibility_respects_channel_allowlist() {
+        let metadata = serde_json::json!({
+            "channel_visibility": {
+                "allowed_channel_slugs": ["web", "mobile"]
+            }
+        });
+
+        assert!(is_page_visible_for_channel(&metadata, Some("web")));
+        assert!(!is_page_visible_for_channel(&metadata, Some("blog")));
+        assert!(!is_page_visible_for_channel(&metadata, None));
     }
 }

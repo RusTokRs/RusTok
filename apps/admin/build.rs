@@ -15,6 +15,8 @@ struct ModulesManifest {
 struct ModuleSpec {
     #[serde(default)]
     path: Option<String>,
+    #[serde(default)]
+    required: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +71,11 @@ struct AdminUiEntry {
 }
 
 #[derive(Debug)]
+struct CoreModuleEntry {
+    slug: String,
+}
+
+#[derive(Debug)]
 struct AdminChildPageEntry {
     subpath: String,
     title: String,
@@ -97,8 +104,23 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
 
     let modules: ModulesManifest = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
     let mut entries = Vec::new();
+    let mut core_modules = Vec::new();
 
     for spec in modules.modules.into_values() {
+        if spec.required {
+            if let Some(module_root) = spec.path.as_ref().map(|value| workspace_root().join(value))
+            {
+                let package_manifest_path = module_root.join("rustok-module.toml");
+                if package_manifest_path.exists() {
+                    let package_manifest: ModulePackageManifest =
+                        toml::from_str(&fs::read_to_string(&package_manifest_path)?)?;
+                    core_modules.push(CoreModuleEntry {
+                        slug: package_manifest.module.slug,
+                    });
+                }
+            }
+        }
+
         let Some(module_root) = spec.path.map(|value| workspace_root().join(value)) else {
             continue;
         };
@@ -151,18 +173,27 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
     fs::write(
         out_dir.join("module_registry_codegen.rs"),
-        render_admin_registry_codegen(&entries),
+        render_admin_registry_codegen(&entries, &core_modules),
     )?;
 
     Ok(())
 }
 
-fn render_admin_registry_codegen(entries: &[AdminUiEntry]) -> String {
+fn render_admin_registry_codegen(
+    entries: &[AdminUiEntry],
+    core_modules: &[CoreModuleEntry],
+) -> String {
     let mut out = String::new();
     out.push_str("use leptos::prelude::*;\n");
     out.push_str(
         "use crate::app::modules::{register_component, register_page, AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot};\n\n",
     );
+    out.push_str("pub fn core_module_slugs() -> &'static [&'static str] {\n");
+    out.push_str("    &[\n");
+    for module in core_modules {
+        out.push_str(&format!("        \"{}\",\n", module.slug));
+    }
+    out.push_str("    ]\n}\n\n");
 
     for entry in entries {
         if entry.child_pages.is_empty() {

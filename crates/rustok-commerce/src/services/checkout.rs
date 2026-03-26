@@ -11,11 +11,13 @@ use rustok_payment::error::PaymentError;
 use sea_orm::DatabaseConnection;
 
 use crate::dto::{
-    AuthorizePaymentInput, CancelFulfillmentInput, CancelPaymentInput, CompleteCheckoutInput,
-    CompleteCheckoutResponse, CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
-    CreatePaymentCollectionInput,
+    AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
+    CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
+    CreatePaymentCollectionInput, ResolveStoreContextInput,
 };
-use crate::{CartService, FulfillmentService, OrderService, PaymentService};
+use crate::{CartService, FulfillmentService, OrderService, PaymentService, StoreContextService};
+
+const MANUAL_PROVIDER_ID: &str = "manual";
 
 #[derive(Debug, Error)]
 pub enum CheckoutError {
@@ -40,6 +42,7 @@ pub struct CheckoutService {
     order_service: OrderService,
     payment_service: PaymentService,
     fulfillment_service: FulfillmentService,
+    context_service: StoreContextService,
 }
 
 impl CheckoutService {
@@ -48,7 +51,8 @@ impl CheckoutService {
             cart_service: CartService::new(db.clone()),
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
-            fulfillment_service: FulfillmentService::new(db),
+            fulfillment_service: FulfillmentService::new(db.clone()),
+            context_service: StoreContextService::new(db),
         }
     }
 
@@ -74,6 +78,19 @@ impl CheckoutService {
         if cart.line_items.is_empty() {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
+        let context = self
+            .context_service
+            .resolve_context(
+                tenant_id,
+                ResolveStoreContextInput {
+                    region_id: input.region_id,
+                    country_code: input.country_code.clone(),
+                    locale: input.locale.clone(),
+                    currency_code: Some(cart.currency_code.clone()),
+                },
+            )
+            .await
+            .map_err(stage_error("resolve_context"))?;
 
         let mut order = self
             .order_service
@@ -147,8 +164,8 @@ impl CheckoutService {
                 tenant_id,
                 payment_collection.id,
                 AuthorizePaymentInput {
-                    provider_id: input.payment_provider_id.clone(),
-                    provider_payment_id: input.provider_payment_id.clone(),
+                    provider_id: None,
+                    provider_payment_id: None,
                     amount: Some(cart.total_amount),
                     metadata: input.metadata.clone(),
                 },
@@ -227,6 +244,15 @@ impl CheckoutService {
                 return Err(stage_error("capture_payment")(error));
             }
         };
+        let payment_reference = captured_payment
+            .payments
+            .last()
+            .map(|payment| payment.provider_payment_id.clone())
+            .unwrap_or_else(|| format!("manual_{}", order.id));
+        let payment_method = captured_payment
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
 
         let order = self
             .order_service
@@ -234,8 +260,8 @@ impl CheckoutService {
                 tenant_id,
                 actor_id,
                 order.id,
-                input.provider_payment_id,
-                input.payment_provider_id,
+                payment_reference,
+                payment_method,
             )
             .await
             .map_err(stage_error("mark_order_paid"))?;
@@ -251,6 +277,7 @@ impl CheckoutService {
             order,
             payment_collection: captured_payment,
             fulfillment,
+            context,
         })
     }
 

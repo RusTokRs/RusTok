@@ -23,6 +23,7 @@ Use these entry points first:
   - `searchDiagnostics`
   - `searchAnalytics`
   - `searchLaggingDocuments`
+  - `searchConsistencyIssues`
   - `trackSearchClick`
   - `triggerSearchRebuild`
 - Prometheus endpoint: `/metrics`
@@ -31,9 +32,10 @@ Persistent analytics are stored in `search_query_logs` and `search_query_clicks`
 
 ## State model
 
-`searchDiagnostics.state` uses three operator-facing states:
+`searchDiagnostics.state` uses four operator-facing states:
 
 - `healthy`: indexed documents are in sync or the tenant has no indexable sources yet
+- `inconsistent`: projection drift exists because source rows are missing in `search_documents` or search rows are orphaned
 - `lagging`: at least one document is stale or max lag exceeds the current threshold
 - `bootstrap_pending`: the tenant has indexable source records, but no `search_documents` yet
 
@@ -45,6 +47,7 @@ Persistent analytics are stored in `search_query_logs` and `search_query_clicks`
 - `rustok_search_query_duration_seconds{surface,engine}`
 - `rustok_search_results_returned{surface,engine}`
 - `rustok_search_zero_results_total{surface,engine}`
+- `rustok_search_slow_queries_total{surface,engine}`
 - `rustok_search_rate_limit_outcomes_total{surface,namespace,outcome}`
 
 `surface` is expected to be one of:
@@ -93,6 +96,7 @@ Common `operation` values:
 - distinct query count
 - top queries
 - zero-result query leaderboard
+- slow-query leaderboard
 - low-CTR query leaderboard
 - abandonment query leaderboard
 - query-intelligence candidates
@@ -116,6 +120,8 @@ Expected `status` values:
 When reviewing `searchDiagnostics`:
 
 - high `stale_documents` means ingestion is falling behind or failing on a subset of entities
+- non-zero `missing_documents` means source rows exist but search projection rows are absent
+- non-zero `orphaned_documents` means `search_documents` still contains rows whose source entity or locale is gone
 - high `max_lag_seconds` means some records were updated much later than they were indexed
 - `bootstrap_pending` means a first rebuild is required or ingestion never caught up after module enablement
 
@@ -128,9 +134,17 @@ When reviewing `searchLaggingDocuments`:
 If the same entity keeps returning to the lagging list, inspect source data and
 event delivery before re-running more rebuilds.
 
+When reviewing `searchConsistencyIssues`:
+
+- `missing` issues point to projection gaps and usually justify scoped or tenant-wide rebuilds
+- `orphaned` issues point to stale search rows that were not deleted after source removal or locale drift
+- if counts stay non-zero after rebuild, inspect ingestion handlers and source event coverage before retrying again
+
 When reviewing `searchAnalytics`:
 
 - high zero-result rate usually points to missing synonyms, redirects, or weak content coverage
+- high slow-query rate usually points to broad result sets, missing operator
+  filters, or ranking/query shapes that need indexing review
 - top queries with low average results are good candidates for relevance tuning
 - repeated zero-result queries should feed synonym and dictionary work
 - low CTR with high result volume often means the best match is buried and needs boost or pinning
@@ -207,6 +221,7 @@ Action:
 Recommended starter alerts:
 
 - sustained increase in `rustok_search_zero_results_total`
+- sustained increase in `rustok_search_slow_queries_total`
 - p95 of `rustok_search_query_duration_seconds` above agreed SLO
 - repeated errors in `rustok_search_indexing_operations_total{status!="success"}`
 - non-zero `rustok_search_bootstrap_pending_tenants_total` after rollout
@@ -221,6 +236,7 @@ Recommended first dashboard:
 - query volume by `surface`
 - p50/p95 search latency by `surface`
 - zero-result rate by `surface`
+- slow-query count by `surface`
 - rate-limit outcomes by `surface` and `outcome`
 - indexing operations by `operation` and `status`
 - audit-event publication by `action` and `status`

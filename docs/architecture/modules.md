@@ -25,6 +25,7 @@ RusToK реализован как modular monolith: platform modules компи
 
 - `auth`
 - `cache`
+- `channel`
 - `email`
 - `index`
 - `search`
@@ -36,6 +37,7 @@ RusToK реализован как modular monolith: platform modules компи
 
 - `content`
 - `commerce`
+- `profiles`
 - `blog`
 - `forum`
 - `pages`

@@ -1,6 +1,5 @@
 use super::shared::*;
 use sea_orm_migration::prelude::*;
-use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -105,72 +104,6 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .create_table(
-                Table::create()
-                    .table(Regions::Table)
-                    .if_not_exists()
-                    .col(ColumnDef::new(Regions::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(Regions::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(Regions::Name).string_len(100).not_null())
-                    .col(
-                        ColumnDef::new(Regions::CurrencyCode)
-                            .string_len(3)
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Regions::TaxRate)
-                            .decimal_len(5, 2)
-                            .not_null()
-                            .default(0),
-                    )
-                    .col(
-                        ColumnDef::new(Regions::TaxIncluded)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .col(
-                        ColumnDef::new(Regions::Countries)
-                            .json_binary()
-                            .not_null()
-                            .default("[]"),
-                    )
-                    .col(
-                        ColumnDef::new(Regions::Metadata)
-                            .json_binary()
-                            .not_null()
-                            .default("{}"),
-                    )
-                    .col(
-                        ColumnDef::new(Regions::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .from(Regions::Table, Regions::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        if manager.get_database_backend() != DatabaseBackend::Sqlite {
-            manager
-                .create_foreign_key(
-                    ForeignKey::create()
-                        .name("fk_prices_region")
-                        .from(Prices::Table, Prices::RegionId)
-                        .to(Regions::Table, Regions::Id)
-                        .on_delete(ForeignKeyAction::Cascade)
-                        .to_owned(),
-                )
-                .await?;
-        }
-
-        manager
             .create_index(
                 Index::create()
                     .name("idx_price_lists_tenant")
@@ -198,33 +131,10 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_regions_tenant")
-                    .table(Regions::Table)
-                    .col(Regions::TenantId)
-                    .to_owned(),
-            )
-            .await?;
-
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Sqlite {
-            manager
-                .drop_foreign_key(
-                    ForeignKey::drop()
-                        .table(Prices::Table)
-                        .name("fk_prices_region")
-                        .to_owned(),
-                )
-                .await?;
-        }
-        manager
-            .drop_table(Table::drop().table(Regions::Table).to_owned())
-            .await?;
         manager
             .drop_table(Table::drop().table(Prices::Table).to_owned())
             .await?;
@@ -264,20 +174,6 @@ enum Prices {
     MaxQuantity,
     CreatedAt,
     UpdatedAt,
-}
-
-#[derive(Iden)]
-enum Regions {
-    Table,
-    Id,
-    TenantId,
-    Name,
-    CurrencyCode,
-    TaxRate,
-    TaxIncluded,
-    Countries,
-    Metadata,
-    CreatedAt,
 }
 
 #[derive(Iden)]

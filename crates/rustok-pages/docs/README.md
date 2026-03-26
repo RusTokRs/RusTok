@@ -40,6 +40,29 @@
 
 OpenAPI и GraphQL типы/мутации должны поддерживаться синхронно при дальнейших изменениях pages-контракта.
 
+## Channel-aware pilot
+
+`rustok-pages` стал первым pilot consumer для `rustok-channel`.
+
+На текущем этапе pilot уже состоит из двух уровней:
+
+- module-level gating: public GraphQL read-path (`pageBySlug`, `pages`, а также `page` без auth) смотрит на `RequestContext.channel_id`;
+- если для текущего канала есть `channel_module_bindings` c `module_slug = "pages"` и `is_enabled = false`, модульный read-path возвращает `MODULE_NOT_ENABLED`;
+- если binding отсутствует, в v0 действует permissive fallback: `pages` считается доступным;
+- authenticated/admin flows этот channel gate не блокирует, чтобы не ломать операторские сценарии.
+
+Сверху на это добавлен первый publication-level proof point:
+
+- `createPage` и `updatePage` принимают `channelSlugs`;
+- allowlist хранится в metadata страницы по пути `channel_visibility.allowed_channel_slugs`;
+- public read-path использует `RequestContext.channel_slug` только для неаутентифицированных запросов;
+- если allowlist пустой или отсутствует, страница видима на всех каналах;
+- если allowlist задан, страница видима только на перечисленных `channel_slug`;
+- если allowlist задан, но public channel slug не был резолвлен, страница считается недоступной;
+- authenticated/admin flows page-level visibility сейчас bypass-ят осознанно, чтобы pilot не ломал редакторские сценарии.
+
+Пока это всё ещё лёгкая экспериментальная publication semantics поверх metadata, а не финальная page-to-channel relation model. Цель этапа — проверить, хватает ли metadata-based allowlist до появления отдельных domain-таблиц.
+
 ## Module-owned UI packages
 
 - `crates/rustok-pages/admin/` — publishable Leptos admin root package (`PagesAdmin`).

@@ -9,6 +9,7 @@
 - Own payment collection and payment-attempt storage.
 - Prepare a stable payment boundary for checkout orchestration.
 - Keep payment state transitions isolated from the ecommerce umbrella.
+- Provide a built-in manual/default payment flow for the current stage, without external payment providers.
 
 ## Interactions
 

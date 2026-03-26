@@ -18,6 +18,10 @@ fn create_cart_input() -> CreateCartInput {
     CreateCartInput {
         customer_id: Some(Uuid::new_v4()),
         email: Some("buyer@example.com".to_string()),
+        region_id: None,
+        country_code: None,
+        locale_code: None,
+        selected_shipping_option_id: None,
         currency_code: "usd".to_string(),
         metadata: serde_json::json!({ "source": "cart-test" }),
     }
@@ -53,6 +57,37 @@ async fn create_cart_and_add_line_item_updates_totals() {
     assert_eq!(updated.currency_code, "USD");
     assert_eq!(updated.line_items.len(), 1);
     assert_eq!(updated.total_amount, Decimal::from_str("31.00").unwrap());
+}
+
+#[tokio::test]
+async fn create_cart_persists_multilingual_context_snapshot() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let region_id = Uuid::new_v4();
+    let shipping_option_id = Uuid::new_v4();
+
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region_id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("pt_BR".to_string()),
+                selected_shipping_option_id: Some(shipping_option_id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "locale-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.region_id, Some(region_id));
+    assert_eq!(cart.country_code.as_deref(), Some("DE"));
+    assert_eq!(cart.locale_code.as_deref(), Some("pt-br"));
+    assert_eq!(cart.selected_shipping_option_id, Some(shipping_option_id));
+    assert_eq!(cart.currency_code, "EUR");
 }
 
 #[tokio::test]

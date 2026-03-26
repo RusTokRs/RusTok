@@ -1,58 +1,64 @@
-# UI Documentation Hub
+# Документация UI
 
-This section documents frontend applications and shared UI integration patterns used in RusToK.
+Этот раздел описывает frontend-приложения RusToK и общие правила интеграции UI-поверхностей.
 
-## Current frontend landscape
+## Текущий ландшафт UI
 
-RusToK has four UI applications across two stacks:
+RusToK поддерживает четыре UI-приложения в двух стеках.
 
-### Primary (Leptos) — авто-деплой при install/uninstall модулей
+### Основной стек: Leptos
 
-- `apps/admin` — **primary Leptos admin panel** (CSR/WASM). Участвует в пересборке WASM при установке/удалении модулей.
-- `apps/storefront` — **primary Leptos storefront** (SSR). Участвует в пересборке WASM при установке/удалении модулей.
+- `apps/admin` — основная Leptos-админка (CSR/WASM). Участвует в pipeline пересборки при install/uninstall модулей.
+- `apps/storefront` — основная Leptos-витрина (SSR). Участвует в pipeline пересборки при install/uninstall модулей.
 
-Leptos UI-код модулей находится в отдельных publishable sub-crates рядом с бекенд-крейтом (`admin/`, `storefront/`).
+Leptos UI-код модулей живёт в publishable sub-crates рядом с модулем: `admin/` и `storefront/`.
 
-### Experimental headless (Next.js) — ручная сборка
+### Экспериментальный headless-стек: Next.js
 
-- `apps/next-admin` — альтернативная Next.js админка (headless-режим). Пересборка **вручную** (`npm run build`). Не участвует в module install pipeline.
-- `apps/next-frontend` — альтернативный Next.js storefront (headless-режим). Пересборка **вручную**. Не участвует в module install pipeline.
+- `apps/next-admin` — альтернативная Next.js-админка в headless-режиме. Пересборка выполняется вручную.
+- `apps/next-frontend` — альтернативная Next.js-витрина в headless-режиме. Пересборка выполняется вручную.
 
-Next.js UI-код модулей находится в виде отдельных npm-пакетов внутри директории самого приложения (`apps/next-admin/packages/<module>/` и `apps/next-frontend/packages/<module>/`).
+Next.js UI-код модулей живёт в виде отдельных npm-пакетов внутри приложений:
 
-> See [ADR: Dual UI Strategy — Next.js modular packages](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md) for the rationale.
+- `apps/next-admin/packages/<module>/`
+- `apps/next-frontend/packages/<module>/`
 
-For platform-wide app ownership and dependencies, see [`docs/modules/registry.md`](../modules/registry.md).
+См. [ADR: Dual UI Strategy — Next.js modular packages](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md).
 
-## Current UI/FSD contract
+## Базовый UI/FSD-контракт
 
-- `apps/admin` и `apps/next-admin` используют canonical FSD-слои `app`, `shared`, `entities`, `features`, `widgets`, `pages`/route-level screens.
+- `apps/admin` и `apps/next-admin` используют canonical FSD-слои: `app`, `shared`, `entities`, `features`, `widgets`, `pages`.
 - Source of truth для shared component API находится в [`UI/docs/api-contracts.md`](../../UI/docs/api-contracts.md).
-- `UI/leptos` предоставляет Leptos-native реализацию тех же примитивов; `UI/next/components` предоставляет Next.js wrappers с тем же surface.
+- `UI/leptos` предоставляет Leptos-native реализацию базовых примитивов, а `UI/next/components` — Next.js wrappers с тем же surface.
 - shadcn-compatible CSS variables являются canonical theming contract для обеих админок; `UI/tokens/base.css` добавляет только общие font/spacing/radius tokens.
-- Future scope и cleanup не фиксируются здесь как historical plan: они ведутся только в app-level `implementation-plan.md` файлах.
 
-## Documents in this section
+## Правило ownership UI
 
-- [GraphQL Architecture](./graphql-architecture.md) — client-side GraphQL conventions.
-- [Admin ↔ Server Connection Quickstart](./admin-server-connection-quickstart.md) — backend connection and env setup.
-- [Storefront](./storefront.md) — storefront-specific UI notes.
-- [Rust UI Component Catalog](./rust-ui-component-catalog.md) — reusable components and crates.
+- Если модуль поставляет UI, этот UI живёт рядом с модулем и остаётся module-owned независимо от того, является модуль `Core` или `Optional`.
+- Host-приложения (`apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`) только композируют module surfaces и не забирают модульный business UI в свой код.
+- Core-статус модуля влияет на обязательность runtime wiring и доступность поверхности, но не меняет место хранения UI.
 
-## App-level documentation
+## Документы раздела
 
+- [GraphQL Architecture](./graphql-architecture.md) — клиентские GraphQL-conventions.
+- [Admin ↔ Server Connection Quickstart](./admin-server-connection-quickstart.md) — подключение UI к backend и env setup.
+- [Storefront](./storefront.md) — storefront-specific заметки.
+- [Rust UI Component Catalog](./rust-ui-component-catalog.md) — каталог переиспользуемых компонентов и crates.
+
+## Документация приложений
+
+- [Leptos Admin docs](../../apps/admin/docs/README.md)
+- [Leptos Storefront README](../../apps/storefront/docs/README.md)
 - [Next.js Admin README](../../apps/next-admin/README.md)
 - [Next.js Admin RBAC Navigation](../../apps/next-admin/docs/nav-rbac.md)
 - [Next.js Admin Clerk setup](../../apps/next-admin/docs/clerk_setup.md)
 - [Next.js Admin Theming](../../apps/next-admin/docs/themes.md)
-- [Leptos Admin docs](../../apps/admin/docs/README.md)
-- [Leptos Storefront README](../../apps/storefront/README.md)
 - [Next.js Storefront docs](../../apps/next-frontend/docs/README.md)
 
-## Maintenance notes
+## Поддержка актуальности
 
-When frontend architecture, routing, UI contracts, or API integration changes:
+При изменении frontend-архитектуры, маршрутизации, UI-контрактов или backend integration:
 
-1. Update the relevant app-level docs in `apps/*`.
-2. Update the corresponding document in `docs/UI/`.
-3. Ensure [`docs/index.md`](../index.md) links to the updated files.
+1. Обновляйте локальные docs в `apps/*`.
+2. Обновляйте соответствующий документ в `docs/UI/`.
+3. Следите, чтобы [`docs/index.md`](../index.md) продолжал ссылаться на актуальные файлы.

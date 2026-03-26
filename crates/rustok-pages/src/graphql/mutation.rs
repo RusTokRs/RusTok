@@ -68,6 +68,7 @@ impl PagesMutation {
                                 .collect::<Result<Vec<_>>>()
                         })
                         .transpose()?,
+                    channel_slugs: input.channel_slugs,
                     publish: input.publish.unwrap_or(false),
                 },
             )
@@ -111,6 +112,7 @@ impl PagesMutation {
                             .collect()
                     }),
                     template: input.template,
+                    channel_slugs: input.channel_slugs,
                     body: input.body.map(|b| PageBodyInput {
                         locale: b.locale,
                         content: b.content,

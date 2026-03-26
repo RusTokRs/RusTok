@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateCustomerInput {
     pub user_id: Option<Uuid>,
     #[validate(email)]
@@ -20,7 +21,7 @@ pub struct CreateCustomerInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct UpdateCustomerInput {
     #[validate(email)]
     pub email: Option<String>,
@@ -35,7 +36,7 @@ pub struct UpdateCustomerInput {
     pub metadata: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CustomerResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,

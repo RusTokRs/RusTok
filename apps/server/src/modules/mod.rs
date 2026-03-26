@@ -5,6 +5,7 @@ mod registry_codegen {
 
 use rustok_auth::AuthModule;
 use rustok_cache::CacheModule;
+use rustok_channel::ChannelModule;
 use rustok_core::ModuleRegistry;
 use rustok_email::EmailModule;
 use rustok_index::IndexModule;
@@ -25,6 +26,7 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = ModuleRegistry::new()
         .register(AuthModule)
         .register(cache_module)
+        .register(ChannelModule)
         .register(EmailModule)
         .register(IndexModule)
         .register(SearchModule)
@@ -43,6 +45,7 @@ mod contract_tests {
 
     const AUTH_README: &str = include_str!("../../../../crates/rustok-auth/README.md");
     const CACHE_README: &str = include_str!("../../../../crates/rustok-cache/README.md");
+    const CHANNEL_README: &str = include_str!("../../../../crates/rustok-channel/README.md");
     const EMAIL_README: &str = include_str!("../../../../crates/rustok-email/README.md");
     const INDEX_README: &str = include_str!("../../../../crates/rustok-index/README.md");
     const SEARCH_README: &str = include_str!("../../../../crates/rustok-search/README.md");
@@ -52,6 +55,8 @@ mod contract_tests {
     const CONTENT_README: &str = include_str!("../../../../crates/rustok-content/README.md");
     const CART_README: &str = include_str!("../../../../crates/rustok-cart/README.md");
     const CUSTOMER_README: &str = include_str!("../../../../crates/rustok-customer/README.md");
+    const PROFILES_README: &str = include_str!("../../../../crates/rustok-profiles/README.md");
+    const REGION_README: &str = include_str!("../../../../crates/rustok-region/README.md");
     const ORDER_README: &str = include_str!("../../../../crates/rustok-order/README.md");
     const PAYMENT_README: &str = include_str!("../../../../crates/rustok-payment/README.md");
     const FULFILLMENT_README: &str =
@@ -69,6 +74,7 @@ mod contract_tests {
         for (slug, readme) in [
             ("auth", AUTH_README),
             ("cache", CACHE_README),
+            ("channel", CHANNEL_README),
             ("email", EMAIL_README),
             ("index", INDEX_README),
             ("search", SEARCH_README),
@@ -78,6 +84,8 @@ mod contract_tests {
             ("content", CONTENT_README),
             ("cart", CART_README),
             ("customer", CUSTOMER_README),
+            ("profiles", PROFILES_README),
+            ("region", REGION_README),
             ("order", ORDER_README),
             ("payment", PAYMENT_README),
             ("fulfillment", FULFILLMENT_README),
@@ -99,6 +107,7 @@ mod contract_tests {
     fn registry_modules_publish_expected_rbac_surface() {
         let registry = build_registry();
         let auth = registry.get("auth").expect("auth module");
+        let channel = registry.get("channel").expect("channel module");
         let tenant = registry.get("tenant").expect("tenant module");
         let rbac = registry.get("rbac").expect("rbac module");
         let blog = registry.get("blog").expect("blog module");
@@ -106,13 +115,16 @@ mod contract_tests {
         let media = registry.get("media").expect("media module");
         let cart = registry.get("cart").expect("cart module");
         let customer = registry.get("customer").expect("customer module");
+        let profiles = registry.get("profiles").expect("profiles module");
         let order = registry.get("order").expect("order module");
         let payment = registry.get("payment").expect("payment module");
+        let region = registry.get("region").expect("region module");
         let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let pages = registry.get("pages").expect("pages module");
         let workflow = registry.get("workflow").expect("workflow module");
 
         assert!(auth.permissions().contains(&Permission::USERS_MANAGE));
+        assert!(channel.permissions().is_empty());
         assert!(tenant.permissions().contains(&Permission::TENANTS_MANAGE));
         assert!(tenant.permissions().contains(&Permission::MODULES_MANAGE));
         assert!(rbac.permissions().contains(&Permission::SETTINGS_MANAGE));
@@ -125,6 +137,10 @@ mod contract_tests {
         assert!(customer
             .permissions()
             .contains(&Permission::CUSTOMERS_MANAGE));
+        assert!(profiles
+            .permissions()
+            .contains(&Permission::PROFILES_MANAGE));
+        assert!(region.permissions().contains(&Permission::REGIONS_MANAGE));
         assert!(order.permissions().contains(&Permission::ORDERS_MANAGE));
         assert!(payment.permissions().contains(&Permission::PAYMENTS_MANAGE));
         assert!(fulfillment
@@ -143,7 +159,10 @@ mod contract_tests {
     fn registry_dependencies_match_runtime_contract() {
         let registry = build_registry();
         let cart = registry.get("cart").expect("cart module");
+        let channel = registry.get("channel").expect("channel module");
         let customer = registry.get("customer").expect("customer module");
+        let profiles = registry.get("profiles").expect("profiles module");
+        let region = registry.get("region").expect("region module");
         let payment = registry.get("payment").expect("payment module");
         let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let commerce = registry.get("commerce").expect("commerce module");
@@ -151,9 +170,13 @@ mod contract_tests {
         let pages = registry.get("pages").expect("pages module");
         let workflow = registry.get("workflow").expect("workflow module");
 
+        assert!(registry.is_core("channel"));
         assert!(registry.is_core("outbox"));
+        assert!(channel.dependencies().is_empty());
         assert!(cart.dependencies().is_empty());
         assert!(customer.dependencies().is_empty());
+        assert!(profiles.dependencies().is_empty());
+        assert!(region.dependencies().is_empty());
         assert!(payment.dependencies().is_empty());
         assert!(fulfillment.dependencies().is_empty());
         assert!(outbox.dependencies().is_empty());
@@ -163,6 +186,7 @@ mod contract_tests {
                 "cart",
                 "customer",
                 "product",
+                "region",
                 "pricing",
                 "inventory",
                 "order",

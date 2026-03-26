@@ -2,6 +2,7 @@ use async_graphql::{Enum, InputObject, SimpleObject};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::services::extract_channel_slugs;
 use crate::{BlogPostStatus, CreatePostInput as DomainCreatePostInput, PostResponse};
 use rustok_content::dto::NodeListItem;
 
@@ -54,6 +55,7 @@ pub struct GqlPost {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Vec<String>,
 }
 
 #[derive(SimpleObject)]
@@ -67,6 +69,7 @@ pub struct GqlPostListItem {
     pub author_id: Option<Uuid>,
     pub created_at: String,
     pub published_at: Option<String>,
+    pub channel_slugs: Vec<String>,
 }
 
 #[derive(SimpleObject)]
@@ -90,6 +93,7 @@ pub struct CreatePostInput {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(InputObject)]
@@ -107,6 +111,7 @@ pub struct UpdatePostInput {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(InputObject)]
@@ -144,6 +149,7 @@ impl From<PostResponse> for GqlPost {
             featured_image_url: post.featured_image_url,
             seo_title: post.seo_title,
             seo_description: post.seo_description,
+            channel_slugs: post.channel_slugs,
         }
     }
 }
@@ -160,6 +166,7 @@ impl From<NodeListItem> for GqlPostListItem {
             author_id: item.author_id,
             created_at: item.created_at,
             published_at: item.published_at,
+            channel_slugs: extract_channel_slugs(&item.metadata),
         }
     }
 }
@@ -182,6 +189,7 @@ impl From<CreatePostInput> for DomainCreatePostInput {
             featured_image_url: input.featured_image_url,
             seo_title: input.seo_title,
             seo_description: input.seo_description,
+            channel_slugs: input.channel_slugs,
             metadata: None,
         }
     }

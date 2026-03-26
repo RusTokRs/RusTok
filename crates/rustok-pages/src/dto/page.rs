@@ -13,6 +13,7 @@ pub struct CreatePageInput {
     pub template: Option<String>,
     pub body: Option<PageBodyInput>,
     pub blocks: Option<Vec<CreateBlockInput>>,
+    pub channel_slugs: Option<Vec<String>>,
     #[serde(default)]
     pub publish: bool,
 }
@@ -39,6 +40,7 @@ pub struct UpdatePageInput {
     pub translations: Option<Vec<PageTranslationInput>>,
     pub template: Option<String>,
     pub body: Option<PageBodyInput>,
+    pub channel_slugs: Option<Vec<String>>,
     pub status: Option<ContentStatus>,
 }
 
@@ -75,6 +77,7 @@ pub struct PageResponse {
     pub translation: Option<PageTranslationResponse>,
     pub translations: Vec<PageTranslationResponse>,
     pub body: Option<PageBodyResponse>,
+    pub channel_slugs: Vec<String>,
     pub blocks: Vec<BlockResponse>,
     pub metadata: Value,
 }
@@ -104,5 +107,6 @@ pub struct PageListItem {
     pub template: String,
     pub title: Option<String>,
     pub slug: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub updated_at: String,
 }

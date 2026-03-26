@@ -3,10 +3,13 @@ use rust_decimal::Decimal;
 use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
 use rustok_cart::services::CartService;
 use rustok_commerce::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput, ProductTranslationInput,
+    CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput,
+    ProductTranslationInput, ResolveStoreContextInput,
 };
 use rustok_commerce::entities;
-use rustok_commerce::services::{CatalogService, InventoryService, PricingService};
+use rustok_commerce::services::{
+    CatalogService, InventoryService, PricingService, StoreContextService,
+};
 use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
 use rustok_customer::services::CustomerService;
 use rustok_fulfillment::dto::{
@@ -20,6 +23,8 @@ use rustok_payment::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
 };
 use rustok_payment::services::PaymentService;
+use rustok_region::dto::CreateRegionInput;
+use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
 use sea_orm_migration::sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait,
@@ -82,6 +87,51 @@ async fn pricing_service_supports_decimal_prices_on_migrated_schema() {
     assert_eq!(
         fetched,
         Some(Decimal::from_str("89.99").expect("valid decimal"))
+    );
+}
+
+#[tokio::test]
+async fn region_and_store_context_services_resolve_currency_and_locales_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let region_service = RegionService::new(db.clone());
+    let context_service = StoreContextService::new(db.clone());
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_tenant_locale(&db, tenant_id, "de", false).await;
+
+    let region = region_service
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string(), "fr".to_string()],
+                metadata: serde_json::json!({ "source": "migration-smoke" }),
+            },
+        )
+        .await
+        .expect("region service should create region on migrated schema");
+
+    let context = context_service
+        .resolve_context(
+            tenant_id,
+            ResolveStoreContextInput {
+                region_id: Some(region.id),
+                country_code: None,
+                locale: Some("de".to_string()),
+                currency_code: None,
+            },
+        )
+        .await
+        .expect("store context should resolve on migrated schema");
+
+    assert_eq!(context.locale, "de");
+    assert_eq!(context.currency_code.as_deref(), Some("EUR"));
+    assert_eq!(
+        context.region.as_ref().map(|value| value.id),
+        Some(region.id)
     );
 }
 
@@ -167,8 +217,8 @@ async fn payment_service_supports_payment_collection_lifecycle_on_migrated_schem
             tenant_id,
             created.id,
             AuthorizePaymentInput {
-                provider_id: "manual".to_string(),
-                provider_payment_id: "pay_migration_1".to_string(),
+                provider_id: None,
+                provider_payment_id: None,
                 amount: None,
                 metadata: serde_json::json!({ "step": "authorized" }),
             },
@@ -376,6 +426,31 @@ async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
     .expect("failed to seed tenant");
 }
 
+async fn seed_tenant_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    locale: &str,
+    is_default: bool,
+) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        vec![
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            locale.into(),
+            locale.into(),
+            locale.into(),
+            is_default.into(),
+            true.into(),
+            sea_orm_migration::sea_orm::Value::String(None),
+        ],
+    ))
+    .await
+    .expect("failed to seed tenant locale");
+}
+
 fn create_product_input() -> CreateProductInput {
     CreateProductInput {
         translations: vec![
@@ -541,7 +616,7 @@ fn create_shipping_option_input() -> CreateShippingOptionInput {
         name: "Migration Shipping".to_string(),
         currency_code: "usd".to_string(),
         amount: Decimal::from_str("12.50").expect("valid decimal"),
-        provider_id: "manual".to_string(),
+        provider_id: None,
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
 }

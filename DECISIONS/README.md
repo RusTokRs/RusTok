@@ -12,6 +12,7 @@ All significant architectural choices should be recorded as ADRs.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [2026-03-25](./2026-03-25-rustok-channel-experimental-core.md) | `rustok-channel` как experimental core-модуль платформы | Accepted |
 | [2026-02-19](./2026-02-19-module-kind-core-vs-optional.md) | Разделение модулей на Core и Optional | Accepted & Implemented |
 | [2026-02-26](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) | Унификация auth lifecycle и policy инвалидирования сессий | Accepted |
 | [2026-02-26](./2026-02-26-rbac-relation-source-of-truth-cutover.md) | RBAC source of truth и staged runtime rollout | Accepted |

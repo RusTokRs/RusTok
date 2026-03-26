@@ -10,7 +10,10 @@ use validator::Validate;
 
 use rustok_core::generate_id;
 
-use crate::dto::{AddCartLineItemInput, CartLineItemResponse, CartResponse, CreateCartInput};
+use crate::dto::{
+    AddCartLineItemInput, CartLineItemResponse, CartResponse, CreateCartInput,
+    UpdateCartContextInput,
+};
 use crate::entities;
 use crate::error::{CartError, CartResult};
 
@@ -43,6 +46,16 @@ impl CartService {
                 "currency_code must be a 3-letter code".to_string(),
             ));
         }
+        let country_code = input
+            .country_code
+            .as_deref()
+            .map(normalize_country_code)
+            .transpose()?;
+        let locale_code = input
+            .locale_code
+            .as_deref()
+            .map(normalize_locale_code)
+            .transpose()?;
 
         let cart_id = generate_id();
         let now = Utc::now();
@@ -52,6 +65,10 @@ impl CartService {
             tenant_id: Set(tenant_id),
             customer_id: Set(input.customer_id),
             email: Set(input.email),
+            region_id: Set(input.region_id),
+            country_code: Set(country_code),
+            locale_code: Set(locale_code),
+            selected_shipping_option_id: Set(input.selected_shipping_option_id),
             status: Set(STATUS_ACTIVE.to_string()),
             currency_code: Set(currency_code),
             total_amount: Set(Decimal::ZERO),
@@ -111,6 +128,45 @@ impl CartService {
         .await?;
 
         self.recalculate_totals(&txn, cart).await?;
+        txn.commit().await?;
+        self.get_cart(tenant_id, cart_id).await
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, cart_id = %cart_id))]
+    pub async fn update_context(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        input: UpdateCartContextInput,
+    ) -> CartResult<CartResponse> {
+        input
+            .validate()
+            .map_err(|error| CartError::Validation(error.to_string()))?;
+
+        let txn = self.db.begin().await?;
+        let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "update_context")?;
+
+        let country_code = input
+            .country_code
+            .as_deref()
+            .map(normalize_country_code)
+            .transpose()?;
+        let locale_code = input
+            .locale_code
+            .as_deref()
+            .map(normalize_locale_code)
+            .transpose()?;
+
+        let mut active: entities::cart::ActiveModel = cart.into();
+        active.email = Set(input.email);
+        active.region_id = Set(input.region_id);
+        active.country_code = Set(country_code);
+        active.locale_code = Set(locale_code);
+        active.selected_shipping_option_id = Set(input.selected_shipping_option_id);
+        active.updated_at = Set(Utc::now().into());
+        active.update(&txn).await?;
+
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
@@ -266,6 +322,10 @@ impl CartService {
             tenant_id: cart.tenant_id,
             customer_id: cart.customer_id,
             email: cart.email,
+            region_id: cart.region_id,
+            country_code: cart.country_code,
+            locale_code: cart.locale_code,
+            selected_shipping_option_id: cart.selected_shipping_option_id,
             status: cart.status,
             currency_code: cart.currency_code,
             total_amount: cart.total_amount,
@@ -303,5 +363,27 @@ fn ensure_active(status: &str, action: &str) -> CartResult<()> {
             from: status.to_string(),
             to: action.to_string(),
         })
+    }
+}
+
+fn normalize_country_code(value: &str) -> CartResult<String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.len() == 2 && normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        Ok(normalized)
+    } else {
+        Err(CartError::Validation(format!(
+            "country_code `{value}` is invalid"
+        )))
+    }
+}
+
+fn normalize_locale_code(value: &str) -> CartResult<String> {
+    let normalized = value.trim().replace('_', "-").to_ascii_lowercase();
+    if (2..=10).contains(&normalized.len()) {
+        Ok(normalized)
+    } else {
+        Err(CartError::Validation(format!(
+            "locale_code `{value}` is invalid"
+        )))
     }
 }

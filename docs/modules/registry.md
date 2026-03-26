@@ -28,6 +28,7 @@ graph TD
     subgraph CoreModules["Core modules"]
         AUTH["rustok-auth"]
         CACHE["rustok-cache"]
+        CHANNEL["rustok-channel"]
         EMAIL["rustok-email"]
         INDEX["rustok-index"]
         SEARCH["rustok-search"]
@@ -41,6 +42,8 @@ graph TD
         CART["rustok-cart"]
         CUSTOMER["rustok-customer"]
         PRODUCT["rustok-product"]
+        PROFILES["rustok-profiles"]
+        REGION["rustok-region"]
         PRICING["rustok-pricing"]
         INVENTORY["rustok-inventory"]
         ORDER["rustok-order"]
@@ -69,6 +72,7 @@ graph TD
 
     SERVER --> AUTH
     SERVER --> CACHE
+    SERVER --> CHANNEL
     SERVER --> EMAIL
     SERVER --> INDEX
     SERVER --> SEARCH
@@ -79,6 +83,8 @@ graph TD
     SERVER --> CART
     SERVER --> CUSTOMER
     SERVER --> PRODUCT
+    SERVER --> PROFILES
+    SERVER --> REGION
     SERVER --> PRICING
     SERVER --> INVENTORY
     SERVER --> ORDER
@@ -94,6 +100,7 @@ graph TD
     COMMERCE --> CART
     COMMERCE --> CUSTOMER
     COMMERCE --> PRODUCT
+    COMMERCE --> REGION
     COMMERCE --> PRICING
     COMMERCE --> INVENTORY
     COMMERCE --> ORDER
@@ -126,6 +133,7 @@ Core modules всегда включены в платформу, отражен
 |---|---|---|
 | `auth` | `rustok-auth` | JWT lifecycle, credentials, token flows |
 | `cache` | `rustok-cache` | Cache backend factory, Redis/in-memory fallback |
+| `channel` | `rustok-channel` | Experimental platform-level channel context, targets and OAuth app bindings |
 | `email` | `rustok-email` | SMTP transport, templates, delivery lifecycle |
 | `index` | `rustok-index` | Cross-module indexing, links, denormalized read-model substrate |
 | `search` | `rustok-search` | Product-facing search, dictionaries/query rules, engine selection, connector-ready contracts |
@@ -143,12 +151,14 @@ Optional modules компонуются в сборку и затем могут
 | `cart` | `rustok-cart` | — | Дефолтный cart-подмодуль семейства `commerce/ecommerce`: cart lifecycle, line items и totals |
 | `customer` | `rustok-customer` | — | Дефолтный storefront customer-подмодуль семейства `commerce/ecommerce`: отдельный customer profile и optional linkage на `user_id` |
 | `product` | `rustok-product` | — | Дефолтный catalog-подмодуль семейства `commerce/ecommerce` |
+| `profiles` | `rustok-profiles` | — | Универсальный публичный профиль пользователя поверх platform `users`, отдельный от `customer` и будущих seller/staff доменов |
+| `region` | `rustok-region` | — | Дефолтный region-подмодуль семейства `commerce/ecommerce`: регионы, валюты, страны и базовый region lookup для storefront/checkout policy |
 | `pricing` | `rustok-pricing` | `product` | Дефолтный pricing-подмодуль семейства `commerce/ecommerce` |
 | `inventory` | `rustok-inventory` | `product` | Дефолтный inventory-подмодуль семейства `commerce/ecommerce` с нормализованными stock levels и reservations |
 | `order` | `rustok-order` | — | Дефолтный order-подмодуль семейства `commerce/ecommerce`: lifecycle, line item snapshots, order events |
 | `payment` | `rustok-payment` | — | Дефолтный payment-подмодуль семейства `commerce/ecommerce`: payment collections, attempts и базовый lifecycle авторизации/капчура |
 | `fulfillment` | `rustok-fulfillment` | — | Дефолтный fulfillment-подмодуль семейства `commerce/ecommerce`: shipping options, fulfillment records и shipment lifecycle |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade и верхний вход в commerce family |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade, checkout flow layer, store context/locale policy и верхний вход в commerce family |
 | `blog` | `rustok-blog` | `content` | Блог поверх content |
 | `forum` | `rustok-forum` | `content` | Форум поверх content |
 | `pages` | `rustok-pages` | `content` | Страницы, блоки и меню |

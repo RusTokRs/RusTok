@@ -11,6 +11,7 @@
 Platform `Core` modules:
 - `rustok-auth`
 - `rustok-cache`
+- `rustok-channel`
 - `rustok-email`
 - `rustok-index`
 - `rustok-outbox`
@@ -24,6 +25,10 @@ Shared foundation / support crates:
 - `rustok-api`
 
 Агентам: считать этот baseline обязательным. Логика tenant-toggle/disable относится только к `Optional` modules; `Core` modules не должны трактоваться как отключаемые.
+
+Дополнительно для baseline:
+- `rustok-channel` уже участвует в request pipeline через channel resolution middleware и общий `ChannelContext` в `rustok-api`;
+- server держит только thin transport/wiring для channel management: middleware и REST surface `/api/channels/*`, а domain/service/storage остаются в модуле.
 
 - [`library-stack.md`](./library-stack.md) — основные backend-библиотеки сервера и их роль (framework, HTTP, ORM, GraphQL, runtime, observability).
 - [`health.md`](./health.md) — health/readiness probes и текущие dependency checks сервера.

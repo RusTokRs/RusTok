@@ -16,6 +16,8 @@ pub enum Resource {
     Categories,
     Orders,
     Customers,
+    Profiles,
+    Regions,
     Payments,
     Fulfillments,
     Inventory,
@@ -56,6 +58,8 @@ impl fmt::Display for Resource {
             Self::Categories => "categories",
             Self::Orders => "orders",
             Self::Customers => "customers",
+            Self::Profiles => "profiles",
+            Self::Regions => "regions",
             Self::Payments => "payments",
             Self::Fulfillments => "fulfillments",
             Self::Inventory => "inventory",
@@ -97,6 +101,8 @@ impl FromStr for Resource {
             "categories" => Ok(Self::Categories),
             "orders" => Ok(Self::Orders),
             "customers" => Ok(Self::Customers),
+            "profiles" => Ok(Self::Profiles),
+            "regions" => Ok(Self::Regions),
             "payments" => Ok(Self::Payments),
             "fulfillments" => Ok(Self::Fulfillments),
             "inventory" => Ok(Self::Inventory),
@@ -254,6 +260,20 @@ impl Permission {
     pub const CUSTOMERS_DELETE: Self = Self::new(Resource::Customers, Action::Delete);
     pub const CUSTOMERS_LIST: Self = Self::new(Resource::Customers, Action::List);
     pub const CUSTOMERS_MANAGE: Self = Self::new(Resource::Customers, Action::Manage);
+
+    pub const PROFILES_CREATE: Self = Self::new(Resource::Profiles, Action::Create);
+    pub const PROFILES_READ: Self = Self::new(Resource::Profiles, Action::Read);
+    pub const PROFILES_UPDATE: Self = Self::new(Resource::Profiles, Action::Update);
+    pub const PROFILES_DELETE: Self = Self::new(Resource::Profiles, Action::Delete);
+    pub const PROFILES_LIST: Self = Self::new(Resource::Profiles, Action::List);
+    pub const PROFILES_MANAGE: Self = Self::new(Resource::Profiles, Action::Manage);
+
+    pub const REGIONS_CREATE: Self = Self::new(Resource::Regions, Action::Create);
+    pub const REGIONS_READ: Self = Self::new(Resource::Regions, Action::Read);
+    pub const REGIONS_UPDATE: Self = Self::new(Resource::Regions, Action::Update);
+    pub const REGIONS_DELETE: Self = Self::new(Resource::Regions, Action::Delete);
+    pub const REGIONS_LIST: Self = Self::new(Resource::Regions, Action::List);
+    pub const REGIONS_MANAGE: Self = Self::new(Resource::Regions, Action::Manage);
 
     pub const PAYMENTS_CREATE: Self = Self::new(Resource::Payments, Action::Create);
     pub const PAYMENTS_READ: Self = Self::new(Resource::Payments, Action::Read);

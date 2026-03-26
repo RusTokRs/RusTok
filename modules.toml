@@ -34,6 +34,7 @@ redirect_uris = ["http://localhost:3000/auth/callback"]
 # Core modules (required and always active)
 auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
 cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
+channel = { crate = "rustok-channel", source = "path", path = "crates/rustok-channel", required = true }
 email = { crate = "rustok-email", source = "path", path = "crates/rustok-email", required = true }
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
 search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
@@ -46,12 +47,14 @@ content = { crate = "rustok-content", source = "path", path = "crates/rustok-con
 cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
 product = { crate = "rustok-product", source = "path", path = "crates/rustok-product" }
+profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles" }
+region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
 pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
 order = { crate = "rustok-order", source = "path", path = "crates/rustok-order" }
 payment = { crate = "rustok-payment", source = "path", path = "crates/rustok-payment" }
 fulfillment = { crate = "rustok-fulfillment", source = "path", path = "crates/rustok-fulfillment" }
-commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["cart", "customer", "product", "pricing", "inventory", "order", "payment", "fulfillment"] }
+commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"] }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content"] }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
@@ -59,4 +62,4 @@ media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" 
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages"]
+default_enabled = ["content", "cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages"]

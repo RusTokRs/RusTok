@@ -3,18 +3,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
-    SearchDictionaryMutationPayload, SearchDictionarySnapshotPayload, SearchFilterPresetPayload,
-    SearchPreviewFilters, SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
+    SearchConsistencyIssuePayload, SearchDictionaryMutationPayload,
+    SearchDictionarySnapshotPayload, SearchFilterPresetPayload, SearchPreviewFilters,
+    SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
     TriggerSearchRebuildPayload,
 };
 
 pub type ApiError = GraphqlHttpError;
 
-const SEARCH_ADMIN_BOOTSTRAP_QUERY: &str = "query SearchAdminBootstrap { availableSearchEngines { kind label providedBy enabled defaultEngine } searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt } searchDiagnostics { tenantId totalDocuments publicDocuments contentDocuments productDocuments staleDocuments newestIndexedAt oldestIndexedAt maxLagSeconds state } }";
+const SEARCH_ADMIN_BOOTSTRAP_QUERY: &str = "query SearchAdminBootstrap { availableSearchEngines { kind label providedBy enabled defaultEngine } searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt } searchDiagnostics { tenantId totalDocuments publicDocuments contentDocuments productDocuments staleDocuments missingDocuments orphanedDocuments newestIndexedAt oldestIndexedAt maxLagSeconds state } }";
 const SEARCH_PREVIEW_QUERY: &str = "query SearchPreview($input: SearchPreviewInput!) { searchPreview(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
 const SEARCH_FILTER_PRESETS_QUERY: &str = "query SearchFilterPresets($input: SearchFilterPresetsInput!) { searchFilterPresets(input: $input) { key label entityTypes sourceModules statuses rankingProfile } }";
 const SEARCH_LAGGING_DOCUMENTS_QUERY: &str = "query SearchLaggingDocuments($limit: Int) { searchLaggingDocuments(limit: $limit) { documentKey documentId sourceModule entityType locale status isPublic title updatedAt indexedAt lagSeconds } }";
-const SEARCH_ANALYTICS_QUERY: &str = "query SearchAnalytics($days: Int, $limit: Int) { searchAnalytics(days: $days, limit: $limit) { summary { windowDays totalQueries successfulQueries zeroResultQueries zeroResultRate avgTookMs avgResultsPerQuery uniqueQueries clickedQueries totalClicks clickThroughRate abandonmentQueries abandonmentRate lastQueryAt } topQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } zeroResultQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } lowCtrQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } abandonmentQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } intelligenceCandidates { query hits zeroResultHits clicks clickThroughRate abandonmentRate recommendation } } }";
+const SEARCH_CONSISTENCY_ISSUES_QUERY: &str = "query SearchConsistencyIssues($limit: Int) { searchConsistencyIssues(limit: $limit) { issueKind documentKey documentId sourceModule entityType locale status title updatedAt indexedAt } }";
+const SEARCH_ANALYTICS_QUERY: &str = "query SearchAnalytics($days: Int, $limit: Int) { searchAnalytics(days: $days, limit: $limit) { summary { windowDays totalQueries successfulQueries zeroResultQueries zeroResultRate slowQueries slowQueryRate avgTookMs avgResultsPerQuery uniqueQueries clickedQueries totalClicks clickThroughRate abandonmentQueries abandonmentRate lastQueryAt } topQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } zeroResultQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } slowQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } lowCtrQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } abandonmentQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } intelligenceCandidates { query hits zeroResultHits clicks clickThroughRate abandonmentRate recommendation } } }";
 const SEARCH_DICTIONARY_SNAPSHOT_QUERY: &str = "query SearchDictionarySnapshot { searchDictionarySnapshot { synonyms { id term synonyms updatedAt } stopWords { id value updatedAt } queryRules { id queryText queryNormalized ruleKind documentId entityType sourceModule title pinnedPosition updatedAt } } }";
 const TRIGGER_SEARCH_REBUILD_MUTATION: &str = "mutation TriggerSearchRebuild($input: TriggerSearchRebuildInput!) { triggerSearchRebuild(input: $input) { success queued tenantId targetType targetId } }";
 const TRACK_SEARCH_CLICK_MUTATION: &str = "mutation TrackSearchClick($input: TrackSearchClickInput!) { trackSearchClick(input: $input) { success tracked } }";
@@ -42,6 +44,12 @@ struct TriggerSearchRebuildResponse {
 struct SearchLaggingDocumentsResponse {
     #[serde(rename = "searchLaggingDocuments")]
     search_lagging_documents: Vec<LaggingSearchDocumentPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchConsistencyIssuesResponse {
+    #[serde(rename = "searchConsistencyIssues")]
+    search_consistency_issues: Vec<SearchConsistencyIssuePayload>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -445,6 +453,22 @@ pub async fn fetch_lagging_documents(
     .await?;
 
     Ok(response.search_lagging_documents)
+}
+
+pub async fn fetch_consistency_issues(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<SearchConsistencyIssuePayload>, ApiError> {
+    let response: SearchConsistencyIssuesResponse = request(
+        SEARCH_CONSISTENCY_ISSUES_QUERY,
+        Some(SearchLaggingDocumentsVariables { limit }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.search_consistency_issues)
 }
 
 pub async fn fetch_search_analytics(

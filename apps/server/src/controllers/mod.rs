@@ -2,6 +2,7 @@ pub mod admin_events;
 pub mod alloy;
 pub mod auth;
 pub mod blog;
+pub mod channel;
 pub mod commerce;
 pub mod content;
 pub mod forum;

@@ -76,6 +76,7 @@ impl BlogMutation {
             featured_image_url: input.featured_image_url,
             seo_title: input.seo_title,
             seo_description: input.seo_description,
+            channel_slugs: input.channel_slugs,
             metadata: None,
             version: None,
         };

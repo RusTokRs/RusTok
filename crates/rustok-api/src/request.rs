@@ -4,15 +4,18 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::context::TenantContextExtension;
+use crate::context::{ChannelContextExtension, TenantContextExtension};
 
 const ADMIN_LOCALE_COOKIE: &str = "rustok-admin-locale";
+const MEDUSA_LOCALE_HEADER: &str = "x-medusa-locale";
 const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
 #[derive(Debug, Clone)]
 pub struct RequestContext {
     pub tenant_id: Uuid,
     pub user_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
     pub locale: String,
 }
 
@@ -57,10 +60,16 @@ where
                 tenant_context.and_then(|tenant| normalize_locale_tag(&tenant.default_locale))
             })
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let channel_context = parts
+            .extensions
+            .get::<ChannelContextExtension>()
+            .map(|ext| &ext.0);
 
         Ok(RequestContext {
             tenant_id,
             user_id,
+            channel_id: channel_context.map(|channel| channel.id),
+            channel_slug: channel_context.map(|channel| channel.slug.clone()),
             locale,
         })
     }
@@ -68,6 +77,7 @@ where
 
 fn extract_requested_locale(parts: &Parts) -> Option<String> {
     extract_locale_from_query(parts)
+        .or_else(|| extract_locale_from_medusa_header(&parts.headers))
         .or_else(|| extract_locale_from_cookie(&parts.headers))
         .or_else(|| extract_locale_from_accept_language(&parts.headers))
 }
@@ -99,6 +109,13 @@ fn extract_locale_from_cookie(headers: &HeaderMap) -> Option<String> {
                 normalize_locale_tag(value)
             })
         })
+}
+
+fn extract_locale_from_medusa_header(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(MEDUSA_LOCALE_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(normalize_locale_tag)
 }
 
 fn extract_locale_from_accept_language(headers: &HeaderMap) -> Option<String> {
@@ -157,6 +174,7 @@ mod tests {
     use tokio::runtime::Runtime;
     use uuid::Uuid;
 
+    use crate::context::{ChannelContext, ChannelContextExtension};
     use crate::context::{TenantContext, TenantContextExtension};
 
     use super::*;
@@ -201,6 +219,46 @@ mod tests {
 
         assert_eq!(context.locale, "ru");
         assert_eq!(context.tenant_id, Uuid::nil());
+        assert_eq!(context.channel_id, None);
+    }
+
+    #[test]
+    fn includes_channel_context_when_middleware_resolves_channel() {
+        let request = Request::builder().body(()).expect("request");
+        let (mut parts, _) = request.into_parts();
+        parts
+            .extensions
+            .insert(TenantContextExtension(TenantContext {
+                id: Uuid::nil(),
+                name: "Test".to_string(),
+                slug: "test".to_string(),
+                domain: None,
+                settings: serde_json::json!({}),
+                default_locale: "en".to_string(),
+                is_active: true,
+            }));
+        let channel_id = Uuid::new_v4();
+        parts
+            .extensions
+            .insert(ChannelContextExtension(ChannelContext {
+                id: channel_id,
+                tenant_id: Uuid::nil(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                is_active: true,
+                status: "experimental".to_string(),
+                target_type: Some("web_domain".to_string()),
+                target_value: Some("example.test".to_string()),
+                settings: serde_json::json!({}),
+            }));
+
+        let runtime = Runtime::new().expect("tokio runtime");
+        let context = runtime
+            .block_on(RequestContext::from_request_parts(&mut parts, &()))
+            .expect("request context");
+
+        assert_eq!(context.channel_id, Some(channel_id));
+        assert_eq!(context.channel_slug.as_deref(), Some("web"));
     }
 
     #[test]
@@ -238,5 +296,24 @@ mod tests {
             .expect("request context");
 
         assert_eq!(context.locale, "ru");
+    }
+
+    #[test]
+    fn prefers_medusa_locale_header_over_cookie_and_accept_language() {
+        let request = Request::builder()
+            .header("X-Tenant-ID", Uuid::nil().to_string())
+            .header("x-medusa-locale", "de-DE")
+            .header("Cookie", "rustok-admin-locale=ru")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .body(())
+            .expect("request");
+        let (mut parts, _) = request.into_parts();
+
+        let runtime = Runtime::new().expect("tokio runtime");
+        let context = runtime
+            .block_on(RequestContext::from_request_parts(&mut parts, &()))
+            .expect("request context");
+
+        assert_eq!(context.locale, "de-DE");
     }
 }

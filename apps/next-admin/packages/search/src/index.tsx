@@ -37,6 +37,8 @@ type SearchAdminBootstrap = {
     contentDocuments: number;
     productDocuments: number;
     staleDocuments: number;
+    missingDocuments: number;
+    orphanedDocuments: number;
     newestIndexedAt: string | null;
     oldestIndexedAt: string | null;
     maxLagSeconds: number;
@@ -89,12 +91,27 @@ type LaggingSearchDocumentPayload = {
   lagSeconds: number;
 };
 
+type SearchConsistencyIssuePayload = {
+  issueKind: string;
+  documentKey: string;
+  documentId: string;
+  sourceModule: string;
+  entityType: string;
+  locale: string;
+  status: string;
+  title: string;
+  updatedAt: string;
+  indexedAt: string | null;
+};
+
 type SearchAnalyticsSummaryPayload = {
   windowDays: number;
   totalQueries: number;
   successfulQueries: number;
   zeroResultQueries: number;
   zeroResultRate: number;
+  slowQueries: number;
+  slowQueryRate: number;
   avgTookMs: number;
   avgResultsPerQuery: number;
   uniqueQueries: number;
@@ -132,6 +149,7 @@ type SearchAnalyticsPayload = {
   summary: SearchAnalyticsSummaryPayload;
   topQueries: SearchAnalyticsQueryRowPayload[];
   zeroResultQueries: SearchAnalyticsQueryRowPayload[];
+  slowQueries: SearchAnalyticsQueryRowPayload[];
   lowCtrQueries: SearchAnalyticsQueryRowPayload[];
   abandonmentQueries: SearchAnalyticsQueryRowPayload[];
   intelligenceCandidates: SearchAnalyticsInsightRowPayload[];
@@ -175,7 +193,8 @@ const SEARCH_ADMIN_BOOTSTRAP_QUERY = `
     searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt }
     searchDiagnostics {
       tenantId totalDocuments publicDocuments contentDocuments productDocuments
-      staleDocuments newestIndexedAt oldestIndexedAt maxLagSeconds state
+      staleDocuments missingDocuments orphanedDocuments
+      newestIndexedAt oldestIndexedAt maxLagSeconds state
     }
   }
 `;
@@ -211,17 +230,26 @@ const SEARCH_LAGGING_DOCUMENTS_QUERY = `
   }
 `;
 
+const SEARCH_CONSISTENCY_ISSUES_QUERY = `
+  query SearchConsistencyIssues($limit: Int) {
+    searchConsistencyIssues(limit: $limit) {
+      issueKind documentKey documentId sourceModule entityType locale status title updatedAt indexedAt
+    }
+  }
+`;
+
 const SEARCH_ANALYTICS_QUERY = `
   query SearchAnalytics($days: Int, $limit: Int) {
     searchAnalytics(days: $days, limit: $limit) {
       summary {
         windowDays totalQueries successfulQueries zeroResultQueries
-        zeroResultRate avgTookMs avgResultsPerQuery uniqueQueries
+        zeroResultRate slowQueries slowQueryRate avgTookMs avgResultsPerQuery uniqueQueries
         clickedQueries totalClicks clickThroughRate abandonmentQueries
         abandonmentRate lastQueryAt
       }
       topQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt }
       zeroResultQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt }
+      slowQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt }
       lowCtrQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt }
       abandonmentQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt }
       intelligenceCandidates { query hits zeroResultHits clicks clickThroughRate abandonmentRate recommendation }
@@ -332,6 +360,103 @@ function prettyJsonString(value: string): string {
   }
 }
 
+function parseJsonValue(value: string): unknown | null {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractRankingProfileValue(
+  configText: string,
+  surface: string
+): string {
+  const config = parseJsonValue(configText);
+  const rankingProfiles =
+    config &&
+    typeof config === 'object' &&
+    config !== null &&
+    'ranking_profiles' in config
+      ? (config as { ranking_profiles?: Record<string, unknown> })
+          .ranking_profiles
+      : undefined;
+  const value =
+    rankingProfiles && typeof rankingProfiles[surface] === 'string'
+      ? (rankingProfiles[surface] as string)
+      : undefined;
+
+  if (value) return value;
+  return surface === 'admin_global_search' ? 'exact' : 'balanced';
+}
+
+function extractSurfacePresetsJson(
+  configText: string,
+  surface: string
+): string {
+  const config = parseJsonValue(configText);
+  const filterPresets =
+    config &&
+    typeof config === 'object' &&
+    config !== null &&
+    'filter_presets' in config
+      ? (config as { filter_presets?: Record<string, unknown> }).filter_presets
+      : undefined;
+  const value = filterPresets?.[surface];
+  if (Array.isArray(value)) {
+    return JSON.stringify(value, null, 2);
+  }
+  return '[]';
+}
+
+function parseJsonArrayForEditor(label: string, value: string): unknown[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error: unknown) {
+    throw new Error(`${label} must be valid JSON: ${errorMessage(error)}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON array.`);
+  }
+  return parsed;
+}
+
+function mergeRelevanceEditorConfig(input: {
+  configText: string;
+  rankingDefault: string;
+  rankingPreview: string;
+  rankingStorefront: string;
+  rankingAdminGlobal: string;
+  previewPresets: string;
+  storefrontPresets: string;
+}): string {
+  const parsed = parseJsonValue(input.configText);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Settings config root must be a JSON object.');
+  }
+
+  const config = { ...(parsed as Record<string, unknown>) };
+  config.ranking_profiles = {
+    default: input.rankingDefault,
+    search_preview: input.rankingPreview,
+    storefront_search: input.rankingStorefront,
+    admin_global_search: input.rankingAdminGlobal
+  };
+  config.filter_presets = {
+    search_preview: parseJsonArrayForEditor(
+      'Preview filter presets',
+      input.previewPresets
+    ),
+    storefront_search: parseJsonArrayForEditor(
+      'Storefront filter presets',
+      input.storefrontPresets
+    )
+  };
+
+  return JSON.stringify(config, null, 2);
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unexpected error';
 }
@@ -375,6 +500,13 @@ export function SearchAdminPage({
   >([]);
   const [laggingError, setLaggingError] = React.useState<string | null>(null);
   const [laggingLoading, setLaggingLoading] = React.useState(false);
+  const [consistencyIssues, setConsistencyIssues] = React.useState<
+    SearchConsistencyIssuePayload[]
+  >([]);
+  const [consistencyError, setConsistencyError] = React.useState<string | null>(
+    null
+  );
+  const [consistencyLoading, setConsistencyLoading] = React.useState(false);
   const [analytics, setAnalytics] =
     React.useState<SearchAnalyticsPayload | null>(null);
   const [analyticsError, setAnalyticsError] = React.useState<string | null>(
@@ -411,6 +543,17 @@ export function SearchAdminPage({
   const [settingsFallbackEngine, setSettingsFallbackEngine] =
     React.useState('postgres');
   const [settingsConfig, setSettingsConfig] = React.useState('{}');
+  const [rankingDefaultProfile, setRankingDefaultProfile] =
+    React.useState('balanced');
+  const [rankingPreviewProfile, setRankingPreviewProfile] =
+    React.useState('balanced');
+  const [rankingStorefrontProfile, setRankingStorefrontProfile] =
+    React.useState('balanced');
+  const [rankingAdminGlobalProfile, setRankingAdminGlobalProfile] =
+    React.useState('exact');
+  const [previewPresetsConfig, setPreviewPresetsConfig] = React.useState('[]');
+  const [storefrontPresetsConfig, setStorefrontPresetsConfig] =
+    React.useState('[]');
   const [settingsBusy, setSettingsBusy] = React.useState(false);
   const [settingsFeedback, setSettingsFeedback] = React.useState<string | null>(
     null
@@ -554,6 +697,42 @@ export function SearchAdminPage({
           setSettingsConfig(
             prettyJsonString(data.searchSettingsPreview.config)
           );
+          setRankingDefaultProfile(
+            extractRankingProfileValue(
+              data.searchSettingsPreview.config,
+              'default'
+            )
+          );
+          setRankingPreviewProfile(
+            extractRankingProfileValue(
+              data.searchSettingsPreview.config,
+              'search_preview'
+            )
+          );
+          setRankingStorefrontProfile(
+            extractRankingProfileValue(
+              data.searchSettingsPreview.config,
+              'storefront_search'
+            )
+          );
+          setRankingAdminGlobalProfile(
+            extractRankingProfileValue(
+              data.searchSettingsPreview.config,
+              'admin_global_search'
+            )
+          );
+          setPreviewPresetsConfig(
+            extractSurfacePresetsJson(
+              data.searchSettingsPreview.config,
+              'search_preview'
+            )
+          );
+          setStorefrontPresetsConfig(
+            extractSurfacePresetsJson(
+              data.searchSettingsPreview.config,
+              'storefront_search'
+            )
+          );
         }
       })
       .catch((error: unknown) => {
@@ -603,6 +782,44 @@ export function SearchAdminPage({
       cancelled = true;
     };
   }, [token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!token || !tenantSlug || activeTab !== 'analytics') {
+      if (!token || !tenantSlug) {
+        setConsistencyIssues([]);
+        setConsistencyError(null);
+        setConsistencyLoading(false);
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setConsistencyLoading(true);
+    setConsistencyError(null);
+
+    void graphqlRequest<{
+      searchConsistencyIssues: SearchConsistencyIssuePayload[];
+    }>(
+      SEARCH_CONSISTENCY_ISSUES_QUERY,
+      { limit: laggingLimit },
+      { token, tenantSlug, graphqlUrl }
+    )
+      .then((data) => {
+        if (!cancelled) setConsistencyIssues(data.searchConsistencyIssues);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setConsistencyError(errorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setConsistencyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, token, tenantSlug, graphqlUrl, laggingLimit, refreshNonce]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -699,10 +916,19 @@ export function SearchAdminPage({
       return;
     }
 
+    let mergedConfig: string;
     try {
-      JSON.parse(settingsConfig);
-    } catch {
-      setSettingsFeedback('Settings config must be valid JSON.');
+      mergedConfig = mergeRelevanceEditorConfig({
+        configText: settingsConfig,
+        rankingDefault: rankingDefaultProfile,
+        rankingPreview: rankingPreviewProfile,
+        rankingStorefront: rankingStorefrontProfile,
+        rankingAdminGlobal: rankingAdminGlobalProfile,
+        previewPresets: previewPresetsConfig,
+        storefrontPresets: storefrontPresetsConfig
+      });
+    } catch (error: unknown) {
+      setSettingsFeedback(errorMessage(error));
       return;
     }
 
@@ -721,7 +947,7 @@ export function SearchAdminPage({
           input: {
             activeEngine: settingsActiveEngine,
             fallbackEngine: settingsFallbackEngine,
-            config: settingsConfig
+            config: mergedConfig
           }
         },
         { token, tenantSlug, graphqlUrl }
@@ -731,6 +957,24 @@ export function SearchAdminPage({
       setSettingsActiveEngine(settings.activeEngine);
       setSettingsFallbackEngine(settings.fallbackEngine);
       setSettingsConfig(prettyJsonString(settings.config));
+      setRankingDefaultProfile(
+        extractRankingProfileValue(settings.config, 'default')
+      );
+      setRankingPreviewProfile(
+        extractRankingProfileValue(settings.config, 'search_preview')
+      );
+      setRankingStorefrontProfile(
+        extractRankingProfileValue(settings.config, 'storefront_search')
+      );
+      setRankingAdminGlobalProfile(
+        extractRankingProfileValue(settings.config, 'admin_global_search')
+      );
+      setPreviewPresetsConfig(
+        extractSurfacePresetsJson(settings.config, 'search_preview')
+      );
+      setStorefrontPresetsConfig(
+        extractSurfacePresetsJson(settings.config, 'storefront_search')
+      );
       setRefreshNonce((value) => value + 1);
     } catch (error: unknown) {
       setSettingsFeedback(
@@ -825,6 +1069,9 @@ export function SearchAdminPage({
           laggingDocuments={laggingDocuments}
           laggingError={laggingError}
           laggingLoading={laggingLoading}
+          consistencyIssues={consistencyIssues}
+          consistencyError={consistencyError}
+          consistencyLoading={consistencyLoading}
         />
       ) : activeTab === 'dictionaries' ? (
         <DictionariesPanel
@@ -838,6 +1085,12 @@ export function SearchAdminPage({
           settingsActiveEngine={settingsActiveEngine}
           settingsFallbackEngine={settingsFallbackEngine}
           settingsConfig={settingsConfig}
+          rankingDefaultProfile={rankingDefaultProfile}
+          rankingPreviewProfile={rankingPreviewProfile}
+          rankingStorefrontProfile={rankingStorefrontProfile}
+          rankingAdminGlobalProfile={rankingAdminGlobalProfile}
+          previewPresetsConfig={previewPresetsConfig}
+          storefrontPresetsConfig={storefrontPresetsConfig}
           settingsBusy={settingsBusy}
           settingsFeedback={settingsFeedback}
           rebuildScope={rebuildScope}
@@ -847,6 +1100,12 @@ export function SearchAdminPage({
           onSettingsActiveEngineChange={setSettingsActiveEngine}
           onSettingsFallbackEngineChange={setSettingsFallbackEngine}
           onSettingsConfigChange={setSettingsConfig}
+          onRankingDefaultProfileChange={setRankingDefaultProfile}
+          onRankingPreviewProfileChange={setRankingPreviewProfile}
+          onRankingStorefrontProfileChange={setRankingStorefrontProfile}
+          onRankingAdminGlobalProfileChange={setRankingAdminGlobalProfile}
+          onPreviewPresetsConfigChange={setPreviewPresetsConfig}
+          onStorefrontPresetsConfigChange={setStorefrontPresetsConfig}
           onSaveSettings={() => void saveSettings()}
           onScopeChange={setRebuildScope}
           onTargetIdChange={setRebuildTargetId}
@@ -862,6 +1121,12 @@ function OverviewPanel(props: {
   settingsActiveEngine: string;
   settingsFallbackEngine: string;
   settingsConfig: string;
+  rankingDefaultProfile: string;
+  rankingPreviewProfile: string;
+  rankingStorefrontProfile: string;
+  rankingAdminGlobalProfile: string;
+  previewPresetsConfig: string;
+  storefrontPresetsConfig: string;
   settingsBusy: boolean;
   settingsFeedback: string | null;
   rebuildScope: string;
@@ -871,6 +1136,12 @@ function OverviewPanel(props: {
   onSettingsActiveEngineChange: (value: string) => void;
   onSettingsFallbackEngineChange: (value: string) => void;
   onSettingsConfigChange: (value: string) => void;
+  onRankingDefaultProfileChange: (value: string) => void;
+  onRankingPreviewProfileChange: (value: string) => void;
+  onRankingStorefrontProfileChange: (value: string) => void;
+  onRankingAdminGlobalProfileChange: (value: string) => void;
+  onPreviewPresetsConfigChange: (value: string) => void;
+  onStorefrontPresetsConfigChange: (value: string) => void;
   onSaveSettings: () => void;
   onScopeChange: (value: string) => void;
   onTargetIdChange: (value: string) => void;
@@ -901,7 +1172,7 @@ function OverviewPanel(props: {
           detail='Timestamp of the effective settings record.'
         />
       </div>
-      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
+      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-6 2xl:grid-cols-7'>
         <DiagnosticsCard diagnostics={diagnostics} />
         <InfoCard
           title='Documents'
@@ -917,6 +1188,16 @@ function OverviewPanel(props: {
           title='Stale docs'
           value={String(diagnostics.staleDocuments)}
           detail='Documents where indexed_at lags behind source updated_at.'
+        />
+        <InfoCard
+          title='Missing docs'
+          value={String(diagnostics.missingDocuments)}
+          detail='Source rows that should exist in search_documents but do not.'
+        />
+        <InfoCard
+          title='Orphaned docs'
+          value={String(diagnostics.orphanedDocuments)}
+          detail='Search documents that no longer have a matching source row.'
         />
         <InfoCard
           title='Max lag'
@@ -961,6 +1242,106 @@ function OverviewPanel(props: {
               ))}
             </select>
           </Field>
+        </div>
+        <div className='mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-4'>
+          <h3 className='text-base font-semibold text-zinc-900'>
+            Relevance Settings
+          </h3>
+          <p className='mt-2 text-sm text-zinc-600'>
+            Structured editor for ranking defaults and filter presets. These
+            values are merged back into <code>search_settings.config</code> on
+            save.
+          </p>
+          <div className='mt-4 grid gap-4 xl:grid-cols-2'>
+            <Field label='Default ranking profile'>
+              <select
+                value={props.rankingDefaultProfile}
+                onChange={(event) =>
+                  props.onRankingDefaultProfileChange(event.target.value)
+                }
+                className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+              >
+                <option value='balanced'>balanced</option>
+                <option value='exact'>exact</option>
+                <option value='fresh'>fresh</option>
+                <option value='catalog'>catalog</option>
+                <option value='content'>content</option>
+              </select>
+            </Field>
+            <Field label='Preview ranking profile'>
+              <select
+                value={props.rankingPreviewProfile}
+                onChange={(event) =>
+                  props.onRankingPreviewProfileChange(event.target.value)
+                }
+                className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+              >
+                <option value='balanced'>balanced</option>
+                <option value='exact'>exact</option>
+                <option value='fresh'>fresh</option>
+                <option value='catalog'>catalog</option>
+                <option value='content'>content</option>
+              </select>
+            </Field>
+            <Field label='Storefront ranking profile'>
+              <select
+                value={props.rankingStorefrontProfile}
+                onChange={(event) =>
+                  props.onRankingStorefrontProfileChange(event.target.value)
+                }
+                className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+              >
+                <option value='balanced'>balanced</option>
+                <option value='exact'>exact</option>
+                <option value='fresh'>fresh</option>
+                <option value='catalog'>catalog</option>
+                <option value='content'>content</option>
+              </select>
+            </Field>
+            <Field label='Admin global ranking profile'>
+              <select
+                value={props.rankingAdminGlobalProfile}
+                onChange={(event) =>
+                  props.onRankingAdminGlobalProfileChange(event.target.value)
+                }
+                className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+              >
+                <option value='balanced'>balanced</option>
+                <option value='exact'>exact</option>
+                <option value='fresh'>fresh</option>
+                <option value='catalog'>catalog</option>
+                <option value='content'>content</option>
+              </select>
+            </Field>
+          </div>
+          <div className='mt-4 grid gap-4 xl:grid-cols-2'>
+            <Field label='Preview filter presets (JSON array)'>
+              <textarea
+                value={props.previewPresetsConfig}
+                onChange={(event) =>
+                  props.onPreviewPresetsConfigChange(event.target.value)
+                }
+                className='min-h-[12rem] w-full rounded-xl border border-zinc-300 px-3 py-2 font-mono text-sm'
+              />
+              <p className='mt-2 text-xs text-zinc-500'>
+                Each item supports: key, label, entity_types, source_modules,
+                statuses, ranking_profile.
+              </p>
+            </Field>
+            <Field label='Storefront filter presets (JSON array)'>
+              <textarea
+                value={props.storefrontPresetsConfig}
+                onChange={(event) =>
+                  props.onStorefrontPresetsConfigChange(event.target.value)
+                }
+                className='min-h-[12rem] w-full rounded-xl border border-zinc-300 px-3 py-2 font-mono text-sm'
+              />
+              <p className='mt-2 text-xs text-zinc-500'>
+                Presets drive public tabs and default filter scopes for
+                storefront search.
+              </p>
+            </Field>
+          </div>
         </div>
         <Field label='Engine config (JSON)'>
           <textarea
@@ -1179,42 +1560,43 @@ function AnalyticsPanel(props: {
   laggingDocuments: LaggingSearchDocumentPayload[];
   laggingError: string | null;
   laggingLoading: boolean;
+  consistencyIssues: SearchConsistencyIssuePayload[];
+  consistencyError: string | null;
+  consistencyLoading: boolean;
 }): React.JSX.Element {
   return (
     <div className='space-y-6'>
-      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
+      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-6 2xl:grid-cols-7'>
         <DiagnosticsCard diagnostics={props.diagnostics} />
         <InfoCard
-          title='CTR'
-          value={
-            props.analytics
-              ? `${(props.analytics.summary.clickThroughRate * 100).toFixed(1)}%`
-              : 'n/a'
-          }
-          detail='Share of eligible successful queries with at least one click.'
+          title='Lagging docs'
+          value={String(props.diagnostics.staleDocuments)}
+          detail='Documents where projection timestamps are behind source updates.'
         />
         <InfoCard
-          title='Abandonment'
-          value={
-            props.analytics
-              ? `${(props.analytics.summary.abandonmentRate * 100).toFixed(1)}%`
-              : 'n/a'
-          }
-          detail='Eligible successful queries that ended without a click.'
+          title='Missing docs'
+          value={String(props.diagnostics.missingDocuments)}
+          detail='Expected projection rows that are absent from search storage.'
         />
         <InfoCard
-          title='Zero-result rate'
-          value={
-            props.analytics
-              ? `${(props.analytics.summary.zeroResultRate * 100).toFixed(1)}%`
-              : 'n/a'
-          }
-          detail='Share of successful queries that returned no results.'
+          title='Orphaned docs'
+          value={String(props.diagnostics.orphanedDocuments)}
+          detail='Projection rows without a matching content/product source row.'
         />
         <InfoCard
           title='Max lag'
           value={`${props.diagnostics.maxLagSeconds}s`}
           detail='Largest observed lag in seconds.'
+        />
+        <InfoCard
+          title='Newest indexed'
+          value={props.diagnostics.newestIndexedAt ?? 'not indexed yet'}
+          detail='Most recent index write in rustok-search storage.'
+        />
+        <InfoCard
+          title='Oldest indexed'
+          value={props.diagnostics.oldestIndexedAt ?? 'not indexed yet'}
+          detail='Oldest surviving indexed document timestamp.'
         />
       </div>
       <article className='rounded-3xl border border-zinc-200 bg-white p-6'>
@@ -1222,7 +1604,8 @@ function AnalyticsPanel(props: {
           Search Analytics
         </h2>
         <p className='mt-2 text-sm text-zinc-600'>
-          Top queries and zero-result analysis over the recent query log window.
+          CTR, abandonment, zero-result, and slow-query analysis over the recent
+          query log window.
         </p>
         <div className='mt-5'>
           {props.analyticsLoading ? (
@@ -1257,6 +1640,26 @@ function AnalyticsPanel(props: {
             />
           ) : (
             <LaggingTable rows={props.laggingDocuments} />
+          )}
+        </div>
+      </article>
+      <article className='rounded-3xl border border-zinc-200 bg-white p-6'>
+        <h2 className='text-lg font-semibold text-zinc-900'>
+          Consistency Issues
+        </h2>
+        <p className='mt-2 text-sm text-zinc-600'>
+          Missing projections and orphaned search documents compared to current
+          content and product source state.
+        </p>
+        <div className='mt-5'>
+          {props.consistencyLoading ? (
+            <LoadingPanel label='Loading consistency issues...' />
+          ) : props.consistencyError ? (
+            <ErrorPanel
+              message={`Failed to load search consistency diagnostics: ${props.consistencyError}`}
+            />
+          ) : (
+            <ConsistencyTable rows={props.consistencyIssues} />
           )}
         </div>
       </article>
@@ -1693,11 +2096,16 @@ function AnalyticsSummary({
           detail='Share of successful queries that returned no results.'
         />
       </div>
-      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <InfoCard
           title='Avg latency'
           value={`${summary.avgTookMs.toFixed(1)} ms`}
           detail='Average PostgreSQL search execution time.'
+        />
+        <InfoCard
+          title='Slow-query rate'
+          value={`${(summary.slowQueryRate * 100).toFixed(1)}%`}
+          detail='Share of successful queries at or above the current slow-query threshold.'
         />
         <InfoCard
           title='Total clicks'
@@ -1747,6 +2155,22 @@ function AnalyticsSummary({
         </article>
       </div>
       <div className='grid gap-6 xl:grid-cols-2'>
+        <article className='rounded-2xl border border-zinc-200 bg-zinc-50 p-4'>
+          <h3 className='text-base font-semibold text-zinc-900'>
+            Slow Queries
+          </h3>
+          <p className='mt-2 text-sm text-zinc-600'>
+            Queries whose average execution time meets or exceeds the current
+            slow-query threshold.
+          </p>
+          <div className='mt-4'>
+            <AnalyticsTable
+              rows={analytics.slowQueries}
+              emptyTitle='No slow queries'
+              emptyBody='No slow queries were detected in the current window.'
+            />
+          </div>
+        </article>
         <article className='rounded-2xl border border-zinc-200 bg-zinc-50 p-4'>
           <h3 className='text-base font-semibold text-zinc-900'>
             Low CTR Queries
@@ -1986,6 +2410,69 @@ function LaggingTable({
   );
 }
 
+function ConsistencyTable({
+  rows
+}: {
+  rows: SearchConsistencyIssuePayload[];
+}): React.JSX.Element {
+  if (!rows.length) {
+    return (
+      <EmptyPanel
+        title='Projection consistency is healthy'
+        body='No missing or orphaned search documents detected for the current tenant.'
+      />
+    );
+  }
+  return (
+    <div className='overflow-hidden rounded-2xl border border-zinc-200'>
+      <table className='w-full text-sm'>
+        <thead className='border-b border-zinc-200 bg-zinc-50'>
+          <tr>
+            <Th>Issue</Th>
+            <Th>Title</Th>
+            <Th>Type</Th>
+            <Th>Locale</Th>
+            <Th>Updated</Th>
+            <Th>Indexed</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const badgeClass =
+              row.issueKind === 'missing'
+                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-orange-200 bg-orange-50 text-orange-700';
+            return (
+              <tr
+                key={`${row.issueKind}:${row.documentKey}`}
+                className='border-t border-zinc-100'
+              >
+                <Td>
+                  <span
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}
+                  >
+                    {row.issueKind}
+                  </span>
+                </Td>
+                <Td>
+                  <div className='font-medium text-zinc-900'>{row.title}</div>
+                  <div className='mt-1 text-xs text-zinc-500'>
+                    {row.documentKey}
+                  </div>
+                </Td>
+                <Td>{`${row.sourceModule}/${row.entityType} (${row.status})`}</Td>
+                <Td>{row.locale}</Td>
+                <Td>{row.updatedAt}</Td>
+                <Td>{row.indexedAt ?? 'not indexed'}</Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AnalyticsTable({
   rows,
   emptyTitle,
@@ -2095,9 +2582,11 @@ function DiagnosticsCard({
   const badgeClass =
     diagnostics.state === 'healthy'
       ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-      : diagnostics.state === 'lagging'
-        ? 'border-amber-200 bg-amber-50 text-amber-700'
-        : 'border-slate-200 bg-slate-50 text-slate-700';
+      : diagnostics.state === 'inconsistent'
+        ? 'border-rose-200 bg-rose-50 text-rose-700'
+        : diagnostics.state === 'lagging'
+          ? 'border-amber-200 bg-amber-50 text-amber-700'
+          : 'border-slate-200 bg-slate-50 text-slate-700';
   return (
     <article className='rounded-3xl border border-zinc-200 bg-zinc-50 p-5'>
       <div className='text-xs tracking-[0.2em] text-zinc-500 uppercase'>

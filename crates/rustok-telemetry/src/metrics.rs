@@ -520,6 +520,16 @@ lazy_static! {
     )
     .expect("Failed to create search_zero_results_total");
 
+    /// Slow searches by surface/engine.
+    pub static ref SEARCH_SLOW_QUERIES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_search_slow_queries_total",
+            "Total slow search queries"
+        ),
+        &["surface", "engine"]
+    )
+    .expect("Failed to create search_slow_queries_total");
+
     /// Search indexing/rebuild operations by operation/entity/status.
     pub static ref SEARCH_INDEXING_OPERATIONS_TOTAL: IntCounterVec = IntCounterVec::new(
         Opts::new(
@@ -686,6 +696,7 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(SEARCH_QUERY_DURATION_SECONDS.clone()))?;
     registry.register(Box::new(SEARCH_RESULTS_RETURNED.clone()))?;
     registry.register(Box::new(SEARCH_ZERO_RESULTS_TOTAL.clone()))?;
+    registry.register(Box::new(SEARCH_SLOW_QUERIES_TOTAL.clone()))?;
     registry.register(Box::new(SEARCH_INDEXING_OPERATIONS_TOTAL.clone()))?;
     registry.register(Box::new(SEARCH_INDEXING_DURATION_SECONDS.clone()))?;
     registry.register(Box::new(SEARCH_RATE_LIMIT_OUTCOMES_TOTAL.clone()))?;
@@ -983,6 +994,13 @@ pub fn record_search_query(
             .with_label_values(&[surface, engine])
             .inc();
     }
+}
+
+/// Record a slow search query execution.
+pub fn record_search_slow_query(surface: &str, engine: &str) {
+    SEARCH_SLOW_QUERIES_TOTAL
+        .with_label_values(&[surface, engine])
+        .inc();
 }
 
 /// Record a search indexing or rebuild operation.

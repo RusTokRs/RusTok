@@ -1,0 +1,26 @@
+[package]
+name = "rustok-region"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Region domain module extracted from rustok-commerce/pricing"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rustok-core.workspace = true
+rustok-commerce-foundation.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono", "decimal"] }
+uuid.workspace = true
+validator.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+rustok-test-utils.workspace = true

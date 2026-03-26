@@ -12,6 +12,7 @@ axum.workspace = true
 base64.workspace = true
 loco-rs.workspace = true
 rustok-api.workspace = true
+rustok-channel.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-content.workspace = true

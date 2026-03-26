@@ -8,6 +8,7 @@ use rustok_core::{Error, Result};
 use crate::engine::SearchEngineKind;
 
 const CLICK_EVAL_LAG_MINUTES: i32 = 2;
+pub const SLOW_QUERY_THRESHOLD_MS: u64 = 250;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchAnalyticsSummary {
@@ -16,6 +17,8 @@ pub struct SearchAnalyticsSummary {
     pub successful_queries: u64,
     pub zero_result_queries: u64,
     pub zero_result_rate: f64,
+    pub slow_queries: u64,
+    pub slow_query_rate: f64,
     pub avg_took_ms: f64,
     pub avg_results_per_query: f64,
     pub unique_queries: u64,
@@ -56,6 +59,7 @@ pub struct SearchAnalyticsSnapshot {
     pub summary: SearchAnalyticsSummary,
     pub top_queries: Vec<SearchAnalyticsQueryRow>,
     pub zero_result_queries: Vec<SearchAnalyticsQueryRow>,
+    pub slow_queries: Vec<SearchAnalyticsQueryRow>,
     pub low_ctr_queries: Vec<SearchAnalyticsQueryRow>,
     pub abandonment_queries: Vec<SearchAnalyticsQueryRow>,
     pub intelligence_candidates: Vec<SearchAnalyticsInsightRow>,
@@ -195,6 +199,7 @@ impl SearchAnalyticsService {
         let top_queries = Self::query_rows(db, tenant_id, days, limit, QueryRowMode::Top).await?;
         let zero_result_queries =
             Self::query_rows(db, tenant_id, days, limit, QueryRowMode::ZeroResults).await?;
+        let slow_queries = Self::query_rows(db, tenant_id, days, limit, QueryRowMode::Slow).await?;
         let low_ctr_queries =
             Self::query_rows(db, tenant_id, days, limit, QueryRowMode::LowCtr).await?;
         let abandonment_queries =
@@ -202,6 +207,7 @@ impl SearchAnalyticsService {
         let intelligence_candidates = build_intelligence_candidates(
             &top_queries,
             &zero_result_queries,
+            &slow_queries,
             &low_ctr_queries,
             &abandonment_queries,
             limit,
@@ -211,6 +217,7 @@ impl SearchAnalyticsService {
             summary,
             top_queries,
             zero_result_queries,
+            slow_queries,
             low_ctr_queries,
             abandonment_queries,
             intelligence_candidates,
@@ -229,6 +236,7 @@ impl SearchAnalyticsService {
                 tenant_id.into(),
                 (days.min(i32::MAX as u32) as i32).into(),
                 CLICK_EVAL_LAG_MINUTES.into(),
+                (SLOW_QUERY_THRESHOLD_MS.min(i64::MAX as u64) as i64).into(),
             ],
         );
 
@@ -244,6 +252,8 @@ impl SearchAnalyticsService {
             successful_queries: read_i64(&row, "successful_queries") as u64,
             zero_result_queries: read_i64(&row, "zero_result_queries") as u64,
             zero_result_rate: read_f64(&row, "zero_result_rate"),
+            slow_queries: read_i64(&row, "slow_queries") as u64,
+            slow_query_rate: read_f64(&row, "slow_query_rate"),
             avg_took_ms: read_f64(&row, "avg_took_ms"),
             avg_results_per_query: read_f64(&row, "avg_results_per_query"),
             unique_queries: read_i64(&row, "unique_queries") as u64,
@@ -268,12 +278,21 @@ impl SearchAnalyticsService {
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             query_rows_sql(mode),
-            vec![
-                tenant_id.into(),
-                (days.min(i32::MAX as u32) as i32).into(),
-                CLICK_EVAL_LAG_MINUTES.into(),
-                (limit.clamp(1, 50) as i64).into(),
-            ],
+            match mode {
+                QueryRowMode::Slow => vec![
+                    tenant_id.into(),
+                    (days.min(i32::MAX as u32) as i32).into(),
+                    CLICK_EVAL_LAG_MINUTES.into(),
+                    (limit.clamp(1, 50) as i64).into(),
+                    (SLOW_QUERY_THRESHOLD_MS.min(i64::MAX as u64) as i64).into(),
+                ],
+                _ => vec![
+                    tenant_id.into(),
+                    (days.min(i32::MAX as u32) as i32).into(),
+                    CLICK_EVAL_LAG_MINUTES.into(),
+                    (limit.clamp(1, 50) as i64).into(),
+                ],
+            },
         );
 
         db.query_all(stmt)
@@ -305,6 +324,7 @@ impl SearchAnalyticsService {
 enum QueryRowMode {
     Top,
     ZeroResults,
+    Slow,
     LowCtr,
     Abandonment,
 }
@@ -331,6 +351,7 @@ fn normalize_query_text(value: &str) -> String {
 fn build_intelligence_candidates(
     top_queries: &[SearchAnalyticsQueryRow],
     zero_result_queries: &[SearchAnalyticsQueryRow],
+    slow_queries: &[SearchAnalyticsQueryRow],
     low_ctr_queries: &[SearchAnalyticsQueryRow],
     abandonment_queries: &[SearchAnalyticsQueryRow],
     limit: usize,
@@ -340,6 +361,7 @@ fn build_intelligence_candidates(
     for row in top_queries
         .iter()
         .chain(zero_result_queries.iter())
+        .chain(slow_queries.iter())
         .chain(low_ctr_queries.iter())
         .chain(abandonment_queries.iter())
     {
@@ -395,6 +417,10 @@ fn recommend_action(row: &SearchAnalyticsQueryRow) -> Option<String> {
         return Some("tune_ranking_or_boost_exact_match".to_string());
     }
 
+    if row.avg_took_ms >= SLOW_QUERY_THRESHOLD_MS as f64 {
+        return Some("narrow_filters_or_review_indexes".to_string());
+    }
+
     None
 }
 
@@ -441,6 +467,12 @@ fn summary_sql() -> &'static str {
             / NULLIF(COUNT(*)::double precision, 0),
             0
         ) AS zero_result_rate,
+        COUNT(*) FILTER (WHERE took_ms >= $4)::bigint AS slow_queries,
+        COALESCE(
+            COUNT(*) FILTER (WHERE took_ms >= $4)::double precision
+            / NULLIF(COUNT(*)::double precision, 0),
+            0
+        ) AS slow_query_rate,
         COALESCE(AVG(took_ms)::double precision, 0) AS avg_took_ms,
         COALESCE(AVG(result_count)::double precision, 0) AS avg_results_per_query,
         COUNT(DISTINCT query_normalized)::bigint AS unique_queries,
@@ -658,6 +690,68 @@ fn query_rows_sql(mode: QueryRowMode) -> &'static str {
             LIMIT $4
             "#
         }
+        QueryRowMode::Slow => {
+            r#"
+            WITH click_counts AS (
+                SELECT query_log_id, COUNT(*)::bigint AS click_count
+                FROM search_query_clicks
+                GROUP BY query_log_id
+            ),
+            successful_queries AS (
+                SELECT
+                    q.query_text,
+                    q.query_normalized,
+                    q.created_at,
+                    q.result_count,
+                    q.took_ms,
+                    COALESCE(c.click_count, 0) AS click_count
+                FROM search_query_logs q
+                LEFT JOIN click_counts c ON c.query_log_id = q.id
+                WHERE q.tenant_id = $1
+                  AND q.created_at >= NOW() - make_interval(days => $2)
+                  AND q.status = 'success'
+            )
+            SELECT
+                MIN(query_text) AS query_text,
+                COUNT(*)::bigint AS hits,
+                COUNT(*) FILTER (WHERE result_count = 0)::bigint AS zero_result_hits,
+                COALESCE(SUM(click_count), 0)::bigint AS clicks,
+                COALESCE(AVG(took_ms)::double precision, 0) AS avg_took_ms,
+                COALESCE(AVG(result_count)::double precision, 0) AS avg_results,
+                COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE created_at < NOW() - make_interval(mins => $3)
+                          AND click_count > 0
+                    )::double precision
+                    / NULLIF(
+                        COUNT(*) FILTER (
+                            WHERE created_at < NOW() - make_interval(mins => $3)
+                        )::double precision,
+                        0
+                    ),
+                    0
+                ) AS click_through_rate,
+                COALESCE(
+                    COUNT(*) FILTER (
+                        WHERE created_at < NOW() - make_interval(mins => $3)
+                          AND click_count = 0
+                    )::double precision
+                    / NULLIF(
+                        COUNT(*) FILTER (
+                            WHERE created_at < NOW() - make_interval(mins => $3)
+                        )::double precision,
+                        0
+                    ),
+                    0
+                ) AS abandonment_rate,
+                MAX(created_at) AS last_seen_at
+            FROM successful_queries
+            GROUP BY query_normalized
+            HAVING AVG(took_ms) >= $5
+            ORDER BY avg_took_ms DESC, hits DESC, last_seen_at DESC
+            LIMIT $4
+            "#
+        }
         QueryRowMode::Abandonment => {
             r#"
             WITH click_counts AS (
@@ -735,7 +829,7 @@ fn read_f64(row: &sea_orm::QueryResult, column: &str) -> f64 {
 mod tests {
     use super::{
         intelligence_score, normalize_query_text, recommend_action, SearchAnalyticsInsightRow,
-        SearchAnalyticsQueryRow,
+        SearchAnalyticsQueryRow, SLOW_QUERY_THRESHOLD_MS,
     };
     use chrono::Utc;
 
@@ -789,5 +883,25 @@ mod tests {
         };
 
         assert!(intelligence_score(&high) > intelligence_score(&low));
+    }
+
+    #[test]
+    fn recommend_action_detects_slow_queries_after_relevance_issues() {
+        let row = SearchAnalyticsQueryRow {
+            query: "large catalog".to_string(),
+            hits: 5,
+            zero_result_hits: 0,
+            clicks: 2,
+            avg_took_ms: (SLOW_QUERY_THRESHOLD_MS + 25) as f64,
+            avg_results: 12.0,
+            click_through_rate: 0.5,
+            abandonment_rate: 0.3,
+            last_seen_at: Utc::now(),
+        };
+
+        assert_eq!(
+            recommend_action(&row).as_deref(),
+            Some("narrow_filters_or_review_indexes")
+        );
     }
 }

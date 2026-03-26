@@ -15,14 +15,15 @@ use rustok_search::{
     PgSearchEngine, SearchAnalyticsService, SearchDiagnosticsService, SearchDictionaryService,
     SearchEngine, SearchFilterPresetService, SearchModule, SearchQuery, SearchQueryLogRecord,
     SearchRankingProfile, SearchSettingsService, SearchSuggestionQuery, SearchSuggestionService,
+    SLOW_QUERY_THRESHOLD_MS,
 };
 use rustok_telemetry::metrics;
 
 use super::types::{
-    LaggingSearchDocumentPayload, SearchAnalyticsPayload, SearchDiagnosticsPayload,
-    SearchDictionarySnapshotPayload, SearchEngineDescriptor, SearchFilterPresetPayload,
-    SearchFilterPresetsInput, SearchPreviewInput, SearchPreviewPayload, SearchSettingsPayload,
-    SearchSuggestionPayload, SearchSuggestionsInput,
+    LaggingSearchDocumentPayload, SearchAnalyticsPayload, SearchConsistencyIssuePayload,
+    SearchDiagnosticsPayload, SearchDictionarySnapshotPayload, SearchEngineDescriptor,
+    SearchFilterPresetPayload, SearchFilterPresetsInput, SearchPreviewInput, SearchPreviewPayload,
+    SearchSettingsPayload, SearchSuggestionPayload, SearchSuggestionsInput,
 };
 
 #[derive(Default)]
@@ -108,6 +109,30 @@ impl SearchQueryRoot {
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
 
         let rows = SearchDiagnosticsService::lagging_documents(
+            &app_ctx.db,
+            tenant_id,
+            limit.unwrap_or(25).clamp(1, 100) as usize,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    /// Returns missing/orphaned projection records for the current tenant.
+    async fn search_consistency_issues(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        limit: Option<i32>,
+    ) -> Result<Vec<SearchConsistencyIssuePayload>> {
+        ensure_settings_read_permission(ctx).await?;
+
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+
+        let rows = SearchDiagnosticsService::consistency_issues(
             &app_ctx.db,
             tenant_id,
             limit.unwrap_or(25).clamp(1, 100) as usize,
@@ -748,6 +773,9 @@ async fn finalize_search_result(
                 duration.as_secs_f64(),
                 result.items.len() as u64,
             );
+            if result.took_ms >= SLOW_QUERY_THRESHOLD_MS {
+                metrics::record_search_slow_query(surface, result.engine.as_str());
+            }
             metrics::record_read_path_budget(
                 "graphql",
                 surface,

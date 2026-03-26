@@ -2,10 +2,11 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateOrderInput {
     pub customer_id: Option<Uuid>,
     #[validate(length(equal = 3))]
@@ -15,7 +16,7 @@ pub struct CreateOrderInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateOrderLineItemInput {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
@@ -29,7 +30,7 @@ pub struct CreateOrderLineItemInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -54,7 +55,7 @@ pub struct OrderResponse {
     pub line_items: Vec<OrderLineItemResponse>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderLineItemResponse {
     pub id: Uuid,
     pub order_id: Uuid,

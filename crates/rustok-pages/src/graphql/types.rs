@@ -16,6 +16,7 @@ pub struct GqlPage {
     pub translation: Option<GqlPageTranslation>,
     pub translations: Vec<GqlPageTranslation>,
     pub body: Option<GqlPageBody>,
+    pub channel_slugs: Vec<String>,
     pub blocks: Vec<GqlBlock>,
     pub metadata: String,
 }
@@ -45,6 +46,7 @@ pub struct GqlPageListItem {
     pub template: String,
     pub title: Option<String>,
     pub slug: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub updated_at: String,
 }
 
@@ -60,6 +62,7 @@ pub struct CreateGqlPageInput {
     pub template: Option<String>,
     pub body: Option<GqlPageBodyInput>,
     pub blocks: Option<Vec<CreateGqlBlockInput>>,
+    pub channel_slugs: Option<Vec<String>>,
     pub publish: Option<bool>,
 }
 
@@ -68,6 +71,7 @@ pub struct UpdateGqlPageInput {
     pub translations: Option<Vec<GqlPageTranslationInput>>,
     pub template: Option<String>,
     pub body: Option<GqlPageBodyInput>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(InputObject)]
@@ -151,6 +155,7 @@ impl From<crate::PageResponse> for GqlPage {
             translation: r.translation.map(Into::into),
             translations: r.translations.into_iter().map(Into::into).collect(),
             body: r.body.map(Into::into),
+            channel_slugs: r.channel_slugs,
             blocks: r.blocks.into_iter().map(Into::into).collect(),
             metadata: r.metadata.to_string(),
         }
@@ -189,6 +194,7 @@ impl From<crate::PageListItem> for GqlPageListItem {
             template: r.template,
             title: r.title,
             slug: r.slug,
+            channel_slugs: r.channel_slugs,
             updated_at: r.updated_at,
         }
     }

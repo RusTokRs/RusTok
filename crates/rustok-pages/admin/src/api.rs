@@ -7,7 +7,7 @@ pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
 const PAGE_QUERY: &str =
-    "query PageAdmin($id: UUID!) { page(id: $id) { id status template translation { locale title slug } body { locale content format } } }";
+    "query PageAdmin($id: UUID!) { page(id: $id) { id status template channelSlugs translation { locale title slug } body { locale content format } } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id status updatedAt translation { locale title slug } } }";
 const UPDATE_PAGE_MUTATION: &str = "mutation UpdatePage($id: UUID!, $input: UpdateGqlPageInput!) { updatePage(id: $id, input: $input) { id status updatedAt translation { locale title slug } } }";
 const PUBLISH_PAGE_MUTATION: &str =
@@ -84,6 +84,8 @@ struct CreatePageInput {
     translations: Vec<CreatePageTranslationInput>,
     template: Option<String>,
     body: Option<CreatePageBodyInput>,
+    #[serde(rename = "channelSlugs", skip_serializing_if = "Option::is_none")]
+    channel_slugs: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     blocks: Option<Vec<()>>,
     publish: Option<bool>,
@@ -94,6 +96,8 @@ struct UpdatePageInput {
     translations: Option<Vec<CreatePageTranslationInput>>,
     template: Option<String>,
     body: Option<CreatePageBodyInput>,
+    #[serde(rename = "channelSlugs", skip_serializing_if = "Option::is_none")]
+    channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -210,6 +214,7 @@ pub async fn create_page(
                     content: draft.body,
                     format: Some("markdown".to_string()),
                 }),
+                channel_slugs: Some(draft.channel_slugs),
                 blocks: None,
                 publish: Some(draft.publish),
             },
@@ -245,6 +250,7 @@ pub async fn update_page(
                     content: draft.body,
                     format: Some("markdown".to_string()),
                 }),
+                channel_slugs: Some(draft.channel_slugs),
             },
         },
         token,

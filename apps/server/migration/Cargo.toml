@@ -13,9 +13,11 @@ rustok-core = { path = "../../../crates/rustok-core" }
 # Module crates — each owns its own migration files
 alloy-scripting = { path = "../../../crates/alloy-scripting" }
 rustok-auth = { path = "../../../crates/rustok-auth" }
+rustok-channel = { path = "../../../crates/rustok-channel" }
 rustok-cart = { path = "../../../crates/rustok-cart" }
 rustok-customer = { path = "../../../crates/rustok-customer" }
 rustok-product = { path = "../../../crates/rustok-product" }
+rustok-region = { path = "../../../crates/rustok-region" }
 rustok-pricing = { path = "../../../crates/rustok-pricing" }
 rustok-inventory = { path = "../../../crates/rustok-inventory" }
 rustok-order = { path = "../../../crates/rustok-order" }

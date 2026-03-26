@@ -94,6 +94,8 @@ compatibility with platform-level contracts.
 - [x] Integration tests with test database (all 5 post lifecycle tests + 2 new category/tag tests now green)
 - [x] `category` and `tag` kinds registered in content module validation and RBAC
 - [x] In-memory tag filtering in `PostService::list_posts` (pre-index fallback)
+- [x] Channel-aware pilot on public read-path via `rustok-channel` module bindings
+- [x] Extend the pilot to publication-level metadata-based `channelSlugs` allowlists on published public read-paths
 - [ ] RBAC enforcement: check permissions in service layer
 - [ ] Rate limiting for post creation
 - [ ] Full-text search integration via rustok-index (will supersede in-memory tag filtering)
@@ -117,6 +119,7 @@ compatibility with platform-level contracts.
 | `dto/post.rs` | ✅ Complete | All fields, i18n, SEO, pagination |
 | `entities/` | ✅ Complete | Re-exports from content module |
 | Tests (unit) | ✅ Complete | State machine, DTOs, errors, locale, service |
+| Channel pilot | ✅ Complete | Public GraphQL read-path honors `channel_module_bindings` and metadata-based `channelSlugs` allowlists for `blog` |
 | Tests (integration) | ✅ Complete | All lifecycle and category/tag tests green; 18 integration tests pass |
 | Documentation | ✅ Complete | README, CRATE_API, docs |
 
@@ -285,4 +288,6 @@ or observability expectations:
 ## Checklist
 
 - [x] контрактные тесты покрывают все публичные use-case.
+- [x] `blog` стал вторым pilot consumer для `rustok-channel` через public read-path gating.
+- [x] `blog` расширен до второго publication-level proof point через metadata-based `channelSlugs` allowlist.
 

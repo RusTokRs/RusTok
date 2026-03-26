@@ -17,6 +17,7 @@
 ## Interactions
 
 - Depends on `rustok-content` for shared node storage and content helpers.
+- Depends on `rustok-channel` for the first public channel-aware gating proof point on pages read paths and the first page-level publication proof point via `channelSlugs`.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request/GraphQL helper contracts.
 - Used by `apps/server` as a composition-root dependency; server now re-exports module-owned pages GraphQL and REST entry points.
@@ -25,6 +26,11 @@
   not need to carry tenant UUIDs through the host boundary.
 - `rustok-pages-storefront` also consumes the shared `UiRouteContext`, so package-owned storefront
   screens can resolve locale/query-based state without teaching the host about pages specifics.
+- Public pages read paths can now honor `channel_module_bindings` when a request carries an active
+  channel through `RequestContext`; authenticated/admin flows intentionally bypass that pilot gate.
+- Public pages read paths also honor page-level `channelSlugs` allowlists stored in metadata for
+  unauthenticated published requests; empty allowlists stay globally visible, while authenticated/admin
+  flows intentionally bypass this experimental publication gate.
 - Declares permissions via `rustok-core::Permission`.
 - Module adapters enforce `pages:*` permissions from `AuthContext.permissions` and pass a
   permission-aware `SecurityContext` into page services.

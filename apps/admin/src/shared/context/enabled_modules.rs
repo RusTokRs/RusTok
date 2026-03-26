@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 
+use crate::app::modules::core_module_slugs;
 use crate::features::modules::api;
 
 #[derive(Clone)]
@@ -67,7 +68,11 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
     let context_for_effect = context.clone();
     Effect::new(move |_| match resource.get() {
         Some(Ok(modules)) => {
-            context_for_effect.replace_modules(modules);
+            context_for_effect.replace_modules(
+                modules
+                    .into_iter()
+                    .chain(core_module_slugs().iter().map(|slug| slug.to_string())),
+            );
             context_for_effect.error.set(None);
             context_for_effect.is_loading.set(false);
         }

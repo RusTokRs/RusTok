@@ -11,6 +11,11 @@ pub enum SearchRankingProfile {
 }
 
 impl SearchRankingProfile {
+    pub const CONFIG_DEFAULT_SURFACE: &'static str = "default";
+    pub const SEARCH_PREVIEW_SURFACE: &'static str = "search_preview";
+    pub const STOREFRONT_SEARCH_SURFACE: &'static str = "storefront_search";
+    pub const ADMIN_GLOBAL_SEARCH_SURFACE: &'static str = "admin_global_search";
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Balanced => "balanced",
@@ -57,11 +62,48 @@ impl SearchRankingProfile {
 
     pub fn default_for_surface(surface: &str) -> Self {
         match surface {
-            "admin_global_search" => Self::Exact,
-            "storefront_search" => Self::Balanced,
-            "search_preview" => Self::Balanced,
+            Self::ADMIN_GLOBAL_SEARCH_SURFACE => Self::Exact,
+            Self::STOREFRONT_SEARCH_SURFACE => Self::Balanced,
+            Self::SEARCH_PREVIEW_SURFACE => Self::Balanced,
             _ => Self::Balanced,
         }
+    }
+
+    pub fn known_surfaces() -> &'static [&'static str] {
+        &[
+            Self::CONFIG_DEFAULT_SURFACE,
+            Self::SEARCH_PREVIEW_SURFACE,
+            Self::STOREFRONT_SEARCH_SURFACE,
+            Self::ADMIN_GLOBAL_SEARCH_SURFACE,
+        ]
+    }
+
+    pub fn validate_config(config: &serde_json::Value) -> Result<()> {
+        let Some(ranking_profiles) = config.get("ranking_profiles") else {
+            return Ok(());
+        };
+        let object = ranking_profiles.as_object().ok_or_else(|| {
+            Error::Validation(
+                "search_settings.config.ranking_profiles must be an object".to_string(),
+            )
+        })?;
+
+        for (surface, value) in object {
+            validate_surface_name(surface)?;
+            let profile_value = value.as_str().ok_or_else(|| {
+                Error::Validation(format!(
+                    "search_settings.config.ranking_profiles.{surface} must be a string"
+                ))
+            })?;
+            Self::try_from_str(profile_value).ok_or_else(|| {
+                Error::Validation(format!(
+                    "search_settings.config.ranking_profiles.{surface} contains unsupported profile '{}'",
+                    profile_value
+                ))
+            })?;
+        }
+
+        Ok(())
     }
 
     pub fn fts_score_sql(&self) -> &'static str {
@@ -227,6 +269,25 @@ impl SearchRankingProfile {
     }
 }
 
+fn validate_surface_name(surface: &str) -> Result<()> {
+    let surface = surface.trim();
+    if surface.is_empty() || surface.len() > 64 {
+        return Err(Error::Validation(
+            "search ranking profile surface must be 1..=64 characters long".to_string(),
+        ));
+    }
+    if !surface
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    {
+        return Err(Error::Validation(format!(
+            "search ranking profile surface '{}' contains invalid characters",
+            surface
+        )));
+    }
+    Ok(())
+}
+
 fn lookup_config_profile(
     config: &serde_json::Value,
     surface: &str,
@@ -299,5 +360,29 @@ mod tests {
         .unwrap();
 
         assert_eq!(profile, SearchRankingProfile::Catalog);
+    }
+
+    #[test]
+    fn validate_config_rejects_unknown_profile() {
+        let error = SearchRankingProfile::validate_config(&serde_json::json!({
+            "ranking_profiles": {
+                "storefront_search": "unknown"
+            }
+        }))
+        .expect_err("invalid ranking profile should fail");
+
+        assert!(error.to_string().contains("unsupported profile"));
+    }
+
+    #[test]
+    fn validate_config_rejects_invalid_surface_name() {
+        let error = SearchRankingProfile::validate_config(&serde_json::json!({
+            "ranking_profiles": {
+                "storefront search": "balanced"
+            }
+        }))
+        .expect_err("invalid surface should fail");
+
+        assert!(error.to_string().contains("invalid characters"));
     }
 }

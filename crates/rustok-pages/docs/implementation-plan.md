@@ -33,6 +33,9 @@ compatibility with platform-level contracts.
 ### Phase 2 — Domain expansion (planned)
 
 - [ ] Implement prioritized domain capabilities for `rustok-pages`.
+- [x] Add the first channel-aware pilot on public read-path using `rustok-channel` module bindings.
+- [x] Extend the pilot to the first publication-level proof point through metadata-based `channelSlugs` allowlist on pages.
+- [x] Compare the richer `pages` publication-level pilot against `blog` and keep the metadata-based model for v0 instead of introducing a dedicated relation/table yet.
 - [ ] Promote `body.format=grapesjs_v1` as the canonical visual page-builder contract while keeping legacy block APIs migration-compatible.
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
@@ -168,4 +171,8 @@ or observability expectations:
 ## Checklist
 
 - [x] контрактные тесты покрывают все публичные use-case.
+- [x] `pages` стал первым pilot consumer для `rustok-channel` через public read-path gating.
+- [x] `pages` получил первый publication-level pilot: `channelSlugs` allowlist в metadata и channel-aware public visibility.
+- [x] Сравнить metadata-based publication semantics в `pages` с более простым module-level gating в `blog`.
+- [x] Решить после сравнения, сохраняем ли metadata-based модель или выносим публикацию по каналам в отдельную relation/table.
 

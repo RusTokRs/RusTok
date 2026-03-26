@@ -20,9 +20,9 @@ pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
-    CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService,
-    CustomerService, FulfillmentService, InventoryService, OrderService, PaymentService,
-    PricingService,
+    CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService, CustomerService,
+    FulfillmentService, InventoryService, OrderService, PaymentService, PricingService,
+    RegionService, StoreContextError, StoreContextResult, StoreContextService,
 };
 pub use state_machine::{
     Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,
@@ -53,6 +53,7 @@ impl RusToKModule for CommerceModule {
             "cart",
             "customer",
             "product",
+            "region",
             "pricing",
             "inventory",
             "order",
@@ -84,6 +85,13 @@ impl RusToKModule for CommerceModule {
             Permission::new(Resource::Customers, Action::Delete),
             Permission::new(Resource::Customers, Action::List),
             Permission::new(Resource::Customers, Action::Manage),
+            // Regions
+            Permission::new(Resource::Regions, Action::Create),
+            Permission::new(Resource::Regions, Action::Read),
+            Permission::new(Resource::Regions, Action::Update),
+            Permission::new(Resource::Regions, Action::Delete),
+            Permission::new(Resource::Regions, Action::List),
+            Permission::new(Resource::Regions, Action::Manage),
             // Payments
             Permission::new(Resource::Payments, Action::Create),
             Permission::new(Resource::Payments, Action::Read),

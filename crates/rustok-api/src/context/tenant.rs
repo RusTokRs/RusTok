@@ -1,6 +1,6 @@
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, Extensions, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -62,6 +62,12 @@ impl TenantContextExt for Parts {
         self.extensions
             .get::<TenantContextExtension>()
             .map(|ext| &ext.0)
+    }
+}
+
+impl TenantContextExt for Extensions {
+    fn tenant_context(&self) -> Option<&TenantContext> {
+        self.get::<TenantContextExtension>().map(|ext| &ext.0)
     }
 }
 

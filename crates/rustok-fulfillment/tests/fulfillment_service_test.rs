@@ -22,7 +22,7 @@ fn create_shipping_option_input() -> CreateShippingOptionInput {
         name: "Standard Shipping".to_string(),
         currency_code: "usd".to_string(),
         amount: Decimal::from_str("9.99").expect("valid decimal"),
-        provider_id: "manual".to_string(),
+        provider_id: None,
         metadata: serde_json::json!({ "source": "fulfillment-test" }),
     }
 }

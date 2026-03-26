@@ -108,6 +108,7 @@ impl Hooks for App {
             .add_route(controllers::swagger::routes())
             .add_route(controllers::admin_events::routes())
             .add_route(controllers::auth::routes())
+            .add_route(controllers::channel::routes())
             .add_route(controllers::graphql::routes())
             .add_route(controllers::mcp::routes())
             .add_route(controllers::oauth::routes())

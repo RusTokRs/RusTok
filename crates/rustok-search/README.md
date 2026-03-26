@@ -51,6 +51,9 @@
 - Admin GraphQL exposes `searchDiagnostics`, `searchLaggingDocuments`, and
   `triggerSearchRebuild` for lag/state inspection, raw stale-document diagnostics,
   and queued tenant-wide or scoped rebuilds.
+- Admin diagnostics now also surface missing/orphaned projection counts and a
+  raw `searchConsistencyIssues` feed, so operators can distinguish lag from
+  true search/source drift.
 - Admin GraphQL now also exposes `searchAnalytics` backed by module-local
   `search_query_logs`, including top queries and zero-result analysis.
 - Search GraphQL now exposes `trackSearchClick`, and result payloads include
@@ -67,6 +70,9 @@
   `search_settings.config.ranking_profiles`, and admin preview can override the
   profile explicitly for tuning work.
 - Search GraphQL now enforces tenant-local scope and validates engine/filter input before execution.
+- Search settings persistence now also validates `ranking_profiles` and
+  `filter_presets` structure before saving, so raw JSON and structured editors
+  go through the same backend contract.
 - Public storefront search and suggestions now run behind a dedicated
   server-side rate limiter, and admin settings/rebuild actions emit best-effort
   audit events through the outbox.
@@ -74,6 +80,8 @@
 - Prometheus telemetry now exposes query volume, latency, zero-result, indexing,
   fleet-level lag metrics, dedicated storefront rate-limit outcomes, and audit
   publication counters for `rustok-search`.
+- Search analytics and admin dashboards now also surface slow-query rate and a
+  dedicated slow-query leaderboard from `search_query_logs`.
 - The module now ships a local observability runbook for rebuilds, lag triage,
   and `/metrics` interpretation.
 - Leptos admin and storefront packages are wired to the live GraphQL search contract.
@@ -83,14 +91,15 @@
 - The Leptos admin package now ships separate overview, playground, diagnostics,
   analytics, and dictionaries surfaces under the module route, including live
   settings, synonym/stop-word/pin-rule editors, CTR, abandonment, low-CTR,
-  and query-intelligence views, and is also exposed as a first-class admin
-  sidebar entry.
+  query-intelligence views, a structured relevance editor for ranking defaults
+  and filter presets, and is also exposed as a first-class admin sidebar entry.
 - The Leptos admin host now also uses `rustok-search` for header-level global
   admin search with module-aware quick navigation and a fallback into the full
   search control plane.
 - The Next admin package mirrors the same control-plane surfaces and uses the same
   GraphQL contract for settings, diagnostics, analytics, click tracking,
-  rebuilds, FTS preview, and search dictionary management.
+  rebuilds, FTS preview, search dictionary management, and structured relevance
+  settings.
 - The Next admin host now wires `rustok-search` into KBar so global admin
   search and command-palette quick-open use the same search contract and
   analytics surface.

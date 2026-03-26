@@ -21,6 +21,8 @@ use crate::locale::{
 use crate::state_machine::BlogPostStatus;
 
 const KIND_POST: &str = "post";
+const CHANNEL_VISIBILITY_KEY: &str = "channel_visibility";
+const ALLOWED_CHANNEL_SLUGS_KEY: &str = "allowed_channel_slugs";
 
 pub struct PostService {
     db: DatabaseConnection,
@@ -44,62 +46,75 @@ impl PostService {
         security: SecurityContext,
         input: CreatePostInput,
     ) -> BlogResult<Uuid> {
-        if input.title.trim().is_empty() {
+        let CreatePostInput {
+            locale,
+            title,
+            body,
+            body_format,
+            content_json,
+            excerpt,
+            slug,
+            publish,
+            tags,
+            category_id,
+            featured_image_url,
+            seo_title,
+            seo_description,
+            channel_slugs,
+            metadata,
+        } = input;
+
+        if title.trim().is_empty() {
             return Err(BlogError::validation("Title cannot be empty"));
         }
-        if input.title.len() > 512 {
+        if title.len() > 512 {
             return Err(BlogError::validation("Title cannot exceed 512 characters"));
         }
-        if input.locale.trim().is_empty() {
+        if locale.trim().is_empty() {
             return Err(BlogError::validation("Locale cannot be empty"));
         }
-        if input.tags.len() > 20 {
+        if tags.len() > 20 {
             return Err(BlogError::validation("Cannot have more than 20 tags"));
         }
 
-        let create_format = input.body_format.as_str();
-        if create_format != "rt_json_v1" && input.body.trim().is_empty() {
+        let create_format = body_format.as_str();
+        if create_format != "rt_json_v1" && body.trim().is_empty() {
             return Err(BlogError::validation("Body cannot be empty"));
         }
 
         let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
-        let locale = input.locale.clone();
 
         let prepared_body = prepare_content_payload(
-            Some(&input.body_format),
-            Some(&input.body),
-            input.content_json.as_ref(),
+            Some(&body_format),
+            Some(&body),
+            content_json.as_ref(),
             &locale,
             "Body",
         )
         .map_err(BlogError::validation)?;
 
-        let mut metadata = input.metadata.unwrap_or_else(|| serde_json::json!({}));
+        let mut metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
+        if !metadata.is_object() {
+            metadata = serde_json::json!({});
+        }
         if let Value::Object(map) = &mut metadata {
-            map.insert("tags".to_string(), serde_json::json!(input.tags));
-            if let Some(cat_id) = input.category_id {
+            map.insert("tags".to_string(), serde_json::json!(tags));
+            if let Some(cat_id) = category_id {
                 map.insert("category_id".to_string(), serde_json::json!(cat_id));
             }
-            if let Some(url) = &input.featured_image_url {
+            if let Some(url) = &featured_image_url {
                 map.insert("featured_image_url".to_string(), serde_json::json!(url));
             }
-            if let Some(seo_title) = &input.seo_title {
+            if let Some(seo_title) = &seo_title {
                 map.insert("seo_title".to_string(), serde_json::json!(seo_title));
             }
-            if let Some(seo_desc) = &input.seo_description {
+            if let Some(seo_desc) = &seo_description {
                 map.insert("seo_description".to_string(), serde_json::json!(seo_desc));
             }
-        } else {
-            metadata = serde_json::json!({
-                "tags": input.tags,
-                "category_id": input.category_id,
-                "featured_image_url": input.featured_image_url,
-                "seo_title": input.seo_title,
-                "seo_description": input.seo_description,
-            });
         }
+        apply_channel_visibility_metadata(&mut metadata, channel_slugs.as_deref());
 
-        let status = if input.publish {
+        let status = if publish {
             rustok_content::entities::node::ContentStatus::Published
         } else {
             rustok_content::entities::node::ContentStatus::Draft
@@ -118,16 +133,16 @@ impl PostService {
                     status: Some(status),
                     parent_id: None,
                     author_id: Some(author_id),
-                    category_id: input.category_id,
+                    category_id,
                     position: None,
                     depth: None,
                     reply_count: Some(0),
                     metadata,
                     translations: vec![NodeTranslationInput {
                         locale: locale.clone(),
-                        title: Some(input.title),
-                        slug: input.slug,
-                        excerpt: input.excerpt,
+                        title: Some(title),
+                        slug,
+                        excerpt,
                     }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
@@ -166,28 +181,42 @@ impl PostService {
         security: SecurityContext,
         input: UpdatePostInput,
     ) -> BlogResult<()> {
-        self.ensure_post_kind(tenant_id, post_id).await?;
+        let existing = self.ensure_post_kind(tenant_id, post_id).await?;
+        let UpdatePostInput {
+            locale,
+            title,
+            body,
+            body_format,
+            content_json,
+            excerpt,
+            slug,
+            tags,
+            category_id,
+            featured_image_url,
+            seo_title,
+            seo_description,
+            channel_slugs,
+            metadata: metadata_patch,
+            version,
+        } = input;
 
-        let locale = input
-            .locale
-            .clone()
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let mut update = UpdateNodeInput::default();
 
-        if input.title.is_some() || input.slug.is_some() || input.excerpt.is_some() {
+        if title.is_some() || slug.is_some() || excerpt.is_some() {
             update.translations = Some(vec![NodeTranslationInput {
                 locale: locale.clone(),
-                title: input.title,
-                slug: input.slug,
-                excerpt: input.excerpt,
+                title,
+                slug,
+                excerpt,
             }]);
         }
 
-        if input.body.is_some() || input.content_json.is_some() || input.body_format.is_some() {
+        if body.is_some() || content_json.is_some() || body_format.is_some() {
             let prepared_body = prepare_content_payload(
-                input.body_format.as_deref(),
-                input.body.as_deref(),
-                input.content_json.as_ref(),
+                body_format.as_deref(),
+                body.as_deref(),
+                content_json.as_ref(),
                 &locale,
                 "Body",
             )
@@ -199,35 +228,40 @@ impl PostService {
             }]);
         }
 
-        if input.tags.is_some()
-            || input.category_id.is_some()
-            || input.metadata.is_some()
-            || input.featured_image_url.is_some()
-            || input.seo_title.is_some()
-            || input.seo_description.is_some()
+        if tags.is_some()
+            || category_id.is_some()
+            || metadata_patch.is_some()
+            || featured_image_url.is_some()
+            || seo_title.is_some()
+            || seo_description.is_some()
+            || channel_slugs.is_some()
         {
-            let mut metadata = input.metadata.unwrap_or_else(|| serde_json::json!({}));
+            let mut metadata = existing.metadata.clone();
+            if let Some(override_metadata) = metadata_patch {
+                merge_metadata(&mut metadata, override_metadata);
+            }
             if let Value::Object(map) = &mut metadata {
-                if let Some(tags) = input.tags {
+                if let Some(tags) = tags {
                     map.insert("tags".to_string(), serde_json::json!(tags));
                 }
-                if let Some(cat_id) = input.category_id {
+                if let Some(cat_id) = category_id {
                     map.insert("category_id".to_string(), serde_json::json!(cat_id));
                 }
-                if let Some(url) = input.featured_image_url {
+                if let Some(url) = featured_image_url {
                     map.insert("featured_image_url".to_string(), serde_json::json!(url));
                 }
-                if let Some(seo_title) = input.seo_title {
+                if let Some(seo_title) = seo_title {
                     map.insert("seo_title".to_string(), serde_json::json!(seo_title));
                 }
-                if let Some(seo_desc) = input.seo_description {
+                if let Some(seo_desc) = seo_description {
                     map.insert("seo_description".to_string(), serde_json::json!(seo_desc));
                 }
             }
+            apply_channel_visibility_metadata(&mut metadata, channel_slugs.as_deref());
             update.metadata = Some(metadata);
         }
 
-        if let Some(version) = input.version {
+        if let Some(version) = version {
             update.expected_version = Some(version);
         }
 
@@ -527,6 +561,7 @@ impl PostService {
             featured_image_url,
             seo_title,
             seo_description,
+            channel_slugs: extract_channel_slugs(&node.metadata),
             metadata: node.metadata,
             comment_count: node.reply_count as i64,
             view_count: 0,
@@ -642,6 +677,7 @@ impl PostService {
                 category_name: None,
                 tags,
                 featured_image_url,
+                channel_slugs: extract_channel_slugs(&item.metadata),
                 comment_count: 0,
                 published_at: item.published_at.and_then(|p| p.parse().ok()),
                 created_at: item
@@ -732,6 +768,91 @@ impl PostService {
 
         Ok(node)
     }
+}
+
+fn merge_metadata(base: &mut Value, patch: Value) {
+    match patch {
+        Value::Object(patch_map) => {
+            if !base.is_object() {
+                *base = serde_json::json!({});
+            }
+            let base_map = base
+                .as_object_mut()
+                .expect("metadata must be an object after normalization");
+            for (key, value) in patch_map {
+                base_map.insert(key, value);
+            }
+        }
+        other => *base = other,
+    }
+}
+
+fn apply_channel_visibility_metadata(metadata: &mut Value, channel_slugs: Option<&[String]>) {
+    let Some(channel_slugs) = channel_slugs else {
+        return;
+    };
+
+    if !metadata.is_object() {
+        *metadata = serde_json::json!({});
+    }
+
+    let normalized = normalize_channel_slugs(channel_slugs);
+    let object = metadata
+        .as_object_mut()
+        .expect("metadata must be an object after normalization");
+
+    if normalized.is_empty() {
+        object.remove(CHANNEL_VISIBILITY_KEY);
+        return;
+    }
+
+    object.insert(
+        CHANNEL_VISIBILITY_KEY.to_string(),
+        serde_json::json!({
+            ALLOWED_CHANNEL_SLUGS_KEY: normalized,
+        }),
+    );
+}
+
+pub(crate) fn extract_channel_slugs(metadata: &Value) -> Vec<String> {
+    metadata
+        .get(CHANNEL_VISIBILITY_KEY)
+        .and_then(|value| value.get(ALLOWED_CHANNEL_SLUGS_KEY))
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            normalize_channel_slugs(
+                &items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn is_post_visible_for_channel(metadata: &Value, channel_slug: Option<&str>) -> bool {
+    let allowed_channel_slugs = extract_channel_slugs(metadata);
+    if allowed_channel_slugs.is_empty() {
+        return true;
+    }
+
+    let Some(channel_slug) = channel_slug else {
+        return false;
+    };
+
+    let normalized = channel_slug.trim().to_ascii_lowercase();
+    !normalized.is_empty() && allowed_channel_slugs.iter().any(|item| item == &normalized)
+}
+
+fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
+    let mut normalized = channel_slugs
+        .iter()
+        .map(|item| item.trim().to_ascii_lowercase())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
 }
 
 fn map_content_status(status: rustok_content::entities::node::ContentStatus) -> BlogPostStatus {
@@ -841,6 +962,7 @@ mod tests {
             featured_image_url: Some("https://cdn.example.com/img.jpg".to_string()),
             seo_title: Some("SEO заголовок".to_string()),
             seo_description: Some("SEO описание".to_string()),
+            channel_slugs: None,
             metadata: None,
             body_format: "markdown".to_string(),
             content_json: None,
@@ -859,7 +981,29 @@ mod tests {
         assert!(input.featured_image_url.is_none());
         assert!(input.seo_title.is_none());
         assert!(input.seo_description.is_none());
+        assert!(input.channel_slugs.is_none());
         assert!(input.version.is_none());
+    }
+
+    #[test]
+    fn channel_visibility_normalizes_and_filters_blog_metadata() {
+        let mut metadata = serde_json::json!({});
+        apply_channel_visibility_metadata(
+            &mut metadata,
+            Some(&[
+                " Web ".to_string(),
+                "mobile".to_string(),
+                "web".to_string(),
+            ]),
+        );
+
+        assert_eq!(
+            extract_channel_slugs(&metadata),
+            vec!["mobile".to_string(), "web".to_string()]
+        );
+        assert!(is_post_visible_for_channel(&metadata, Some("web")));
+        assert!(!is_post_visible_for_channel(&metadata, Some("storefront")));
+        assert!(!is_post_visible_for_channel(&metadata, None));
     }
 
     async fn setup_test_db() -> DatabaseConnection {
@@ -1072,6 +1216,7 @@ mod tests {
                     featured_image_url: None,
                     seo_title: None,
                     seo_description: None,
+                    channel_slugs: None,
                     metadata: None,
                     body_format: "markdown".to_string(),
                     content_json: None,
@@ -1159,6 +1304,7 @@ mod tests {
                     featured_image_url: None,
                     seo_title: None,
                     seo_description: None,
+                    channel_slugs: None,
                     metadata: None,
                     body_format: "markdown".to_string(),
                     content_json: None,
@@ -1183,6 +1329,7 @@ mod tests {
                     featured_image_url: None,
                     seo_title: None,
                     seo_description: None,
+                    channel_slugs: None,
                     metadata: None,
                     body_format: "markdown".to_string(),
                     content_json: None,

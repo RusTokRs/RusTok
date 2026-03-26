@@ -2,9 +2,9 @@ use async_graphql::{InputObject, SimpleObject};
 use rustok_search::{
     LaggingSearchDocument, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
     SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchConnectorDescriptor,
-    SearchDiagnosticsSnapshot, SearchDictionarySnapshot, SearchFilterPreset, SearchQueryRuleRecord,
-    SearchResult, SearchResultItem, SearchSettingsRecord, SearchStopWordRecord, SearchSuggestion,
-    SearchSynonymRecord,
+    SearchConsistencyIssue, SearchDiagnosticsSnapshot, SearchDictionarySnapshot,
+    SearchFilterPreset, SearchQueryRuleRecord, SearchResult, SearchResultItem,
+    SearchSettingsRecord, SearchStopWordRecord, SearchSuggestion, SearchSynonymRecord,
 };
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -164,10 +164,26 @@ pub struct SearchDiagnosticsPayload {
     pub content_documents: u64,
     pub product_documents: u64,
     pub stale_documents: u64,
+    pub missing_documents: u64,
+    pub orphaned_documents: u64,
     pub newest_indexed_at: Option<String>,
     pub oldest_indexed_at: Option<String>,
     pub max_lag_seconds: u64,
     pub state: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchConsistencyIssuePayload {
+    pub issue_kind: String,
+    pub document_key: String,
+    pub document_id: String,
+    pub source_module: String,
+    pub entity_type: String,
+    pub locale: String,
+    pub status: String,
+    pub title: String,
+    pub updated_at: String,
+    pub indexed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -192,6 +208,8 @@ pub struct SearchAnalyticsSummaryPayload {
     pub successful_queries: u64,
     pub zero_result_queries: u64,
     pub zero_result_rate: f64,
+    pub slow_queries: u64,
+    pub slow_query_rate: f64,
     pub avg_took_ms: f64,
     pub avg_results_per_query: f64,
     pub unique_queries: u64,
@@ -232,6 +250,7 @@ pub struct SearchAnalyticsPayload {
     pub summary: SearchAnalyticsSummaryPayload,
     pub top_queries: Vec<SearchAnalyticsQueryRowPayload>,
     pub zero_result_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    pub slow_queries: Vec<SearchAnalyticsQueryRowPayload>,
     pub low_ctr_queries: Vec<SearchAnalyticsQueryRowPayload>,
     pub abandonment_queries: Vec<SearchAnalyticsQueryRowPayload>,
     pub intelligence_candidates: Vec<SearchAnalyticsInsightRowPayload>,
@@ -429,10 +448,29 @@ impl From<SearchDiagnosticsSnapshot> for SearchDiagnosticsPayload {
             content_documents: value.content_documents,
             product_documents: value.product_documents,
             stale_documents: value.stale_documents,
+            missing_documents: value.missing_documents,
+            orphaned_documents: value.orphaned_documents,
             newest_indexed_at: value.newest_indexed_at.map(|value| value.to_rfc3339()),
             oldest_indexed_at: value.oldest_indexed_at.map(|value| value.to_rfc3339()),
             max_lag_seconds: value.max_lag_seconds,
             state: value.state,
+        }
+    }
+}
+
+impl From<SearchConsistencyIssue> for SearchConsistencyIssuePayload {
+    fn from(value: SearchConsistencyIssue) -> Self {
+        Self {
+            issue_kind: value.issue_kind,
+            document_key: value.document_key,
+            document_id: value.document_id.to_string(),
+            source_module: value.source_module,
+            entity_type: value.entity_type,
+            locale: value.locale,
+            status: value.status,
+            title: value.title,
+            updated_at: value.updated_at.to_rfc3339(),
+            indexed_at: value.indexed_at.map(|value| value.to_rfc3339()),
         }
     }
 }
@@ -463,6 +501,8 @@ impl From<SearchAnalyticsSummary> for SearchAnalyticsSummaryPayload {
             successful_queries: value.successful_queries,
             zero_result_queries: value.zero_result_queries,
             zero_result_rate: value.zero_result_rate,
+            slow_queries: value.slow_queries,
+            slow_query_rate: value.slow_query_rate,
             avg_took_ms: value.avg_took_ms,
             avg_results_per_query: value.avg_results_per_query,
             unique_queries: value.unique_queries,
@@ -516,6 +556,7 @@ impl From<SearchAnalyticsSnapshot> for SearchAnalyticsPayload {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            slow_queries: value.slow_queries.into_iter().map(Into::into).collect(),
             low_ctr_queries: value.low_ctr_queries.into_iter().map(Into::into).collect(),
             abandonment_queries: value
                 .abandonment_queries

@@ -33,6 +33,7 @@
 |---|---|
 | `auth` | `rustok-auth` |
 | `cache` | `rustok-cache` |
+| `channel` | `rustok-channel` |
 | `email` | `rustok-email` |
 | `index` | `rustok-index` |
 | `search` | `rustok-search` |
@@ -48,12 +49,13 @@
 | `cart` | `rustok-cart` | — |
 | `customer` | `rustok-customer` | — |
 | `product` | `rustok-product` | — |
+| `profiles` | `rustok-profiles` | — |
 | `pricing` | `rustok-pricing` | `product` |
 | `inventory` | `rustok-inventory` | `product` |
 | `order` | `rustok-order` | — |
 | `payment` | `rustok-payment` | — |
 | `fulfillment` | `rustok-fulfillment` | — |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
 | `blog` | `rustok-blog` | `content` |
 | `forum` | `rustok-forum` | `content` |
 | `pages` | `rustok-pages` | `content` |
@@ -85,7 +87,7 @@
 
 ## UI composition policy
 
-Для `Optional` modules UI должен поставляться самим модулем:
+Если у модуля есть UI, он должен поставляться самим модулем:
 
 - Leptos: через sub-crates `admin/` и `storefront/`
 - Next.js: через пакеты в `apps/next-admin/packages/*` и `apps/next-frontend/packages/*`

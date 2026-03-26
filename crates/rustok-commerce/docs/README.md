@@ -10,8 +10,11 @@
 
 ## Статус распила
 
-- `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment` и `rustok-fulfillment` уже выделены в отдельные crates и platform modules.
+- `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment` и `rustok-fulfillment` уже выделены в отдельные crates и platform modules.
 - `rustok-commerce` теперь играет роль `Ecommerce` umbrella/root module для всего ecommerce family и держит transport/API surface, orchestration и legacy-части, которые ещё не вынесены в отдельные модули.
+- Внутри `rustok-commerce` теперь есть и живой orchestration-layer `CheckoutService`, который собирает flow `cart -> payment -> order -> fulfillment` поверх отдельных подмодулей и применяет базовую compensation policy до этапа capture.
+- Внутри `rustok-commerce` теперь есть `StoreContextService`, который связывает `rustok-region` с tenant locales и резолвит storefront/checkout context по `region_id`, стране, locale и currency.
+- `payment` и `fulfillment` пока работают в built-in manual/default режиме; внешний provider layer сознательно отложен.
 - Общие DTO, entities, error surface и search helpers вынесены в `rustok-commerce-foundation`.
 
 ## Статус адаптеров

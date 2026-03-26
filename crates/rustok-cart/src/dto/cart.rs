@@ -2,20 +2,27 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateCartInput {
     pub customer_id: Option<Uuid>,
     #[validate(length(max = 255))]
     pub email: Option<String>,
+    pub region_id: Option<Uuid>,
+    #[validate(length(equal = 2))]
+    pub country_code: Option<String>,
+    #[validate(length(min = 2, max = 10))]
+    pub locale_code: Option<String>,
+    pub selected_shipping_option_id: Option<Uuid>,
     #[validate(length(equal = 3))]
     pub currency_code: String,
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct AddCartLineItemInput {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
@@ -29,12 +36,28 @@ pub struct AddCartLineItemInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct UpdateCartContextInput {
+    #[validate(length(max = 255))]
+    pub email: Option<String>,
+    pub region_id: Option<Uuid>,
+    #[validate(length(equal = 2))]
+    pub country_code: Option<String>,
+    #[validate(length(min = 2, max = 10))]
+    pub locale_code: Option<String>,
+    pub selected_shipping_option_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CartResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub customer_id: Option<Uuid>,
     pub email: Option<String>,
+    pub region_id: Option<Uuid>,
+    pub country_code: Option<String>,
+    pub locale_code: Option<String>,
+    pub selected_shipping_option_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
     pub total_amount: Decimal,
@@ -45,7 +68,7 @@ pub struct CartResponse {
     pub line_items: Vec<CartLineItemResponse>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CartLineItemResponse {
     pub id: Uuid,
     pub cart_id: Uuid,

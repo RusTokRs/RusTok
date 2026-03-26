@@ -18,6 +18,7 @@ pub fn PagesAdmin() -> impl IntoView {
     let (title, set_title) = signal(String::new());
     let (slug, set_slug) = signal(String::new());
     let (body, set_body) = signal(String::new());
+    let (channel_slugs_text, set_channel_slugs_text) = signal(String::new());
     let (locale, set_locale) = signal("en".to_string());
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
@@ -35,6 +36,7 @@ pub fn PagesAdmin() -> impl IntoView {
         set_title.set(String::new());
         set_slug.set(String::new());
         set_body.set(String::new());
+        set_channel_slugs_text.set(String::new());
         set_locale.set("en".to_string());
         set_publish_now.set(false);
     };
@@ -68,12 +70,14 @@ pub fn PagesAdmin() -> impl IntoView {
                         .body
                         .map(|page_body| page_body.content)
                         .unwrap_or_default();
+                    let page_channel_slugs = page.channel_slugs.join(", ");
 
                     set_editing_page_id.set(Some(page_id.clone()));
                     set_locale.set(page_locale);
                     set_title.set(page_title);
                     set_slug.set(page_slug);
                     set_body.set(page_body);
+                    set_channel_slugs_text.set(page_channel_slugs);
                     set_publish_now.set(page.status.eq_ignore_ascii_case("published"));
                 }
                 Ok(None) => {
@@ -97,6 +101,7 @@ pub fn PagesAdmin() -> impl IntoView {
             slug: slug.get_untracked().trim().to_string(),
             body: body.get_untracked().trim().to_string(),
             template: Some("default".to_string()),
+            channel_slugs: parse_channel_slugs(&channel_slugs_text.get_untracked()),
             publish: publish_now.get_untracked(),
         };
 
@@ -324,6 +329,20 @@ pub fn PagesAdmin() -> impl IntoView {
                                 prop:value=locale
                                 on:input=move |ev| set_locale.set(event_target_value(&ev))
                             />
+                        </label>
+
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Channel slugs"</span>
+                            <input
+                                type="text"
+                                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                placeholder="web, mobile-app"
+                                prop:value=channel_slugs_text
+                                on:input=move |ev| set_channel_slugs_text.set(event_target_value(&ev))
+                            />
+                            <span class="block text-xs text-muted-foreground">
+                                "Comma-separated allowlist. Leave empty to publish on all channels."
+                            </span>
                         </label>
 
                         <label class="block space-y-2">
@@ -555,4 +574,15 @@ fn slugify(value: &str) -> String {
         .filter(|segment| !segment.is_empty())
         .collect::<Vec<_>>()
         .join("-")
+}
+
+fn parse_channel_slugs(value: &str) -> Vec<String> {
+    let mut items = value
+        .split(',')
+        .map(|item| item.trim().to_ascii_lowercase())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    items.sort();
+    items.dedup();
+    items
 }

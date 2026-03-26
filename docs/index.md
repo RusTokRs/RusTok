@@ -61,6 +61,7 @@ graph TD
 - [Правила агентов](../AGENTS.md) — правила для AI-агентов и контрибьюторов.
 - [Архитектурные решения](../DECISIONS/README.md) — реестр архитектурных решений (ADR).
   - [ADR: Dual UI Strategy — Leptos primary, Next.js modular packages](../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)
+  - [ADR: `rustok-channel` как experimental core-модуль](../DECISIONS/2026-03-25-rustok-channel-experimental-core.md)
 - [Участие в разработке](../CONTRIBUTING.md) — инструкция по участию в разработке.
 - [Лицензия](../LICENSE) — лицензия MIT.
 
@@ -111,7 +112,7 @@ graph TD
 - [Манифест](./modules/manifest.md)
 - [План развития модульной платформы](./modules/module-system-plan.md) — актуальный roadmap по marketplace, install/uninstall, build/release, real frontend artifacts и UI codegen.
 - [План реализации модуля Search](../crates/rustok-search/docs/implementation-plan.md) — канонический roadmap для `rustok-search`, включая архитектурную границу с `rustok-index`, Postgres-first runtime, live dictionaries/query-rules UX, admin/storefront UI и optional-коннекторы.
-- [Runbook наблюдаемости модуля Search](../crates/rustok-search/docs/observability-runbook.md) — операторская инструкция по диагностике, lag/rebuild flow и Prometheus-метрикам `rustok-search`.
+- [Runbook наблюдаемости модуля Search](../crates/rustok-search/docs/observability-runbook.md) — операторская инструкция по диагностике, lag/rebuild/consistency flow и Prometheus-метрикам `rustok-search`.
 - [Plan внедрения rich-text (Tiptap) и GrapesJS Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Индекс модульной документации](./modules/_index.md)
 
@@ -185,6 +186,7 @@ graph TD
 - [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
 - [Документация crate `rustok-mcp`](../crates/rustok-mcp/docs/README.md)
 - [Документация crate `rustok-cache`](../crates/rustok-cache/docs/README.md)
+- [Документация crate `rustok-channel`](../crates/rustok-channel/docs/README.md)
 - [Документация crate `flex`](../crates/flex/docs/README.md)
 - [План реализации crate `flex`](../crates/flex/docs/implementation-plan.md)
 - [README crate `alloy`](../crates/alloy/README.md) � transport-shell ��� module-agnostic Alloy capability
@@ -196,6 +198,10 @@ graph TD
 - [Карта реестра доменных модулей](./modules/registry.md)
 - [README платформенного ядра](../crates/rustok-core/README.md)
 - [План реализации платформенного ядра](../crates/rustok-core/docs/implementation-plan.md)
+- [README модуля Channel](../crates/rustok-channel/README.md)
+- [Документация модуля Channel](../crates/rustok-channel/docs/README.md)
+- [Пакет админского UI для Channel](../crates/rustok-channel/admin/README.md)
+- [План реализации модуля Channel](../crates/rustok-channel/docs/implementation-plan.md)
 - [README crate `rustok-api`](../crates/rustok-api/README.md) — общий API-слой для tenant/auth/request/GraphQL helper-ов и thin UI host-contracts между host-приложениями и модульными адаптерами.
 - [Документация crate `rustok-api`](../crates/rustok-api/docs/README.md)
 - [README crate-контрактов событий](../crates/rustok-events/README.md) — канонический источник `DomainEvent`/`EventEnvelope`.
@@ -208,6 +214,9 @@ graph TD
 - [Документация модуля Cart](../crates/rustok-cart/docs/README.md)
 - [Документация модуля Customer](../crates/rustok-customer/docs/README.md)
 - [Документация модуля Product](../crates/rustok-product/docs/README.md)
+- [Документация модуля Profiles](../crates/rustok-profiles/docs/README.md)
+- [План реализации модуля Profiles](../crates/rustok-profiles/docs/implementation-plan.md)
+- [Документация модуля Region](../crates/rustok-region/docs/README.md)
 - [Документация модуля Pricing](../crates/rustok-pricing/docs/README.md)
 - [Документация модуля Inventory](../crates/rustok-inventory/docs/README.md)
 - [Документация модуля Order](../crates/rustok-order/docs/README.md)
@@ -216,7 +225,7 @@ graph TD
 - [Документация модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/README.md)
 - [Пакет админского UI для Commerce](../crates/rustok-commerce/admin/README.md)
 - [Пакет storefront UI для Commerce](../crates/rustok-commerce/storefront/README.md)
-- [План реализации модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/implementation-plan.md) — перенесённый в docs исследовательский migration-plan по Medusa-подобной перестройке `commerce`, с backlog противоречий, текущим split на `cart/customer/product/pricing/inventory/order/payment/fulfillment`, моделью `commerce` как root umbrella module и ссылками на актуальные Medusa v2 API
+- [План реализации модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/implementation-plan.md) — перенесённый в docs исследовательский migration-plan по Medusa-подобной перестройке `commerce`, с backlog противоречий, текущим split на `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`, моделью `commerce` как root umbrella module, первым Medusa-style transport slice на `/store` + `/admin` и ссылками на актуальные Medusa v2 API
 - [Документация crate `rustok-commerce-foundation`](../crates/rustok-commerce-foundation/docs/README.md)
 - [Документация модуля Blog](../crates/rustok-blog/docs/README.md)
 - [Пакет админского UI для Blog](../crates/rustok-blog/admin/README.md)
@@ -346,6 +355,7 @@ UI-пакеты Next.js публикуются локально и живут в
 - `rustok-mcp`: [README](../crates/rustok-mcp/README.md), [docs/README](../crates/rustok-mcp/docs/README.md) — MCP adapter crate поверх официального `rmcp` с identity/policy/runtime foundation; локальные docs ссылаются на upstream как на источник истины
 - `rustok-outbox`: [README](../crates/rustok-outbox/README.md), [docs/README](../crates/rustok-outbox/docs/README.md), [docs/implementation-plan](../crates/rustok-outbox/docs/implementation-plan.md)
 - `rustok-pages`: [README](../crates/rustok-pages/README.md), [docs/README](../crates/rustok-pages/docs/README.md), [docs/implementation-plan](../crates/rustok-pages/docs/implementation-plan.md)
+- `rustok-profiles`: [README](../crates/rustok-profiles/README.md), [docs/README](../crates/rustok-profiles/docs/README.md), [docs/implementation-plan](../crates/rustok-profiles/docs/implementation-plan.md)
 - `rustok-search`: [README](../crates/rustok-search/README.md), [docs/README](../crates/rustok-search/docs/README.md), [docs/implementation-plan](../crates/rustok-search/docs/implementation-plan.md)
 - `rustok-workflow`: [README](../crates/rustok-workflow/README.md), [docs/README](../crates/rustok-workflow/docs/README.md), [docs/implementation-plan](../crates/rustok-workflow/docs/implementation-plan.md) — workflow domain + module-owned GraphQL/REST adapters
 - `rustok-rbac`: [README](../crates/rustok-rbac/README.md), [docs/README](../crates/rustok-rbac/docs/README.md), [docs/implementation-plan](../crates/rustok-rbac/docs/implementation-plan.md)

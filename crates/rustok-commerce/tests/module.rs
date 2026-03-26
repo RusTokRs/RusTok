@@ -17,6 +17,7 @@ fn module_metadata() {
             "cart",
             "customer",
             "product",
+            "region",
             "pricing",
             "inventory",
             "order",

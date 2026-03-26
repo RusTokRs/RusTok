@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::engine::SearchEngineKind;
 use crate::models::SearchSettingsRecord;
+use crate::{SearchFilterPresetService, SearchRankingProfile};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "search_settings")]
@@ -61,6 +62,11 @@ impl SearchSettingsService {
         fallback_engine: SearchEngineKind,
         config: serde_json::Value,
     ) -> Result<SearchSettingsRecord, DbErr> {
+        SearchRankingProfile::validate_config(&config)
+            .map_err(|err| DbErr::Custom(err.to_string()))?;
+        SearchFilterPresetService::validate_config(&config)
+            .map_err(|err| DbErr::Custom(err.to_string()))?;
+
         let existing = if let Some(tenant_id) = tenant_id {
             Entity::find()
                 .filter(Column::TenantId.eq(tenant_id))
@@ -145,5 +151,30 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("active_engine"));
         assert!(message.contains("bogus"));
+    }
+
+    #[tokio::test]
+    async fn save_rejects_invalid_filter_preset_config() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+
+        let error = super::SearchSettingsService::save(
+            &db,
+            None,
+            crate::SearchEngineKind::Postgres,
+            crate::SearchEngineKind::Postgres,
+            serde_json::json!({
+                "filter_presets": {
+                    "storefront_search": [
+                        { "key": "bad key!", "label": "Broken" }
+                    ]
+                }
+            }),
+        )
+        .await
+        .expect_err("invalid config should fail");
+
+        assert!(error.to_string().contains("invalid characters"));
     }
 }

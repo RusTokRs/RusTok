@@ -28,6 +28,7 @@ pub struct CreatePostInput {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
 }
 
@@ -49,6 +50,7 @@ pub struct UpdatePostInput {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
     pub version: Option<i32>,
 }
@@ -75,6 +77,7 @@ pub struct PostResponse {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub metadata: Value,
     pub comment_count: i64,
     pub view_count: i64,
@@ -117,6 +120,7 @@ mod tests {
             featured_image_url: None,
             seo_title: None,
             seo_description: None,
+            channel_slugs: vec![],
             metadata: json!({}),
             comment_count: 0,
             view_count: 0,
@@ -171,6 +175,7 @@ pub struct PostSummary {
     pub category_name: Option<String>,
     pub tags: Vec<String>,
     pub featured_image_url: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub comment_count: i64,
     pub published_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,

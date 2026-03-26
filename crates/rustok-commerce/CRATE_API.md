@@ -7,7 +7,7 @@
 ## Primary public types and functions
 
 - `pub struct CommerceModule`
-- `pub struct CatalogService`, `pub struct InventoryService`, `pub struct PricingService`
+- `pub struct CatalogService`, `pub struct RegionService`, `pub struct StoreContextService`, `pub struct InventoryService`, `pub struct PricingService`
 - `pub struct CommerceQuery`, `pub struct CommerceMutation`
 - `pub fn controllers::routes() -> Routes`
 - `pub struct Order<S>` with states `Pending`, `Confirmed`, `Paid`, `Shipped`, `Delivered`, `Cancelled`
@@ -17,8 +17,10 @@
 
 - `dto`, `entities`, `error`, and search helpers are re-exported from `rustok-commerce-foundation`.
 - `CatalogService` is re-exported from `rustok-product`.
+- `RegionService` is re-exported from `rustok-region`.
 - `PricingService` is re-exported from `rustok-pricing`.
 - `InventoryService` is re-exported from `rustok-inventory`.
+- `StoreContextService` remains in `rustok-commerce` as the umbrella policy layer that resolves region/currency/tenant locale context.
 - `graphql`, `controllers`, and `state_machine` remain in `rustok-commerce` as the legacy compatibility
   and transport/orchestration facade of the ecommerce family.
 - `migrations()` exposes only umbrella-owned migrations that still remain in `rustok-commerce`.
@@ -37,6 +39,7 @@
 - `rustok-api`
 - `rustok-commerce-foundation`
 - `rustok-product`
+- `rustok-region`
 - `rustok-pricing`
 - `rustok-inventory`
 - `rustok-events`

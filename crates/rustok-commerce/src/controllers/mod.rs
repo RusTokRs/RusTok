@@ -1,6 +1,8 @@
+pub mod admin;
 mod common;
 pub mod inventory;
 pub mod products;
+pub mod store;
 pub mod variants;
 
 use axum::routing::{get, post, put};
@@ -8,7 +10,13 @@ use loco_rs::controller::Routes;
 
 pub fn routes() -> Routes {
     Routes::new()
-        .prefix("api/commerce")
+        .nest("/api/commerce", legacy_routes())
+        .nest("/store", store::routes())
+        .nest("/admin", admin::routes())
+}
+
+fn legacy_routes() -> Routes {
+    Routes::new()
         .add(
             "/products",
             get(products::list_products).post(products::create_product),

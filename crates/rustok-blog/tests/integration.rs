@@ -64,6 +64,7 @@ async fn test_post_lifecycle() -> TestResult<()> {
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -131,6 +132,7 @@ async fn test_create_and_publish_post() -> TestResult<()> {
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -184,6 +186,7 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
                     featured_image_url: None,
                     seo_title: None,
                     seo_description: None,
+                    channel_slugs: None,
                     metadata: None,
                 },
             )
@@ -252,6 +255,7 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -275,6 +279,7 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -321,6 +326,7 @@ async fn test_cannot_delete_published_post() -> TestResult<()> {
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -688,6 +694,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -767,6 +774,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                channel_slugs: None,
                 metadata: None,
             },
         )
@@ -1134,6 +1142,7 @@ mod unit_tests {
             featured_image_url: Some("https://example.com/image.jpg".to_string()),
             seo_title: Some("SEO заголовок".to_string()),
             seo_description: Some("SEO описание для поисковиков".to_string()),
+            channel_slugs: None,
             metadata: None,
         };
 

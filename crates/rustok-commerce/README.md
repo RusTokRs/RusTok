@@ -9,9 +9,14 @@
 - Provide `CommerceModule` metadata for the runtime registry.
 - Serve as the umbrella entry point for the ecommerce family.
 - Preserve the legacy GraphQL and REST transport surface during the transition.
+- Expose the first Medusa-style REST transport slice under `/store/*` and `/admin/*` alongside legacy `/api/commerce/*`.
+- Resolve storefront cart line items from server-owned catalog/pricing data using `variant_id + quantity`, instead of trusting client-provided title and price.
 - Orchestrate submodules of the ecommerce family through the compatibility layer.
+- Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
+- Own store-context resolution across region, currency, and tenant locale policy.
 - Re-export the shared DTO/entity/error surface from `rustok-commerce-foundation`.
-- Re-export `CartService`, `CustomerService`, `CatalogService`, `PricingService`, `InventoryService`, `OrderService`, `PaymentService`, and `FulfillmentService` from the split modules.
+- Re-export `CartService`, `CustomerService`, `CatalogService`, `PricingService`, `InventoryService`, `OrderService`, `PaymentService`, `FulfillmentService`, and `CheckoutService` from the split modules and orchestration layer.
+- Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
 - Keep legacy commerce-owned state-machine and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
@@ -21,16 +26,16 @@
 
 - Depends on `rustok-core` for module contracts and permission vocabulary.
 - Depends on `rustok-commerce-foundation` for shared DTOs, entities, search helpers, and errors.
-- Depends on `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-pricing`, `rustok-inventory`, `rustok-order`,
-  `rustok-payment`, and `rustok-fulfillment` as the default cart, customer, product, pricing, inventory, order,
-  payment, and fulfillment submodules of the ecommerce family.
+- Depends on `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`,
+  `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment` as the default cart,
+  customer, product, region, pricing, inventory, order, payment, and fulfillment submodules of the ecommerce family.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
 - Depends on `rustok-outbox` and `rustok-events` for transactional domain-event publishing.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
 - `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned catalog control room mounted under `/modules/commerce`.
 - `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with a public catalog surface mounted under `/modules/commerce`.
 - Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,
-  `payments`, `fulfillments`, `inventory`, and `discounts`.
+  `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.
 - Transport adapters validate permissions against `AuthContext.permissions`, then invoke
   commerce services or direct tenant-scoped SeaORM reads where the module still owns the
   read-model assembly.
@@ -43,9 +48,12 @@
 - `CatalogService`
 - `PricingService`
 - `InventoryService`
+- `RegionService`
 - `OrderService`
 - `PaymentService`
 - `FulfillmentService`
+- `CheckoutService`
+- `StoreContextService`
 - `graphql::CommerceQuery`
 - `graphql::CommerceMutation`
 - `controllers::routes`

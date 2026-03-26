@@ -111,6 +111,10 @@ pub struct SearchDiagnosticsPayload {
     pub product_documents: u64,
     #[serde(rename = "staleDocuments")]
     pub stale_documents: u64,
+    #[serde(rename = "missingDocuments")]
+    pub missing_documents: u64,
+    #[serde(rename = "orphanedDocuments")]
+    pub orphaned_documents: u64,
     #[serde(rename = "newestIndexedAt")]
     pub newest_indexed_at: Option<String>,
     #[serde(rename = "oldestIndexedAt")]
@@ -118,6 +122,27 @@ pub struct SearchDiagnosticsPayload {
     #[serde(rename = "maxLagSeconds")]
     pub max_lag_seconds: u64,
     pub state: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchConsistencyIssuePayload {
+    #[serde(rename = "issueKind")]
+    pub issue_kind: String,
+    #[serde(rename = "documentKey")]
+    pub document_key: String,
+    #[serde(rename = "documentId")]
+    pub document_id: String,
+    #[serde(rename = "sourceModule")]
+    pub source_module: String,
+    #[serde(rename = "entityType")]
+    pub entity_type: String,
+    pub locale: String,
+    pub status: String,
+    pub title: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(rename = "indexedAt")]
+    pub indexed_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -173,6 +198,10 @@ pub struct SearchAnalyticsSummaryPayload {
     pub zero_result_queries: u64,
     #[serde(rename = "zeroResultRate")]
     pub zero_result_rate: f64,
+    #[serde(rename = "slowQueries")]
+    pub slow_queries: u64,
+    #[serde(rename = "slowQueryRate")]
+    pub slow_query_rate: f64,
     #[serde(rename = "avgTookMs")]
     pub avg_took_ms: f64,
     #[serde(rename = "avgResultsPerQuery")]
@@ -233,6 +262,8 @@ pub struct SearchAnalyticsPayload {
     pub top_queries: Vec<SearchAnalyticsQueryRowPayload>,
     #[serde(rename = "zeroResultQueries")]
     pub zero_result_queries: Vec<SearchAnalyticsQueryRowPayload>,
+    #[serde(rename = "slowQueries")]
+    pub slow_queries: Vec<SearchAnalyticsQueryRowPayload>,
     #[serde(rename = "lowCtrQueries")]
     pub low_ctr_queries: Vec<SearchAnalyticsQueryRowPayload>,
     #[serde(rename = "abandonmentQueries")]

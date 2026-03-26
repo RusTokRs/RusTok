@@ -12,6 +12,8 @@ Medusa v2.
 - не разрешать архитектурные противоречия прямо в тексте плана;
 - фиксировать противоречия как **backlog согласования и внедрения**;
 - держать целевую модель такой же, как в исследовании: распил `commerce` на Medusa-подобные модули.
+- считать **Medusa эталоном функциональности ecommerce-направления**: маршруты, semantics, lifecycle и
+  transport behavior сверяются сначала с официальными docs Medusa, а потом адаптируются под RusToK.
 
 Сверка Medusa docs выполнена **25 марта 2026 года** по официальным страницам `docs.medusajs.com`.
 
@@ -24,6 +26,10 @@ Medusa v2.
   Payment / Fulfillment / Region / ...`;
 - сохранить текущие RusToK-контракты на переходный период;
 - добавить Medusa-подобный REST-слой под `/store/*` и `/admin/*`;
+- использовать Medusa как **source of truth** для ecommerce REST-функционала, а собственные RusToK
+  расширения вводить только там, где они нужны для tenancy, RBAC, runtime wiring или dual-transport модели;
+- сохранить и развивать GraphQL surface RusToK параллельно REST-слою: GraphQL не заменяет Medusa parity,
+  а работает как второй transport над теми же application services и доменными модулями;
 - сохранить модульный монолит RusToK, CQRS read-path через `rustok-index`,
   transactional outbox и tenant isolation.
 
@@ -139,6 +145,13 @@ flowchart LR
 - Admin API описывает metadata merge semantics и auth-модели;
 - Store/Admin routes в Medusa опираются на workflows.
 
+Правило сверки:
+
+- Medusa является эталоном именно для ecommerce REST contract и transport behavior;
+- RusToK дополнительно сохраняет GraphQL, но GraphQL должен опираться на те же application services,
+  workflows и доменные модули, что и REST;
+- нельзя считать GraphQL-ветку основанием для отклонения от Medusa REST semantics.
+
 ## API-совместимость: baseline для сверки
 
 Ниже переносится baseline из исследования. Это не “все возможные endpoints Medusa”, а минимальный
@@ -156,6 +169,8 @@ flowchart LR
 | `/store/carts` | `POST` | `/store/carts` | create cart |
 | `/store/carts/{id}` | `GET` | `/store/carts/{id}` | retrieve cart |
 | `/store/carts/{id}/line-items` | `POST` | `/store/carts/{id}/line-items` | add line item |
+| `/store/carts/{id}/line-items/{line_id}` | `POST` | `/store/carts/{id}/line-items/{line_id}` | update line item quantity |
+| `/store/carts/{id}/line-items/{line_id}` | `DELETE` | `/store/carts/{id}/line-items/{line_id}` | remove line item |
 | `/store/orders` | `POST` | `/store/orders` | place order |
 | `/store/orders/{id}` | `GET` | `/store/orders/{id}` | retrieve order |
 | `/admin/orders` | `GET` | `/admin/orders` | admin list orders |
@@ -170,8 +185,10 @@ flowchart LR
 - `fields`
 - `metadata`
 - `locale` и `x-medusa-locale`
+- storefront cart line items создаются из `variant_id + quantity`, а title/price резолвятся backend-ом
 - predictable error mapping
 - publishable API key behavior для `/store/*`
+- GraphQL использует те же доменные сервисы и не вводит отдельную ecommerce semantics
 
 ## Фазовый план
 
@@ -305,6 +322,8 @@ flowchart LR
 - выделен `rustok-customer` со схемой `customers` и storefront-customer boundary;
 - выделен `rustok-payment` со схемой `payment_collections / payments` и базовым lifecycle `pending -> authorized -> captured/cancelled`;
 - выделен `rustok-fulfillment` со схемой `shipping_options / fulfillments` и базовым shipment lifecycle `pending -> shipped -> delivered/cancelled`;
+- в `rustok-commerce` добавлен `CheckoutService`, который собирает orchestration flow `cart -> payment -> order -> fulfillment` и включает базовую compensation policy на pre-capture стадиях;
+- внешний provider layer для payment/fulfillment сознательно не вводится на текущем этапе; модули работают в built-in manual/default режиме по аналогии с ранним Medusa-style baseline;
 - migration smoke подтверждает cart/order/customer/payment/fulfillment baseline на реальном server migrator.
 
 Критерий завершения:
@@ -315,7 +334,7 @@ flowchart LR
 
 ### Phase 4. Medusa-compatible transport layer
 
-Статус: `not started`
+Статус: `in progress`
 
 Цель:
 
@@ -329,10 +348,182 @@ flowchart LR
 - повесить слой за feature flag;
 - привязать contract tests к официальным docs/OpenAPI.
 
+Что уже сделано:
+
+- поднят первый Medusa-style transport slice прямо в `rustok-commerce` под `/store/*` и `/admin/*`
+  параллельно legacy `/api/commerce/*`;
+- реализованы storefront routes `products`, `regions`, `shipping-options`, `carts`,
+  `payment-collections`, `orders/{id}`, `customers/me`;
+- реализованы admin routes для `products`;
+- добавлена поддержка `x-medusa-locale`;
+- storefront cart line items переведены на Medusa-like shape `variant_id + quantity`, а title/price
+  теперь резолвятся backend-ом из catalog/pricing;
+- добавлены contract tests на наличие route-tree и OpenAPI wiring.
+
+Следующий обязательный checkpoint:
+
+- довести cart context persistence до Medusa-like модели: cart должен стать носителем store context
+  (`region`, `customer`, `email`, `locale`, далее при необходимости shipping/billing context), а не
+  опираться только на request-time resolution;
+- именно с этого пункта должна начинаться следующая сессия по ecommerce migration.
+
 Критерий завершения:
 
 - новый REST-слой работает параллельно legacy surface;
 - ключевые store/admin flows проходят contract tests.
+
+### Детализация следующей волны внутри Phase 4
+
+Текущий checkpoint по cart context требует отдельной декомпозиции, чтобы следующая
+сессия не начиналась с повторного переоткрытия уже согласованных вопросов.
+
+Наблюдаемое состояние кода на момент продолжения плана:
+
+- `StoreContextService` умеет резолвить `region / locale / currency` на request-time;
+- `POST /store/carts` уже принимает `region_id`, `country_code`, `locale`, но в самой корзине
+  persist'ятся только `customer_id`, `email` и `currency_code`;
+- `GET /store/shipping-options`, `POST /store/carts`, `POST /store/carts/{id}/complete`
+  по-прежнему зависят от request-time context resolution;
+- cart пока не является полноценным носителем storefront session state в Medusa-like смысле.
+
+Из этого следует правило следующей волны:
+
+- cart должен стать **persisted aggregate для store context**;
+- request headers и query params должны использоваться только для initial resolution или
+  явного обновления cart context;
+- checkout, payment collection и shipping selection должны читать context из корзины, а не
+  повторно пересобирать его при каждом запросе.
+
+#### Phase 4A. Persisted cart context
+
+Статус: `next`
+
+Цель:
+
+- довести `rustok-cart` от "денежной корзины с line items" до cart session aggregate.
+
+Что добавить в модель корзины:
+
+- `region_id` как link на `rustok-region` без превращения `cart` в владельца region domain;
+- `locale_code` как snapshot выбранной storefront locale;
+- `country_code` как optional snapshot для последующего повторного region resolution и аудита;
+- `selected_shipping_option_id` как optional link для checkout/shipping flow;
+- задел под `shipping_address` и `billing_address`, но без обязательного ввода адресного домена
+  в той же волне.
+
+Что важно сохранить:
+
+- `customer_id`, `email` и `currency_code` уже являются частью cart context и не должны
+  дублироваться в новом side-table без необходимости;
+- `currency_code` должен оставаться согласованным с выбранным регионом;
+- `locale` не переезжает в `rustok-region`: platform ownership tenant locales остается прежним.
+
+Конкретные задачи:
+
+- расширить schema `carts` и DTO/cart responses новыми полями context snapshot;
+- добавить cart-level validation: `region_id <-> currency_code`, `locale_code` against enabled tenant locales;
+- определить migration/backfill policy для уже созданных cart records с `NULL`-контекстом;
+- не вводить hard dependency-cycle `rustok-cart -> rustok-commerce`; orchestration и validation,
+  зависящие от нескольких модулей, остаются на уровне umbrella/facade.
+
+Критерий завершения:
+
+- cart хранит достаточно данных, чтобы checkout не зависел от request-time locale/region resolution;
+- старые carts остаются читаемыми и проходят migration path без ручного SQL.
+
+#### Phase 4B. Cart-centered transport semantics
+
+Статус: `next`
+
+Цель:
+
+- перевести storefront transport с request-centric модели на cart-centric lifecycle.
+
+Что должно измениться в API behavior:
+
+- `POST /store/carts` создает cart сразу с persisted context snapshot;
+- нужен явный update-path для cart context, вместо передачи `region_id/country_code/locale`
+  только в checkout endpoint;
+- `GET /store/carts/{id}` должен возвращать не только line items и totals, но и persisted
+  storefront context, либо через расширенный `CartResponse`, либо через единый store-cart envelope;
+- `POST /store/payment-collections` и `GET /store/shipping-options` должны опираться на cart context,
+  а не требовать повторной передачи тех же параметров;
+- `POST /store/carts/{id}/complete` должен использовать cart как source of truth, а request body
+  должен постепенно сузиться до checkout-specific choices и explicit overrides, если они вообще нужны.
+
+Отдельный подзадачный блок:
+
+- определить, нужен ли Medusa-like `POST /store/carts/{id}` как основной cart update route;
+- зафиксировать response shape для store cart APIs, чтобы create/get/update/read-path не расходились;
+- ввести предсказуемую precedence policy: persisted cart context > explicit cart update > request headers/query.
+
+Критерий завершения:
+
+- storefront cart становится долгоживущим session object, а не временным контейнером line items;
+- context drift между `create cart`, `shipping options`, `payment collection` и `complete checkout`
+  устранен на уровне transport contract.
+
+#### Phase 4C. Checkout hardening после переноса context в cart
+
+Статус: `next`
+
+Цель:
+
+- после persistence cart context сделать checkout менее хрупким и ближе к production-grade flow.
+
+Конкретные задачи:
+
+- перевести `CheckoutService` на чтение `region/locale/customer/email/shipping option` из cart snapshot;
+- ввести idempotency policy минимум для `POST /store/payment-collections` и
+  `POST /store/carts/{id}/complete`;
+- определить, где живет статус "checkout in progress" и как блокируются повторные racey-complete вызовы;
+- зафиксировать, какие failure stages компенсируются автоматически, а какие переходят в manual remediation;
+- проверить order/payment/fulfillment metadata snapshot, чтобы итоговый order сохранял storefront context,
+  использованный в checkout.
+
+Отдельно не делать в этой волне:
+
+- полноценный внешний provider/plugin layer для payment и fulfillment;
+- глубокий address-management domain;
+- deprecation legacy GraphQL/REST surface.
+
+Критерий завершения:
+
+- повторный вызов checkout не создает дублирующие order/payment записи без явной причины;
+- order snapshot воспроизводимо объясняет, из какого cart/store context был оформлен заказ.
+
+#### Phase 4D. Contract tests и rollout guardrails
+
+Статус: `next`
+
+Цель:
+
+- превратить cart-context redesign в проверяемый contract, а не в скрытую внутрирепозиторную доработку.
+
+Обязательные тесты следующей волны:
+
+- migration tests для новых cart context columns и backfill path;
+- integration tests: `create cart -> update context -> add line item -> shipping options -> payment collection -> complete`;
+- negative tests на mismatch `currency_code` vs `region_id`;
+- auth/customer ownership tests для cart update и checkout;
+- contract tests на response shape store cart endpoints;
+- regression tests, подтверждающие, что legacy `/api/commerce/*` и GraphQL не ломаются от нового cart snapshot.
+
+Release guardrails:
+
+- нельзя считать checkpoint закрытым, пока `complete checkout` еще принимает критичный store context
+  только через request-time параметры;
+- нельзя убирать fallback на request-time resolution, пока migration/backfill не покрыт тестами;
+- нельзя расширять Medusa-compat scope дальше cart/order flow, пока не стабилизирован cart context contract.
+
+### Рекомендуемый порядок выполнения после текущего checkpoint
+
+1. Сначала расширить schema и DTO корзины, не меняя внешнее поведение checkout.
+2. Затем добавить явный update-path для persisted cart context и унифицировать response shape.
+3. После этого перевести shipping/payment/checkout на чтение context из cart.
+4. Только затем включать idempotency, race protection и rollout telemetry для нового flow.
+5. Уже после стабилизации cart context расширять Medusa-compat на следующие store/admin endpoints и
+   готовить controlled deprecation legacy surface.
 
 ### Phase 5. Rollout и deprecation legacy surface
 
@@ -347,6 +538,8 @@ flowchart LR
 - включить telemetry по новому и старому API;
 - раскатывать через feature flag / canary;
 - сохранить `/api/commerce/*` и GraphQL на переходный период;
+- отдельно контролировать parity между REST и GraphQL, так как у Medusa эталонным является REST,
+  а у RusToK transport-модель шире (`REST + GraphQL`);
 - добавить deprecation headers и migration guide;
 - убрать legacy только после подтвержденного снижения использования.
 
@@ -363,6 +556,7 @@ flowchart LR
 - integration tests для event publication и `rustok-index`;
 - Postgres migration tests;
 - contract tests для `/store/*` и `/admin/*`;
+- parity tests для `REST <-> GraphQL` поверх общих application services;
 - smoke tests маршрутизации;
 - tenant/RBAC regression tests.
 

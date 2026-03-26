@@ -126,6 +126,7 @@ Already implemented:
   storage for search dictionaries and merchandising rules
 - PostgreSQL FTS runtime over `search_documents`
 - canonical search contracts and settings persistence
+- backend validation for `ranking_profiles` and `filter_presets`
 - tenant-scoped GraphQL access and stricter search input validation
 - async ingestion from content and product events
 - queued rebuild flow for `search`, `content`, `product`, and optional target IDs
@@ -140,16 +141,20 @@ Already implemented:
 - live admin settings editor for active/fallback engine selection and JSON config
 - public click tracking via `trackSearchClick`
 - raw stale-document diagnostics via `searchLaggingDocuments`
+- missing/orphaned projection diagnostics via `searchDiagnostics` counters and
+  raw `searchConsistencyIssues`
 - admin FTS preview via `searchPreview`
 - dedicated host-level admin quick search via `adminGlobalSearch`
 - public storefront search via `storefrontSearch`
 - PostgreSQL typo-tolerant fallback over `pg_trgm` for zero-result searches
 - built-in ranking profiles with per-surface defaults and admin preview override
+- structured admin editors for ranking defaults and filter presets on both hosts
 - read-only search query path without bootstrap rebuild side effects
 - dedicated storefront rate limiting and outbox-backed audit events for
   settings/rebuild actions
 - healthier diagnostics state model for truly empty tenants
 - query-log-backed CTR, abandonment, low-CTR, and intelligence analytics
+- slow-query rate analytics and slow-query leaderboard
 - tenant-owned query normalization with stop-word removal and synonym expansion
 - exact-query pinned-result merchandising rules applied on admin/storefront search
 - local observability runbook for rebuilds, lag handling, and metrics
@@ -190,7 +195,7 @@ Not implemented yet:
 - [x] Use PostgreSQL FTS primitives first
 - [x] Add filters and facets for `entity_type`, `source_module`, `status`
 - [x] Add highlights/snippets
-- [ ] Finish ranking profile hardening
+- [x] Finish ranking profile hardening
 - [ ] Add broader sorting/profile controls
 
 ### Phase S3 - Ingestion pipeline
@@ -199,7 +204,7 @@ Not implemented yet:
 - [x] Add event-driven upsert/delete
 - [x] Add queued rebuild flows
 - [ ] Add retry / DLQ strategy
-- [ ] Add consistency checks between source state and search state
+- [x] Add consistency checks between source state and search state
 - [ ] Add richer rebuild scopes such as locale-wide reindexing where needed
 
 ### Phase S4 - API surfaces
@@ -226,6 +231,7 @@ Not implemented yet:
 - [x] Add overview, playground, analytics, diagnostics, dictionaries surfaces
 - [x] Add scoped rebuild UI
 - [x] Add raw lagging document diagnostics
+- [x] Add raw consistency diagnostics for missing/orphaned projection records
 - [x] Add engine/settings editor
 - [x] Build global admin search experience
 
@@ -236,7 +242,7 @@ Not implemented yet:
 - [x] Query normalization policy
 - [x] Typo tolerance
 - [x] Suggestions/autocomplete
-- [ ] Filter presets
+- [x] Filter presets
 - [x] Ranking profiles
 - [ ] Boost/bury rules
 - [x] Query rules (exact pinned-result rules)
@@ -248,7 +254,7 @@ Not implemented yet:
 - [x] Query volume metrics
 - [x] Search latency metrics
 - [x] Zero-result rate
-- [ ] Slow-query rate
+- [x] Slow-query rate
 - [x] Indexing lag metrics
 - [x] Failed indexing rate
 - [x] Storefront rate-limit outcome metrics

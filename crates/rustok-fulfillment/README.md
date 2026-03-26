@@ -9,6 +9,7 @@
 - Own shipping-option and fulfillment storage.
 - Prepare a stable shipping boundary for checkout orchestration.
 - Keep shipment lifecycle transitions isolated from the ecommerce umbrella.
+- Provide a built-in manual/default fulfillment flow for the current stage, without external carrier providers.
 
 ## Interactions
 

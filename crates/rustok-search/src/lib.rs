@@ -19,8 +19,12 @@ pub mod suggestions;
 pub use analytics::{
     SearchAnalyticsInsightRow, SearchAnalyticsQueryRow, SearchAnalyticsService,
     SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchClickRecord, SearchQueryLogRecord,
+    SLOW_QUERY_THRESHOLD_MS,
 };
-pub use diagnostics::{LaggingSearchDocument, SearchDiagnosticsService, SearchDiagnosticsSnapshot};
+pub use diagnostics::{
+    LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,
+    SearchDiagnosticsSnapshot,
+};
 pub use dictionaries::{
     SearchDictionaryService, SearchDictionarySnapshot, SearchQueryRuleRecord, SearchQueryTransform,
     SearchStopWordRecord, SearchSynonymRecord,

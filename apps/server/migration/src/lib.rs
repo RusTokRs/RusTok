@@ -50,9 +50,11 @@ impl MigratorTrait for Migrator {
         // the server migrator in chronological order.
         all.extend(alloy_scripting::migrations::migrations());
         all.extend(rustok_auth::migrations::migrations());
+        all.extend(rustok_channel::migrations::migrations());
         all.extend(rustok_cart::migrations::migrations());
         all.extend(rustok_customer::migrations::migrations());
         all.extend(rustok_product::migrations::migrations());
+        all.extend(rustok_region::migrations::migrations());
         all.extend(rustok_pricing::migrations::migrations());
         all.extend(rustok_inventory::migrations::migrations());
         all.extend(rustok_order::migrations::migrations());

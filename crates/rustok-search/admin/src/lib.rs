@@ -10,9 +10,9 @@ use rustok_api::UiRouteContext;
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
-    SearchDiagnosticsPayload, SearchDictionarySnapshotPayload, SearchFacetGroup,
-    SearchFilterPresetPayload, SearchPreviewFilters, SearchPreviewPayload, SearchQueryRulePayload,
-    SearchStopWordPayload, SearchSynonymPayload,
+    SearchConsistencyIssuePayload, SearchDiagnosticsPayload, SearchDictionarySnapshotPayload,
+    SearchFacetGroup, SearchFilterPresetPayload, SearchPreviewFilters, SearchPreviewPayload,
+    SearchQueryRulePayload, SearchStopWordPayload, SearchSynonymPayload,
 };
 
 #[component]
@@ -48,6 +48,14 @@ pub fn SearchAdmin() -> impl IntoView {
     let (settings_active_engine, set_settings_active_engine) = signal("postgres".to_string());
     let (settings_fallback_engine, set_settings_fallback_engine) = signal("postgres".to_string());
     let (settings_config, set_settings_config) = signal("{}".to_string());
+    let (ranking_default_profile, set_ranking_default_profile) = signal("balanced".to_string());
+    let (ranking_preview_profile, set_ranking_preview_profile) = signal("balanced".to_string());
+    let (ranking_storefront_profile, set_ranking_storefront_profile) =
+        signal("balanced".to_string());
+    let (ranking_admin_global_profile, set_ranking_admin_global_profile) =
+        signal("exact".to_string());
+    let (preview_presets_config, set_preview_presets_config) = signal("[]".to_string());
+    let (storefront_presets_config, set_storefront_presets_config) = signal("[]".to_string());
     let (settings_busy, set_settings_busy) = signal(false);
     let (settings_feedback, set_settings_feedback) = signal(Option::<String>::None);
 
@@ -61,6 +69,12 @@ pub fn SearchAdmin() -> impl IntoView {
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_lagging_documents(token_value, tenant_value, Some(25)).await
+        },
+    );
+    let consistency_issues = Resource::new(
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
+            api::fetch_consistency_issues(token_value, tenant_value, Some(25)).await
         },
     );
     let search_analytics = Resource::new(
@@ -84,6 +98,21 @@ pub fn SearchAdmin() -> impl IntoView {
             set_settings_config.set(pretty_json_string(
                 &bootstrap.search_settings_preview.config,
             ));
+            if let Some(config) = parse_json_for_editor(&bootstrap.search_settings_preview.config) {
+                set_ranking_default_profile.set(extract_ranking_profile_value(&config, "default"));
+                set_ranking_preview_profile
+                    .set(extract_ranking_profile_value(&config, "search_preview"));
+                set_ranking_storefront_profile
+                    .set(extract_ranking_profile_value(&config, "storefront_search"));
+                set_ranking_admin_global_profile.set(extract_ranking_profile_value(
+                    &config,
+                    "admin_global_search",
+                ));
+                set_preview_presets_config
+                    .set(extract_surface_presets_json(&config, "search_preview"));
+                set_storefront_presets_config
+                    .set(extract_surface_presets_json(&config, "storefront_search"));
+            }
         }
     });
 
@@ -208,6 +237,7 @@ pub fn SearchAdmin() -> impl IntoView {
                                 analytics_view(
                                     bootstrap.search_diagnostics,
                                     lagging_documents,
+                                    consistency_issues,
                                     search_analytics,
                                 )
                                 .into_any()
@@ -222,11 +252,38 @@ pub fn SearchAdmin() -> impl IntoView {
                                     set_settings_fallback_engine,
                                     settings_config,
                                     set_settings_config,
+                                    ranking_default_profile,
+                                    set_ranking_default_profile,
+                                    ranking_preview_profile,
+                                    set_ranking_preview_profile,
+                                    ranking_storefront_profile,
+                                    set_ranking_storefront_profile,
+                                    ranking_admin_global_profile,
+                                    set_ranking_admin_global_profile,
+                                    preview_presets_config,
+                                    set_preview_presets_config,
+                                    storefront_presets_config,
+                                    set_storefront_presets_config,
                                     settings_busy,
                                     settings_feedback,
                                     move |_| {
                                         let config = settings_config.get_untracked();
-                                        if parse_json_for_editor(&config).is_none() {
+                                        let merged_config = match merge_relevance_editor_config(
+                                            &config,
+                                            &ranking_default_profile.get_untracked(),
+                                            &ranking_preview_profile.get_untracked(),
+                                            &ranking_storefront_profile.get_untracked(),
+                                            &ranking_admin_global_profile.get_untracked(),
+                                            &preview_presets_config.get_untracked(),
+                                            &storefront_presets_config.get_untracked(),
+                                        ) {
+                                            Ok(config) => config,
+                                            Err(err) => {
+                                                set_settings_feedback.set(Some(err));
+                                                return;
+                                            }
+                                        };
+                                        if parse_json_for_editor(&merged_config).is_none() {
                                             set_settings_feedback.set(Some(
                                                 "Settings config must be valid JSON.".to_string(),
                                             ));
@@ -248,7 +305,7 @@ pub fn SearchAdmin() -> impl IntoView {
                                                     tenant_value,
                                                     active_engine,
                                                     Some(fallback_engine),
-                                                    config,
+                                                    merged_config,
                                                 )
                                                 .await
                                                 {
@@ -263,6 +320,45 @@ pub fn SearchAdmin() -> impl IntoView {
                                                         set_settings_config.set(pretty_json_string(
                                                             &settings.config,
                                                         ));
+                                                        if let Some(config) =
+                                                            parse_json_for_editor(&settings.config)
+                                                        {
+                                                            set_ranking_default_profile.set(
+                                                                extract_ranking_profile_value(
+                                                                    &config, "default",
+                                                                ),
+                                                            );
+                                                            set_ranking_preview_profile.set(
+                                                                extract_ranking_profile_value(
+                                                                    &config,
+                                                                    "search_preview",
+                                                                ),
+                                                            );
+                                                            set_ranking_storefront_profile.set(
+                                                                extract_ranking_profile_value(
+                                                                    &config,
+                                                                    "storefront_search",
+                                                                ),
+                                                            );
+                                                            set_ranking_admin_global_profile.set(
+                                                                extract_ranking_profile_value(
+                                                                    &config,
+                                                                    "admin_global_search",
+                                                                ),
+                                                            );
+                                                            set_preview_presets_config.set(
+                                                                extract_surface_presets_json(
+                                                                    &config,
+                                                                    "search_preview",
+                                                                ),
+                                                            );
+                                                            set_storefront_presets_config.set(
+                                                                extract_surface_presets_json(
+                                                                    &config,
+                                                                    "storefront_search",
+                                                                ),
+                                                            );
+                                                        }
                                                         set_refresh_nonce
                                                             .update(|value| *value += 1);
                                                     }
@@ -306,6 +402,18 @@ fn overview_view(
     set_settings_fallback_engine: WriteSignal<String>,
     settings_config: ReadSignal<String>,
     set_settings_config: WriteSignal<String>,
+    ranking_default_profile: ReadSignal<String>,
+    set_ranking_default_profile: WriteSignal<String>,
+    ranking_preview_profile: ReadSignal<String>,
+    set_ranking_preview_profile: WriteSignal<String>,
+    ranking_storefront_profile: ReadSignal<String>,
+    set_ranking_storefront_profile: WriteSignal<String>,
+    ranking_admin_global_profile: ReadSignal<String>,
+    set_ranking_admin_global_profile: WriteSignal<String>,
+    preview_presets_config: ReadSignal<String>,
+    set_preview_presets_config: WriteSignal<String>,
+    storefront_presets_config: ReadSignal<String>,
+    set_storefront_presets_config: WriteSignal<String>,
     settings_busy: ReadSignal<bool>,
     settings_feedback: ReadSignal<Option<String>>,
     save_settings: impl Fn(MouseEvent) + 'static + Copy,
@@ -325,11 +433,13 @@ fn overview_view(
                 <InfoCard title="Available engines" value=bootstrap.available_search_engines.len().to_string() detail="Only connectors installed in the runtime appear here." />
                 <InfoCard title="Updated at" value=bootstrap.search_settings_preview.updated_at detail="Timestamp of the effective settings record." />
             </div>
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6 2xl:grid-cols-7">
                 <DiagnosticsCard diagnostics=bootstrap.search_diagnostics.clone() />
                 <InfoCard title="Documents" value=bootstrap.search_diagnostics.total_documents.to_string() detail="Total search documents in rustok-search storage." />
                 <InfoCard title="Public docs" value=bootstrap.search_diagnostics.public_documents.to_string() detail="Published documents visible to storefront search." />
                 <InfoCard title="Stale docs" value=bootstrap.search_diagnostics.stale_documents.to_string() detail="Documents where indexed_at lags behind source updated_at." />
+                <InfoCard title="Missing docs" value=bootstrap.search_diagnostics.missing_documents.to_string() detail="Source rows that should exist in search_documents but do not." />
+                <InfoCard title="Orphaned docs" value=bootstrap.search_diagnostics.orphaned_documents.to_string() detail="Search documents that no longer have a matching source row." />
                 <InfoCard title="Max lag" value=format!("{}s", bootstrap.search_diagnostics.max_lag_seconds) detail="Worst-case lag between source update and search projection." />
             </div>
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -356,6 +466,68 @@ fn overview_view(
                             }).collect_view()}
                         </select>
                     </label>
+                </div>
+                <div class="mt-6 rounded-xl border border-border bg-muted/20 p-4">
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Relevance Settings"</h3>
+                        <p class="text-sm text-muted-foreground">
+                            "Structured editor for ranking defaults and filter presets. These values are merged back into `search_settings.config` on save."
+                        </p>
+                    </div>
+                    <div class="mt-4 grid gap-4 xl:grid-cols-2">
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Default ranking profile"</span>
+                            <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=ranking_default_profile on:change=move |ev| set_ranking_default_profile.set(event_target_value(&ev))>
+                                <option value="balanced">"balanced"</option>
+                                <option value="exact">"exact"</option>
+                                <option value="fresh">"fresh"</option>
+                                <option value="catalog">"catalog"</option>
+                                <option value="content">"content"</option>
+                            </select>
+                        </label>
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Preview ranking profile"</span>
+                            <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=ranking_preview_profile on:change=move |ev| set_ranking_preview_profile.set(event_target_value(&ev))>
+                                <option value="balanced">"balanced"</option>
+                                <option value="exact">"exact"</option>
+                                <option value="fresh">"fresh"</option>
+                                <option value="catalog">"catalog"</option>
+                                <option value="content">"content"</option>
+                            </select>
+                        </label>
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Storefront ranking profile"</span>
+                            <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=ranking_storefront_profile on:change=move |ev| set_ranking_storefront_profile.set(event_target_value(&ev))>
+                                <option value="balanced">"balanced"</option>
+                                <option value="exact">"exact"</option>
+                                <option value="fresh">"fresh"</option>
+                                <option value="catalog">"catalog"</option>
+                                <option value="content">"content"</option>
+                            </select>
+                        </label>
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Admin global ranking profile"</span>
+                            <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=ranking_admin_global_profile on:change=move |ev| set_ranking_admin_global_profile.set(event_target_value(&ev))>
+                                <option value="balanced">"balanced"</option>
+                                <option value="exact">"exact"</option>
+                                <option value="fresh">"fresh"</option>
+                                <option value="catalog">"catalog"</option>
+                                <option value="content">"content"</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="mt-4 grid gap-4 xl:grid-cols-2">
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Preview filter presets (JSON array)"</span>
+                            <textarea class="min-h-[12rem] w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm" prop:value=preview_presets_config on:input=move |ev| set_preview_presets_config.set(event_target_value(&ev)) />
+                            <p class="text-xs text-muted-foreground">"Each item supports: key, label, entity_types, source_modules, statuses, ranking_profile."</p>
+                        </label>
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-card-foreground">"Storefront filter presets (JSON array)"</span>
+                            <textarea class="min-h-[12rem] w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm" prop:value=storefront_presets_config on:input=move |ev| set_storefront_presets_config.set(event_target_value(&ev)) />
+                            <p class="text-xs text-muted-foreground">"Presets drive public tabs and default filter scopes for `storefrontSearch`."</p>
+                        </label>
+                    </div>
                 </div>
                 <label class="mt-4 block space-y-2">
                     <span class="text-sm font-medium text-card-foreground">"Engine config (JSON)"</span>
@@ -473,13 +645,16 @@ fn playground_view(
 fn analytics_view(
     diagnostics: SearchDiagnosticsPayload,
     lagging_documents: Resource<Result<Vec<LaggingSearchDocumentPayload>, api::ApiError>>,
+    consistency_issues: Resource<Result<Vec<SearchConsistencyIssuePayload>, api::ApiError>>,
     search_analytics: Resource<Result<SearchAnalyticsPayload, api::ApiError>>,
 ) -> impl IntoView {
     view! {
         <section class="space-y-6">
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6 2xl:grid-cols-7">
                 <DiagnosticsCard diagnostics=diagnostics.clone() />
                 <InfoCard title="Lagging docs" value=diagnostics.stale_documents.to_string() detail="Documents where projection timestamps are behind source updates." />
+                <InfoCard title="Missing docs" value=diagnostics.missing_documents.to_string() detail="Expected projection rows that are absent from search storage." />
+                <InfoCard title="Orphaned docs" value=diagnostics.orphaned_documents.to_string() detail="Projection rows without a matching content/product source row." />
                 <InfoCard title="Max lag" value=format!("{}s", diagnostics.max_lag_seconds) detail="Largest observed lag in seconds." />
                 <InfoCard title="Newest indexed" value=diagnostics.newest_indexed_at.unwrap_or_else(|| "not indexed yet".to_string()) detail="Most recent index write in rustok-search storage." />
                 <InfoCard title="Oldest indexed" value=diagnostics.oldest_indexed_at.unwrap_or_else(|| "not indexed yet".to_string()) detail="Oldest surviving indexed document timestamp." />
@@ -487,7 +662,7 @@ fn analytics_view(
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1">
                     <h2 class="text-lg font-semibold text-card-foreground">"Search Analytics"</h2>
-                    <p class="text-sm text-muted-foreground">"CTR, abandonment, zero-result analysis, and query-intelligence candidates over the recent query log window."</p>
+                    <p class="text-sm text-muted-foreground">"CTR, abandonment, zero-result, slow-query analysis, and query-intelligence candidates over the recent query log window."</p>
                 </div>
                 <div class="mt-5">
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
@@ -509,6 +684,17 @@ fn analytics_view(
                     </Suspense>
                 </div>
             </section>
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1"><h2 class="text-lg font-semibold text-card-foreground">"Consistency Issues"</h2><p class="text-sm text-muted-foreground">"Missing projections and orphaned search documents compared to current content/product source state."</p></div>
+                <div class="mt-5">
+                    <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
+                        {move || consistency_issues.get().map(|result| match result {
+                            Ok(rows) => consistency_table(rows).into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("Failed to load search consistency diagnostics: {err}")}</div> }.into_any(),
+                        })}
+                    </Suspense>
+                </div>
+            </section>
         </section>
     }
 }
@@ -524,8 +710,9 @@ fn analytics_panel(analytics: SearchAnalyticsPayload) -> impl IntoView {
                 <InfoCard title="Abandonment" value=format!("{:.1}%", summary.abandonment_rate * 100.0) detail="Eligible successful queries that ended without any tracked click." />
                 <InfoCard title="Zero-result rate" value=format!("{:.1}%", summary.zero_result_rate * 100.0) detail="Share of successful queries that returned no results." />
             </div>
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <InfoCard title="Avg latency" value=format!("{:.1} ms", summary.avg_took_ms) detail="Average PostgreSQL search execution time." />
+                <InfoCard title="Slow-query rate" value=format!("{:.1}%", summary.slow_query_rate * 100.0) detail="Share of successful queries at or above the current slow-query threshold." />
                 <InfoCard title="Total clicks" value=summary.total_clicks.to_string() detail="All tracked result clicks in the current window." />
                 <InfoCard title="Abandoned queries" value=summary.abandonment_queries.to_string() detail="Successful queries older than the click-eval window with no clicks." />
                 <InfoCard title="Unique queries" value=summary.unique_queries.to_string() detail="Distinct normalized queries observed in the window." />
@@ -547,6 +734,13 @@ fn analytics_panel(analytics: SearchAnalyticsPayload) -> impl IntoView {
                 </section>
             </div>
             <div class="grid gap-6 xl:grid-cols-2">
+                <section class="rounded-xl border border-border bg-background p-4">
+                    <div class="space-y-1">
+                        <h3 class="text-base font-semibold text-card-foreground">"Slow Queries"</h3>
+                        <p class="text-sm text-muted-foreground">"Queries whose average execution time meets or exceeds the current slow-query threshold."</p>
+                    </div>
+                    <div class="mt-4">{analytics_rows_table(analytics.slow_queries, "No slow queries detected in the current window.")}</div>
+                </section>
                 <section class="rounded-xl border border-border bg-background p-4">
                     <div class="space-y-1">
                         <h3 class="text-base font-semibold text-card-foreground">"Low CTR Queries"</h3>
@@ -722,6 +916,41 @@ fn lagging_table(rows: Vec<LaggingSearchDocumentPayload>) -> impl IntoView {
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
             </tr>
+        }).collect_view()}</tbody>
+    </table></div> }.into_any()
+}
+
+fn consistency_table(rows: Vec<SearchConsistencyIssuePayload>) -> impl IntoView {
+    if rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">"No missing or orphaned search documents detected. Projection consistency is healthy."</p></div> }.into_any();
+    }
+    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
+        <thead class="border-b border-border bg-muted/50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Issue"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Title"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Type"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Locale"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Updated"</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Indexed"</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
+            let badge_class = if row.issue_kind == "missing" {
+                "border-rose-200 bg-rose-50 text-rose-700"
+            } else {
+                "border-orange-200 bg-orange-50 text-orange-700"
+            };
+            view! {
+                <tr class="transition-colors hover:bg-muted/30">
+                    <td class="px-4 py-3 align-top">
+                        <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {badge_class}")>{row.issue_kind.clone()}</span>
+                    </td>
+                    <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{}/{} ({})", row.source_module, row.entity_type, row.status)}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at.unwrap_or_else(|| "not indexed".to_string())}</td>
+                </tr>
+            }
         }).collect_view()}</tbody>
     </table></div> }.into_any()
 }
@@ -1135,6 +1364,7 @@ fn query_rules_table(
 fn DiagnosticsCard(diagnostics: SearchDiagnosticsPayload) -> impl IntoView {
     let badge_class = match diagnostics.state.as_str() {
         "healthy" => "border-emerald-200 bg-emerald-50 text-emerald-700",
+        "inconsistent" => "border-rose-200 bg-rose-50 text-rose-700",
         "lagging" => "border-amber-200 bg-amber-50 text-amber-700",
         _ => "border-slate-200 bg-slate-50 text-slate-700",
     };
@@ -1185,6 +1415,71 @@ fn pretty_json_string(value: &str) -> String {
 
 fn parse_json_for_editor(value: &str) -> Option<serde_json::Value> {
     serde_json::from_str(value).ok()
+}
+
+fn extract_ranking_profile_value(config: &serde_json::Value, surface: &str) -> String {
+    config
+        .get("ranking_profiles")
+        .and_then(|value| value.get(surface))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(match surface {
+            "admin_global_search" => "exact",
+            _ => "balanced",
+        })
+        .to_string()
+}
+
+fn extract_surface_presets_json(config: &serde_json::Value, surface: &str) -> String {
+    config
+        .get("filter_presets")
+        .and_then(|value| value.get(surface))
+        .and_then(|value| serde_json::to_string_pretty(value).ok())
+        .unwrap_or_else(|| "[]".to_string())
+}
+
+fn merge_relevance_editor_config(
+    config_text: &str,
+    ranking_default: &str,
+    ranking_preview: &str,
+    ranking_storefront: &str,
+    ranking_admin_global: &str,
+    preview_presets: &str,
+    storefront_presets: &str,
+) -> Result<String, String> {
+    let mut config = parse_json_for_editor(config_text)
+        .ok_or_else(|| "Settings config must be valid JSON.".to_string())?;
+    let object = config
+        .as_object_mut()
+        .ok_or_else(|| "Settings config root must be a JSON object.".to_string())?;
+
+    object.insert(
+        "ranking_profiles".to_string(),
+        serde_json::json!({
+            "default": ranking_default,
+            "search_preview": ranking_preview,
+            "storefront_search": ranking_storefront,
+            "admin_global_search": ranking_admin_global,
+        }),
+    );
+    object.insert(
+        "filter_presets".to_string(),
+        serde_json::json!({
+            "search_preview": parse_json_array_for_editor("Preview filter presets", preview_presets)?,
+            "storefront_search": parse_json_array_for_editor("Storefront filter presets", storefront_presets)?,
+        }),
+    );
+
+    serde_json::to_string_pretty(&config)
+        .map_err(|err| format!("Failed to serialize merged search settings config: {err}"))
+}
+
+fn parse_json_array_for_editor(label: &str, value: &str) -> Result<serde_json::Value, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(value).map_err(|err| format!("{label} must be valid JSON: {err}"))?;
+    if !parsed.is_array() {
+        return Err(format!("{label} must be a JSON array."));
+    }
+    Ok(parsed)
 }
 
 fn tab_class(active: bool) -> &'static str {

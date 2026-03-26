@@ -1,0 +1,14 @@
+[module]
+slug = "profiles"
+name = "Profiles"
+version = "0.1.0"
+description = "Universal public profile domain for platform users"
+ownership = "first_party"
+trust_level = "verified"
+
+[crate]
+entry_type = "ProfilesModule"
+
+[provides.graphql]
+query = "graphql::ProfilesQuery"
+mutation = "graphql::ProfilesMutation"

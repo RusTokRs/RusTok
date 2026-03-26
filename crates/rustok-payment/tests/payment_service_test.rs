@@ -43,8 +43,8 @@ async fn create_and_authorize_payment_collection() {
             tenant_id,
             created.id,
             AuthorizePaymentInput {
-                provider_id: "manual".to_string(),
-                provider_payment_id: "pay_manual_1".to_string(),
+                provider_id: None,
+                provider_payment_id: None,
                 amount: None,
                 metadata: serde_json::json!({ "step": "authorized" }),
             },
@@ -54,6 +54,7 @@ async fn create_and_authorize_payment_collection() {
     assert_eq!(authorized.status, "authorized");
     assert_eq!(authorized.provider_id.as_deref(), Some("manual"));
     assert_eq!(authorized.payments.len(), 1);
+    assert_eq!(authorized.payments[0].provider_id, "manual");
 }
 
 #[tokio::test]
@@ -70,8 +71,8 @@ async fn capture_authorized_payment_collection() {
             tenant_id,
             created.id,
             AuthorizePaymentInput {
-                provider_id: "manual".to_string(),
-                provider_payment_id: "pay_manual_2".to_string(),
+                provider_id: None,
+                provider_payment_id: None,
                 amount: Some(Decimal::from_str("49.99").expect("valid decimal")),
                 metadata: serde_json::json!({ "step": "authorized" }),
             },

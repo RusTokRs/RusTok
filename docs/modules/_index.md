@@ -14,6 +14,7 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 |--------|------|-------------------|
 | `rustok-core` | [docs](../../crates/rustok-core/docs/README.md) | [plan](../../crates/rustok-core/docs/implementation-plan.md) |
 | `rustok-events` | [docs](../../crates/rustok-events/docs/README.md) | [plan](../../crates/rustok-events/docs/implementation-plan.md) |
+| `rustok-channel` | [docs](../../crates/rustok-channel/docs/README.md) | [plan](../../crates/rustok-channel/docs/implementation-plan.md) |
 | `rustok-index` | [docs](../../crates/rustok-index/docs/README.md) | [plan](../../crates/rustok-index/docs/implementation-plan.md) |
 | `rustok-search` | [docs](../../crates/rustok-search/docs/README.md) | [plan](../../crates/rustok-search/docs/implementation-plan.md) |
 | `rustok-outbox` | [docs](../../crates/rustok-outbox/docs/README.md) | [plan](../../crates/rustok-outbox/docs/implementation-plan.md) |
@@ -26,6 +27,9 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | `rustok-mcp` | [docs](../../crates/rustok-mcp/docs/README.md) | [plan](../../crates/rustok-mcp/docs/implementation-plan.md) |
 | `flex` | [docs](../../crates/flex/docs/README.md) | n/a (Phase 4.5 extraction) |
 
+Core module UI packages:
+- `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
+
 ## Domain modules
 
 | Module | Docs | Implementation plan |
@@ -34,6 +38,8 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | `rustok-cart` | [docs](../../crates/rustok-cart/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-customer` | [docs](../../crates/rustok-customer/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-product` | [docs](../../crates/rustok-product/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
+| `rustok-profiles` | [docs](../../crates/rustok-profiles/docs/README.md) | [plan](../../crates/rustok-profiles/docs/implementation-plan.md) |
+| `rustok-region` | [docs](../../crates/rustok-region/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-pricing` | [docs](../../crates/rustok-pricing/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-inventory` | [docs](../../crates/rustok-inventory/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-order` | [docs](../../crates/rustok-order/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |

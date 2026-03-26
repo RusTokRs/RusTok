@@ -20,6 +20,7 @@ const STATUS_PENDING: &str = "pending";
 const STATUS_SHIPPED: &str = "shipped";
 const STATUS_DELIVERED: &str = "delivered";
 const STATUS_CANCELLED: &str = "cancelled";
+const MANUAL_PROVIDER_ID: &str = "manual";
 
 pub struct FulfillmentService {
     db: DatabaseConnection,
@@ -46,6 +47,11 @@ impl FulfillmentService {
                 "amount cannot be negative".to_string(),
             ));
         }
+        let provider_id = input
+            .provider_id
+            .map(|provider_id| provider_id.trim().to_string())
+            .filter(|provider_id| !provider_id.is_empty())
+            .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
@@ -56,7 +62,7 @@ impl FulfillmentService {
             name: Set(input.name),
             currency_code: Set(currency_code),
             amount: Set(input.amount),
-            provider_id: Set(input.provider_id),
+            provider_id: Set(provider_id),
             active: Set(true),
             metadata: Set(input.metadata),
             created_at: Set(now.into()),

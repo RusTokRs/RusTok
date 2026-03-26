@@ -21,6 +21,7 @@ const STATUS_PENDING: &str = "pending";
 const STATUS_AUTHORIZED: &str = "authorized";
 const STATUS_CAPTURED: &str = "captured";
 const STATUS_CANCELLED: &str = "cancelled";
+const MANUAL_PROVIDER_ID: &str = "manual";
 
 pub struct PaymentService {
     db: DatabaseConnection,
@@ -114,13 +115,15 @@ impl PaymentService {
                 "authorize amount must be positive and not exceed collection amount".to_string(),
             ));
         }
+        let provider_id = normalize_provider_id(input.provider_id)?;
+        let provider_payment_id = normalize_provider_payment_id(input.provider_payment_id);
 
         let now = Utc::now();
         entities::payment::ActiveModel {
             id: Set(generate_id()),
             payment_collection_id: Set(collection_id),
-            provider_id: Set(input.provider_id.clone()),
-            provider_payment_id: Set(input.provider_payment_id),
+            provider_id: Set(provider_id.clone()),
+            provider_payment_id: Set(provider_payment_id),
             status: Set(STATUS_AUTHORIZED.to_string()),
             currency_code: Set(collection.currency_code.clone()),
             amount: Set(authorize_amount),
@@ -139,7 +142,7 @@ impl PaymentService {
         let mut active: entities::payment_collection::ActiveModel = collection.into();
         active.status = Set(STATUS_AUTHORIZED.to_string());
         active.authorized_amount = Set(authorize_amount);
-        active.provider_id = Set(Some(input.provider_id));
+        active.provider_id = Set(Some(provider_id));
         active.authorized_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
@@ -374,6 +377,26 @@ fn normalize_currency_code(value: &str) -> PaymentResult<String> {
         ));
     }
     Ok(normalized)
+}
+
+fn normalize_provider_id(value: Option<String>) -> PaymentResult<String> {
+    let normalized = value
+        .map(|provider| provider.trim().to_string())
+        .filter(|provider| !provider.is_empty())
+        .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+    if normalized.len() > 100 {
+        return Err(PaymentError::Validation(
+            "provider_id must be at most 100 characters".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_provider_payment_id(value: Option<String>) -> String {
+    value
+        .map(|provider_payment_id| provider_payment_id.trim().to_string())
+        .filter(|provider_payment_id| !provider_payment_id.is_empty())
+        .unwrap_or_else(|| format!("manual_{}", generate_id()))
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
