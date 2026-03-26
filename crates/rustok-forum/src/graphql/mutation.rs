@@ -1,11 +1,14 @@
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     has_any_effective_permission, AuthContext,
 };
 use rustok_core::{Permission, CONTENT_FORMAT_MARKDOWN};
 use rustok_outbox::TransactionalEventBus;
-use rustok_profiles::{graphql::GqlProfileSummary, ProfileService, ProfilesReader};
+use rustok_profiles::{
+    graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
+    ProfilesReader,
+};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -55,6 +58,7 @@ impl ForumMutation {
             )
             .await?;
         let author_profile = load_author_profile(
+            ctx,
             db,
             tenant_id,
             topic.author_id,
@@ -118,6 +122,7 @@ impl ForumMutation {
             )
             .await?;
         let author_profile = load_author_profile(
+            ctx,
             db,
             tenant_id,
             topic.author_id,
@@ -205,6 +210,7 @@ impl ForumMutation {
             )
             .await?;
         let author_profile = load_author_profile(
+            ctx,
             db,
             tenant_id,
             reply.author_id,
@@ -296,6 +302,7 @@ fn require_forum_permission(
 }
 
 async fn load_author_profile(
+    ctx: &Context<'_>,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     author_id: Option<Uuid>,
@@ -304,6 +311,18 @@ async fn load_author_profile(
     let Some(author_id) = author_id else {
         return Ok(None);
     };
+
+    if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
+        let profile = loader
+            .load_one(ProfileSummaryLoaderKey {
+                tenant_id,
+                user_id: author_id,
+                requested_locale: Some(requested_locale.to_string()),
+                tenant_default_locale: None,
+            })
+            .await?;
+        return Ok(profile.map(Into::into));
+    }
 
     let profile = ProfileService::new(db.clone())
         .find_profile_summary(tenant_id, author_id, Some(requested_locale), None)

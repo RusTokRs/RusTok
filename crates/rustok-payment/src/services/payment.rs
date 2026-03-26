@@ -88,6 +88,47 @@ impl PaymentService {
         self.build_response(collection).await
     }
 
+    pub async fn find_latest_collection_by_cart(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+    ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        let collection = entities::payment_collection::Entity::find()
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
+            .filter(entities::payment_collection::Column::CartId.eq(cart_id))
+            .order_by_desc(entities::payment_collection::Column::CreatedAt)
+            .one(&self.db)
+            .await?;
+
+        match collection {
+            Some(collection) => self.build_response(collection).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn find_reusable_collection_by_cart(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+    ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        let collection = entities::payment_collection::Entity::find()
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
+            .filter(entities::payment_collection::Column::CartId.eq(cart_id))
+            .filter(entities::payment_collection::Column::Status.is_in([
+                STATUS_PENDING,
+                STATUS_AUTHORIZED,
+                STATUS_CAPTURED,
+            ]))
+            .order_by_desc(entities::payment_collection::Column::CreatedAt)
+            .one(&self.db)
+            .await?;
+
+        match collection {
+            Some(collection) => self.build_response(collection).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
     pub async fn authorize_collection(
         &self,
         tenant_id: Uuid,

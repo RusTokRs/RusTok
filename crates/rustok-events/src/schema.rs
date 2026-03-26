@@ -99,6 +99,11 @@ const USER_REGISTERED_FIELDS: &[FieldSchema] =
     &[field!("user_id", "uuid"), field!("email", "string")];
 const USER_LOGGED_IN_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
 const USER_UPDATED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
+const PROFILE_UPDATED_FIELDS: &[FieldSchema] = &[
+    field!("user_id", "uuid"),
+    field!("handle", "string"),
+    field!("locale", "string", optional),
+];
 const USER_DELETED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
 
 const PRODUCT_ID_FIELDS: &[FieldSchema] = &[field!("product_id", "uuid")];
@@ -335,6 +340,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A user profile was updated.",
         fields: USER_UPDATED_FIELDS,
+    },
+    EventSchema {
+        event_type: "profile.updated",
+        version: 1,
+        description: "A public profile was updated.",
+        fields: PROFILE_UPDATED_FIELDS,
     },
     EventSchema {
         event_type: "user.deleted",

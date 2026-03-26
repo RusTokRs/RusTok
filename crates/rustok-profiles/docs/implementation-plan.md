@@ -29,15 +29,23 @@ account и commerce-adjacent surfaces без смешивания с auth identi
 - SeaORM entity-модели `profiles` и `profile_translations`;
 - module-local migrations для storage boundary;
 - DB-backed `ProfileService` с `upsert/get-by-user/get-by-handle/get-summary`
-  path, handle policy и locale fallback helper;
+  path, handle policy, locale fallback helper и batched summary lookup;
+- explicit backfill path для missing profiles c генерацией display_name/handle из
+  user/customer seed-данных;
 - явный `ProfilesReader` trait для downstream Rust-кода;
 - GraphQL transport boundary с `ProfilesQuery` и `ProfilesMutation`;
+- targeted GraphQL mutations для update handle/content/locale/visibility/media;
+- host-level `ProfileSummaryLoader` для request-scoped batching/cache в GraphQL;
 - `ProfileRecord` как read-модель resolved profile state;
+- `rustok-blog` и `rustok-forum` уже читают author presentation через
+  `ProfilesReader`;
+- минимальный outbox/event contract `profile.updated` для downstream sync;
 - отсутствие REST adapters и module-owned UI.
 
 Практический вывод: storage/service/GraphQL foundation уже подняты, а следующий
-рабочий шаг — превратить `ProfilesReader` в полноценный batched integration
-contract и начать реальный rollout в downstream модули.
+рабочий шаг — довести rollout/runtime policy вокруг `profile.updated`,
+backfill существующих пользователей и возможного projection/read-model поверх
+уже работающего batched integration contract.
 
 ## Архитектурная граница
 
@@ -132,8 +140,8 @@ MVP boundary, а не раздувать `profiles` на старте.
   - [x] lookup index для public handle read path;
   - [x] lookup index для translation lookup path `profile_user_id + locale`.
 - [x] Подготовить migration scaffold и smoke-check на применение схемы.
-- [ ] Решить, остаётся ли `display_name` fallback-полем в `profiles`, или целиком
-  уходит в localized storage после transport-phase.
+- [x] Зафиксировать `display_name` fallback-полем в `profiles`, а локализуемые
+  `display_name`/`bio` держать в `profile_translations`.
 - [ ] Зафиксировать, нужен ли дополнительный secondary index для mixed
   `tenant_id + user_id` read path поверх существующего primary key.
 
@@ -159,9 +167,12 @@ MVP boundary, а не раздувать `profiles` на старте.
 - [x] Подготовить первичный summary read path через `get_profile_summary(...)`.
 - [x] Вынести явный `ProfilesReader` / `ProfileSummaryReader` trait/contract для
   других модулей.
-- [ ] Решить, нужен ли отдельный create/attach lifecycle помимо текущего
-  `upsert_profile(...)`.
-- [ ] Расширить service layer batched read path для нескольких `user_id`.
+- [x] Зафиксировать MVP lifecycle как lazy create on first self-service write
+  через `upsert_profile(...)`; read path остаётся nullable/not-found до явного
+  создания профиля.
+- [x] Расширить service layer batched read path для нескольких `user_id`.
+- [x] Добавить explicit backfill/service path для существующих пользователей без
+  auto-create в обычном read path.
 
 Критерий завершения phase:
 
@@ -174,12 +185,12 @@ MVP boundary, а не раздувать `profiles` на старте.
 - [x] Добавить GraphQL read path для public profile lookup по `handle`.
 - [x] Добавить GraphQL read/write path для `me/profile`.
 - [x] Добавить GraphQL summary path для downstream/UI lookup.
-- [ ] Определить mutation surface:
+- [x] Определить mutation surface:
   - [x] update handle;
   - [x] update public fields;
   - [x] update locale/visibility;
   - [x] attach avatar и banner references;
-  - [ ] выделить отдельные targeted mutations вместо одного `upsert_my_profile`.
+  - [x] выделить отдельные targeted mutations вместо одного `upsert_my_profile`.
 - [x] Зафиксировать error mapping для типовых кейсов:
   - [x] handle taken;
   - [x] profile not found;
@@ -195,18 +206,18 @@ MVP boundary, а не раздувать `profiles` на старте.
 
 ### Phase 4 — Public read model, batching и performance
 
-- [ ] Подготовить тонкий summary/read model для author/member cards.
-- [ ] Поддержать batched lookup по `user_id` и/или `handle`.
-- [ ] Исключить N+1 path для forum/blog/groups rendering.
+- [x] Подготовить тонкий summary/read model для author/member cards.
+- [x] Поддержать batched lookup по `user_id` и/или `handle`.
+- [x] Исключить N+1 path для forum/blog rendering.
 - [ ] Решить, нужен ли отдельный projection/read-model или достаточно прямого
   чтения из `profiles` + `profile_translations` в MVP.
-- [ ] Добавить hooks для DataLoader/host-level caching там, где это уже принято
+- [x] Добавить hooks для DataLoader/host-level caching там, где это уже принято
   в server runtime.
 
 Критерий завершения phase:
 
-- forum/blog/groups могут массово читать author/member summary без прямого
-  запроса к `users`;
+- forum/blog могут массово читать author/member summary без прямого запроса к
+  `users`;
 - latency профиля не зависит от UI-side fan-out.
 
 ### Phase 5 — UI surfaces
@@ -228,19 +239,20 @@ MVP boundary, а не раздувать `profiles` на старте.
 
 ### Phase 6 — Интеграция с другими доменами
 
-- [ ] Перевести forum/blog/groups на `ProfilesReader`.
-- [ ] Подключить optional `customer -> user -> profile` bridge без схлопывания
+- [x] Перевести forum/blog на `ProfilesReader`.
+- [x] Подключить optional `customer -> user -> profile` bridge без схлопывания
   доменов.
 - [ ] Подготовить integration contract для будущих social/groups surfaces.
-- [ ] Решить, нужно ли событие `profile_updated` для downstream re-render и
-  search/index синхронизации.
-- [ ] Подготовить backfill path для существующих пользователей, если profile
-  должен создаваться лениво или автоматически.
+- [x] Зафиксировать минимальное событие `profile.updated` для downstream
+  re-render и search/index синхронизации.
+- [x] Подготовить tenant-scoped backfill path для существующих пользователей
+  через server task с `dry_run` и optional `profile.updated` publishing.
 
 Критерий завершения phase:
 
-- ключевые user-facing вертикали читают profile summary через модуль;
-- больше нет прямой presentation-зависимости forum/blog/groups на `users`.
+- ключевые user-facing вертикали blog/forum читают profile summary через модуль;
+- больше нет прямой presentation-зависимости blog/forum на `users`, а для
+  будущего `groups` уже есть готовый integration contract.
 
 ### Phase 7 — Hardening, observability и rollout
 
@@ -263,22 +275,23 @@ MVP boundary, а не раздувать `profiles` на старте.
 ## Открытые решения
 
 - [ ] Handle uniqueness global или tenant-scoped?
-- [ ] Должен ли `display_name` быть локализуемым в MVP, или только `bio`?
+- [x] `display_name` локализуемый в MVP, но `profiles.display_name` остаётся
+  canonical fallback/default display name для прямого read path и отсутствующей
+  translation.
 - [ ] Нужен ли `banner_media_id` уже в первой итерации, или он должен остаться
   post-MVP полем?
-- [ ] Создаётся ли профиль eagerly при регистрации пользователя или lazy при
-  первом edit/read?
-- [ ] Нужен ли `profiles` собственный event contract уже в MVP?
+- [x] Профиль в MVP создаётся lazy при первом self-service edit (`upsert_*`);
+  public/admin read path не создаёт его автоматически.
 - [ ] Должен ли модуль сразу поддерживать staff-hidden / internal-only visibility
   mode, или достаточно `public | authenticated | followers_only | private`?
 
 ## Приоритетный backlog на следующую итерацию
 
-1. Расширить `ProfilesReader` до настоящего batched summary lookup без N+1.
-2. Подключить `forum/blog/groups` к `ProfilesReader`.
-3. Решить окончательную политику localization для `display_name` и `bio`.
-4. Зафиксировать lifecycle profile creation: eager при signup или lazy при first edit/read.
-5. Довести GraphQL mutation surface от одного `upsert_my_profile` к более точечным операциям при необходимости.
+1. Решить, нужен ли отдельный projection/read-model помимо прямого чтения из `profiles` + `profile_translations`.
+2. Подготовить integration contract для будущих social/groups surfaces.
+3. Закрыть оставшиеся storage-решения по handle uniqueness boundary и optional secondary index.
+4. Уточнить visibility/media policy для следующего UI-среза.
+5. Решить, где кроме server task потребуется event replay/backfill для новых downstream consumers `profile.updated`.
 
 ## Definition of Done для MVP
 
@@ -287,6 +300,7 @@ MVP boundary, а не раздувать `profiles` на старте.
 - модуль поднимает свои миграции и хранит profile data в БД;
 - есть DB-backed service layer и тесты на handle policy;
 - есть GraphQL path для self-service edit и public read;
-- forum/blog/groups могут читать author/member summary через `ProfilesReader`;
+- forum/blog могут читать author/member summary через `ProfilesReader`, а для
+  будущего `groups` уже готов module-level reader contract;
 - public profile данные отделены от auth identity и customer domain не только
   концептуально, но и на уровне runtime/API contracts.

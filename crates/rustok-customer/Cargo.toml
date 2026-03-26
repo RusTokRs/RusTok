@@ -9,6 +9,7 @@ description = "Customer domain module extracted from rustok-commerce"
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
+rustok-profiles.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

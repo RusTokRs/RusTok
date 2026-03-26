@@ -12,7 +12,6 @@ use loco_rs::app::AppContext;
 use loco_rs::mailer::{Email, EmailSender};
 use rustok_email::{EmailError, RenderedEmail};
 
-
 use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::error::{Error, Result};
 

@@ -7,6 +7,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod loader;
 pub mod migrations;
 pub mod reader;
 pub mod services;
@@ -14,8 +15,9 @@ pub mod services;
 pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInput};
 pub use entities::ProfileRecord;
 pub use error::{ProfileError, ProfileResult};
+pub use loader::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
 pub use reader::ProfilesReader;
-pub use services::ProfileService;
+pub use services::{ProfileBackfillResult, ProfileService};
 
 pub struct ProfilesModule;
 

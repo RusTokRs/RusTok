@@ -6,7 +6,7 @@ license.workspace = true
 description.workspace = true
 
 [dependencies]
-async-graphql.workspace = true
+async-graphql = { workspace = true, features = ["dataloader"] }
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true

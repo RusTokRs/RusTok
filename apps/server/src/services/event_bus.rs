@@ -7,8 +7,8 @@ use tokio::task::JoinHandle;
 
 use crate::common::settings::RustokSettings;
 
-pub use rustok_api::loco::SharedTransactionalEventBus;
 pub use rustok_api::loco::transactional_event_bus_from_context;
+pub use rustok_api::loco::SharedTransactionalEventBus;
 
 #[derive(Clone)]
 pub struct SharedEventBus(pub Arc<EventBus>);
@@ -88,4 +88,3 @@ fn build_event_bus(ctx: &AppContext, settings: Option<&RustokSettings>) -> Event
 
     EventBus::with_capacity(runtime.channel_capacity)
 }
-

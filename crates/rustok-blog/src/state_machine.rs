@@ -9,7 +9,7 @@
 /// - **Self-documenting**: State diagram visible in type system
 ///
 /// State Diagram:
-/// ```
+/// ```text
 ///   ┌───────┐
 ///   │ Draft │──────────────────┐
 ///   └───┬───┘                  │
@@ -31,7 +31,7 @@
 /// ```
 ///
 /// Usage:
-/// ```rust
+/// ```ignore
 /// // Create new post in draft state
 /// let post = BlogPost::new_draft(id, tenant_id, author_id);
 ///

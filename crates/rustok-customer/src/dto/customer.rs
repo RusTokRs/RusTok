@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rustok_profiles::ProfileSummary;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
@@ -49,4 +50,10 @@ pub struct CustomerResponse {
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomerWithProfileResponse {
+    pub customer: CustomerResponse,
+    pub profile: Option<ProfileSummary>,
 }

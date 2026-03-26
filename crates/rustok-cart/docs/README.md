@@ -8,7 +8,7 @@
 - `CartModule` и `CartService`;
 - persisted cart context snapshot: `region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`,
   `customer_id`, `email`, `currency_code`;
-- lifecycle корзины: `active -> completed/abandoned`;
+- lifecycle корзины: `active -> checking_out -> completed` и `active -> abandoned`;
 - CRUD line items, расчёт cart totals и нормализация locale/country snapshot для storefront-контекста.
 
 ## Архитектурная граница

@@ -564,6 +564,13 @@ pub async fn create_payment_collection(
     let context = resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?;
 
     let service = PaymentService::new(ctx.db.clone());
+    if let Some(existing) = service
+        .find_reusable_collection_by_cart(tenant.id, cart.id)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+    {
+        return Ok((StatusCode::OK, Json(existing)));
+    }
     let collection = service
         .create_collection(
             tenant.id,

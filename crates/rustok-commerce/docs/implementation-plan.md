@@ -363,12 +363,16 @@ flowchart LR
   `selected_shipping_option_id`, `customer_id`, `email`, `currency_code`);
 - `shipping-options`, `payment-collections` и `checkout` переведены на cart-first context resolution,
   а legacy checkout overrides сначала persist'ятся обратно в cart ради compatibility path;
+- cart lifecycle получил промежуточный статус `checking_out` для race protection на checkout path;
+- `payment-collections` теперь переиспользуют активную collection для того же `cart_id`, а повторный
+  checkout по уже завершенной корзине восстанавливает существующий `order/payment/fulfillment` response;
 - добавлены contract tests на наличие route-tree и OpenAPI wiring.
 
 Следующий обязательный checkpoint:
 
 - усилить cart-centered semantics после persistence: закрыть shipping/billing address strategy,
-  idempotency/race protection и parity tests для update-path / checkout flow;
+  расширить parity/integration tests для update-path / checkout flow и определить финальный
+  operator-facing recovery path для stuck `checking_out` carts;
 - именно с этого пункта должна начинаться следующая сессия по ecommerce migration.
 
 Критерий завершения:

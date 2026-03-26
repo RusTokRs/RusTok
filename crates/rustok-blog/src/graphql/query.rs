@@ -1,4 +1,4 @@
-use async_graphql::{Context, ErrorExtensions, Object, Result};
+use async_graphql::{dataloader::DataLoader, Context, ErrorExtensions, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale},
     AuthContext, RequestContext, TenantContext,
@@ -7,7 +7,10 @@ use rustok_channel::ChannelService;
 use rustok_content::NodeService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_profiles::{graphql::GqlProfileSummary, ProfileService, ProfilesReader};
+use rustok_profiles::{
+    graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
+    ProfilesReader,
+};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::collections::{HashMap, HashSet};
@@ -71,6 +74,7 @@ impl BlogQuery {
         }
 
         let author_profiles = load_author_profiles_map(
+            ctx,
             db,
             tenant_id,
             [Some(post.author_id)],
@@ -117,6 +121,7 @@ impl BlogQuery {
             )
         }) {
             let author_profiles = load_author_profiles_map(
+                ctx,
                 db,
                 tenant_id,
                 [Some(post.author_id)],
@@ -155,6 +160,7 @@ impl BlogQuery {
 
         if is_public_request(ctx) {
             return list_public_visible_posts(
+                ctx,
                 db,
                 event_bus,
                 tenant.id,
@@ -200,6 +206,7 @@ impl BlogQuery {
         );
 
         let author_profiles = load_author_profiles_map(
+            ctx,
             db,
             tenant_id,
             items.iter().map(|item| item.author_id),
@@ -267,6 +274,7 @@ fn is_post_visible_for_request(
 }
 
 async fn list_public_visible_posts(
+    ctx: &Context<'_>,
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -330,6 +338,7 @@ async fn list_public_visible_posts(
         .take(requested_per_page as usize)
         .collect::<Vec<_>>();
     let author_profiles = load_author_profiles_map(
+        ctx,
         db,
         tenant_id,
         page_items.iter().map(|item| item.author_id),
@@ -377,6 +386,7 @@ fn map_post_list_item(
 }
 
 async fn load_author_profiles_map<I>(
+    ctx: &Context<'_>,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     author_ids: I,
@@ -395,6 +405,23 @@ where
 
     if user_ids.is_empty() {
         return Ok(HashMap::new());
+    }
+
+    if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
+        let keys = user_ids
+            .iter()
+            .map(|user_id| ProfileSummaryLoaderKey {
+                tenant_id,
+                user_id: *user_id,
+                requested_locale: Some(requested_locale.to_string()),
+                tenant_default_locale: Some(tenant_default_locale.to_string()),
+            })
+            .collect::<Vec<_>>();
+        let profiles = loader.load_many(keys).await?;
+        return Ok(profiles
+            .into_iter()
+            .map(|(key, summary)| (key.user_id, summary.into()))
+            .collect());
     }
 
     let profiles = ProfileService::new(db.clone())

@@ -158,6 +158,16 @@ impl TagService {
             .await?
             .ok_or_else(|| ContentError::tag_not_found(tag_id))?;
 
+        taggable::Entity::delete_many()
+            .filter(taggable::Column::TagId.eq(tag_id))
+            .exec(&self.db)
+            .await?;
+
+        tag_translation::Entity::delete_many()
+            .filter(tag_translation::Column::TagId.eq(tag_id))
+            .exec(&self.db)
+            .await?;
+
         t.delete(&self.db).await?;
         Ok(())
     }

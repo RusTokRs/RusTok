@@ -128,3 +128,15 @@ impl From<GqlUpsertProfileInput> for UpsertProfileInput {
         }
     }
 }
+
+#[derive(InputObject, Debug, Clone)]
+pub struct GqlUpdateMyProfileContentInput {
+    pub display_name: String,
+    pub bio: Option<String>,
+}
+
+#[derive(InputObject, Debug, Clone)]
+pub struct GqlUpdateMyProfileMediaInput {
+    pub avatar_media_id: Option<Uuid>,
+    pub banner_media_id: Option<Uuid>,
+}

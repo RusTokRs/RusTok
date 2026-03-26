@@ -97,7 +97,11 @@ impl TransactionalEmailSender for EmailService {
                 );
                 Ok(())
             }
-            Self::Smtp(sender) => sender.send_transactional(template_id, locale, to, vars).await,
+            Self::Smtp(sender) => {
+                sender
+                    .send_transactional(template_id, locale, to, vars)
+                    .await
+            }
         }
     }
 }

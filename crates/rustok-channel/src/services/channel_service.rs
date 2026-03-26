@@ -619,6 +619,23 @@ mod tests {
         ))
         .await
         .expect("tenants table should exist for channel foreign keys");
+        db.execute(Statement::from_string(
+            db.get_database_backend(),
+            r#"
+            CREATE TABLE o_auth_apps (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                app_type TEXT NOT NULL DEFAULT 'machine',
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        ))
+        .await
+        .expect("o_auth_apps table should exist for channel foreign keys");
         let manager = SchemaManager::new(&db);
         for migration in migrations::migrations() {
             migration
@@ -868,7 +885,7 @@ mod tests {
             .bind_oauth_app(
                 channel_id,
                 crate::dto::BindChannelOauthAppInput {
-                    oauth_app_id: Uuid::new_v4(),
+                    oauth_app_id: seed_oauth_app(&service.db, tenant_id, "storefront-app").await,
                     role: Some("storefront".to_string()),
                 },
             )
@@ -896,5 +913,24 @@ mod tests {
         assert!(detail.targets.is_empty());
         assert!(detail.module_bindings.is_empty());
         assert!(detail.oauth_apps.is_empty());
+    }
+
+    async fn seed_oauth_app(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) -> Uuid {
+        let oauth_app_id = Uuid::new_v4();
+        db.execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO o_auth_apps (id, tenant_id, name, slug, app_type, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [
+                oauth_app_id.into(),
+                tenant_id.into(),
+                format!("{slug} name").into(),
+                slug.to_string().into(),
+                "machine".to_string().into(),
+                true.into(),
+            ],
+        ))
+        .await
+        .expect("oauth app should be inserted");
+        oauth_app_id
     }
 }

@@ -6,6 +6,10 @@ pub type ProfileResult<T> = Result<T, ProfileError>;
 
 #[derive(Debug, Error)]
 pub enum ProfileError {
+    #[error("profile display name must not be empty")]
+    EmptyDisplayName,
+    #[error("profile display name is too long")]
+    DisplayNameTooLong,
     #[error("profile handle must not be empty")]
     EmptyHandle,
     #[error("profile handle contains invalid characters")]

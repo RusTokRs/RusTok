@@ -25,6 +25,8 @@ pub enum CheckoutError {
     Validation(String),
     #[error("cart {0} cannot be checked out in its current state")]
     CartNotReady(Uuid),
+    #[error("checkout for cart {0} is already in progress")]
+    CheckoutInProgress(Uuid),
     #[error("cart {0} has no line items")]
     EmptyCart(Uuid),
     #[error("checkout failed at stage `{stage}`: {source}")]
@@ -72,12 +74,35 @@ impl CheckoutService {
             .get_cart(tenant_id, input.cart_id)
             .await
             .map_err(stage_error("load_cart"))?;
+        if cart.status == "completed" {
+            if let Some(response) = self
+                .recover_existing_checkout(tenant_id, cart.clone())
+                .await?
+            {
+                return Ok(response);
+            }
+            return Err(CheckoutError::CartNotReady(cart.id));
+        }
+        if cart.status == "checking_out" {
+            if let Some(response) = self
+                .recover_existing_checkout(tenant_id, cart.clone())
+                .await?
+            {
+                return Ok(response);
+            }
+            return Err(CheckoutError::CheckoutInProgress(input.cart_id));
+        }
         if cart.status != "active" {
             return Err(CheckoutError::CartNotReady(cart.id));
         }
         if cart.line_items.is_empty() {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
+        let cart = self
+            .cart_service
+            .begin_checkout(tenant_id, cart.id)
+            .await
+            .map_err(stage_error("begin_checkout"))?;
         let shipping_option_id = cart
             .selected_shipping_option_id
             .or(input.shipping_option_id);
@@ -94,194 +119,271 @@ impl CheckoutService {
             )
             .await
             .map_err(stage_error("resolve_context"))?;
-
-        let mut order = self
-            .order_service
-            .create_order(
-                tenant_id,
-                actor_id,
-                CreateOrderInput {
-                    customer_id: cart.customer_id,
-                    currency_code: cart.currency_code.clone(),
-                    line_items: cart
-                        .line_items
-                        .iter()
-                        .map(|item| CreateOrderLineItemInput {
-                            product_id: item.product_id,
-                            variant_id: item.variant_id,
-                            sku: item.sku.clone(),
-                            title: item.title.clone(),
-                            quantity: item.quantity,
-                            unit_price: item.unit_price,
-                            metadata: item.metadata.clone(),
-                        })
-                        .collect(),
-                    metadata: input.metadata.clone(),
-                },
-            )
-            .await
-            .map_err(stage_error("create_order"))?;
-
-        if let Err(error) = self
-            .order_service
-            .confirm_order(tenant_id, actor_id, order.id)
-            .await
-        {
-            self.compensate_order(tenant_id, actor_id, order.id, "confirm_order_failed")
-                .await;
-            return Err(stage_error("confirm_order")(error));
-        } else {
-            order = self
+        let checkout_result: CheckoutResult<CompleteCheckoutResponse> = async {
+            let mut order = self
                 .order_service
-                .get_order(tenant_id, order.id)
-                .await
-                .map_err(stage_error("reload_order"))?;
-        }
-
-        let payment_collection = match self
-            .payment_service
-            .create_collection(
-                tenant_id,
-                CreatePaymentCollectionInput {
-                    cart_id: Some(cart.id),
-                    order_id: Some(order.id),
-                    customer_id: cart.customer_id,
-                    currency_code: cart.currency_code.clone(),
-                    amount: cart.total_amount,
-                    metadata: input.metadata.clone(),
-                },
-            )
-            .await
-        {
-            Ok(collection) => collection,
-            Err(error) => {
-                self.compensate_order(tenant_id, actor_id, order.id, "payment_collection_failed")
-                    .await;
-                return Err(stage_error("create_payment_collection")(error));
-            }
-        };
-
-        let authorized_payment = match self
-            .payment_service
-            .authorize_collection(
-                tenant_id,
-                payment_collection.id,
-                AuthorizePaymentInput {
-                    provider_id: None,
-                    provider_payment_id: None,
-                    amount: Some(cart.total_amount),
-                    metadata: input.metadata.clone(),
-                },
-            )
-            .await
-        {
-            Ok(collection) => collection,
-            Err(error) => {
-                self.compensate_payment_and_order(
+                .create_order(
                     tenant_id,
                     actor_id,
-                    payment_collection.id,
-                    order.id,
-                    "payment_authorization_failed",
-                )
-                .await;
-                return Err(stage_error("authorize_payment")(error));
-            }
-        };
-
-        let fulfillment = if input.create_fulfillment {
-            match self
-                .fulfillment_service
-                .create_fulfillment(
-                    tenant_id,
-                    CreateFulfillmentInput {
-                        order_id: order.id,
-                        shipping_option_id,
+                    CreateOrderInput {
                         customer_id: cart.customer_id,
-                        carrier: None,
-                        tracking_number: None,
+                        currency_code: cart.currency_code.clone(),
+                        line_items: cart
+                            .line_items
+                            .iter()
+                            .map(|item| CreateOrderLineItemInput {
+                                product_id: item.product_id,
+                                variant_id: item.variant_id,
+                                sku: item.sku.clone(),
+                                title: item.title.clone(),
+                                quantity: item.quantity,
+                                unit_price: item.unit_price,
+                                metadata: item.metadata.clone(),
+                            })
+                            .collect(),
+                        metadata: input.metadata.clone(),
+                    },
+                )
+                .await
+                .map_err(stage_error("create_order"))?;
+
+            if let Err(error) = self
+                .order_service
+                .confirm_order(tenant_id, actor_id, order.id)
+                .await
+            {
+                self.compensate_order(tenant_id, actor_id, order.id, "confirm_order_failed")
+                    .await;
+                return Err(stage_error("confirm_order")(error));
+            } else {
+                order = self
+                    .order_service
+                    .get_order(tenant_id, order.id)
+                    .await
+                    .map_err(stage_error("reload_order"))?;
+            }
+
+            let payment_collection = match self
+                .payment_service
+                .create_collection(
+                    tenant_id,
+                    CreatePaymentCollectionInput {
+                        cart_id: Some(cart.id),
+                        order_id: Some(order.id),
+                        customer_id: cart.customer_id,
+                        currency_code: cart.currency_code.clone(),
+                        amount: cart.total_amount,
                         metadata: input.metadata.clone(),
                     },
                 )
                 .await
             {
-                Ok(fulfillment) => Some(fulfillment),
+                Ok(collection) => collection,
+                Err(error) => {
+                    self.compensate_order(
+                        tenant_id,
+                        actor_id,
+                        order.id,
+                        "payment_collection_failed",
+                    )
+                    .await;
+                    return Err(stage_error("create_payment_collection")(error));
+                }
+            };
+
+            let authorized_payment = match self
+                .payment_service
+                .authorize_collection(
+                    tenant_id,
+                    payment_collection.id,
+                    AuthorizePaymentInput {
+                        provider_id: None,
+                        provider_payment_id: None,
+                        amount: Some(cart.total_amount),
+                        metadata: input.metadata.clone(),
+                    },
+                )
+                .await
+            {
+                Ok(collection) => collection,
+                Err(error) => {
+                    self.compensate_payment_and_order(
+                        tenant_id,
+                        actor_id,
+                        payment_collection.id,
+                        order.id,
+                        "payment_authorization_failed",
+                    )
+                    .await;
+                    return Err(stage_error("authorize_payment")(error));
+                }
+            };
+
+            let fulfillment = if input.create_fulfillment {
+                match self
+                    .fulfillment_service
+                    .create_fulfillment(
+                        tenant_id,
+                        CreateFulfillmentInput {
+                            order_id: order.id,
+                            shipping_option_id,
+                            customer_id: cart.customer_id,
+                            carrier: None,
+                            tracking_number: None,
+                            metadata: input.metadata.clone(),
+                        },
+                    )
+                    .await
+                {
+                    Ok(fulfillment) => Some(fulfillment),
+                    Err(error) => {
+                        self.compensate_payment_and_order(
+                            tenant_id,
+                            actor_id,
+                            authorized_payment.id,
+                            order.id,
+                            "fulfillment_creation_failed",
+                        )
+                        .await;
+                        return Err(stage_error("create_fulfillment")(error));
+                    }
+                }
+            } else {
+                None
+            };
+
+            let captured_payment = match self
+                .payment_service
+                .capture_collection(
+                    tenant_id,
+                    authorized_payment.id,
+                    rustok_payment::dto::CapturePaymentInput {
+                        amount: Some(cart.total_amount),
+                        metadata: input.metadata.clone(),
+                    },
+                )
+                .await
+            {
+                Ok(collection) => collection,
                 Err(error) => {
                     self.compensate_payment_and_order(
                         tenant_id,
                         actor_id,
                         authorized_payment.id,
                         order.id,
-                        "fulfillment_creation_failed",
+                        "payment_capture_failed",
                     )
                     .await;
-                    return Err(stage_error("create_fulfillment")(error));
+                    return Err(stage_error("capture_payment")(error));
                 }
-            }
-        } else {
-            None
-        };
+            };
+            let payment_reference = captured_payment
+                .payments
+                .last()
+                .map(|payment| payment.provider_payment_id.clone())
+                .unwrap_or_else(|| format!("manual_{}", order.id));
+            let payment_method = captured_payment
+                .provider_id
+                .clone()
+                .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
 
-        let captured_payment = match self
-            .payment_service
-            .capture_collection(
-                tenant_id,
-                authorized_payment.id,
-                rustok_payment::dto::CapturePaymentInput {
-                    amount: Some(cart.total_amount),
-                    metadata: input.metadata.clone(),
-                },
-            )
-            .await
-        {
-            Ok(collection) => collection,
-            Err(error) => {
-                self.compensate_payment_and_order(
+            let order = self
+                .order_service
+                .mark_paid(
                     tenant_id,
                     actor_id,
-                    authorized_payment.id,
                     order.id,
-                    "payment_capture_failed",
+                    payment_reference,
+                    payment_method,
                 )
-                .await;
-                return Err(stage_error("capture_payment")(error));
-            }
+                .await
+                .map_err(stage_error("mark_order_paid"))?;
+
+            let cart = self
+                .cart_service
+                .complete_cart(tenant_id, cart.id)
+                .await
+                .map_err(stage_error("complete_cart"))?;
+
+            Ok(CompleteCheckoutResponse {
+                cart,
+                order,
+                payment_collection: captured_payment,
+                fulfillment,
+                context,
+            })
+        }
+        .await;
+
+        if should_release_checkout_lock(&checkout_result) {
+            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+        }
+
+        checkout_result
+    }
+
+    async fn recover_existing_checkout(
+        &self,
+        tenant_id: Uuid,
+        cart: rustok_cart::dto::CartResponse,
+    ) -> CheckoutResult<Option<CompleteCheckoutResponse>> {
+        let Some(payment_collection) = self
+            .payment_service
+            .find_latest_collection_by_cart(tenant_id, cart.id)
+            .await
+            .map_err(stage_error("load_payment_collection"))?
+        else {
+            return Ok(None);
         };
-        let payment_reference = captured_payment
-            .payments
-            .last()
-            .map(|payment| payment.provider_payment_id.clone())
-            .unwrap_or_else(|| format!("manual_{}", order.id));
-        let payment_method = captured_payment
-            .provider_id
-            .clone()
-            .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+        let Some(order_id) = payment_collection.order_id else {
+            return Ok(None);
+        };
 
         let order = self
             .order_service
-            .mark_paid(
+            .get_order(tenant_id, order_id)
+            .await
+            .map_err(stage_error("load_order"))?;
+        let is_completed_checkout =
+            payment_collection.status == "captured" && order.status == "paid";
+        if !is_completed_checkout {
+            return Ok(None);
+        }
+
+        let cart = if cart.status == "checking_out" {
+            self.cart_service
+                .complete_cart(tenant_id, cart.id)
+                .await
+                .map_err(stage_error("finalize_recovered_cart"))?
+        } else {
+            cart
+        };
+        let fulfillment = self
+            .fulfillment_service
+            .find_by_order(tenant_id, order.id)
+            .await
+            .map_err(stage_error("load_fulfillment"))?;
+        let context = self
+            .context_service
+            .resolve_context(
                 tenant_id,
-                actor_id,
-                order.id,
-                payment_reference,
-                payment_method,
+                ResolveStoreContextInput {
+                    region_id: cart.region_id,
+                    country_code: cart.country_code.clone(),
+                    locale: cart.locale_code.clone(),
+                    currency_code: Some(cart.currency_code.clone()),
+                },
             )
             .await
-            .map_err(stage_error("mark_order_paid"))?;
+            .map_err(stage_error("resolve_context"))?;
 
-        let cart = self
-            .cart_service
-            .complete_cart(tenant_id, cart.id)
-            .await
-            .map_err(stage_error("complete_cart"))?;
-
-        Ok(CompleteCheckoutResponse {
+        Ok(Some(CompleteCheckoutResponse {
             cart,
             order,
-            payment_collection: captured_payment,
+            payment_collection,
             fulfillment,
             context,
-        })
+        }))
     }
 
     async fn compensate_order(
@@ -330,6 +432,16 @@ where
     move |source| CheckoutError::StageFailure {
         stage,
         source: Box::new(source),
+    }
+}
+
+fn should_release_checkout_lock(result: &CheckoutResult<CompleteCheckoutResponse>) -> bool {
+    match result {
+        Err(CheckoutError::StageFailure { stage, .. }) => {
+            !matches!(*stage, "mark_order_paid" | "complete_cart")
+        }
+        Err(_) => true,
+        Ok(_) => false,
     }
 }
 

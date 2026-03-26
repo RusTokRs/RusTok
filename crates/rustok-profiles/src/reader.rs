@@ -63,21 +63,13 @@ impl ProfilesReader for ProfileService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> ProfileResult<HashMap<Uuid, ProfileSummary>> {
-        let mut profiles = HashMap::with_capacity(user_ids.len());
-        for user_id in user_ids {
-            if let Some(summary) = <ProfileService as ProfilesReader>::find_profile_summary(
-                self,
-                tenant_id,
-                *user_id,
-                requested_locale,
-                tenant_default_locale,
-            )
-            .await?
-            {
-                profiles.insert(*user_id, summary);
-            }
-        }
-        Ok(profiles)
+        self.find_profile_summaries_map(
+            tenant_id,
+            user_ids,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
     }
 
     async fn get_profile_by_handle(

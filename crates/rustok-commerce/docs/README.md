@@ -25,6 +25,8 @@
 - Store cart теперь является persisted storefront-context aggregate: корзина хранит `region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`, `customer_id`, `email` и `currency_code`.
 - Для Medusa-style storefront flow появился явный update-path `POST /store/carts/{id}`, который обновляет cart context и делает cart source of truth для последующих shipping/payment/checkout сценариев.
 - `GET /store/shipping-options?cart_id=...`, `POST /store/payment-collections` и `POST /store/carts/{id}/complete` теперь читают storefront context из cart snapshot; legacy overrides в checkout сначала persist'ятся обратно в cart ради совместимости.
+- Checkout flow теперь использует промежуточный cart status `checking_out`, чтобы защититься от racey double-submit сценариев.
+- `POST /store/payment-collections` повторно использует уже активную collection для того же cart, а повторный checkout по уже завершённой корзине восстанавливает существующий `order/payment/fulfillment` response вместо создания дублей.
 - Publishable Leptos admin UI для commerce теперь живёт в `crates/rustok-commerce/admin/`; host admin подключает пакет через manifest-driven `build.rs` и рендерит module-owned catalog control room на `/modules/commerce`.
 - Publishable Leptos storefront UI для commerce теперь живёт в `crates/rustok-commerce/storefront/`; host storefront подключает пакет через manifest-driven `build.rs`, а public GraphQL read-path отдаёт published product catalog и selected product detail для `/modules/commerce`.
 

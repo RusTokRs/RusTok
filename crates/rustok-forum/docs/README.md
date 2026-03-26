@@ -12,7 +12,7 @@
 
 - ✅ GraphQL и REST адаптеры модуля перенесены в `crates/rustok-forum`; `apps/server` держит только тонкий shim/composition-root слой.
 - ✅ Общие transport-контракты (`AuthContext`, `TenantContext`, `RequestContext`, GraphQL helpers) модуль получает из `rustok-api`.
-- ✅ Author presentation для topics/replies теперь идёт через `rustok-profiles::ProfilesReader`: GraphQL payloads `GqlForumTopic` и `GqlForumReply` отдают `author_profile` рядом с `author_id`.
+- ✅ Author presentation для topics/replies теперь идёт через `rustok-profiles::ProfilesReader`: GraphQL payloads `GqlForumTopic` и `GqlForumReply` отдают `author_profile` рядом с `author_id`, а в shared server runtime используют `ProfileSummaryLoader` как request-scoped cache там, где он зарегистрирован.
 - ✅ Publishable Leptos admin UI для forum теперь живёт в `crates/rustok-forum/admin/`; host admin подключает пакет через manifest-driven `build.rs`.
 - ✅ Publishable Leptos storefront UI для forum теперь живёт в `crates/rustok-forum/storefront/`; host storefront подключает пакет через manifest-driven `build.rs`, а public GraphQL read-path отдаёт categories, topic feed, thread detail и replies для `/modules/forum`.
 

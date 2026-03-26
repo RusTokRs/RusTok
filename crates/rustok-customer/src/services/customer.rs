@@ -5,8 +5,11 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_core::generate_id;
+use rustok_profiles::ProfilesReader;
 
-use crate::dto::{CreateCustomerInput, CustomerResponse, UpdateCustomerInput};
+use crate::dto::{
+    CreateCustomerInput, CustomerResponse, CustomerWithProfileResponse, UpdateCustomerInput,
+};
 use crate::entities;
 use crate::error::{CustomerError, CustomerResult};
 
@@ -82,6 +85,48 @@ impl CustomerService {
             .await?
             .ok_or(CustomerError::CustomerByUserNotFound(user_id))?;
         Ok(map_customer(customer))
+    }
+
+    pub async fn get_customer_with_profile<R: ProfilesReader>(
+        &self,
+        reader: &R,
+        tenant_id: Uuid,
+        customer_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> CustomerResult<CustomerWithProfileResponse> {
+        let customer = self.get_customer(tenant_id, customer_id).await?;
+        let profile = load_customer_profile(
+            reader,
+            tenant_id,
+            customer.user_id,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await?;
+
+        Ok(CustomerWithProfileResponse { customer, profile })
+    }
+
+    pub async fn get_customer_by_user_with_profile<R: ProfilesReader>(
+        &self,
+        reader: &R,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> CustomerResult<CustomerWithProfileResponse> {
+        let customer = self.get_customer_by_user(tenant_id, user_id).await?;
+        let profile = load_customer_profile(
+            reader,
+            tenant_id,
+            customer.user_id,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await?;
+
+        Ok(CustomerWithProfileResponse { customer, profile })
     }
 
     pub async fn update_customer(
@@ -219,4 +264,21 @@ fn map_customer(customer: entities::customer::Model) -> CustomerResponse {
         created_at: customer.created_at.with_timezone(&Utc),
         updated_at: customer.updated_at.with_timezone(&Utc),
     }
+}
+
+async fn load_customer_profile<R: ProfilesReader>(
+    reader: &R,
+    tenant_id: Uuid,
+    user_id: Option<Uuid>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> CustomerResult<Option<rustok_profiles::ProfileSummary>> {
+    let Some(user_id) = user_id else {
+        return Ok(None);
+    };
+
+    reader
+        .find_profile_summary(tenant_id, user_id, requested_locale, tenant_default_locale)
+        .await
+        .map_err(CustomerError::from)
 }

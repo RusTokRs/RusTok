@@ -93,12 +93,8 @@ pub fn encode_access_token(
         grant_type: "direct".to_string(),
     };
 
-    encode(
-        &Header::default(),
-        &claims,
-        &encoding_key(config)?,
-    )
-    .map_err(|_| AuthError::TokenEncodingFailed)
+    encode(&Header::default(), &claims, &encoding_key(config)?)
+        .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
 pub fn encode_oauth_access_token(
@@ -127,24 +123,16 @@ pub fn encode_oauth_access_token(
         grant_type: grant_type.to_string(),
     };
 
-    encode(
-        &Header::default(),
-        &claims,
-        &encoding_key(config)?,
-    )
-    .map_err(|_| AuthError::TokenEncodingFailed)
+    encode(&Header::default(), &claims, &encoding_key(config)?)
+        .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
 pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
     let validation = strict_jwt_validation(config);
 
-    decode::<Claims>(
-        token,
-        &decoding_key(config)?,
-        &validation,
-    )
-    .map(|data| data.claims)
-    .map_err(|_| AuthError::InvalidAccessToken)
+    decode::<Claims>(token, &decoding_key(config)?, &validation)
+        .map(|data| data.claims)
+        .map_err(|_| AuthError::InvalidAccessToken)
 }
 
 // ─── Special-purpose tokens ──────────────────────────────────────────
@@ -168,12 +156,8 @@ pub fn encode_password_reset_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(
-        &Header::default(),
-        &claims,
-        &encoding_key(config)?,
-    )
-    .map_err(|_| AuthError::TokenEncodingFailed)
+    encode(&Header::default(), &claims, &encoding_key(config)?)
+        .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
 pub fn decode_password_reset_token(
@@ -182,13 +166,9 @@ pub fn decode_password_reset_token(
 ) -> Result<PasswordResetClaims> {
     let validation = strict_jwt_validation(config);
 
-    let claims = decode::<PasswordResetClaims>(
-        token,
-        &decoding_key(config)?,
-        &validation,
-    )
-    .map(|data| data.claims)
-    .map_err(|_| AuthError::InvalidResetToken)?;
+    let claims = decode::<PasswordResetClaims>(token, &decoding_key(config)?, &validation)
+        .map(|data| data.claims)
+        .map_err(|_| AuthError::InvalidResetToken)?;
 
     if claims.purpose != "password_reset" {
         return Err(AuthError::InvalidResetToken);
@@ -216,12 +196,8 @@ pub fn encode_email_verification_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(
-        &Header::default(),
-        &claims,
-        &encoding_key(config)?,
-    )
-    .map_err(|_| AuthError::TokenEncodingFailed)
+    encode(&Header::default(), &claims, &encoding_key(config)?)
+        .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
 pub fn decode_email_verification_token(
@@ -230,13 +206,9 @@ pub fn decode_email_verification_token(
 ) -> Result<EmailVerificationClaims> {
     let validation = strict_jwt_validation(config);
 
-    let claims = decode::<EmailVerificationClaims>(
-        token,
-        &decoding_key(config)?,
-        &validation,
-    )
-    .map(|data| data.claims)
-    .map_err(|_| AuthError::InvalidVerificationToken)?;
+    let claims = decode::<EmailVerificationClaims>(token, &decoding_key(config)?, &validation)
+        .map(|data| data.claims)
+        .map_err(|_| AuthError::InvalidVerificationToken)?;
 
     if claims.purpose != "email_verification" {
         return Err(AuthError::InvalidVerificationToken);
@@ -248,13 +220,9 @@ pub fn decode_email_verification_token(
 pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {
     let validation = strict_jwt_validation(config);
 
-    let claims = decode::<InviteClaims>(
-        token,
-        &decoding_key(config)?,
-        &validation,
-    )
-    .map(|data| data.claims)
-    .map_err(|_| AuthError::InvalidInviteToken)?;
+    let claims = decode::<InviteClaims>(token, &decoding_key(config)?, &validation)
+        .map(|data| data.claims)
+        .map_err(|_| AuthError::InvalidInviteToken)?;
 
     if claims.purpose != "invite" {
         return Err(AuthError::InvalidInviteToken);

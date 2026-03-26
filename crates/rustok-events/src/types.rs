@@ -146,6 +146,11 @@ pub enum DomainEvent {
     UserUpdated {
         user_id: Uuid,
     },
+    ProfileUpdated {
+        user_id: Uuid,
+        handle: String,
+        locale: Option<String>,
+    },
     UserDeleted {
         user_id: Uuid,
     },
@@ -433,6 +438,7 @@ impl DomainEvent {
             Self::UserRegistered { .. } => "user.registered",
             Self::UserLoggedIn { .. } => "user.logged_in",
             Self::UserUpdated { .. } => "user.updated",
+            Self::ProfileUpdated { .. } => "profile.updated",
             Self::UserDeleted { .. } => "user.deleted",
 
             Self::ProductCreated { .. } => "product.created",
@@ -527,6 +533,7 @@ impl DomainEvent {
             Self::UserRegistered { .. } => 1,
             Self::UserLoggedIn { .. } => 1,
             Self::UserUpdated { .. } => 1,
+            Self::ProfileUpdated { .. } => 1,
             Self::UserDeleted { .. } => 1,
 
             // Commerce events (v1)
@@ -612,6 +619,7 @@ impl DomainEvent {
                 | Self::PriceUpdated { .. }
                 | Self::TagAttached { .. }
                 | Self::TagDetached { .. }
+                | Self::ProfileUpdated { .. }
                 | Self::BlogPostCreated { .. }
                 | Self::BlogPostPublished { .. }
                 | Self::BlogPostUnpublished { .. }
@@ -751,6 +759,20 @@ impl ValidateEvent for DomainEvent {
             | Self::UserUpdated { user_id }
             | Self::UserDeleted { user_id } => {
                 validators::validate_not_nil_uuid("user_id", user_id)?;
+                Ok(())
+            }
+            Self::ProfileUpdated {
+                user_id,
+                handle,
+                locale,
+            } => {
+                validators::validate_not_nil_uuid("user_id", user_id)?;
+                validators::validate_not_empty("handle", handle)?;
+                validators::validate_max_length("handle", handle, 64)?;
+                if let Some(locale) = locale {
+                    validators::validate_not_empty("locale", locale)?;
+                    validators::validate_max_length("locale", locale, 16)?;
+                }
                 Ok(())
             }
 

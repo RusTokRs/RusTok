@@ -157,3 +157,59 @@ async fn capture_requires_authorized_state() {
         other => panic!("expected invalid transition, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn find_reusable_collection_by_cart_returns_latest_active_collection() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let cart_id = Uuid::new_v4();
+
+    let first = service
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: Some(cart_id),
+                order_id: None,
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("99.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "attempt": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .cancel_collection(
+            tenant_id,
+            first.id,
+            CancelPaymentInput {
+                reason: Some("retry".to_string()),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let second = service
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: Some(cart_id),
+                order_id: None,
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("99.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "attempt": 2 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let reusable = service
+        .find_reusable_collection_by_cart(tenant_id, cart_id)
+        .await
+        .unwrap()
+        .expect("expected reusable collection");
+    assert_eq!(reusable.id, second.id);
+    assert_eq!(reusable.status, "pending");
+}

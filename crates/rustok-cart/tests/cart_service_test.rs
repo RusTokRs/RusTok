@@ -195,3 +195,35 @@ async fn completed_cart_rejects_mutations() {
         other => panic!("expected invalid transition, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn checkout_lifecycle_uses_checking_out_before_completion() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let checking_out = service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(checking_out.status, "checking_out");
+
+    let error = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap_err();
+    match error {
+        CartError::InvalidTransition { from, .. } => assert_eq!(from, "checking_out"),
+        other => panic!("expected invalid transition, got {other:?}"),
+    }
+
+    let reopened = service.release_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(reopened.status, "active");
+
+    let checking_out = service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    let completed = service
+        .complete_cart(tenant_id, checking_out.id)
+        .await
+        .unwrap();
+    assert_eq!(completed.status, "completed");
+}

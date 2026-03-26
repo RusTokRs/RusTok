@@ -169,3 +169,47 @@ async fn deliver_requires_shipped_state() {
         other => panic!("expected invalid transition, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn find_by_order_returns_latest_fulfillment() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+
+    let first = service
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id,
+                shipping_option_id: None,
+                customer_id: Some(Uuid::new_v4()),
+                carrier: None,
+                tracking_number: None,
+                metadata: serde_json::json!({ "attempt": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let second = service
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id,
+                shipping_option_id: None,
+                customer_id: Some(Uuid::new_v4()),
+                carrier: None,
+                tracking_number: None,
+                metadata: serde_json::json!({ "attempt": 2 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let found = service
+        .find_by_order(tenant_id, order_id)
+        .await
+        .unwrap()
+        .expect("expected fulfillment");
+    assert_eq!(found.id, second.id);
+    assert_ne!(found.id, first.id);
+}

@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use rustok_core::EventBus;
 use rustok_outbox::TransactionalEventBus;
+#[cfg(feature = "mod-profiles")]
+use rustok_profiles::ProfileSummaryLoader;
 
 #[cfg(feature = "mod-media")]
 use rustok_storage::StorageService;
@@ -113,13 +115,21 @@ pub fn build_schema(
     .data(DataLoader::new(
         NodeBodyLoader::new(db.clone()),
         tokio::spawn,
-    ))
-    .data(db)
-    .data(event_bus)
-    .data(transactional_event_bus)
-    .data(build_event_hub)
-    .data(build_field_def_registry())
-    .data(field_definition_cache);
+    ));
+
+    #[cfg(feature = "mod-profiles")]
+    let builder = builder.data(DataLoader::new(
+        ProfileSummaryLoader::new(db.clone()),
+        tokio::spawn,
+    ));
+
+    let builder = builder
+        .data(db)
+        .data(event_bus)
+        .data(transactional_event_bus)
+        .data(build_event_hub)
+        .data(build_field_def_registry())
+        .data(field_definition_cache);
 
     #[cfg(feature = "mod-alloy")]
     let builder = builder.data(alloy_state);

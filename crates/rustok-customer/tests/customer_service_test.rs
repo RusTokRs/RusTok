@@ -1,6 +1,8 @@
 use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
 use rustok_customer::error::CustomerError;
 use rustok_customer::services::CustomerService;
+use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
+use rustok_profiles::services::ProfileService;
 use rustok_test_utils::db::setup_test_db;
 use uuid::Uuid;
 
@@ -134,4 +136,97 @@ async fn upsert_customer_for_user_updates_existing_profile() {
     assert_eq!(created.id, updated.id);
     assert_eq!(updated.email, "customer-updated@example.com");
     assert_eq!(updated.locale.as_deref(), Some("de"));
+}
+
+#[tokio::test]
+async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() {
+    let db = setup_test_db().await;
+    support::ensure_customer_schema(&db).await;
+    let customer_service = CustomerService::new(db.clone());
+    let profile_service = ProfileService::new(db);
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+
+    let customer = customer_service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+    profile_service
+        .upsert_profile(
+            tenant_id,
+            user_id,
+            UpsertProfileInput {
+                handle: "customer-user".to_string(),
+                display_name: "Customer User".to_string(),
+                bio: None,
+                avatar_media_id: None,
+                banner_media_id: None,
+                preferred_locale: Some("en".to_string()),
+                visibility: ProfileVisibility::Public,
+            },
+            Some("en"),
+        )
+        .await
+        .unwrap();
+
+    let bridged = customer_service
+        .get_customer_with_profile(
+            &profile_service,
+            tenant_id,
+            customer.id,
+            Some("en"),
+            Some("en"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(bridged.customer.id, customer.id);
+    assert_eq!(
+        bridged
+            .profile
+            .as_ref()
+            .map(|profile| profile.handle.as_str()),
+        Some("customer-user")
+    );
+}
+
+#[tokio::test]
+async fn customer_bridge_returns_none_when_profile_is_missing() {
+    let db = setup_test_db().await;
+    support::ensure_customer_schema(&db).await;
+    let service = CustomerService::new(db.clone());
+    let profile_service = ProfileService::new(db);
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+
+    let customer = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let bridged = service
+        .get_customer_with_profile(
+            &profile_service,
+            tenant_id,
+            customer.id,
+            Some("en"),
+            Some("en"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(bridged.customer.id, customer.id);
+    assert!(bridged.profile.is_none());
 }

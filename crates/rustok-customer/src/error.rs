@@ -17,5 +17,7 @@ pub enum CustomerError {
     #[error("customer already linked to user {0}")]
     DuplicateUserLink(Uuid),
     #[error(transparent)]
+    Profile(#[from] rustok_profiles::ProfileError),
+    #[error(transparent)]
     Database(#[from] DbErr),
 }

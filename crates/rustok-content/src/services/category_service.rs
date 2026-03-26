@@ -182,6 +182,11 @@ impl CategoryService {
             .await?
             .ok_or_else(|| ContentError::category_not_found(category_id))?;
 
+        category_translation::Entity::delete_many()
+            .filter(category_translation::Column::CategoryId.eq(category_id))
+            .exec(&self.db)
+            .await?;
+
         cat.delete(&self.db).await?;
         Ok(())
     }

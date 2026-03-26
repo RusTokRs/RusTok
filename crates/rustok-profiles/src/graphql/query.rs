@@ -1,4 +1,4 @@
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
     AuthContext, TenantContext,
@@ -6,7 +6,7 @@ use rustok_api::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{ProfileError, ProfileService};
+use crate::{ProfileError, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey};
 
 use super::{types::*, MODULE_SLUG};
 
@@ -84,6 +84,18 @@ impl ProfilesQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
+        if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
+            let summary = loader
+                .load_one(ProfileSummaryLoaderKey {
+                    tenant_id,
+                    user_id,
+                    requested_locale: Some(locale.clone()),
+                    tenant_default_locale: Some(tenant.default_locale.clone()),
+                })
+                .await?;
+            return Ok(summary.map(Into::into));
+        }
+
         let service = ProfileService::new(db.clone());
         match service
             .get_profile_summary(
@@ -109,7 +121,9 @@ fn require_auth(ctx: &Context<'_>) -> Result<AuthContext> {
 
 fn map_profile_error(err: ProfileError) -> async_graphql::Error {
     match err {
-        ProfileError::EmptyHandle
+        ProfileError::EmptyDisplayName
+        | ProfileError::DisplayNameTooLong
+        | ProfileError::EmptyHandle
         | ProfileError::InvalidHandle
         | ProfileError::HandleTooShort
         | ProfileError::HandleTooLong

@@ -152,6 +152,21 @@ impl FulfillmentService {
         Ok(map_fulfillment(fulfillment))
     }
 
+    pub async fn find_by_order(
+        &self,
+        tenant_id: Uuid,
+        order_id: Uuid,
+    ) -> FulfillmentResult<Option<FulfillmentResponse>> {
+        let fulfillment = entities::fulfillment::Entity::find()
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(entities::fulfillment::Column::OrderId.eq(order_id))
+            .order_by_desc(entities::fulfillment::Column::CreatedAt)
+            .one(&self.db)
+            .await?;
+
+        Ok(fulfillment.map(map_fulfillment))
+    }
+
     pub async fn ship_fulfillment(
         &self,
         tenant_id: Uuid,

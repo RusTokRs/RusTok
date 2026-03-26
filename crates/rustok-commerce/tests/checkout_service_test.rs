@@ -187,6 +187,116 @@ async fn complete_checkout_rejects_empty_cart() {
     }
 }
 
+#[tokio::test]
+async fn repeated_complete_checkout_recovers_existing_result() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "usd".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-retry-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "checkout-retry-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-retry-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(Uuid::new_v4()),
+                variant_id: Some(Uuid::new_v4()),
+                sku: Some("CHK-RETRY-1".to_string()),
+                title: "Checkout Retry Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let first = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-retry-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let second = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-retry-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(first.cart.id, second.cart.id);
+    assert_eq!(first.order.id, second.order.id);
+    assert_eq!(first.payment_collection.id, second.payment_collection.id);
+    assert_eq!(
+        first.fulfillment.as_ref().map(|value| value.id),
+        second.fulfillment.as_ref().map(|value| value.id)
+    );
+}
+
 async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,

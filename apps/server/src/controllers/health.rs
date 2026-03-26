@@ -23,7 +23,7 @@ use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
 use crate::middleware::tenant::{
-    tenant_cache_stats, tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus,
+    tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus,
 };
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,

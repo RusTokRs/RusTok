@@ -28,11 +28,6 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-struct TestContext {
-    _tenant_id: Uuid,
-    _events: broadcast::Receiver<EventEnvelope>,
-}
-
 #[tokio::test]
 async fn test_post_lifecycle() -> TestResult<()> {
     let db = setup_blog_test_db().await;
@@ -410,7 +405,6 @@ async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
 
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let tag_service = TagService::new(db.clone());
 
     let tenant_id = Uuid::new_v4();
@@ -478,15 +472,6 @@ async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
     let _ = list;
 
     Ok(())
-}
-
-async fn _unused_test_context() -> TestResult<TestContext> {
-    let (_event_sender, event_receiver) = broadcast::channel(128);
-
-    Ok(TestContext {
-        _tenant_id: Uuid::new_v4(),
-        _events: event_receiver,
-    })
 }
 
 async fn setup_blog_test_db() -> DatabaseConnection {

@@ -6,11 +6,13 @@ license.workspace = true
 description = "Universal public profile domain module for RusToK"
 
 [dependencies]
-async-graphql.workspace = true
+async-graphql = { workspace = true, features = ["dataloader"] }
 async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

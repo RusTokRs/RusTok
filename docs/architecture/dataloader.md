@@ -123,6 +123,27 @@ impl Loader<Uuid> for NodeBodyLoader {
 }
 ```
 
+### 4. ProfileSummaryLoader
+
+Batches loading of localized profile summaries for multiple users while preserving
+tenant and locale fallback boundaries.
+
+```rust
+pub struct ProfileSummaryLoader {
+    db: DatabaseConnection,
+}
+
+impl Loader<ProfileSummaryLoaderKey> for ProfileSummaryLoader {
+    type Value = ProfileSummary;
+    type Error = async_graphql::Error;
+
+    fn load(&self, keys: &[ProfileSummaryLoaderKey]) -> /* ... */ {
+        // Groups requests by tenant + locale context and resolves
+        // profile summaries through rustok-profiles batched read-path
+    }
+}
+```
+
 ## Usage in Resolvers
 
 ### Before (Direct Database Access)
@@ -183,6 +204,10 @@ pub fn build_schema(...) -> AppSchema {
             NodeBodyLoader::new(db.clone()),
             tokio::spawn,
         ))
+        .data(DataLoader::new(
+            ProfileSummaryLoader::new(db.clone()),
+            tokio::spawn,
+        ))
         .finish()
 }
 ```
@@ -198,6 +223,9 @@ pub fn build_schema(...) -> AppSchema {
 4. **Caching**: Results are cached for the duration of the request, preventing duplicate queries.
 
 5. **Distribution**: Each resolver receives only the data it requested.
+
+For `ProfileSummaryLoader`, batching happens per `(tenant_id, requested_locale, tenant_default_locale)`
+group so the request cache never mixes profile summaries across tenants or locale fallback chains.
 
 ## Best Practices
 
@@ -219,10 +247,9 @@ pub fn build_schema(...) -> AppSchema {
 
 ### Planned Loaders
 
-1. **UserLoader** - For author information
-2. **ProductLoader** - For commerce queries
-3. **CategoryLoader** - For category trees
-4. **CommentLoader** - For nested comments
+1. **ProductLoader** - For commerce queries
+2. **CategoryLoader** - For category trees
+3. **CommentLoader** - For nested comments
 
 ### Advanced Features
 
