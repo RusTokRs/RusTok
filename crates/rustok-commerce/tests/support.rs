@@ -8,6 +8,7 @@ use rustok_commerce::entities::{
 use rustok_fulfillment::entities::{fulfillment, shipping_option};
 use rustok_order::entities::{order, order_line_item};
 use rustok_payment::entities::{payment, payment_collection};
+use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
 
 pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
@@ -148,6 +149,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
     ensure_tenant_tables(db).await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(tenant_module::Entity),
+    )
+    .await;
 }
 
 async fn create_entity_table(

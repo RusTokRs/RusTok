@@ -9847,6 +9847,7 @@ dependencies = [
  "rustok-product",
  "rustok-region",
  "rustok-telemetry",
+ "rustok-tenant",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",

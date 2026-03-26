@@ -368,6 +368,10 @@ flowchart LR
   checkout по уже завершенной корзине восстанавливает существующий `order/payment/fulfillment` response;
 - добавлены contract tests на наличие route-tree и OpenAPI wiring, включая store cart request/response
   shape для `/store/carts`, `/store/carts/{id}`, `/store/carts/{id}/complete` и `/store/payment-collections`.
+- добавлены regression smoke tests на сохранение legacy `/api/commerce/*` OpenAPI contract и на стабильность
+  GraphQL admin/storefront surface, чтобы cart snapshot redesign не ломал существующих клиентов вне `/store/*`.
+- добавлены runtime parity tests для `CommerceQuery`, которые исполняют admin/storefront GraphQL read-path
+  до и после создания cart с persisted snapshot и подтверждают отсутствие drift в catalog responses.
 
 Следующий обязательный checkpoint:
 

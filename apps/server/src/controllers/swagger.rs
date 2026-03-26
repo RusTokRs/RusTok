@@ -4,6 +4,10 @@ use axum::{
     routing::get,
 };
 use loco_rs::{controller::Routes, Result};
+use utoipa::openapi::path::OperationBuilder;
+use utoipa::openapi::request_body::RequestBodyBuilder;
+use utoipa::openapi::response::{ResponseBuilder, ResponsesBuilder};
+use utoipa::openapi::{Content, Ref};
 
 use crate::error::Error;
 use utoipa::OpenApi;
@@ -208,6 +212,7 @@ use utoipa::OpenApi;
             crate::controllers::commerce::store::StoreContextQuery,
             crate::controllers::commerce::store::StoreCreateCartInput,
             crate::controllers::commerce::store::StoreCartResponse,
+            crate::controllers::commerce::store::StoreUpdateCartInput,
             crate::controllers::commerce::store::StoreAddCartLineItemInput,
             crate::controllers::commerce::store::StoreUpdateCartLineItemInput,
             crate::controllers::commerce::store::StoreCreatePaymentCollectionInput,
@@ -305,6 +310,38 @@ pub struct SecurityAddon;
 
 impl utoipa::Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(path_item) = openapi
+            .paths
+            .paths
+            .get_mut("/store/carts/{id}")
+        {
+            path_item.post.get_or_insert_with(|| {
+                OperationBuilder::new()
+                    .request_body(Some(
+                        RequestBodyBuilder::new()
+                            .content(
+                                "application/json",
+                                Content::new(Some(Ref::from_schema_name("StoreUpdateCartInput"))),
+                            )
+                            .build(),
+                    ))
+                    .responses(
+                        ResponsesBuilder::new()
+                            .response(
+                                "200",
+                                ResponseBuilder::new()
+                                    .description("Updated cart context")
+                                    .content(
+                                        "application/json",
+                                        Content::new(Some(Ref::from_schema_name("StoreCartResponse"))),
+                                    ),
+                            )
+                            .build(),
+                    )
+                    .build()
+            });
+        }
+
         if let Some(components) = openapi.components.as_mut() {
             components.add_security_scheme(
                 "bearer_auth",
