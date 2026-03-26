@@ -15,7 +15,7 @@ parking_lot = "0.12"
 uuid = { workspace = true }
 tokio = { version = "1", features = ["sync", "time", "rt"] }
 async-trait = "0.1"
-cron = "0.15"
+cron = "0.16"
 axum = "0.8.8"
 serde_json = "1"
 reqwest = { workspace = true }
