@@ -10,7 +10,7 @@ use crate::shared::api::queries::{
     EVENTS_STATUS_QUERY, PLATFORM_SETTINGS_QUERY, UPDATE_PLATFORM_SETTINGS_MUTATION,
 };
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::{Button, Input, PageHeader};
+use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
 
 // ── GQL types ────────────────────────────────────────────────────────────────
@@ -298,12 +298,9 @@ pub fn EventsPage() -> impl IntoView {
                     {move || t_string!(i18n, events.transport.restartRequired)}
                 </p>
                 <Show when=move || show_iggy_warning.get()>
-                    <div class="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-                        <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                        <span>{move || t_string!(i18n, events.transport.moduleDisabledWarning)}</span>
-                    </div>
+                    <Alert variant=AlertVariant::Warning class="mt-3">
+                        {move || t_string!(i18n, events.transport.moduleDisabledWarning)}
+                    </Alert>
                 </Show>
             </div>
 
@@ -481,14 +478,14 @@ pub fn EventsPage() -> impl IntoView {
                             }.into_any()
                         }
                         Some(Err(err)) => view! {
-                            <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
+                            <Alert variant=AlertVariant::Destructive>
                                 {match err {
                                     ApiError::Unauthorized => t_string!(i18n, errors.auth.unauthorized).to_string(),
                                     ApiError::Http(code) => format!("HTTP {}", code),
                                     ApiError::Network => t_string!(i18n, errors.network).to_string(),
                                     ApiError::Graphql(msg) => msg,
                                 }}
-                            </div>
+                            </Alert>
                         }.into_any(),
                     }}
                 </Suspense>

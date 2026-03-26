@@ -21,6 +21,16 @@ pub enum Size {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AlertVariant {
+    #[default]
+    Default,
+    Info,
+    Warning,
+    Destructive,
+    Success,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BadgeVariant {
     #[default]
     Default,

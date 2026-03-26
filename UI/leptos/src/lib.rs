@@ -1,3 +1,4 @@
+pub mod alert;
 pub mod badge;
 pub mod button;
 pub mod checkbox;
@@ -8,6 +9,7 @@ pub mod switch;
 pub mod textarea;
 pub mod types;
 
+pub use alert::Alert;
 pub use badge::Badge;
 pub use button::Button;
 pub use checkbox::Checkbox;
@@ -16,4 +18,4 @@ pub use select::{Select, SelectOption};
 pub use spinner::Spinner;
 pub use switch::{Switch, SwitchSize};
 pub use textarea::Textarea;
-pub use types::{BadgeVariant, ButtonVariant, Size};
+pub use types::{AlertVariant, BadgeVariant, ButtonVariant, Size};

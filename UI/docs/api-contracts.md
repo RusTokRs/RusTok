@@ -157,7 +157,55 @@ Thumb: `bg-background` rounded circle.
 
 ---
 
-## 8) Spinner
+## 8) Alert
+
+**Variants**
+- `default` — `bg-card text-card-foreground border-border`
+- `info` — `bg-blue-50 text-blue-800 border-blue-200` (dark: `bg-blue-950 text-blue-200 border-blue-800`)
+- `warning` — `bg-amber-50 text-amber-800 border-amber-300` (dark: `bg-amber-950 text-amber-200 border-amber-700`)
+- `destructive` — `bg-destructive/10 text-destructive border-destructive/30`
+- `success` — `bg-emerald-50 text-emerald-800 border-emerald-200` (dark: `bg-emerald-950 text-emerald-200 border-emerald-800`)
+
+**Props**
+- `variant`: `default | info | warning | destructive | success`
+- `title`: optional string — bold heading rendered above the body
+- `class`: optional extra CSS classes
+
+**Base classes**:
+```
+relative w-full rounded-lg border px-4 py-3 text-sm
+```
+
+**Usage (Leptos)**:
+```rust
+use leptos_ui::{Alert, AlertVariant};
+
+view! {
+    <Alert variant=AlertVariant::Warning>
+        "The Iggy module is not enabled. Enable it on the Modules page."
+    </Alert>
+
+    <Alert variant=AlertVariant::Destructive title="Save failed".to_string()>
+        "Could not reach the server."
+    </Alert>
+}
+```
+
+**Usage (Next.js)** — shadcn `Alert` from `@/shared/ui/shadcn/alert`:
+```tsx
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/shadcn/alert';
+
+<Alert variant="warning">
+  <AlertTitle>Warning</AlertTitle>
+  <AlertDescription>The Iggy module is not enabled.</AlertDescription>
+</Alert>
+```
+
+> Note: Next.js shadcn Alert has `default` and `destructive` variants built in. For `warning`, `info`, `success` — pass the className prop with the appropriate color classes until a `warning` variant is added to `apps/next-admin/src/shared/ui/shadcn/alert.tsx`.
+
+---
+
+## 9) Spinner
 
 Custom component (shadcn/ui has no Spinner).
 

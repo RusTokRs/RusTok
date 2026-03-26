@@ -41,7 +41,7 @@ Leptos-компоненты (`UI/leptos/src/`) реализуются как **�
 | Component | Decision | Target crate / file | Notes |
 |-----------|----------|---------------------|-------|
 | Accordion | defer | — | Нет текущей потребности |
-| Alert | pilot | `iu-leptos` + `UI/next` | Планируется рядом с Badge |
+| Alert | adopt | `UI/leptos/src/alert.rs` (Leptos); shadcn `alert.tsx` (Next.js) | 5 вариантов: Default, Info, Warning, Destructive, Success |
 | Alert Dialog | pilot | `iu-leptos` + `UI/next` | Нужен для confirm-диалогов |
 | Animate | defer | — | CSS transitions достаточно |
 | Avatar | adopt | `UI/next/components/Avatar.tsx` | Next.js; Leptos — `entities/user/ui` в admin |
@@ -81,6 +81,7 @@ Leptos-компоненты (`UI/leptos/src/`) реализуются как **�
 
 | Component | Leptos file | Variants / notes |
 |-----------|------------|-----------------|
+| `ui_alert` | `src/alert.rs` | Default, Info, Warning, Destructive, Success |
 | `ui_button` | `src/button.rs` | Default, Destructive, Outline, Secondary, Ghost, Link |
 | `ui_input` | `src/input.rs` | size sm/md/lg, invalid state |
 | `ui_textarea` | `src/textarea.rs` | size sm/md/lg, invalid state |
@@ -115,8 +116,7 @@ apps/storefront/assets/input.css            ← shadcn vars (sky-based primary p
 
 | Приоритет | Компонент | Сложность | Обоснование |
 |-----------|-----------|-----------|-------------|
-| 1 | `Alert` | Низкая | CSS-only. Нужен для информационных сообщений в admin |
-| 2 | `AlertDialog` | Средняя | Нужен для confirm-диалогов (удаление пользователей и т.д.) |
+| 1 | `AlertDialog` | Средняя | Нужен для confirm-диалогов (удаление пользователей и т.д.) |
 | 3 | `Tabs` | Низкая | CSS + JS для активного таба. Нужен для страниц настроек |
 | 4 | `Breadcrumb` | Низкая | CSS-only. Оформить header breadcrumbs как переиспользуемый компонент |
 | 5 | `Skeleton` | Низкая | CSS-only. Loading states уже нужны в dashboard/users |
@@ -125,4 +125,4 @@ apps/storefront/assets/input.css            ← shadcn vars (sky-based primary p
 
 ---
 
-Последнее обновление: 2026-02-25.
+Последнее обновление: 2026-03-26.

@@ -101,6 +101,31 @@ view! {
 }
 ```
 
+### Alert
+
+```rust
+use leptos_ui::{Alert, AlertVariant};
+
+view! {
+    <Alert variant=AlertVariant::Warning>
+        "The Iggy module is not enabled. Enable it on the Modules page."
+    </Alert>
+
+    <Alert variant=AlertVariant::Destructive title="Save failed".to_string()>
+        "Could not reach the server."
+    </Alert>
+
+    <Alert variant=AlertVariant::Info>
+        "Restart required to apply transport changes."
+    </Alert>
+}
+```
+
+**Props:**
+- `variant`: `Default | Info | Warning | Destructive | Success`
+- `title`: `Option<String>` — необязательный жирный заголовок
+- `class`: `Option<String>` — дополнительные CSS классы
+
 ### Badge
 
 ```rust
@@ -153,6 +178,7 @@ view! {
 - [x] Card (Card, CardHeader, CardContent, CardFooter)
 - [x] Badge
 - [x] Separator
+- [x] Alert
 
 ### Phase 2
 - [ ] Table primitives
