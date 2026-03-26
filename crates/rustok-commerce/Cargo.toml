@@ -42,5 +42,7 @@ validator.workspace = true
 tokio.workspace = true
 rustok-test-utils.workspace = true
 rustok-tenant.workspace = true
+loco-rs = { workspace = true, features = ["testing"] }
+tower.workspace = true
 proptest = "1.5"
 rust_decimal_macros = "1.36"

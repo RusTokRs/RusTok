@@ -11,6 +11,7 @@ use rustok_cart::CartError;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
+use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
@@ -798,29 +799,15 @@ async fn apply_cart_context_patch(
     cart: &CartResponse,
     patch: StoreCartContextPatch,
 ) -> Result<StoreCartResponse> {
-    let region_was_explicit = patch.region_id.is_some();
-    let email = patch.email.unwrap_or_else(|| cart.email.clone());
-    let requested_region_id = patch.region_id.unwrap_or(cart.region_id);
-    let requested_country_code = match patch.country_code {
-        Some(country_code) => country_code,
-        None if region_was_explicit => None,
-        None => cart.country_code.clone(),
-    };
-    let requested_locale = patch
-        .locale
-        .unwrap_or_else(|| cart.locale_code.clone())
-        .or_else(|| Some(request_context.locale.clone()));
-    let selected_shipping_option_id = patch
-        .selected_shipping_option_id
-        .unwrap_or(cart.selected_shipping_option_id);
+    let requested = requested_cart_context(cart, request_context, patch);
 
     let context = resolve_context(
         ctx,
         tenant_id,
         request_context,
-        requested_region_id,
-        requested_country_code.clone(),
-        requested_locale,
+        requested.region_id,
+        requested.country_code.clone(),
+        requested.locale,
         Some(cart.currency_code.clone()),
     )
     .await?;
@@ -828,7 +815,7 @@ async fn apply_cart_context_patch(
     validate_selected_shipping_option(
         ctx,
         tenant_id,
-        selected_shipping_option_id,
+        requested.selected_shipping_option_id,
         &cart.currency_code,
     )
     .await?;
@@ -839,11 +826,11 @@ async fn apply_cart_context_patch(
             tenant_id,
             cart.id,
             UpdateCartContextInput {
-                email,
+                email: requested.email,
                 region_id: context.region.as_ref().map(|region| region.id),
-                country_code: requested_country_code,
+                country_code: requested.country_code,
                 locale_code: Some(context.locale.clone()),
-                selected_shipping_option_id,
+                selected_shipping_option_id: requested.selected_shipping_option_id,
             },
         )
         .await
@@ -853,6 +840,31 @@ async fn apply_cart_context_patch(
         cart: updated_cart,
         context,
     })
+}
+
+fn requested_cart_context(
+    cart: &CartResponse,
+    request_context: &RequestContext,
+    patch: StoreCartContextPatch,
+) -> RequestedCartContext {
+    let region_was_explicit = patch.region_id.is_some();
+
+    RequestedCartContext {
+        email: patch.email.unwrap_or_else(|| cart.email.clone()),
+        region_id: patch.region_id.unwrap_or(cart.region_id),
+        country_code: match patch.country_code {
+            Some(country_code) => country_code,
+            None if region_was_explicit => None,
+            None => cart.country_code.clone(),
+        },
+        locale: patch
+            .locale
+            .unwrap_or_else(|| cart.locale_code.clone())
+            .or_else(|| Some(request_context.locale.clone())),
+        selected_shipping_option_id: patch
+            .selected_shipping_option_id
+            .unwrap_or(cart.selected_shipping_option_id),
+    }
 }
 
 async fn validate_selected_shipping_option(
@@ -978,6 +990,14 @@ fn default_metadata() -> Value {
     json!({})
 }
 
+fn deserialize_patch_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
 fn merge_metadata(current: Value, patch: Value) -> Value {
     match (current, patch) {
         (Value::Object(mut current), Value::Object(patch)) => {
@@ -1042,15 +1062,15 @@ pub struct StoreCartResponse {
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct StoreUpdateCartInput {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_patch_field")]
     pub email: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_patch_field")]
     pub region_id: Option<Option<Uuid>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_patch_field")]
     pub country_code: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_patch_field")]
     pub locale: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_patch_field")]
     pub selected_shipping_option_id: Option<Option<Uuid>>,
 }
 
@@ -1099,13 +1119,57 @@ struct StoreCartContextPatch {
     selected_shipping_option_id: Option<Option<Uuid>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RequestedCartContext {
+    email: Option<String>,
+    region_id: Option<Uuid>,
+    country_code: Option<String>,
+    locale: Option<String>,
+    selected_shipping_option_id: Option<Uuid>,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ensure_store_cart_access;
+    use super::{
+        cart_context_metadata, ensure_store_cart_access, merge_metadata, requested_cart_context,
+        resolve_store_line_item_input, RequestedCartContext, StoreAddCartLineItemInput,
+        StoreCartContextPatch,
+    };
     use rust_decimal::Decimal;
+    use axum::body::{to_bytes, Body};
+    use axum::extract::State;
+    use axum::http::{Request, StatusCode};
+    use axum::middleware::{from_fn_with_state, Next};
+    use axum::response::Response;
+    use axum::Router;
+    use loco_rs::app::{AppContext, SharedStore};
+    use loco_rs::cache;
+    use loco_rs::environment::Environment;
+    use loco_rs::storage::{self, Storage};
+    use loco_rs::tests_cfg::config::test_config;
+    use rustok_api::RequestContext;
+    use rustok_api::{AuthContext, AuthContextExtension, TenantContext, TenantContextExtension};
+    use rustok_core::events::EventTransport;
+    use rustok_core::Permission;
+    use rustok_test_utils::db::setup_test_db;
+    use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
+    use rustok_region::dto::RegionResponse;
+    use sea_orm::ConnectionTrait;
+    use serde_json::json;
+    use std::str::FromStr;
+    use std::sync::Arc;
+    use tower::util::ServiceExt;
     use uuid::Uuid;
 
-    use crate::dto::CartResponse;
+    use crate::dto::{
+        CartResponse, CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+        StoreContextResponse,
+    };
+    use crate::{CatalogService, CustomerService};
+    use rustok_customer::dto::CreateCustomerInput;
+
+    #[path = "../../../../tests/support.rs"]
+    mod support;
 
     fn sample_cart(customer_id: Option<Uuid>) -> CartResponse {
         CartResponse {
@@ -1145,7 +1209,7 @@ mod tests {
     fn customer_owned_cart_rejects_missing_customer_context() {
         let cart = sample_cart(Some(Uuid::new_v4()));
         let error = ensure_store_cart_access(&cart, None).expect_err("customer auth required");
-        assert_eq!(error.to_string(), "Unauthorized: Cart belongs to another customer");
+        assert_eq!(error.to_string(), "Cart belongs to another customer");
     }
 
     #[test]
@@ -1153,6 +1217,1682 @@ mod tests {
         let cart = sample_cart(Some(Uuid::new_v4()));
         let error = ensure_store_cart_access(&cart, Some(Uuid::new_v4()))
             .expect_err("foreign customer access must be rejected");
-        assert_eq!(error.to_string(), "Unauthorized: Cart belongs to another customer");
+        assert_eq!(error.to_string(), "Cart belongs to another customer");
+    }
+
+    fn sample_request_context(locale: &str) -> RequestContext {
+        RequestContext {
+            tenant_id: Uuid::new_v4(),
+            user_id: None,
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: locale.to_string(),
+        }
+    }
+
+    #[test]
+    fn cart_context_patch_keeps_existing_values_when_fields_are_omitted() {
+        let region_id = Uuid::new_v4();
+        let shipping_option_id = Uuid::new_v4();
+        let mut cart = sample_cart(None);
+        cart.email = Some("keep@example.com".to_string());
+        cart.region_id = Some(region_id);
+        cart.country_code = Some("DE".to_string());
+        cart.locale_code = Some("de".to_string());
+        cart.selected_shipping_option_id = Some(shipping_option_id);
+
+        let requested = requested_cart_context(
+            &cart,
+            &sample_request_context("en"),
+            StoreCartContextPatch {
+                email: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                selected_shipping_option_id: None,
+            },
+        );
+
+        assert_eq!(
+            requested,
+            RequestedCartContext {
+                email: Some("keep@example.com".to_string()),
+                region_id: Some(region_id),
+                country_code: Some("DE".to_string()),
+                locale: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option_id),
+            }
+        );
+    }
+
+    #[test]
+    fn cart_context_patch_applies_explicit_values() {
+        let region_id = Uuid::new_v4();
+        let shipping_option_id = Uuid::new_v4();
+        let cart = sample_cart(None);
+
+        let requested = requested_cart_context(
+            &cart,
+            &sample_request_context("en"),
+            StoreCartContextPatch {
+                email: Some(Some("set@example.com".to_string())),
+                region_id: Some(Some(region_id)),
+                country_code: Some(Some("fr".to_string())),
+                locale: Some(Some("fr".to_string())),
+                selected_shipping_option_id: Some(Some(shipping_option_id)),
+            },
+        );
+
+        assert_eq!(
+            requested,
+            RequestedCartContext {
+                email: Some("set@example.com".to_string()),
+                region_id: Some(region_id),
+                country_code: Some("fr".to_string()),
+                locale: Some("fr".to_string()),
+                selected_shipping_option_id: Some(shipping_option_id),
+            }
+        );
+    }
+
+    #[test]
+    fn cart_context_patch_clears_country_when_region_is_explicitly_cleared() {
+        let mut cart = sample_cart(None);
+        cart.region_id = Some(Uuid::new_v4());
+        cart.country_code = Some("DE".to_string());
+        cart.locale_code = Some("de".to_string());
+
+        let requested = requested_cart_context(
+            &cart,
+            &sample_request_context("en"),
+            StoreCartContextPatch {
+                email: None,
+                region_id: Some(None),
+                country_code: None,
+                locale: None,
+                selected_shipping_option_id: None,
+            },
+        );
+
+        assert_eq!(
+            requested,
+            RequestedCartContext {
+                email: Some("buyer@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale: Some("de".to_string()),
+                selected_shipping_option_id: None,
+            }
+        );
+    }
+
+    #[test]
+    fn cart_context_patch_can_clear_individual_fields_and_falls_back_to_request_locale() {
+        let region_id = Uuid::new_v4();
+        let shipping_option_id = Uuid::new_v4();
+        let mut cart = sample_cart(None);
+        cart.region_id = Some(region_id);
+        cart.country_code = Some("DE".to_string());
+        cart.locale_code = Some("de".to_string());
+        cart.selected_shipping_option_id = Some(shipping_option_id);
+
+        let requested = requested_cart_context(
+            &cart,
+            &sample_request_context("en"),
+            StoreCartContextPatch {
+                email: Some(None),
+                region_id: None,
+                country_code: Some(None),
+                locale: Some(None),
+                selected_shipping_option_id: Some(None),
+            },
+        );
+
+        assert_eq!(
+            requested,
+            RequestedCartContext {
+                email: None,
+                region_id: Some(region_id),
+                country_code: None,
+                locale: Some("en".to_string()),
+                selected_shipping_option_id: None,
+            }
+        );
+    }
+
+    #[test]
+    fn merge_metadata_keeps_existing_fields_and_overrides_conflicts() {
+        let merged = merge_metadata(
+            json!({
+                "source": "request",
+                "cart_context": { "locale": "de", "currency_code": "EUR" }
+            }),
+            json!({
+                "cart_context": { "locale": "en" },
+                "attempt": 2
+            }),
+        );
+
+        assert_eq!(
+            merged,
+            json!({
+                "source": "request",
+                "cart_context": { "locale": "en" },
+                "attempt": 2
+            })
+        );
+    }
+
+    #[test]
+    fn cart_context_metadata_embeds_storefront_context_for_payment_collection() {
+        let tenant_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        let region_id = Uuid::new_v4();
+        let shipping_option_id = Uuid::new_v4();
+        let mut cart = sample_cart(Some(customer_id));
+        cart.region_id = Some(region_id);
+        cart.country_code = Some("DE".to_string());
+        cart.locale_code = Some("de".to_string());
+        cart.selected_shipping_option_id = Some(shipping_option_id);
+
+        let metadata = cart_context_metadata(
+            &cart,
+            &StoreContextResponse {
+                region: Some(RegionResponse {
+                    id: region_id,
+                    tenant_id,
+                    name: "Europe".to_string(),
+                    currency_code: "EUR".to_string(),
+                    tax_rate: Decimal::from(20),
+                    tax_included: true,
+                    countries: vec!["DE".to_string()],
+                    metadata: json!({}),
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }),
+                locale: "de".to_string(),
+                default_locale: "en".to_string(),
+                available_locales: vec!["en".to_string(), "de".to_string()],
+                currency_code: Some("EUR".to_string()),
+            },
+        );
+
+        assert_eq!(
+            metadata,
+            json!({
+                "cart_context": {
+                    "region_id": region_id,
+                    "country_code": "DE",
+                    "locale": "de",
+                    "currency_code": "USD",
+                    "selected_shipping_option_id": shipping_option_id,
+                    "customer_id": customer_id,
+                    "email": "buyer@example.com"
+                }
+            })
+        );
+    }
+
+    fn storefront_product_input() -> CreateProductInput {
+        CreateProductInput {
+            translations: vec![
+                ProductTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Storefront Product".to_string(),
+                    description: Some("English description".to_string()),
+                    handle: Some("storefront-product-en".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                },
+                ProductTranslationInput {
+                    locale: "de".to_string(),
+                    title: "Storefront Produkt".to_string(),
+                    description: Some("German description".to_string()),
+                    handle: Some("storefront-product-de".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                },
+            ],
+            options: vec![],
+            variants: vec![CreateVariantInput {
+                sku: Some("STOREFRONT-SKU-1".to_string()),
+                barcode: None,
+                option1: Some("Default".to_string()),
+                option2: None,
+                option3: None,
+                prices: vec![PriceInput {
+                    currency_code: "EUR".to_string(),
+                    amount: Decimal::from_str("19.99").expect("valid decimal"),
+                    compare_at_amount: None,
+                }],
+                inventory_quantity: 0,
+                inventory_policy: "deny".to_string(),
+                weight: None,
+                weight_unit: None,
+            }],
+            vendor: Some("Storefront Vendor".to_string()),
+            product_type: Some("physical".to_string()),
+            publish: false,
+            metadata: json!({}),
+        }
+    }
+
+    fn test_app_context(db: sea_orm::DatabaseConnection) -> AppContext {
+        let shared_store = Arc::new(SharedStore::default());
+        let event_transport: Arc<dyn EventTransport> = Arc::new(MockEventTransport::new());
+        shared_store.insert(event_transport);
+
+        AppContext {
+            environment: Environment::Test,
+            db,
+            queue_provider: None,
+            config: test_config(),
+            mailer: None,
+            storage: Storage::single(storage::drivers::mem::new()).into(),
+            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
+            shared_store,
+        }
+    }
+
+    async fn seed_store_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
+        db.execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                tenant_id.into(),
+                "Store Test Tenant".into(),
+                format!("store-test-{tenant_id}").into(),
+                sea_orm::Value::String(None),
+                json!({}).to_string().into(),
+                "en".into(),
+                true.into(),
+            ],
+        ))
+        .await
+        .expect("tenant should be inserted");
+
+        for (locale, name, native_name, is_default) in [
+            ("en", "English", "English", true),
+            ("de", "German", "Deutsch", false),
+        ] {
+            db.execute(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Sqlite,
+                "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                vec![
+                    Uuid::new_v4().into(),
+                    tenant_id.into(),
+                    locale.into(),
+                    name.into(),
+                    native_name.into(),
+                    is_default.into(),
+                    true.into(),
+                    sea_orm::Value::String(None),
+                ],
+            ))
+            .await
+            .expect("tenant locale should be inserted");
+        }
+
+        db.execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                Uuid::new_v4().into(),
+                tenant_id.into(),
+                "commerce".into(),
+                true.into(),
+                json!({}).to_string().into(),
+            ],
+        ))
+        .await
+        .expect("commerce module should be enabled for tenant");
+    }
+
+    async fn create_customer_for_user(
+        db: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        email: &str,
+    ) -> Uuid {
+        CustomerService::new(db.clone())
+            .create_customer(
+                tenant_id,
+                CreateCustomerInput {
+                    user_id: Some(user_id),
+                    email: email.to_string(),
+                    first_name: Some("Store".to_string()),
+                    last_name: Some("Customer".to_string()),
+                    phone: None,
+                    locale: Some("de".to_string()),
+                    metadata: json!({}),
+                },
+            )
+            .await
+            .expect("customer should be created")
+            .id
+    }
+
+    #[derive(Clone)]
+    struct TransportRequestContext {
+        tenant: TenantContext,
+        auth: Option<AuthContext>,
+    }
+
+    async fn inject_transport_context(
+        State(context): State<TransportRequestContext>,
+        mut req: axum::extract::Request,
+        next: Next,
+    ) -> Response {
+        req.extensions_mut()
+            .insert(TenantContextExtension(context.tenant));
+        if let Some(auth) = context.auth {
+            req.extensions_mut().insert(AuthContextExtension(auth));
+        }
+        next.run(req).await
+    }
+
+    fn commerce_transport_router(ctx: AppContext, tenant: TenantContext) -> Router {
+        commerce_transport_router_with_auth(ctx, tenant, None)
+    }
+
+    fn commerce_transport_router_with_auth(
+        ctx: AppContext,
+        tenant: TenantContext,
+        auth: Option<AuthContext>,
+    ) -> Router {
+        let routes = crate::controllers::routes();
+        let mut router = Router::new();
+        for handler in routes.handlers {
+            router = router.route(&handler.uri, handler.method.with_state(ctx.clone()));
+        }
+
+        router.layer(from_fn_with_state(
+            TransportRequestContext { tenant, auth },
+            inject_transport_context,
+        ))
+    }
+
+    #[tokio::test]
+    async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+
+        let created = service
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = service
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+
+        let resolved = resolve_store_line_item_input(
+            &db,
+            tenant_id,
+            "EUR",
+            "de",
+            StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 2,
+                metadata: json!({ "source": "store-line-item-test" }),
+            },
+        )
+        .await
+        .expect("store line item should resolve from backend catalog");
+
+        assert_eq!(resolved.product_id, Some(published.id));
+        assert_eq!(resolved.variant_id, Some(variant.id));
+        assert_eq!(resolved.sku.as_deref(), Some("STOREFRONT-SKU-1"));
+        assert_eq!(resolved.title, "Storefront Produkt / Default");
+        assert_eq!(
+            resolved.unit_price,
+            Decimal::from_str("19.99").expect("valid decimal")
+        );
+        assert_eq!(resolved.quantity, 2);
+        assert_eq!(resolved.metadata, json!({ "source": "store-line-item-test" }));
+    }
+
+    #[tokio::test]
+    async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+
+        let created = service
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = service
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+
+        let error = resolve_store_line_item_input(
+            &db,
+            tenant_id,
+            "USD",
+            "de",
+            StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 1,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect_err("store line item must reject missing price in cart currency");
+
+        assert_eq!(
+            error.to_string(),
+            format!("No storefront price for variant {} in currency USD", variant.id)
+        );
+    }
+
+    #[tokio::test]
+    async fn storefront_line_item_resolution_falls_back_to_first_product_translation_when_locale_missing() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+
+        let created = service
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = service
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+
+        let resolved = resolve_store_line_item_input(
+            &db,
+            tenant_id,
+            "EUR",
+            "fr",
+            StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 1,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("store line item should fall back to an existing product translation");
+
+        assert_eq!(resolved.product_id, Some(published.id));
+        assert_eq!(resolved.variant_id, Some(variant.id));
+        assert_eq!(resolved.sku.as_deref(), Some("STOREFRONT-SKU-1"));
+        assert_eq!(resolved.title, "Storefront Produkt");
+        assert_eq!(
+            resolved.unit_price,
+            Decimal::from_str("19.99").expect("valid decimal")
+        );
+    }
+
+    #[tokio::test]
+    async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+
+        let error = resolve_store_line_item_input(
+            &db,
+            Uuid::new_v4(),
+            "EUR",
+            "de",
+            StoreAddCartLineItemInput {
+                variant_id: Uuid::new_v4(),
+                quantity: 1,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect_err("unknown variant must not resolve");
+
+        assert_eq!(error.to_string(), "not found");
+    }
+
+    #[tokio::test]
+    async fn store_cart_transport_uses_tristate_update_semantics_end_to_end() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let app = commerce_transport_router(test_app_context(db), tenant);
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "buyer@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        let create_status = create_response.status();
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        assert_eq!(
+            create_status,
+            StatusCode::CREATED,
+            "unexpected create cart body: {}",
+            String::from_utf8_lossy(&create_body)
+        );
+
+        let created: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create cart response should be JSON");
+        let cart_id = created["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+        assert_eq!(created["cart"]["email"], json!("buyer@example.com"));
+        assert_eq!(created["cart"]["locale_code"], json!("de"));
+        assert_eq!(created["context"]["locale"], json!("de"));
+
+        let update_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .header("x-medusa-locale", "en")
+                    .body(Body::from(
+                        json!({
+                            "email": null,
+                            "locale": null
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should succeed");
+        let update_status = update_response.status();
+        let update_body = to_bytes(update_response.into_body(), usize::MAX)
+            .await
+            .expect("update cart body should read");
+        assert_eq!(
+            update_status,
+            StatusCode::OK,
+            "unexpected update cart body: {}",
+            String::from_utf8_lossy(&update_body)
+        );
+
+        let updated: serde_json::Value =
+            serde_json::from_slice(&update_body).expect("update cart response should be JSON");
+        assert_eq!(updated["cart"]["id"], json!(cart_id));
+        assert!(updated["cart"]["email"].is_null());
+        assert_eq!(updated["cart"]["locale_code"], json!("en"));
+        assert_eq!(updated["context"]["locale"], json!("en"));
+    }
+
+    #[tokio::test]
+    async fn store_cart_line_item_transport_resolves_backend_title_and_price() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let app = commerce_transport_router(test_app_context(db), tenant);
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "buyer@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+
+        let line_item_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 2,
+                            "metadata": { "source": "transport-line-item-test" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should succeed");
+        let line_item_status = line_item_response.status();
+        let line_item_body = to_bytes(line_item_response.into_body(), usize::MAX)
+            .await
+            .expect("line item body should read");
+        assert_eq!(
+            line_item_status,
+            StatusCode::OK,
+            "unexpected add line item body: {}",
+            String::from_utf8_lossy(&line_item_body)
+        );
+
+        let updated_cart: serde_json::Value =
+            serde_json::from_slice(&line_item_body).expect("updated cart should be JSON");
+        assert_eq!(updated_cart["line_items"][0]["variant_id"], json!(variant.id));
+        assert_eq!(updated_cart["line_items"][0]["product_id"], json!(published.id));
+        assert_eq!(updated_cart["line_items"][0]["sku"], json!("STOREFRONT-SKU-1"));
+        assert_eq!(
+            updated_cart["line_items"][0]["title"],
+            json!("Storefront Produkt / Default")
+        );
+        assert_eq!(updated_cart["line_items"][0]["unit_price"], json!("19.99"));
+        assert_eq!(updated_cart["line_items"][0]["quantity"], json!(2));
+        assert_eq!(
+            updated_cart["line_items"][0]["metadata"],
+            json!({ "source": "transport-line-item-test" })
+        );
+    }
+
+    #[tokio::test]
+    async fn store_cart_line_item_transport_returns_not_found_for_unknown_variant() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let app = commerce_transport_router(test_app_context(db), tenant);
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "buyer@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+
+        let line_item_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": Uuid::new_v4(),
+                            "quantity": 1,
+                            "metadata": {}
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should complete");
+
+        assert_eq!(line_item_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn store_payment_collection_transport_reuses_active_collection_and_preserves_cart_context_metadata() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let app = commerce_transport_router(test_app_context(db), tenant);
+
+        let create_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "buyer@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        let create_cart_body = to_bytes(create_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_cart_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+
+        let add_line_item_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 1,
+                            "metadata": { "source": "transport-payment-test-line-item" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should succeed");
+        assert_eq!(add_line_item_response.status(), StatusCode::OK);
+
+        let create_collection_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/payment-collections")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .header("x-medusa-locale", "de")
+                    .body(Body::from(
+                        json!({
+                            "cart_id": cart_id,
+                            "metadata": { "source": "transport-payment-test" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create payment collection request should succeed");
+        let create_collection_status = create_collection_response.status();
+        let create_collection_body =
+            to_bytes(create_collection_response.into_body(), usize::MAX)
+                .await
+                .expect("payment collection body should read");
+        assert_eq!(
+            create_collection_status,
+            StatusCode::CREATED,
+            "unexpected payment collection body: {}",
+            String::from_utf8_lossy(&create_collection_body)
+        );
+
+        let first_collection: serde_json::Value = serde_json::from_slice(&create_collection_body)
+            .expect("payment collection response should be JSON");
+        assert_eq!(first_collection["status"], json!("pending"));
+        assert_eq!(first_collection["currency_code"], json!("EUR"));
+        assert_eq!(
+            first_collection["metadata"]["source"],
+            json!("transport-payment-test")
+        );
+        assert_eq!(
+            first_collection["metadata"]["cart_context"]["locale"],
+            json!("de")
+        );
+        assert_eq!(
+            first_collection["metadata"]["cart_context"]["currency_code"],
+            json!("EUR")
+        );
+        assert_eq!(
+            first_collection["metadata"]["cart_context"]["email"],
+            json!("buyer@example.com")
+        );
+
+        let reuse_collection_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/payment-collections")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .header("x-medusa-locale", "de")
+                    .body(Body::from(
+                        json!({
+                            "cart_id": cart_id,
+                            "metadata": { "source": "transport-payment-test-retry" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("retry payment collection request should succeed");
+        let reuse_collection_status = reuse_collection_response.status();
+        let reuse_collection_body = to_bytes(reuse_collection_response.into_body(), usize::MAX)
+            .await
+            .expect("reused payment collection body should read");
+        assert_eq!(
+            reuse_collection_status,
+            StatusCode::OK,
+            "unexpected reused payment collection body: {}",
+            String::from_utf8_lossy(&reuse_collection_body)
+        );
+
+        let reused_collection: serde_json::Value = serde_json::from_slice(&reuse_collection_body)
+            .expect("reused payment collection response should be JSON");
+        assert_eq!(reused_collection["id"], first_collection["id"]);
+        assert_eq!(reused_collection["metadata"], first_collection["metadata"]);
+    }
+
+    #[tokio::test]
+    async fn store_checkout_transport_completes_guest_cart_with_existing_payment_and_no_fulfillment() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_CREATE, Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant.clone());
+        let authed_app = commerce_transport_router_with_auth(test_app_context(db), tenant, Some(auth));
+
+        let create_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "guest@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(create_cart_response.status(), StatusCode::CREATED);
+        let create_cart_body = to_bytes(create_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_cart_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+
+        let add_line_item_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 1,
+                            "metadata": { "source": "transport-checkout-test-line-item" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should succeed");
+        assert_eq!(add_line_item_response.status(), StatusCode::OK);
+
+        let payment_collection_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/payment-collections")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .header("x-medusa-locale", "de")
+                    .body(Body::from(
+                        json!({
+                            "cart_id": cart_id,
+                            "metadata": { "source": "transport-checkout-test-payment" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create payment collection request should succeed");
+        assert_eq!(payment_collection_response.status(), StatusCode::CREATED);
+
+        let complete_checkout_response = authed_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/complete"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "create_fulfillment": false,
+                            "metadata": { "source": "transport-checkout-test-complete" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("complete checkout request should succeed");
+        let complete_checkout_status = complete_checkout_response.status();
+        let complete_checkout_body =
+            to_bytes(complete_checkout_response.into_body(), usize::MAX)
+                .await
+                .expect("complete checkout body should read");
+        assert_eq!(
+            complete_checkout_status,
+            StatusCode::OK,
+            "unexpected complete checkout body: {}",
+            String::from_utf8_lossy(&complete_checkout_body)
+        );
+
+        let completed: serde_json::Value = serde_json::from_slice(&complete_checkout_body)
+            .expect("complete checkout response should be JSON");
+        assert_eq!(completed["cart"]["status"], json!("completed"));
+        assert_eq!(completed["order"]["status"], json!("paid"));
+        assert_eq!(completed["payment_collection"]["status"], json!("captured"));
+        assert!(completed["fulfillment"].is_null());
+        assert_eq!(completed["context"]["locale"], json!("de"));
+    }
+
+    #[tokio::test]
+    async fn store_order_transport_returns_customer_owned_order_after_checkout() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_CREATE, Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let customer_id =
+            create_customer_for_user(&db, tenant_id, actor_id, "customer@example.com").await;
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let app = commerce_transport_router_with_auth(test_app_context(db), tenant, Some(auth));
+
+        let create_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "customer@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(create_cart_response.status(), StatusCode::CREATED);
+        let create_cart_body = to_bytes(create_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_cart_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+        assert_eq!(created_cart["cart"]["customer_id"], json!(customer_id));
+
+        let add_line_item_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 1,
+                            "metadata": { "source": "transport-order-test-line-item" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should succeed");
+        assert_eq!(add_line_item_response.status(), StatusCode::OK);
+
+        let payment_collection_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/payment-collections")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .header("x-medusa-locale", "de")
+                    .body(Body::from(
+                        json!({
+                            "cart_id": cart_id,
+                            "metadata": { "source": "transport-order-test-payment" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create payment collection request should succeed");
+        assert_eq!(payment_collection_response.status(), StatusCode::CREATED);
+
+        let complete_checkout_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/complete"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "create_fulfillment": false,
+                            "metadata": { "source": "transport-order-test-complete" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("complete checkout request should succeed");
+        assert_eq!(complete_checkout_response.status(), StatusCode::OK);
+        let complete_checkout_body = to_bytes(complete_checkout_response.into_body(), usize::MAX)
+            .await
+            .expect("complete checkout body should read");
+        let completed: serde_json::Value = serde_json::from_slice(&complete_checkout_body)
+            .expect("complete checkout response should be JSON");
+        let order_id = completed["order"]["id"]
+            .as_str()
+            .expect("order id should be returned");
+
+        let get_order_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/store/orders/{order_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("get order request should succeed");
+        let get_order_status = get_order_response.status();
+        let get_order_body = to_bytes(get_order_response.into_body(), usize::MAX)
+            .await
+            .expect("get order body should read");
+        assert_eq!(
+            get_order_status,
+            StatusCode::OK,
+            "unexpected get order body: {}",
+            String::from_utf8_lossy(&get_order_body)
+        );
+
+        let order: serde_json::Value =
+            serde_json::from_slice(&get_order_body).expect("order response should be JSON");
+        assert_eq!(order["id"], completed["order"]["id"]);
+        assert_eq!(order["customer_id"], json!(customer_id));
+        assert_eq!(order["status"], json!("paid"));
+        assert_eq!(order["currency_code"], json!("EUR"));
+    }
+
+    #[tokio::test]
+    async fn store_order_transport_rejects_order_for_another_customer() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let owner_user_id = Uuid::new_v4();
+        let other_user_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let owner_auth = AuthContext {
+            user_id: owner_user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_CREATE, Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let other_auth = AuthContext {
+            user_id: other_user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        create_customer_for_user(&db, tenant_id, owner_user_id, "owner@example.com").await;
+        create_customer_for_user(&db, tenant_id, other_user_id, "other@example.com").await;
+        let actor_id = owner_user_id;
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let owner_app = commerce_transport_router_with_auth(
+            test_app_context(db.clone()),
+            tenant.clone(),
+            Some(owner_auth),
+        );
+        let other_app =
+            commerce_transport_router_with_auth(test_app_context(db), tenant, Some(other_auth));
+
+        let create_cart_response = owner_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "owner@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(create_cart_response.status(), StatusCode::CREATED);
+        let create_cart_body = to_bytes(create_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_cart_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+
+        let add_line_item_response = owner_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 1,
+                            "metadata": { "source": "transport-order-ownership-line-item" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should succeed");
+        assert_eq!(add_line_item_response.status(), StatusCode::OK);
+
+        let payment_collection_response = owner_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/payment-collections")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .header("x-medusa-locale", "de")
+                    .body(Body::from(
+                        json!({
+                            "cart_id": cart_id,
+                            "metadata": { "source": "transport-order-ownership-payment" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create payment collection request should succeed");
+        assert_eq!(payment_collection_response.status(), StatusCode::CREATED);
+
+        let complete_checkout_response = owner_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/complete"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "create_fulfillment": false,
+                            "metadata": { "source": "transport-order-ownership-complete" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("complete checkout request should succeed");
+        assert_eq!(complete_checkout_response.status(), StatusCode::OK);
+        let complete_checkout_body = to_bytes(complete_checkout_response.into_body(), usize::MAX)
+            .await
+            .expect("complete checkout body should read");
+        let completed: serde_json::Value = serde_json::from_slice(&complete_checkout_body)
+            .expect("complete checkout response should be JSON");
+        let order_id = completed["order"]["id"]
+            .as_str()
+            .expect("order id should be returned");
+
+        let get_order_response = other_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/store/orders/{order_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("get order request should complete");
+        let get_order_status = get_order_response.status();
+        let get_order_body = to_bytes(get_order_response.into_body(), usize::MAX)
+            .await
+            .expect("get order body should read");
+        assert_eq!(
+            get_order_status,
+            StatusCode::UNAUTHORIZED,
+            "unexpected get order body: {}",
+            String::from_utf8_lossy(&get_order_body)
+        );
+    }
+
+    #[tokio::test]
+    async fn store_customer_me_transport_returns_customer_for_authenticated_user() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let customer_id =
+            create_customer_for_user(&db, tenant_id, user_id, "customer-me@example.com").await;
+        let app = commerce_transport_router_with_auth(test_app_context(db), tenant, Some(auth));
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/store/customers/me")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("get me request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("get me body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected get me body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let customer: serde_json::Value =
+            serde_json::from_slice(&body).expect("get me response should be JSON");
+        assert_eq!(customer["id"], json!(customer_id));
+        assert_eq!(customer["user_id"], json!(user_id));
+        assert_eq!(customer["email"], json!("customer-me@example.com"));
+        assert_eq!(customer["locale"], json!("de"));
+    }
+
+    #[tokio::test]
+    async fn store_cart_transport_rejects_customer_owned_cart_for_another_customer() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let owner_user_id = Uuid::new_v4();
+        let other_user_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let owner_auth = AuthContext {
+            user_id: owner_user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let other_auth = AuthContext {
+            user_id: other_user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let owner_customer_id =
+            create_customer_for_user(&db, tenant_id, owner_user_id, "cart-owner@example.com").await;
+        create_customer_for_user(&db, tenant_id, other_user_id, "cart-other@example.com").await;
+        let owner_app = commerce_transport_router_with_auth(
+            test_app_context(db.clone()),
+            tenant.clone(),
+            Some(owner_auth),
+        );
+        let other_app =
+            commerce_transport_router_with_auth(test_app_context(db), tenant, Some(other_auth));
+
+        let create_cart_response = owner_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "cart-owner@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(create_cart_response.status(), StatusCode::CREATED);
+        let create_cart_body = to_bytes(create_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_cart_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+        assert_eq!(created_cart["cart"]["customer_id"], json!(owner_customer_id));
+
+        let get_cart_response = other_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("get cart request should complete");
+        let get_cart_status = get_cart_response.status();
+        let get_cart_body = to_bytes(get_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("get cart body should read");
+        assert_eq!(
+            get_cart_status,
+            StatusCode::UNAUTHORIZED,
+            "unexpected get cart body: {}",
+            String::from_utf8_lossy(&get_cart_body)
+        );
     }
 }

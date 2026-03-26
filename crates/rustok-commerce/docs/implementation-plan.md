@@ -372,6 +372,53 @@ flowchart LR
   GraphQL admin/storefront surface, чтобы cart snapshot redesign не ломал существующих клиентов вне `/store/*`.
 - добавлены runtime parity tests для `CommerceQuery`, которые исполняют admin/storefront GraphQL read-path
   до и после создания cart с persisted snapshot и подтверждают отсутствие drift в catalog responses.
+- добавлены targeted write-path parity tests, которые прогоняют полный `cart -> checkout` flow и подтверждают,
+  что admin GraphQL и legacy catalog read-path на тех же application services не меняют catalog response после checkout side effects.
+- добавлен targeted retry/idempotency guardrail для reusable `payment_collection` по `cart_id`, чтобы storefront
+  retry flow не создавал лишние активные коллекции и не переиспользовал отменённые payment attempts.
+- добавлен targeted checkout semantics test, подтверждающий precedence `persisted cart context > conflicting checkout overrides`
+  для `region/country/locale/shipping_option` на cart-first checkout path.
+- добавлен targeted recovery test для stuck `checking_out` cart: если `order/payment/fulfillment` уже созданы,
+  повторный checkout должен восстановить существующий результат и финализировать cart обратно в `completed`.
+- tri-state semantics `POST /store/carts/{id}` вынесены в явный helper и покрыты unit tests на `set / keep / clear`
+  для `email`, `region`, `country`, `locale` и `selected_shipping_option_id`, чтобы transport contract не дрейфовал
+  при дальнейших изменениях cart-first flow.
+- metadata contract для `/store/payment-collections` дополнительно зафиксирован unit tests на merge/envelope helper'ы:
+  payment collection metadata должно сохранять request metadata, корректно override'ить конфликты и всегда включать
+  `cart_context` snapshot (`region/country/locale/currency/shipping_option/customer/email`) из storefront cart.
+- добавлен targeted checkout failure test на release path: если checkout падает на промежуточной stage
+  (например, `create_fulfillment`), cart не должен зависать в `checking_out` и обязан возвращаться в `active`.
+- добавлен targeted compensation test на failed checkout orchestration: при сбое после создания `order/payment_collection`
+  система обязана отменять оба артефакта (`order=cancelled`, `payment_collection=cancelled`), а не оставлять полуживое состояние.
+- добавлен targeted retry-after-failure test: повторный checkout после компенсированного сбоя должен создавать
+  новый успешный `order/payment_collection`, а не пытаться переиспользовать уже `cancelled` артефакты.
+- добавлен targeted semantics test для `create_fulfillment = false`: checkout должен завершать `cart/order/payment`
+  без создания `fulfillment`, чтобы transport behavior оставался предсказуемым для deferred-fulfillment flow.
+- storefront line-item resolution теперь зафиксирован DB-backed controller tests: `variant_id + quantity`
+  должны резолвиться backend'ом в canonical `product_id/variant_id/sku/title/unit_price`, а отсутствие price в cart currency
+  должно предсказуемо возвращать error вместо неявного fallback на клиентские данные.
+- отдельно зафиксирован locale-fallback в storefront line-item resolution: при отсутствии product/variant translation
+  для запрошенной locale backend должен использовать deterministic fallback translation, а не отдавать пустой title
+  или требовать клиентский title из payload.
+- storefront line-item resolution дополнительно покрыт negative guardrail на неизвестный `variant_id`, чтобы store API
+  возвращал явный `not found` вместо размытых validation/runtime ошибок.
+- добавлен локальный transport regression на `POST /store/carts` -> `POST /store/carts/{id}` с реальным router/request stack:
+  он закрепляет tri-state semantics на JSON-слое и зафиксировал/fixed bug, где `null` в `StoreUpdateCartInput`
+  не очищал поле из-за дефолтной serde-десериализации `Option<Option<T>>`.
+- добавлены локальные transport regressions на `POST /store/carts/{id}/line-items`: request stack теперь проверяет,
+  что storefront add-line-item действительно резолвит `product_id/variant_id/sku/title/unit_price` backend'ом из `variant_id`,
+  а неизвестный `variant_id` возвращает `404`.
+- добавлен локальный transport regression на `POST /store/payment-collections`: request stack теперь фиксирует reuse
+  активной collection для того же `cart_id` и гарантирует, что metadata сохраняет storefront `cart_context` snapshot.
+- добавлен локальный transport regression на `POST /store/carts/{id}/complete`: request stack теперь покрывает полный
+  guest storefront flow `create cart -> add line item -> payment collection -> complete checkout` и фиксирует,
+  что при `create_fulfillment = false` checkout завершает `cart/order/payment_collection` без drift по response shape.
+- storefront read-path после checkout дополнительно зафиксирован локальными transport regressions на `GET /store/orders/{id}`:
+  owner получает свой `paid` order, а чужой customer получает `401`, что закрепляет ownership contract на реальном request stack.
+- добавлен локальный transport regression на `GET /store/customers/me`, чтобы storefront customer lookup через
+  `get_customer_by_user` оставался совместимым с auth/user mapping после cart-first и checkout hardening.
+- storefront ownership boundary дополнительно зафиксирован локальным transport regression на `GET /store/carts/{id}`:
+  customer-owned cart должен оставаться недоступным для другого customer даже при корректном tenant/auth контексте.
 
 Следующий обязательный checkpoint:
 

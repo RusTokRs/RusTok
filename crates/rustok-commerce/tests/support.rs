@@ -5,6 +5,7 @@ use rustok_commerce::entities::{
     product_option_value_translation, product_translation, product_variant, region,
     reservation_item, stock_location, variant_translation,
 };
+use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{fulfillment, shipping_option};
 use rustok_order::entities::{order, order_line_item};
 use rustok_payment::entities::{payment, payment_collection};
@@ -109,6 +110,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(payment_collection::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(customer::Entity),
     )
     .await;
     create_entity_table(

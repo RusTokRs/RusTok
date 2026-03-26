@@ -165,6 +165,22 @@ fn storefront_query(handle: &str) -> String {
     STOREFRONT_QUERY_TEMPLATE.replace("__HANDLE__", handle)
 }
 
+fn admin_query(tenant_id: Uuid, product_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          products(tenantId: "{tenant_id}", locale: "en", filter: {{ page: 1, perPage: 20 }}) {{
+            total
+            items {{ title handle }}
+          }}
+          product(tenantId: "{tenant_id}", id: "{product_id}", locale: "en") {{
+            translations {{ locale title handle }}
+          }}
+        }}
+        "#
+    )
+}
+
 async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
@@ -322,21 +338,7 @@ async fn admin_graphql_catalog_query_is_stable_after_cart_snapshot_creation() {
         request_context(tenant_id, "en"),
         Some(auth_context(tenant_id)),
     );
-
-    let query = format!(
-        r#"
-        query {{
-          products(tenantId: "{tenant_id}", locale: "en", filter: {{ page: 1, perPage: 20 }}) {{
-            total
-            items {{ title handle }}
-          }}
-          product(tenantId: "{tenant_id}", id: "{product_id}", locale: "en") {{
-            translations {{ locale title handle }}
-          }}
-        }}
-        "#,
-        product_id = created.id
-    );
+    let query = admin_query(tenant_id, created.id);
 
     let before = schema.execute(Request::new(query.clone())).await;
     assert!(
@@ -519,4 +521,254 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
         after_json["storefrontProducts"]["items"][0]["title"],
         Value::from("Paritaet Produkt")
     );
+}
+
+#[tokio::test]
+async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
+    let (db, catalog, cart_service, checkout, fulfillment) = setup_checkout().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .unwrap();
+    let published_variant = published
+        .variants
+        .first()
+        .expect("published product must have variant");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let query = admin_query(tenant_id, created.id);
+
+    let before = schema.execute(Request::new(query.clone())).await;
+    assert!(
+        before.errors.is_empty(),
+        "unexpected admin GraphQL errors before checkout: {:?}",
+        before.errors
+    );
+    let before_json = before.data.into_json().expect("GraphQL response must serialize");
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "admin-graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "admin-graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "admin-graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(published_variant.id),
+                sku: published_variant.sku.clone(),
+                title: "Parity Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "admin-graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "source": "admin-graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.cart.status, "completed");
+    assert_eq!(completed.order.status, "paid");
+
+    let after = schema.execute(Request::new(query)).await;
+    assert!(
+        after.errors.is_empty(),
+        "unexpected admin GraphQL errors after checkout: {:?}",
+        after.errors
+    );
+    let after_json = after.data.into_json().expect("GraphQL response must serialize");
+
+    assert_eq!(before_json, after_json);
+    assert_eq!(after_json["products"]["total"], Value::from(1));
+    assert_eq!(
+        after_json["product"]["translations"][0]["title"],
+        Value::from("Parity Product")
+    );
+}
+
+#[tokio::test]
+async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
+    let (db, catalog, cart_service, checkout, fulfillment) = setup_checkout().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .unwrap();
+    let published_variant = published
+        .variants
+        .first()
+        .expect("published product must have variant");
+
+    let before = serde_json::to_value(
+        catalog
+            .get_product(tenant_id, published.id)
+            .await
+            .expect("legacy catalog read path must resolve published product before checkout"),
+    )
+    .expect("product response must serialize");
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "legacy-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "legacy-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "legacy-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(published_variant.id),
+                sku: published_variant.sku.clone(),
+                title: "Parity Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "legacy-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "source": "legacy-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.cart.status, "completed");
+    assert_eq!(completed.order.status, "paid");
+
+    let after = serde_json::to_value(
+        catalog
+            .get_product(tenant_id, published.id)
+            .await
+            .expect("legacy catalog read path must resolve published product after checkout"),
+    )
+    .expect("product response must serialize");
+
+    assert_eq!(before, after);
+    assert_eq!(after["translations"][0]["title"], Value::from("Parity Product"));
 }

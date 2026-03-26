@@ -14,6 +14,9 @@ pub mod services;
 pub mod state_machine;
 
 #[cfg(test)]
+extern crate self as rustok_commerce;
+
+#[cfg(test)]
 mod state_machine_proptest;
 
 pub use dto::*;
