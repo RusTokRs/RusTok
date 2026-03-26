@@ -19,6 +19,7 @@
 - [Реестр проблем платформенной верификации](./platform-verification-issues-registry.md) — история и актуальный трекер найденных проблем.
 - [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md) — прицельный rolling-план по RBAC-контрактам.
 - [Верификация Leptos-библиотек](./leptos-libraries-verification-plan.md) — rolling-план библиотечного UI-контура.
+- [План rolling-верификации целостности ядра платформы](./platform-core-integrity-verification-plan.md) — верификация server + обе admin-панели + core crates как самодостаточного целого.
 
 ## Регламент обновления
 
