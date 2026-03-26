@@ -8,6 +8,18 @@
 
 ---
 
+## 0. Предварительные условия
+
+Перед началом проверки должна быть доступна минимальная инфраструктура ядра:
+
+- [ ] PostgreSQL запущен и доступен (порт 5432) — `docker compose up -d db`
+- [ ] Iggy event broker запущен и доступен (TCP порт 8090) — `docker compose up -d iggy`
+  - `rustok-outbox` (Core) зависит от Iggy для relay событий; server не стартует без брокера при активном outbox relay.
+- [ ] `docker compose config` проходит без ошибок.
+- [ ] `.env` или `.env.dev` содержит корректные переменные для соединения с DB и Iggy.
+
+---
+
 ## 1. Состав ядра платформы
 
 Этот план верифицирует только следующие компоненты как единое целое:
@@ -64,10 +76,21 @@
 - [ ] `cargo build -p rustok-server` проходит.
 - [ ] Server стартует с включёнными только core модулями.
 - [ ] `validate_registry_vs_manifest()` вызывается при старте и проходит без ошибок.
-- [ ] `/api/health` возвращает HTTP 200.
-- [ ] `/api/graphql` отвечает на introspection запрос без паники.
 - [ ] Миграции (`cargo loco db migrate`) проходят без доменных модульных миграций.
 - [ ] Server завершает bootstrap без `unwrap()` паник, связанных с отсутствием domain модулей.
+
+**Health endpoints (core REST — `controllers/health.rs`):**
+- [ ] `/api/health` возвращает HTTP 200.
+- [ ] `/health/live` возвращает HTTP 200.
+- [ ] `/health/ready` возвращает корректный статус.
+- [ ] `/health/runtime` отражает текущее состояние server runtime.
+- [ ] `/health/modules` возвращает список активных модулей (только core).
+
+**Metrics и API docs (core REST):**
+- [ ] `/metrics` возвращает Prometheus-метрики (`controllers/metrics.rs`, `rustok-telemetry`).
+- [ ] `/api/openapi.json` или `/api/openapi.yaml` доступны (`controllers/swagger.rs`).
+- [ ] `/api/graphql` отвечает на introspection запрос без паники.
+- [ ] `/api/graphql/ws` принимает WebSocket соединение (subscriptions transport).
 
 ---
 
@@ -82,12 +105,27 @@
 - `apps/server/src/services/auth_lifecycle.rs`
 - `apps/server/src/extractors/rbac.rs`
 
+**Auth lifecycle (`controllers/auth.rs`, `services/auth_lifecycle.rs`):**
 - [ ] Sign up работает без опционального модуля.
+- [ ] Email verification после sign up работает (confirm flow).
+- [ ] Invite acceptance flow работает.
 - [ ] Sign in (email + password) работает без опционального модуля.
 - [ ] Token refresh работает.
 - [ ] Logout и session invalidation работают.
 - [ ] Password reset flow работает.
-- [ ] OAuth2 Authorization Server (PKCE flow, client credentials) работает как часть ядра.
+- [ ] Change password работает.
+- [ ] Profile update работает.
+- [ ] Session history доступна через REST.
+- [ ] OAuth2 Authorization Server (PKCE flow, client credentials) работает как часть ядра (`controllers/oauth.rs`, `controllers/oauth_metadata.rs`).
+
+**Users REST (`controllers/users.rs`):**
+- [ ] Список пользователей доступен с нужными RBAC правами.
+- [ ] Получение пользователя по ID доступно.
+
+**Auth rate limiting:**
+- [ ] Auth endpoints защищены rate limiting middleware (auth-specific path list).
+
+**Authorization correctness:**
 - [ ] `SecurityContext` строится из resolved permissions, а не из role inference.
 - [ ] `infer_user_role_from_permissions()` не используется как замена авторизации.
 - [ ] Нет hardcoded `UserRole::Admin` / `UserRole::SuperAdmin` в authorization path.
