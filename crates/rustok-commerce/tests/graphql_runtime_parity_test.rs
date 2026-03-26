@@ -2,11 +2,14 @@ use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_commerce::dto::{
-    CreateCartInput, CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateProductInput,
+    CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
 };
 use rustok_commerce::graphql::CommerceQuery;
-use rustok_commerce::{CartService, CatalogService};
+use rustok_commerce::{CartService, CatalogService, CheckoutService, FulfillmentService};
 use rustok_core::Permission;
+use rustok_region::dto::CreateRegionInput;
+use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::Value;
@@ -17,6 +20,18 @@ mod support;
 
 type CommerceSchema = Schema<CommerceQuery, EmptyMutation, EmptySubscription>;
 
+const STOREFRONT_QUERY_TEMPLATE: &str = r#"
+query {
+  storefrontProducts(locale: "de") {
+    total
+    items { title handle }
+  }
+  storefrontProduct(locale: "de", handle: "__HANDLE__") {
+    translations { locale title handle }
+  }
+}
+"#;
+
 async fn setup() -> (DatabaseConnection, CatalogService, CartService) {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
@@ -25,6 +40,25 @@ async fn setup() -> (DatabaseConnection, CatalogService, CartService) {
         db.clone(),
         CatalogService::new(db.clone(), event_bus),
         CartService::new(db),
+    )
+}
+
+async fn setup_checkout() -> (
+    DatabaseConnection,
+    CatalogService,
+    CartService,
+    CheckoutService,
+    FulfillmentService,
+) {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let event_bus = mock_transactional_event_bus();
+    (
+        db.clone(),
+        CatalogService::new(db.clone(), event_bus.clone()),
+        CartService::new(db.clone()),
+        CheckoutService::new(db.clone(), event_bus),
+        FulfillmentService::new(db),
     )
 }
 
@@ -127,6 +161,10 @@ fn build_schema(
     builder.finish()
 }
 
+fn storefront_query(handle: &str) -> String {
+    STOREFRONT_QUERY_TEMPLATE.replace("__HANDLE__", handle)
+}
+
 async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
@@ -214,20 +252,7 @@ async fn storefront_graphql_read_path_is_stable_after_cart_snapshot_creation() {
     );
 
     let before = schema
-        .execute(Request::new(
-            r#"
-            query {
-              storefrontProducts(locale: "de") {
-                total
-                items { title handle }
-              }
-              storefrontProduct(locale: "de", handle: "__HANDLE__") {
-                translations { locale title handle }
-              }
-            }
-            "#
-            .replace("__HANDLE__", &handle),
-        ))
+        .execute(Request::new(storefront_query(&handle)))
         .await;
     assert!(
         before.errors.is_empty(),
@@ -258,20 +283,7 @@ async fn storefront_graphql_read_path_is_stable_after_cart_snapshot_creation() {
         .unwrap();
 
     let after = schema
-        .execute(Request::new(
-            r#"
-            query {
-              storefrontProducts(locale: "de") {
-                total
-                items { title handle }
-              }
-              storefrontProduct(locale: "de", handle: "__HANDLE__") {
-                translations { locale title handle }
-              }
-            }
-            "#
-            .replace("__HANDLE__", &handle),
-        ))
+        .execute(Request::new(storefront_query(&handle)))
         .await;
     assert!(
         after.errors.is_empty(),
@@ -370,5 +382,141 @@ async fn admin_graphql_catalog_query_is_stable_after_cart_snapshot_creation() {
     assert_eq!(
         after_json["product"]["translations"][0]["title"],
         Value::from("Parity Product")
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
+    let (db, catalog, cart_service, checkout, fulfillment) = setup_checkout().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .unwrap();
+    let published_variant = published
+        .variants
+        .first()
+        .expect("published product must have variant");
+    let handle = published
+        .translations
+        .iter()
+        .find(|translation| translation.locale == "de")
+        .map(|translation| translation.handle.clone())
+        .expect("published product must keep de handle");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
+
+    let before = schema.execute(Request::new(storefront_query(&handle))).await;
+    assert!(
+        before.errors.is_empty(),
+        "unexpected GraphQL errors before checkout: {:?}",
+        before.errors
+    );
+    let before_json = before.data.into_json().expect("GraphQL response must serialize");
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(published_variant.id),
+                sku: published_variant.sku.clone(),
+                title: "Parity Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "source": "graphql-checkout-parity" }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.cart.status, "completed");
+    assert_eq!(completed.order.status, "paid");
+
+    let after = schema.execute(Request::new(storefront_query(&handle))).await;
+    assert!(
+        after.errors.is_empty(),
+        "unexpected GraphQL errors after checkout: {:?}",
+        after.errors
+    );
+    let after_json = after.data.into_json().expect("GraphQL response must serialize");
+
+    assert_eq!(before_json, after_json);
+    assert_eq!(after_json["storefrontProducts"]["total"], Value::from(1));
+    assert_eq!(
+        after_json["storefrontProducts"]["items"][0]["title"],
+        Value::from("Paritaet Produkt")
     );
 }
