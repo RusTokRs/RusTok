@@ -21,6 +21,7 @@ use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 pub struct AlloyState;
 
 use super::auth::{AuthMutation, AuthQuery};
+use super::rbac::{RbacMutation, RbacQuery};
 use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
 use super::mcp::{McpMutation, McpQuery};
@@ -54,6 +55,7 @@ pub struct Query(
     AuthQuery,
     OAuthQuery,
     McpQuery,
+    RbacQuery,
     SettingsQuery,
     SystemQuery,
     FlexQuery,
@@ -68,6 +70,7 @@ pub struct Mutation(
     AuthMutation,
     OAuthMutation,
     McpMutation,
+    RbacMutation,
     SettingsMutation,
     FlexMutation,
     schema_codegen::OptionalModuleMutation,

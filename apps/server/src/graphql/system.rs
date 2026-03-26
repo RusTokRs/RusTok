@@ -1,5 +1,6 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
+use loco_rs::app::AppContext;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
 };
@@ -34,6 +35,14 @@ pub struct MediaUsageStats {
 pub struct SessionStats {
     pub tenant_id: Uuid,
     pub active_sessions: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct CacheHealthPayload {
+    pub redis_configured: bool,
+    pub redis_healthy: bool,
+    pub redis_error: Option<String>,
+    pub backend: String,
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
@@ -134,6 +143,37 @@ impl SystemQuery {
             tenant_id,
             file_count,
             total_bytes,
+        })
+    }
+
+    /// Cache backend health status. No auth required (platform infrastructure info).
+    async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
+        use rustok_cache::CacheService;
+
+        let app_ctx = ctx.data::<AppContext>()?;
+
+        let Some(cache) = app_ctx.shared_store.get::<CacheService>() else {
+            return Ok(CacheHealthPayload {
+                redis_configured: false,
+                redis_healthy: false,
+                redis_error: None,
+                backend: "none".to_string(),
+            });
+        };
+
+        let report = cache.health().await;
+        let backend = if report.redis_configured {
+            "redis"
+        } else {
+            "in-memory"
+        }
+        .to_string();
+
+        Ok(CacheHealthPayload {
+            redis_configured: report.redis_configured,
+            redis_healthy: report.redis_healthy,
+            redis_error: report.redis_error,
+            backend,
         })
     }
 

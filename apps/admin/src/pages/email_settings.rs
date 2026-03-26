@@ -1,0 +1,216 @@
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos_auth::hooks::{use_tenant, use_token};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::shared::api::queries::{PLATFORM_SETTINGS_QUERY, UPDATE_PLATFORM_SETTINGS_MUTATION};
+use crate::shared::api::request;
+use crate::shared::ui::{Button, Input, PageHeader};
+
+#[derive(Clone, Debug, Serialize)]
+struct PlatformSettingsVariables {
+    category: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PlatformSettingsResponse {
+    #[serde(rename = "platformSettings")]
+    platform_settings: PlatformSettingsPayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PlatformSettingsPayload {
+    settings: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct UpdateSettingsVariables {
+    input: UpdateSettingsInput,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct UpdateSettingsInput {
+    category: String,
+    settings: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UpdateSettingsResponse {
+    #[serde(rename = "updatePlatformSettings")]
+    update_platform_settings: UpdateSettingsPayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UpdateSettingsPayload {
+    success: bool,
+}
+
+#[component]
+pub fn EmailSettingsPage() -> impl IntoView {
+    let token = use_token();
+    let tenant = use_tenant();
+
+    let (smtp_host, set_smtp_host) = signal(String::new());
+    let (smtp_port, set_smtp_port) = signal(String::new());
+    let (smtp_username, set_smtp_username) = signal(String::new());
+    let (from_address, set_from_address) = signal(String::new());
+    let (saving, set_saving) = signal(false);
+    let (save_result, set_save_result) = signal(Option::<Result<bool, String>>::None);
+    let (loaded, set_loaded) = signal(false);
+
+    let settings_resource = Resource::new(
+        move || (token.get(), tenant.get()),
+        move |(token_value, tenant_value)| async move {
+            request::<PlatformSettingsVariables, PlatformSettingsResponse>(
+                PLATFORM_SETTINGS_QUERY,
+                PlatformSettingsVariables {
+                    category: "email".to_string(),
+                },
+                token_value,
+                tenant_value,
+            )
+            .await
+        },
+    );
+
+    Effect::new(move |_| {
+        if let Some(Ok(response)) = settings_resource.get() {
+            if !loaded.get_untracked() {
+                if let Ok(val) = serde_json::from_str::<Value>(&response.platform_settings.settings) {
+                    if let Some(s) = val.get("smtp_host").and_then(|v| v.as_str()) {
+                        set_smtp_host.set(s.to_string());
+                    }
+                    if let Some(p) = val.get("smtp_port").and_then(|v| v.as_u64()) {
+                        set_smtp_port.set(p.to_string());
+                    }
+                    if let Some(u) = val.get("smtp_username").and_then(|v| v.as_str()) {
+                        set_smtp_username.set(u.to_string());
+                    }
+                    if let Some(f) = val.get("from_address").and_then(|v| v.as_str()) {
+                        set_from_address.set(f.to_string());
+                    }
+                }
+                set_loaded.set(true);
+            }
+        }
+    });
+
+    let save = {
+        move |_| {
+            let token_val = token.get();
+            let tenant_val = tenant.get();
+            let host = smtp_host.get();
+            let port = smtp_port.get();
+            let username = smtp_username.get();
+            let from = from_address.get();
+
+            let port_num: u16 = port.parse().unwrap_or(587);
+            let settings = serde_json::json!({
+                "smtp_host": host,
+                "smtp_port": port_num,
+                "smtp_username": username,
+                "from_address": from,
+            });
+
+            set_saving.set(true);
+            set_save_result.set(None);
+
+            spawn_local(async move {
+                let result = request::<UpdateSettingsVariables, UpdateSettingsResponse>(
+                    UPDATE_PLATFORM_SETTINGS_MUTATION,
+                    UpdateSettingsVariables {
+                        input: UpdateSettingsInput {
+                            category: "email".to_string(),
+                            settings: settings.to_string(),
+                        },
+                    },
+                    token_val,
+                    tenant_val,
+                )
+                .await;
+
+                match result {
+                    Ok(r) => set_save_result.set(Some(Ok(r.update_platform_settings.success))),
+                    Err(e) => set_save_result.set(Some(Err(format!("{:?}", e)))),
+                }
+                set_saving.set(false);
+            });
+        }
+    };
+
+    view! {
+        <section class="px-10 py-8">
+            <PageHeader
+                title="Email Settings"
+                subtitle="Configure email delivery and SMTP settings".to_string()
+                eyebrow="Platform Settings".to_string()
+                actions=view! { <div /> }.into_any()
+            />
+
+            <div class="rounded-2xl bg-card p-6 shadow border border-border max-w-xl">
+                <h4 class="mb-4 text-lg font-semibold text-card-foreground">"SMTP Configuration"</h4>
+
+                <Suspense fallback=move || view! {
+                    <div class="space-y-4">
+                        {(0..4).map(|_| view! {
+                            <div class="h-10 animate-pulse rounded-lg bg-muted" />
+                        }).collect_view()}
+                    </div>
+                }>
+                    {move || {
+                        let _ = settings_resource.get();
+                        view! {
+                            <div class="space-y-4">
+                                <Input
+                                    value=smtp_host
+                                    set_value=set_smtp_host
+                                    placeholder="smtp.example.com"
+                                    label=move || "SMTP Host"
+                                />
+                                <Input
+                                    value=smtp_port
+                                    set_value=set_smtp_port
+                                    placeholder="587"
+                                    label=move || "SMTP Port"
+                                />
+                                <Input
+                                    value=smtp_username
+                                    set_value=set_smtp_username
+                                    placeholder="noreply@example.com"
+                                    label=move || "SMTP Username"
+                                />
+                                <Input
+                                    value=from_address
+                                    set_value=set_from_address
+                                    placeholder="noreply@example.com"
+                                    label=move || "From Address"
+                                />
+
+                                <Show when=move || save_result.get().is_some()>
+                                    {move || match save_result.get() {
+                                        Some(Ok(true)) => view! {
+                                            <div class="rounded-xl bg-green-500/10 border border-green-500/20 px-4 py-2 text-sm text-green-700">
+                                                "Settings saved."
+                                            </div>
+                                        }.into_any(),
+                                        Some(Err(e)) => view! {
+                                            <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
+                                                {e}
+                                            </div>
+                                        }.into_any(),
+                                        _ => view! { <div /> }.into_any(),
+                                    }}
+                                </Show>
+
+                                <Button on_click=save disabled=saving.into()>
+                                    {move || if saving.get() { "Saving…" } else { "Save Settings" }}
+                                </Button>
+                            </div>
+                        }.into_any()
+                    }}
+                </Suspense>
+            </div>
+        </section>
+    }
+}

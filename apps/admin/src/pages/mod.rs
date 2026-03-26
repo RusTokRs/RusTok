@@ -1,4 +1,6 @@
+pub mod cache;
 pub mod dashboard;
+pub mod email_settings;
 pub mod login;
 pub mod module_admin;
 pub mod modules;
@@ -7,6 +9,7 @@ pub mod oauth_apps;
 pub mod profile;
 pub mod register;
 pub mod reset;
+pub mod roles;
 pub mod security;
 pub mod user_details;
 pub mod users;
