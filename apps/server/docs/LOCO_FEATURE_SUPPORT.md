@@ -121,10 +121,28 @@
 
 **Правило границ:** Mailer не выносится в отдельный платформенный модуль. Это инфраструктурная ответственность `apps/server` на базе Loco API.
 
-### 3.2 Workers/Queue (осознанно самопис)
+### 3.2 Workers/Queue (осознанно самопис — Loco Queue не подключён)
 
-**Сейчас:** outbox relay worker + event-driven pipeline.  
-**Решение:** не дублировать это параллельной Loco queue-runtime реализацией; оставить собственную очередь/воркеры ради расширяемости и архитектурной консистентности. Policy anchor: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
+**Сейчас:** `loco-rs` подключён без queue-фич (нет `sidekiq` / `bg-redis` в features). `connect_workers` hook пустой — все фоновые процессы запускаются как tokio-таски в `connect_runtime_workers`:
+
+| Воркер | Реализация | Тип |
+|--------|-----------|-----|
+| Outbox relay | `OutboxRelayWorkerHandle` | tokio task, polling outbox |
+| Build worker | `BuildWorkerHandle` | tokio task, polling DB |
+| Index dispatcher | `spawn_index_dispatcher` | tokio task |
+| Search dispatcher | `spawn_search_dispatcher` | tokio task |
+| Workflow cron | `WorkflowCronScheduler` | tokio task (feature `mod-workflow`) |
+
+Loco Tasks (CLI): `cleanup`, `rebuild`, `db_baseline`, `media_cleanup`, `create_oauth_app` — запускаются вручную через `cargo loco task`.
+
+Для медленных операций на request path (например, SMTP в `forgot_password`) используется `tokio::spawn` — без Sidekiq.
+
+**Решение:** Loco Queue (Sidekiq/Redis) не нужен:
+- Outbox паттерн архитектурно лучше для доменных событий — гарантирует атомарность write + publish.
+- Build worker — редкая внутренняя операция, polling достаточен.
+- Если понадобится push-based очередь с retry — расширять outbox relay, не подключать Sidekiq.
+
+Policy anchor: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 
 ### 3.3 Storage abstraction (shared library contract + server wiring)
 

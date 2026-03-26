@@ -19,8 +19,8 @@ struct AdminAssets;
 
 #[cfg(feature = "embed-admin")]
 pub fn build_admin_router() -> AxumRouter {
-    AxumRouter::new().fallback(move |path: axum::extract::Path<String>| async move {
-        let path = path.0.trim_start_matches('/');
+    AxumRouter::new().fallback(move |uri: axum::http::Uri| async move {
+        let path = uri.path().trim_start_matches('/');
         let path = if path.is_empty() { "index.html" } else { path };
 
         match AdminAssets::get(path) {

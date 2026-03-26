@@ -5,7 +5,10 @@ pub mod template;
 
 pub use config::{EmailConfig, SmtpConfig};
 pub use error::EmailError;
-pub use service::{EmailService, PasswordResetEmail, PasswordResetEmailSender, SmtpEmailSender};
+pub use service::{
+    EmailService, PasswordResetEmail, PasswordResetEmailSender, SmtpEmailSender,
+    TransactionalEmailSender,
+};
 pub use template::{EmailTemplateProvider, RenderedEmail};
 
 use async_trait::async_trait;

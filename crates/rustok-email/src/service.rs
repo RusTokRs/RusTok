@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use lettre::{
-    message::{header::ContentType, Mailbox},
+    message::{header::ContentType, Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 
 use crate::config::EmailConfig;
 use crate::error::{EmailError, Result};
+use crate::template::{EmailTemplateProvider, RenderedEmail};
 
 /// Email to send for password reset.
 #[derive(Debug, Clone)]
@@ -19,6 +20,25 @@ pub struct PasswordResetEmail {
 #[async_trait]
 pub trait PasswordResetEmailSender: Send + Sync {
     async fn send_password_reset(&self, email: PasswordResetEmail) -> Result<()>;
+}
+
+/// General-purpose transactional email sender.
+///
+/// Modules register their templates via [`EmailTemplateProvider`] and call
+/// `send_transactional` with a `template_id` and JSON vars. The sender looks up
+/// the provider that handles the template, renders it, and delivers via SMTP.
+///
+/// Template ID convention: `{module_slug}/{action}`
+/// e.g. `"auth/password_reset"`, `"commerce/order_confirmed"`, `"forum/new_reply"`.
+#[async_trait]
+pub trait TransactionalEmailSender: Send + Sync {
+    async fn send_transactional(
+        &self,
+        template_id: &str,
+        locale: &str,
+        to: &str,
+        vars: &serde_json::Value,
+    ) -> Result<()>;
 }
 
 /// Top-level email service — disabled or SMTP-backed.
@@ -59,11 +79,35 @@ impl PasswordResetEmailSender for EmailService {
     }
 }
 
+#[async_trait]
+impl TransactionalEmailSender for EmailService {
+    async fn send_transactional(
+        &self,
+        template_id: &str,
+        locale: &str,
+        to: &str,
+        vars: &serde_json::Value,
+    ) -> Result<()> {
+        match self {
+            Self::Disabled => {
+                tracing::info!(
+                    recipient = %to,
+                    template_id,
+                    "Transactional email provider disabled; skipping outbound send"
+                );
+                Ok(())
+            }
+            Self::Smtp(sender) => sender.send_transactional(template_id, locale, to, vars).await,
+        }
+    }
+}
+
 /// SMTP-backed email sender.
 #[derive(Clone)]
 pub struct SmtpEmailSender {
     from: Mailbox,
     transport: AsyncSmtpTransport<Tokio1Executor>,
+    providers: Vec<std::sync::Arc<dyn EmailTemplateProvider>>,
 }
 
 impl SmtpEmailSender {
@@ -86,7 +130,47 @@ impl SmtpEmailSender {
         Ok(Self {
             from,
             transport: transport_builder.build(),
+            providers: Vec::new(),
         })
+    }
+
+    /// Register an additional template provider for transactional email.
+    pub fn with_provider(mut self, provider: std::sync::Arc<dyn EmailTemplateProvider>) -> Self {
+        self.providers.push(provider);
+        self
+    }
+
+    /// Send a pre-rendered email to the given recipient.
+    pub async fn send_rendered(&self, to: &str, rendered: &RenderedEmail) -> Result<()> {
+        let recipient = to
+            .parse::<Mailbox>()
+            .map_err(|e| EmailError::InvalidAddress(format!("Invalid recipient: {e}")))?;
+
+        let body = MultiPart::alternative()
+            .singlepart(
+                SinglePart::builder()
+                    .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                    .body(rendered.text.clone()),
+            )
+            .singlepart(
+                SinglePart::builder()
+                    .header(lettre::message::header::ContentType::TEXT_HTML)
+                    .body(rendered.html.clone()),
+            );
+
+        let message = Message::builder()
+            .from(self.from.clone())
+            .to(recipient)
+            .subject(rendered.subject.clone())
+            .multipart(body)
+            .map_err(|e| EmailError::Build(e.to_string()))?;
+
+        self.transport
+            .send(message)
+            .await
+            .map_err(|e| EmailError::Send(e.to_string()))?;
+
+        Ok(())
     }
 }
 
@@ -115,5 +199,26 @@ impl PasswordResetEmailSender for SmtpEmailSender {
             .map_err(|e| EmailError::Send(e.to_string()))?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl TransactionalEmailSender for SmtpEmailSender {
+    async fn send_transactional(
+        &self,
+        template_id: &str,
+        locale: &str,
+        to: &str,
+        vars: &serde_json::Value,
+    ) -> Result<()> {
+        for provider in &self.providers {
+            if let Some(result) = provider.render(template_id, locale, vars) {
+                let rendered = result?;
+                return self.send_rendered(to, &rendered).await;
+            }
+        }
+        Err(EmailError::Template(format!(
+            "No template provider handles '{template_id}'"
+        )))
     }
 }

@@ -26,10 +26,23 @@ pub struct RustokSettings {
     #[serde(default)]
     pub email: EmailSettings,
     #[serde(default)]
+    pub cache: CacheSettings,
+    #[serde(default)]
     pub runtime: RuntimeSettings,
     #[cfg(feature = "mod-media")]
     #[serde(default)]
     pub storage: StorageConfig,
+}
+
+/// Cache configuration.
+///
+/// `redis_url` overrides `RUSTOK_REDIS_URL` / `REDIS_URL` env vars when set.
+/// This lets ops teams set Redis URL via YAML config instead of env, useful in
+/// containerised deployments where config files are preferred over env injection.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct CacheSettings {
+    /// Explicit Redis URL. When absent, falls back to `RUSTOK_REDIS_URL` → `REDIS_URL` env vars.
+    pub redis_url: Option<String>,
 }
 
 /// Email transport provider selector.

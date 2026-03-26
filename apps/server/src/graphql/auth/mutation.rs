@@ -178,18 +178,24 @@ impl AuthMutation {
         )
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-        let email_service = email_service_from_ctx(app_ctx)
+        let email_service = email_service_from_ctx(app_ctx, locale_from_ctx(ctx).as_str())
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
         let reset_url = password_reset_url(app_ctx, &reset_token)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-        email_service
-            .send_password_reset(PasswordResetEmail {
-                to: input.email,
-                reset_url,
-            })
-            .await
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        // Spawn email delivery off the request path: SMTP handshake can take 1-2 s
+        // and the response is the same regardless of delivery outcome.
+        tokio::spawn(async move {
+            if let Err(e) = email_service
+                .send_password_reset(PasswordResetEmail {
+                    to: input.email,
+                    reset_url,
+                })
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to send password reset email");
+            }
+        });
 
         Ok(ForgotPasswordPayload {
             success: true,
