@@ -71,3 +71,32 @@
 
 ---
 
+## Прогон platform-core-integrity — 2026-03-26
+
+**Branch:** `claude/add-verification-plan-DLNgT`
+**Тип проверок:** только Static (🔧); Runtime (🌐) пропущены — PostgreSQL/server не запущены в данной среде.
+
+### Итоги по фазам
+
+| Фаза | Статус | Примечания |
+|------|--------|------------|
+| 0 Prerequisites (static) | ✅ | docker compose config — не выполнялся в данной среде |
+| 1 Состав ядра | ✅ | `rustok-search` отсутствовал в списке — добавлен |
+| 2 Инварианты ядра | ✅ | `git grep` нашёл 0 нарушений изоляции импортов |
+| 3 Boot без optional (static) | ✅ | `cargo build --no-default-features` проходит |
+| 4 Auth в изоляции (static) | ✅ | Тесты 14/14; runtime-проверки пропущены |
+| 5 Multi-tenancy (static) | ✅ | Тесты 1/1; runtime-проверки пропущены |
+| 6 Admin-панели (static) | ✅ | `cargo build -p rustok-admin` ✅; npm: node_modules не установлены |
+| 7 i18n (static) | ✅ | `next-intl` подключён; runtime пропущены |
+| 8 UI core модулей (static) | ✅ | UI в разработке, не блокируют сборку |
+| 9 GraphQL (static) | ✅ | Schema компилируется без паники |
+| Тесты core crates | ✅ | rustok-core 252/252, rustok-auth 14/14, rustok-rbac 45/45, rustok-tenant 1/1, rustok-outbox 1/1 |
+
+### Найденные расхождения (Ф28–Ф30)
+
+| № | Приоритет | Статус | Описание | Файлы |
+|---|-----------|--------|----------|-------|
+| 28 | Средний | Исправлено | `rustok-search` зарегистрирован как Core-модуль (`required = true` в `modules.toml`, `SearchModule` в `build_registry()`), но отсутствовал в списке core crates в плане верификации (секция 1.2). | `docs/verification/platform-core-integrity-verification-plan.md` |
+| 29 | Средний | Исправлено | `cargo build -p rustok-server` без предварительной сборки `apps/admin/dist` завершается ошибкой (`no function named 'get' found for struct 'AdminAssets'`): default feature `embed-admin` использует `RustEmbed` с `#[folder = "../../apps/admin/dist"]`. Команда в плане не отражала эту зависимость. | `apps/server/src/services/app_router.rs`, `apps/server/Cargo.toml`, `docs/verification/platform-core-integrity-verification-plan.md` |
+| 30 | Низкий | Исправлено | Команда `npm run typecheck` в плане верификации (секция 10.1) не существует в `apps/next-admin/package.json`. Доступные скрипты: `dev`, `build`, `lint`, `lint:fix`, `lint:strict`, `format`, `format:check`, `start`, `prepare`. | `apps/next-admin/package.json`, `docs/verification/platform-core-integrity-verification-plan.md` |
+
