@@ -113,15 +113,28 @@
 
 ### `crates/rustok-auth`
 
-`Core` module аутентификации: JWT (HS256), Argon2 хеширование паролей, refresh tokens, password reset, invite, email verification tokens. **Заменяет** `loco_rs::prelude::auth::JWT`. Подключается через `apps/server/src/auth.rs` (bridge: `AuthError → loco_rs::Error`).
+`Core` module аутентификации: JWT (HS256 и RS256), Argon2 хеширование паролей, refresh tokens, password reset, invite, email verification tokens. **Заменяет** `loco_rs::prelude::auth::JWT`. Подключается через `apps/server/src/auth.rs` (bridge: `AuthError → loco_rs::Error`).
+
+Алгоритм выбирается через `AuthConfig::algorithm: JwtAlgorithm`:
+- `JwtAlgorithm::HS256` (default) — симметричный, `AuthConfig::secret`
+- `JwtAlgorithm::RS256` — асимметричный, `AuthConfig::with_rs256(private_pem, public_pem)`
 
 ### `crates/rustok-cache`
 
 `Core` module управления кэшем: Redis-клиент (одна точка подключения), in-memory fallback (Moka), `CacheService::health()` с PING-проверкой. **Заменяет** `ctx.config.cache`. Инициализируется в `bootstrap_app_runtime`, доступен через `ctx.shared_store.get::<CacheService>()`.
 
+Redis URL задаётся через (в порядке приоритета):
+1. `settings.rustok.cache.redis_url` в YAML
+2. env `RUSTOK_REDIS_URL`
+3. env `REDIS_URL`
+
 ### `crates/rustok-email`
 
-`Core` module email-рассылок: SMTP через lettre, Tera-шаблоны, `PasswordResetEmailSender` trait. **Заменяет** Loco Mailer как primary transport. Фабрика `email_service_from_ctx(ctx, locale)` в `apps/server/src/services/email.rs` выбирает провайдер (`smtp | loco | none`). SMTP-транспорт кэшируется в `shared_store` через `SharedSmtpEmailService`.
+`Core` module email-рассылок: SMTP через lettre, Tera-шаблоны. **Заменяет** Loco Mailer как primary transport. Фабрика `email_service_from_ctx(ctx, locale)` в `apps/server/src/services/email.rs` выбирает провайдер (`smtp | loco | none`). SMTP-транспорт кэшируется в `shared_store` через `SharedSmtpEmailService`.
+
+Два публичных trait:
+- `PasswordResetEmailSender` — узкий контракт для password reset
+- `TransactionalEmailSender` — общий контракт для любых transactional email по template ID (`"{module}/{action}"`, напр. `"commerce/order_confirmed"`). Модули регистрируют шаблоны через `EmailTemplateProvider`; `SmtpEmailSender::with_provider()` подключает провайдер.
 
 ### `crates/rustok-storage`
 
