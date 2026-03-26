@@ -22,6 +22,9 @@ const baseConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname, '../..'),
   },
+  experimental: {
+    turbopackUseSystemTlsCerts: true,
+  },
   webpack(config) {
     // Allow @rustok/blog-admin (and other local crate UI packages) to resolve
     // the host application's path aliases (@/*, @/shared/*, etc.) so they can

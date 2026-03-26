@@ -1,79 +1,87 @@
-import {
-  Architects_Daughter,
-  DM_Sans,
-  Fira_Code,
-  Geist,
-  Geist_Mono,
-  Instrument_Sans,
-  Inter,
-  Mulish,
-  Noto_Sans_Mono,
-  Outfit,
-  Space_Mono
-} from 'next/font/google';
+import localFont from 'next/font/local';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 
 import { cn } from '@/shared/lib/utils';
 
-const fontSans = Geist({
-  subsets: ['latin'],
-  variable: '--font-sans'
+// Local fonts via @fontsource packages to avoid Google Fonts network dependency at build time.
+
+const fontInstrument = localFont({
+  src: '../../../../node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2',
+  variable: '--font-instrument',
+  display: 'swap',
+  weight: '400 700',
 });
 
-const fontMono = Geist_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono'
+const fontNotoMono = localFont({
+  src: '../../../../node_modules/@fontsource-variable/noto-sans-mono/files/noto-sans-mono-latin-wght-normal.woff2',
+  variable: '--font-noto-mono',
+  display: 'swap',
+  weight: '100 900',
 });
 
-const fontInstrument = Instrument_Sans({
-  subsets: ['latin'],
-  variable: '--font-instrument'
+const fontMullish = localFont({
+  src: '../../../../node_modules/@fontsource-variable/mulish/files/mulish-latin-wght-normal.woff2',
+  variable: '--font-mullish',
+  display: 'swap',
+  weight: '200 1000',
 });
 
-const fontNotoMono = Noto_Sans_Mono({
-  subsets: ['latin'],
-  variable: '--font-noto-mono'
+const fontInter = localFont({
+  src: '../../../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2',
+  variable: '--font-inter',
+  display: 'swap',
+  weight: '100 900',
 });
 
-const fontMullish = Mulish({
-  subsets: ['latin'],
-  variable: '--font-mullish'
-});
-
-const fontInter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter'
-});
-
-const fontArchitectsDaughter = Architects_Daughter({
-  subsets: ['latin'],
+const fontArchitectsDaughter = localFont({
+  src: '../../../../node_modules/@fontsource/architects-daughter/files/architects-daughter-latin-400-normal.woff2',
+  variable: '--font-architects-daughter',
+  display: 'swap',
   weight: '400',
-  variable: '--font-architects-daughter'
 });
 
-const fontDMSans = DM_Sans({
-  subsets: ['latin'],
-  variable: '--font-dm-sans'
+const fontDMSans = localFont({
+  src: '../../../../node_modules/@fontsource-variable/dm-sans/files/dm-sans-latin-wght-normal.woff2',
+  variable: '--font-dm-sans',
+  display: 'swap',
+  weight: '100 1000',
 });
 
-const fontFiraCode = Fira_Code({
-  subsets: ['latin'],
-  variable: '--font-fira-code'
+const fontFiraCode = localFont({
+  src: '../../../../node_modules/@fontsource-variable/fira-code/files/fira-code-latin-wght-normal.woff2',
+  variable: '--font-fira-code',
+  display: 'swap',
+  weight: '300 700',
 });
 
-const fontOutfit = Outfit({
-  subsets: ['latin'],
-  variable: '--font-outfit'
+const fontOutfit = localFont({
+  src: '../../../../node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2',
+  variable: '--font-outfit',
+  display: 'swap',
+  weight: '100 900',
 });
 
-const fontSpaceMono = Space_Mono({
-  subsets: ['latin'],
-  weight: ['400', '700'],
-  variable: '--font-space-mono'
+const fontSpaceMono = localFont({
+  src: [
+    {
+      path: '../../../../node_modules/@fontsource/space-mono/files/space-mono-latin-400-normal.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../../../../node_modules/@fontsource/space-mono/files/space-mono-latin-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
+  variable: '--font-space-mono',
+  display: 'swap',
 });
 
 export const fontVariables = cn(
-  fontSans.variable,
-  fontMono.variable,
+  GeistSans.variable,
+  GeistMono.variable,
   fontInstrument.variable,
   fontNotoMono.variable,
   fontMullish.variable,

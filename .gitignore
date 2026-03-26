@@ -40,6 +40,10 @@ lcov.info
 # WASM build artifacts
 **/dist/
 **/build/
+# Allow placeholder so cargo build -p rustok-server works without pre-building Leptos admin
+!apps/admin/dist/
+apps/admin/dist/*
+!apps/admin/dist/.gitkeep
 
 # Documentation build artifacts
 docs/book/

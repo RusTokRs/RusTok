@@ -71,3 +71,35 @@
 
 ---
 
+## Прогон platform-core-integrity — 2026-03-26
+
+**Branch:** `claude/add-verification-plan-DLNgT`
+**Тип проверок:** только Static (🔧); Runtime (🌐) пропущены — PostgreSQL/server не запущены в данной среде.
+
+### Итоги по фазам
+
+| Фаза | Статус | Примечания |
+|------|--------|------------|
+| 0 Prerequisites (static) | ✅ | docker compose config — не выполнялся в данной среде |
+| 1 Состав ядра | ✅ | `rustok-search` отсутствовал в списке — добавлен |
+| 2 Инварианты ядра | ✅ | `git grep` нашёл 0 нарушений изоляции импортов |
+| 3 Boot без optional (static) | ✅ | `cargo build --no-default-features` проходит |
+| 4 Auth в изоляции (static) | ✅ | Тесты 14/14; runtime-проверки пропущены |
+| 5 Multi-tenancy (static) | ✅ | Тесты 1/1; runtime-проверки пропущены |
+| 6 Admin-панели (static) | ✅ | `cargo build -p rustok-admin` ✅; `npm run build` ✅ (после Ф31); `npm run lint` ✅ (после Ф32) |
+| 7 i18n (static) | ✅ | `next-intl` + `createNextIntlPlugin`, локали en/ru, messages/*.json |
+| 8 UI core модулей (static) | ⚠️ | auth/users/oauth/modules/tenant — есть; roles/email/cache — ⚠️ WIP (Ф33) |
+| 9 GraphQL (static) | ✅ | Schema компилируется без паники |
+| Тесты core crates | ✅ | rustok-core 252/252, rustok-auth 14/14, rustok-rbac 45/45, rustok-tenant 1/1, rustok-outbox 1/1 |
+
+### Найденные расхождения (Ф28–Ф30)
+
+| № | Приоритет | Статус | Описание | Файлы |
+|---|-----------|--------|----------|-------|
+| 28 | Средний | Исправлено | `rustok-search` зарегистрирован как Core-модуль (`required = true` в `modules.toml`, `SearchModule` в `build_registry()`), но отсутствовал в списке core crates в плане верификации (секция 1.2). | `docs/verification/platform-core-integrity-verification-plan.md` |
+| 29 | Средний | Исправлено | `cargo build -p rustok-server` без предварительной сборки `apps/admin/dist` завершается ошибкой (`no function named 'get' found for struct 'AdminAssets'`): default feature `embed-admin` использует `RustEmbed` с `#[folder = "../../apps/admin/dist"]`. Исправлено: создан `apps/admin/dist/.gitkeep`, добавлено исключение в `.gitignore`. | `apps/server/src/services/app_router.rs`, `apps/server/Cargo.toml`, `apps/admin/dist/.gitkeep`, `.gitignore` |
+| 30 | Низкий | Исправлено | Команда `npm run typecheck` в плане верификации (секция 10.1) не существует в `apps/next-admin/package.json`. Исправлено: заменено на `npx tsc --noEmit` в плане. | `apps/next-admin/package.json`, `docs/verification/platform-core-integrity-verification-plan.md` |
+| 31 | Высокий | Исправлено | `apps/next-admin`: `npm run build` падал из-за зависимости `next/font/google` от сети — Node.js не мог резолвить DNS в среде верификации. Исправлено: все Google Fonts заменены на `next/font/local` с пакетами `@fontsource-variable/*`, `@fontsource/*` и `geist` (npm). Сборка теперь работает полностью offline. | `apps/next-admin/src/shared/lib/themes/font.config.ts`, `apps/next-admin/package.json` |
+| 32 | Средний | Исправлено | `apps/next-admin/eslint.config.mjs` содержал пустой конфиг (`export default []`) — `npm run lint` завершался с кодом 0, не проверяя ничего. Исправлено: настроен `@next/eslint-plugin-next` с `core-web-vitals` flat config. Устаревший `.eslintignore` удалён, `ignores` перенесены в конфиг. | `apps/next-admin/eslint.config.mjs`, `apps/next-admin/.eslintignore` |
+| 33 | Низкий | Открыто | UI для RBAC (roles, permissions), email settings и cache management отсутствует в обеих admin-панелях. Соответствует отметке ⚠️ WIP в плане (фаза 8). Не блокирует сборку. Подлежит закрытию по мере реализации UI. | `apps/admin/src/`, `apps/next-admin/src/` |
+

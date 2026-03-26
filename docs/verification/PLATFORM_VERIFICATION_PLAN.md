@@ -29,6 +29,7 @@
 
 - [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md) — периодический прицельный проход по RBAC-контрактам.
 - [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md) — rolling-план для библиотечного UI-контура.
+- [План rolling-верификации целостности ядра платформы](./platform-core-integrity-verification-plan.md) — верификация server + обе admin-панели + core crates как самодостаточного целого, включая i18n и UI core модулей.
 
 ---
 
