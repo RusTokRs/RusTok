@@ -17,7 +17,6 @@ use rustok_test_utils::{
     events::{mock_transactional_event_bus, MockEventTransport},
     setup_test_db,
 };
-use rustok_server::services::event_bus::ServerEventBus;
 use sea_orm::{DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
