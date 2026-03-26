@@ -5,7 +5,7 @@ pub mod jwt;
 pub mod migrations;
 
 // Re-exports for convenience
-pub use config::{AuthConfig, AuthSettingsOverrides};
+pub use config::{AuthConfig, AuthSettingsOverrides, JwtAlgorithm};
 pub use credentials::{generate_refresh_token, hash_password, hash_refresh_token, verify_password};
 pub use error::AuthError;
 pub use jwt::{

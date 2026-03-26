@@ -339,8 +339,19 @@ async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), Stri
 }
 
 async fn check_cache_backend(ctx: &AppContext) -> std::result::Result<(), String> {
-    let _ = tenant_cache_stats(ctx).await;
-    Ok(())
+    use rustok_cache::CacheService;
+
+    let Some(cache) = ctx.shared_store.get::<CacheService>() else {
+        return Ok(()); // not configured — skip
+    };
+    let report = cache.health().await;
+    if report.is_healthy() {
+        Ok(())
+    } else {
+        Err(report
+            .redis_error
+            .unwrap_or_else(|| "redis unhealthy".to_string()))
+    }
 }
 
 async fn check_tenant_invalidation_listener(ctx: &AppContext) -> std::result::Result<(), String> {

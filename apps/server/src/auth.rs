@@ -52,6 +52,9 @@ pub fn auth_config_from_ctx(ctx: &AppContext) -> Result<AuthConfig> {
         refresh_expiration,
         issuer,
         audience,
+        algorithm: rustok_auth::JwtAlgorithm::HS256,
+        rsa_private_key_pem: None,
+        rsa_public_key_pem: None,
     })
 }
 

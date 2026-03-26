@@ -4,7 +4,7 @@ use rustok_core::UserRole;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::config::AuthConfig;
+use crate::config::{AuthConfig, JwtAlgorithm};
 use crate::error::{AuthError, Result};
 
 // ─── Claims ──────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ pub fn encode_access_token(
     encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(config.secret.as_bytes()),
+        &encoding_key(config)?,
     )
     .map_err(|_| AuthError::TokenEncodingFailed)
 }
@@ -130,7 +130,7 @@ pub fn encode_oauth_access_token(
     encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(config.secret.as_bytes()),
+        &encoding_key(config)?,
     )
     .map_err(|_| AuthError::TokenEncodingFailed)
 }
@@ -140,7 +140,7 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
 
     decode::<Claims>(
         token,
-        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &decoding_key(config)?,
         &validation,
     )
     .map(|data| data.claims)
@@ -171,7 +171,7 @@ pub fn encode_password_reset_token(
     encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(config.secret.as_bytes()),
+        &encoding_key(config)?,
     )
     .map_err(|_| AuthError::TokenEncodingFailed)
 }
@@ -184,7 +184,7 @@ pub fn decode_password_reset_token(
 
     let claims = decode::<PasswordResetClaims>(
         token,
-        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &decoding_key(config)?,
         &validation,
     )
     .map(|data| data.claims)
@@ -219,7 +219,7 @@ pub fn encode_email_verification_token(
     encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(config.secret.as_bytes()),
+        &encoding_key(config)?,
     )
     .map_err(|_| AuthError::TokenEncodingFailed)
 }
@@ -232,7 +232,7 @@ pub fn decode_email_verification_token(
 
     let claims = decode::<EmailVerificationClaims>(
         token,
-        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &decoding_key(config)?,
         &validation,
     )
     .map(|data| data.claims)
@@ -250,7 +250,7 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
 
     let claims = decode::<InviteClaims>(
         token,
-        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &decoding_key(config)?,
         &validation,
     )
     .map(|data| data.claims)
@@ -263,10 +263,44 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
     Ok(claims)
 }
 
+// ─── Key helpers ─────────────────────────────────────────────────────
+
+/// Build the encoding key for the configured algorithm.
+fn encoding_key(config: &AuthConfig) -> Result<EncodingKey> {
+    match config.algorithm {
+        JwtAlgorithm::HS256 => Ok(EncodingKey::from_secret(config.secret.as_bytes())),
+        JwtAlgorithm::RS256 => {
+            let pem = config.rsa_private_key_pem.as_deref().ok_or_else(|| {
+                AuthError::Internal("RS256 requires rsa_private_key_pem".to_string())
+            })?;
+            EncodingKey::from_rsa_pem(pem.as_bytes())
+                .map_err(|e| AuthError::Internal(format!("Invalid RSA private key: {e}")))
+        }
+    }
+}
+
+/// Build the decoding key for the configured algorithm.
+fn decoding_key(config: &AuthConfig) -> Result<DecodingKey> {
+    match config.algorithm {
+        JwtAlgorithm::HS256 => Ok(DecodingKey::from_secret(config.secret.as_bytes())),
+        JwtAlgorithm::RS256 => {
+            let pem = config.rsa_public_key_pem.as_deref().ok_or_else(|| {
+                AuthError::Internal("RS256 requires rsa_public_key_pem".to_string())
+            })?;
+            DecodingKey::from_rsa_pem(pem.as_bytes())
+                .map_err(|e| AuthError::Internal(format!("Invalid RSA public key: {e}")))
+        }
+    }
+}
+
 // ─── Validation ──────────────────────────────────────────────────────
 
 fn strict_jwt_validation(config: &AuthConfig) -> Validation {
-    let mut validation = Validation::new(Algorithm::HS256);
+    let algorithm = match config.algorithm {
+        JwtAlgorithm::HS256 => Algorithm::HS256,
+        JwtAlgorithm::RS256 => Algorithm::RS256,
+    };
+    let mut validation = Validation::new(algorithm);
     validation.validate_exp = true;
     validation.leeway = 0;
     // RFC 7519: token MUST NOT be accepted on or after `exp`.
@@ -289,6 +323,9 @@ mod tests {
             refresh_expiration: 2_592_000,
             issuer: "rustok".to_string(),
             audience: "rustok-admin".to_string(),
+            algorithm: JwtAlgorithm::HS256,
+            rsa_private_key_pem: None,
+            rsa_public_key_pem: None,
         }
     }
 

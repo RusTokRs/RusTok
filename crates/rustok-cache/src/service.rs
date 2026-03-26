@@ -19,13 +19,23 @@ pub struct CacheService {
 
 impl CacheService {
     /// Build from environment variables (`RUSTOK_REDIS_URL` / `REDIS_URL`).
-    #[cfg(feature = "redis-cache")]
     pub fn from_env() -> Self {
-        let redis_url = resolve_redis_url();
+        Self::from_url(None)
+    }
+
+    /// Build from an explicit URL, falling back to env vars when `url` is `None`.
+    ///
+    /// Priority: `url` argument → `RUSTOK_REDIS_URL` → `REDIS_URL`.
+    /// Pass `Some(url)` to override env vars (e.g. from `settings.rustok.cache.redis_url`).
+    #[cfg(feature = "redis-cache")]
+    pub fn from_url(url: Option<&str>) -> Self {
+        let redis_url = url
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty())
+            .or_else(resolve_redis_url);
         let redis_client = redis_url
             .as_ref()
-            .and_then(|url| redis::Client::open(url.as_str()).ok());
-
+            .and_then(|u| redis::Client::open(u.as_str()).ok());
         Self {
             redis_url,
             redis_client,
@@ -33,7 +43,7 @@ impl CacheService {
     }
 
     #[cfg(not(feature = "redis-cache"))]
-    pub fn from_env() -> Self {
+    pub fn from_url(_url: Option<&str>) -> Self {
         Self {}
     }
 

@@ -1,10 +1,17 @@
 // Re-export from rustok-email for backward compatibility.
 pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
+use std::sync::Arc;
+
+/// Cached SMTP email service stored in `shared_store` to reuse the connection pool.
+#[derive(Clone)]
+pub struct SharedSmtpEmailService(pub Arc<EmailService>);
+
 use async_trait::async_trait;
 use loco_rs::app::AppContext;
 use loco_rs::mailer::{Email, EmailSender};
 use rustok_email::{EmailError, RenderedEmail};
+
 
 use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::error::{Error, Result};
@@ -126,11 +133,17 @@ impl PasswordResetEmailSender for LocoMailerAdapter {
 
 /// Build a `PasswordResetEmailSender` from `AppContext`.
 ///
+/// `locale` is used only when `email.provider = "loco"` (Tera template rendering).
+/// For `smtp`, the Smtp transport is cached in `shared_store` to reuse the connection pool.
+///
 /// Dispatches on `email.provider`:
-/// - `loco` → `LocoMailerAdapter` (requires `ctx.mailer` initialized in `after_context`)
-/// - `smtp` (default) → existing `EmailService::Smtp` (lettre)
+/// - `loco` → `LocoMailerAdapter` with per-request locale (requires `ctx.mailer` initialized)
+/// - `smtp` (default) → `EmailService::Smtp` cached in `shared_store`
 /// - `none` → `EmailService::Disabled`
-pub fn email_service_from_ctx(ctx: &AppContext) -> Result<Box<dyn PasswordResetEmailSender>> {
+pub fn email_service_from_ctx(
+    ctx: &AppContext,
+    locale: &str,
+) -> Result<Box<dyn PasswordResetEmailSender>> {
     let settings = RustokSettings::from_settings(&ctx.config.settings)
         .map_err(|e| Error::Message(e.to_string()))?;
 
@@ -138,6 +151,7 @@ pub fn email_service_from_ctx(ctx: &AppContext) -> Result<Box<dyn PasswordResetE
         EmailProvider::None => Ok(Box::new(EmailService::Disabled)),
 
         EmailProvider::Loco => {
+            // Cannot cache: LocoMailerAdapter carries a per-request locale.
             let Some(mailer) = ctx.mailer.clone() else {
                 tracing::warn!(
                     "email.provider = \"loco\" but ctx.mailer is not initialized; \
@@ -148,11 +162,16 @@ pub fn email_service_from_ctx(ctx: &AppContext) -> Result<Box<dyn PasswordResetE
             Ok(Box::new(LocoMailerAdapter::new(
                 mailer,
                 settings.email.from,
-                "en", // locale will be passed per-request once i18n context is threaded through
+                locale,
             )))
         }
 
         EmailProvider::Smtp => {
+            // Return cached transport if already initialised (connection pool reuse).
+            if let Some(shared) = ctx.shared_store.get::<SharedSmtpEmailService>() {
+                return Ok(Box::new((*shared.0).clone()));
+            }
+
             let config = rustok_email::EmailConfig {
                 enabled: settings.email.enabled,
                 smtp: rustok_email::SmtpConfig {
@@ -164,9 +183,10 @@ pub fn email_service_from_ctx(ctx: &AppContext) -> Result<Box<dyn PasswordResetE
                 from: settings.email.from,
                 reset_base_url: settings.email.reset_base_url,
             };
-            EmailService::from_config(&config)
-                .map(|s| Box::new(s) as Box<dyn PasswordResetEmailSender>)
-                .map_err(email_err)
+            let service = EmailService::from_config(&config).map_err(email_err)?;
+            ctx.shared_store
+                .insert(SharedSmtpEmailService(Arc::new(service.clone())));
+            Ok(Box::new(service))
         }
     }
 }
