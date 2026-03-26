@@ -6,6 +6,7 @@ import '@/features/workflow';
 import '@/features/rbac';
 import '@/features/email';
 import '@/features/cache';
+import '@/features/events';
 
 export type { AdminModule } from './types';
 export { registerAdminModule, getAdminModules, getAdminNavItems } from './registry';

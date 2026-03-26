@@ -1,10 +1,13 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
+use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
 };
 use uuid::Uuid;
+
+use crate::common::settings::RustokSettings;
 
 use crate::models::_entities::sessions::{Column as SessionCol, Entity as SessionEntity};
 
@@ -43,6 +46,26 @@ pub struct CacheHealthPayload {
     pub redis_healthy: bool,
     pub redis_error: Option<String>,
     pub backend: String,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
+pub struct EventsStatusPayload {
+    /// Transport kind active in current process (from YAML/env config).
+    pub configured_transport: String,
+    /// Iggy mode when transport or relay involves Iggy.
+    pub iggy_mode: String,
+    /// Relay interval in milliseconds.
+    pub relay_interval_ms: u64,
+    /// DLQ enabled flag.
+    pub dlq_enabled: bool,
+    /// Max relay attempts before DLQ.
+    pub max_attempts: i32,
+    /// Events waiting to be dispatched.
+    pub pending_events: i64,
+    /// Events that exhausted retries (in DLQ / failed).
+    pub dlq_events: i64,
+    /// Available transport options given current build.
+    pub available_transports: Vec<String>,
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
@@ -174,6 +197,63 @@ impl SystemQuery {
             redis_healthy: report.redis_healthy,
             redis_error: report.redis_error,
             backend,
+        })
+    }
+
+    /// Events transport runtime status: active config + outbox stats.
+    async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
+        use crate::common::settings::{EventTransportKind, RelayTargetKind};
+        use rustok_iggy::config::IggyMode;
+
+        let app_ctx = ctx.data::<AppContext>()?;
+        let db = &app_ctx.db;
+
+        let settings = RustokSettings::from_settings(&app_ctx.config.settings)
+            .unwrap_or_default();
+        let ev = &settings.events;
+
+        // Derive human-readable transport key (matches UI dropdown values).
+        let configured_transport = match ev.transport {
+            EventTransportKind::Memory => "memory".to_string(),
+            EventTransportKind::Outbox => "outbox".to_string(),
+            EventTransportKind::Iggy => match ev.iggy.mode {
+                IggyMode::Embedded => "iggy_embedded".to_string(),
+                IggyMode::Remote => "iggy_external".to_string(),
+            },
+        };
+
+        let iggy_mode = ev.iggy.mode.to_string();
+
+        // Outbox stats — graceful fallback if table not yet migrated.
+        let pending_events = EventEntity::find()
+            .filter(EventCol::Status.eq("pending"))
+            .count(db)
+            .await
+            .unwrap_or(0) as i64;
+
+        let dlq_events = EventEntity::find()
+            .filter(EventCol::Status.eq("failed"))
+            .count(db)
+            .await
+            .unwrap_or(0) as i64;
+
+        // Available transports: always offer all four; UI filters by module registry.
+        let available_transports = vec![
+            "memory".to_string(),
+            "outbox".to_string(),
+            "iggy_embedded".to_string(),
+            "iggy_external".to_string(),
+        ];
+
+        Ok(EventsStatusPayload {
+            configured_transport,
+            iggy_mode,
+            relay_interval_ms: ev.relay_interval_ms,
+            dlq_enabled: ev.dlq.enabled,
+            max_attempts: ev.relay_retry_policy.max_attempts,
+            pending_events,
+            dlq_events,
+            available_transports,
         })
     }
 

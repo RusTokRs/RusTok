@@ -43,3 +43,6 @@ mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
 
 pub const CACHE_HEALTH_QUERY: &str =
     "query CacheHealth { cacheHealth { redisConfigured redisHealthy redisError backend } }";
+
+pub const EVENTS_STATUS_QUERY: &str =
+    "query EventsStatus { eventsStatus { configuredTransport iggyMode relayIntervalMs dlqEnabled maxAttempts pendingEvents dlqEvents availableTransports } }";

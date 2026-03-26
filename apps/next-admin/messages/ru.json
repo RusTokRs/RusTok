@@ -303,6 +303,53 @@
       "errorRequired": "Email и пароль обязательны для заполнения."
     }
   },
+  "events": {
+    "title": "События и Outbox",
+    "eyebrow": "Инфраструктура",
+    "subtitle": "Настройка транспорта событий и очереди сообщений",
+    "transport": {
+      "label": "Реализация очереди",
+      "memory": "В памяти",
+      "outbox": "Outbox (база данных)",
+      "iggyEmbedded": "Iggy — встроенный",
+      "iggyExternal": "Iggy — внешний",
+      "restartRequired": "Для применения изменений транспорта требуется перезапуск",
+      "active": "Активный транспорт"
+    },
+    "outbox": {
+      "title": "Настройки Outbox",
+      "relayIntervalMs": "Интервал relay (мс)",
+      "maxAttempts": "Макс. попыток",
+      "baseBackoffMs": "Базовый backoff (мс)",
+      "dlqEnabled": "DLQ включён",
+      "dlqMaxAttempts": "Макс. попыток для DLQ"
+    },
+    "iggy": {
+      "title": "Подключение внешнего Iggy",
+      "addresses": "Адреса",
+      "addAddress": "Добавить адрес",
+      "removeAddress": "Удалить",
+      "protocol": "Протокол",
+      "username": "Пользователь",
+      "password": "Пароль",
+      "tlsEnabled": "TLS",
+      "stream": "Имя потока",
+      "partitions": "Партиции домена",
+      "replication": "Фактор репликации"
+    },
+    "status": {
+      "title": "Текущее состояние",
+      "transport": "Активный транспорт",
+      "pendingEvents": "Ожидающих событий",
+      "dlqEvents": "В DLQ",
+      "relayInterval": "Интервал relay"
+    },
+    "save": "Сохранить настройки",
+    "saving": "Сохранение…",
+    "saved": "Настройки сохранены. Перезапустите сервер для применения.",
+    "error": "Не удалось сохранить настройки",
+    "restart": "Перезапустить сервер"
+  },
   "modules": {
     "title": "Модули",
     "eyebrow": "Платформа",

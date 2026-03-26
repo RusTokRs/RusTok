@@ -334,6 +334,53 @@
       "load": "Failed to load modules"
     }
   },
+  "events": {
+    "title": "Events & Outbox",
+    "eyebrow": "Infrastructure",
+    "subtitle": "Configure event transport and message queue settings",
+    "transport": {
+      "label": "Queue implementation",
+      "memory": "In-memory",
+      "outbox": "Outbox (database)",
+      "iggyEmbedded": "Iggy — embedded",
+      "iggyExternal": "Iggy — external",
+      "restartRequired": "Restart required to apply transport changes",
+      "active": "Active transport"
+    },
+    "outbox": {
+      "title": "Outbox settings",
+      "relayIntervalMs": "Relay interval (ms)",
+      "maxAttempts": "Max attempts",
+      "baseBackoffMs": "Base backoff (ms)",
+      "dlqEnabled": "DLQ enabled",
+      "dlqMaxAttempts": "DLQ max attempts"
+    },
+    "iggy": {
+      "title": "External Iggy connection",
+      "addresses": "Addresses",
+      "addAddress": "Add address",
+      "removeAddress": "Remove",
+      "protocol": "Protocol",
+      "username": "Username",
+      "password": "Password",
+      "tlsEnabled": "TLS",
+      "stream": "Stream name",
+      "partitions": "Domain partitions",
+      "replication": "Replication factor"
+    },
+    "status": {
+      "title": "Runtime status",
+      "transport": "Active transport",
+      "pendingEvents": "Pending events",
+      "dlqEvents": "DLQ events",
+      "relayInterval": "Relay interval"
+    },
+    "save": "Save settings",
+    "saving": "Saving…",
+    "saved": "Settings saved. Restart server to apply transport changes.",
+    "error": "Failed to save settings",
+    "restart": "Restart server"
+  },
   "workflows": {
     "title": "Workflows",
     "eyebrow": "Automation",
