@@ -225,6 +225,7 @@ fn ChannelCard(
 ) -> impl IntoView {
     let has_available_modules = !available_modules.is_empty();
     let has_available_oauth_apps = !oauth_apps.is_empty();
+    let is_default_channel = channel.channel.is_default;
     let editing_target_id = RwSignal::new(Option::<String>::None);
     let editing_module_slug = RwSignal::new(Option::<String>::None);
     let editing_oauth_app_id = RwSignal::new(Option::<String>::None);
@@ -254,6 +255,9 @@ fn ChannelCard(
     let tenant_for_target = tenant.clone();
     let channel_id_for_target = channel_id.clone();
     let channel_slug_for_target = channel_slug.clone();
+    let token_for_default = token.clone();
+    let tenant_for_default = tenant.clone();
+    let channel_id_for_default = channel_id.clone();
     let token_for_target_delete = token.clone();
     let tenant_for_target_delete = tenant.clone();
     let channel_id_for_target_delete = channel_id.clone();
@@ -289,6 +293,31 @@ fn ChannelCard(
         editing_oauth_app_id.set(None);
         bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
         bind_oauth_role.set(String::new());
+    };
+
+    let make_default = move |_| {
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        spawn_local({
+            let token = token_for_default.clone();
+            let tenant = tenant_for_default.clone();
+            let channel_id = channel_id_for_default.clone();
+            async move {
+                let result = api::make_default_channel(token, tenant, &channel_id).await;
+                match result {
+                    Ok(channel) => {
+                        set_feedback.set(Some(format!(
+                            "Channel `{}` is now the tenant default channel.",
+                            channel.slug
+                        )));
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err)),
+                }
+                busy.set(false);
+            }
+        });
     };
 
     let create_target = move |ev: SubmitEvent| {
@@ -436,15 +465,44 @@ fn ChannelCard(
                         <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
                             {channel.channel.status.clone()}
                         </span>
+                        {if is_default_channel {
+                            view! {
+                                <span class="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+                                    "Default"
+                                </span>
+                            }.into_any()
+                        } else {
+                            ().into_any()
+                        }}
                     </div>
                     <h2 class="text-xl font-semibold text-card-foreground">{channel.channel.name.clone()}</h2>
                     <p class="text-sm text-muted-foreground">
                         {format!("{} target(s), {} module binding(s), {} app binding(s)", channel.targets.len(), channel.module_bindings.len(), channel.oauth_apps.len())}
                     </p>
                 </div>
-                <div class="grid gap-2 md:grid-cols-2">
+                <div class="space-y-3">
+                    {if is_default_channel {
+                        view! {
+                            <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                                "Used as the tenant's explicit default channel when no header, query or host selector matches."
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <button
+                                type="button"
+                                class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-card-foreground transition hover:bg-muted disabled:opacity-50"
+                                disabled=move || busy.get()
+                                on:click=make_default
+                            >
+                                "Make Default"
+                            </button>
+                        }.into_any()
+                    }}
+                    <div class="grid gap-2 md:grid-cols-2">
                     <InfoPill label="ID" value=short_id(&channel.channel.id) />
                     <InfoPill label="Updated" value=channel.channel.updated_at.clone() />
+                    </div>
                 </div>
             </div>
 
@@ -915,7 +973,7 @@ fn resolution_source_description(source: &ChannelResolutionSource) -> &'static s
             "The current request matched this channel through host-based target resolution."
         }
         ChannelResolutionSource::Default => {
-            "No explicit channel selector matched, so the tenant-level default fallback channel was used."
+            "No explicit channel selector matched, so the tenant's explicit default channel was used."
         }
     }
 }

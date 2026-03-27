@@ -69,23 +69,6 @@ use utoipa::OpenApi;
         crate::controllers::pages::delete_block,
         crate::controllers::pages::reorder_blocks,
         // Commerce
-        crate::controllers::commerce::products::list_products,
-        crate::controllers::commerce::products::create_product,
-        crate::controllers::commerce::products::show_product,
-        crate::controllers::commerce::products::update_product,
-        crate::controllers::commerce::products::delete_product,
-        crate::controllers::commerce::products::publish_product,
-        crate::controllers::commerce::products::unpublish_product,
-        crate::controllers::commerce::variants::list_variants,
-        crate::controllers::commerce::variants::create_variant,
-        crate::controllers::commerce::variants::show_variant,
-        crate::controllers::commerce::variants::update_variant,
-        crate::controllers::commerce::variants::delete_variant,
-        crate::controllers::commerce::variants::update_prices,
-        crate::controllers::commerce::inventory::get_inventory,
-        crate::controllers::commerce::inventory::adjust_inventory,
-        crate::controllers::commerce::inventory::set_inventory,
-        crate::controllers::commerce::inventory::check_availability,
         crate::controllers::commerce::store::list_products,
         crate::controllers::commerce::store::show_product,
         crate::controllers::commerce::store::list_regions,
@@ -106,6 +89,7 @@ use utoipa::OpenApi;
         crate::controllers::commerce::admin::delete_product,
         crate::controllers::commerce::admin::publish_product,
         crate::controllers::commerce::admin::unpublish_product,
+        crate::controllers::commerce::admin::show_order,
         // Health
         crate::controllers::health::health,
         crate::controllers::health::live,
@@ -194,20 +178,9 @@ use utoipa::OpenApi;
             rustok_commerce::dto::ProductOptionResponse,
             rustok_commerce::dto::ProductImageResponse,
             rustok_commerce::dto::PriceResponse,
-            rustok_commerce::dto::CreateVariantInput,
-            rustok_commerce::dto::UpdateVariantInput,
-            rustok_commerce::dto::VariantResponse,
-            rustok_commerce::dto::PriceInput,
-            rustok_commerce::dto::AdjustInventoryInput,
             rustok_commerce::entities::product::ProductStatus,
             crate::controllers::commerce::products::ListProductsParams,
             crate::controllers::commerce::products::ProductListItem,
-            crate::controllers::commerce::inventory::InventoryResponse,
-            crate::controllers::commerce::inventory::AdjustInput,
-            crate::controllers::commerce::inventory::SetInventoryInput,
-            crate::controllers::commerce::inventory::CheckAvailabilityInput,
-            crate::controllers::commerce::inventory::CheckItem,
-            crate::controllers::commerce::inventory::AvailabilityResult,
             crate::controllers::commerce::store::StoreListProductsParams,
             crate::controllers::commerce::store::StoreContextQuery,
             crate::controllers::commerce::store::StoreCreateCartInput,
@@ -230,6 +203,7 @@ use utoipa::OpenApi;
             rustok_commerce::dto::StoreContextResponse,
             rustok_commerce::dto::CompleteCheckoutInput,
             rustok_commerce::dto::CompleteCheckoutResponse,
+            crate::controllers::commerce::admin::AdminOrderDetailResponse,
 
             // Health
             crate::controllers::health::HealthResponse,
@@ -310,11 +284,7 @@ pub struct SecurityAddon;
 
 impl utoipa::Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        if let Some(path_item) = openapi
-            .paths
-            .paths
-            .get_mut("/store/carts/{id}")
-        {
+        if let Some(path_item) = openapi.paths.paths.get_mut("/store/carts/{id}") {
             path_item.post.get_or_insert_with(|| {
                 OperationBuilder::new()
                     .request_body(Some(
@@ -333,7 +303,9 @@ impl utoipa::Modify for SecurityAddon {
                                     .description("Updated cart context")
                                     .content(
                                         "application/json",
-                                        Content::new(Some(Ref::from_schema_name("StoreCartResponse"))),
+                                        Content::new(Some(Ref::from_schema_name(
+                                            "StoreCartResponse",
+                                        ))),
                                     ),
                             )
                             .build(),

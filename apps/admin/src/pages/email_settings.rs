@@ -79,7 +79,8 @@ pub fn EmailSettingsPage() -> impl IntoView {
     Effect::new(move |_| {
         if let Some(Ok(response)) = settings_resource.get() {
             if !loaded.get_untracked() {
-                if let Ok(val) = serde_json::from_str::<Value>(&response.platform_settings.settings) {
+                if let Ok(val) = serde_json::from_str::<Value>(&response.platform_settings.settings)
+                {
                     if let Some(s) = val.get("smtp_host").and_then(|v| v.as_str()) {
                         set_smtp_host.set(s.to_string());
                     }

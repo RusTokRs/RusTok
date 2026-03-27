@@ -138,6 +138,24 @@ async fn create_target(
     format::json(target)
 }
 
+async fn set_default_channel(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path(channel_id): Path<Uuid>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let channel = service
+        .set_default_channel(channel_id)
+        .await
+        .map_err(internal_error)?;
+
+    format::json(channel)
+}
+
 async fn update_target(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -306,6 +324,7 @@ pub fn routes() -> Routes {
         .prefix("api/channels")
         .add("/bootstrap", get(bootstrap))
         .add("/", post(create_channel))
+        .add("/{channel_id}/default", post(set_default_channel))
         .add("/{channel_id}/targets", post(create_target))
         .add("/{channel_id}/targets/{target_id}", patch(update_target))
         .add("/{channel_id}/targets/{target_id}", delete(delete_target))

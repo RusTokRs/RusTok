@@ -56,3 +56,16 @@ jobs:
         run: cargo install cargo-outdated --locked
       - name: Check root dependencies
         run: cargo outdated -R
+
+  machete:
+    name: Cargo Machete
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-machete
+        run: cargo install cargo-machete --locked
+      - name: Check manifest dependency hygiene
+        run: cargo machete

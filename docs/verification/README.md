@@ -15,7 +15,7 @@
 - [План верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md) — события, доменные модули, интеграционные связи.
 - [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — GraphQL и REST контракты.
 - [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md) — Leptos, Next.js, UI libraries и shared packages.
-- [План верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md) — тесты, observability, документация, CI/CD, security, quality.
+- [План верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md) — тесты, observability, документация, CI/CD, security, quality и phased rollout quality-tooling пакета.
 - [Реестр проблем платформенной верификации](./platform-verification-issues-registry.md) — история и актуальный трекер найденных проблем.
 - [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md) — прицельный rolling-план по RBAC-контрактам.
 - [Верификация Leptos-библиотек](./leptos-libraries-verification-plan.md) — rolling-план библиотечного UI-контура.

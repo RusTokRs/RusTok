@@ -27,8 +27,7 @@ mutation CreateUser($input: CreateUserInput!) {
 }
 "#;
 
-pub const ROLES_QUERY: &str =
-    "query Roles { roles { slug displayName permissions } }";
+pub const ROLES_QUERY: &str = "query Roles { roles { slug displayName permissions } }";
 
 pub const PLATFORM_SETTINGS_QUERY: &str =
     "query PlatformSettings($category: String!) { platformSettings(category: $category) { category settings } }";

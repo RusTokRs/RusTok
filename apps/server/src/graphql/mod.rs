@@ -20,11 +20,11 @@ pub mod media;
 pub mod mutations;
 pub mod oauth;
 pub mod observability;
-pub mod rbac;
 #[cfg(feature = "mod-pages")]
 pub mod pages;
 pub mod persisted;
 pub mod queries;
+pub mod rbac;
 pub mod schema;
 pub mod search;
 pub mod settings;

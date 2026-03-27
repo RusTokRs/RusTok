@@ -10,6 +10,8 @@ pub enum ChannelError {
     SlugAlreadyExists(String),
     #[error("channel {0} not found")]
     NotFound(Uuid),
+    #[error("channel {0} is not active")]
+    InactiveChannel(Uuid),
     #[error("target type `{0}` is invalid")]
     InvalidTargetType(String),
     #[error("target value `{0}` is invalid")]

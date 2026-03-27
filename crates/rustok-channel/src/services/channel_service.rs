@@ -1,6 +1,6 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set,
+    QueryOrder, Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -44,6 +44,9 @@ impl ChannelService {
             return Err(ChannelError::SlugAlreadyExists(input.slug));
         }
 
+        let is_default = !self
+            .default_channel_exists_for_tenant(input.tenant_id)
+            .await?;
         let now = chrono::Utc::now().into();
         let model = ChannelActiveModel {
             id: Set(generate_id()),
@@ -51,6 +54,7 @@ impl ChannelService {
             slug: Set(input.slug),
             name: Set(input.name),
             is_active: Set(true),
+            is_default: Set(is_default),
             status: Set("experimental".to_string()),
             settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
             created_at: Set(now),
@@ -71,6 +75,18 @@ impl ChannelService {
         Ok(to_channel_response(model))
     }
 
+    #[instrument(skip(self), fields(channel_id = %channel_id))]
+    pub async fn get_channel_detail(
+        &self,
+        channel_id: Uuid,
+    ) -> ChannelResult<ChannelDetailResponse> {
+        let model = channel::Entity::find_by_id(channel_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(channel_id))?;
+        self.build_channel_detail(model).await
+    }
+
     pub async fn get_channel_by_slug(
         &self,
         tenant_id: Uuid,
@@ -82,6 +98,23 @@ impl ChannelService {
             .one(&self.db)
             .await?;
         Ok(model.map(to_channel_response))
+    }
+
+    pub async fn get_channel_detail_by_slug(
+        &self,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        let model = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .filter(channel::Column::Slug.eq(slug))
+            .one(&self.db)
+            .await?;
+
+        match model {
+            Some(model) => Ok(Some(self.build_channel_detail(model).await?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn get_channel_by_host_target_value(
@@ -122,7 +155,7 @@ impl ChannelService {
         let model = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
             .filter(channel::Column::IsActive.eq(true))
-            .order_by_asc(channel::Column::CreatedAt)
+            .filter(channel::Column::IsDefault.eq(true))
             .one(&self.db)
             .await?;
 
@@ -140,6 +173,8 @@ impl ChannelService {
     ) -> ChannelResult<(Vec<ChannelResponse>, u64)> {
         let paginator = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
+            .order_by_desc(channel::Column::IsDefault)
+            .order_by_asc(channel::Column::CreatedAt)
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
@@ -153,6 +188,7 @@ impl ChannelService {
     ) -> ChannelResult<Vec<ChannelDetailResponse>> {
         let models = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
+            .order_by_desc(channel::Column::IsDefault)
             .order_by_asc(channel::Column::CreatedAt)
             .all(&self.db)
             .await?;
@@ -162,6 +198,21 @@ impl ChannelService {
             items.push(self.build_channel_detail(model).await?);
         }
         Ok(items)
+    }
+
+    #[instrument(skip(self), fields(channel_id = %channel_id))]
+    pub async fn set_default_channel(&self, channel_id: Uuid) -> ChannelResult<ChannelResponse> {
+        let channel = channel::Entity::find_by_id(channel_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(channel_id))?;
+        if !channel.is_active {
+            return Err(ChannelError::InactiveChannel(channel_id));
+        }
+
+        self.replace_default_channel(channel.tenant_id, channel_id)
+            .await?;
+        self.get_channel(channel_id).await
     }
 
     pub async fn is_module_enabled(
@@ -451,6 +502,44 @@ impl ChannelService {
         Ok(())
     }
 
+    async fn default_channel_exists_for_tenant(&self, tenant_id: Uuid) -> ChannelResult<bool> {
+        let existing = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .filter(channel::Column::IsActive.eq(true))
+            .filter(channel::Column::IsDefault.eq(true))
+            .one(&self.db)
+            .await?;
+        Ok(existing.is_some())
+    }
+
+    async fn replace_default_channel(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<()> {
+        let now = chrono::Utc::now().into();
+        let txn = self.db.begin().await?;
+        let channels = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+
+        for existing in channels {
+            let should_be_default = existing.id == channel_id;
+            if existing.is_default == should_be_default {
+                continue;
+            }
+
+            let mut active: channel::ActiveModel = existing.into();
+            active.is_default = Set(should_be_default);
+            active.updated_at = Set(now);
+            active.update(&txn).await?;
+        }
+
+        txn.commit().await?;
+        Ok(())
+    }
+
     async fn host_target_exists_for_tenant(
         &self,
         tenant_id: Uuid,
@@ -532,6 +621,7 @@ fn to_channel_response(model: channel::Model) -> ChannelResponse {
         slug: model.slug,
         name: model.name,
         is_active: model.is_active,
+        is_default: model.is_default,
         status: model.status,
         settings: model.settings,
         created_at: model.created_at.into(),
@@ -674,6 +764,78 @@ mod tests {
             .await
             .expect("channel should be created")
             .id
+    }
+
+    #[tokio::test]
+    async fn first_channel_becomes_explicit_default() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db);
+
+        let first_channel_id = create_channel(&service, tenant_id, "web").await;
+        let second_channel_id = create_channel(&service, tenant_id, "blog").await;
+
+        let first = service
+            .get_channel(first_channel_id)
+            .await
+            .expect("first channel should load");
+        let second = service
+            .get_channel(second_channel_id)
+            .await
+            .expect("second channel should load");
+        let default = service
+            .get_default_channel(tenant_id)
+            .await
+            .expect("default channel should load")
+            .expect("default channel should exist");
+
+        assert!(first.is_default, "first channel should become default");
+        assert!(
+            !second.is_default,
+            "subsequent channels must not auto-steal default"
+        );
+        assert_eq!(default.channel.id, first_channel_id);
+    }
+
+    #[tokio::test]
+    async fn set_default_channel_reassigns_tenant_default() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db);
+
+        let first_channel_id = create_channel(&service, tenant_id, "web").await;
+        let second_channel_id = create_channel(&service, tenant_id, "blog").await;
+
+        let updated = service
+            .set_default_channel(second_channel_id)
+            .await
+            .expect("default channel should be reassigned");
+        let first = service
+            .get_channel(first_channel_id)
+            .await
+            .expect("first channel should load");
+        let second = service
+            .get_channel(second_channel_id)
+            .await
+            .expect("second channel should load");
+        let listed = service
+            .list_channel_details(tenant_id)
+            .await
+            .expect("channel list should load");
+        let default = service
+            .get_default_channel(tenant_id)
+            .await
+            .expect("default channel should load")
+            .expect("default channel should exist");
+
+        assert_eq!(updated.id, second_channel_id);
+        assert!(updated.is_default);
+        assert!(!first.is_default, "old default must be cleared");
+        assert!(second.is_default, "new default must be marked");
+        assert_eq!(listed[0].channel.id, second_channel_id);
+        assert_eq!(default.channel.id, second_channel_id);
     }
 
     #[tokio::test]

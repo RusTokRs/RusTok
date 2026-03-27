@@ -313,7 +313,10 @@ async fn storefront_graphql_read_path_is_stable_after_cart_snapshot_creation() {
         .expect("GraphQL response must serialize");
 
     assert_eq!(products_before, products_after);
-    assert_eq!(products_after["storefrontProducts"]["total"], Value::from(1));
+    assert_eq!(
+        products_after["storefrontProducts"]["total"],
+        Value::from(1)
+    );
     assert_eq!(
         products_after["storefrontProducts"]["items"][0]["title"],
         Value::from("Paritaet Produkt")
@@ -420,13 +423,18 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
         None,
     );
 
-    let before = schema.execute(Request::new(storefront_query(&handle))).await;
+    let before = schema
+        .execute(Request::new(storefront_query(&handle)))
+        .await;
     assert!(
         before.errors.is_empty(),
         "unexpected GraphQL errors before checkout: {:?}",
         before.errors
     );
-    let before_json = before.data.into_json().expect("GraphQL response must serialize");
+    let before_json = before
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
 
     let region = RegionService::new(db.clone())
         .create_region(
@@ -507,13 +515,18 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
     assert_eq!(completed.cart.status, "completed");
     assert_eq!(completed.order.status, "paid");
 
-    let after = schema.execute(Request::new(storefront_query(&handle))).await;
+    let after = schema
+        .execute(Request::new(storefront_query(&handle)))
+        .await;
     assert!(
         after.errors.is_empty(),
         "unexpected GraphQL errors after checkout: {:?}",
         after.errors
     );
-    let after_json = after.data.into_json().expect("GraphQL response must serialize");
+    let after_json = after
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
 
     assert_eq!(before_json, after_json);
     assert_eq!(after_json["storefrontProducts"]["total"], Value::from(1));
@@ -557,7 +570,10 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
         "unexpected admin GraphQL errors before checkout: {:?}",
         before.errors
     );
-    let before_json = before.data.into_json().expect("GraphQL response must serialize");
+    let before_json = before
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
 
     let region = RegionService::new(db.clone())
         .create_region(
@@ -644,7 +660,10 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
         "unexpected admin GraphQL errors after checkout: {:?}",
         after.errors
     );
-    let after_json = after.data.into_json().expect("GraphQL response must serialize");
+    let after_json = after
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
 
     assert_eq!(before_json, after_json);
     assert_eq!(after_json["products"]["total"], Value::from(1));
@@ -770,5 +789,8 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
     .expect("product response must serialize");
 
     assert_eq!(before, after);
-    assert_eq!(after["translations"][0]["title"], Value::from("Parity Product"));
+    assert_eq!(
+        after["translations"][0]["title"],
+        Value::from("Parity Product")
+    );
 }

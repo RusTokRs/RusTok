@@ -9,8 +9,9 @@
 
 ### 14.1 Workspace test strategy
 
-- [ ] `cargo test --workspace` проходит или known-failures явно задокументированы.
+- [ ] `cargo nextest run --workspace --all-targets --all-features` проходит или known-failures явно задокументированы.
 - [ ] `cargo test --workspace --lib` проходит для library-level regression baseline.
+- [ ] `cargo test --workspace --doc --all-features` проходит для doc-test baseline.
 - [ ] Нет флейковых тестов, зависящих от порядка выполнения.
 
 ### 14.2 Server integration tests
@@ -152,6 +153,8 @@
 
 - [ ] `.github/workflows/ci.yml` отражает текущие обязательные проверки.
 - [ ] `.github/workflows/dependencies.yml` не дрейфует от dependency-management стратегии.
+- [ ] `cargo-nextest` используется как основной Rust test runner в CI, а doc-tests остаются отдельной проверкой.
+- [ ] `cargo-machete` подключён как manifest-hygiene сигнал и не конфликтует с `cargo udeps`.
 - [ ] Verification docs не описывают шаги, которых больше нет в CI.
 
 ### 17.2 Verify scripts и operational automation
@@ -159,6 +162,19 @@
 - [ ] `scripts/verify/README.md` соответствует текущему набору verification-планов.
 - [ ] Скрипты в `scripts/verify/` отражают актуальные checks и не ссылаются на удалённые документы/команды.
 - [ ] Build/release helper scripts согласованы с current manifest/build flow.
+
+### 17.3 План внедрения tooling-пакета качества
+
+- [x] Установить локально инструменты текущего этапа: `cargo-nextest` и `cargo-machete`.
+- [x] Использовать `cargo-nextest` как основной Rust test runner в CI и в локальном базовом workflow.
+- [x] Оставить `cargo test --workspace --doc --all-features` как отдельный doc-test baseline, а не пытаться скрыто заменить его.
+- [x] Подключить `cargo-machete` как advisory manifest-hygiene check без замены `cargo udeps`.
+- [ ] Следующий этап внедрения: `Semgrep`, `GraphQL Inspector`, `knip`.
+- [ ] Следующий после него этап: `Playwright` + `axe-core`, `GraphQL Code Generator`.
+- [ ] Отложенный этап: `testcontainers`, `cargo-mutants`, `Stryker`.
+- [ ] Инструменты локальной диагностики и performance-анализа держать вне blocking CI gate: `tokio-console`, `cargo-flamegraph`.
+- [ ] Точечные deep-check инструменты оставлять на поздний адресный rollout для критичных модулей: `loom`, `miri`, `cargo-fuzz`.
+- [ ] Не заменять на этом этапе существующие `cargo audit`, `cargo deny`, `cargo udeps`, `cargo llvm-cov`, `scripts/verify/*` и `Makefile`; новые инструменты должны усиливать текущий baseline, а не дублировать его без доказанной пользы.
 
 ---
 

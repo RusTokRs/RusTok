@@ -32,7 +32,8 @@
 
 - storage-модель `channels`, `channel_targets`, `channel_module_bindings`, `channel_oauth_apps`;
 - service layer для создания каналов, target'ов, module bindings и OAuth app bindings; для `v0` target semantics остаются на уровне `target_type + value`, но с explicit allowlist типов и `web_domain`-only host resolution;
-- server middleware, который теперь явно следует policy order `header (X-Channel-ID / X-Channel-Slug) -> query channel -> host target -> default channel`, сохраняя `resolution_source` в runtime context;
+- server middleware, который теперь явно следует policy order `header (X-Channel-ID / X-Channel-Slug) -> query channel -> host target -> default channel`, где `default` означает explicit default channel tenant'а; middleware сохраняет `resolution_source` в runtime context и одинаково пропускает только active channels для explicit/header/query/host/default resolution;
+- у канала появился explicit default flag, а admin flow умеет назначать tenant default без опоры на порядок создания;
 - общий request contract в `rustok-api` для channel-aware transport/adapters, включая `channel_id`, `channel_slug` и `channel_resolution_source`;
 - тонкий REST surface в `apps/server` для bootstrap, создания каналов, target'ов и bindings;
 - module-owned Leptos admin UI package `rustok-channel-admin`, подключаемый в `apps/admin` через manifest-driven wiring и уже показывающий explicit resolution source в runtime context bootstrap panel.
@@ -43,10 +44,12 @@
 
 Текущий baseline уже подтверждён локальной проверкой:
 
+- `cargo test -p rustok-channel --lib`;
 - `cargo check -p rustok-channel`;
 - `cargo check -p rustok-admin`;
 - `cargo check -p rustok-server`;
 - `cargo test -p rustok-api --lib`;
+- `cargo test -p rustok-server middleware::channel::tests --lib`;
 - `cargo test -p rustok-server registry_dependencies_match_runtime_contract --lib`;
 - `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`.
 

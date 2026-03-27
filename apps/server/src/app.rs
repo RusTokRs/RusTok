@@ -128,7 +128,12 @@ impl Hooks for App {
         let runtime = bootstrap_app_runtime(ctx, &rustok_settings).await?;
         connect_runtime_workers(ctx).await?;
 
-        Ok(compose_application_router(router, ctx, runtime))
+        Ok(compose_application_router(
+            router,
+            ctx,
+            runtime,
+            &rustok_settings,
+        ))
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {

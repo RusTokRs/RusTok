@@ -738,13 +738,10 @@ mod tests {
     use uuid::Uuid;
 
     fn test_auth_config() -> AuthConfig {
-        AuthConfig {
-            secret: "rate-limit-test-secret-with-sufficient-length".to_string(),
-            access_expiration: 3600,
-            refresh_expiration: 3600,
-            issuer: "rustok".to_string(),
-            audience: "rustok-admin".to_string(),
-        }
+        AuthConfig::new("rate-limit-test-secret-with-sufficient-length".to_string())
+            .with_expiration(3600, 3600)
+            .with_issuer("rustok")
+            .with_audience("rustok-admin")
     }
 
     #[tokio::test]

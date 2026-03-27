@@ -202,14 +202,13 @@ impl SystemQuery {
 
     /// Events transport runtime status: active config + outbox stats.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        use crate::common::settings::{EventTransportKind, RelayTargetKind};
+        use crate::common::settings::EventTransportKind;
         use rustok_iggy::config::IggyMode;
 
         let app_ctx = ctx.data::<AppContext>()?;
         let db = &app_ctx.db;
 
-        let settings = RustokSettings::from_settings(&app_ctx.config.settings)
-            .unwrap_or_default();
+        let settings = RustokSettings::from_settings(&app_ctx.config.settings).unwrap_or_default();
         let ev = &settings.events;
 
         // Derive human-readable transport key (matches UI dropdown values).

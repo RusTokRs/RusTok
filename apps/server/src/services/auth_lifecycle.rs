@@ -644,6 +644,17 @@ mod tests {
     use serial_test::serial;
     use std::sync::atomic::Ordering;
 
+    fn test_auth_config(
+        secret: &str,
+        access_expiration: u64,
+        refresh_expiration: u64,
+    ) -> AuthConfig {
+        AuthConfig::new(secret.to_string())
+            .with_expiration(access_expiration, refresh_expiration)
+            .with_issuer("rustok-test")
+            .with_audience("rustok-test")
+    }
+
     #[test]
     #[serial]
     fn metrics_snapshot_reads_current_auth_lifecycle_counters() {
@@ -1013,13 +1024,7 @@ mod tests {
             .await
             .expect("manager relation assignment should succeed");
 
-        let config = AuthConfig {
-            secret: "relation-role-secret".to_string(),
-            access_expiration: 600,
-            refresh_expiration: 3600,
-            issuer: "rustok-test".to_string(),
-            audience: "rustok-test".to_string(),
-        };
+        let config = test_auth_config("relation-role-secret", 600, 3600);
 
         let tokens = AuthLifecycleService::create_session_and_tokens_db(
             &db, &config, tenant.id, &user, None, None,
@@ -1129,13 +1134,7 @@ mod tests {
             .await
             .expect("failed to create inactive user");
 
-        let config = AuthConfig {
-            secret: "test-secret".to_string(),
-            access_expiration: 3600,
-            refresh_expiration: 3600,
-            issuer: "rustok-test".to_string(),
-            audience: "rustok-test".to_string(),
-        };
+        let config = test_auth_config("test-secret", 3600, 3600);
 
         let metrics_before = AuthLifecycleService::metrics_snapshot();
         let result = AuthLifecycleService::login_with_config(
@@ -1187,13 +1186,7 @@ mod tests {
             .await
             .expect("failed to create expired/revoked session");
 
-        let config = AuthConfig {
-            secret: "refresh-secret".to_string(),
-            access_expiration: 600,
-            refresh_expiration: 3600,
-            issuer: "rustok-test".to_string(),
-            audience: "rustok-test".to_string(),
-        };
+        let config = test_auth_config("refresh-secret", 600, 3600);
 
         let result =
             AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, expired_token)
@@ -1210,13 +1203,7 @@ mod tests {
             .await
             .expect("failed to create tenant");
 
-        let config = AuthConfig {
-            secret: "refresh-secret".to_string(),
-            access_expiration: 600,
-            refresh_expiration: 3600,
-            issuer: "rustok-test".to_string(),
-            audience: "rustok-test".to_string(),
-        };
+        let config = test_auth_config("refresh-secret", 600, 3600);
 
         let result = AuthLifecycleService::refresh_with_config_db(
             &db,
@@ -1263,13 +1250,7 @@ mod tests {
         .await
         .expect("failed to create active session for inactive user");
 
-        let config = AuthConfig {
-            secret: "refresh-secret".to_string(),
-            access_expiration: 600,
-            refresh_expiration: 3600,
-            issuer: "rustok-test".to_string(),
-            audience: "rustok-test".to_string(),
-        };
+        let config = test_auth_config("refresh-secret", 600, 3600);
 
         let result =
             AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, refresh_token)
@@ -1292,13 +1273,7 @@ mod tests {
             .await
             .expect("failed to create user");
 
-        let config = AuthConfig {
-            secret: "reset-secret".to_string(),
-            access_expiration: 3600,
-            refresh_expiration: 7200,
-            issuer: "rustok-test".to_string(),
-            audience: "rustok-test".to_string(),
-        };
+        let config = test_auth_config("reset-secret", 3600, 7200);
 
         let err = AuthLifecycleService::confirm_password_reset_with_config(
             &db,

@@ -300,6 +300,111 @@ async fn repeated_complete_checkout_recovers_existing_result() {
 }
 
 #[tokio::test]
+async fn complete_checkout_reuses_existing_cart_payment_collection() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-existing-collection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "checkout-existing-collection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-existing-collection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(Uuid::new_v4()),
+                variant_id: Some(Uuid::new_v4()),
+                sku: Some("CHK-EXISTING-1".to_string()),
+                title: "Checkout Product".to_string(),
+                quantity: 2,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let existing_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            rustok_commerce::dto::CreatePaymentCollectionInput {
+                cart_id: Some(cart.id),
+                order_id: None,
+                customer_id: cart.customer_id,
+                currency_code: cart.currency_code.clone(),
+                amount: cart.total_amount,
+                metadata: serde_json::json!({ "source": "checkout-existing-collection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: false,
+                metadata: serde_json::json!({ "flow": "checkout-existing-collection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(completed.payment_collection.id, existing_collection.id);
+    assert_eq!(completed.payment_collection.order_id, Some(completed.order.id));
+    assert_eq!(completed.payment_collection.status, "captured");
+    assert_eq!(completed.order.status, "paid");
+    assert_eq!(completed.cart.status, "completed");
+}
+
+#[tokio::test]
 async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overrides() {
     let (db, cart_service, checkout, fulfillment) = setup().await;
     let tenant_id = Uuid::new_v4();

@@ -10,6 +10,7 @@ pub struct Model {
     pub slug: String,
     pub name: String,
     pub is_active: bool,
+    pub is_default: bool,
     pub status: String,
     pub settings: Json,
     pub created_at: DateTimeWithTimeZone,

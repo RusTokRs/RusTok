@@ -498,15 +498,25 @@ Write → Event Bus → Indexers → Read Models
 
 ### Running Tests
 
+Install the Rust quality tools once before using the local shortcuts:
+
+```bash
+cargo install cargo-nextest --locked
+cargo install cargo-machete --locked
+```
+
 ```bash
 # All tests
-cargo test --workspace
+cargo nextest run --workspace --all-targets --all-features
+
+# Doc tests
+cargo test --workspace --doc --all-features
 
 # Specific crate
 cargo test -p rustok-core
 
 # With database (integration tests)
-DATABASE_URL=postgres://localhost/rustok_test cargo test
+DATABASE_URL=postgres://localhost/rustok_test cargo nextest run --workspace --all-targets --all-features
 ```
 
 ### Testing Guidelines
@@ -527,6 +537,9 @@ cargo audit
 
 # License + advisory policy checks
 cargo deny check
+
+# Manifest dependency hygiene
+cargo machete
 ```
 
 ### Code Quality
@@ -538,18 +551,25 @@ cargo fmt --all
 # Lint
 cargo clippy --workspace -- -D warnings
 
+# Primary Rust test runner
+cargo nextest run --workspace --all-targets --all-features
+
 # Check before commit
-cargo fmt --all -- --check && cargo clippy --workspace
+cargo fmt --all -- --check && cargo clippy --workspace -- -D warnings
+cargo test --workspace --doc --all-features
+cargo machete
 ./scripts/verify/verify-all.sh
 ```
 
 ### Release Checklist
 
 ```bash
-cargo test --workspace
+cargo nextest run --workspace --all-targets --all-features
+cargo test --workspace --doc --all-features
 cargo clippy --workspace --all-targets -- -D warnings
 cargo audit
 cargo deny check
+cargo machete
 ```
 
 ### Useful Commands
@@ -586,7 +606,7 @@ Look for issues labeled good first issue — these are great starting points.
 1. Fork the repository
 2. Create a feature branch (git checkout -b feature/amazing-feature)
 3. Make your changes
-4. Run tests (cargo test --workspace)
+4. Run tests (`cargo nextest run --workspace --all-targets --all-features`)
 5. Run lints (cargo clippy --workspace)
 6. Commit (git commit -m 'Add amazing feature')
 7. Push (git push origin feature/amazing-feature)

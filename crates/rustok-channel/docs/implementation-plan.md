@@ -2,7 +2,7 @@
 
 Статус: experimental core capability.
 
-## Состояние на 2026-03-26
+## Состояние на 2026-03-27
 
 `rustok-channel` уже доведён до рабочего v0 baseline:
 
@@ -13,7 +13,15 @@
 - есть module-owned Leptos admin UI;
 - есть первый живой consumer в `rustok-pages`, уже расширенный до publication-level proof point;
 - есть второй живой consumer в `rustok-blog`, уже тоже расширенный до publication-level proof point;
+- runtime contract закреплён отдельными тестами server middleware на policy order `header -> query -> host -> default`, fallback-ы и skip inactive explicit selectors;
 - документация и ADR приведены в актуальное состояние.
+
+После baseline уже сделан первый post-v0 stabilizing step:
+
+- добавлен explicit default channel вместо fallback-by-order;
+- default-resolution в middleware теперь опирается на явный `is_default`, а не на порядок создания;
+- admin UI получил operator flow `Make Default`;
+- поведение закреплено unit/runtime тестами в `rustok-channel` и `apps/server`.
 
 Это значит, что следующую сессию можно начинать не с инфраструктурного scaffolding, а уже с первого продуктового/интеграционного шага поверх существующего baseline.
 
@@ -70,11 +78,13 @@
 ### Проверка и фиксация baseline
 
 - [x] `cargo check -p rustok-channel`;
+- [x] `cargo test -p rustok-channel --lib`;
 - [x] `cargo check -p rustok-admin`;
 - [x] `cargo check -p rustok-server`;
 - [x] `cargo test -p rustok-api --lib`;
 - [x] `cargo test -p rustok-pages graphql::query::tests --lib`;
 - [x] `cargo test -p rustok-blog graphql::query::tests --lib`;
+- [x] `cargo test -p rustok-server middleware::channel::tests --lib`;
 - [x] `cargo test -p rustok-server registry_dependencies_match_runtime_contract --lib`;
 - [x] `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`.
 
@@ -101,6 +111,7 @@
 - регистрация модуля в `apps/server`;
 - подключение миграций в server migrator;
 - middleware для разрешения канала по explicit policy order `header -> query -> host -> default`, где host-based resolution сейчас сознательно использует только `web_domain` targets;
+- explicit selectors (`X-Channel-ID`, `X-Channel-Slug`, `channel` query) теперь тоже резолвят только active channels и подтягивают полноценный channel detail, чтобы runtime diagnostics были консистентны с host/default flow;
 - thin REST endpoints `/api/channels/*`.
 
 ### Shared host contracts
@@ -155,8 +166,24 @@
 
 - [x] зафиксировать явный policy order `header -> query -> host -> default`;
 - [x] определить, что tenant-level default rules для target resolution не нужны в `v0`;
-- [ ] вернуться к tenant-level default rules только после explicit default channel и stabilizing шага по target semantics; это точка повторного пересмотра, а не заранее принятое обязательство на реализацию;
+- [x] зафиксировать, что возврат к tenant-level default rules возможен только после explicit default channel и stabilizing шага по target semantics; это точка повторного пересмотра, а не заранее принятое обязательство на реализацию;
 - [x] добавить более явную диагностику, почему был выбран конкретный канал.
+
+### Post-v0 stabilization
+
+- [x] ввести explicit default channel вместо fallback-by-order;
+- [x] обновить runtime resolution так, чтобы `default` резолвился через `is_default`;
+- [x] дать оператору admin flow для смены tenant default channel;
+- [x] закрепить explicit default semantics тестами.
+
+## Итог по v0
+
+Все обязательные implementation-пункты `rustok-channel` для `v0` закрыты.
+
+Остаются только осознанно отложенные revisit-вопросы следующего этапа:
+
+- нужны ли tenant-level default rules после стабилизации target semantics;
+- нужен ли richer split `channel/site/market/touchpoint` и отдельная connector taxonomy.
 
 ### Приоритет 3. Уточнение channel semantics
 

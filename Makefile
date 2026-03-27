@@ -1,6 +1,7 @@
 .PHONY: docs-sync-loco docs-check-loco docs-sync-server-libs docs-check-server-libs
 .PHONY: dev-start dev-stop dev-restart dev-logs dev-status
 .PHONY: dev-admin dev-storefront dev-server
+.PHONY: rust-test rust-doc-test rust-deps
 .PHONY: install-tailwind
 .PHONY: help
 
@@ -70,6 +71,22 @@ dev-status:
 	@./scripts/dev-start.sh status
 
 # ============================================================================
+# Rust quality targets
+# ============================================================================
+
+# Run the primary Rust workspace test suite with cargo-nextest.
+rust-test:
+	cargo nextest run --workspace --all-targets --all-features
+
+# Keep doc-tests as a separate baseline alongside nextest.
+rust-doc-test:
+	cargo test --workspace --doc --all-features
+
+# Check manifest dependency hygiene with cargo-machete.
+rust-deps:
+	cargo machete
+
+# ============================================================================
 # Help target
 # ============================================================================
 
@@ -91,6 +108,11 @@ help:
 	@echo "  make dev-restart           - Restart all services"
 	@echo "  make dev-logs              - Follow logs"
 	@echo "  make dev-status            - Show service status"
+	@echo ""
+	@echo "Rust quality:"
+	@echo "  make rust-test             - Run Rust tests via cargo-nextest"
+	@echo "  make rust-doc-test         - Run Rust doc-tests"
+	@echo "  make rust-deps             - Check manifest dependency hygiene"
 	@echo ""
 	@echo "Quick Start:"
 	@echo "  1. make dev-start          - Start everything"

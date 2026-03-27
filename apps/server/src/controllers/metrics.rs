@@ -247,33 +247,8 @@ async fn render_rbac_metrics(ctx: &AppContext) -> String {
 }
 
 async fn render_search_metrics(ctx: &AppContext) -> String {
-    let stmt = Statement::from_string(
-        DbBackend::Postgres,
-        r#"
-        WITH source_tenants AS (
-            SELECT tenant_id FROM nodes WHERE deleted_at IS NULL
-            UNION
-            SELECT tenant_id FROM products
-        )
-        SELECT
-            COUNT(*)::bigint AS total_documents,
-            COUNT(*) FILTER (WHERE is_public)::bigint AS public_documents,
-            COUNT(*) FILTER (WHERE indexed_at < updated_at)::bigint AS stale_documents,
-            COUNT(DISTINCT tenant_id)::bigint AS tenants_with_documents,
-            COUNT(DISTINCT tenant_id) FILTER (WHERE indexed_at < updated_at)::bigint AS lagging_tenants,
-            COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM (updated_at - indexed_at)), 0)), 0)::bigint AS max_lag_seconds,
-            (
-                SELECT COUNT(*)::bigint
-                FROM source_tenants st
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM search_documents sd
-                    WHERE sd.tenant_id = st.tenant_id
-                )
-            ) AS bootstrap_pending_tenants
-        FROM search_documents
-        "#.to_string(),
-    );
+    let backend = ctx.db.get_database_backend();
+    let stmt = Statement::from_string(backend, search_metrics_snapshot_query(backend).to_string());
 
     match ctx.db.query_one(stmt).await {
         Ok(Some(row)) => {
@@ -308,7 +283,9 @@ rustok_search_bootstrap_pending_tenants_total 0\n\
 rustok_search_max_lag_seconds 0\n"
             .to_string(),
         Err(error) => {
-            warn!(error = %error, "failed to load search metrics snapshot");
+            if !is_missing_relation_error(&error) {
+                warn!(error = %error, "failed to load search metrics snapshot");
+            }
             "rustok_search_metrics_collection_status 0\n\
 rustok_search_documents_total 0\n\
 rustok_search_public_documents_total 0\n\
@@ -318,6 +295,80 @@ rustok_search_lagging_tenants_total 0\n\
 rustok_search_bootstrap_pending_tenants_total 0\n\
 rustok_search_max_lag_seconds 0\n"
                 .to_string()
+        }
+    }
+}
+
+fn is_missing_relation_error(error: &sea_orm::DbErr) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("no such table")
+        || message.contains("undefinedtable")
+        || message.contains("relation") && message.contains("does not exist")
+}
+
+fn search_metrics_snapshot_query(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Sqlite => {
+            r#"
+            WITH source_tenants AS (
+                SELECT tenant_id FROM nodes WHERE deleted_at IS NULL
+                UNION
+                SELECT tenant_id FROM products
+            )
+            SELECT
+                CAST(COUNT(*) AS INTEGER) AS total_documents,
+                CAST(SUM(CASE WHEN is_public THEN 1 ELSE 0 END) AS INTEGER) AS public_documents,
+                CAST(SUM(CASE WHEN indexed_at < updated_at THEN 1 ELSE 0 END) AS INTEGER) AS stale_documents,
+                CAST(COUNT(DISTINCT tenant_id) AS INTEGER) AS tenants_with_documents,
+                CAST(COUNT(DISTINCT CASE WHEN indexed_at < updated_at THEN tenant_id END) AS INTEGER) AS lagging_tenants,
+                CAST(
+                    COALESCE(
+                        MAX(
+                            CASE
+                                WHEN updated_at > indexed_at THEN CAST((julianday(updated_at) - julianday(indexed_at)) * 86400 AS INTEGER)
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS INTEGER
+                ) AS max_lag_seconds,
+                (
+                    SELECT CAST(COUNT(*) AS INTEGER)
+                    FROM source_tenants st
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM search_documents sd
+                        WHERE sd.tenant_id = st.tenant_id
+                    )
+                ) AS bootstrap_pending_tenants
+            FROM search_documents
+            "#
+        }
+        _ => {
+            r#"
+            WITH source_tenants AS (
+                SELECT tenant_id FROM nodes WHERE deleted_at IS NULL
+                UNION
+                SELECT tenant_id FROM products
+            )
+            SELECT
+                COUNT(*)::bigint AS total_documents,
+                COUNT(*) FILTER (WHERE is_public)::bigint AS public_documents,
+                COUNT(*) FILTER (WHERE indexed_at < updated_at)::bigint AS stale_documents,
+                COUNT(DISTINCT tenant_id)::bigint AS tenants_with_documents,
+                COUNT(DISTINCT tenant_id) FILTER (WHERE indexed_at < updated_at)::bigint AS lagging_tenants,
+                COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM (updated_at - indexed_at)), 0)), 0)::bigint AS max_lag_seconds,
+                (
+                    SELECT COUNT(*)::bigint
+                    FROM source_tenants st
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM search_documents sd
+                        WHERE sd.tenant_id = st.tenant_id
+                    )
+                ) AS bootstrap_pending_tenants
+            FROM search_documents
+            "#
         }
     }
 }

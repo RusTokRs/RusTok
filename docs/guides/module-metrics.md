@@ -69,7 +69,7 @@ Current total number of orders.
 rustok_http_requests_total{method, path, status}
 ```
 - `method`: HTTP method (GET, POST, PUT, DELETE)
-- `path`: Request path (/api/content/nodes, /api/commerce/products)
+- `path`: Request path (/api/content/nodes, /store/products)
 - `status`: HTTP status code (200, 201, 400, 404, 500)
 
 #### Request Duration

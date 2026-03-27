@@ -344,7 +344,7 @@ async fn collect_rate_limit_snapshot(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct RuntimeGuardrailPolicy {
     rollout: RuntimeGuardrailRollout,
     api_policy: RateLimitNamespacePolicy,

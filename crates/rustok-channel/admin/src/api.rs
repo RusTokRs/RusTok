@@ -182,6 +182,20 @@ pub async fn create_channel(
     post_json("/api/channels/", payload, token, tenant_slug).await
 }
 
+pub async fn make_default_channel(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    channel_id: &str,
+) -> Result<ChannelRecord, ApiError> {
+    post_json(
+        &format!("/api/channels/{channel_id}/default"),
+        &serde_json::json!({}),
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
 pub async fn create_target(
     token: Option<String>,
     tenant_slug: Option<String>,

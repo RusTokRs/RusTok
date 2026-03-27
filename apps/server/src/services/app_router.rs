@@ -3,6 +3,7 @@ use axum::Extension;
 use axum::Router as AxumRouter;
 use loco_rs::app::AppContext;
 
+use crate::common::settings::RustokSettings;
 use crate::middleware;
 use crate::middleware::rate_limit::rate_limit_for_paths;
 use crate::services::app_runtime::AppRuntimeBootstrap;
@@ -93,6 +94,7 @@ pub fn compose_application_router(
     router: AxumRouter,
     ctx: &AppContext,
     runtime: AppRuntimeBootstrap,
+    _rustok_settings: &RustokSettings,
 ) -> AxumRouter {
     mount_application_shell(
         router,

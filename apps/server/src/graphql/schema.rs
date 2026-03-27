@@ -23,7 +23,6 @@ use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 pub struct AlloyState;
 
 use super::auth::{AuthMutation, AuthQuery};
-use super::rbac::{RbacMutation, RbacQuery};
 use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
 use super::mcp::{McpMutation, McpQuery};
@@ -31,6 +30,7 @@ use super::mutations::RootMutation;
 use super::oauth::{OAuthMutation, OAuthQuery};
 use super::observability::GraphqlObservability;
 use super::queries::RootQuery;
+use super::rbac::{RbacMutation, RbacQuery};
 use super::search::{SearchMutationRoot, SearchQueryRoot};
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;

@@ -5,11 +5,11 @@ use leptos_router::components::{ParentRoute, Route, Router, Routes};
 use leptos_router::path;
 
 use crate::pages::{
-    cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage,
-    events::EventsPage, login::Login, module_admin::ModuleAdminPage, modules::Modules,
-    not_found::NotFound, oauth_apps::OAuthAppsPage, profile::Profile, register::Register,
-    reset::ResetPassword, roles::RolesPage, security::Security, user_details::UserDetails,
-    users::Users, workflow_detail::WorkflowDetailPage, workflows::Workflows,
+    cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage, events::EventsPage,
+    login::Login, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
+    oauth_apps::OAuthAppsPage, profile::Profile, register::Register, reset::ResetPassword,
+    roles::RolesPage, security::Security, user_details::UserDetails, users::Users,
+    workflow_detail::WorkflowDetailPage, workflows::Workflows,
 };
 use crate::widgets::app_shell::AppLayout;
 use crate::I18nContextProvider;

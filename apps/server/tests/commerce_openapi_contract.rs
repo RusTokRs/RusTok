@@ -5,18 +5,11 @@ use utoipa::{Modify, OpenApi};
 fn openapi_json() -> Value {
     let mut spec = ApiDoc::openapi();
     SecurityAddon.modify(&mut spec);
-    let spec = spec
-        .to_json()
-        .expect("OpenAPI spec must serialize to JSON");
+    let spec = spec.to_json().expect("OpenAPI spec must serialize to JSON");
     serde_json::from_str(&spec).expect("OpenAPI JSON must parse")
 }
 
-fn response_schema_ref(
-    spec: &Value,
-    path: &str,
-    method: &str,
-    status: &str,
-) -> Option<String> {
+fn response_schema_ref(spec: &Value, path: &str, method: &str, status: &str) -> Option<String> {
     spec.get("paths")?
         .get(path)?
         .get(method)?
@@ -75,6 +68,20 @@ fn openapi_includes_store_cart_contract_paths() {
 }
 
 #[test]
+fn openapi_includes_admin_order_detail_contract_path() {
+    let spec = openapi_json();
+    let paths = spec
+        .get("paths")
+        .and_then(Value::as_object)
+        .expect("OpenAPI paths object must exist");
+
+    assert!(
+        paths.contains_key("/admin/orders/{id}"),
+        "OpenAPI spec must contain admin order detail path"
+    );
+}
+
+#[test]
 fn openapi_preserves_store_cart_request_and_response_shapes() {
     let spec = openapi_json();
 
@@ -113,6 +120,11 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
         response_schema_ref(&spec, "/store/carts/{id}/complete", "post", "200"),
         Some("#/components/schemas/CompleteCheckoutResponse".to_string())
     );
+
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/orders/{id}", "get", "200"),
+        Some("#/components/schemas/AdminOrderDetailResponse".to_string())
+    );
 }
 
 #[test]
@@ -134,6 +146,7 @@ fn openapi_registers_store_cart_related_component_schemas() {
         "StoreContextResponse",
         "PaymentCollectionResponse",
         "CompleteCheckoutResponse",
+        "AdminOrderDetailResponse",
     ] {
         assert!(
             schemas.contains_key(schema),

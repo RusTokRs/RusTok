@@ -165,20 +165,58 @@ impl CheckoutService {
 
             let payment_collection = match self
                 .payment_service
-                .create_collection(
-                    tenant_id,
-                    CreatePaymentCollectionInput {
-                        cart_id: Some(cart.id),
-                        order_id: Some(order.id),
-                        customer_id: cart.customer_id,
-                        currency_code: cart.currency_code.clone(),
-                        amount: cart.total_amount,
-                        metadata: input.metadata.clone(),
-                    },
-                )
+                .find_reusable_collection_by_cart(tenant_id, cart.id)
                 .await
             {
-                Ok(collection) => collection,
+                Ok(Some(existing)) => match self
+                    .payment_service
+                    .attach_order_to_collection(
+                        tenant_id,
+                        existing.id,
+                        order.id,
+                        input.metadata.clone(),
+                    )
+                    .await
+                {
+                    Ok(collection) => collection,
+                    Err(error) => {
+                        self.compensate_order(
+                            tenant_id,
+                            actor_id,
+                            order.id,
+                            "payment_collection_failed",
+                        )
+                        .await;
+                        return Err(stage_error("attach_payment_collection")(error));
+                    }
+                },
+                Ok(None) => match self
+                    .payment_service
+                    .create_collection(
+                        tenant_id,
+                        CreatePaymentCollectionInput {
+                            cart_id: Some(cart.id),
+                            order_id: Some(order.id),
+                            customer_id: cart.customer_id,
+                            currency_code: cart.currency_code.clone(),
+                            amount: cart.total_amount,
+                            metadata: input.metadata.clone(),
+                        },
+                    )
+                    .await
+                {
+                    Ok(collection) => collection,
+                    Err(error) => {
+                        self.compensate_order(
+                            tenant_id,
+                            actor_id,
+                            order.id,
+                            "payment_collection_failed",
+                        )
+                        .await;
+                        return Err(stage_error("create_payment_collection")(error));
+                    }
+                },
                 Err(error) => {
                     self.compensate_order(
                         tenant_id,
@@ -187,26 +225,40 @@ impl CheckoutService {
                         "payment_collection_failed",
                     )
                     .await;
-                    return Err(stage_error("create_payment_collection")(error));
+                    return Err(stage_error("load_payment_collection")(error));
                 }
             };
 
-            let authorized_payment = match self
-                .payment_service
-                .authorize_collection(
-                    tenant_id,
-                    payment_collection.id,
-                    AuthorizePaymentInput {
-                        provider_id: None,
-                        provider_payment_id: None,
-                        amount: Some(cart.total_amount),
-                        metadata: input.metadata.clone(),
-                    },
-                )
-                .await
-            {
-                Ok(collection) => collection,
-                Err(error) => {
+            let authorized_payment = match payment_collection.status.as_str() {
+                "pending" => match self
+                    .payment_service
+                    .authorize_collection(
+                        tenant_id,
+                        payment_collection.id,
+                        AuthorizePaymentInput {
+                            provider_id: None,
+                            provider_payment_id: None,
+                            amount: Some(cart.total_amount),
+                            metadata: input.metadata.clone(),
+                        },
+                    )
+                    .await
+                {
+                    Ok(collection) => collection,
+                    Err(error) => {
+                        self.compensate_payment_and_order(
+                            tenant_id,
+                            actor_id,
+                            payment_collection.id,
+                            order.id,
+                            "payment_authorization_failed",
+                        )
+                        .await;
+                        return Err(stage_error("authorize_payment")(error));
+                    }
+                },
+                "authorized" | "captured" => payment_collection.clone(),
+                status => {
                     self.compensate_payment_and_order(
                         tenant_id,
                         actor_id,
@@ -215,7 +267,10 @@ impl CheckoutService {
                         "payment_authorization_failed",
                     )
                     .await;
-                    return Err(stage_error("authorize_payment")(error));
+                    return Err(stage_error("authorize_payment")(PaymentError::InvalidTransition {
+                        from: status.to_string(),
+                        to: "authorized".to_string(),
+                    }));
                 }
             };
 
@@ -252,20 +307,34 @@ impl CheckoutService {
                 None
             };
 
-            let captured_payment = match self
-                .payment_service
-                .capture_collection(
-                    tenant_id,
-                    authorized_payment.id,
-                    rustok_payment::dto::CapturePaymentInput {
-                        amount: Some(cart.total_amount),
-                        metadata: input.metadata.clone(),
-                    },
-                )
-                .await
-            {
-                Ok(collection) => collection,
-                Err(error) => {
+            let captured_payment = match authorized_payment.status.as_str() {
+                "authorized" => match self
+                    .payment_service
+                    .capture_collection(
+                        tenant_id,
+                        authorized_payment.id,
+                        rustok_payment::dto::CapturePaymentInput {
+                            amount: Some(cart.total_amount),
+                            metadata: input.metadata.clone(),
+                        },
+                    )
+                    .await
+                {
+                    Ok(collection) => collection,
+                    Err(error) => {
+                        self.compensate_payment_and_order(
+                            tenant_id,
+                            actor_id,
+                            authorized_payment.id,
+                            order.id,
+                            "payment_capture_failed",
+                        )
+                        .await;
+                        return Err(stage_error("capture_payment")(error));
+                    }
+                },
+                "captured" => authorized_payment,
+                status => {
                     self.compensate_payment_and_order(
                         tenant_id,
                         actor_id,
@@ -274,7 +343,10 @@ impl CheckoutService {
                         "payment_capture_failed",
                     )
                     .await;
-                    return Err(stage_error("capture_payment")(error));
+                    return Err(stage_error("capture_payment")(PaymentError::InvalidTransition {
+                        from: status.to_string(),
+                        to: "captured".to_string(),
+                    }));
                 }
             };
             let payment_reference = captured_payment

@@ -571,6 +571,10 @@ fn create_cart_input() -> CreateCartInput {
     CreateCartInput {
         customer_id: Some(Uuid::new_v4()),
         email: Some("migration-buyer@example.com".to_string()),
+        region_id: None,
+        country_code: None,
+        locale_code: None,
+        selected_shipping_option_id: None,
         currency_code: "usd".to_string(),
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }

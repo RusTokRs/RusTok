@@ -75,7 +75,7 @@ graph TD
 - [Performance baseline](./architecture/performance-baseline.md) — repeatable workflow for `pg_stat_statements` and `EXPLAIN` evidence on hot paths.
 - [Архитектура API](./architecture/api.md)
   - включает раздел Rich-text/Page Builder input contract (`markdown` + `rt_json_v1` + `grapesjs_v1`/`content_json`) для blog/forum/pages
-  - включает актуальный раздел по auth lifecycle consistency и release-gate (`AuthLifecycleService` + `scripts/auth_release_gate.sh`)
+  - включает актуальные разделы по auth lifecycle consistency, Rich-text/Page Builder input contract и Medusa-style ecommerce transport
 - [DataLoader](./architecture/dataloader.md)
 - [Обзор модулей](./architecture/modules.md)
 - [Политика маршрутизации](./architecture/routing.md)
@@ -225,7 +225,7 @@ graph TD
 - [Документация модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/README.md)
 - [Пакет админского UI для Commerce](../crates/rustok-commerce/admin/README.md)
 - [Пакет storefront UI для Commerce](../crates/rustok-commerce/storefront/README.md)
-- [План реализации модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/implementation-plan.md) — перенесённый в docs исследовательский migration-plan по Medusa-подобной перестройке `commerce`, с backlog противоречий, текущим split на `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`, моделью `commerce` как root umbrella module, первым Medusa-style transport slice на `/store` + `/admin` и ссылками на актуальные Medusa v2 API
+- [План реализации модуля Commerce / Ecommerce umbrella](../crates/rustok-commerce/docs/implementation-plan.md) — roadmap по Medusa-подобной перестройке `commerce`, split на `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`, модели `commerce` как root umbrella module и развитию live transport surface на `/store` + `/admin`
 - [Документация crate `rustok-commerce-foundation`](../crates/rustok-commerce-foundation/docs/README.md)
 - [Документация модуля Blog](../crates/rustok-blog/docs/README.md)
 - [Пакет админского UI для Blog](../crates/rustok-blog/admin/README.md)

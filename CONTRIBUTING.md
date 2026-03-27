@@ -173,15 +173,25 @@ Core modules in `crates/`:
 
 ### Running Tests
 
+Install the Rust quality tools once before using the local shortcuts:
+
+```bash
+cargo install cargo-nextest --locked
+cargo install cargo-machete --locked
+```
+
 ```bash
 # All tests
-cargo test --workspace
+cargo nextest run --workspace --all-targets --all-features
+
+# Doc tests
+cargo test --workspace --doc --all-features
 
 # Specific crate
 cargo test -p rustok-core
 
 # With database
-DATABASE_URL=postgres://localhost/rustok_test cargo test
+DATABASE_URL=postgres://localhost/rustok_test cargo nextest run --workspace --all-targets --all-features
 
 # Coverage
 cargo install cargo-tarpaulin
@@ -234,7 +244,7 @@ cd docs && mdbook build
 
 ### Before Submitting
 
-1. **Run Tests**: Ensure all tests pass
+1. **Run Tests**: Ensure `cargo nextest run --workspace --all-targets --all-features` and `cargo test --workspace --doc --all-features` pass
 2. **Format Code**: Use `cargo fmt --all`
 3. **Lint Code**: Use `cargo clippy --workspace`
 4. **Update Documentation**: Include relevant docs updates
@@ -315,6 +325,7 @@ Please report security vulnerabilities to: security@rustok-cms.com
 - Use environment variables for configuration
 - Follow OWASP security best practices
 - Regular dependency audits: `cargo audit`
+- Manifest dependency hygiene: `cargo machete`
 
 ## License
 

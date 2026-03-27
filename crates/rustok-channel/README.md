@@ -23,7 +23,7 @@ This crate intentionally ships a minimal v0 model:
 
 Current v0 wiring also includes:
 
-- server-side channel resolution middleware with explicit `header -> query -> host -> default` policy order and typed `resolution_source` diagnostics,
+- server-side channel resolution middleware with explicit `header -> query -> host -> default` policy order, where `default` now means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors and typed `resolution_source` diagnostics,
 - a thin REST bootstrap/write surface in `apps/server`,
 - `rustok-channel-admin` for Leptos admin composition,
 - live proof points in `rustok-pages` and `rustok-blog`, where public read-path gating already uses `channel_module_bindings`, and both modules now exercise metadata-based publication-level `channelSlugs` allowlists.
@@ -31,9 +31,11 @@ Current v0 wiring also includes:
 Validated baseline:
 
 - `cargo check -p rustok-channel`
+- `cargo test -p rustok-channel --lib`
 - `cargo check -p rustok-admin`
 - `cargo check -p rustok-server`
 - `cargo test -p rustok-api --lib`
+- `cargo test -p rustok-server middleware::channel::tests --lib`
 - `cargo test -p rustok-server registry_dependencies_match_runtime_contract --lib`
 - `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`
 

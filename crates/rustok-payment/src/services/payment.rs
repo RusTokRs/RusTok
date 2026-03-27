@@ -129,6 +129,50 @@ impl PaymentService {
         }
     }
 
+    pub async fn find_latest_collection_by_order(
+        &self,
+        tenant_id: Uuid,
+        order_id: Uuid,
+    ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        let collection = entities::payment_collection::Entity::find()
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
+            .filter(entities::payment_collection::Column::OrderId.eq(order_id))
+            .order_by_desc(entities::payment_collection::Column::CreatedAt)
+            .one(&self.db)
+            .await?;
+
+        match collection {
+            Some(collection) => self.build_response(collection).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn attach_order_to_collection(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        order_id: Uuid,
+        metadata: serde_json::Value,
+    ) -> PaymentResult<PaymentCollectionResponse> {
+        let collection = self.load_collection(tenant_id, collection_id).await?;
+        if let Some(existing_order_id) = collection.order_id {
+            if existing_order_id != order_id {
+                return Err(PaymentError::Validation(format!(
+                    "payment collection {collection_id} is already attached to order {existing_order_id}"
+                )));
+            }
+        }
+
+        let mut active: entities::payment_collection::ActiveModel = collection.into();
+        let collection_metadata = active.metadata.clone().take().unwrap_or_default();
+        active.order_id = Set(Some(order_id));
+        active.metadata = Set(merge_metadata(collection_metadata, metadata));
+        active.updated_at = Set(Utc::now().into());
+        active.update(&self.db).await?;
+
+        self.get_collection(tenant_id, collection_id).await
+    }
+
     pub async fn authorize_collection(
         &self,
         tenant_id: Uuid,

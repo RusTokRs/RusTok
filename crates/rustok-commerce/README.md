@@ -8,8 +8,8 @@
 
 - Provide `CommerceModule` metadata for the runtime registry.
 - Serve as the umbrella entry point for the ecommerce family.
-- Preserve the legacy GraphQL and REST transport surface during the transition.
-- Expose the first Medusa-style REST transport slice under `/store/*` and `/admin/*` alongside legacy `/api/commerce/*`.
+- Preserve the GraphQL surface while the Medusa-style REST transport expands.
+- Expose the Medusa-style REST transport slice under `/store/*` and `/admin/*`.
 - Resolve storefront cart line items from server-owned catalog/pricing data using `variant_id + quantity`, instead of trusting client-provided title and price.
 - Orchestrate submodules of the ecommerce family through the compatibility layer.
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
@@ -17,7 +17,7 @@
 - Re-export the shared DTO/entity/error surface from `rustok-commerce-foundation`.
 - Re-export `CartService`, `CustomerService`, `CatalogService`, `PricingService`, `InventoryService`, `OrderService`, `PaymentService`, `FulfillmentService`, and `CheckoutService` from the split modules and orchestration layer.
 - Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
-- Keep legacy commerce-owned state-machine and leftover migrations not yet moved to new modules.
+- Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
 - Publish the typed RBAC surface for commerce resources.

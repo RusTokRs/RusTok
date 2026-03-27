@@ -180,7 +180,8 @@ pub fn EventsPage() -> impl IntoView {
                 // Fall back to runtime transport if nothing in DB
                 if selected_transport.get_untracked().is_empty() {
                     if let Some(Ok(status)) = status_resource.get() {
-                        set_selected_transport.set(status.events_status.configured_transport.clone());
+                        set_selected_transport
+                            .set(status.events_status.configured_transport.clone());
                     }
                 }
                 set_loaded.set(true);
@@ -196,16 +197,27 @@ pub fn EventsPage() -> impl IntoView {
 
     let available = Signal::derive(move || {
         vec![
-            ("memory".to_string(), t_string!(i18n, events.transport.memory).to_string()),
-            ("outbox".to_string(), t_string!(i18n, events.transport.outbox).to_string()),
-            ("iggy_embedded".to_string(), t_string!(i18n, events.transport.iggyEmbedded).to_string()),
-            ("iggy_external".to_string(), t_string!(i18n, events.transport.iggyExternal).to_string()),
+            (
+                "memory".to_string(),
+                t_string!(i18n, events.transport.memory).to_string(),
+            ),
+            (
+                "outbox".to_string(),
+                t_string!(i18n, events.transport.outbox).to_string(),
+            ),
+            (
+                "iggy_embedded".to_string(),
+                t_string!(i18n, events.transport.iggyEmbedded).to_string(),
+            ),
+            (
+                "iggy_external".to_string(),
+                t_string!(i18n, events.transport.iggyExternal).to_string(),
+            ),
         ]
     });
 
-    let show_iggy_warning = Signal::derive(move || {
-        selected_transport.get().starts_with("iggy") && !iggy_enabled.get()
-    });
+    let show_iggy_warning =
+        Signal::derive(move || selected_transport.get().starts_with("iggy") && !iggy_enabled.get());
 
     let show_outbox_settings = Signal::derive(move || {
         let t = selected_transport.get();

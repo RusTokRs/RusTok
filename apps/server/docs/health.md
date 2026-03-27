@@ -5,56 +5,51 @@
 ## Endpoints
 
 - `GET /health` — базовый статус процесса и версия приложения.
-- `GET /health/live` — liveness probe (процесс жив).
+- `GET /health/live` — liveness probe.
 - `GET /health/ready` — readiness probe с агрегированным статусом зависимостей и модулей.
+- `GET /health/runtime` — operator-facing snapshot runtime guardrails.
 - `GET /health/modules` — health только по зарегистрированным модулям.
 
 ## Readiness модель
 
-`/health/ready` возвращает общий статус и детальные проверки:
+`/health/ready` возвращает:
 
 - `status`: `ok | degraded | unhealthy`
 - `checks`: инфраструктурные проверки
-- `modules`: проверки health для модулей из `ModuleRegistry`
+- `modules`: health модулей из `ModuleRegistry`
 - `degraded_reasons`: список причин деградации
 
-### Актуальные dependency checks
+### Dependency checks
 
-- `database` — критичная проверка доступности БД.
-- `cache_backend` — базовая проверка tenant cache path.
-- `tenant_cache_invalidation` — не-критичная проверка внешнего Redis pubsub listener для cross-instance invalidation.
-- `event_transport` — критичная проверка инициализации event transport.
+- `database` — критичная проверка доступности БД;
+- `cache_backend` — базовая проверка tenant cache path;
+- `tenant_cache_invalidation` — не-критичная проверка Redis pubsub listener для cross-instance invalidation;
+- `event_transport` — критичная проверка инициализации event transport;
 - `search_backend` — не-критичная проверка search connectivity.
 
-Для `tenant_cache_invalidation` действует следующая семантика:
+## Aggregation
 
-- `disabled` или `healthy` не деградируют readiness.
-- `starting` или `degraded` переводят `/health/ready` в `degraded`, но не в `unhealthy`.
-- текущее состояние дополнительно отражается в `/metrics` как `rustok_tenant_invalidation_listener_status` (`0=disabled`, `1=starting`, `2=healthy`, `3=degraded`).
+- если есть `critical` проверка со статусом `unhealthy`, общий статус `unhealthy`;
+- если critical `unhealthy` нет, но есть не-`ok` проверки, общий статус `degraded`;
+- если все проверки `ok`, общий статус `ok`.
 
-### Поля проверки
+## Runtime guardrails
 
-Каждая запись в `checks` и `modules` содержит:
+`/health/runtime` возвращает rollout-aware snapshot для операторов:
 
-- `name`: имя проверки (например, `database`, `search_backend`, `module:content`)
-- `kind`: `dependency` или `module`
-- `criticality`: `critical` или `non_critical`
-- `status`: `ok | degraded | unhealthy`
-- `latency_ms`: время выполнения проверки
-- `reason`: причина деградации/ошибки (опционально)
+- `status` и `observed_status` для effective/raw severity;
+- `rollout` (`observe|enforce`);
+- `reasons` с человекочитаемыми причинами деградации;
+- `rate_limits`, `event_bus`, `event_transport`.
 
-## Агрегация статуса
-
-- Если есть `critical` проверка со статусом `unhealthy` → общий `status = unhealthy`.
-- Если `unhealthy` для critical нет, но есть не-`ok` проверки → общий `status = degraded`.
-- Если все проверки `ok` → общий `status = ok`.
+Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
 
 ## Надёжность проверок
 
-Для каждой readiness-проверки используются защитные механизмы:
+Для readiness-проверок используются:
 
-- timeout на выполнение проверки,
-- in-process circuit breaker (порог ошибок + cooldown),
+- timeout на выполнение проверки;
+- in-process circuit breaker;
 - fail-fast поведение при открытом circuit.
 
-Это предотвращает зависание `/health/ready` при проблемной зависимости.
+Это предотвращает зависание `/health/ready` на проблемной зависимости.
