@@ -1,12 +1,16 @@
-use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
+use async_graphql::{EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_commerce::dto::{
     AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateProductInput,
-    CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+    CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
+    CreatePaymentCollectionInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
+    ProductTranslationInput,
 };
-use rustok_commerce::graphql::CommerceQuery;
-use rustok_commerce::{CartService, CatalogService, CheckoutService, FulfillmentService};
+use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
+use rustok_commerce::{
+    CartService, CatalogService, CheckoutService, FulfillmentService, OrderService, PaymentService,
+};
 use rustok_core::Permission;
 use rustok_region::dto::CreateRegionInput;
 use rustok_region::services::RegionService;
@@ -18,7 +22,7 @@ use uuid::Uuid;
 
 mod support;
 
-type CommerceSchema = Schema<CommerceQuery, EmptyMutation, EmptySubscription>;
+type CommerceSchema = Schema<CommerceQuery, CommerceMutation, EmptySubscription>;
 
 const STOREFRONT_QUERY_TEMPLATE: &str = r#"
 query {
@@ -141,6 +145,26 @@ fn auth_context(tenant_id: Uuid) -> AuthContext {
     }
 }
 
+fn admin_order_auth_context(tenant_id: Uuid) -> AuthContext {
+    AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![
+            Permission::ORDERS_READ,
+            Permission::ORDERS_LIST,
+            Permission::ORDERS_UPDATE,
+            Permission::PAYMENTS_READ,
+            Permission::PAYMENTS_UPDATE,
+            Permission::FULFILLMENTS_READ,
+            Permission::FULFILLMENTS_UPDATE,
+        ],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    }
+}
+
 fn build_schema(
     db: &DatabaseConnection,
     tenant: TenantContext,
@@ -148,7 +172,11 @@ fn build_schema(
     auth: Option<AuthContext>,
 ) -> CommerceSchema {
     let event_bus = mock_transactional_event_bus();
-    let mut builder = Schema::build(CommerceQuery::default(), EmptyMutation, EmptySubscription)
+    let mut builder = Schema::build(
+        CommerceQuery::default(),
+        CommerceMutation::default(),
+        EmptySubscription,
+    )
         .data(db.clone())
         .data(event_bus)
         .data(tenant)
@@ -175,6 +203,164 @@ fn admin_query(tenant_id: Uuid, product_id: Uuid) -> String {
           }}
           product(tenantId: "{tenant_id}", id: "{product_id}", locale: "en") {{
             translations {{ locale title handle }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_order_mutation(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Uuid,
+    payment_collection_id: Uuid,
+    fulfillment_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          authorizePaymentCollection(
+            tenantId: "{tenant_id}",
+            id: "{payment_collection_id}",
+            input: {{
+              providerId: "manual"
+              providerPaymentId: "graphql-pay-1"
+              amount: "25.00"
+              metadata: "{{\"source\":\"graphql-admin-order-parity\",\"step\":\"authorize\"}}"
+            }}
+          ) {{
+            status
+            authorizedAmount
+          }}
+          capturePaymentCollection(
+            tenantId: "{tenant_id}",
+            id: "{payment_collection_id}",
+            input: {{
+              amount: "25.00"
+              metadata: "{{\"source\":\"graphql-admin-order-parity\",\"step\":\"capture\"}}"
+            }}
+          ) {{
+            status
+            capturedAmount
+          }}
+          markOrderPaid(
+            tenantId: "{tenant_id}",
+            userId: "{actor_id}",
+            id: "{order_id}",
+            input: {{
+              paymentId: "graphql-pay-1"
+              paymentMethod: "manual"
+            }}
+          ) {{
+            status
+            paymentId
+            paymentMethod
+          }}
+          shipFulfillment(
+            tenantId: "{tenant_id}",
+            id: "{fulfillment_id}",
+            input: {{
+              carrier: "manual"
+              trackingNumber: "TRACK-789"
+              metadata: "{{\"source\":\"graphql-admin-order-parity\",\"step\":\"ship-fulfillment\"}}"
+            }}
+          ) {{
+            status
+            trackingNumber
+          }}
+          deliverFulfillment(
+            tenantId: "{tenant_id}",
+            id: "{fulfillment_id}",
+            input: {{
+              deliveredNote: "Left at reception"
+              metadata: "{{\"source\":\"graphql-admin-order-parity\",\"step\":\"deliver-fulfillment\"}}"
+            }}
+          ) {{
+            status
+            deliveredNote
+          }}
+          shipOrder(
+            tenantId: "{tenant_id}",
+            userId: "{actor_id}",
+            id: "{order_id}",
+            input: {{
+              trackingNumber: "TRACK-789"
+              carrier: "manual"
+            }}
+          ) {{
+            status
+            trackingNumber
+            carrier
+          }}
+          deliverOrder(
+            tenantId: "{tenant_id}",
+            userId: "{actor_id}",
+            id: "{order_id}",
+            input: {{
+              deliveredSignature: "signed-by-customer"
+            }}
+          ) {{
+            status
+            deliveredSignature
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_order_parity_query(tenant_id: Uuid, order_id: Uuid, payment_collection_id: Uuid, fulfillment_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          order(tenantId: "{tenant_id}", id: "{order_id}") {{
+            order {{
+              id
+              status
+              paymentId
+              paymentMethod
+              trackingNumber
+              carrier
+              deliveredSignature
+            }}
+            paymentCollection {{
+              id
+              status
+              authorizedAmount
+              capturedAmount
+            }}
+            fulfillment {{
+              id
+              status
+              trackingNumber
+              deliveredNote
+            }}
+          }}
+          orders(tenantId: "{tenant_id}", filter: {{ page: 1, perPage: 20, status: "delivered" }}) {{
+            total
+            items {{
+              id
+              status
+              trackingNumber
+              deliveredSignature
+            }}
+          }}
+          paymentCollection(tenantId: "{tenant_id}", id: "{payment_collection_id}") {{
+            id
+            status
+            providerId
+            authorizedAmount
+            capturedAmount
+            payments {{
+              providerPaymentId
+              status
+              capturedAmount
+            }}
+          }}
+          fulfillment(tenantId: "{tenant_id}", id: "{fulfillment_id}") {{
+            id
+            status
+            trackingNumber
+            deliveredNote
           }}
         }}
         "#
@@ -792,5 +978,166 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
     assert_eq!(
         after["translations"][0]["title"],
         Value::from("Parity Product")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_services() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let payment_service = PaymentService::new(db.clone());
+    let fulfillment_service = FulfillmentService::new(db.clone());
+
+    let created_order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    sku: Some("GRAPHQL-ADMIN-ORDER-1".to_string()),
+                    title: "GraphQL Admin Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
+                }],
+                metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+    let confirmed_order = order_service
+        .confirm_order(tenant_id, actor_id, created_order.id)
+        .await
+        .expect("order should be confirmed");
+    let payment_collection = payment_service
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(confirmed_order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+    let fulfillment = fulfillment_service
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: confirmed_order.id,
+                shipping_option_id: None,
+                customer_id: Some(customer_id),
+                carrier: None,
+                tracking_number: None,
+                metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
+            },
+        )
+        .await
+        .expect("fulfillment should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+
+    let mutation = schema
+        .execute(Request::new(admin_order_mutation(
+            tenant_id,
+            actor_id,
+            confirmed_order.id,
+            payment_collection.id,
+            fulfillment.id,
+        )))
+        .await;
+    assert!(
+        mutation.errors.is_empty(),
+        "unexpected admin GraphQL mutation errors: {:?}",
+        mutation.errors
+    );
+    let mutation_json = mutation
+        .data
+        .into_json()
+        .expect("GraphQL mutation response must serialize");
+    assert_eq!(
+        mutation_json["authorizePaymentCollection"]["status"],
+        Value::from("authorized")
+    );
+    assert_eq!(
+        mutation_json["capturePaymentCollection"]["status"],
+        Value::from("captured")
+    );
+    assert_eq!(mutation_json["markOrderPaid"]["status"], Value::from("paid"));
+    assert_eq!(mutation_json["shipOrder"]["status"], Value::from("shipped"));
+    assert_eq!(
+        mutation_json["deliverOrder"]["status"],
+        Value::from("delivered")
+    );
+    assert_eq!(
+        mutation_json["deliverFulfillment"]["status"],
+        Value::from("delivered")
+    );
+
+    let query = schema
+        .execute(Request::new(admin_order_parity_query(
+            tenant_id,
+            confirmed_order.id,
+            payment_collection.id,
+            fulfillment.id,
+        )))
+        .await;
+    assert!(
+        query.errors.is_empty(),
+        "unexpected admin GraphQL query errors: {:?}",
+        query.errors
+    );
+    let query_json = query
+        .data
+        .into_json()
+        .expect("GraphQL query response must serialize");
+
+    assert_eq!(query_json["order"]["order"]["status"], Value::from("delivered"));
+    assert_eq!(
+        query_json["order"]["order"]["paymentId"],
+        Value::from("graphql-pay-1")
+    );
+    assert_eq!(
+        query_json["order"]["order"]["trackingNumber"],
+        Value::from("TRACK-789")
+    );
+    assert_eq!(
+        query_json["order"]["paymentCollection"]["status"],
+        Value::from("captured")
+    );
+    assert_eq!(
+        query_json["order"]["fulfillment"]["status"],
+        Value::from("delivered")
+    );
+    assert_eq!(query_json["orders"]["total"], Value::from(1));
+    assert_eq!(
+        query_json["orders"]["items"][0]["id"],
+        Value::from(confirmed_order.id.to_string())
+    );
+    assert_eq!(
+        query_json["paymentCollection"]["payments"][0]["status"],
+        Value::from("captured")
+    );
+    assert_eq!(
+        query_json["fulfillment"]["deliveredNote"],
+        Value::from("Left at reception")
     );
 }

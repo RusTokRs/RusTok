@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::{
     entities::{product, product_translation},
     search::product_translation_title_search_condition,
-    CatalogService, CommerceError,
+    CatalogService, CommerceError, FulfillmentService, OrderService, PaymentService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -26,6 +26,147 @@ pub struct CommerceQuery;
 
 #[Object]
 impl CommerceQuery {
+    async fn order(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlAdminOrderDetail>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+
+        let order = match OrderService::new(db.clone(), event_bus.clone())
+            .get_order(tenant_id, id)
+            .await
+        {
+            Ok(order) => order,
+            Err(rustok_order::error::OrderError::OrderNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let payment_collection = PaymentService::new(db.clone())
+            .find_latest_collection_by_order(tenant_id, id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let fulfillment = FulfillmentService::new(db.clone())
+            .find_by_order(tenant_id, id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(Some(GqlAdminOrderDetail {
+            order: order.into(),
+            payment_collection: payment_collection.map(Into::into),
+            fulfillment: fulfillment.map(Into::into),
+        }))
+    }
+
+    async fn orders(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<OrdersFilter>,
+    ) -> Result<GqlOrderList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_LIST],
+            "Permission denied: orders:list required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let filter = filter.unwrap_or(OrdersFilter {
+            status: None,
+            customer_id: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let (orders, total) = OrderService::new(db.clone(), event_bus.clone())
+            .list_orders(
+                tenant_id,
+                crate::dto::ListOrdersInput {
+                    page,
+                    per_page,
+                    status: filter.status,
+                    customer_id: filter.customer_id,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlOrderList {
+            items: orders.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
+    async fn payment_collection(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlPaymentCollection>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let collection = match PaymentService::new(db.clone())
+            .get_collection(tenant_id, id)
+            .await
+        {
+            Ok(collection) => collection,
+            Err(rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)) => {
+                return Ok(None)
+            }
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        Ok(Some(collection.into()))
+    }
+
+    async fn fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlFulfillment>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let fulfillment = match FulfillmentService::new(db.clone())
+            .get_fulfillment(tenant_id, id)
+            .await
+        {
+            Ok(fulfillment) => fulfillment,
+            Err(rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_)) => {
+                return Ok(None)
+            }
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        Ok(Some(fulfillment.into()))
+    }
+
     async fn product(
         &self,
         ctx: &Context<'_>,

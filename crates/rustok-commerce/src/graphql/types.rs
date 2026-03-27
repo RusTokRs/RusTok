@@ -106,6 +106,125 @@ pub struct GqlProductListItem {
     pub published_at: Option<String>,
 }
 
+#[derive(SimpleObject)]
+pub struct GqlAdminOrderDetail {
+    pub order: GqlOrder,
+    pub payment_collection: Option<GqlPaymentCollection>,
+    pub fulfillment: Option<GqlFulfillment>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrder {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub customer_id: Option<Uuid>,
+    pub status: String,
+    pub currency_code: String,
+    pub total_amount: String,
+    pub metadata: String,
+    pub payment_id: Option<String>,
+    pub payment_method: Option<String>,
+    pub tracking_number: Option<String>,
+    pub carrier: Option<String>,
+    pub cancellation_reason: Option<String>,
+    pub delivered_signature: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub confirmed_at: Option<String>,
+    pub paid_at: Option<String>,
+    pub shipped_at: Option<String>,
+    pub delivered_at: Option<String>,
+    pub cancelled_at: Option<String>,
+    pub line_items: Vec<GqlOrderLineItem>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrderLineItem {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub product_id: Option<Uuid>,
+    pub variant_id: Option<Uuid>,
+    pub sku: Option<String>,
+    pub title: String,
+    pub quantity: i32,
+    pub unit_price: String,
+    pub total_price: String,
+    pub currency_code: String,
+    pub metadata: String,
+    pub created_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrderList {
+    pub items: Vec<GqlOrder>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPaymentCollection {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub cart_id: Option<Uuid>,
+    pub order_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+    pub status: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub authorized_amount: String,
+    pub captured_amount: String,
+    pub provider_id: Option<String>,
+    pub cancellation_reason: Option<String>,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub authorized_at: Option<String>,
+    pub captured_at: Option<String>,
+    pub cancelled_at: Option<String>,
+    pub payments: Vec<GqlPayment>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPayment {
+    pub id: Uuid,
+    pub payment_collection_id: Uuid,
+    pub provider_id: String,
+    pub provider_payment_id: String,
+    pub status: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub captured_amount: String,
+    pub error_message: Option<String>,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub authorized_at: Option<String>,
+    pub captured_at: Option<String>,
+    pub cancelled_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlFulfillment {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub order_id: Uuid,
+    pub shipping_option_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+    pub status: String,
+    pub carrier: Option<String>,
+    pub tracking_number: Option<String>,
+    pub delivered_note: Option<String>,
+    pub cancellation_reason: Option<String>,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub shipped_at: Option<String>,
+    pub delivered_at: Option<String>,
+    pub cancelled_at: Option<String>,
+}
+
 #[derive(InputObject)]
 pub struct CreateProductInput {
     pub translations: Vec<ProductTranslationInput>,
@@ -175,6 +294,78 @@ pub struct StorefrontProductsFilter {
     pub search: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
+pub struct OrdersFilter {
+    pub status: Option<String>,
+    pub customer_id: Option<Uuid>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
+pub struct MarkPaidOrderInput {
+    pub payment_id: String,
+    pub payment_method: String,
+}
+
+#[derive(InputObject)]
+pub struct ShipOrderInput {
+    pub tracking_number: String,
+    pub carrier: String,
+}
+
+#[derive(InputObject)]
+pub struct DeliverOrderInput {
+    pub delivered_signature: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CancelOrderInput {
+    pub reason: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct AuthorizePaymentCollectionInput {
+    pub provider_id: Option<String>,
+    pub provider_payment_id: Option<String>,
+    pub amount: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CapturePaymentCollectionInput {
+    pub amount: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CancelPaymentCollectionInput {
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "ShipFulfillmentInput")]
+pub struct ShipFulfillmentInputObject {
+    pub carrier: String,
+    pub tracking_number: String,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "DeliverFulfillmentInput")]
+pub struct DeliverFulfillmentInputObject {
+    pub delivered_note: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "CancelFulfillmentInput")]
+pub struct CancelFulfillmentInputObject {
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
 }
 
 impl From<dto::ProductResponse> for GqlProduct {
@@ -251,6 +442,134 @@ impl From<dto::PriceResponse> for GqlPrice {
             amount: price.amount.to_string(),
             compare_at_amount: price.compare_at_amount.map(|value| value.to_string()),
             on_sale: price.on_sale,
+        }
+    }
+}
+
+impl From<crate::controllers::admin::AdminOrderDetailResponse> for GqlAdminOrderDetail {
+    fn from(value: crate::controllers::admin::AdminOrderDetailResponse) -> Self {
+        Self {
+            order: value.order.into(),
+            payment_collection: value.payment_collection.map(Into::into),
+            fulfillment: value.fulfillment.map(Into::into),
+        }
+    }
+}
+
+impl From<dto::OrderResponse> for GqlOrder {
+    fn from(order: dto::OrderResponse) -> Self {
+        Self {
+            id: order.id,
+            tenant_id: order.tenant_id,
+            customer_id: order.customer_id,
+            status: order.status,
+            currency_code: order.currency_code,
+            total_amount: order.total_amount.to_string(),
+            metadata: order.metadata.to_string(),
+            payment_id: order.payment_id,
+            payment_method: order.payment_method,
+            tracking_number: order.tracking_number,
+            carrier: order.carrier,
+            cancellation_reason: order.cancellation_reason,
+            delivered_signature: order.delivered_signature,
+            created_at: order.created_at.to_rfc3339(),
+            updated_at: order.updated_at.to_rfc3339(),
+            confirmed_at: order.confirmed_at.map(|value| value.to_rfc3339()),
+            paid_at: order.paid_at.map(|value| value.to_rfc3339()),
+            shipped_at: order.shipped_at.map(|value| value.to_rfc3339()),
+            delivered_at: order.delivered_at.map(|value| value.to_rfc3339()),
+            cancelled_at: order.cancelled_at.map(|value| value.to_rfc3339()),
+            line_items: order.line_items.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<dto::OrderLineItemResponse> for GqlOrderLineItem {
+    fn from(item: dto::OrderLineItemResponse) -> Self {
+        Self {
+            id: item.id,
+            order_id: item.order_id,
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            sku: item.sku,
+            title: item.title,
+            quantity: item.quantity,
+            unit_price: item.unit_price.to_string(),
+            total_price: item.total_price.to_string(),
+            currency_code: item.currency_code,
+            metadata: item.metadata.to_string(),
+            created_at: item.created_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::PaymentCollectionResponse> for GqlPaymentCollection {
+    fn from(value: dto::PaymentCollectionResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            cart_id: value.cart_id,
+            order_id: value.order_id,
+            customer_id: value.customer_id,
+            status: value.status,
+            currency_code: value.currency_code,
+            amount: value.amount.to_string(),
+            authorized_amount: value.authorized_amount.to_string(),
+            captured_amount: value.captured_amount.to_string(),
+            provider_id: value.provider_id,
+            cancellation_reason: value.cancellation_reason,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            authorized_at: value.authorized_at.map(|value| value.to_rfc3339()),
+            captured_at: value.captured_at.map(|value| value.to_rfc3339()),
+            cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
+            payments: value.payments.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<dto::PaymentResponse> for GqlPayment {
+    fn from(value: dto::PaymentResponse) -> Self {
+        Self {
+            id: value.id,
+            payment_collection_id: value.payment_collection_id,
+            provider_id: value.provider_id,
+            provider_payment_id: value.provider_payment_id,
+            status: value.status,
+            currency_code: value.currency_code,
+            amount: value.amount.to_string(),
+            captured_amount: value.captured_amount.to_string(),
+            error_message: value.error_message,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            authorized_at: value.authorized_at.map(|value| value.to_rfc3339()),
+            captured_at: value.captured_at.map(|value| value.to_rfc3339()),
+            cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
+        }
+    }
+}
+
+impl From<dto::FulfillmentResponse> for GqlFulfillment {
+    fn from(value: dto::FulfillmentResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            order_id: value.order_id,
+            shipping_option_id: value.shipping_option_id,
+            customer_id: value.customer_id,
+            status: value.status,
+            carrier: value.carrier,
+            tracking_number: value.tracking_number,
+            delivered_note: value.delivered_note,
+            cancellation_reason: value.cancellation_reason,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            shipped_at: value.shipped_at.map(|value| value.to_rfc3339()),
+            delivered_at: value.delivered_at.map(|value| value.to_rfc3339()),
+            cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
         }
     }
 }

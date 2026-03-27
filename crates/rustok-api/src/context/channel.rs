@@ -1,6 +1,6 @@
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -12,6 +12,7 @@ pub enum ChannelResolutionSource {
     HeaderSlug,
     Query,
     Host,
+    Policy,
     Default,
 }
 
@@ -22,6 +23,7 @@ impl ChannelResolutionSource {
             Self::HeaderSlug => "header_slug",
             Self::Query => "query",
             Self::Host => "host",
+            Self::Policy => "policy",
             Self::Default => "default",
         }
     }

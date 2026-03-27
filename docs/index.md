@@ -62,6 +62,7 @@ graph TD
 - [Архитектурные решения](../DECISIONS/README.md) — реестр архитектурных решений (ADR).
   - [ADR: Dual UI Strategy — Leptos primary, Next.js modular packages](../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)
   - [ADR: `rustok-channel` как experimental core-модуль](../DECISIONS/2026-03-25-rustok-channel-experimental-core.md)
+  - [ADR: Channel resolution pipeline и typed policy trajectory](../DECISIONS/2026-03-27-channel-resolution-pipeline-and-typed-policies.md)
 - [Участие в разработке](../CONTRIBUTING.md) — инструкция по участию в разработке.
 - [Лицензия](../LICENSE) — лицензия MIT.
 

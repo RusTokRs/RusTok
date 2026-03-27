@@ -267,10 +267,12 @@ impl CheckoutService {
                         "payment_authorization_failed",
                     )
                     .await;
-                    return Err(stage_error("authorize_payment")(PaymentError::InvalidTransition {
-                        from: status.to_string(),
-                        to: "authorized".to_string(),
-                    }));
+                    return Err(stage_error("authorize_payment")(
+                        PaymentError::InvalidTransition {
+                            from: status.to_string(),
+                            to: "authorized".to_string(),
+                        },
+                    ));
                 }
             };
 
@@ -343,10 +345,12 @@ impl CheckoutService {
                         "payment_capture_failed",
                     )
                     .await;
-                    return Err(stage_error("capture_payment")(PaymentError::InvalidTransition {
-                        from: status.to_string(),
-                        to: "captured".to_string(),
-                    }));
+                    return Err(stage_error("capture_payment")(
+                        PaymentError::InvalidTransition {
+                            from: status.to_string(),
+                            to: "captured".to_string(),
+                        },
+                    ));
                 }
             };
             let payment_reference = captured_payment

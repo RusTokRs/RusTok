@@ -667,23 +667,15 @@ fn to_channel_oauth_app_response(model: channel_oauth_app::Model) -> ChannelOaut
 }
 
 fn normalize_target_value(target_type: ChannelTargetType, raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    Some(match target_type {
-        ChannelTargetType::WebDomain => trimmed.to_ascii_lowercase(),
-        _ => trimmed.to_string(),
-    })
+    target_type.normalize_value(raw)
 }
 
 #[cfg(test)]
 mod tests {
     use super::ChannelService;
+    use crate::ChannelError;
     use crate::dto::{CreateChannelInput, CreateChannelTargetInput, UpdateChannelTargetInput};
     use crate::migrations;
-    use crate::ChannelError;
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;
@@ -876,7 +868,7 @@ mod tests {
                 web_channel_id,
                 CreateChannelTargetInput {
                     target_type: "web_domain".to_string(),
-                    value: " Example.TEST ".to_string(),
+                    value: " https://Example.TEST:443/ ".to_string(),
                     is_primary: true,
                     settings: None,
                 },
@@ -905,6 +897,30 @@ mod tests {
 
         assert_eq!(detail.channel.id, web_channel_id);
         assert_eq!(detail.targets[0].value, "example.test");
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_web_domain_target_value() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db);
+        let channel_id = create_channel(&service, tenant_id, "web").await;
+
+        let error = service
+            .add_target(
+                channel_id,
+                CreateChannelTargetInput {
+                    target_type: "web_domain".to_string(),
+                    value: "bad host".to_string(),
+                    is_primary: true,
+                    settings: None,
+                },
+            )
+            .await
+            .expect_err("invalid web domain must be rejected");
+
+        assert!(matches!(error, ChannelError::InvalidTargetValue(_)));
     }
 
     #[tokio::test]

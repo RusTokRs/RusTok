@@ -79,6 +79,30 @@ fn openapi_includes_admin_order_detail_contract_path() {
         paths.contains_key("/admin/orders/{id}"),
         "OpenAPI spec must contain admin order detail path"
     );
+    assert!(
+        paths.contains_key("/admin/orders"),
+        "OpenAPI spec must contain admin orders list path"
+    );
+
+    for path in [
+        "/admin/orders/{id}/mark-paid",
+        "/admin/orders/{id}/ship",
+        "/admin/orders/{id}/deliver",
+        "/admin/orders/{id}/cancel",
+        "/admin/payment-collections/{id}",
+        "/admin/payment-collections/{id}/authorize",
+        "/admin/payment-collections/{id}/capture",
+        "/admin/payment-collections/{id}/cancel",
+        "/admin/fulfillments/{id}",
+        "/admin/fulfillments/{id}/ship",
+        "/admin/fulfillments/{id}/deliver",
+        "/admin/fulfillments/{id}/cancel",
+    ] {
+        assert!(
+            paths.contains_key(path),
+            "OpenAPI spec must contain admin lifecycle path `{path}`"
+        );
+    }
 }
 
 #[test]
@@ -122,8 +146,60 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
     );
 
     assert_eq!(
+        response_schema_ref(&spec, "/admin/orders", "get", "200"),
+        Some("#/components/schemas/PaginatedResponse_OrderResponse".to_string())
+    );
+    assert_eq!(
         response_schema_ref(&spec, "/admin/orders/{id}", "get", "200"),
         Some("#/components/schemas/AdminOrderDetailResponse".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/orders/{id}/mark-paid", "post"),
+        Some("#/components/schemas/MarkPaidOrderInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/orders/{id}/ship", "post"),
+        Some("#/components/schemas/ShipOrderInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/orders/{id}/deliver", "post"),
+        Some("#/components/schemas/DeliverOrderInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/orders/{id}/cancel", "post"),
+        Some("#/components/schemas/CancelOrderInput".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/payment-collections/{id}", "get", "200"),
+        Some("#/components/schemas/PaymentCollectionResponse".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/payment-collections/{id}/authorize", "post"),
+        Some("#/components/schemas/AuthorizePaymentInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/payment-collections/{id}/capture", "post"),
+        Some("#/components/schemas/CapturePaymentInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/payment-collections/{id}/cancel", "post"),
+        Some("#/components/schemas/CancelPaymentInput".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/fulfillments/{id}", "get", "200"),
+        Some("#/components/schemas/FulfillmentResponse".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/fulfillments/{id}/ship", "post"),
+        Some("#/components/schemas/ShipFulfillmentInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/fulfillments/{id}/deliver", "post"),
+        Some("#/components/schemas/DeliverFulfillmentInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/fulfillments/{id}/cancel", "post"),
+        Some("#/components/schemas/CancelFulfillmentInput".to_string())
     );
 }
 
@@ -147,6 +223,18 @@ fn openapi_registers_store_cart_related_component_schemas() {
         "PaymentCollectionResponse",
         "CompleteCheckoutResponse",
         "AdminOrderDetailResponse",
+        "PaginatedResponse_OrderResponse",
+        "MarkPaidOrderInput",
+        "ShipOrderInput",
+        "DeliverOrderInput",
+        "CancelOrderInput",
+        "AuthorizePaymentInput",
+        "CapturePaymentInput",
+        "CancelPaymentInput",
+        "FulfillmentResponse",
+        "ShipFulfillmentInput",
+        "DeliverFulfillmentInput",
+        "CancelFulfillmentInput",
     ] {
         assert!(
             schemas.contains_key(schema),

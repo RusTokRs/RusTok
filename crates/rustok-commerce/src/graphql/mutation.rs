@@ -2,10 +2,11 @@ use async_graphql::{Context, Object, Result};
 use rust_decimal::Decimal;
 use rustok_api::graphql::require_module_enabled;
 use rustok_core::Permission;
+use serde_json::Value;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::CatalogService;
+use crate::{CatalogService, FulfillmentService, OrderService, PaymentService};
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
 
@@ -14,6 +15,291 @@ pub struct CommerceMutation;
 
 #[Object]
 impl CommerceMutation {
+    async fn mark_order_paid(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+        input: MarkPaidOrderInput,
+    ) -> Result<GqlOrder> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let order = OrderService::new(db.clone(), event_bus.clone())
+            .mark_paid(
+                tenant_id,
+                user_id,
+                id,
+                input.payment_id,
+                input.payment_method,
+            )
+            .await?;
+
+        Ok(order.into())
+    }
+
+    async fn ship_order(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+        input: ShipOrderInput,
+    ) -> Result<GqlOrder> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let order = OrderService::new(db.clone(), event_bus.clone())
+            .ship_order(
+                tenant_id,
+                user_id,
+                id,
+                input.tracking_number,
+                input.carrier,
+            )
+            .await?;
+
+        Ok(order.into())
+    }
+
+    async fn deliver_order(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+        input: DeliverOrderInput,
+    ) -> Result<GqlOrder> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let order = OrderService::new(db.clone(), event_bus.clone())
+            .deliver_order(tenant_id, user_id, id, input.delivered_signature)
+            .await?;
+
+        Ok(order.into())
+    }
+
+    async fn cancel_order(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        id: Uuid,
+        input: CancelOrderInput,
+    ) -> Result<GqlOrder> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let order = OrderService::new(db.clone(), event_bus.clone())
+            .cancel_order(tenant_id, user_id, id, input.reason)
+            .await?;
+
+        Ok(order.into())
+    }
+
+    async fn authorize_payment_collection(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: AuthorizePaymentCollectionInput,
+    ) -> Result<GqlPaymentCollection> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let collection = PaymentService::new(db.clone())
+            .authorize_collection(
+                tenant_id,
+                id,
+                crate::dto::AuthorizePaymentInput {
+                    provider_id: input.provider_id,
+                    provider_payment_id: input.provider_payment_id,
+                    amount: parse_optional_decimal(input.amount.as_deref())?,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(collection.into())
+    }
+
+    async fn capture_payment_collection(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CapturePaymentCollectionInput,
+    ) -> Result<GqlPaymentCollection> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let collection = PaymentService::new(db.clone())
+            .capture_collection(
+                tenant_id,
+                id,
+                crate::dto::CapturePaymentInput {
+                    amount: parse_optional_decimal(input.amount.as_deref())?,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(collection.into())
+    }
+
+    async fn cancel_payment_collection(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CancelPaymentCollectionInput,
+    ) -> Result<GqlPaymentCollection> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let collection = PaymentService::new(db.clone())
+            .cancel_collection(
+                tenant_id,
+                id,
+                crate::dto::CancelPaymentInput {
+                    reason: input.reason,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(collection.into())
+    }
+
+    async fn ship_fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: ShipFulfillmentInputObject,
+    ) -> Result<GqlFulfillment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let fulfillment = FulfillmentService::new(db.clone())
+            .ship_fulfillment(
+                tenant_id,
+                id,
+                crate::dto::ShipFulfillmentInput {
+                    carrier: input.carrier,
+                    tracking_number: input.tracking_number,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(fulfillment.into())
+    }
+
+    async fn deliver_fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: DeliverFulfillmentInputObject,
+    ) -> Result<GqlFulfillment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let fulfillment = FulfillmentService::new(db.clone())
+            .deliver_fulfillment(
+                tenant_id,
+                id,
+                crate::dto::DeliverFulfillmentInput {
+                    delivered_note: input.delivered_note,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(fulfillment.into())
+    }
+
+    async fn cancel_fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CancelFulfillmentInputObject,
+    ) -> Result<GqlFulfillment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let fulfillment = FulfillmentService::new(db.clone())
+            .cancel_fulfillment(
+                tenant_id,
+                id,
+                crate::dto::CancelFulfillmentInput {
+                    reason: input.reason,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(fulfillment.into())
+    }
+
     async fn create_product(
         &self,
         ctx: &Context<'_>,
@@ -207,4 +493,16 @@ fn convert_create_product_input(
 
 fn parse_decimal(value: &str) -> Result<Decimal> {
     Decimal::from_str(value).map_err(|_| async_graphql::Error::new("Invalid decimal value"))
+}
+
+fn parse_optional_decimal(value: Option<&str>) -> Result<Option<Decimal>> {
+    value.map(parse_decimal).transpose()
+}
+
+fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(Value::Object(Default::default())),
+        Some(value) => serde_json::from_str(value)
+            .map_err(|_| async_graphql::Error::new("Invalid JSON metadata payload")),
+    }
 }

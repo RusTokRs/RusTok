@@ -1,6 +1,7 @@
-# План реализации `rustok-channel` v0
+# План реализации `rustok-channel`
 
 Статус: experimental core capability.
+Текущее состояние: `v0 baseline complete`, начат post-v0 переход к финальной resolution-архитектуре.
 
 ## Состояние на 2026-03-27
 
@@ -23,7 +24,26 @@
 - admin UI получил operator flow `Make Default`;
 - поведение закреплено unit/runtime тестами в `rustok-channel` и `apps/server`.
 
-Это значит, что следующую сессию можно начинать не с инфраструктурного scaffolding, а уже с первого продуктового/интеграционного шага поверх существующего baseline.
+Это значит, что дальнейшая работа идёт уже не над `v0`, а над целевой resolution-архитектурой без middleware-driven логики и без ad-hoc fallback-правил.
+
+## Целевая архитектура после v0
+
+Финальная модель resolution для `rustok-channel` теперь зафиксирована так:
+
+1. explicit selectors;
+2. built-in typed target-resolution slices;
+3. tenant-scoped typed resolution policies;
+4. explicit default channel;
+5. unresolved request.
+
+Ключевые инварианты:
+
+- `tenant-level default rules` как отдельная концепция не вводятся;
+- terminal fallback всегда ровно один: explicit default channel tenant'а;
+- resolution precedence фиксируется кодом, а не конфигом;
+- `apps/server` только собирает request facts и применяет решение resolver'а;
+- domain logic выбора канала живёт в `rustok-channel`;
+- richer matching вводится только как typed policies, без scripting/runtime eval.
 
 ## Цели v0
 
@@ -175,6 +195,9 @@
 - [x] обновить runtime resolution так, чтобы `default` резолвился через `is_default`;
 - [x] дать оператору admin flow для смены tenant default channel;
 - [x] закрепить explicit default semantics тестами.
+- [x] стабилизировать `web_domain` target semantics через общую canonical normalization/validation для storage и runtime host lookup.
+- [x] вынести runtime precedence в typed domain resolver contract (`RequestFacts -> ResolutionDecision`) внутри `rustok-channel`;
+- [x] зарезервировать `Policy` как first-class resolution source в shared host contract.
 
 ## Итог по v0
 
@@ -182,14 +205,28 @@
 
 Остаются только осознанно отложенные revisit-вопросы следующего этапа:
 
-- нужны ли tenant-level default rules после стабилизации target semantics;
 - нужен ли richer split `channel/site/market/touchpoint` и отдельная connector taxonomy.
+
+Следующий этап больше не формулируется как `tenant-level default rules`.
+Следующий этап формулируется как rollout `tenant-scoped typed resolution policies`.
 
 ### Приоритет 3. Уточнение channel semantics
 
 - [x] проверить, что для `v0` текущего `target_type + value` хватает, если semantics tightened до explicit target-type allowlist и `web_domain`-only host resolution;
 - [x] решить, что переход к более typed target payload для `v0` не нужен и откладывается до появления richer target-specific behavior;
 - [x] отделить то, что является target, от того, что является connector/integration: `target` остаётся inbound resolution surface, а connector/integration остаётся отдельным semantic layer через существующую связку `channel_oauth_apps`; отдельный новый connector subsystem в `v0/v1` не вводим.
+
+### Приоритет 3. Resolution architecture rollout
+
+- [x] зафиксировать финальную resolution-модель: explicit selectors -> built-in typed target slices -> tenant-scoped typed policies -> explicit default channel -> unresolved;
+- [x] убрать `tenant-level default rules` как самостоятельную целевую архитектурную сущность;
+- [x] ввести typed resolver boundary в `rustok-channel`: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`;
+- [x] перевести server middleware на domain-owned resolver pipeline вместо локальной бизнес-логики;
+- [ ] добавить persisted policy storage для tenant-scoped typed resolution policies;
+- [ ] определить минимальный typed predicate set для `v1`: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, `LocaleEquals`;
+- [ ] ввести policy trace в admin bootstrap/runtime diagnostics;
+- [ ] добавить operator flows для policy authoring/reordering/disable в `rustok-channel-admin`;
+- [ ] после policy rollout решить, остаётся ли built-in host slice отдельным fast-path или схлопывается в общий policy engine.
 
 ### Приоритет 4. Credential story
 

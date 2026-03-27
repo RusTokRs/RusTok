@@ -10,6 +10,7 @@
 - Link channels to existing OAuth applications without introducing a second token subsystem.
 - Provide a thin service layer for creating and querying experimental channel data.
 - Back the shared request-level `ChannelContext` used by host transport layers.
+- Own the domain resolution pipeline (`RequestFacts -> ResolutionDecision`) that host middleware applies.
 - Ship the module-owned Leptos admin UI package for channel management.
 
 ## Scope
@@ -24,6 +25,8 @@ This crate intentionally ships a minimal v0 model:
 Current v0 wiring also includes:
 
 - server-side channel resolution middleware with explicit `header -> query -> host -> default` policy order, where `default` now means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors and typed `resolution_source` diagnostics,
+- the first typed domain resolution seam for the final architecture: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, and a `ChannelResolver` that keeps precedence inside `rustok-channel`,
+- `web_domain` targets now use shared canonical normalization/validation (`scheme/path/port` trimming, lowercase, strict host validation), and host lookup reuses the same semantics as storage,
 - a thin REST bootstrap/write surface in `apps/server`,
 - `rustok-channel-admin` for Leptos admin composition,
 - live proof points in `rustok-pages` and `rustok-blog`, where public read-path gating already uses `channel_module_bindings`, and both modules now exercise metadata-based publication-level `channelSlugs` allowlists.
@@ -59,4 +62,5 @@ It does not yet provide:
 
 - Keep the current `channel_module_bindings + metadata` model for v0 while `pages` and `blog` continue to serve as proof points.
 - Revisit a dedicated relation model only if future domains need stronger DB-level querying, authoring UX, or semantics that request-time filtering can no longer cover cleanly.
+- Roll out tenant-scoped typed resolution policies as the next architecture phase, without introducing a second fallback concept beyond explicit default channel.
 - Decide later whether `target`, `connector`, and publishable credentials should become separate concepts.

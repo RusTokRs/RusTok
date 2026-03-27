@@ -398,7 +398,10 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
         .unwrap();
 
     assert_eq!(completed.payment_collection.id, existing_collection.id);
-    assert_eq!(completed.payment_collection.order_id, Some(completed.order.id));
+    assert_eq!(
+        completed.payment_collection.order_id,
+        Some(completed.order.id)
+    );
     assert_eq!(completed.payment_collection.status, "captured");
     assert_eq!(completed.order.status, "paid");
     assert_eq!(completed.cart.status, "completed");

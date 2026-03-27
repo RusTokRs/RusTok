@@ -4,8 +4,8 @@ mod model;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::context::ChannelResolutionSource;
 use rustok_api::UiRouteContext;
+use rustok_api::context::ChannelResolutionSource;
 
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,
@@ -954,6 +954,7 @@ fn resolution_source_label(source: &ChannelResolutionSource) -> String {
         ChannelResolutionSource::HeaderSlug => "Header Slug".to_string(),
         ChannelResolutionSource::Query => "Query".to_string(),
         ChannelResolutionSource::Host => "Host".to_string(),
+        ChannelResolutionSource::Policy => "Policy".to_string(),
         ChannelResolutionSource::Default => "Default".to_string(),
     }
 }
@@ -971,6 +972,9 @@ fn resolution_source_description(source: &ChannelResolutionSource) -> &'static s
         }
         ChannelResolutionSource::Host => {
             "The current request matched this channel through host-based target resolution."
+        }
+        ChannelResolutionSource::Policy => {
+            "The current request matched a tenant-scoped typed channel resolution policy."
         }
         ChannelResolutionSource::Default => {
             "No explicit channel selector matched, so the tenant's explicit default channel was used."

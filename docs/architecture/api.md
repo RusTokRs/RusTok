@@ -32,7 +32,7 @@ RusToK использует гибридный подход:
 
 - legacy `/api/commerce/*` удалён из runtime router и OpenAPI;
 - GraphQL остаётся отдельным transport-слоем, но должен использовать те же application services, что и REST;
-- admin ecommerce surface сейчас включает product management и первый order detail endpoint `GET /admin/orders/{id}`;
+- admin ecommerce surface сейчас включает product management, paginated `GET /admin/orders`, `GET /admin/orders/{id}`, explicit order lifecycle routes (`mark-paid`, `ship`, `deliver`, `cancel`) и admin detail/lifecycle routes для `payment-collections` и `fulfillments`;
 - storefront locale может приходить через `locale` query param и `x-medusa-locale`;
 - storefront cart line items описываются как `variant_id + quantity`, а title/price резолвятся backend-ом;
 - storefront cart context обновляется route `POST /store/carts/{id}` и persist'ится в cart snapshot;

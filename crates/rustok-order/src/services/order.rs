@@ -2,8 +2,8 @@ use chrono::Utc;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,7 +14,8 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CreateOrderInput, CreateOrderLineItemInput, OrderLineItemResponse, OrderResponse,
+    CreateOrderInput, CreateOrderLineItemInput, ListOrdersInput, OrderLineItemResponse,
+    OrderResponse,
 };
 use crate::entities;
 use crate::error::{OrderError, OrderResult};
@@ -130,6 +131,44 @@ impl OrderService {
     pub async fn get_order(&self, tenant_id: Uuid, order_id: Uuid) -> OrderResult<OrderResponse> {
         let order = self.load_order_model(tenant_id, order_id).await?;
         self.build_response(order).await
+    }
+
+    pub async fn list_orders(
+        &self,
+        tenant_id: Uuid,
+        input: ListOrdersInput,
+    ) -> OrderResult<(Vec<OrderResponse>, u64)> {
+        let page = input.page.max(1);
+        let per_page = input.per_page.clamp(1, 100);
+
+        let mut query =
+            entities::order::Entity::find().filter(entities::order::Column::TenantId.eq(tenant_id));
+
+        if let Some(status) = input
+            .status
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            query = query.filter(entities::order::Column::Status.eq(status.trim()));
+        }
+        if let Some(customer_id) = input.customer_id {
+            query = query.filter(entities::order::Column::CustomerId.eq(customer_id));
+        }
+
+        let total = query.clone().count(&self.db).await?;
+        let orders = query
+            .order_by_desc(entities::order::Column::CreatedAt)
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all(&self.db)
+            .await?;
+
+        let mut items = Vec::with_capacity(orders.len());
+        for order in orders {
+            items.push(self.build_response(order).await?);
+        }
+
+        Ok((items, total))
     }
 
     pub async fn confirm_order(

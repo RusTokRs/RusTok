@@ -99,8 +99,11 @@
 Что уже закрыто в текущем срезе:
 
 - добавлен первый admin order transport endpoint `GET /admin/orders/{id}`;
+- добавлен paginated admin orders list endpoint `GET /admin/orders` с базовыми filters `status` и `customer_id`;
 - admin order detail отдаёт order вместе с latest payment collection и latest fulfillment;
-- transport/OpenAPI coverage фиксирует RBAC и schema contract для admin order detail.
+- добавлены explicit admin order lifecycle endpoints: `mark-paid`, `ship`, `deliver`, `cancel`;
+- добавлены admin detail/lifecycle endpoints для `payment-collections` (`show`, `authorize`, `capture`, `cancel`) и `fulfillments` (`show`, `ship`, `deliver`, `cancel`);
+- transport/OpenAPI coverage фиксирует RBAC и schema contract для admin order detail и admin payment/fulfillment lifecycle surface.
 
 ### Phase 5. Упрощение umbrella-модуля
 

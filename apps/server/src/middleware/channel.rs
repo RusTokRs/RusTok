@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{header::HOST, HeaderMap, Request},
+    http::{HeaderMap, Request, header::HOST},
     middleware::Next,
     response::Response,
 };
@@ -11,7 +11,9 @@ use uuid::Uuid;
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
-use rustok_channel::{ChannelDetailResponse, ChannelService};
+use rustok_channel::{
+    ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, TargetSurface,
+};
 
 const CHANNEL_ID_HEADER: &str = "X-Channel-ID";
 const CHANNEL_SLUG_HEADER: &str = "X-Channel-Slug";
@@ -25,10 +27,14 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     };
 
-    let service = ChannelService::new(ctx.db.clone());
-    let selected = select_channel(&service, tenant.id, req.headers(), req.uri().query()).await;
+    let resolver = ChannelResolver::new(ctx.db.clone());
+    let facts = build_request_facts(tenant.id, req.headers(), req.uri().query());
+    let decision = resolver
+        .resolve(&facts)
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if let Some(ResolvedChannelDetail { detail, source }) = selected {
+    if let Some((detail, source)) = resolved_detail_and_source(decision) {
         let selected_target = detail
             .targets
             .iter()
@@ -52,119 +58,36 @@ pub async fn resolve(
     Ok(next.run(req).await)
 }
 
-struct ResolvedChannelDetail {
-    detail: ChannelDetailResponse,
-    source: ChannelResolutionSource,
-}
-
-async fn select_channel(
-    service: &ChannelService,
-    tenant_id: Uuid,
-    headers: &HeaderMap,
-    query: Option<&str>,
-) -> Option<ResolvedChannelDetail> {
-    if let Some(channel_id) = channel_id_from_header(headers) {
-        if let Some(selected) = resolve_channel_from_id(service, tenant_id, channel_id).await {
-            return Some(selected);
-        }
-    }
-
-    if let Some(slug) = channel_slug_from_header(headers) {
-        if let Some(selected) = resolve_channel_from_slug(
-            service,
-            tenant_id,
-            &slug,
-            ChannelResolutionSource::HeaderSlug,
-        )
-        .await
-        {
-            return Some(selected);
-        }
-    }
-
-    if let Some(slug) = channel_slug_from_query(query) {
-        if let Some(selected) =
-            resolve_channel_from_slug(service, tenant_id, &slug, ChannelResolutionSource::Query)
-                .await
-        {
-            return Some(selected);
-        }
-    }
-
-    if let Some(host) = extract_host(headers) {
-        if let Some(selected) = resolve_channel_from_host(service, tenant_id, host).await {
-            return Some(selected);
-        }
-    }
-
-    resolve_default_channel(service, tenant_id).await
-}
-
-async fn resolve_channel_from_id(
-    service: &ChannelService,
-    tenant_id: Uuid,
-    channel_id: Uuid,
-) -> Option<ResolvedChannelDetail> {
-    match service.get_channel_detail(channel_id).await {
-        Ok(detail) if detail.channel.tenant_id == tenant_id && detail.channel.is_active => {
-            Some(ResolvedChannelDetail {
-                detail,
-                source: ChannelResolutionSource::HeaderId,
-            })
-        }
-        _ => None,
+fn build_request_facts(tenant_id: Uuid, headers: &HeaderMap, query: Option<&str>) -> RequestFacts {
+    RequestFacts {
+        tenant_id,
+        surface: TargetSurface::Http,
+        header_channel_id: channel_id_from_header(headers),
+        header_channel_slug: channel_slug_from_header(headers),
+        query_channel_slug: channel_slug_from_query(query),
+        host: extract_host(headers).map(ToOwned::to_owned),
+        oauth_app_id: None,
+        locale: None,
     }
 }
 
-async fn resolve_channel_from_slug(
-    service: &ChannelService,
-    tenant_id: Uuid,
-    slug: &str,
-    source: ChannelResolutionSource,
-) -> Option<ResolvedChannelDetail> {
-    match service.get_channel_detail_by_slug(tenant_id, slug).await {
-        Ok(Some(detail)) if detail.channel.is_active => {
-            Some(ResolvedChannelDetail { detail, source })
-        }
-        _ => None,
-    }
-}
+fn resolved_detail_and_source(
+    decision: ResolutionDecision,
+) -> Option<(
+    rustok_channel::ChannelDetailResponse,
+    ChannelResolutionSource,
+)> {
+    let detail = decision.detail?;
+    let source = match decision.source? {
+        ChannelResolutionOrigin::HeaderId => ChannelResolutionSource::HeaderId,
+        ChannelResolutionOrigin::HeaderSlug => ChannelResolutionSource::HeaderSlug,
+        ChannelResolutionOrigin::Query => ChannelResolutionSource::Query,
+        ChannelResolutionOrigin::Host => ChannelResolutionSource::Host,
+        ChannelResolutionOrigin::Policy => ChannelResolutionSource::Policy,
+        ChannelResolutionOrigin::Default => ChannelResolutionSource::Default,
+    };
 
-async fn resolve_channel_from_host(
-    service: &ChannelService,
-    tenant_id: Uuid,
-    host: &str,
-) -> Option<ResolvedChannelDetail> {
-    let normalized = host
-        .split(':')
-        .next()
-        .unwrap_or(host)
-        .trim()
-        .to_ascii_lowercase();
-    service
-        .get_channel_by_host_target_value(tenant_id, &normalized)
-        .await
-        .ok()
-        .flatten()
-        .map(|detail| ResolvedChannelDetail {
-            detail,
-            source: ChannelResolutionSource::Host,
-        })
-}
-
-async fn resolve_default_channel(
-    service: &ChannelService,
-    tenant_id: Uuid,
-) -> Option<ResolvedChannelDetail> {
-    service
-        .get_default_channel(tenant_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|detail| ResolvedChannelDetail {
-            detail,
-            source: ChannelResolutionSource::Default,
-        })
+    Some((detail, source))
 }
 
 fn channel_id_from_header(headers: &axum::http::HeaderMap) -> Option<Uuid> {
@@ -204,12 +127,13 @@ fn extract_host(headers: &axum::http::HeaderMap) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        channel_id_from_header, channel_slug_from_header, channel_slug_from_query, select_channel,
+        build_request_facts, channel_id_from_header, channel_slug_from_header,
+        channel_slug_from_query, resolved_detail_and_source,
     };
     use crate::context::ChannelResolutionSource;
-    use axum::http::{header::HOST, HeaderMap};
+    use axum::http::{HeaderMap, header::HOST};
     use rustok_channel::{
-        migrations, ChannelService, CreateChannelInput, CreateChannelTargetInput,
+        ChannelResolver, ChannelService, CreateChannelInput, CreateChannelTargetInput, migrations,
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -340,7 +264,7 @@ mod tests {
         let db = setup_channel_db().await;
         let tenant_id = Uuid::new_v4();
         seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db);
+        let service = ChannelService::new(db.clone());
 
         let _default_channel_id = create_channel(&service, tenant_id, "default").await;
         let header_id_channel_id = create_channel(&service, tenant_id, "header-id").await;
@@ -363,13 +287,22 @@ mod tests {
         );
         headers.insert(HOST, "shop.example.test".parse().expect("host header"));
 
-        let selected = select_channel(&service, tenant_id, &headers, Some("channel=query-channel"))
-            .await
-            .expect("channel should be resolved");
+        let resolver = ChannelResolver::new(db.clone());
+        let selected = resolved_detail_and_source(
+            resolver
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &headers,
+                    Some("channel=query-channel"),
+                ))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("channel should be resolved");
 
-        assert_eq!(selected.detail.channel.id, header_id_channel_id);
-        assert_eq!(selected.detail.channel.slug, "header-id");
-        assert_eq!(selected.source, ChannelResolutionSource::HeaderId);
+        assert_eq!(selected.0.channel.id, header_id_channel_id);
+        assert_eq!(selected.0.channel.slug, "header-id");
+        assert_eq!(selected.1, ChannelResolutionSource::HeaderId);
     }
 
     #[tokio::test]
@@ -377,24 +310,33 @@ mod tests {
         let db = setup_channel_db().await;
         let tenant_id = Uuid::new_v4();
         seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db);
+        let service = ChannelService::new(db.clone());
 
         let _default_channel_id = create_channel(&service, tenant_id, "default").await;
         let host_channel_id = create_channel(&service, tenant_id, "host-channel").await;
-        add_web_target(&service, host_channel_id, "shop.example.test").await;
+        add_web_target(&service, host_channel_id, "https://shop.example.test/").await;
 
         let mut headers = HeaderMap::new();
-        headers.insert(HOST, "shop.example.test".parse().expect("host header"));
+        headers.insert(HOST, "SHOP.EXAMPLE.TEST.:443".parse().expect("host header"));
 
-        let selected = select_channel(&service, tenant_id, &headers, Some("channel=missing"))
-            .await
-            .expect("host fallback should resolve");
+        let resolver = ChannelResolver::new(db.clone());
+        let selected = resolved_detail_and_source(
+            resolver
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &headers,
+                    Some("channel=missing"),
+                ))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("host fallback should resolve");
 
-        assert_eq!(selected.detail.channel.id, host_channel_id);
-        assert_eq!(selected.detail.channel.slug, "host-channel");
-        assert_eq!(selected.source, ChannelResolutionSource::Host);
-        assert_eq!(selected.detail.targets.len(), 1);
-        assert_eq!(selected.detail.targets[0].value, "shop.example.test");
+        assert_eq!(selected.0.channel.id, host_channel_id);
+        assert_eq!(selected.0.channel.slug, "host-channel");
+        assert_eq!(selected.1, ChannelResolutionSource::Host);
+        assert_eq!(selected.0.targets.len(), 1);
+        assert_eq!(selected.0.targets[0].value, "shop.example.test");
     }
 
     #[tokio::test]
@@ -402,7 +344,7 @@ mod tests {
         let db = setup_channel_db().await;
         let tenant_id = Uuid::new_v4();
         seed_tenant(&db, tenant_id, "tenant").await;
-        let service = ChannelService::new(db);
+        let service = ChannelService::new(db.clone());
 
         let first_channel_id = create_channel(&service, tenant_id, "default").await;
         let explicit_default_channel_id = create_channel(&service, tenant_id, "secondary").await;
@@ -412,14 +354,23 @@ mod tests {
             .expect("explicit default channel should be saved");
 
         let headers = HeaderMap::new();
-        let selected = select_channel(&service, tenant_id, &headers, Some("channel=missing"))
-            .await
-            .expect("default fallback should resolve");
+        let resolver = ChannelResolver::new(db.clone());
+        let selected = resolved_detail_and_source(
+            resolver
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &headers,
+                    Some("channel=missing"),
+                ))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("default fallback should resolve");
 
-        assert_ne!(selected.detail.channel.id, first_channel_id);
-        assert_eq!(selected.detail.channel.id, explicit_default_channel_id);
-        assert_eq!(selected.detail.channel.slug, "secondary");
-        assert_eq!(selected.source, ChannelResolutionSource::Default);
+        assert_ne!(selected.0.channel.id, first_channel_id);
+        assert_eq!(selected.0.channel.id, explicit_default_channel_id);
+        assert_eq!(selected.0.channel.slug, "secondary");
+        assert_eq!(selected.1, ChannelResolutionSource::Default);
     }
 
     #[tokio::test]
@@ -443,14 +394,19 @@ mod tests {
 
         let mut headers = HeaderMap::new();
         headers.insert("X-Channel-Slug", "inactive".parse().expect("slug header"));
-        headers.insert(HOST, "shop.example.test".parse().expect("host header"));
+        headers.insert(HOST, "SHOP.EXAMPLE.TEST.:443".parse().expect("host header"));
 
-        let selected = select_channel(&service, tenant_id, &headers, None)
-            .await
-            .expect("inactive channel must be skipped");
+        let resolver = ChannelResolver::new(db.clone());
+        let selected = resolved_detail_and_source(
+            resolver
+                .resolve(&build_request_facts(tenant_id, &headers, None))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("inactive channel must be skipped");
 
-        assert_eq!(selected.detail.channel.id, host_channel_id);
-        assert_eq!(selected.detail.channel.slug, "host-channel");
-        assert_eq!(selected.source, ChannelResolutionSource::Host);
+        assert_eq!(selected.0.channel.id, host_channel_id);
+        assert_eq!(selected.0.channel.slug, "host-channel");
+        assert_eq!(selected.1, ChannelResolutionSource::Host);
     }
 }

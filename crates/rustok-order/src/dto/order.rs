@@ -31,6 +31,40 @@ pub struct CreateOrderLineItemInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ListOrdersInput {
+    pub page: u64,
+    pub per_page: u64,
+    pub status: Option<String>,
+    pub customer_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct MarkPaidOrderInput {
+    #[validate(length(min = 1, max = 191))]
+    pub payment_id: String,
+    #[validate(length(min = 1, max = 100))]
+    pub payment_method: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct ShipOrderInput {
+    #[validate(length(min = 1, max = 100))]
+    pub tracking_number: String,
+    #[validate(length(min = 1, max = 100))]
+    pub carrier: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DeliverOrderInput {
+    pub delivered_signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CancelOrderInput {
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,

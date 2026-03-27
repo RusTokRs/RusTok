@@ -1963,8 +1963,14 @@ mod tests {
             StatusCode::BAD_REQUEST,
             "unexpected create cart body: {body_text}",
         );
-        assert!(body_text.contains("USD"), "body should mention requested currency: {body_text}");
-        assert!(body_text.contains("EUR"), "body should mention region currency: {body_text}");
+        assert!(
+            body_text.contains("USD"),
+            "body should mention requested currency: {body_text}"
+        );
+        assert!(
+            body_text.contains("EUR"),
+            "body should mention region currency: {body_text}"
+        );
         assert!(
             body_text.contains(&region.id.to_string()),
             "body should mention conflicting region: {body_text}"
@@ -2648,10 +2654,9 @@ mod tests {
             .await
             .expect("create payment collection request should succeed");
         let payment_collection_status = payment_collection_response.status();
-        let payment_collection_body =
-            to_bytes(payment_collection_response.into_body(), usize::MAX)
-                .await
-                .expect("payment collection body should read");
+        let payment_collection_body = to_bytes(payment_collection_response.into_body(), usize::MAX)
+            .await
+            .expect("payment collection body should read");
         assert_eq!(
             payment_collection_status,
             StatusCode::CREATED,
@@ -2894,7 +2899,9 @@ mod tests {
                     .method("GET")
                     .uri(format!(
                         "/store/orders/{}",
-                        completed["order"]["id"].as_str().expect("order id should exist")
+                        completed["order"]["id"]
+                            .as_str()
+                            .expect("order id should exist")
                     ))
                     .header("X-Tenant-ID", tenant_id.to_string())
                     .body(Body::empty())

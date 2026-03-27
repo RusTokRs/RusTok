@@ -32,7 +32,9 @@
 
 - storage-модель `channels`, `channel_targets`, `channel_module_bindings`, `channel_oauth_apps`;
 - service layer для создания каналов, target'ов, module bindings и OAuth app bindings; для `v0` target semantics остаются на уровне `target_type + value`, но с explicit allowlist типов и `web_domain`-only host resolution;
-- server middleware, который теперь явно следует policy order `header (X-Channel-ID / X-Channel-Slug) -> query channel -> host target -> default channel`, где `default` означает explicit default channel tenant'а; middleware сохраняет `resolution_source` в runtime context и одинаково пропускает только active channels для explicit/header/query/host/default resolution;
+- domain-owned resolution layer в `rustok-channel`: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, `ChannelResolver`;
+- `web_domain` target semantics дополнительно стабилизированы общей canonical normalization/validation: storage и runtime host lookup теперь одинаково режут scheme/path/port, lower-case'ят host и отбрасывают невалидные значения;
+- server middleware больше не держит локальную business-логику выбора канала, а только собирает request facts и применяет domain resolver pipeline; текущий runtime order пока выглядит как `header (X-Channel-ID / X-Channel-Slug) -> query channel -> built-in host target slice -> explicit default channel`, при этом `Policy` уже зарезервирован как следующий first-class слой;
 - у канала появился explicit default flag, а admin flow умеет назначать tenant default без опоры на порядок создания;
 - общий request contract в `rustok-api` для channel-aware transport/adapters, включая `channel_id`, `channel_slug` и `channel_resolution_source`;
 - тонкий REST surface в `apps/server` для bootstrap, создания каналов, target'ов и bindings;
@@ -66,7 +68,8 @@
 
 - для v0 сохраняем `channel_module_bindings + metadata-based allowlist`;
 - отдельную relation/table откладываем до появления требований, которые нельзя закрыть request-time filtering;
-- дальнейшую taxonomy и richer semantics расширяем только поверх этого зафиксированного baseline.
+- дальнейшую taxonomy и richer semantics расширяем только поверх этого зафиксированного baseline;
+- следующий архитектурный шаг — не `tenant-level default rules`, а `tenant-scoped typed resolution policies`.
 
 ## Что хотим проверить дальше
 

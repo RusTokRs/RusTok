@@ -1,7 +1,7 @@
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap,

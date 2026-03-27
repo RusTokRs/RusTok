@@ -2,6 +2,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod resolution;
 pub mod services;
 pub mod target_type;
 
@@ -11,6 +12,10 @@ pub use dto::{
     CreateChannelInput, CreateChannelTargetInput, UpdateChannelTargetInput,
 };
 pub use error::{ChannelError, ChannelResult};
+pub use resolution::{
+    ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, ResolutionOutcome,
+    ResolutionStage, ResolutionTraceStep, TargetSurface,
+};
 pub use services::ChannelService;
 pub use target_type::ChannelTargetType;
 
