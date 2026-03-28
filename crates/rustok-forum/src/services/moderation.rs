@@ -9,6 +9,7 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::constants::{reply_status, topic_status, KIND_TOPIC};
 use crate::error::{ForumError, ForumResult};
+use crate::state_machine::TopicStatus;
 
 pub struct ModerationService {
     db: DatabaseConnection,
@@ -134,14 +135,20 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_forum_status(
-            tenant_id,
-            topic_id,
-            security,
-            topic_status::OPEN,
-            topic_status::CLOSED,
-        )
-        .await
+        self.update_topic_forum_status(tenant_id, topic_id, security, TopicStatus::Closed)
+            .await
+    }
+
+    /// Reopen a closed or archived topic.
+    #[instrument(skip(self, security))]
+    pub async fn reopen_topic(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<()> {
+        self.update_topic_forum_status(tenant_id, topic_id, security, TopicStatus::Open)
+            .await
     }
 
     #[instrument(skip(self, security))]
@@ -151,25 +158,8 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        let node = self.nodes.get_node(tenant_id, topic_id).await?;
-        if node.kind != KIND_TOPIC {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
-        let old_status = node
-            .metadata
-            .get("forum_status")
-            .and_then(|v| v.as_str())
-            .unwrap_or(topic_status::OPEN)
-            .to_string();
-
-        self.update_topic_forum_status(
-            tenant_id,
-            topic_id,
-            security,
-            &old_status,
-            topic_status::ARCHIVED,
-        )
-        .await
+        self.update_topic_forum_status(tenant_id, topic_id, security, TopicStatus::Archived)
+            .await
     }
 
     // ── Private helpers ────────────────────────────────────────────────────
@@ -296,20 +286,37 @@ impl ModerationService {
         Ok(())
     }
 
+    /// Update topic forum status with state machine validation.
+    ///
+    /// Reads the current status from metadata, validates the transition using
+    /// the state machine, and then applies the change atomically.
     async fn update_topic_forum_status(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
-        old_status: &str,
-        new_status: &str,
+        target: TopicStatus,
     ) -> ForumResult<()> {
         let node = self.nodes.get_node(tenant_id, topic_id).await?;
         if node.kind != KIND_TOPIC {
             return Err(ForumError::TopicNotFound(topic_id));
         }
+
+        let current_str = node
+            .metadata
+            .get("forum_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or(topic_status::OPEN);
+        let current = TopicStatus::from_str_value(current_str).unwrap_or(TopicStatus::Open);
+
+        // Validate the state transition using the state machine
+        current.validate_transition(&target)?;
+
+        let old_status = current.as_str().to_string();
+        let new_status = target.as_str().to_string();
+
         let mut metadata = node.metadata;
-        metadata["forum_status"] = serde_json::json!(new_status);
+        metadata["forum_status"] = serde_json::json!(&new_status);
 
         let txn = self.db.begin().await?;
 
@@ -333,8 +340,8 @@ impl ModerationService {
                 security.user_id,
                 DomainEvent::ForumTopicStatusChanged {
                     topic_id,
-                    old_status: old_status.to_string(),
-                    new_status: new_status.to_string(),
+                    old_status,
+                    new_status,
                     moderator_id: security.user_id,
                 },
             )

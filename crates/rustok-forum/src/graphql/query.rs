@@ -1,8 +1,9 @@
-use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
+use async_graphql::{dataloader::DataLoader, Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError, PaginationInput},
-    has_any_effective_permission, AuthContext, TenantContext,
+    has_any_effective_permission, AuthContext, RequestContext, TenantContext,
 };
+use rustok_channel::ChannelService;
 use rustok_core::{Permission, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
@@ -263,6 +264,7 @@ impl ForumQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumCategoryConnection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let resolved_tenant_id = tenant_id.unwrap_or(tenant.id);
@@ -322,6 +324,7 @@ impl ForumQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumTopicConnection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -355,16 +358,25 @@ impl ForumQuery {
             total,
         );
 
+        let mut visible_topics = topics;
+        if is_public_request(ctx) {
+            let channel = public_channel_slug(ctx);
+            visible_topics.retain(|topic| {
+                topic.status == crate::constants::topic_status::OPEN
+                    && is_topic_visible_for_channel(&topic.channel_slugs, channel.as_deref())
+            });
+        }
+
         let author_profiles = load_author_profiles_map(
             ctx,
             db,
             resolved_tenant_id,
-            topics.iter().map(|topic| topic.author_id),
+            visible_topics.iter().map(|topic| topic.author_id),
             locale.as_str(),
             tenant.default_locale.as_str(),
         )
         .await?;
-        let items = topics
+        let items = visible_topics
             .into_iter()
             .map(|topic| {
                 let author_profile = topic
@@ -398,6 +410,7 @@ impl ForumQuery {
         locale: Option<String>,
     ) -> Result<Option<GqlForumTopic>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -418,6 +431,13 @@ impl ForumQuery {
             Err(ForumError::TopicNotFound(_)) => return Ok(None),
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
+
+        if is_public_request(ctx)
+            && (topic.status != crate::constants::topic_status::OPEN
+                || !is_topic_visible_for_channel(&topic.channel_slugs, public_channel_slug(ctx).as_deref()))
+        {
+            return Ok(None);
+        }
 
         let author_profiles = load_author_profiles_map(
             ctx,
@@ -445,6 +465,7 @@ impl ForumQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumReplyConnection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -571,6 +592,7 @@ fn map_topic_list_item(
         body_format: "markdown".to_string(),
         status: topic.status,
         tags: Vec::new(),
+        channel_slugs: topic.channel_slugs,
         is_pinned: topic.is_pinned,
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
@@ -598,6 +620,7 @@ fn map_topic_response(
         body_format: topic.body_format,
         status: topic.status,
         tags: topic.tags,
+        channel_slugs: topic.channel_slugs,
         is_pinned: topic.is_pinned,
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
@@ -680,4 +703,68 @@ where
         .into_iter()
         .map(|(user_id, summary)| (user_id, summary.into()))
         .collect())
+}
+
+async fn require_public_forum_channel_enabled(ctx: &Context<'_>) -> Result<()> {
+    let db = ctx.data::<DatabaseConnection>()?;
+    ensure_public_forum_channel_enabled(
+        db,
+        ctx.data_opt::<RequestContext>(),
+        ctx.data_opt::<AuthContext>().is_some(),
+    )
+    .await
+}
+
+async fn ensure_public_forum_channel_enabled(
+    db: &DatabaseConnection,
+    request_context: Option<&RequestContext>,
+    is_authenticated: bool,
+) -> Result<()> {
+    if is_authenticated {
+        return Ok(());
+    }
+
+    let Some(request_context) = request_context else {
+        return Ok(());
+    };
+    let Some(channel_id) = request_context.channel_id else {
+        return Ok(());
+    };
+
+    let enabled = ChannelService::new(db.clone())
+        .is_module_enabled(channel_id, MODULE_SLUG)
+        .await
+        .map_err(|error| {
+            async_graphql::Error::new(format!("Channel module check failed: {error}"))
+                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
+        })?;
+
+    if enabled {
+        return Ok(());
+    }
+
+    Err(async_graphql::Error::new("Forum module is not enabled for this channel")
+        .extend_with(|_, ext| ext.set("code", "FORBIDDEN")))
+}
+
+fn is_public_request(ctx: &Context<'_>) -> bool {
+    ctx.data_opt::<AuthContext>().is_none()
+}
+
+fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
+    ctx.data_opt::<RequestContext>()
+        .and_then(|rc| rc.channel_slug.clone())
+}
+
+pub(crate) fn is_topic_visible_for_channel(channel_slugs: &[String], channel_slug: Option<&str>) -> bool {
+    if channel_slugs.is_empty() {
+        return true;
+    }
+
+    let Some(channel_slug) = channel_slug else {
+        return false;
+    };
+
+    let normalized = channel_slug.trim().to_ascii_lowercase();
+    !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
 }

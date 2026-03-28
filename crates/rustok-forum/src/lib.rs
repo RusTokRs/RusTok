@@ -12,12 +12,14 @@ pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod services;
+pub mod state_machine;
 
 pub use constants::*;
 pub use dto::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use services::{CategoryService, ModerationService, ReplyService, TopicService};
+pub use state_machine::{ReplyStatus, TopicStatus};
 
 pub struct ForumModule;
 

@@ -35,6 +35,7 @@ async fn test_page_lifecycle() -> TestResult<()> {
             content_json: None,
         }),
         blocks: None,
+        channel_slugs: None,
     };
 
     let page = ctx
@@ -98,6 +99,7 @@ async fn test_create_page_rt_json_v1_sanitizes_payload() -> TestResult<()> {
             })),
         }),
         blocks: None,
+        channel_slugs: None,
     };
 
     let page = ctx
@@ -144,6 +146,7 @@ async fn test_update_page_rt_json_v1_sanitizes_payload() -> TestResult<()> {
                     content_json: None,
                 }),
                 blocks: None,
+                channel_slugs: None,
             },
         )
         .await?;
@@ -184,6 +187,7 @@ async fn test_update_page_rt_json_v1_sanitizes_payload() -> TestResult<()> {
                         }
                     })),
                 }),
+                channel_slugs: None,
             },
         )
         .await?;

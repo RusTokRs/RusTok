@@ -16,6 +16,7 @@ pub struct CreateTopicInput {
     pub body_format: String,
     pub content_json: Option<Value>,
     pub tags: Vec<String>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
@@ -26,6 +27,7 @@ pub struct UpdateTopicInput {
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
     pub tags: Option<Vec<String>>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
@@ -67,6 +69,7 @@ pub struct TopicResponse {
     pub content_json: Option<Value>,
     pub status: String,
     pub tags: Vec<String>,
+    pub channel_slugs: Vec<String>,
     pub is_pinned: bool,
     pub is_locked: bool,
     pub reply_count: i32,
@@ -84,6 +87,7 @@ pub struct TopicListItem {
     pub title: String,
     pub slug: String,
     pub status: String,
+    pub channel_slugs: Vec<String>,
     pub is_pinned: bool,
     pub is_locked: bool,
     pub reply_count: i32,
@@ -116,6 +120,7 @@ mod tests {
             content_json,
             status: "open".into(),
             tags: vec![],
+            channel_slugs: vec![],
             is_pinned: false,
             is_locked: false,
             reply_count: 0,

@@ -22,6 +22,30 @@
 //! let input = CreatePageInput {
 //!     translations: vec![PageTranslationInput {
 //!         locale: "en".to_string(),
+//! Pages module for RusToK platform
+//!
+//! This module provides pages, blocks and menus functionality built on top of the content module.
+//!
+//! # Architecture
+//!
+//! The pages module is a "wrapper" module that:
+//! - Uses `rustok-content` tables for storage (no own database schema)
+//! - Adds pages-specific business logic and validation
+//! - Provides PageService, BlockService, and MenuService
+//! - Publishes domain events through TransactionalEventBus
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use rustok_pages::{PageService, CreatePageInput, PageResponse};
+//!
+//! // Create a page service
+//! let service = PageService::new(db, event_bus);
+//!
+//! // Create a page
+//! let input = CreatePageInput {
+//!     translations: vec![PageTranslationInput {
+//!         locale: "en".to_string(),
 //!         title: "About Us".to_string(),
 //!         slug: Some("about-us".to_string()),
 //!         meta_title: None,
@@ -35,6 +59,7 @@
 //!         content_json: None,
 //!     }),
 //!     blocks: None,
+//!     channel_slugs: None,
 //!     publish: false,
 //! };
 //!

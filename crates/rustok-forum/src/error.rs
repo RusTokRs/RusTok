@@ -29,6 +29,12 @@ pub enum ForumError {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("{0}")]
+    InvalidTopicTransition(#[from] crate::state_machine::InvalidTopicTransition),
+
+    #[error("{0}")]
+    InvalidReplyTransition(#[from] crate::state_machine::InvalidReplyTransition),
 }
 
 pub type ForumResult<T> = Result<T, ForumError>;

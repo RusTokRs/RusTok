@@ -10050,6 +10050,7 @@ dependencies = [
  "chrono",
  "loco-rs",
  "rustok-api",
+ "rustok-channel",
  "rustok-content",
  "rustok-core",
  "rustok-events",

@@ -66,13 +66,17 @@ impl TopicService {
         )
         .map_err(ForumError::Validation)?;
 
-        let metadata = serde_json::json!({
+        let mut metadata = serde_json::json!({
             "tags": input.tags,
             "is_pinned": false,
             "is_locked": false,
             "reply_count": 0,
             "forum_status": topic_status::OPEN
         });
+
+        if let Some(slugs) = input.channel_slugs {
+            metadata["channel_visibility"] = serde_json::json!({ "allowed_channel_slugs": slugs });
+        }
 
         let txn = self.db.begin().await?;
 
@@ -168,13 +172,19 @@ impl TopicService {
         input: UpdateTopicInput,
     ) -> ForumResult<TopicResponse> {
         let existing = self.get(tenant_id, topic_id, &input.locale).await?;
-        let metadata = serde_json::json!({
+        let mut metadata = serde_json::json!({
             "tags": input.tags.unwrap_or(existing.tags.clone()),
             "is_pinned": existing.is_pinned,
             "is_locked": existing.is_locked,
             "reply_count": existing.reply_count,
             "forum_status": existing.status
         });
+
+        if let Some(slugs) = input.channel_slugs {
+            metadata["channel_visibility"] = serde_json::json!({ "allowed_channel_slugs": slugs });
+        } else if !existing.channel_slugs.is_empty() {
+            metadata["channel_visibility"] = serde_json::json!({ "allowed_channel_slugs": existing.channel_slugs });
+        }
 
         let translations = if input.title.is_some() {
             Some(vec![NodeTranslationInput {
@@ -301,6 +311,16 @@ impl TopicService {
                         .and_then(|v| v.as_str())
                         .unwrap_or(topic_status::OPEN)
                         .to_string(),
+                    channel_slugs: metadata
+                        .get("channel_visibility")
+                        .and_then(|v| v.get("allowed_channel_slugs"))
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                     is_pinned: metadata
                         .get("is_pinned")
                         .and_then(|v| v.as_bool())
@@ -378,6 +398,16 @@ impl TopicService {
                 .to_string(),
             tags: metadata
                 .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            channel_slugs: metadata
+                .get("channel_visibility")
+                .and_then(|v| v.get("allowed_channel_slugs"))
                 .and_then(|v| v.as_array())
                 .map(|arr| {
                     arr.iter()

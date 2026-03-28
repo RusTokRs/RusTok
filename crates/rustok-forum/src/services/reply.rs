@@ -270,13 +270,7 @@ impl ReplyService {
 
         let node_ids: Vec<Uuid> = items.iter().map(|item| item.id).collect();
 
-        let mut full_nodes = Vec::with_capacity(node_ids.len());
-        for id in node_ids {
-            match self.nodes.get_node(tenant_id, id).await {
-                Ok(node) => full_nodes.push(node),
-                Err(_) => continue,
-            }
-        }
+        let full_nodes = self.nodes.get_nodes_batch(tenant_id, &node_ids).await?;
 
         let replies = full_nodes
             .into_iter()
@@ -346,19 +340,12 @@ impl ReplyService {
             )
             .await?;
 
-        let mut replies = Vec::with_capacity(items.len());
-        for item in items {
-            let node = match self.nodes.get_node(tenant_id, item.id).await {
-                Ok(node) => node,
-                Err(_) => continue,
-            };
-            replies.push(Self::node_to_reply_with_fallback(
-                node,
-                topic_id,
-                &locale,
-                fallback_locale,
-            ));
-        }
+        let node_ids: Vec<Uuid> = items.iter().map(|item| item.id).collect();
+        let full_nodes = self.nodes.get_nodes_batch(tenant_id, &node_ids).await?;
+        let replies = full_nodes
+            .into_iter()
+            .map(|node| Self::node_to_reply_with_fallback(node, topic_id, &locale, fallback_locale))
+            .collect();
 
         Ok((replies, total))
     }

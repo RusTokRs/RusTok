@@ -16,4 +16,6 @@ pub mod reply_status {
     pub const APPROVED: &str = "approved";
     pub const REJECTED: &str = "rejected";
     pub const HIDDEN: &str = "hidden";
+    pub const FLAGGED: &str = "flagged";
+    pub const DELETED: &str = "deleted";
 }

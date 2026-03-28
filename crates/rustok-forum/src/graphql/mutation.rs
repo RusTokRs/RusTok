@@ -54,6 +54,7 @@ impl ForumMutation {
                         .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
                     content_json: input.content_json,
                     tags: input.tags,
+                    channel_slugs: None,
                 },
             )
             .await?;
@@ -81,6 +82,7 @@ impl ForumMutation {
             body_format: topic.body_format,
             status: topic.status,
             tags: topic.tags,
+            channel_slugs: topic.channel_slugs.clone(),
             is_pinned: topic.is_pinned,
             is_locked: topic.is_locked,
             reply_count: topic.reply_count,
@@ -118,6 +120,7 @@ impl ForumMutation {
                     body_format: input.body_format,
                     content_json: input.content_json,
                     tags: input.tags,
+                    channel_slugs: None,
                 },
             )
             .await?;
@@ -145,6 +148,7 @@ impl ForumMutation {
             body_format: topic.body_format,
             status: topic.status,
             tags: topic.tags,
+            channel_slugs: topic.channel_slugs.clone(),
             is_pinned: topic.is_pinned,
             is_locked: topic.is_locked,
             reply_count: topic.reply_count,

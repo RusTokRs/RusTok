@@ -36,6 +36,7 @@ pub struct GqlForumTopic {
     pub body_format: String,
     pub status: String,
     pub tags: Vec<String>,
+    pub channel_slugs: Vec<String>,
     pub is_pinned: bool,
     pub is_locked: bool,
     pub reply_count: i32,
@@ -70,6 +71,7 @@ pub struct CreateForumTopicInput {
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
     pub tags: Vec<String>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(InputObject)]
@@ -80,6 +82,7 @@ pub struct UpdateForumTopicInput {
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
     pub tags: Option<Vec<String>>,
+    pub channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(InputObject)]

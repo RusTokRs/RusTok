@@ -904,6 +904,64 @@ impl NodeService {
         Ok(Self::to_response(node_model, translations, bodies))
     }
 
+    /// Fetch multiple nodes by ID in a single batch query.
+    /// Returns responses in arbitrary order; callers should match by `id`.
+    /// Missing or soft-deleted nodes are silently omitted from the result.
+    #[instrument(skip(self, node_ids), fields(tenant_id = %tenant_id, count = node_ids.len()))]
+    pub async fn get_nodes_batch(
+        &self,
+        tenant_id: Uuid,
+        node_ids: &[Uuid],
+    ) -> ContentResult<Vec<NodeResponse>> {
+        if node_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        debug!(count = node_ids.len(), "Fetching nodes batch");
+
+        let nodes = node::Entity::find()
+            .filter(node::Column::TenantId.eq(tenant_id))
+            .filter(node::Column::Id.is_in(node_ids.to_vec()))
+            .filter(node::Column::DeletedAt.is_null())
+            .all(&self.db)
+            .await?;
+
+        let found_ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+
+        let translations = node_translation::Entity::find()
+            .filter(node_translation::Column::NodeId.is_in(found_ids.clone()))
+            .all(&self.db)
+            .await?;
+
+        let bodies = body::Entity::find()
+            .filter(body::Column::NodeId.is_in(found_ids))
+            .all(&self.db)
+            .await?;
+
+        let mut translations_map: std::collections::HashMap<Uuid, Vec<node_translation::Model>> =
+            std::collections::HashMap::new();
+        for tr in translations {
+            translations_map.entry(tr.node_id).or_default().push(tr);
+        }
+
+        let mut bodies_map: std::collections::HashMap<Uuid, Vec<body::Model>> =
+            std::collections::HashMap::new();
+        for b in bodies {
+            bodies_map.entry(b.node_id).or_default().push(b);
+        }
+
+        let responses = nodes
+            .into_iter()
+            .map(|node| {
+                let node_id = node.id;
+                let trs = translations_map.remove(&node_id).unwrap_or_default();
+                let bds = bodies_map.remove(&node_id).unwrap_or_default();
+                Self::to_response(node, trs, bds)
+            })
+            .collect();
+
+        Ok(responses)
+    }
+
     pub async fn get_by_slug(
         &self,
         tenant_id: Uuid,
