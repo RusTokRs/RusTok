@@ -7,14 +7,14 @@
 
 `rustok-channel` уже доведён до рабочего v0 baseline:
 
-- storage, service layer и миграции подняты;
+- storage, service layer и миграции подняты, включая persisted policy layer для tenant-scoped typed resolution policies;
 - модуль зарегистрирован как `Core` и подключён в `modules.toml`;
 - server умеет резолвить `ChannelContext` на запросе;
 - есть тонкий REST surface для admin flow;
 - есть module-owned Leptos admin UI;
 - есть первый живой consumer в `rustok-pages`, уже расширенный до publication-level proof point;
 - есть второй живой consumer в `rustok-blog`, уже тоже расширенный до publication-level proof point;
-- runtime contract закреплён отдельными тестами server middleware на policy order `header -> query -> host -> default`, fallback-ы и skip inactive explicit selectors;
+- runtime contract закреплён отдельными тестами server middleware на baseline order `header -> query -> host -> default`, fallback-ы и skip inactive explicit selectors;
 - документация и ADR приведены в актуальное состояние.
 
 После baseline уже сделан первый post-v0 stabilizing step:
@@ -130,7 +130,7 @@
 
 - регистрация модуля в `apps/server`;
 - подключение миграций в server migrator;
-- middleware для разрешения канала по explicit policy order `header -> query -> host -> default`, где host-based resolution сейчас сознательно использует только `web_domain` targets;
+- middleware для разрешения канала через domain-owned pipeline `header -> query -> built-in host slice -> reserved policy seam -> explicit default`, где host-based resolution сейчас сознательно использует только `web_domain` targets;
 - explicit selectors (`X-Channel-ID`, `X-Channel-Slug`, `channel` query) теперь тоже резолвят только active channels и подтягивают полноценный channel detail, чтобы runtime diagnostics были консистентны с host/default flow;
 - thin REST endpoints `/api/channels/*`.
 
@@ -222,8 +222,8 @@
 - [x] убрать `tenant-level default rules` как самостоятельную целевую архитектурную сущность;
 - [x] ввести typed resolver boundary в `rustok-channel`: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`;
 - [x] перевести server middleware на domain-owned resolver pipeline вместо локальной бизнес-логики;
-- [ ] добавить persisted policy storage для tenant-scoped typed resolution policies;
-- [ ] определить минимальный typed predicate set для `v1`: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, `LocaleEquals`;
+- [x] добавить persisted policy storage для tenant-scoped typed resolution policies;
+- [x] определить минимальный typed predicate set для `v1`: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, `LocaleEquals`;
 - [ ] ввести policy trace в admin bootstrap/runtime diagnostics;
 - [ ] добавить operator flows для policy authoring/reordering/disable в `rustok-channel-admin`;
 - [ ] после policy rollout решить, остаётся ли built-in host slice отдельным fast-path или схлопывается в общий policy engine.

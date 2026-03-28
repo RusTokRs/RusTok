@@ -217,14 +217,6 @@ impl ChannelResolver {
             });
         }
 
-        trace.push(ResolutionTraceStep {
-            stage: ResolutionStage::Policy,
-            outcome: ResolutionOutcome::Miss,
-            detail:
-                "No tenant-scoped typed resolution policies are configured yet; built-in target resolution continues."
-                    .to_string(),
-        });
-
         if let Some(host) = facts.host.as_deref() {
             if let Some(normalized) = ChannelTargetType::WebDomain.normalize_value(host) {
                 if let Some(detail) = self
@@ -264,6 +256,10 @@ impl ChannelResolver {
             });
         }
 
+        if let Some(decision) = self.resolve_policies(facts, &mut trace).await? {
+            return Ok(decision);
+        }
+
         if let Some(detail) = self.service.get_default_channel(facts.tenant_id).await? {
             trace.push(ResolutionTraceStep {
                 stage: ResolutionStage::Default,
@@ -285,12 +281,84 @@ impl ChannelResolver {
 
         Ok(ResolutionDecision::unresolved(trace))
     }
+
+    async fn resolve_policies(
+        &self,
+        facts: &RequestFacts,
+        trace: &mut Vec<ResolutionTraceStep>,
+    ) -> ChannelResult<Option<ResolutionDecision>> {
+        let rules = self
+            .service
+            .list_active_resolution_rules(facts.tenant_id)
+            .await?;
+
+        if rules.is_empty() {
+            trace.push(ResolutionTraceStep {
+                stage: ResolutionStage::Policy,
+                outcome: ResolutionOutcome::Miss,
+                detail:
+                    "No tenant-scoped typed resolution policies are configured yet after built-in target slices."
+                        .to_string(),
+            });
+            return Ok(None);
+        }
+
+        for rule in rules {
+            if !rule.definition.matches(facts) {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::Policy,
+                    outcome: ResolutionOutcome::Miss,
+                    detail: format!(
+                        "Policy rule '{}' in set '{}' did not match request facts",
+                        rule.id, rule.policy_set_slug
+                    ),
+                });
+                continue;
+            }
+
+            let detail = self
+                .service
+                .get_channel_detail(rule.action_channel_id)
+                .await?;
+            if !detail.channel.is_active {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::Policy,
+                    outcome: ResolutionOutcome::Rejected,
+                    detail: format!(
+                        "Policy rule '{}' in set '{}' resolved to inactive channel '{}'",
+                        rule.id, rule.policy_set_slug, detail.channel.slug
+                    ),
+                });
+                continue;
+            }
+
+            trace.push(ResolutionTraceStep {
+                stage: ResolutionStage::Policy,
+                outcome: ResolutionOutcome::Matched,
+                detail: format!(
+                    "Policy rule '{}' in set '{}' matched channel '{}'",
+                    rule.id, rule.policy_set_slug, detail.channel.slug
+                ),
+            });
+            return Ok(Some(ResolutionDecision::matched(
+                detail,
+                ChannelResolutionOrigin::Policy,
+                trace.clone(),
+            )));
+        }
+
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionOutcome};
-    use crate::{CreateChannelInput, CreateChannelTargetInput, migrations};
+    use crate::{
+        ChannelResolutionRuleDefinition, CreateChannelInput, CreateChannelResolutionPolicySetInput,
+        CreateChannelResolutionRuleInput, CreateChannelTargetInput, ResolutionAction,
+        ResolutionPredicate, migrations,
+    };
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;
@@ -388,6 +456,38 @@ mod tests {
             .expect("target should be created");
     }
 
+    async fn add_policy_rule(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        predicates: Vec<ResolutionPredicate>,
+    ) {
+        let service = crate::ChannelService::new(db.clone());
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+        service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates,
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("policy rule should be created");
+    }
+
     #[tokio::test]
     async fn resolver_prefers_explicit_selectors_before_host_and_default() {
         let db = setup_channel_db().await;
@@ -447,6 +547,112 @@ mod tests {
                 .iter()
                 .any(|step| step.outcome == ResolutionOutcome::Rejected),
             "trace must explain rejected invalid host"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolver_stops_at_host_before_policy_stage() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+
+        let channel_id = create_channel(&db, tenant_id, "host").await;
+        add_web_target(&db, channel_id, "shop.example.test").await;
+
+        let resolver = ChannelResolver::new(db);
+        let decision = resolver
+            .resolve(&RequestFacts {
+                tenant_id,
+                host: Some("shop.example.test".to_string()),
+                ..RequestFacts::default()
+            })
+            .await
+            .expect("resolution should succeed");
+
+        assert_eq!(decision.source, Some(ChannelResolutionOrigin::Host));
+        assert!(
+            !decision
+                .trace
+                .iter()
+                .any(|step| step.stage == super::ResolutionStage::Policy),
+            "policy stage must not run after a built-in host match"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolver_uses_policy_after_host_miss_and_before_default() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+
+        let default_channel_id = create_channel(&db, tenant_id, "default").await;
+        let policy_channel_id = create_channel(&db, tenant_id, "policy").await;
+        add_policy_rule(
+            &db,
+            tenant_id,
+            policy_channel_id,
+            vec![
+                ResolutionPredicate::SurfaceIs(super::TargetSurface::Http),
+                ResolutionPredicate::LocaleEquals("ru-by".to_string()),
+            ],
+        )
+        .await;
+
+        let resolver = ChannelResolver::new(db);
+        let decision = resolver
+            .resolve(&RequestFacts {
+                tenant_id,
+                locale: Some("RU_BY".to_string()),
+                ..RequestFacts::default()
+            })
+            .await
+            .expect("resolution should succeed");
+
+        assert_eq!(decision.source, Some(ChannelResolutionOrigin::Policy));
+        assert_eq!(
+            decision.detail.expect("detail").channel.id,
+            policy_channel_id
+        );
+        assert_ne!(policy_channel_id, default_channel_id);
+    }
+
+    #[tokio::test]
+    async fn resolver_falls_back_to_default_after_policy_miss() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+
+        let default_channel_id = create_channel(&db, tenant_id, "default").await;
+        let policy_channel_id = create_channel(&db, tenant_id, "policy").await;
+        add_policy_rule(
+            &db,
+            tenant_id,
+            policy_channel_id,
+            vec![ResolutionPredicate::LocaleEquals("ru-by".to_string())],
+        )
+        .await;
+
+        let resolver = ChannelResolver::new(db);
+        let decision = resolver
+            .resolve(&RequestFacts {
+                tenant_id,
+                locale: Some("en-us".to_string()),
+                ..RequestFacts::default()
+            })
+            .await
+            .expect("resolution should succeed");
+
+        assert_eq!(decision.source, Some(ChannelResolutionOrigin::Default));
+        assert_eq!(
+            decision.detail.expect("detail").channel.id,
+            default_channel_id
+        );
+        assert!(
+            decision
+                .trace
+                .iter()
+                .any(|step| step.stage == super::ResolutionStage::Policy),
+            "policy stage should be visible before default fallback"
         );
     }
 }

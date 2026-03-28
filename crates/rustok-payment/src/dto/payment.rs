@@ -17,6 +17,16 @@ pub struct CreatePaymentCollectionInput {
     pub metadata: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ListPaymentCollectionsInput {
+    pub page: u64,
+    pub per_page: u64,
+    pub status: Option<String>,
+    pub order_id: Option<Uuid>,
+    pub cart_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct AuthorizePaymentInput {
     #[validate(length(min = 1, max = 100))]

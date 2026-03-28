@@ -9,16 +9,29 @@ use rustok_core::generate_id;
 
 use crate::dto::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
-    ChannelModuleBindingResponse, ChannelOauthAppResponse, ChannelResponse, ChannelTargetResponse,
-    CreateChannelInput, CreateChannelTargetInput, UpdateChannelTargetInput,
+    ChannelModuleBindingResponse, ChannelOauthAppResponse,
+    ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
+    ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
+    CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
+    CreateChannelTargetInput, UpdateChannelTargetInput,
 };
 use crate::entities::channel::{self, ActiveModel as ChannelActiveModel};
 use crate::entities::channel_module_binding::{
     self, ActiveModel as ChannelModuleBindingActiveModel,
 };
 use crate::entities::channel_oauth_app::{self, ActiveModel as ChannelOauthAppActiveModel};
+use crate::entities::channel_resolution_policy_rule::{
+    self, ActiveModel as ChannelResolutionPolicyRuleActiveModel,
+};
+use crate::entities::channel_resolution_policy_set::{
+    self, ActiveModel as ChannelResolutionPolicySetActiveModel,
+};
 use crate::entities::channel_target::{self, ActiveModel as ChannelTargetActiveModel};
 use crate::error::{ChannelError, ChannelResult};
+use crate::policy::{
+    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition,
+    StoredChannelResolutionRule,
+};
 use crate::target_type::ChannelTargetType;
 
 pub struct ChannelService {
@@ -494,6 +507,165 @@ impl ChannelService {
         Ok(response)
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %input.tenant_id, slug = %input.slug))]
+    pub async fn create_resolution_policy_set(
+        &self,
+        input: CreateChannelResolutionPolicySetInput,
+    ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        if let Some(_existing) = channel_resolution_policy_set::Entity::find()
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(input.tenant_id))
+            .filter(channel_resolution_policy_set::Column::Slug.eq(&input.slug))
+            .one(&self.db)
+            .await?
+        {
+            return Err(ChannelError::PolicySetSlugAlreadyExists(input.slug));
+        }
+
+        let now = chrono::Utc::now().into();
+        let model = ChannelResolutionPolicySetActiveModel {
+            id: Set(generate_id()),
+            tenant_id: Set(input.tenant_id),
+            slug: Set(input.slug),
+            name: Set(input.name),
+            schema_version: Set(CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION),
+            is_active: Set(input.is_active),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&self.db)
+        .await?;
+
+        if model.is_active {
+            self.replace_active_policy_set(model.tenant_id, model.id)
+                .await?;
+            return self.get_resolution_policy_set(model.id).await;
+        }
+
+        Ok(to_channel_resolution_policy_set_response(model))
+    }
+
+    #[instrument(skip(self, input), fields(policy_set_id = %policy_set_id, priority = input.priority))]
+    pub async fn create_resolution_rule(
+        &self,
+        policy_set_id: Uuid,
+        input: CreateChannelResolutionRuleInput,
+    ) -> ChannelResult<ChannelResolutionRuleResponse> {
+        let policy_set = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(policy_set_id))?;
+        let definition = input.definition.validated()?;
+        let action_channel_id = definition.action_channel_id();
+        let action_channel = channel::Entity::find_by_id(action_channel_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(action_channel_id))?;
+
+        if action_channel.tenant_id != policy_set.tenant_id {
+            return Err(ChannelError::InvalidPolicyDefinition(format!(
+                "policy action channel '{action_channel_id}' does not belong to tenant '{}'",
+                policy_set.tenant_id
+            )));
+        }
+
+        let now = chrono::Utc::now().into();
+        let model = ChannelResolutionPolicyRuleActiveModel {
+            id: Set(generate_id()),
+            policy_set_id: Set(policy_set_id),
+            priority: Set(input.priority),
+            is_active: Set(input.is_active),
+            action_channel_id: Set(action_channel_id),
+            definition: Set(serde_json::to_value(&definition)?),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&self.db)
+        .await?;
+
+        Ok(to_channel_resolution_rule_response(model)?)
+    }
+
+    pub async fn get_resolution_policy_set(
+        &self,
+        policy_set_id: Uuid,
+    ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        let model = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(policy_set_id))?;
+        Ok(to_channel_resolution_policy_set_response(model))
+    }
+
+    pub async fn list_resolution_policy_sets(
+        &self,
+        tenant_id: Uuid,
+    ) -> ChannelResult<Vec<ChannelResolutionPolicySetDetailResponse>> {
+        let policy_sets = channel_resolution_policy_set::Entity::find()
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
+            .order_by_desc(channel_resolution_policy_set::Column::IsActive)
+            .order_by_asc(channel_resolution_policy_set::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        let mut items = Vec::with_capacity(policy_sets.len());
+        for policy_set in policy_sets {
+            let rules = channel_resolution_policy_rule::Entity::find()
+                .filter(channel_resolution_policy_rule::Column::PolicySetId.eq(policy_set.id))
+                .order_by_asc(channel_resolution_policy_rule::Column::Priority)
+                .order_by_asc(channel_resolution_policy_rule::Column::CreatedAt)
+                .all(&self.db)
+                .await?
+                .into_iter()
+                .map(to_channel_resolution_rule_response)
+                .collect::<ChannelResult<Vec<_>>>()?;
+
+            items.push(ChannelResolutionPolicySetDetailResponse {
+                policy_set: to_channel_resolution_policy_set_response(policy_set),
+                rules,
+            });
+        }
+
+        Ok(items)
+    }
+
+    pub async fn list_active_resolution_rules(
+        &self,
+        tenant_id: Uuid,
+    ) -> ChannelResult<Vec<StoredChannelResolutionRule>> {
+        let rows = channel_resolution_policy_rule::Entity::find()
+            .filter(channel_resolution_policy_rule::Column::IsActive.eq(true))
+            .find_also_related(channel_resolution_policy_set::Entity)
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
+            .filter(channel_resolution_policy_set::Column::IsActive.eq(true))
+            .order_by_asc(channel_resolution_policy_rule::Column::Priority)
+            .order_by_asc(channel_resolution_policy_rule::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        rows.into_iter()
+            .map(|(rule, maybe_policy_set)| {
+                let policy_set = maybe_policy_set.ok_or_else(|| {
+                    ChannelError::InvalidPolicyDefinition(format!(
+                        "policy rule '{}' is missing its policy set",
+                        rule.id
+                    ))
+                })?;
+                Ok(StoredChannelResolutionRule {
+                    id: rule.id,
+                    policy_set_id: rule.policy_set_id,
+                    policy_set_slug: policy_set.slug,
+                    policy_set_name: policy_set.name,
+                    priority: rule.priority,
+                    action_channel_id: rule.action_channel_id,
+                    definition: serde_json::from_value::<ChannelResolutionRuleDefinition>(
+                        rule.definition,
+                    )?
+                    .validated()?,
+                })
+            })
+            .collect()
+    }
+
     async fn ensure_channel_exists(&self, channel_id: Uuid) -> ChannelResult<()> {
         channel::Entity::find_by_id(channel_id)
             .one(&self.db)
@@ -532,6 +704,34 @@ impl ChannelService {
 
             let mut active: channel::ActiveModel = existing.into();
             active.is_default = Set(should_be_default);
+            active.updated_at = Set(now);
+            active.update(&txn).await?;
+        }
+
+        txn.commit().await?;
+        Ok(())
+    }
+
+    async fn replace_active_policy_set(
+        &self,
+        tenant_id: Uuid,
+        policy_set_id: Uuid,
+    ) -> ChannelResult<()> {
+        let now = chrono::Utc::now().into();
+        let txn = self.db.begin().await?;
+        let policy_sets = channel_resolution_policy_set::Entity::find()
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+
+        for existing in policy_sets {
+            let should_be_active = existing.id == policy_set_id;
+            if existing.is_active == should_be_active {
+                continue;
+            }
+
+            let mut active: channel_resolution_policy_set::ActiveModel = existing.into();
+            active.is_active = Set(should_be_active);
             active.updated_at = Set(now);
             active.update(&txn).await?;
         }
@@ -666,6 +866,37 @@ fn to_channel_oauth_app_response(model: channel_oauth_app::Model) -> ChannelOaut
     }
 }
 
+fn to_channel_resolution_policy_set_response(
+    model: channel_resolution_policy_set::Model,
+) -> ChannelResolutionPolicySetResponse {
+    ChannelResolutionPolicySetResponse {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        slug: model.slug,
+        name: model.name,
+        schema_version: model.schema_version,
+        is_active: model.is_active,
+        created_at: model.created_at.into(),
+        updated_at: model.updated_at.into(),
+    }
+}
+
+fn to_channel_resolution_rule_response(
+    model: channel_resolution_policy_rule::Model,
+) -> ChannelResult<ChannelResolutionRuleResponse> {
+    Ok(ChannelResolutionRuleResponse {
+        id: model.id,
+        policy_set_id: model.policy_set_id,
+        priority: model.priority,
+        is_active: model.is_active,
+        action_channel_id: model.action_channel_id,
+        definition: serde_json::from_value::<ChannelResolutionRuleDefinition>(model.definition)?
+            .validated()?,
+        created_at: model.created_at.into(),
+        updated_at: model.updated_at.into(),
+    })
+}
+
 fn normalize_target_value(target_type: ChannelTargetType, raw: &str) -> Option<String> {
     target_type.normalize_value(raw)
 }
@@ -673,9 +904,14 @@ fn normalize_target_value(target_type: ChannelTargetType, raw: &str) -> Option<S
 #[cfg(test)]
 mod tests {
     use super::ChannelService;
-    use crate::ChannelError;
-    use crate::dto::{CreateChannelInput, CreateChannelTargetInput, UpdateChannelTargetInput};
+    use crate::dto::{
+        CreateChannelInput, CreateChannelResolutionPolicySetInput,
+        CreateChannelResolutionRuleInput, CreateChannelTargetInput, UpdateChannelTargetInput,
+    };
     use crate::migrations;
+    use crate::{
+        ChannelError, ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate,
+    };
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;
@@ -1091,6 +1327,105 @@ mod tests {
         assert!(detail.targets.is_empty());
         assert!(detail.module_bindings.is_empty());
         assert!(detail.oauth_apps.is_empty());
+    }
+
+    #[tokio::test]
+    async fn creates_resolution_policy_set_and_rule_with_validated_definition() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+        let channel_id = create_channel(&service, tenant_id, "policy-target").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+        let rule = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![
+                            ResolutionPredicate::HostSuffix(" SHOP.EXAMPLE.TEST ".to_string()),
+                            ResolutionPredicate::LocaleEquals(" RU_BY ".to_string()),
+                        ],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("policy rule should be created");
+        let listed = service
+            .list_resolution_policy_sets(tenant_id)
+            .await
+            .expect("policy sets should load");
+        let active_rules = service
+            .list_active_resolution_rules(tenant_id)
+            .await
+            .expect("active policy rules should load");
+
+        assert!(policy_set.is_active);
+        assert_eq!(rule.action_channel_id, channel_id);
+        assert_eq!(
+            rule.definition.predicates,
+            vec![
+                ResolutionPredicate::HostSuffix("shop.example.test".to_string()),
+                ResolutionPredicate::LocaleEquals("ru-by".to_string()),
+            ]
+        );
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].rules.len(), 1);
+        assert_eq!(active_rules.len(), 1);
+        assert_eq!(active_rules[0].policy_set_slug, "default");
+    }
+
+    #[tokio::test]
+    async fn rejects_policy_rule_that_targets_channel_from_another_tenant() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        let other_tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        seed_tenant(&db, other_tenant_id, "other").await;
+        let service = ChannelService::new(db.clone());
+        let foreign_channel_id = create_channel(&service, other_tenant_id, "foreign").await;
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+
+        let error = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::SurfaceIs(
+                            crate::TargetSurface::Http,
+                        )],
+                        action: ResolutionAction::ResolveToChannel {
+                            channel_id: foreign_channel_id,
+                        },
+                    },
+                },
+            )
+            .await
+            .expect_err("cross-tenant channel should be rejected");
+
+        assert!(matches!(error, ChannelError::InvalidPolicyDefinition(_)));
     }
 
     async fn seed_oauth_app(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) -> Uuid {

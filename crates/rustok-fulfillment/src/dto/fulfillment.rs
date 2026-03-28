@@ -18,6 +18,15 @@ pub struct CreateShippingOptionInput {
     pub metadata: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ListFulfillmentsInput {
+    pub page: u64,
+    pub per_page: u64,
+    pub status: Option<String>,
+    pub order_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateFulfillmentInput {
     pub order_id: Uuid,

@@ -1,7 +1,7 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale},
-    TenantContext,
+    graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
+    AuthContext, TenantContext,
 };
 use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
@@ -16,7 +16,8 @@ use uuid::Uuid;
 use crate::{
     entities::{product, product_translation},
     search::product_translation_title_search_condition,
-    CatalogService, CommerceError, FulfillmentService, OrderService, PaymentService,
+    CatalogService, CommerceError, CustomerService, FulfillmentService, OrderService,
+    PaymentService, RegionService, StoreContextService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -26,6 +27,173 @@ pub struct CommerceQuery;
 
 #[Object]
 impl CommerceQuery {
+    async fn storefront_regions(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Vec<GqlRegion>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let regions = RegionService::new(db.clone()).list_regions(tenant_id).await?;
+
+        Ok(regions.into_iter().map(Into::into).collect())
+    }
+
+    async fn storefront_shipping_options(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        filter: Option<StorefrontContextFilter>,
+    ) -> Result<Vec<GqlShippingOption>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let customer_id =
+            resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
+                .await?;
+        let filter = filter.unwrap_or(StorefrontContextFilter {
+            cart_id: None,
+            region_id: None,
+            country_code: None,
+            locale: None,
+            currency_code: None,
+        });
+        let context = if let Some(cart_id) = filter.cart_id {
+            let cart = crate::CartService::new(db.clone()).get_cart(tenant_id, cart_id).await?;
+            ensure_storefront_cart_access(&cart, customer_id)?;
+            resolve_storefront_context(
+                db,
+                ctx,
+                tenant_id,
+                cart.region_id,
+                cart.country_code.clone(),
+                cart.locale_code.clone(),
+                Some(cart.currency_code.clone()),
+            )
+            .await?
+        } else {
+            resolve_storefront_context(
+                db,
+                ctx,
+                tenant_id,
+                filter.region_id,
+                filter.country_code,
+                filter.locale,
+                filter.currency_code,
+            )
+            .await?
+        };
+
+        let mut options = FulfillmentService::new(db.clone())
+            .list_shipping_options(tenant_id)
+            .await?;
+        if let Some(currency_code) = context.currency_code.as_deref() {
+            options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
+        }
+
+        Ok(options.into_iter().map(Into::into).collect())
+    }
+
+    async fn storefront_me(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlCustomer> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let customer = CustomerService::new(db.clone())
+            .get_customer_by_user(tenant_id, auth.user_id)
+            .await
+            .map_err(|err| match err {
+                rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+                    <FieldError as GraphQLError>::unauthenticated()
+                }
+                other => async_graphql::Error::new(other.to_string()),
+            })?;
+
+        Ok(customer.into())
+    }
+
+    async fn storefront_order(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlOrder>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let customer = CustomerService::new(db.clone())
+            .get_customer_by_user(tenant_id, auth.user_id)
+            .await
+            .map_err(|err| match err {
+                rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+                    <FieldError as GraphQLError>::unauthenticated()
+                }
+                other => async_graphql::Error::new(other.to_string()),
+            })?;
+        let order = match OrderService::new(db.clone(), event_bus.clone())
+            .get_order(tenant_id, id)
+            .await
+        {
+            Ok(order) => order,
+            Err(rustok_order::error::OrderError::OrderNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        if order.customer_id != Some(customer.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Order does not belong to the current customer",
+            ));
+        }
+
+        Ok(Some(order.into()))
+    }
+
+    async fn storefront_cart(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlCart>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let customer_id =
+            resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
+                .await?;
+        let cart = match crate::CartService::new(db.clone())
+            .get_cart(tenant_id, id)
+            .await
+        {
+            Ok(cart) => cart,
+            Err(rustok_cart::error::CartError::CartNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        ensure_storefront_cart_access(&cart, customer_id)?;
+        Ok(Some(cart.into()))
+    }
+
     async fn order(
         &self,
         ctx: &Context<'_>,
@@ -139,6 +307,54 @@ impl CommerceQuery {
         Ok(Some(collection.into()))
     }
 
+    async fn payment_collections(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<PaymentCollectionsFilter>,
+    ) -> Result<GqlPaymentCollectionList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let filter = filter.unwrap_or(PaymentCollectionsFilter {
+            status: None,
+            order_id: None,
+            cart_id: None,
+            customer_id: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let (items, total) = PaymentService::new(db.clone())
+            .list_collections(
+                tenant_id,
+                crate::dto::ListPaymentCollectionsInput {
+                    page,
+                    per_page,
+                    status: filter.status,
+                    order_id: filter.order_id,
+                    cart_id: filter.cart_id,
+                    customer_id: filter.customer_id,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlPaymentCollectionList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
     async fn fulfillment(
         &self,
         ctx: &Context<'_>,
@@ -165,6 +381,52 @@ impl CommerceQuery {
         };
 
         Ok(Some(fulfillment.into()))
+    }
+
+    async fn fulfillments(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<FulfillmentsFilter>,
+    ) -> Result<GqlFulfillmentList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let filter = filter.unwrap_or(FulfillmentsFilter {
+            status: None,
+            order_id: None,
+            customer_id: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let (items, total) = FulfillmentService::new(db.clone())
+            .list_fulfillments(
+                tenant_id,
+                crate::dto::ListFulfillmentsInput {
+                    page,
+                    per_page,
+                    status: filter.status,
+                    order_id: filter.order_id,
+                    customer_id: filter.customer_id,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlFulfillmentList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
     }
 
     async fn product(
@@ -602,4 +864,65 @@ async fn find_first_published_product(
 
 fn product_list_path(path: &'static str) -> &'static str {
     path
+}
+
+async fn resolve_optional_storefront_customer_id(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    auth: Option<&AuthContext>,
+) -> Result<Option<Uuid>> {
+    let Some(auth) = auth else {
+        return Ok(None);
+    };
+
+    match CustomerService::new(db.clone())
+        .get_customer_by_user(tenant_id, auth.user_id)
+        .await
+    {
+        Ok(customer) => Ok(Some(customer.id)),
+        Err(rustok_customer::error::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
+        Err(err) => Err(async_graphql::Error::new(err.to_string())),
+    }
+}
+
+fn ensure_storefront_cart_access(
+    cart: &crate::dto::CartResponse,
+    customer_id: Option<Uuid>,
+) -> Result<()> {
+    if let Some(expected_customer_id) = cart.customer_id {
+        if customer_id.is_none() {
+            return Err(<FieldError as GraphQLError>::unauthenticated());
+        }
+        if customer_id != Some(expected_customer_id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Cart belongs to another customer",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn resolve_storefront_context(
+    db: &DatabaseConnection,
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    region_id: Option<Uuid>,
+    country_code: Option<String>,
+    locale: Option<String>,
+    currency_code: Option<String>,
+) -> Result<crate::dto::StoreContextResponse> {
+    let locale = locale.or_else(|| Some(resolve_graphql_locale(ctx, None)));
+    StoreContextService::new(db.clone())
+        .resolve_context(
+            tenant_id,
+            crate::dto::ResolveStoreContextInput {
+                region_id,
+                country_code,
+                locale,
+                currency_code,
+            },
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))
 }

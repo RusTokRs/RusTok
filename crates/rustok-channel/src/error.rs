@@ -1,4 +1,5 @@
 use sea_orm::DbErr;
+use serde_json::Error as SerdeJsonError;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -16,8 +17,14 @@ pub enum ChannelError {
     InvalidTargetType(String),
     #[error("target value `{0}` is invalid")]
     InvalidTargetValue(String),
+    #[error("channel resolution policy definition is invalid: {0}")]
+    InvalidPolicyDefinition(String),
     #[error("target `{1}` already exists for target type `{0}` in this tenant")]
     TargetAlreadyExists(String, String),
+    #[error("channel resolution policy set `{0}` already exists for this tenant")]
+    PolicySetSlugAlreadyExists(String),
     #[error(transparent)]
     Database(#[from] DbErr),
+    #[error(transparent)]
+    Serialization(#[from] SerdeJsonError),
 }

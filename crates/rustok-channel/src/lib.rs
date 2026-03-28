@@ -2,16 +2,24 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod policy;
 pub mod resolution;
 pub mod services;
 pub mod target_type;
 
 pub use dto::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
-    ChannelModuleBindingResponse, ChannelOauthAppResponse, ChannelResponse, ChannelTargetResponse,
-    CreateChannelInput, CreateChannelTargetInput, UpdateChannelTargetInput,
+    ChannelModuleBindingResponse, ChannelOauthAppResponse,
+    ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
+    ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
+    CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
+    CreateChannelTargetInput, UpdateChannelTargetInput,
 };
 pub use error::{ChannelError, ChannelResult};
+pub use policy::{
+    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition, ResolutionAction,
+    ResolutionPredicate, StoredChannelResolutionRule,
+};
 pub use resolution::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, ResolutionOutcome,
     ResolutionStage, ResolutionTraceStep, TargetSurface,

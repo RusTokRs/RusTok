@@ -89,10 +89,12 @@ fn openapi_includes_admin_order_detail_contract_path() {
         "/admin/orders/{id}/ship",
         "/admin/orders/{id}/deliver",
         "/admin/orders/{id}/cancel",
+        "/admin/payment-collections",
         "/admin/payment-collections/{id}",
         "/admin/payment-collections/{id}/authorize",
         "/admin/payment-collections/{id}/capture",
         "/admin/payment-collections/{id}/cancel",
+        "/admin/fulfillments",
         "/admin/fulfillments/{id}",
         "/admin/fulfillments/{id}/ship",
         "/admin/fulfillments/{id}/deliver",
@@ -170,6 +172,10 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
         Some("#/components/schemas/CancelOrderInput".to_string())
     );
     assert_eq!(
+        response_schema_ref(&spec, "/admin/payment-collections", "get", "200"),
+        Some("#/components/schemas/PaginatedResponse_PaymentCollectionResponse".to_string())
+    );
+    assert_eq!(
         response_schema_ref(&spec, "/admin/payment-collections/{id}", "get", "200"),
         Some("#/components/schemas/PaymentCollectionResponse".to_string())
     );
@@ -184,6 +190,10 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
     assert_eq!(
         request_schema_ref(&spec, "/admin/payment-collections/{id}/cancel", "post"),
         Some("#/components/schemas/CancelPaymentInput".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/fulfillments", "get", "200"),
+        Some("#/components/schemas/PaginatedResponse_FulfillmentResponse".to_string())
     );
     assert_eq!(
         response_schema_ref(&spec, "/admin/fulfillments/{id}", "get", "200"),
@@ -231,10 +241,12 @@ fn openapi_registers_store_cart_related_component_schemas() {
         "AuthorizePaymentInput",
         "CapturePaymentInput",
         "CancelPaymentInput",
+        "PaginatedResponse_PaymentCollectionResponse",
         "FulfillmentResponse",
         "ShipFulfillmentInput",
         "DeliverFulfillmentInput",
         "CancelFulfillmentInput",
+        "PaginatedResponse_FulfillmentResponse",
     ] {
         assert!(
             schemas.contains_key(schema),

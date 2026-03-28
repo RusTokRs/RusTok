@@ -1,4 +1,4 @@
-use async_graphql::{Enum, InputObject, SimpleObject};
+use async_graphql::{Enum, InputObject, MaybeUndefined, SimpleObject};
 use uuid::Uuid;
 
 use crate::dto;
@@ -114,6 +114,110 @@ pub struct GqlAdminOrderDetail {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlCustomer {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub email: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub phone: Option<String>,
+    pub locale: Option<String>,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlRegion {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub tax_rate: String,
+    pub tax_included: bool,
+    pub countries: Vec<String>,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlShippingOption {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub provider_id: String,
+    pub active: bool,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlStoreContext {
+    pub region: Option<GqlRegion>,
+    pub locale: String,
+    pub default_locale: String,
+    pub available_locales: Vec<String>,
+    pub currency_code: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCart {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub customer_id: Option<Uuid>,
+    pub email: Option<String>,
+    pub region_id: Option<Uuid>,
+    pub country_code: Option<String>,
+    pub locale_code: Option<String>,
+    pub selected_shipping_option_id: Option<Uuid>,
+    pub status: String,
+    pub currency_code: String,
+    pub total_amount: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub completed_at: Option<String>,
+    pub line_items: Vec<GqlCartLineItem>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCartLineItem {
+    pub id: Uuid,
+    pub cart_id: Uuid,
+    pub product_id: Option<Uuid>,
+    pub variant_id: Option<Uuid>,
+    pub sku: Option<String>,
+    pub title: String,
+    pub quantity: i32,
+    pub unit_price: String,
+    pub total_price: String,
+    pub currency_code: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCompleteCheckout {
+    pub cart: GqlCart,
+    pub order: GqlOrder,
+    pub payment_collection: GqlPaymentCollection,
+    pub fulfillment: Option<GqlFulfillment>,
+    pub context: GqlStoreContext,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlStoreCart {
+    pub cart: GqlCart,
+    pub context: GqlStoreContext,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlOrder {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -206,6 +310,15 @@ pub struct GqlPayment {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlPaymentCollectionList {
+    pub items: Vec<GqlPaymentCollection>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlFulfillment {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -223,6 +336,15 @@ pub struct GqlFulfillment {
     pub shipped_at: Option<String>,
     pub delivered_at: Option<String>,
     pub cancelled_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlFulfillmentList {
+    pub items: Vec<GqlFulfillment>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
 }
 
 #[derive(InputObject)]
@@ -297,8 +419,36 @@ pub struct StorefrontProductsFilter {
 }
 
 #[derive(InputObject)]
+pub struct StorefrontContextFilter {
+    pub cart_id: Option<Uuid>,
+    pub region_id: Option<Uuid>,
+    pub country_code: Option<String>,
+    pub locale: Option<String>,
+    pub currency_code: Option<String>,
+}
+
+#[derive(InputObject)]
 pub struct OrdersFilter {
     pub status: Option<String>,
+    pub customer_id: Option<Uuid>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
+pub struct PaymentCollectionsFilter {
+    pub status: Option<String>,
+    pub order_id: Option<Uuid>,
+    pub cart_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
+pub struct FulfillmentsFilter {
+    pub status: Option<String>,
+    pub order_id: Option<Uuid>,
     pub customer_id: Option<Uuid>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
@@ -344,6 +494,54 @@ pub struct CapturePaymentCollectionInput {
 pub struct CancelPaymentCollectionInput {
     pub reason: Option<String>,
     pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateStorefrontPaymentCollectionInput {
+    pub cart_id: Uuid,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CompleteStorefrontCheckoutInput {
+    pub cart_id: Uuid,
+    pub shipping_option_id: Option<Uuid>,
+    pub region_id: Option<Uuid>,
+    pub country_code: Option<String>,
+    pub locale: Option<String>,
+    pub create_fulfillment: Option<bool>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateStorefrontCartInput {
+    pub email: Option<String>,
+    pub currency_code: Option<String>,
+    pub region_id: Option<Uuid>,
+    pub country_code: Option<String>,
+    pub locale: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct AddStorefrontCartLineItemInput {
+    pub variant_id: Uuid,
+    pub quantity: i32,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct UpdateStorefrontCartLineItemInput {
+    pub quantity: i32,
+}
+
+#[derive(InputObject)]
+pub struct UpdateStorefrontCartContextInput {
+    pub email: MaybeUndefined<String>,
+    pub region_id: MaybeUndefined<Uuid>,
+    pub country_code: MaybeUndefined<String>,
+    pub locale: MaybeUndefined<String>,
+    pub selected_shipping_option_id: MaybeUndefined<Uuid>,
 }
 
 #[derive(InputObject)]
@@ -452,6 +650,134 @@ impl From<crate::controllers::admin::AdminOrderDetailResponse> for GqlAdminOrder
             order: value.order.into(),
             payment_collection: value.payment_collection.map(Into::into),
             fulfillment: value.fulfillment.map(Into::into),
+        }
+    }
+}
+
+impl From<dto::CustomerResponse> for GqlCustomer {
+    fn from(value: dto::CustomerResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            user_id: value.user_id,
+            email: value.email,
+            first_name: value.first_name,
+            last_name: value.last_name,
+            phone: value.phone,
+            locale: value.locale,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::RegionResponse> for GqlRegion {
+    fn from(value: dto::RegionResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            name: value.name,
+            currency_code: value.currency_code,
+            tax_rate: value.tax_rate.to_string(),
+            tax_included: value.tax_included,
+            countries: value.countries,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::ShippingOptionResponse> for GqlShippingOption {
+    fn from(value: dto::ShippingOptionResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            name: value.name,
+            currency_code: value.currency_code,
+            amount: value.amount.to_string(),
+            provider_id: value.provider_id,
+            active: value.active,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::StoreContextResponse> for GqlStoreContext {
+    fn from(value: dto::StoreContextResponse) -> Self {
+        Self {
+            region: value.region.map(Into::into),
+            locale: value.locale,
+            default_locale: value.default_locale,
+            available_locales: value.available_locales,
+            currency_code: value.currency_code,
+        }
+    }
+}
+
+impl From<dto::CartResponse> for GqlCart {
+    fn from(value: dto::CartResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            customer_id: value.customer_id,
+            email: value.email,
+            region_id: value.region_id,
+            country_code: value.country_code,
+            locale_code: value.locale_code,
+            selected_shipping_option_id: value.selected_shipping_option_id,
+            status: value.status,
+            currency_code: value.currency_code,
+            total_amount: value.total_amount.to_string(),
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            completed_at: value.completed_at.map(|value| value.to_rfc3339()),
+            line_items: value.line_items.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<dto::CartLineItemResponse> for GqlCartLineItem {
+    fn from(value: dto::CartLineItemResponse) -> Self {
+        Self {
+            id: value.id,
+            cart_id: value.cart_id,
+            product_id: value.product_id,
+            variant_id: value.variant_id,
+            sku: value.sku,
+            title: value.title,
+            quantity: value.quantity,
+            unit_price: value.unit_price.to_string(),
+            total_price: value.total_price.to_string(),
+            currency_code: value.currency_code,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::CompleteCheckoutResponse> for GqlCompleteCheckout {
+    fn from(value: dto::CompleteCheckoutResponse) -> Self {
+        Self {
+            cart: value.cart.into(),
+            order: value.order.into(),
+            payment_collection: value.payment_collection.into(),
+            fulfillment: value.fulfillment.map(Into::into),
+            context: value.context.into(),
+        }
+    }
+}
+
+impl From<crate::controllers::store::StoreCartResponse> for GqlStoreCart {
+    fn from(value: crate::controllers::store::StoreCartResponse) -> Self {
+        Self {
+            cart: value.cart.into(),
+            context: value.context.into(),
         }
     }
 }

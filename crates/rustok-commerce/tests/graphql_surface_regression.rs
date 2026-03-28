@@ -76,8 +76,15 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
     for required in [
         "async fn product(",
         "async fn products(",
+        "async fn storefront_cart(",
+        "async fn storefront_me(",
+        "async fn storefront_order(",
+        "async fn storefront_regions(",
+        "async fn storefront_shipping_options(",
         "async fn storefront_product(",
         "async fn storefront_products(",
+        "async fn payment_collections(",
+        "async fn fulfillments(",
     ] {
         assert!(
             query_source.contains(required),
@@ -86,6 +93,13 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
     }
 
     for required in [
+        "async fn create_storefront_cart(",
+        "async fn update_storefront_cart_context(",
+        "async fn add_storefront_cart_line_item(",
+        "async fn update_storefront_cart_line_item(",
+        "async fn remove_storefront_cart_line_item(",
+        "async fn create_storefront_payment_collection(",
+        "async fn complete_storefront_checkout(",
         "async fn create_product(",
         "async fn update_product(",
         "async fn publish_product(",

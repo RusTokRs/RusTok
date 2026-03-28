@@ -14,8 +14,9 @@ use crate::{
     dto::{
         AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelPaymentInput,
         CapturePaymentInput, CreateProductInput, DeliverFulfillmentInput, DeliverOrderInput,
-        FulfillmentResponse, MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse,
-        ProductResponse, ShipFulfillmentInput, ShipOrderInput, UpdateProductInput,
+        FulfillmentResponse, ListFulfillmentsInput, ListPaymentCollectionsInput,
+        MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse, ProductResponse,
+        ShipFulfillmentInput, ShipOrderInput, UpdateProductInput,
     },
     CatalogService, FulfillmentService, OrderService, PaymentService,
 };
@@ -55,6 +56,10 @@ pub fn routes() -> Routes {
         .add("/orders/{id}/deliver", axum::routing::post(deliver_order))
         .add("/orders/{id}/cancel", axum::routing::post(cancel_order))
         .add(
+            "/payment-collections",
+            axum::routing::get(list_payment_collections),
+        )
+        .add(
             "/payment-collections/{id}",
             axum::routing::get(show_payment_collection),
         )
@@ -70,6 +75,7 @@ pub fn routes() -> Routes {
             "/payment-collections/{id}/cancel",
             axum::routing::post(cancel_payment_collection),
         )
+        .add("/fulfillments", axum::routing::get(list_fulfillments))
         .add("/fulfillments/{id}", axum::routing::get(show_fulfillment))
         .add(
             "/fulfillments/{id}/ship",
@@ -97,6 +103,25 @@ pub struct ListOrdersParams {
     #[serde(flatten)]
     pub pagination: Option<super::common::PaginationParams>,
     pub status: Option<String>,
+    pub customer_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ListPaymentCollectionsParams {
+    #[serde(flatten)]
+    pub pagination: Option<super::common::PaginationParams>,
+    pub status: Option<String>,
+    pub order_id: Option<Uuid>,
+    pub cart_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ListFulfillmentsParams {
+    #[serde(flatten)]
+    pub pagination: Option<super::common::PaginationParams>,
+    pub status: Option<String>,
+    pub order_id: Option<Uuid>,
     pub customer_id: Option<Uuid>,
 }
 
@@ -358,6 +383,51 @@ pub async fn show_order(
     }))
 }
 
+/// List admin payment collections
+#[utoipa::path(
+    get,
+    path = "/admin/payment-collections",
+    tag = "admin",
+    params(ListPaymentCollectionsParams),
+    responses(
+        (status = 200, description = "Payment collections", body = PaginatedResponse<PaymentCollectionResponse>),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_payment_collections(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(params): Query<ListPaymentCollectionsParams>,
+) -> Result<Json<PaginatedResponse<PaymentCollectionResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::PAYMENTS_READ],
+        "Permission denied: payments:read required",
+    )?;
+
+    let pagination = params.pagination.unwrap_or_default();
+    let (collections, total) = PaymentService::new(ctx.db.clone())
+        .list_collections(
+            tenant.id,
+            ListPaymentCollectionsInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                status: params.status,
+                order_id: params.order_id,
+                cart_id: params.cart_id,
+                customer_id: params.customer_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    Ok(Json(PaginatedResponse {
+        data: collections,
+        meta: super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+    }))
+}
+
 /// Mark admin ecommerce order as paid
 #[utoipa::path(
     post,
@@ -536,6 +606,50 @@ pub async fn show_payment_collection(
         .map_err(map_payment_error)?;
 
     Ok(Json(collection))
+}
+
+/// List admin fulfillments
+#[utoipa::path(
+    get,
+    path = "/admin/fulfillments",
+    tag = "admin",
+    params(ListFulfillmentsParams),
+    responses(
+        (status = 200, description = "Fulfillments", body = PaginatedResponse<FulfillmentResponse>),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_fulfillments(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(params): Query<ListFulfillmentsParams>,
+) -> Result<Json<PaginatedResponse<FulfillmentResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let pagination = params.pagination.unwrap_or_default();
+    let (fulfillments, total) = FulfillmentService::new(ctx.db.clone())
+        .list_fulfillments(
+            tenant.id,
+            ListFulfillmentsInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                status: params.status,
+                order_id: params.order_id,
+                customer_id: params.customer_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    Ok(Json(PaginatedResponse {
+        data: fulfillments,
+        meta: super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+    }))
 }
 
 /// Authorize admin payment collection
@@ -822,8 +936,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::dto::{
-        CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
-        CreatePaymentCollectionInput,
+        CancelPaymentInput, CreateFulfillmentInput, CreateOrderInput,
+        CreateOrderLineItemInput, CreatePaymentCollectionInput, ShipFulfillmentInput,
     };
     use crate::{FulfillmentService, OrderService, PaymentService};
 
@@ -1140,6 +1254,301 @@ mod tests {
         assert_eq!(payload["meta"]["page"], json!(1));
         assert_eq!(payload["meta"]["per_page"], json!(1));
         assert_ne!(data[0]["id"], json!(first_order.id));
+    }
+
+    #[tokio::test]
+    async fn admin_payment_collections_transport_lists_collections_with_pagination_and_filters() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_a = Uuid::new_v4();
+        let customer_b = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PAYMENTS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+        let payment_service = PaymentService::new(db.clone());
+        let first_order = order_service
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_a),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        sku: Some("ADMIN-PAYMENT-LIST-1".to_string()),
+                        title: "Admin Payment List 1".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("15.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-payment-list" }),
+                    }],
+                    metadata: json!({ "source": "admin-payment-list" }),
+                },
+            )
+            .await
+            .expect("first order should be created");
+        let second_order = order_service
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_b),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        sku: Some("ADMIN-PAYMENT-LIST-2".to_string()),
+                        title: "Admin Payment List 2".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-payment-list" }),
+                    }],
+                    metadata: json!({ "source": "admin-payment-list" }),
+                },
+            )
+            .await
+            .expect("second order should be created");
+        let first_collection = payment_service
+            .create_collection(
+                tenant_id,
+                CreatePaymentCollectionInput {
+                    cart_id: None,
+                    order_id: Some(first_order.id),
+                    customer_id: Some(customer_a),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("15.00").expect("valid decimal"),
+                    metadata: json!({ "source": "admin-payment-list" }),
+                },
+            )
+            .await
+            .expect("first collection should be created");
+        let second_collection = payment_service
+            .create_collection(
+                tenant_id,
+                CreatePaymentCollectionInput {
+                    cart_id: None,
+                    order_id: Some(second_order.id),
+                    customer_id: Some(customer_b),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: json!({ "source": "admin-payment-list" }),
+                },
+            )
+            .await
+            .expect("second collection should be created");
+        payment_service
+            .cancel_collection(
+                tenant_id,
+                second_collection.id,
+                CancelPaymentInput {
+                    reason: Some("filtered".to_string()),
+                    metadata: json!({ "source": "admin-payment-list" }),
+                },
+            )
+            .await
+            .expect("second collection should be cancelled");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/admin/payment-collections?status=cancelled&customer_id={}&page=1&per_page=1",
+                        customer_b
+                    ))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected admin payment collections body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("response should be JSON");
+        let data = payload["data"].as_array().expect("data should be array");
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0]["id"], json!(second_collection.id));
+        assert_eq!(data[0]["status"], json!("cancelled"));
+        assert_eq!(payload["meta"]["total"], json!(1));
+        assert_ne!(data[0]["id"], json!(first_collection.id));
+    }
+
+    #[tokio::test]
+    async fn admin_fulfillments_transport_lists_fulfillments_with_pagination_and_filters() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_a = Uuid::new_v4();
+        let customer_b = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::FULFILLMENTS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+        let fulfillment_service = FulfillmentService::new(db.clone());
+        let first_order = order_service
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_a),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        sku: Some("ADMIN-FULFILLMENT-LIST-1".to_string()),
+                        title: "Admin Fulfillment List 1".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("15.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-fulfillment-list" }),
+                    }],
+                    metadata: json!({ "source": "admin-fulfillment-list" }),
+                },
+            )
+            .await
+            .expect("first order should be created");
+        let second_order = order_service
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_b),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        sku: Some("ADMIN-FULFILLMENT-LIST-2".to_string()),
+                        title: "Admin Fulfillment List 2".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-fulfillment-list" }),
+                    }],
+                    metadata: json!({ "source": "admin-fulfillment-list" }),
+                },
+            )
+            .await
+            .expect("second order should be created");
+        let first_fulfillment = fulfillment_service
+            .create_fulfillment(
+                tenant_id,
+                CreateFulfillmentInput {
+                    order_id: first_order.id,
+                    shipping_option_id: None,
+                    customer_id: Some(customer_a),
+                    carrier: None,
+                    tracking_number: None,
+                    metadata: json!({ "source": "admin-fulfillment-list" }),
+                },
+            )
+            .await
+            .expect("first fulfillment should be created");
+        let second_fulfillment = fulfillment_service
+            .create_fulfillment(
+                tenant_id,
+                CreateFulfillmentInput {
+                    order_id: second_order.id,
+                    shipping_option_id: None,
+                    customer_id: Some(customer_b),
+                    carrier: None,
+                    tracking_number: None,
+                    metadata: json!({ "source": "admin-fulfillment-list" }),
+                },
+            )
+            .await
+            .expect("second fulfillment should be created");
+        fulfillment_service
+            .ship_fulfillment(
+                tenant_id,
+                second_fulfillment.id,
+                ShipFulfillmentInput {
+                    carrier: "manual".to_string(),
+                    tracking_number: "TRACK-FILTERED".to_string(),
+                    metadata: json!({ "source": "admin-fulfillment-list" }),
+                },
+            )
+            .await
+            .expect("second fulfillment should be shipped");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/admin/fulfillments?status=shipped&customer_id={}&page=1&per_page=1",
+                        customer_b
+                    ))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected admin fulfillments body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("response should be JSON");
+        let data = payload["data"].as_array().expect("data should be array");
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0]["id"], json!(second_fulfillment.id));
+        assert_eq!(data[0]["status"], json!("shipped"));
+        assert_eq!(payload["meta"]["total"], json!(1));
+        assert_ne!(data[0]["id"], json!(first_fulfillment.id));
     }
 
     #[tokio::test]

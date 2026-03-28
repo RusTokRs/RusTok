@@ -3,13 +3,15 @@ use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_commerce::dto::{
     AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateProductInput,
+    CreateCustomerInput,
     CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreatePaymentCollectionInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
     ProductTranslationInput,
 };
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{
-    CartService, CatalogService, CheckoutService, FulfillmentService, OrderService, PaymentService,
+    CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
+    OrderService, PaymentService,
 };
 use rustok_core::Permission;
 use rustok_region::dto::CreateRegionInput;
@@ -159,6 +161,18 @@ fn admin_order_auth_context(tenant_id: Uuid) -> AuthContext {
             Permission::FULFILLMENTS_READ,
             Permission::FULFILLMENTS_UPDATE,
         ],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    }
+}
+
+fn customer_auth_context(tenant_id: Uuid, user_id: Uuid) -> AuthContext {
+    AuthContext {
+        user_id,
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![],
         client_id: None,
         scopes: vec![],
         grant_type: "direct".to_string(),
@@ -361,6 +375,259 @@ fn admin_order_parity_query(tenant_id: Uuid, order_id: Uuid, payment_collection_
             status
             trackingNumber
             deliveredNote
+          }}
+          paymentCollections(
+            tenantId: "{tenant_id}",
+            filter: {{ page: 1, perPage: 20, orderId: "{order_id}", status: "captured" }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              orderId
+            }}
+          }}
+          fulfillments(
+            tenantId: "{tenant_id}",
+            filter: {{ page: 1, perPage: 20, orderId: "{order_id}", status: "delivered" }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              orderId
+              trackingNumber
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_customer_order_query(tenant_id: Uuid, order_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontMe(tenantId: "{tenant_id}") {{
+            id
+            email
+            locale
+          }}
+          storefrontOrder(tenantId: "{tenant_id}", id: "{order_id}") {{
+            id
+            customerId
+            status
+            currencyCode
+            totalAmount
+            lineItems {{
+              title
+              quantity
+              currencyCode
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_checkout_mutation(tenant_id: Uuid, cart_id: Uuid) -> String {
+    format!(
+        r#"
+        mutation {{
+          createStorefrontPaymentCollection(
+            tenantId: "{tenant_id}",
+            input: {{
+              cartId: "{cart_id}"
+              metadata: "{{\"source\":\"storefront-graphql-checkout\",\"step\":\"payment\"}}"
+            }}
+          ) {{
+            id
+            status
+            amount
+          }}
+          completeStorefrontCheckout(
+            tenantId: "{tenant_id}",
+            input: {{
+              cartId: "{cart_id}"
+              createFulfillment: true
+              metadata: "{{\"source\":\"storefront-graphql-checkout\",\"step\":\"complete\"}}"
+            }}
+          ) {{
+            cart {{ id status }}
+            order {{ id status }}
+            paymentCollection {{ id status cartId orderId }}
+            fulfillment {{ id status }}
+            context {{ locale currencyCode }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_cart_flow_mutation(tenant_id: Uuid) -> String {
+    format!(
+        r#"
+        mutation {{
+          createStorefrontCart(
+            tenantId: "{tenant_id}",
+            input: {{
+              email: "guest-cart@example.com"
+              currencyCode: "eur"
+              countryCode: "de"
+              locale: "de"
+              metadata: "{{\"source\":\"storefront-graphql-cart\",\"step\":\"create\"}}"
+            }}
+          ) {{
+            cart {{ id status currencyCode email }}
+            context {{ locale currencyCode }}
+          }}
+        }}
+        "#,
+    )
+}
+
+fn storefront_cart_add_line_item_mutation(tenant_id: Uuid, cart_id: Uuid, variant_id: Uuid) -> String {
+    format!(
+        r#"
+        mutation {{
+          addStorefrontCartLineItem(
+            tenantId: "{tenant_id}",
+            cartId: "{cart_id}",
+            input: {{
+              variantId: "{variant_id}"
+              quantity: 2
+              metadata: "{{\"source\":\"storefront-graphql-cart\",\"step\":\"add\"}}"
+            }}
+          ) {{
+            id
+            status
+            totalAmount
+            lineItems {{ id title quantity totalPrice currencyCode }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_cart_update_line_item_mutation(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    line_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          updateStorefrontCartLineItem(
+            tenantId: "{tenant_id}",
+            cartId: "{cart_id}",
+            lineId: "{line_id}",
+            input: {{ quantity: 3 }}
+          ) {{
+            id
+            totalAmount
+            lineItems {{ id quantity totalPrice }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_cart_remove_line_item_mutation(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    line_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          removeStorefrontCartLineItem(
+            tenantId: "{tenant_id}",
+            cartId: "{cart_id}",
+            lineId: "{line_id}"
+          ) {{
+            id
+            totalAmount
+            lineItems {{ id }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_cart_query(tenant_id: Uuid, cart_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontCart(tenantId: "{tenant_id}", id: "{cart_id}") {{
+            id
+            email
+            status
+            currencyCode
+            totalAmount
+            lineItems {{ id title quantity totalPrice currencyCode }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_cart_context_update_mutation(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    region_id: Uuid,
+    shipping_option_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          updateStorefrontCartContext(
+            tenantId: "{tenant_id}",
+            cartId: "{cart_id}",
+            input: {{
+              email: null
+              regionId: "{region_id}"
+              selectedShippingOptionId: "{shipping_option_id}"
+            }}
+          ) {{
+            cart {{
+              id
+              email
+              regionId
+              countryCode
+              localeCode
+              selectedShippingOptionId
+            }}
+            context {{
+              locale
+              currencyCode
+              region {{ id }}
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_discovery_query(tenant_id: Uuid, cart_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontRegions(tenantId: "{tenant_id}") {{
+            id
+            name
+            currencyCode
+          }}
+          storefrontShippingOptions(
+            tenantId: "{tenant_id}",
+            filter: {{
+              cartId: "{cart_id}"
+              currencyCode: "usd"
+            }}
+          ) {{
+            id
+            name
+            currencyCode
+            amount
           }}
         }}
         "#
@@ -1140,4 +1407,882 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         query_json["fulfillment"]["deliveredNote"],
         Value::from("Left at reception")
     );
+    assert_eq!(query_json["paymentCollections"]["total"], Value::from(1));
+    assert_eq!(
+        query_json["paymentCollections"]["items"][0]["id"],
+        Value::from(payment_collection.id.to_string())
+    );
+    assert_eq!(query_json["fulfillments"]["total"], Value::from(1));
+    assert_eq!(
+        query_json["fulfillments"]["items"][0]["id"],
+        Value::from(fulfillment.id.to_string())
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read_path() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                email: "buyer@example.com".to_string(),
+                first_name: Some("GraphQL".to_string()),
+                last_name: Some("Buyer".to_string()),
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
+            },
+        )
+        .await
+        .expect("customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            user_id,
+            CreateOrderInput {
+                customer_id: Some(customer.id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    sku: Some("STOREFRONT-ORDER-1".to_string()),
+                    title: "Storefront Order".to_string(),
+                    quantity: 2,
+                    unit_price: Decimal::from_str("15.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
+                }],
+                metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, user_id)),
+    );
+    let response = schema
+        .execute(Request::new(storefront_customer_order_query(
+            tenant_id, order.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["storefrontMe"]["email"],
+        Value::from("buyer@example.com")
+    );
+    assert_eq!(json["storefrontMe"]["locale"], Value::from("de"));
+    assert_eq!(json["storefrontOrder"]["id"], Value::from(order.id.to_string()));
+    assert_eq!(
+        json["storefrontOrder"]["customerId"],
+        Value::from(customer.id.to_string())
+    );
+    assert_eq!(json["storefrontOrder"]["status"], Value::from("pending"));
+    assert_eq!(json["storefrontOrder"]["currencyCode"], Value::from("EUR"));
+    assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("30"));
+    assert_eq!(
+        json["storefrontOrder"]["lineItems"][0]["title"],
+        Value::from("Storefront Order")
+    );
+    assert_eq!(
+        json["storefrontOrder"]["lineItems"][0]["quantity"],
+        Value::from(2)
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let owner_user_id = Uuid::new_v4();
+    let foreign_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let owner_customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(owner_user_id),
+                email: "owner@example.com".to_string(),
+                first_name: Some("Owner".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-order-owner" }),
+            },
+        )
+        .await
+        .expect("owner customer should be created");
+    CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(foreign_user_id),
+                email: "foreign@example.com".to_string(),
+                first_name: Some("Foreign".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
+            },
+        )
+        .await
+        .expect("foreign customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            owner_user_id,
+            CreateOrderInput {
+                customer_id: Some(owner_customer.id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    sku: Some("FOREIGN-ORDER-1".to_string()),
+                    title: "Foreign Guard".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("9.99").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
+                }],
+                metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(customer_auth_context(tenant_id, foreign_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontOrder(tenantId: "{tenant_id}", id: "{order_id}") {{
+                id
+              }}
+            }}
+            "#,
+            order_id = order.id
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(
+        response.errors[0].message,
+        "Order does not belong to the current customer"
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_cart() {
+    let (db, catalog, cart_service, _checkout, fulfillment) = setup_checkout().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .unwrap();
+    let published_variant = published
+        .variants
+        .first()
+        .expect("published product must have variant");
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "storefront-graphql-checkout" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "storefront-graphql-checkout" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("guest@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-checkout" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(published_variant.id),
+                sku: published_variant.sku.clone(),
+                title: "Parity Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "storefront-graphql-checkout" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let response = schema
+        .execute(Request::new(storefront_checkout_mutation(
+            tenant_id, cart.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront checkout GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["createStorefrontPaymentCollection"]["status"],
+        Value::from("pending")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["cart"]["status"],
+        Value::from("completed")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["order"]["status"],
+        Value::from("paid")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["paymentCollection"]["status"],
+        Value::from("captured")
+    );
+    assert_eq!(
+        json["createStorefrontPaymentCollection"]["id"],
+        json["completeStorefrontCheckout"]["paymentCollection"]["id"]
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["fulfillment"]["status"],
+        Value::from("pending")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["context"]["currencyCode"],
+        Value::from("EUR")
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_payment_collection_rejects_foreign_customer_cart_access() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let owner_user_id = Uuid::new_v4();
+    let foreign_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let owner_customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(owner_user_id),
+                email: "owner-cart@example.com".to_string(),
+                first_name: Some("Owner".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-payment-owner" }),
+            },
+        )
+        .await
+        .expect("owner customer should be created");
+    CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(foreign_user_id),
+                email: "foreign-cart@example.com".to_string(),
+                first_name: Some("Foreign".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-payment-foreign" }),
+            },
+        )
+        .await
+        .expect("foreign customer should be created");
+
+    let cart = CartService::new(db.clone())
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(owner_customer.id),
+                email: Some("owner-cart@example.com".to_string()),
+                region_id: None,
+                country_code: Some("de".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-payment-foreign" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(customer_auth_context(tenant_id, foreign_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              createStorefrontPaymentCollection(
+                tenantId: "{tenant_id}",
+                input: {{ cartId: "{cart_id}" }}
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            cart_id = cart.id
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(response.errors[0].message, "Cart belongs to another customer");
+}
+
+#[tokio::test]
+async fn storefront_graphql_cart_flow_creates_reads_updates_and_removes_line_items() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .unwrap();
+    let published_variant = published
+        .variants
+        .first()
+        .expect("published product must have variant");
+
+    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+
+    let created_cart = schema
+        .execute(Request::new(storefront_cart_flow_mutation(
+            tenant_id,
+        )))
+        .await;
+    assert!(
+        created_cart.errors.is_empty(),
+        "unexpected create cart GraphQL errors: {:?}",
+        created_cart.errors
+    );
+    let created_cart_json = created_cart
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let cart_id = Uuid::parse_str(
+        created_cart_json["createStorefrontCart"]["cart"]["id"]
+            .as_str()
+            .expect("cart id must be a string"),
+    )
+    .expect("cart id must parse");
+    assert_eq!(
+        created_cart_json["createStorefrontCart"]["context"]["currencyCode"],
+        Value::from("EUR")
+    );
+
+    let added = schema
+        .execute(Request::new(storefront_cart_add_line_item_mutation(
+            tenant_id,
+            cart_id,
+            published_variant.id,
+        )))
+        .await;
+    assert!(
+        added.errors.is_empty(),
+        "unexpected add line item GraphQL errors: {:?}",
+        added.errors
+    );
+    let added_json = added
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let line_id = Uuid::parse_str(
+        added_json["addStorefrontCartLineItem"]["lineItems"][0]["id"]
+            .as_str()
+            .expect("line id must be a string"),
+    )
+    .expect("line id must parse");
+    assert_eq!(
+        added_json["addStorefrontCartLineItem"]["totalAmount"],
+        Value::from("39.98")
+    );
+
+    let queried = schema
+        .execute(Request::new(storefront_cart_query(tenant_id, cart_id)))
+        .await;
+    assert!(
+        queried.errors.is_empty(),
+        "unexpected cart query GraphQL errors: {:?}",
+        queried.errors
+    );
+    let queried_json = queried
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        queried_json["storefrontCart"]["lineItems"][0]["title"],
+        Value::from("Paritaet Produkt / Default")
+    );
+    assert_eq!(
+        queried_json["storefrontCart"]["lineItems"][0]["quantity"],
+        Value::from(2)
+    );
+
+    let updated = schema
+        .execute(Request::new(storefront_cart_update_line_item_mutation(
+            tenant_id, cart_id, line_id,
+        )))
+        .await;
+    assert!(
+        updated.errors.is_empty(),
+        "unexpected update line item GraphQL errors: {:?}",
+        updated.errors
+    );
+    let updated_json = updated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        updated_json["updateStorefrontCartLineItem"]["totalAmount"],
+        Value::from("59.97")
+    );
+    assert_eq!(
+        updated_json["updateStorefrontCartLineItem"]["lineItems"][0]["quantity"],
+        Value::from(3)
+    );
+
+    let removed = schema
+        .execute(Request::new(storefront_cart_remove_line_item_mutation(
+            tenant_id, cart_id, line_id,
+        )))
+        .await;
+    assert!(
+        removed.errors.is_empty(),
+        "unexpected remove line item GraphQL errors: {:?}",
+        removed.errors
+    );
+    let removed_json = removed
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        removed_json["removeStorefrontCartLineItem"]["totalAmount"],
+        Value::from("0")
+    );
+    assert_eq!(
+        removed_json["removeStorefrontCartLineItem"]["lineItems"],
+        serde_json::json!([])
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_cart_query_rejects_foreign_customer_access() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let owner_user_id = Uuid::new_v4();
+    let foreign_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let owner_customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(owner_user_id),
+                email: "owner-query@example.com".to_string(),
+                first_name: Some("Owner".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-cart-owner" }),
+            },
+        )
+        .await
+        .expect("owner customer should be created");
+    CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(foreign_user_id),
+                email: "foreign-query@example.com".to_string(),
+                first_name: Some("Foreign".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-cart-foreign" }),
+            },
+        )
+        .await
+        .expect("foreign customer should be created");
+    let cart = CartService::new(db.clone())
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(owner_customer.id),
+                email: Some("owner-query@example.com".to_string()),
+                region_id: None,
+                country_code: Some("de".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-cart-foreign" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(customer_auth_context(tenant_id, foreign_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(storefront_cart_query(tenant_id, cart.id)))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(response.errors[0].message, "Cart belongs to another customer");
+}
+
+#[tokio::test]
+async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "storefront-graphql-cart-context" }),
+            },
+        )
+        .await
+        .expect("region should be created");
+    let shipping_option = FulfillmentService::new(db.clone())
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "storefront-graphql-cart-context" }),
+            },
+        )
+        .await
+        .expect("shipping option should be created");
+    let cart = CartService::new(db.clone())
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("context@example.com".to_string()),
+                region_id: None,
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-cart-context" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+
+    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let response = schema
+        .execute(Request::new(storefront_cart_context_update_mutation(
+            tenant_id,
+            cart.id,
+            region.id,
+            shipping_option.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected cart context patch GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(json["updateStorefrontCartContext"]["cart"]["email"], Value::Null);
+    assert_eq!(
+        json["updateStorefrontCartContext"]["cart"]["regionId"],
+        Value::from(region.id.to_string())
+    );
+    assert_eq!(
+        json["updateStorefrontCartContext"]["cart"]["countryCode"],
+        Value::Null
+    );
+    assert_eq!(
+        json["updateStorefrontCartContext"]["cart"]["selectedShippingOptionId"],
+        Value::from(shipping_option.id.to_string())
+    );
+    assert_eq!(
+        json["updateStorefrontCartContext"]["context"]["region"]["id"],
+        Value::from(region.id.to_string())
+    );
+    assert_eq!(
+        json["updateStorefrontCartContext"]["context"]["currencyCode"],
+        Value::from("EUR")
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_context_contract() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
+            },
+        )
+        .await
+        .expect("region should be created");
+    FulfillmentService::new(db.clone())
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "EUR Standard".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
+            },
+        )
+        .await
+        .expect("eur option should be created");
+    FulfillmentService::new(db.clone())
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "USD Express".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("14.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
+            },
+        )
+        .await
+        .expect("usd option should be created");
+    let cart = CartService::new(db.clone())
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("discovery@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+
+    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let response = schema
+        .execute(Request::new(storefront_discovery_query(tenant_id, cart.id)))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront discovery GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(json["storefrontRegions"][0]["id"], Value::from(region.id.to_string()));
+    assert_eq!(
+        json["storefrontRegions"][0]["currencyCode"],
+        Value::from("EUR")
+    );
+    assert_eq!(
+        json["storefrontShippingOptions"],
+        serde_json::json!([{
+            "id": json["storefrontShippingOptions"][0]["id"].clone(),
+            "name": "EUR Standard",
+            "currencyCode": "EUR",
+            "amount": "9.99"
+        }])
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_shipping_options_reject_foreign_customer_cart_access() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let owner_user_id = Uuid::new_v4();
+    let foreign_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let owner_customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(owner_user_id),
+                email: "shipping-owner@example.com".to_string(),
+                first_name: Some("Owner".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-owner" }),
+            },
+        )
+        .await
+        .expect("owner customer should be created");
+    CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(foreign_user_id),
+                email: "shipping-foreign@example.com".to_string(),
+                first_name: Some("Foreign".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("en".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-foreign" }),
+            },
+        )
+        .await
+        .expect("foreign customer should be created");
+    let cart = CartService::new(db.clone())
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(owner_customer.id),
+                email: Some("shipping-owner@example.com".to_string()),
+                region_id: None,
+                country_code: Some("de".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-foreign" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(customer_auth_context(tenant_id, foreign_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontShippingOptions(
+                tenantId: "{tenant_id}",
+                filter: {{ cartId: "{cart_id}" }}
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            cart_id = cart.id
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(response.errors[0].message, "Cart belongs to another customer");
 }

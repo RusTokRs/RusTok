@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -11,7 +12,8 @@ use rustok_core::generate_id;
 
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
-    DeliverFulfillmentInput, FulfillmentResponse, ShipFulfillmentInput, ShippingOptionResponse,
+    DeliverFulfillmentInput, FulfillmentResponse, ListFulfillmentsInput, ShipFulfillmentInput,
+    ShippingOptionResponse,
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
@@ -165,6 +167,39 @@ impl FulfillmentService {
             .await?;
 
         Ok(fulfillment.map(map_fulfillment))
+    }
+
+    pub async fn list_fulfillments(
+        &self,
+        tenant_id: Uuid,
+        input: ListFulfillmentsInput,
+    ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
+        let page = input.page.max(1);
+        let per_page = input.per_page.clamp(1, 100);
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        let mut query = entities::fulfillment::Entity::find()
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id));
+
+        if let Some(status) = input.status {
+            query = query.filter(entities::fulfillment::Column::Status.eq(status));
+        }
+        if let Some(order_id) = input.order_id {
+            query = query.filter(entities::fulfillment::Column::OrderId.eq(order_id));
+        }
+        if let Some(customer_id) = input.customer_id {
+            query = query.filter(entities::fulfillment::Column::CustomerId.eq(customer_id));
+        }
+
+        let total = query.clone().count(&self.db).await?;
+        let rows = query
+            .order_by_desc(entities::fulfillment::Column::CreatedAt)
+            .offset(offset)
+            .limit(per_page)
+            .all(&self.db)
+            .await?;
+
+        Ok((rows.into_iter().map(map_fulfillment).collect(), total))
     }
 
     pub async fn ship_fulfillment(

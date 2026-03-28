@@ -32,7 +32,13 @@ RusToK использует гибридный подход:
 
 - legacy `/api/commerce/*` удалён из runtime router и OpenAPI;
 - GraphQL остаётся отдельным transport-слоем, но должен использовать те же application services, что и REST;
-- admin ecommerce surface сейчас включает product management, paginated `GET /admin/orders`, `GET /admin/orders/{id}`, explicit order lifecycle routes (`mark-paid`, `ship`, `deliver`, `cancel`) и admin detail/lifecycle routes для `payment-collections` и `fulfillments`;
+- admin ecommerce surface сейчас включает product management, paginated `GET /admin/orders`, `GET /admin/orders/{id}`, explicit order lifecycle routes (`mark-paid`, `ship`, `deliver`, `cancel`) и admin list/detail/lifecycle routes для `payment-collections` и `fulfillments`;
+- GraphQL commerce surface для admin уже включает parity-read queries `order`, `orders`, `paymentCollection`, `paymentCollections`, `fulfillment`, `fulfillments` и lifecycle mutations для order/payment-collection/fulfillment поверх тех же сервисов, что и REST;
+- storefront GraphQL surface теперь, кроме catalog queries, включает customer-owned read queries `storefrontMe` и `storefrontOrder` поверх тех же `CustomerService`/`OrderService`, что и `/store/customers/me` и `/store/orders/{id}`;
+- storefront GraphQL discovery surface теперь включает `storefrontRegions` и `storefrontShippingOptions`, причём `storefrontShippingOptions` уважает cart-context precedence и customer ownership так же, как live `/store/shipping-options`;
+- storefront GraphQL surface также включает mutations `createStorefrontPaymentCollection` и `completeStorefrontCheckout`, которые повторяют live semantics store REST для guest/customer cart access и reuse существующей cart-bound payment collection;
+- storefront GraphQL surface также покрывает базовый cart lifecycle: `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, `removeStorefrontCartLineItem`, с теми же guest/customer ownership и backend line-item resolution semantics, что и `/store/carts/*`;
+- storefront GraphQL cart context patch `updateStorefrontCartContext` использует tri-state input contract (`omitted` vs `null` vs explicit value) и повторяет semantics live `POST /store/carts/{id}` без потери patch-значения;
 - storefront locale может приходить через `locale` query param и `x-medusa-locale`;
 - storefront cart line items описываются как `variant_id + quantity`, а title/price резолвятся backend-ом;
 - storefront cart context обновляется route `POST /store/carts/{id}` и persist'ится в cart snapshot;

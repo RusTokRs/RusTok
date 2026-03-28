@@ -24,8 +24,10 @@ This crate intentionally ships a minimal v0 model:
 
 Current v0 wiring also includes:
 
-- server-side channel resolution middleware with explicit `header -> query -> host -> default` policy order, where `default` now means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors and typed `resolution_source` diagnostics,
+- server-side channel resolution middleware now delegates to the domain-owned pipeline `header -> query -> built-in host slice -> policy seam -> default`, where `default` means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors and typed `resolution_source` diagnostics,
 - the first typed domain resolution seam for the final architecture: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, and a `ChannelResolver` that keeps precedence inside `rustok-channel`,
+- persisted tenant-scoped typed resolution policies via `channel_resolution_policy_sets` and `channel_resolution_policy_rules`, with versioned JSON definitions, action-channel foreign keys, and deterministic rule order by `priority`,
+- the first live typed predicate set for policies: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, and `LocaleEquals`,
 - `web_domain` targets now use shared canonical normalization/validation (`scheme/path/port` trimming, lowercase, strict host validation), and host lookup reuses the same semantics as storage,
 - a thin REST bootstrap/write surface in `apps/server`,
 - `rustok-channel-admin` for Leptos admin composition,

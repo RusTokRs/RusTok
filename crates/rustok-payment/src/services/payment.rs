@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use rustok_core::generate_id;
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
-    PaymentCollectionResponse, PaymentResponse,
+    ListPaymentCollectionsInput, PaymentCollectionResponse, PaymentResponse,
 };
 use crate::entities;
 use crate::error::{PaymentError, PaymentResult};
@@ -145,6 +145,47 @@ impl PaymentService {
             Some(collection) => self.build_response(collection).await.map(Some),
             None => Ok(None),
         }
+    }
+
+    pub async fn list_collections(
+        &self,
+        tenant_id: Uuid,
+        input: ListPaymentCollectionsInput,
+    ) -> PaymentResult<(Vec<PaymentCollectionResponse>, u64)> {
+        let page = input.page.max(1);
+        let per_page = input.per_page.clamp(1, 100);
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        let mut query = entities::payment_collection::Entity::find()
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id));
+
+        if let Some(status) = input.status {
+            query = query.filter(entities::payment_collection::Column::Status.eq(status));
+        }
+        if let Some(order_id) = input.order_id {
+            query = query.filter(entities::payment_collection::Column::OrderId.eq(order_id));
+        }
+        if let Some(cart_id) = input.cart_id {
+            query = query.filter(entities::payment_collection::Column::CartId.eq(cart_id));
+        }
+        if let Some(customer_id) = input.customer_id {
+            query = query.filter(entities::payment_collection::Column::CustomerId.eq(customer_id));
+        }
+
+        let total = query.clone().count(&self.db).await?;
+        let rows = query
+            .order_by_desc(entities::payment_collection::Column::CreatedAt)
+            .offset(offset)
+            .limit(per_page)
+            .all(&self.db)
+            .await?;
+
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            items.push(self.build_response(row).await?);
+        }
+
+        Ok((items, total))
     }
 
     pub async fn attach_order_to_collection(

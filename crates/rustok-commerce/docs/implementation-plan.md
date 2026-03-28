@@ -102,8 +102,14 @@
 - добавлен paginated admin orders list endpoint `GET /admin/orders` с базовыми filters `status` и `customer_id`;
 - admin order detail отдаёт order вместе с latest payment collection и latest fulfillment;
 - добавлены explicit admin order lifecycle endpoints: `mark-paid`, `ship`, `deliver`, `cancel`;
-- добавлены admin detail/lifecycle endpoints для `payment-collections` (`show`, `authorize`, `capture`, `cancel`) и `fulfillments` (`show`, `ship`, `deliver`, `cancel`);
+- добавлены admin list/detail/lifecycle endpoints для `payment-collections` (`list`, `show`, `authorize`, `capture`, `cancel`) и `fulfillments` (`list`, `show`, `ship`, `deliver`, `cancel`);
 - transport/OpenAPI coverage фиксирует RBAC и schema contract для admin order detail и admin payment/fulfillment lifecycle surface.
+- GraphQL parity расширен до admin order/payment/fulfillment surface: read queries (`order`, `orders`, `paymentCollection`, `paymentCollections`, `fulfillment`, `fulfillments`) и lifecycle mutations теперь работают поверх тех же `OrderService`/`PaymentService`/`FulfillmentService`, что и REST, и покрыты runtime parity test'ом.
+- storefront GraphQL read parity теперь покрывает customer-owned surface `storefrontMe` и `storefrontOrder`, включая ownership guard для чужого заказа, поверх тех же `CustomerService`/`OrderService`, что и `/store/customers/me` и `/store/orders/{id}`.
+- storefront GraphQL mutation surface теперь также покрывает `createStorefrontPaymentCollection` и `completeStorefrontCheckout`, включая guest checkout, customer cart ownership guard и reuse уже созданного cart-bound payment collection поверх тех же `PaymentService`/`CheckoutService`, что и store REST.
+- storefront GraphQL cart surface теперь покрывает `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, `removeStorefrontCartLineItem`, включая guest cart flow и ownership guard для customer-owned cart поверх тех же `CartService` и storefront line-item resolution, что и `/store/carts/*`.
+- storefront GraphQL cart context patch теперь реализован через tri-state input (`MaybeUndefined`): `updateStorefrontCartContext` различает omitted/null/value и повторяет store REST semantics для `email`, `region_id`, `country_code`, `locale`, `selected_shipping_option_id` без грубого overwrite.
+- storefront GraphQL discovery/read surface теперь также включает `storefrontRegions` и `storefrontShippingOptions`, включая cart-context precedence над конфликтующим query currency и ownership guard для customer-owned cart, как у live `/store/regions` и `/store/shipping-options`.
 
 ### Phase 5. Упрощение umbrella-модуля
 
