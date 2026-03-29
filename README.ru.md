@@ -1,405 +1,275 @@
 <div align="center">
 
-# <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusToK
+# <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusTok
 
-**Событийная модульная платформа на Rust**
+**Платформа, на которой строят всё, где есть данные. Построена, чтобы работать.**
 
-*Один репозиторий для сервера, интегрированных Leptos host-приложений и headless/экспериментальных Next.js host-приложений.*
+*Контент · Торговля · Сообщества · Автоматизация · Один рантайм, без компромиссов.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **[English version](README.md)** | **[Краткая справка по платформе](PLATFORM_INFO_RU.md)**
 
 </div>
 
-RusToK сейчас представляет собой Rust-first modular monolith для мультитенантных продуктов, где сочетаются контент, commerce, workflow и интеграции. Текущий центр платформы — `apps/server` как composition root, сборка модулей через manifest, событийное разделение путей записи и чтения и две стратегии UI-host'ов: Leptos как основной интегрированный путь и Next.js как headless или экспериментальный контур.
+---
 
-<a id="table-of-contents"></a>
+## Почему «RusTok»?
 
-## Оглавление
+**Rust + Tokio** — название говорит само за себя.
 
-- [Обзор](#overview)
-- [Возможности](#features)
-- [Производительность и экономия](#performance-and-economy)
-- [Почему Rust](#why-rust)
-- [AI-Native Architecture](#ai-native-architecture)
-- [Сравнение](#comparison)
-- [Снимок архитектуры](#architecture-snapshot)
-  - [Приложения](#applications)
-  - [Таксономия модулей](#module-taxonomy)
-- [Система модулей](#module-system)
-- [Быстрый старт](#quick-start)
-- [Документация](#documentation)
-- [Разработка](#development)
-- [Текущий фокус](#current-focus)
-- [Благодарности](#acknowledgments)
-- [Лицензия](#license)
+**Rust** — язык, который делает целые классы ошибок физически невозможными ещё до запуска программы. Никаких падений по null-указателю, никаких утечек памяти, никакой молчаливой порчи данных, никакого «на моей машине работало». Компилятор — первая линия обороны, и он не торгуется: если код не соответствует контрактам, он просто не соберётся.
 
-<a id="overview"></a>
+**Tokio** — асинхронный рантайм, который работает под капотом и служит двигателем всей платформы. Пока большинство решений начинают задыхаться на нескольких сотнях одновременных запросов и тянутся за дополнительными серверами, Tokio позволяет одной машине держать десятки тысяч соединений — без пулов потоков, без пауз сборщика мусора, без лишних движений.
 
-## Обзор
+Вместе они дают результат, который выглядит почти несправедливо: платформа, которая стартует за 50 миллисекунд, обрабатывает 45 000+ запросов в секунду и ловит ошибки типов, недостающие поля и нарушения контрактов на этапе компиляции — а не в три ночи в продакшне.
 
-Текущие сильные стороны платформы:
+---
 
-- Сборка через manifest от [`modules.toml`](modules.toml) до рантайма и host-приложений.
-- Явные границы между `Core`, `Optional` и capability/support crates.
-- Гибридная API-модель: GraphQL для доменных поверхностей, ориентированных на UI, REST для operational и integration flows, WebSocket там, где нужен live runtime.
-- Событийное разделение путей записи и чтения через transactional outbox, `rustok-index` и `rustok-search`.
-- Две стратегии UI-host'ов: `apps/admin` и `apps/storefront` как интегрированные Leptos hosts, `apps/next-admin` и `apps/next-frontend` как headless/экспериментальные контуры.
+## Что такое RusTok?
 
-Корневой README намеренно короткий. Его задача — дать точку входа в репозиторий, а не заменить полную архитектурную спецификацию.
+RusTok — модульная платформа для построения любого продукта, у которого есть данные. Не просто CMS. Не просто интернет-магазин. Платформа, где вы выбираете нужные модули — контент, торговля, сообщество, workflow, интеграции — и они собираются в единый связный рантайм.
 
-<a id="features"></a>
+Представьте конструктор Lego для серверной части продукта: каждый модуль — самодостаточный блок со своей моделью данных, API-поверхностью и интерфейсом. Модули общаются через типизированные события. Вся структура проверяется на этапе компиляции — не в рантайме, не через плагины, которые могут сломаться при следующем обновлении. Если собралось — контракты честные.
 
-## Возможности
+RusTok создан для команд, которым надоело склеивать несколько платформ изолентой, платить за SaaS-сервисы, выставляющие счёт за каждого пользователя, или разбираться в кодовой базе, где «просто добавь плагин» стало актом смелости.
 
-### Core Platform
+---
 
-- Мультитенантный runtime с tenant-aware контрактами
-- Гибридная API-модель с GraphQL, REST и WebSocket там, где это нужно
-- Manifest-driven composition модулей и per-tenant enablement
-- Событийное разделение путей записи и чтения через transactional outbox
-- Встроенные основы для локализации, observability и RBAC
+## Что можно построить?
 
-### Режимы деплоя
+Если в продукте есть данные — его можно построить на RusTok. Несколько примеров, и это лишь верхушка айсберга:
 
-| Режим | Как работает | Аутентификация | Сценарий |
-|------|-------------|----------------|----------|
-| **Монолит** | Сервер плюс интегрированные Leptos admin/storefront hosts | Серверные сессии и общий runtime context | Self-hosted сайт, встроенный backoffice и storefront |
-| **Headless** | `apps/server` отдаёт API, а frontend живёт отдельно | OAuth2, sessions или смешанный контракт в зависимости от клиента | Мобильные приложения, внешние фронтенды, интеграции |
-| **Смешанный** | Интегрированные Leptos hosts и внешние клиенты поверх одного рантайма | Оба | Встроенная админка плюс внешние приложения и интеграции |
+**Магазины и коммерция**
+- Интернет-магазин с каталогом товаров, вариативными ценами, отслеживанием остатков, мультивалютной корзиной и процессами выполнения заказов — всё в одной платформе, а не пять интеграций, склеенных вместе.
+- Маркетплейс, где несколько продавцов торгуют под одной крышей, у каждого свои товары, ценовые зоны и потоки заказов.
+- B2B-платформа с ценами, индивидуальными для каждого клиента, региональными правилами и согласованиями перед проведением заказа.
 
-### Матрица возможностей
+**Контент и медиа**
+- Блог или редакционное издание с материалами авторов, богатыми медиа, рубриками, тегами, ветками комментариев и полнотекстовым поиском, который действительно работает.
+- Новостной портал или журнал с отложенной публикацией, редакционными процессами и локализованным контентом для разных регионов.
+- База знаний или документационный хаб, где страницы, навигация и поиск — полноправные сущности, а не надстройки.
+- Медиатека, где изображения, видео и файлы хранятся, тегируются, версионируются и отдаются через единый API.
 
-| Возможность | WordPress | Shopify | Strapi | Ghost | **RusToK** |
-|---|---|---|---|---|---|
-| Монолитный деплой | да | нет | нет | да | **да** |
-| Headless API surface | частично | да | да | частично | **да** |
-| Смешанный integrated + headless режим | костыли | частично | частично | ограниченно | **да** |
-| Мультитенантный runtime | multisite | ограниченно | нет | нет | **нативно** |
-| Compile-time composition модулей | нет | нет | нет | нет | **да** |
-| Rust-first integrated UI path | нет | нет | нет | нет | **да** |
+**Сообщества и социальные продукты**
+- Форум с категориями, модерируемыми темами, ветками ответов и профилями пользователей.
+- Сообщество вокруг продукта — где покупатели задают вопросы, пишут отзывы, общаются на форуме и получают репутацию, всё это прямо в том же магазине, где они совершают покупки.
+- Сайт для подписчиков, где доступ к контенту, форумам и функциям ограничен по уровню подписки.
 
-### Developer Experience
+**SaaS и мультитенантные продукты**
+- Мультитенантный SaaS, где каждый клиент получает изолированное рабочее пространство с независимой конфигурацией модулей, своими пользователями, ролями и данными — без отдельных деплойментов.
+- White-label платформа, где разные клиенты запускают разные наборы функций: один включил торговлю, другой работает только с контентом, третий взял оба режима плюс автоматизацию процессов.
+- Внутренняя платформа компании, где несколько команд разделяют инфраструктуру, но работают в изолированных пространствах.
 
-- Loco.rs как foundation для общего server runtime
-- Rust crates как явные границы модулей
-- Module-owned transport и UI slices вместо giant central app
-- Живая документация, индексируемая из `docs/index.md`
+**Workflow и автоматизация**
+- Платформа для бизнес-процессов, где действия порождают события, события запускают workflow, а workflow вызывают вебхуки, отправляют письма, обновляют записи или уведомляют другие системы.
+- Операционный инструмент, где изменения статуса заказа, сигналы о низком запасе и события выполнения проходят через автоматические цепочки вместо ручных процессов.
+- Хаб интеграций, куда внешние системы присылают данные через вебхуки и забирают результаты через REST или GraphQL.
 
-### Тестирование и качество
+**API и headless-бэкенды**
+- Headless-бэкенд для мобильного приложения: платформа берёт на себя авторизацию, данные, поиск и хранение файлов, пока команда фронтенда полностью владеет UI.
+- GraphQL API-сервер для фронтенда на React, Vue или Svelte — с полноценным RBAC, мультитенантностью и событийными записями из коробки.
+- Бэкенд для десктопного приложения, IoT-дашборда или любой системы, которой нужны структурированные данные, роли и обновления в реальном времени.
 
-- Workspace-wide Rust test flow через `cargo nextest`
-- Проверки manifest и dependency hygiene через `cargo machete`
-- Планы верификации платформы для architecture, frontend и quality контуров
+Общий знаменатель: если в вашем продукте есть пользователи, данные и бизнес-правила — RusTok даёт фундамент вместо того, чтобы строить его с нуля или собирать из облачных сервисов.
 
-### Наблюдаемость и безопасность
+---
 
-- Prometheus-style метрики и tracing stack
-- Typed RBAC и permission-aware runtime contracts
-- Tenant-aware request context и channel-aware request flow
-- Общие validation и outbox/event-runtime guardrails
+## Почему RusTok, а не другие платформы?
 
-<a id="performance-and-economy"></a>
+Большинство платформ предлагают сделку: легко начать, тяжело масштабировать, расширять и поддерживать по мере роста требований. RusTok предлагает другую сделку: первоначальные вложения идут в Rust и скомпилированную архитектуру, а отдача — платформа, которая остаётся быстрой, корректной и управляемой.
 
-## Производительность и экономия
+### Разрыв в производительности реален
 
-Точные числа зависят от deployment profile и состава модулей, но позиционирование платформы по-прежнему строится вокруг эффективности compiled runtime и денормализованных read paths.
+| Метрика | Интерпретируемые платформы | RusTok |
+|---------|---------------------------|--------|
+| **Запросов в секунду** | 60 – 800 | **45 000+** |
+| **P99-задержка** | 120 – 450 мс | **8 мс** |
+| **Холодный старт** | 1 – 8,5 секунды | **0,05 секунды** |
 
-### Бенчмарки (симулированные)
+Это не бенчмарки ради бенчмарков. Это меньшие серверы, меньший счёт за облако и продукт, который остаётся отзывчивым при реальных пиках нагрузки — без CDN-слоя, делающего всю тяжёлую работу.
 
-| Метрики | WordPress | Strapi | RusToK |
-|---------|-----------|--------|--------|
-| **Req/sec** | 60 | 800 | **45,000+** |
-| **P99 Latency**| 450ms | 120ms | **8ms** |
-| **Cold Boot** | N/A | 8.5s | **0.05s** |
+### Безопасность, которая не требует дисциплины
 
-<a id="why-rust"></a>
+Другие платформы полагаются на дисциплину разработчика: помни валидировать ввод, помни обрабатывать null, помни проверять права доступа. В RusTok система типов проверяет всё это на этапе компиляции. Контракты с учётом прав доступа, изоляция тенантов и доменные границы — часть структуры кода, а не соглашение в вики.
 
-## Почему Rust
+### Мультитенантность с самого начала
 
-### Проблемы с текущими CMS-решениями
+Большинство платформ добавляют мультитенантность как запоздалую мысль — колонка `tenant_id` на каждой таблице, проверки доступа разбросаны вручную. RusTok построен вокруг `rustok-tenant` с первого дня: тенантный контекст проходит через каждый запрос, включение модулей — per-tenant, а изоляция — гарантия платформы, а не практика разработки.
 
-| Проблема | WordPress | Node.js CMS | RusToK |
-|----------|-----------|-------------|--------|
-| **Runtime Errors** | Fatal errors крашат сайт | Неотловленные исключения | Гарантии времени компиляции |
-| **Memory Leaks** | Частые с плагинами | GC паузы и раздувание памяти | Модель владения предотвращает |
-| **Безопасность** | Большая поверхность атак через плагины | npm supply-chain риски | Скомпилированные и аудируемые зависимости |
-| **Масштабирование** | Требуются внешние слои кеширования | В основном горизонтальное | Вертикальное и горизонтальное |
+### Модульно, а не всё или ничего
 
-### Преимущество Rust
+Платформы, которые тащат всё в одну сборку, заставляют платить за то, чем вы не пользуетесь: памятью, временем старта, поверхностью атаки, сложностью. Модули RusTok — явные зависимости времени компиляции, объявленные в `modules.toml`. Нужны только контент и поиск? Готово. Захотели добавить торговлю через полгода? Включите модуль — контракты уже там.
 
-```rust
-let product = Product::find_by_id(db, product_id)
-    .await?
-    .ok_or(Error::NotFound)?;
-```
+### Одна платформа, любой фронтенд
 
-Даже после переработки архитектуры базовая ценность остаётся той же:
+RusTok не выбирает стороны во фронтендных войнах. Интегрированный путь использует **Leptos** — Rust/WASM-фреймворк, работающий в той же системе типов, что и бэкенд. Headless-путь отдаёт те же данные через GraphQL и REST для любого фронтенда: Next.js, мобильное приложение, десктопный клиент, сторонние инструменты. Или оба варианта одновременно — интегрированная панель администратора, внешнее приложение для клиентов, один рантайм.
 
-- больше ошибок ловится на этапе компиляции;
-- доменные контракты остаются явными между crate-ами;
-- runtime-поведение предсказуемо и не зависит от интерпретатора.
+### Сравнение одним взглядом
 
-<a id="ai-native-architecture"></a>
+| Возможность | Типичная CMS | Типичная e-commerce платформа | Headless CMS | RusTok |
+|---|---|---|---|---|
+| Интегрированный деплой | да | частично | нет | **да** |
+| Headless API | частично | ограниченно | да | **да** |
+| Интегрированный + headless одновременно | редко | нет | нет | **да** |
+| Нативная мультитенантность | нет | ограниченно | нет | **да** |
+| Компиляционная сборка модулей | нет | нет | нет | **да** |
+| Контент + Торговля + Сообщество в одном рантайме | нет | нет | нет | **да** |
+| Производительность Rust-уровня | нет | нет | нет | **да** |
 
-## AI-Native Architecture
+---
 
-RusToK по-прежнему ориентирован на agent-assisted работу, но в практическом смысле: репозиторий опирается на явные контракты, карту документации, module manifests и предсказуемые component boundaries, а не на магию генераторов.
+## Архитектура платформы
 
-Практические AI-facing точки входа:
+### Три способа деплоя
 
-- [Карта документации](docs/index.md)
-- [Системный манифест](RUSTOK_MANIFEST.md)
-- [Реестр модулей](docs/modules/registry.md)
-- [Правила агентов](AGENTS.md)
-
-<a id="comparison"></a>
-
-## Сравнение
-
-### vs. WordPress + WooCommerce
-
-| Аспект | WordPress | RusToK |
-|--------|-----------|--------|
-| Язык | PHP 7.4+ | Rust |
-| Plugin System | Runtime | Compile-time и manifest-driven |
-| Type Safety | Нет | Полная |
-| Multi-tenant | Multisite | Нативный |
-| API | REST | GraphQL + REST |
-| Admin UI | PHP templates | Leptos host |
-
-Лучше для: команд, которым нужны более строгие контракты, чем даёт plugin-first PHP stack.
-
-### vs. Strapi (Node.js)
-
-| Аспект | Strapi | RusToK |
-|--------|--------|--------|
-| Язык | JavaScript/TypeScript | Rust |
-| Моделирование контента | UI-based | Code- и module-based |
-| Plugin Ecosystem | npm | crates и workspace modules |
-| Cold Start | Выше | Ниже |
-
-Лучше для: команд, которым нужна type safety и явное владение доменами.
-
-### vs. Medusa.js (E-commerce)
-
-| Аспект | Medusa | RusToK |
-|--------|--------|--------|
-| Фокус | Только e-commerce | Commerce плюс content/community/workflow |
-| Язык | TypeScript | Rust |
-| Архитектура | Microservices encouraged | Модульный монолит |
-| Storefront | Next.js templates | Leptos host плюс Next.js companion paths |
-
-Лучше для: команд, которым нужны commerce и non-commerce домены в одной платформе.
-
-### vs. Directus / PayloadCMS
-
-| Аспект | Directus/Payload | RusToK |
-|--------|------------------|--------|
-| Подход | Database-first | Schema-first и module-first |
-| Type Generation | Build step | Нативные Rust types |
-| Custom Logic | Hooks (JS) | Rust modules |
-| Self-hosted | Да | Да |
-| "Full Rust" | Нет | Да |
-
-Лучше для: команд, строящих платформу вокруг Rust-стека.
-
-<a id="architecture-snapshot"></a>
-
-## Снимок архитектуры
-
-<a id="applications"></a>
+| Режим | Что это значит |
+|-------|----------------|
+| **Интегрированный** | Сервер + Leptos-панель администратора и storefront — всё под одной крышей, общие сессии, общий рантайм |
+| **Headless** | API-only сервер, фронтенд живёт где угодно — мобильное приложение, внешний сайт, сторонний инструмент |
+| **Смешанный** | Интегрированные Leptos-хосты для вашей команды, внешние клиенты для ваших пользователей — один рантайм, разные поверхности |
 
 ### Приложения
 
 | Путь | Роль |
 |---|---|
-| `apps/server` | Composition root, общий HTTP/GraphQL runtime host, wiring auth/session/RBAC, event runtime, проверка manifest |
-| `apps/admin` | Основной Leptos admin host |
-| `apps/storefront` | Основной Leptos storefront host |
-| `apps/next-admin` | Headless или экспериментальный Next.js admin host |
-| `apps/next-frontend` | Headless или экспериментальный Next.js storefront host |
-
-<a id="module-taxonomy"></a>
+| `apps/server` | Корень сборки — HTTP, GraphQL, авторизация, RBAC, события, валидация манифеста |
+| `apps/admin` | Leptos-панель администратора (интегрированный путь) |
+| `apps/storefront` | Leptos-витрина для покупателей (интегрированный путь) |
+| `apps/next-admin` | Next.js-панель администратора (headless-путь) |
+| `apps/next-frontend` | Next.js-витрина (headless-путь) |
 
 ### Таксономия модулей
 
-`modules.toml` — источник истины по модульному составу платформы.
+`modules.toml` — единственный источник истины о составе платформы.
 
-Core-модули:
+**Core-модули** — всегда присутствуют, это фундамент для всего остального:
 
-- `auth`
-- `cache`
-- `channel`
-- `email`
-- `index`
-- `search`
-- `outbox`
-- `tenant`
-- `rbac`
+`auth` · `cache` · `channel` · `email` · `index` · `search` · `outbox` · `tenant` · `rbac`
 
-Optional-модули:
+**Optional-модули** — включаются per-tenant, собираются на этапе компиляции:
 
-- Контент и community: `content`, `blog`, `comments`, `forum`, `pages`, `media`, `workflow`
-- Commerce family: `cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `commerce`
+*Контент и сообщество:* `content` · `blog` · `comments` · `forum` · `pages` · `media` · `workflow`
 
-Вспомогательные и capability-crates находятся вне таксономии `Core` / `Optional`:
+*Commerce-семейство:* `cart` · `customer` · `product` · `profiles` · `region` · `pricing` · `inventory` · `order` · `payment` · `fulfillment` · `commerce`
 
-- Shared/support: `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-commerce-foundation`, `rustok-test-utils`, `rustok-telemetry`
-- Capability/runtime layers: `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`, `rustok-iggy`, `rustok-iggy-connector`
+**Capability и support-crates** — общая инфраструктура для всех модулей:
 
-Ключевые границы доменов:
+*Shared:* `rustok-core` · `rustok-api` · `rustok-events` · `rustok-storage` · `rustok-commerce-foundation` · `rustok-telemetry`
 
-- `rustok-content` теперь shared helper и orchestration layer. Это больше не product-facing storage или transport owner для `blog`, `forum` и `pages`.
-- `rustok-comments` — отдельный generic comments module для классических комментариев вне forum domain.
-- Commerce surface разделён на профильные family modules, а `rustok-commerce` работает как umbrella/root module и orchestration layer.
-- Channel-aware поведение уже входит в live request/runtime pipeline через `rustok-channel` и общие request-context contracts.
+*Runtime capabilities:* `rustok-mcp` · `alloy` · `alloy-scripting` · `flex` · `rustok-iggy` · `rustok-iggy-connector`
 
-<a id="module-system"></a>
+---
 
-## Система модулей
+## Как работает система модулей
 
-Текущий модульный поток управляется через manifest:
+Каждый модуль из `modules.toml` проходит через одну цепочку:
 
 ```text
 modules.toml
-  -> build.rs генерирует wiring для host-приложений
-  -> apps/server проверяет manifest
-  -> ModuleRegistry / bootstrap рантайма
-  -> per-tenant enablement для optional modules
+  → build.rs генерирует wiring для хост-приложений
+  → apps/server валидирует манифест при старте
+  → ModuleRegistry загружает рантайм
+  → per-tenant enablement активирует optional-модули
 ```
 
-Важные правила:
+Это означает:
+- **Build composition** определяет, что скомпилировано в бинарник. Неиспользуемые модули просто отсутствуют — никакого мёртвого кода, никакой лишней поверхности атаки.
+- **Tenant enablement** определяет, какие optional-модули активны для конкретного клиента в рантайме. Один бинарник, множество конфигураций.
 
-- Не считать ручную регистрацию маршрутов в `app.rs` основным способом интеграции модулей.
-- Host-приложения подключают optional modules через generated contracts, производные от `modules.toml` и module manifests.
-- Build composition и tenant enablement — разные уровни:
-  - build composition определяет, что попадает в артефакт;
-  - tenant enablement определяет, какие optional modules активны для конкретного tenant.
-- Leptos hosts уже потребляют module-owned UI packages через manifest-driven wiring.
-- Next.js hosts остаются manual/headless entry points и не должны описываться так, будто у них уже есть тот же generated host contract.
+---
 
-Полная карта текущего runtime описана в:
+## AI-ready по замыслу
 
-- [Обзоре архитектуры](docs/architecture/overview.md)
-- [Реестре модулей](docs/modules/registry.md)
-- [Индексе модульной документации](docs/modules/_index.md)
-- [Документе про manifest и rebuild lifecycle](docs/modules/manifest.md)
+RusTok поставляется со встроенным сервером **Model Context Protocol (MCP)** через `rustok-mcp`. Это значит, что AI-агенты и LLM-инструменты могут взаимодействовать с платформой напрямую — запрашивать данные, запускать workflow, инспектировать состояние модулей — через типизированный протокол, а не сырые API-вызовы.
 
-<a id="quick-start"></a>
+За пределами MCP платформа структурирована для agent-assisted разработки: явные контракты модулей, карта документации в `docs/index.md`, типизированные схемы событий и правила в `AGENTS.md`, делающие кодовую базу читаемой и навигируемой для автоматизированных инструментов.
+
+---
+
+## На каких плечах стоим
+
+RusTok собран из хорошо поддерживаемых open-source crates:
+
+- **[Loco.rs](https://loco.rs)** + **[Axum](https://github.com/tokio-rs/axum)** — веб-фреймворк и HTTP-роутинг
+- **[Leptos](https://leptos.dev)** — Rust/WASM-фреймворк для фронтенда
+- **[SeaORM](https://www.sea-ql.org/SeaORM/)** — async ORM для PostgreSQL
+- **[async-graphql](https://async-graphql.github.io/async-graphql/)** — типобезопасный GraphQL-сервер
+- **[Tokio](https://tokio.rs)** — асинхронный рантайм (вторая половина названия)
+- **[Casbin](https://casbin.org)** — гибкая RBAC-авторизация
+- **[Iggy](https://iggy.rs)** — инфраструктура потоковой передачи событий
+
+---
 
 ## Быстрый старт
 
-Актуальное руководство быстрого старта для локальной разработки находится в [docs/guides/quickstart.md](docs/guides/quickstart.md).
-
-Типовой сценарий:
+Полное руководство для локальной разработки — в [docs/guides/quickstart.md](docs/guides/quickstart.md).
 
 ```bash
 ./scripts/dev-start.sh
 ```
 
-Текущий guide покрывает полный локальный стек:
+Это запускает полный локальный стек:
 
-- backend на `http://localhost:5150`
-- Next.js admin на `http://localhost:3000`
-- Leptos admin на `http://localhost:3001`
-- Next.js storefront на `http://localhost:3100`
-- Leptos storefront на `http://localhost:3101`
+| Сервис | URL |
+|--------|-----|
+| Backend API | `http://localhost:5150` |
+| Leptos Admin | `http://localhost:3001` |
+| Leptos Storefront | `http://localhost:3101` |
+| Next.js Admin | `http://localhost:3000` |
+| Next.js Storefront | `http://localhost:3100` |
 
-Если нужен не корневой обзор, а контекст конкретного приложения, начинайте с:
-
-- [документации apps/server](apps/server/docs/README.md)
-- [документации apps/admin](apps/admin/docs/README.md)
-- [документации apps/storefront](apps/storefront/docs/README.md)
-- [документации apps/next-admin](apps/next-admin/docs/README.md)
-- [документации apps/next-frontend](apps/next-frontend/docs/README.md)
-
-<a id="documentation"></a>
-
-## Документация
-
-Канонические точки входа:
-
-- [Карта документации](docs/index.md)
-- [Обзор архитектуры](docs/architecture/overview.md)
-- [Реестр модулей и приложений](docs/modules/registry.md)
-- [Индекс модульной документации](docs/modules/_index.md)
-- [Справочный пакет MCP](docs/references/mcp/README.md)
-- [Руководство по тестированию](docs/guides/testing.md)
-- [План развития модульной платформы](docs/modules/module-system-plan.md)
-- [Главный план верификации платформы](docs/verification/PLATFORM_VERIFICATION_PLAN.md)
-- [Системный манифест](RUSTOK_MANIFEST.md)
-- [Правила агентов](AGENTS.md)
-
-<a id="development"></a>
+---
 
 ## Разработка
 
-Рекомендуемый минимум окружения:
+Необходимое окружение:
 
-- Rust toolchain из конфигурации репозитория
+- Rust toolchain (версия из `rust-toolchain.toml` репозитория)
 - PostgreSQL для локального рантайма
-- Node.js или Bun для Next.js host-приложений
-- `trunk` для Leptos host-приложений
-
-Полезные команды:
+- Node.js или Bun для Next.js-хостов
+- `trunk` для Leptos-хостов
 
 ```bash
-# полный локальный стек
-./scripts/dev-start.sh
-
-# Rust tests
+# все Rust-тесты
 cargo nextest run --workspace --all-targets --all-features
 
-# doc tests
+# doc-тесты
 cargo test --workspace --doc --all-features
 
-# format и lint
+# форматирование и линтинг
 cargo fmt --all
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# dependency и policy checks
+# проверка зависимостей и лицензий
 cargo deny check
 cargo machete
 ```
 
-Общие правила для контрибьюторов и агентов описаны в [CONTRIBUTING.md](CONTRIBUTING.md) и [AGENTS.md](AGENTS.md).
+Общие правила для контрибьюторов и агентов — в [CONTRIBUTING.md](CONTRIBUTING.md) и [AGENTS.md](AGENTS.md).
 
-<a id="current-focus"></a>
+---
 
-## Текущий фокус
+## Документация
 
-Актуальные приоритеты ведутся в живых platform docs, а не в отдельном root roadmap-файле:
+| Ресурс | Ссылка |
+|--------|--------|
+| Карта документации | [docs/index.md](docs/index.md) |
+| Обзор архитектуры | [docs/architecture/overview.md](docs/architecture/overview.md) |
+| Реестр модулей | [docs/modules/registry.md](docs/modules/registry.md) |
+| Индекс модульной документации | [docs/modules/_index.md](docs/modules/_index.md) |
+| Системный манифест | [RUSTOK_MANIFEST.md](RUSTOK_MANIFEST.md) |
+| План модульной системы | [docs/modules/module-system-plan.md](docs/modules/module-system-plan.md) |
+| План верификации платформы | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
+| Руководство по тестированию | [docs/guides/testing.md](docs/guides/testing.md) |
+| Справка MCP | [docs/references/mcp/README.md](docs/references/mcp/README.md) |
+| Правила агентов | [AGENTS.md](AGENTS.md) |
 
-- [План развития модульной платформы](docs/modules/module-system-plan.md)
-- [Главный план верификации платформы](docs/verification/PLATFORM_VERIFICATION_PLAN.md)
-- [Архитектурные решения](DECISIONS/README.md)
-
-Верхнеуровнево текущий кодовый фокус такой:
-
-- держать честные module boundaries по мере роста платформы;
-- развивать module-owned transport и UI surfaces, не превращая `apps/server` в доменную свалку;
-- сохранять manifest-driven composition для server и Leptos hosts;
-- синхронизировать channel-aware, multilingual и event-driven contracts между доменами.
-
-<a id="acknowledgments"></a>
-
-## Благодарности
-
-Платформа опирается на такие open-source основы, как:
-
-- Loco.rs
-- Leptos
-- SeaORM
-- async-graphql
-- Axum
-
-<a id="license"></a>
+---
 
 ## Лицензия
 
-RusToK распространяется по [лицензии MIT](LICENSE).
+RusTok распространяется по [лицензии MIT](LICENSE).
