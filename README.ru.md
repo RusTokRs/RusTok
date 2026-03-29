@@ -2,9 +2,9 @@
 
 # <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusTok
 
-**Платформа, на которой строят всё, где есть данные. Построена, чтобы работать.**
+**Highload-платформа, которая позволяет создавать что угодно с помощью данных. Создана для долговечной работы.**
 
-*Контент · Торговля · Сообщества · Автоматизация · Один рантайм, без компромиссов.*
+*Контент · Коммерция · Сообщество · Рабочий процесс · Любые данные · Одна среда выполнения, никаких компромиссов.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

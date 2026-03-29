@@ -2,9 +2,9 @@
 
 # <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusTok
 
-**The platform that builds anything with data. Built to last.**
+**Highload platform that lets you build anything with data. Built for longevity.**
 
-*Content · Commerce · Community · Workflow · One runtime, zero compromises.*
+*Content · Commerce · Community · Workflow · Any Data · One runtime, zero compromises.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
