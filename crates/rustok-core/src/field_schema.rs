@@ -492,21 +492,18 @@ fn validate_field_value(
                 }
 
                 if let Some(pattern) = &r.pattern {
-                    match Regex::new(pattern) {
-                        Ok(re) => {
-                            if !re.is_match(s) {
-                                errors.push(FieldValidationError {
-                                    field_key: key.clone(),
-                                    message: format!(
-                                        "Field '{}' does not match the required pattern",
-                                        key
-                                    ),
-                                    error_code: FieldErrorCode::PatternMismatch,
-                                });
-                            }
+                    if let Ok(re) = Regex::new(pattern) {
+                        if !re.is_match(s) {
+                            errors.push(FieldValidationError {
+                                field_key: key.clone(),
+                                message: format!(
+                                    "Field '{}' does not match the required pattern",
+                                    key
+                                ),
+                                error_code: FieldErrorCode::PatternMismatch,
+                            });
                         }
-                        Err(_) => {} // Invalid pattern in definition — skip silently
-                    }
+                    } // Invalid pattern in definition — skip silently
                 }
             }
         }
@@ -940,8 +937,8 @@ pub fn json_field_eq(
         "$1->>$2 = $3",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(key.to_string())))).into(),
-            Expr::value(Value::String(Some(Box::new(value.to_string())))).into(),
+            Expr::value(Value::String(Some(Box::new(key.to_string())))),
+            Expr::value(Value::String(Some(Box::new(value.to_string())))),
         ],
     );
 
@@ -960,7 +957,7 @@ pub fn json_field_exists(
         "$1 ? $2",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(key.to_string())))).into(),
+            Expr::value(Value::String(Some(Box::new(key.to_string())))),
         ],
     );
 
@@ -979,10 +976,9 @@ pub fn json_field_extract(
         "$1->>$2",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(key.to_string())))).into(),
+            Expr::value(Value::String(Some(Box::new(key.to_string())))),
         ],
     )
-    .into()
 }
 
 /// Builds a SQL condition equivalent to `metadata @> '{"key": value}'::jsonb`.
@@ -1001,7 +997,7 @@ pub fn json_field_contains(
         "$1 @> $2::jsonb",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(payload)))).into(),
+            Expr::value(Value::String(Some(Box::new(payload)))),
         ],
     );
 
@@ -1119,7 +1115,7 @@ pub async fn create_field_definitions_table(
     manager
         .create_index(
             Index::create()
-                .name(&format!("uq_{prefix}_fd_tenant_key"))
+                .name(format!("uq_{prefix}_fd_tenant_key"))
                 .table(Alias::new(&table_name))
                 .col(Alias::new("tenant_id"))
                 .col(Alias::new("field_key"))
@@ -1132,7 +1128,7 @@ pub async fn create_field_definitions_table(
     manager
         .create_index(
             Index::create()
-                .name(&format!("idx_{prefix}_fd_tenant_active"))
+                .name(format!("idx_{prefix}_fd_tenant_active"))
                 .table(Alias::new(&table_name))
                 .col(Alias::new("tenant_id"))
                 .col(Alias::new("is_active"))
