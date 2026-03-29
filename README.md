@@ -25,7 +25,7 @@
 
 **Tokio** is the async runtime that sits beneath everything and acts as the engine. While most platforms struggle to handle a few hundred simultaneous requests before reaching for extra servers, Tokio-backed services routinely handle tens of thousands of concurrent connections on a single machine — without thread pools, without GC pauses, without drama.
 
-Together they produce something that feels almost unfair: a platform that starts in 50 milliseconds, handles 45,000+ requests per second, and catches type errors, missing fields, and domain contract violations at compile time rather than at 2 AM in production.
+Together they produce something that feels almost unfair: a platform that starts in 50 milliseconds, handles 450,000+ requests per second, and catches type errors, missing fields, and domain contract violations at compile time rather than at 2 AM in production.
 
 ---
 
