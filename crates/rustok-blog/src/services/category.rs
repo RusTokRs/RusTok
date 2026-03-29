@@ -15,7 +15,7 @@ use crate::dto::{
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
-use crate::services::rbac::{enforce_scope, enforce_owned_scope};
+use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 
 pub struct CategoryService {
     db: DatabaseConnection,
@@ -104,12 +104,7 @@ impl CategoryService {
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_owned_scope(
-            &security,
-            Resource::Categories,
-            Action::Update,
-            category.id,
-        )?;
+        enforce_owned_scope(&security, Resource::Categories, Action::Update, category.id)?;
 
         let mut active: blog_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
@@ -190,12 +185,7 @@ impl CategoryService {
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_owned_scope(
-            &security,
-            Resource::Categories,
-            Action::Delete,
-            category.id,
-        )?;
+        enforce_owned_scope(&security, Resource::Categories, Action::Delete, category.id)?;
 
         blog_category_translation::Entity::delete_many()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))

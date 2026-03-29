@@ -38,8 +38,7 @@ impl CanonicalUrlService {
             .filter(url_alias::Column::TenantId.eq(tenant_id))
             .filter(url_alias::Column::AliasUrl.eq(route.clone()))
             .all(&self.db)
-            .await?
-        ;
+            .await?;
         let resolved_alias = resolve_by_locale(&aliases, &locale, |alias| alias.locale.as_str());
         if let Some(alias) = resolved_alias.item {
             return Ok(Some(ResolvedContentRoute {

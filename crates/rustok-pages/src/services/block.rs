@@ -103,7 +103,11 @@ impl BlockService {
             .ok_or_else(|| PagesError::block_not_found(block_id))
     }
 
-    async fn find_page_for_block(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<page::Model> {
+    async fn find_page_for_block(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<page::Model> {
         page::Entity::find_by_id(page_id)
             .filter(page::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -184,7 +188,9 @@ impl BlockService {
         input: UpdateBlockInput,
     ) -> PagesResult<BlockResponse> {
         let existing = self.find_block(tenant_id, block_id).await?;
-        let parent_page = self.find_page_for_block(tenant_id, existing.page_id).await?;
+        let parent_page = self
+            .find_page_for_block(tenant_id, existing.page_id)
+            .await?;
         enforce_owned_scope(
             &security,
             Resource::Pages,

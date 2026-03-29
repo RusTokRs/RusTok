@@ -181,7 +181,12 @@ impl PostService {
         input: UpdatePostInput,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Update, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Update,
+            post.author_id,
+        )?;
         if let Some(expected_version) = input.version {
             if post.version != expected_version {
                 return Err(BlogError::validation("Version mismatch"));
@@ -298,7 +303,12 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Publish,
+            post.author_id,
+        )?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -335,7 +345,12 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Publish,
+            post.author_id,
+        )?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -369,7 +384,12 @@ impl PostService {
         reason: Option<String>,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Publish,
+            post.author_id,
+        )?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -405,7 +425,12 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Delete, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Delete,
+            post.author_id,
+        )?;
         if storage_to_status(&post.status)? == BlogPostStatus::Published {
             return Err(BlogError::CannotDeletePublished);
         }
@@ -554,9 +579,8 @@ impl PostService {
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));
         } else if !can_read_non_public_posts(&security) {
-            select = select.filter(
-                blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)),
-            );
+            select = select
+                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
         }
         if !can_read_non_public_posts(&security)
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
