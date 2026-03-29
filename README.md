@@ -210,7 +210,7 @@ Platforms that bundle everything together make you pay for what you do not use: 
 
 ### One platform, many frontends
 
-RusTok does not pick sides in the frontend war. The integrated path uses **Leptos** — a Rust/WASM framework that runs in the same type system as the backend. The headless path exposes the same data through GraphQL and REST for any frontend: Next.js, mobile apps, desktop clients, third-party tools. Or both at once — integrated admin panel, external customer app, same runtime.
+RusTok does not pick sides in the frontend war. **Leptos** — a Rust/WASM framework — is headless by default: it communicates with the server over typed APIs just like any other frontend. In the monolith deployment profile, Leptos and the server share the same process for maximum efficiency; outside of that, Leptos is a standalone client like any other. Alongside Leptos, the platform exposes the same data through GraphQL and REST for any frontend: Next.js, mobile apps, desktop clients, third-party tools. Multiple frontends can consume the same server simultaneously — an admin panel, a customer storefront, a partner portal — all sharing one runtime.
 
 ### Comparison at a glance
 
@@ -228,13 +228,29 @@ RusTok does not pick sides in the frontend war. The integrated path uses **Lepto
 
 ## Platform architecture
 
-### Three ways to deploy
+### Deployment profiles
 
-| Mode | What it means |
-|------|---------------|
-| **Integrated** | Server plus Leptos admin and storefront — everything under one roof, shared sessions, shared runtime |
-| **Headless** | API-only server, frontend lives anywhere — mobile app, external site, third-party tool |
-| **Mixed** | Integrated Leptos hosts for your team, external clients for your customers — same runtime, different surfaces |
+RusTok supports every deployment topology — from a single-binary monolith to fully decoupled multi-frontend architectures. The server is always the same compiled binary; what changes is where the UI surfaces live and how they are deployed.
+
+| Profile | Server | Admin | Storefront(s) | Best for |
+|---------|--------|-------|---------------|----------|
+| **Monolith** | ✓ | Leptos (same process) | Leptos (same process) | Dev environments, small deployments, operational simplicity |
+| **Server + admin co-deployed, storefront external** | ✓ | Leptos or Next.js (co-deployed with server) | Any client, deployed separately | Different scaling needs per surface |
+| **Server standalone, admin and storefront separate** | ✓ (standalone API) | Next.js or any, deployed independently | Any client, deployed independently | Large teams, independent release cycles |
+| **API-only / pure headless** | ✓ (standalone API) | External tool, custom build, or none | Any consumer | Mobile-first products, third-party system integrations |
+| **Multi-frontend** | ✓ (standalone API) | Any of the above | Multiple simultaneous: web + mobile + partner portals | Multi-brand, multi-channel, marketplace |
+
+### How deployment flexibility compares
+
+| Deployment profile | Traditional CMS (WP, Drupal) | JS CMS (Strapi, Directus) | Headless CMS (Contentful, Sanity) | E-commerce (Shopify, Magento) | RusTok |
+|---|---|---|---|---|---|
+| Monolith — all in one process | yes | no | no | hosted only | **yes** |
+| Server + admin together, storefront separate | manual / plugins | partial | no | limited | **yes** |
+| Server, admin, and storefront all separate | manual | yes | yes | headless add-on | **yes** |
+| Multiple independent storefronts | manual | yes | yes | limited / paid tier | **yes** |
+| Admin embedded in server binary (no extra process) | no | no | no | no | **yes** |
+| Consistent API surface across all topologies | no | partial | yes | no | **yes** |
+| Same type contracts at any topology | no | no | no | no | **yes** |
 
 ### Applications
 
