@@ -1796,8 +1796,7 @@ mod tests {
             .all(&db)
             .await
             .expect("blog post tags query should succeed");
-        let tag_slugs: HashSet<String> =
-            tag_translations.into_iter().map(|tag| tag.slug).collect();
+        let tag_slugs: HashSet<String> = tag_translations.into_iter().map(|tag| tag.slug).collect();
         assert_eq!(
             tag_slugs,
             HashSet::from(["release".to_string(), "notes".to_string()])

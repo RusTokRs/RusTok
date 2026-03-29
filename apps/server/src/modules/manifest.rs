@@ -2884,14 +2884,7 @@ trust_level = "verified"
         );
 
         let mut manifest = manifest_with_modules(&[
-            "index",
-            "outbox",
-            "content",
-            "comments",
-            "blog",
-            "forum",
-            "tenant",
-            "rbac",
+            "index", "outbox", "content", "comments", "blog", "forum", "tenant", "rbac",
         ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         manifest.modules.get_mut("forum").unwrap().path = Some("crates/rustok-forum".to_string());

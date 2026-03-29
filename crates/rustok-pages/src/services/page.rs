@@ -278,11 +278,9 @@ impl PageService {
             ) {
                 return Ok((Vec::new(), 0));
             }
-            select = select.filter(
-                page::Column::Status.eq(status_to_storage(
-                    &rustok_content::entities::node::ContentStatus::Published,
-                )),
-            );
+            select = select.filter(page::Column::Status.eq(status_to_storage(
+                &rustok_content::entities::node::ContentStatus::Published,
+            )));
         }
         if let Some(status) = filter.status {
             select = select.filter(page::Column::Status.eq(status_to_storage(&status)));
@@ -325,7 +323,12 @@ impl PageService {
         input: UpdatePageInput,
     ) -> PagesResult<PageResponse> {
         let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Update, existing.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            existing.author_id,
+        )?;
         if input.status.is_some() {
             enforce_scope(&security, Resource::Pages, Action::Publish)?;
         }
@@ -456,7 +459,12 @@ impl PageService {
         page_id: Uuid,
     ) -> PagesResult<()> {
         let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Delete, existing.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Delete,
+            existing.author_id,
+        )?;
         let txn = self.db.begin().await?;
         BlockService::delete_all_for_page_in_tx(&txn, tenant_id, page_id).await?;
         page_body::Entity::delete_many()
@@ -492,7 +500,12 @@ impl PageService {
         follow_up_event: Option<DomainEvent>,
     ) -> PagesResult<PageResponse> {
         let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Publish, existing.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Publish,
+            existing.author_id,
+        )?;
         let txn = self.db.begin().await?;
         let mut active: page::ActiveModel = existing.into();
         active.status = Set(status_to_storage(&status).to_string());

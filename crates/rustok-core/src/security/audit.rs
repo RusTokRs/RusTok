@@ -29,20 +29,15 @@ use crate::security::SecurityConfig;
 ///
 /// Supported transport: HTTP webhook compatible with Splunk HEC, Logstash,
 /// Datadog Logs, and any system accepting JSON POST requests.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SiemConfig {
     /// SIEM forwarding disabled (default)
+    #[default]
     Disabled,
 
     /// Forward events to an HTTP webhook endpoint
     Webhook(SiemWebhookConfig),
-}
-
-impl Default for SiemConfig {
-    fn default() -> Self {
-        Self::Disabled
-    }
 }
 
 /// HTTP webhook configuration for SIEM forwarding

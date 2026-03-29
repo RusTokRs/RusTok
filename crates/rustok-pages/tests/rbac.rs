@@ -115,8 +115,14 @@ async fn customer_cannot_read_drafts_and_list_only_returns_published_pages() {
     let customer = customer_context();
 
     let draft = create_page(&page_service, tenant_id, admin.clone(), "draft-page", false).await;
-    let published =
-        create_page(&page_service, tenant_id, admin.clone(), "published-page", true).await;
+    let published = create_page(
+        &page_service,
+        tenant_id,
+        admin.clone(),
+        "published-page",
+        true,
+    )
+    .await;
 
     let denied = page_service
         .get(tenant_id, customer.clone(), draft.id)

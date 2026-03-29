@@ -10,7 +10,7 @@
 /// 2. Use the namespace convention: `{module}.{context}.{key}`,
 ///    e.g. `auth.email_already_exists`, `commerce.product.not_found`.
 /// 3. For Phase 2+ and pluralization support, migrate to Fluent `.ftl` files.
-
+///
 /// Supported locales
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Locale {
