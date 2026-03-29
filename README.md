@@ -74,7 +74,86 @@ If it has data, you can build it on RusTok. Here are some examples — and this 
 - A GraphQL API server for a React/Vue/Svelte frontend, with full RBAC, multi-tenancy, and event-driven writes baked in.
 - A backend for a desktop application, IoT dashboard, or any system that needs structured data, roles, and real-time updates.
 
+**Enterprise & Highload Platforms**
+- A full **CRM** — leads, deals, pipelines, contacts, companies, activity logs, forecasts, and team collaboration — where every customer interaction feeds into automated follow-up workflows and the entire sales funnel is queryable in real time across tens of millions of records.
+- An **ERP core** — finance, HR, procurement, warehouse, and production management — built on the same module system, where adding a new business domain means adding a module, not spinning up a new service with a new team.
+- A **pharma or life-sciences platform** — batch records, clinical trial data, regulatory submission tracking, full audit trails, and controlled-access data rooms — where the type-safe, tenant-isolated architecture maps directly to compliance requirements.
+- A **financial services backend** — transaction ledgers, compliance reporting, multi-currency accounts, risk scoring, and customer KYC flows — where single-digit millisecond latency and tamper-evident event logs are non-negotiable.
+- A **logistics and supply chain platform** — shipment tracking, carrier integrations, warehouse operations, route feeds, and SLA monitoring — where thousands of status events per second need to be processed without queuing nightmares.
+- A **healthcare data platform** — patient records, appointment scheduling, billing, referral workflows, and access control — where multi-tenancy maps naturally to clinics or hospital networks, and data isolation is a regulatory requirement, not a feature request.
+- A **real estate management system** — listings, leads, transaction pipelines, document workflows, agent performance, and portal feeds — running across multiple brands or regions in a single deployment.
+- A **media and publishing platform at scale** — ingesting thousands of articles per day, running editorial workflows, serving content to millions of readers, with per-region localization and search that keeps pace with write velocity.
+- A **developer infrastructure platform** — feature flags, A/B experiments, deployment metadata, usage analytics, and API rate limiting — the kind of internal tooling that large technology companies build and rebuild, available as a configurable module set.
+
 The common thread: if your product has users, data, and business rules — RusTok gives you the foundation instead of forcing you to build it from scratch or stitch together cloud services.
+
+---
+
+## Alloy — Logic Without Deployments
+
+Every platform eventually runs into the same wall: the business wants to change how something works, but making that change requires a developer, a pull request, a code review, a deployment, and a maintenance window. For a pricing rule. For an input validation. For a notification message.
+
+**Alloy** is how RusTok breaks that wall — without sacrificing type safety, auditing, or platform stability.
+
+Alloy is a scripting runtime embedded directly in the platform. Business logic lives in scripts stored in the database, activated instantly, and executed inside a strict sandbox where they can read and modify records but cannot harm the system. No deployment. No downtime. No risk of a pricing-rule change breaking unrelated code.
+
+### When scripts run
+
+Scripts attach to the lifecycle of any entity in the platform and fire at precisely defined moments:
+
+| Trigger | When | What you can do |
+|---------|------|-----------------|
+| **Before create / update / delete** | Before the record hits the database | Validate fields, normalize data, calculate values, reject the operation |
+| **After create / update / delete** | After the record is saved | Send notifications, create follow-up records, trigger side effects |
+| **On commit** | After the transaction is confirmed | Call external APIs, sync to third-party systems, push to event queues |
+| **Cron schedule** | On a timer | Generate reports, clean up stale data, renew subscriptions, send digests |
+| **Manual trigger** | On demand | Recalculate a batch, re-send a failed sync, migrate a dataset |
+
+### What a script looks like
+
+Scripts are written in **Rhai** — a sandboxed scripting language that reads like simplified Rust and is safe for non-Rust developers to write and deploy:
+
+```rhai
+// Before creating an order: validate, enrich, and protect
+if entity["total"] < 0 {
+    abort("Order total cannot be negative");
+}
+
+if entity["customer_tier"] == "vip" {
+    entity["discount"] = 15;
+    entity["priority_fulfillment"] = true;
+}
+
+validate_email(entity["contact_email"]);
+log("Order pre-processed: " + entity["customer_id"]);
+```
+
+The sandbox enforces hard limits on execution time, operation count, and memory. A runaway script cannot take down the platform. If a script calls `abort()`, the operation is rejected cleanly with the reason returned to the caller.
+
+### Integration superpowers
+
+Scripts in the `OnCommit` phase have outbound HTTP access. This is how RusTok connects to the outside world without hard-coding integrations into the platform:
+
+- **Payment processors** — confirm charges, handle refunds, record receipts
+- **CRM systems** — push deal updates to Salesforce, HubSpot, or any REST-based CRM
+- **Accounting software** — export transactions to 1С, QuickBooks, or any API-accessible ledger
+- **Warehouse and logistics** — confirm shipments, update inventory in partner systems
+- **Communication channels** — send Slack messages, trigger SMS via Twilio, post to any webhook receiver
+- **Data pipelines** — stream events to ClickHouse, BigQuery, or any analytics warehouse endpoint
+
+An integration that would take a sprint to build as a native module takes minutes as an Alloy script. When it stabilizes, it can graduate.
+
+### From script to native module
+
+When a script has proven its value and runs thousands of times a day, it can be promoted: the same logic rewritten as a native Rust module, compiled into the platform binary, with zero scripting overhead. Alloy is the prototyping and automation layer; native modules are the production layer. The path between them is intentional and explicit.
+
+### Full observability
+
+Every script execution is recorded: when it ran, how long it took, what entity it processed, what it changed, and whether it succeeded, was rejected by `abort()`, or failed with an error. Execution logs are queryable via API. Scripts have explicit statuses — `Draft`, `Active`, `Paused`, `Archived` — making the standard workflow: write in Draft, test, activate when confident.
+
+### AI-generated logic
+
+Alloy scripts are short, structured, and purpose-driven — exactly what AI tools generate well. Describe what you want, get a script, validate it in the sandbox, activate it. The feedback loop from idea to running business logic shrinks from days to minutes.
 
 ---
 
