@@ -1,7 +1,8 @@
 # Deployment Profiles и выбор UI-стека
 
 - Date: 2026-03-07
-- Status: Proposed (v2 — composable layers)
+- Status: Partially superseded by `2026-03-29-leptos-server-functions-as-internal-data-layer.md`
+  (компонуемые профили деплоя остаются в силе; транспорт между Leptos UI и сервером пересмотрен)
 
 ## Context
 
