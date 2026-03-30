@@ -36,6 +36,7 @@ pub struct GqlProduct {
     pub status: GqlProductStatus,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
@@ -102,6 +103,7 @@ pub struct GqlProductListItem {
     pub handle: String,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub tags: Vec<String>,
     pub created_at: String,
     pub published_at: Option<String>,
 }
@@ -354,6 +356,7 @@ pub struct CreateProductInput {
     pub variants: Vec<CreateVariantInput>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub tags: Option<Vec<String>>,
     pub publish: Option<bool>,
 }
 
@@ -397,6 +400,7 @@ pub struct UpdateProductInput {
     pub translations: Option<Vec<ProductTranslationInput>>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub tags: Option<Vec<String>>,
     pub status: Option<GqlProductStatus>,
 }
 
@@ -573,6 +577,7 @@ impl From<dto::ProductResponse> for GqlProduct {
             status: product.status.into(),
             vendor: product.vendor,
             product_type: product.product_type,
+            tags: product.tags,
             created_at: product.created_at.to_rfc3339(),
             updated_at: product.updated_at.to_rfc3339(),
             published_at: product.published_at.map(|value| value.to_rfc3339()),

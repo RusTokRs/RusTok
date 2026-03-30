@@ -85,7 +85,7 @@ async fn create_category(
 }
 
 #[tokio::test]
-async fn topic_tags_are_synced_into_forum_topic_tags_and_legacy_json() {
+async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus);
@@ -140,10 +140,7 @@ async fn topic_tags_are_synced_into_forum_topic_tags_and_legacy_json() {
         .await
         .expect("topic row should load")
         .expect("topic row must exist");
-    assert_eq!(
-        stored_topic.tags,
-        serde_json::json!(["backend".to_string(), "rust".to_string()])
-    );
+    assert_eq!(stored_topic.id, topic.id);
 }
 
 #[tokio::test]

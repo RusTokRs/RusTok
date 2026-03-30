@@ -31,7 +31,7 @@
 - ✅ `ManifestManager` теперь валидирует не только metadata path-модулей и admin-surface конфликты, но и semver-диапазоны зависимостей, product/runtime-конфликты модулей и ошибки schema-driven module settings contract.
 - ✅ `updateModuleSettings` теперь закрыт end-to-end: GraphQL mutation и `/modules` в Leptos Admin валидируют payload по `[settings]` из `rustok-module.toml`, применяют `default`, рендерят typed controls для scalar-полей, top-level structured editor и deep nested editor с create-actions / key rename / array reorder для `object` / `array`, и per-field JSON editors с helper-actions (`Format JSON`, `Reset`, `Add property/item`) для complex values.
 - ✅ `buildProgress` теперь работает end-to-end: `apps/server` поднимает GraphQL WS transport на `/api/graphql/ws`, а `/modules` в `apps/admin` подписывается на live progress и держит polling только как fallback.
-- ⚠️ Read-only registry V1 теперь имеет референсную server-side реализацию: `apps/server` публикует schema-versioned `GET /v1/catalog` (с legacy alias `GET /catalog`), payload уже несёт module `name` / `description` для registry-only UX, endpoint включён в host OpenAPI как часть внешнего API-контракта, а `RegistryMarketplaceProvider` ходит в V1-path и откатывается на legacy path только как backward-compatible fallback. Отдельный `modules.rustok.dev` deployment и publish/governance слой всё ещё не подняты.
+- ⚠️ Read-only registry V1 теперь имеет референсную server-side реализацию: `apps/server` публикует schema-versioned `GET /v1/catalog` (с legacy alias `GET /catalog`), payload уже несёт module `name` / `description`, manifest-driven `category` / `tags` и optional visual metadata (`icon`, `banner`, `screenshots`) для registry-only UX, endpoint включён в host OpenAPI как часть внешнего API-контракта, а `RegistryMarketplaceProvider` ходит в V1-path и откатывается на legacy path только как backward-compatible fallback. Отдельный `modules.rustok.dev` deployment и publish/governance слой всё ещё не подняты.
 - ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, а `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections и generic route `/modules/{route_segment}`. По факту кода dual-surface Leptos exemplar-ами теперь являются `blog`, `commerce`, `forum`, `pages` и `search`; admin-only manifest-wired slice уже есть у `workflow` и `channel`. Перенос остальных модулей и внешний registry всё ещё открыты.
 
 > [!NOTE]
@@ -47,13 +47,13 @@
 | РЎРµРєС†РёСЏ | Р§С‚Рѕ СЃРѕРґРµСЂР¶РёС‚ | РЎС‚Р°С‚СѓСЃ |
 |---|---|---|
 | `[module]` | slug, name, version, description, authors, license | вњ… РїР°СЂСЃРёС‚СЃСЏ |
-| `[marketplace]` | icon, banner, screenshots, category, tags | вњ… РїР°СЂСЃРёС‚СЃСЏ |
+| `[marketplace]` | icon, banner, screenshots, category, tags | ✅ `category`, `tags`, `icon`, `banner`, `screenshots` уже парсятся и доходят до catalog / GraphQL / registry; базовая local validation (`description >= 20`, `icon` = absolute `http(s)` `.svg`, `banner` / `screenshots` = absolute `http(s)` image URLs) уже включена, дальше остаётся publish/governance policy |
 | `[compatibility]` | rustok_min, rustok_max | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 | `[dependencies]` | depends_on с version_req | ✅ парсится и валидируется по semver-диапазонам |
 | `[conflicts]` | несовместимые модули | ✅ парсится и валидируется как product/runtime conflict |
 | `[crate]` | name, entry_type | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 | `[provides]` | graphql/http entry points, `admin_ui`, `storefront_ui`, nested admin pages | ✅ server/admin/storefront codegen уже читает эти секции; richer UI contract остаётся эволюционной темой |
-| `[settings]` | схема настроек модуля (`type`, `default`, `min`, `max`) | ✅ парсится, валидируется и рендерится в `/modules` как schema-driven form; raw JSON остаётся только для модулей без schema |
+| `[settings]` | схема настроек модуля (`type`, `default`, `min`, `max`, `options`) | ✅ парсится, валидируется и рендерится в `/modules` как schema-driven form; scalar `options` уже дают typed `select`, raw JSON остаётся только для модулей без schema |
 | `[locales]` | supported, default | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 
 **Р¤Р°Р№Р»С‹**:
@@ -228,7 +228,7 @@ async fn update_module_settings(
 
 **Что остаётся**:
 
-- richer field metadata для nested object contracts, если понадобится не просто JSON editor, а полноценно вложенная форма;
+- richer field metadata для nested object contracts, если понадобится не просто JSON editor, а полноценно вложенная форма; scalar `options` уже можно рендерить как typed `select`, так что этот остаток теперь в основном про nested/object shape metadata;
 - richer nested schema metadata для object/array children, если понадобится уйти от generic JSON-tree UX к полностью type-directed subforms;
 - при желании отдельный read/query contract, чтобы другие admin surfaces рендерили форму из того же server-side schema source of truth.
 
@@ -286,7 +286,7 @@ rollbackBuild(buildId: ID!): BuildJob!
 - продуктовые/runtime-конфликты из `[conflicts]` с отдельной ошибкой `ConflictingModule`;
 - совместимость с текущей версией платформы через `rustok_min_version` / `rustok_max_version`.
 
-Остаток этой темы больше не в backend-валидации, а в operator UX и внешнем registry/governance слое.
+Остаток этой темы больше не в backend-валидации, а в operator UX и внешнем registry/governance слое. `/modules` теперь уже показывает operator-facing metadata readiness для `description` / visuals / publisher / publish signals, но publish-time moderation и внешний registry workflow всё ещё остаются отдельным этапом.
 
 ---
 
@@ -498,7 +498,7 @@ modules.rustok.dev
 | РЎРїРёСЃРѕРє СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… РјРѕРґСѓР»РµР№ (`modules` query) | вњ… |
 | РљР°С‚Р°Р»РѕРі РјР°СЂРєРµС‚РїР»РµР№СЃР° (`marketplace` query) | вњ… |
 | Р¤РёР»СЊС‚СЂС‹: РїРѕРёСЃРє, РєР°С‚РµРіРѕСЂРёСЏ, trust level, compatibility | вњ… |
-| Р”РµС‚Р°Р»СЊРЅР°СЏ РїР°РЅРµР»СЊ `marketplaceModule(slug)` | вњ… |
+| Р”РµС‚Р°Р»СЊРЅР°СЏ РїР°РЅРµР»СЊ `marketplaceModule(slug)` | ✅ включает operator-facing metadata readiness hints для registry/publish flow |
 | Deep-link `?module=slug` | вњ… |
 | Install / Uninstall РєРЅРѕРїРєРё в†’ `installModule` / `uninstallModule` | вњ… |
 | Toggle switch в†’ `toggleModule` | вњ… |
@@ -506,7 +506,7 @@ modules.rustok.dev
 | Прогресс-бар build (polling 5 сек) | ✅ fallback/resync path |
 | Прогресс-бар build (WebSocket subscription) | ✅ подключён end-to-end |
 | Updates tab + `upgradeModule` для version-pinned модулей | ✅ работает; path-модули без pinned version осознанно не попадают в update flow |
-| Форма настроек модуля (`updateModuleSettings`) | ✅ schema-driven UI работает для scalar и complex settings; raw fallback нужен только без schema |
+| Форма настроек модуля (`updateModuleSettings`) | ✅ schema-driven UI работает для scalar и complex settings, включая declarative `options` → `select`; raw fallback нужен только без schema |
 
 ---
 
@@ -534,7 +534,7 @@ rustok mod yank 1.2.0    # РћС‚РѕР·РІР°С‚СЊ РІРµСЂСЃР
 | 2. Security | cargo-audit, РѕС‚СЃСѓС‚СЃС‚РІРёРµ unsafe Р±РµР· РѕР±РѕСЃРЅРѕРІР°РЅРёСЏ, РЅРµС‚ std::process::Command |
 | 3. Compilation | РєРѕРјРїРёР»РёСЂСѓРµС‚СЃСЏ СЃ rustok_min..rustok_max |
 | 4. Runtime | cargo test, РјРёРіСЂР°С†РёРё up/down РёРґРµРјРїРѕС‚РµРЅС‚РЅС‹, on_enable/on_disable |
-| 5. Metadata | icon.svg РІР°Р»РёРґРµРЅ, description >= 20 СЃРёРјРІРѕР»РѕРІ, screenshots |
+| 5. Metadata | icon.svg валиден, description >= 20 символов, screenshots | ✅ Базовая local validation уже есть в `ManifestManager`; publish-time moderation и governance остаются отдельным этапом |
 
 ---
 

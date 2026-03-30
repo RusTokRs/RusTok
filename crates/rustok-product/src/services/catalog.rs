@@ -1,8 +1,9 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
@@ -11,10 +12,19 @@ use validator::Validate;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
 use rustok_commerce_foundation::dto::*;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+
+use crate::entities::product_tag;
+
+const PRODUCT_SCOPE_VALUE: &str = "product";
+
+struct ProductTagState {
+    tags: Vec<String>,
+}
 
 pub struct CatalogService {
     db: DatabaseConnection,
@@ -60,6 +70,9 @@ impl CatalogService {
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
+        let (normalized_metadata, normalized_tags) =
+            Self::normalize_create_product_tags(input.tags.clone(), input.metadata.clone());
+
         let txn = self.db.begin().await?;
 
         let product = entities::product::ActiveModel {
@@ -72,7 +85,7 @@ impl CatalogService {
             }),
             vendor: Set(input.vendor.clone()),
             product_type: Set(input.product_type.clone()),
-            metadata: Set(input.metadata.clone()),
+            metadata: Set(normalized_metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             published_at: Set(if input.publish {
@@ -269,6 +282,16 @@ impl CatalogService {
             variants_count = input.variants.len(),
             "Product variants and prices inserted"
         );
+
+        if let Some(tags) = normalized_tags.as_deref() {
+            let locale = input
+                .translations
+                .first()
+                .map(|translation| translation.locale.as_str())
+                .unwrap_or("en");
+            self.sync_product_tags_in_tx(&txn, tenant_id, product_id, locale, tags)
+                .await?;
+        }
 
         self.event_bus
             .publish_in_tx(
@@ -511,13 +534,28 @@ impl CatalogService {
                 .push(translation);
         }
 
+        let tag_locale = translations
+            .first()
+            .map(|translation| translation.locale.as_str())
+            .unwrap_or("en");
+        let product_tags = self
+            .load_product_tags(
+                tenant_id,
+                product_id,
+                tag_locale,
+                Some("en"),
+                &product.metadata,
+            )
+            .await?;
+
         let response = ProductResponse {
             id: product.id,
             tenant_id: product.tenant_id,
             status: product.status,
             vendor: product.vendor,
             product_type: product.product_type,
-            metadata: product.metadata,
+            tags: product_tags.tags,
+            metadata: Self::strip_metadata_tags(product.metadata.clone()),
             created_at: product.created_at.into(),
             updated_at: product.updated_at.into(),
             published_at: product.published_at.map(Into::into),
@@ -611,9 +649,15 @@ impl CatalogService {
                 warn!(product_id = %product_id, "Product not found for update");
                 CommerceError::ProductNotFound(product_id)
             })?;
-
+        let existing_product = product.clone();
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.updated_at = Set(Utc::now().into());
+
+        let metadata_update = Self::normalize_update_product_tags(
+            input.tags.clone(),
+            input.metadata.clone(),
+            existing_product.metadata.clone(),
+        );
 
         if let Some(vendor) = input.vendor {
             product_active.vendor = Set(Some(vendor));
@@ -621,8 +665,8 @@ impl CatalogService {
         if let Some(product_type) = input.product_type {
             product_active.product_type = Set(Some(product_type));
         }
-        if let Some(metadata) = input.metadata {
-            product_active.metadata = Set(metadata);
+        if let Some((metadata, _)) = metadata_update.as_ref() {
+            product_active.metadata = Set(metadata.clone());
         }
         if let Some(status) = input.status {
             product_active.status = Set(status);
@@ -630,7 +674,9 @@ impl CatalogService {
 
         product_active.update(&txn).await?;
 
-        if let Some(translations) = input.translations {
+        let translation_inputs = input.translations.clone();
+
+        if let Some(translations) = translation_inputs {
             entities::product_translation::Entity::delete_many()
                 .filter(entities::product_translation::Column::ProductId.eq(product_id))
                 .exec(&txn)
@@ -676,6 +722,14 @@ impl CatalogService {
                 };
                 translation.insert(&txn).await?;
             }
+        }
+
+        if let Some((_, Some(tags))) = metadata_update.as_ref() {
+            let locale = self
+                .resolve_tag_locale_for_update(&txn, product_id, input.translations.as_deref())
+                .await?;
+            self.sync_product_tags_in_tx(&txn, tenant_id, product_id, &locale, tags)
+                .await?;
         }
 
         self.event_bus
@@ -1009,6 +1063,265 @@ impl CatalogService {
             }
         }
         locales
+    }
+
+    fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut normalized = Vec::new();
+        for tag_name in tag_names {
+            let trimmed = tag_name.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let key = trimmed.to_ascii_lowercase();
+            if seen.insert(key) {
+                normalized.push(trimmed.to_string());
+            }
+        }
+        normalized
+    }
+
+    fn metadata_has_tags_field(metadata: &Value) -> bool {
+        metadata
+            .as_object()
+            .map(|object| object.contains_key("tags"))
+            .unwrap_or(false)
+    }
+
+    fn extract_metadata_tags(metadata: &Value) -> Vec<String> {
+        metadata
+            .get("tags")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn strip_metadata_tags(mut metadata: Value) -> Value {
+        if let Some(object) = metadata.as_object_mut() {
+            object.remove("tags");
+        }
+        metadata
+    }
+
+    fn normalize_create_product_tags(
+        input_tags: Vec<String>,
+        metadata: Value,
+    ) -> (Value, Option<Vec<String>>) {
+        let normalized_input_tags = Self::normalize_tag_names(&input_tags);
+        (
+            Self::strip_metadata_tags(metadata),
+            Some(normalized_input_tags),
+        )
+    }
+
+    fn normalize_update_product_tags(
+        input_tags: Option<Vec<String>>,
+        metadata: Option<Value>,
+        existing_metadata: Value,
+    ) -> Option<(Value, Option<Vec<String>>)> {
+        match (input_tags, metadata) {
+            (Some(tags), Some(metadata)) => {
+                let normalized_tags = Self::normalize_tag_names(&tags);
+                Some((Self::strip_metadata_tags(metadata), Some(normalized_tags)))
+            }
+            (Some(tags), None) => {
+                let normalized_tags = Self::normalize_tag_names(&tags);
+                Some((
+                    Self::strip_metadata_tags(existing_metadata),
+                    Some(normalized_tags),
+                ))
+            }
+            (None, Some(metadata)) => Some((Self::strip_metadata_tags(metadata), None)),
+            (None, None) => None,
+        }
+    }
+
+    pub async fn load_product_tag_map(
+        &self,
+        tenant_id: Uuid,
+        products: &[entities::product::Model],
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> CommerceResult<HashMap<Uuid, Vec<String>>> {
+        let product_ids = products
+            .iter()
+            .map(|product| product.id)
+            .collect::<Vec<_>>();
+        if product_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let relations = product_tag::Entity::find()
+            .filter(product_tag::Column::ProductId.is_in(product_ids.clone()))
+            .order_by_asc(product_tag::Column::ProductId)
+            .order_by_asc(product_tag::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        let mut relations_by_product: HashMap<Uuid, Vec<product_tag::Model>> = HashMap::new();
+        let mut ordered_term_ids = Vec::new();
+        let mut seen_term_ids = HashSet::new();
+        for relation in relations {
+            if seen_term_ids.insert(relation.term_id) {
+                ordered_term_ids.push(relation.term_id);
+            }
+            relations_by_product
+                .entry(relation.product_id)
+                .or_default()
+                .push(relation);
+        }
+
+        let names = if ordered_term_ids.is_empty() {
+            HashMap::new()
+        } else {
+            TaxonomyService::new(self.db.clone())
+                .resolve_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale)
+                .await
+                .map_err(|error| CommerceError::Validation(error.to_string()))?
+        };
+
+        let mut tags_by_product = HashMap::new();
+        for product in products {
+            if let Some(relations) = relations_by_product.get(&product.id) {
+                let tags = relations
+                    .iter()
+                    .filter_map(|relation| names.get(&relation.term_id).cloned())
+                    .collect::<Vec<_>>();
+                tags_by_product.insert(product.id, tags);
+                continue;
+            }
+
+            if Self::metadata_has_tags_field(&product.metadata) {
+                tags_by_product.insert(
+                    product.id,
+                    Self::normalize_tag_names(&Self::extract_metadata_tags(&product.metadata)),
+                );
+            }
+        }
+
+        Ok(tags_by_product)
+    }
+
+    async fn load_product_tags(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        metadata: &Value,
+    ) -> CommerceResult<ProductTagState> {
+        let relations = product_tag::Entity::find()
+            .filter(product_tag::Column::ProductId.eq(product_id))
+            .order_by_asc(product_tag::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        if relations.is_empty() {
+            if Self::metadata_has_tags_field(metadata) {
+                return Ok(ProductTagState {
+                    tags: Self::normalize_tag_names(&Self::extract_metadata_tags(metadata)),
+                });
+            }
+
+            return Ok(ProductTagState { tags: Vec::new() });
+        }
+
+        let term_ids = relations
+            .iter()
+            .map(|relation| relation.term_id)
+            .collect::<Vec<_>>();
+        let names = TaxonomyService::new(self.db.clone())
+            .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
+            .await
+            .map_err(|error| CommerceError::Validation(error.to_string()))?;
+
+        let mut tags = Vec::new();
+        for relation in relations {
+            if let Some(name) = names.get(&relation.term_id) {
+                tags.push(name.clone());
+            }
+        }
+
+        Ok(ProductTagState { tags })
+    }
+
+    async fn sync_product_tags_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        tag_names: &[String],
+    ) -> CommerceResult<()> {
+        let normalized_tags = Self::normalize_tag_names(tag_names);
+
+        product_tag::Entity::delete_many()
+            .filter(product_tag::Column::ProductId.eq(product_id))
+            .exec(txn)
+            .await?;
+
+        if normalized_tags.is_empty() {
+            return Ok(());
+        }
+
+        let term_ids = TaxonomyService::new(self.db.clone())
+            .ensure_terms_for_module_in_tx(
+                txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                PRODUCT_SCOPE_VALUE,
+                locale,
+                &normalized_tags,
+            )
+            .await
+            .map_err(|error| CommerceError::Validation(error.to_string()))?;
+
+        let now = Utc::now();
+        for term_id in term_ids {
+            product_tag::ActiveModel {
+                product_id: Set(product_id),
+                term_id: Set(term_id),
+                tenant_id: Set(tenant_id),
+                created_at: Set(now.into()),
+            }
+            .insert(txn)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn resolve_tag_locale_for_update(
+        &self,
+        txn: &DatabaseTransaction,
+        product_id: Uuid,
+        translations: Option<&[ProductTranslationInput]>,
+    ) -> CommerceResult<String> {
+        if let Some(locale) = translations.and_then(|items| {
+            items.iter().find_map(|item| {
+                let trimmed = item.locale.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+        }) {
+            return Ok(locale);
+        }
+
+        Ok(entities::product_translation::Entity::find()
+            .filter(entities::product_translation::Column::ProductId.eq(product_id))
+            .order_by_asc(entities::product_translation::Column::Locale)
+            .one(txn)
+            .await?
+            .map(|translation| translation.locale)
+            .unwrap_or_else(|| "en".to_string()))
     }
 
     fn build_option_translations(

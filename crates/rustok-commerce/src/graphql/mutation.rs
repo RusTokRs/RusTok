@@ -686,6 +686,7 @@ impl CommerceMutation {
             }),
             vendor: input.vendor,
             product_type: input.product_type,
+            tags: input.tags,
             metadata: None,
             status: input.status.map(Into::into),
         };
@@ -813,6 +814,7 @@ fn convert_create_product_input(
         variants,
         vendor: input.vendor,
         product_type: input.product_type,
+        tags: input.tags.unwrap_or_default(),
         metadata: serde_json::Value::Object(Default::default()),
         publish: input.publish.unwrap_or(false),
     })

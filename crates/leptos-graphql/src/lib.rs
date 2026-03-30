@@ -2,6 +2,7 @@ pub mod hooks;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
+use std::str::FromStr;
 
 pub use hooks::{use_lazy_query, use_mutation, use_query, MutationResult, QueryResult};
 
@@ -55,6 +56,30 @@ pub enum GraphqlHttpError {
     Http(String),
     #[error("Unauthorized")]
     Unauthorized,
+}
+
+impl FromStr for GraphqlHttpError {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value == "Network error" {
+            return Ok(Self::Network);
+        }
+
+        if value == "Unauthorized" {
+            return Ok(Self::Unauthorized);
+        }
+
+        if let Some(message) = value.strip_prefix("GraphQL error: ") {
+            return Ok(Self::Graphql(message.to_string()));
+        }
+
+        if let Some(message) = value.strip_prefix("Http error: ") {
+            return Ok(Self::Http(message.to_string()));
+        }
+
+        Err(format!("Unknown GraphqlHttpError: {value}"))
+    }
 }
 
 pub fn persisted_query_extension(sha256_hash: &str) -> Value {

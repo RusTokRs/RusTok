@@ -9,6 +9,9 @@ trust_level = "verified"
 [crate]
 entry_type = "ProfilesModule"
 
+[dependencies]
+taxonomy = { version_req = ">=0.1.0" }
+
 [provides.graphql]
 query = "graphql::ProfilesQuery"
 mutation = "graphql::ProfilesMutation"

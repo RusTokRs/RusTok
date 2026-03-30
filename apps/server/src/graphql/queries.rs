@@ -61,7 +61,6 @@ fn map_content_error(err: rustok_content::ContentError) -> FieldError {
         | rustok_content::ContentError::Forbidden(message) => FieldError::new(message),
         rustok_content::ContentError::NodeNotFound(_)
         | rustok_content::ContentError::CategoryNotFound(_)
-        | rustok_content::ContentError::TagNotFound(_)
         | rustok_content::ContentError::TranslationNotFound { .. }
         | rustok_content::ContentError::DuplicateSlug { .. }
         | rustok_content::ContentError::ConcurrentModification { .. } => {
@@ -395,6 +394,10 @@ fn marketplace_module_from_catalog_entry(
             .category
             .clone()
             .unwrap_or_else(|| fallback_module_category(&entry.slug).to_string()),
+        tags: entry.tags.clone(),
+        icon_url: entry.icon_url.clone(),
+        banner_url: entry.banner_url.clone(),
+        screenshots: entry.screenshots.clone(),
         crate_name: entry.crate_name,
         dependencies,
         ownership: entry.ownership,
@@ -1233,6 +1236,7 @@ mod tests {
             crate_name: "rustok-seo".to_string(),
             name: None,
             category: None,
+            tags: Vec::new(),
             version: Some("1.2.0".to_string()),
             description: None,
             git: None,
@@ -1284,6 +1288,10 @@ mod tests {
             source: "registry".to_string(),
             kind: "optional".to_string(),
             category: "extensions".to_string(),
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
             crate_name: "rustok-seo".to_string(),
             dependencies: Vec::new(),
             ownership: "third_party".to_string(),
@@ -1317,6 +1325,10 @@ mod tests {
             source: "registry".to_string(),
             kind: "optional".to_string(),
             category: "extensions".to_string(),
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
             crate_name: "rustok-seo".to_string(),
             dependencies: Vec::new(),
             ownership: "third_party".to_string(),
@@ -1369,6 +1381,53 @@ mod tests {
         );
 
         assert_eq!(module.category, "search");
+    }
+
+    #[test]
+    fn marketplace_mapping_preserves_manifest_tags() {
+        let mut entry = catalog_module(None, None);
+        entry.tags = vec!["discovery".to_string(), "search".to_string()];
+
+        let module = marketplace_module_from_catalog_entry(
+            entry,
+            &ModuleRegistry::new(),
+            &Vec::<InstalledManifestModule>::new(),
+        );
+
+        assert_eq!(module.tags, vec!["discovery", "search"]);
+    }
+
+    #[test]
+    fn marketplace_mapping_preserves_visual_metadata() {
+        let mut entry = catalog_module(None, None);
+        entry.icon_url = Some("https://cdn.example.test/modules/seo/icon.svg".to_string());
+        entry.banner_url = Some("https://cdn.example.test/modules/seo/banner.png".to_string());
+        entry.screenshots = vec![
+            "https://cdn.example.test/modules/seo/screenshot-1.png".to_string(),
+            "https://cdn.example.test/modules/seo/screenshot-2.png".to_string(),
+        ];
+
+        let module = marketplace_module_from_catalog_entry(
+            entry,
+            &ModuleRegistry::new(),
+            &Vec::<InstalledManifestModule>::new(),
+        );
+
+        assert_eq!(
+            module.icon_url.as_deref(),
+            Some("https://cdn.example.test/modules/seo/icon.svg")
+        );
+        assert_eq!(
+            module.banner_url.as_deref(),
+            Some("https://cdn.example.test/modules/seo/banner.png")
+        );
+        assert_eq!(
+            module.screenshots,
+            vec![
+                "https://cdn.example.test/modules/seo/screenshot-1.png",
+                "https://cdn.example.test/modules/seo/screenshot-2.png",
+            ]
+        );
     }
 
     #[test]

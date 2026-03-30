@@ -77,5 +77,4 @@ fn module_has_migrations() {
     let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
     assert!(names.iter().any(|n| n.contains("create_nodes")));
     assert!(names.iter().any(|n| n.contains("create_categories")));
-    assert!(names.iter().any(|n| n.contains("create_tags")));
 }

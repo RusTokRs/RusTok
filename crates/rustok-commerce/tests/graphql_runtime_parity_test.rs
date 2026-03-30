@@ -106,6 +106,7 @@ fn create_product_input() -> CreateProductInput {
         }],
         vendor: Some("Parity Vendor".to_string()),
         product_type: Some("physical".to_string()),
+        tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     }

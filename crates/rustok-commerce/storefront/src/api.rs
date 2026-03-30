@@ -5,8 +5,8 @@ use crate::model::{ProductDetail, ProductList, StorefrontCommerceData};
 
 pub type ApiError = GraphqlHttpError;
 
-const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType createdAt publishedAt } } }";
-const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status vendor productType publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType tags createdAt publishedAt } } }";
+const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontProductsResponse {

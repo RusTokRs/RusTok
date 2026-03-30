@@ -9,6 +9,7 @@ recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]
 category = "content"
+tags = ["cms", "content", "landing-pages"]
 
 [dependencies]
 content = { version_req = ">=0.1.0" }

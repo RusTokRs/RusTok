@@ -1,5 +1,36 @@
-﻿use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use serde::{Deserialize, Serialize};
+use leptos::prelude::ServerFnError;
+use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use serde::{de::DeserializeOwned, Serialize};
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApiError {
+    Graphql(GraphqlHttpError),
+    ServerFn(ServerFnError),
+}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Graphql(error) => write!(f, "{error}"),
+            Self::ServerFn(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+impl From<GraphqlHttpError> for ApiError {
+    fn from(value: GraphqlHttpError) -> Self {
+        Self::Graphql(value)
+    }
+}
+
+impl From<ServerFnError> for ApiError {
+    fn from(value: ServerFnError) -> Self {
+        Self::ServerFn(value)
+    }
+}
 
 pub fn get_graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
@@ -21,7 +52,26 @@ pub fn get_graphql_url() -> String {
     }
 }
 
-pub type ApiError = GraphqlHttpError;
+pub async fn request<V, T>(
+    query: &str,
+    variables: V,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<T, ApiError>
+where
+    V: Serialize,
+    T: DeserializeOwned,
+{
+    execute_graphql(
+        &get_graphql_url(),
+        GraphqlRequest::new(query, Some(variables)),
+        token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(ApiError::from)
+}
 
 pub fn configured_tenant_slug() -> Option<String> {
     [
@@ -40,24 +90,4 @@ pub fn configured_tenant_slug() -> Option<String> {
             }
         })
     })
-}
-
-pub async fn request<V, T>(
-    query: &str,
-    variables: V,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &get_graphql_url(),
-        GraphqlRequest::new(query, Some(variables)),
-        token,
-        tenant_slug,
-        None,
-    )
-    .await
 }

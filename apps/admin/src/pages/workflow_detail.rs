@@ -8,7 +8,6 @@ use crate::entities::workflow::{WorkflowDetail, WorkflowExecution};
 use crate::features::workflow::{
     api, ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor,
 };
-use crate::shared::api::ApiError;
 use crate::{t_string, use_i18n};
 
 #[derive(Params, PartialEq)]
@@ -42,12 +41,12 @@ pub fn WorkflowDetailPage() -> impl IntoView {
         move || (token.get(), tenant.get(), workflow_id()),
         move |(token_val, tenant_val, wf_id): (Option<String>, Option<String>, String)| async move {
             if wf_id.is_empty() {
-                return Err(ApiError::Graphql("No workflow id".to_string()));
+                return Err("No workflow id".to_string());
             }
             let workflow =
                 api::fetch_workflow(token_val.clone(), tenant_val.clone(), wf_id.clone()).await?;
             let executions = api::fetch_workflow_executions(token_val, tenant_val, wf_id).await?;
-            Ok::<_, ApiError>(workflow.map(|w| WorkflowPageData {
+            Ok::<_, String>(workflow.map(|w| WorkflowPageData {
                 workflow: w,
                 executions,
             }))
@@ -74,7 +73,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                 }
             >
                 {move || {
-                    data_resource.get().map(|result: Result<Option<WorkflowPageData>, ApiError>| {
+                    data_resource.get().map(|result: Result<Option<WorkflowPageData>, String>| {
                         let tok = token_sig.get();
                         let ts = tenant_sig.get();
 

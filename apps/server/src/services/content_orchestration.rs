@@ -64,7 +64,8 @@ use rustok_forum::constants::{reply_status, topic_status};
     feature = "mod-comments"
 ))]
 use rustok_forum::entities::{
-    forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_translation,
+    forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_tag,
+    forum_topic_translation,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -323,29 +324,6 @@ fn locales_from_strs<'a>(locales: impl IntoIterator<Item = &'a str>) -> ContentR
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-fn extract_forum_tags(value: &sea_orm::prelude::Json) -> Vec<String> {
-    value
-        .as_array()
-        .map(|items| {
-            let mut tags = items
-                .iter()
-                .filter_map(|item| item.as_str())
-                .map(|item| item.trim().to_ascii_lowercase())
-                .filter(|item| !item.is_empty())
-                .collect::<Vec<_>>();
-            tags.sort();
-            tags.dedup();
-            tags
-        })
-        .unwrap_or_default()
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
 fn map_forum_reply_status_to_comment_status(
     status: &str,
     updated_at: chrono::DateTime<chrono::FixedOffset>,
@@ -479,7 +457,14 @@ async fn promote_topic_to_post(
         .await?;
     }
 
-    let tags = extract_forum_tags(&topic.tags);
+    let tags = load_forum_tag_names_for_topic_in_tx(
+        txn,
+        tenant_id,
+        topic.id,
+        &resolved.effective_locale,
+        None,
+    )
+    .await?;
     sync_blog_tags_for_post_in_tx(txn, tenant_id, post_id, &tags, &resolved.effective_locale)
         .await?;
 
@@ -558,7 +543,6 @@ async fn demote_post_to_topic(
         status: Set(topic_status_value.to_string()),
         is_pinned: Set(false),
         is_locked: Set(false),
-        tags: Set(serde_json::json!(tag_names)),
         reply_count: Set(0),
         created_at: Set(post.created_at),
         updated_at: Set(now.into()),
@@ -582,6 +566,15 @@ async fn demote_post_to_topic(
         .insert(txn)
         .await?;
     }
+
+    sync_forum_tags_for_topic_in_tx(
+        txn,
+        tenant_id,
+        topic_id,
+        &tag_names,
+        &resolved.effective_locale,
+    )
+    .await?;
 
     let comment_records = load_comment_records_for_post_in_tx(txn, tenant_id, post.id).await?;
     move_comments_to_forum_replies_in_tx(txn, tenant_id, topic_id, &comment_records).await?;
@@ -661,6 +654,14 @@ async fn split_topic(
 
     let target_topic_id = Uuid::new_v4();
     let now = Utc::now();
+    let source_tags = load_forum_tag_names_for_topic_in_tx(
+        txn,
+        tenant_id,
+        source_topic.id,
+        &resolved.effective_locale,
+        None,
+    )
+    .await?;
     forum_topic::ActiveModel {
         id: Set(target_topic_id),
         tenant_id: Set(tenant_id),
@@ -669,7 +670,6 @@ async fn split_topic(
         status: Set(source_topic.status.clone()),
         is_pinned: Set(false),
         is_locked: Set(source_topic.is_locked),
-        tags: Set(source_topic.tags.clone()),
         reply_count: Set(0),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
@@ -700,6 +700,15 @@ async fn split_topic(
         .insert(txn)
         .await?;
     }
+
+    sync_forum_tags_for_topic_in_tx(
+        txn,
+        tenant_id,
+        target_topic_id,
+        &source_tags,
+        &resolved.effective_locale,
+    )
+    .await?;
 
     if !requested_translation_written {
         let translation = resolved.item.ok_or_else(|| {
@@ -1598,6 +1607,239 @@ async fn load_blog_tag_names_for_post_in_tx(
     }
 
     Ok(names)
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+async fn load_forum_tag_names_for_topic_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> ContentResult<Vec<String>> {
+    let relations = forum_topic_tag::Entity::find()
+        .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
+        .order_by_asc(forum_topic_tag::Column::CreatedAt)
+        .all(txn)
+        .await?;
+    if relations.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let term_ids = relations
+        .iter()
+        .map(|item| item.term_id)
+        .collect::<Vec<_>>();
+    let terms = taxonomy_term::Entity::find()
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Id.is_in(term_ids.clone()))
+        .all(txn)
+        .await?;
+    let term_by_id = terms
+        .into_iter()
+        .map(|term| (term.id, term))
+        .collect::<HashMap<_, _>>();
+    let translations = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids))
+        .all(txn)
+        .await?;
+    let mut translations_by_tag: HashMap<Uuid, Vec<taxonomy_term_translation::Model>> =
+        HashMap::new();
+    for translation in translations {
+        translations_by_tag
+            .entry(translation.term_id)
+            .or_default()
+            .push(translation);
+    }
+
+    let mut names = Vec::new();
+    for relation in relations {
+        let localized = translations_by_tag
+            .get(&relation.term_id)
+            .cloned()
+            .unwrap_or_default();
+        let resolved =
+            resolve_by_locale_with_fallback(&localized, locale, fallback_locale, |translation| {
+                translation.locale.as_str()
+            });
+        if let Some(translation) = resolved.item {
+            names.push(translation.name.clone());
+        } else if let Some(term) = term_by_id.get(&relation.term_id) {
+            names.push(term.canonical_key.clone());
+        }
+    }
+
+    Ok(names)
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+async fn sync_forum_tags_for_topic_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    tag_names: &[String],
+    locale: &str,
+) -> ContentResult<()> {
+    let locale = normalize_locale(locale)?;
+    let mut names = tag_names
+        .iter()
+        .map(|name| name.trim().to_ascii_lowercase())
+        .filter(|name| !name.is_empty())
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+
+    forum_topic_tag::Entity::delete_many()
+        .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
+        .exec(txn)
+        .await?;
+
+    for name in names {
+        let slug = normalize_slug(&name);
+        if slug.is_empty() {
+            continue;
+        }
+        let term_id =
+            find_or_create_forum_taxonomy_term_in_tx(txn, tenant_id, &locale, &name, &slug).await?;
+
+        forum_topic_tag::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            topic_id: Set(topic_id),
+            term_id: Set(term_id),
+            tenant_id: Set(tenant_id),
+            created_at: Set(Utc::now().into()),
+        }
+        .insert(txn)
+        .await?;
+    }
+
+    Ok(())
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+async fn find_or_create_forum_taxonomy_term_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    name: &str,
+    slug: &str,
+) -> ContentResult<Uuid> {
+    if let Some(term_id) = find_forum_taxonomy_term_id_in_tx(txn, tenant_id, locale, slug).await? {
+        return Ok(term_id);
+    }
+
+    let now = Utc::now();
+    let term_id = Uuid::new_v4();
+    taxonomy_term::ActiveModel {
+        id: Set(term_id),
+        tenant_id: Set(tenant_id),
+        kind: Set(TaxonomyTermKind::Tag),
+        scope_type: Set(TaxonomyScopeType::Module),
+        scope_value: Set("forum".to_string()),
+        canonical_key: Set(slug.to_string()),
+        status: Set(TaxonomyTermStatus::Active),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(txn)
+    .await?;
+
+    taxonomy_term_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        term_id: Set(term_id),
+        tenant_id: Set(tenant_id),
+        locale: Set(locale.to_string()),
+        name: Set(name.to_string()),
+        slug: Set(slug.to_string()),
+        description: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(txn)
+    .await?;
+
+    Ok(term_id)
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+async fn find_forum_taxonomy_term_id_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    slug: &str,
+) -> ContentResult<Option<Uuid>> {
+    for (scope_type, scope_value) in [
+        (TaxonomyScopeType::Module, "forum"),
+        (TaxonomyScopeType::Global, ""),
+    ] {
+        if let Some(translation) = taxonomy_term_translation::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                taxonomy_term_translation::Relation::Term.def(),
+            )
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::Locale.eq(locale))
+            .filter(taxonomy_term_translation::Column::Slug.eq(slug))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(translation.term_id));
+        }
+
+        if let Some(alias) = taxonomy_term_alias::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                taxonomy_term_alias::Relation::Term.def(),
+            )
+            .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_alias::Column::Locale.eq(locale))
+            .filter(taxonomy_term_alias::Column::Slug.eq(slug))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(alias.term_id));
+        }
+
+        if let Some(term) = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .filter(taxonomy_term::Column::CanonicalKey.eq(slug))
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(term.id));
+        }
+    }
+
+    Ok(None)
 }
 
 #[cfg(all(

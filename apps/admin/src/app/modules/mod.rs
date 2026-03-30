@@ -7,10 +7,19 @@ mod registry;
 use std::cell::Cell;
 
 pub use generated_ui_codegen::core_module_slugs;
+pub use generated_ui_codegen::module_runtime_metadata;
 pub use registry::{
     components_for_slot, page_for_route_segment, register_component, register_page,
     AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot,
 };
+
+#[derive(Clone, Copy)]
+pub struct GeneratedModuleRuntimeMetadata {
+    pub ownership: &'static str,
+    pub trust_level: &'static str,
+    pub recommended_admin_surfaces: &'static [&'static str],
+    pub showcase_admin_surfaces: &'static [&'static str],
+}
 
 thread_local! {
     static INIT: Cell<bool> = const { Cell::new(false) };

@@ -23,6 +23,93 @@ struct RoleInfo {
 #[derive(Clone, Debug, Serialize)]
 struct EmptyVariables {}
 
+async fn fetch_roles_graphql(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlRolesResponse, ApiError> {
+    request::<EmptyVariables, GraphqlRolesResponse>(
+        ROLES_QUERY,
+        EmptyVariables {},
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+async fn fetch_roles_server() -> Result<GraphqlRolesResponse, ServerFnError> {
+    list_roles_native().await
+}
+
+async fn fetch_roles(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlRolesResponse, String> {
+    match fetch_roles_server().await {
+        Ok(response) => Ok(response),
+        Err(server_err) => fetch_roles_graphql(token, tenant_slug)
+            .await
+            .map_err(|graphql_err| {
+                format!(
+                    "native path failed: {}; graphql path failed: {}",
+                    server_err, graphql_err
+                )
+            }),
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/list-roles")]
+async fn list_roles_native() -> Result<GraphqlRolesResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos_axum::extract;
+        use rustok_api::{has_effective_permission, AuthContext};
+        use rustok_core::{Permission, Rbac, UserRole};
+
+        let auth = extract::<AuthContext>().await.map_err(ServerFnError::new)?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(ServerFnError::new("settings:read required to list roles"));
+        }
+
+        let roles = [
+            UserRole::SuperAdmin,
+            UserRole::Admin,
+            UserRole::Manager,
+            UserRole::Customer,
+        ]
+        .into_iter()
+        .map(|role| {
+            let mut permissions = Rbac::permissions_for_role(&role)
+                .iter()
+                .map(|permission| permission.to_string())
+                .collect::<Vec<_>>();
+            permissions.sort();
+
+            let display_name = match role {
+                UserRole::SuperAdmin => "Super Admin",
+                UserRole::Admin => "Admin",
+                UserRole::Manager => "Manager",
+                UserRole::Customer => "Customer",
+            };
+
+            RoleInfo {
+                slug: role.to_string(),
+                display_name: display_name.to_string(),
+                permissions,
+            }
+        })
+        .collect();
+
+        Ok(GraphqlRolesResponse { roles })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "admin/list-roles requires the `ssr` feature",
+        ))
+    }
+}
+
 #[component]
 pub fn RolesPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -31,15 +118,7 @@ pub fn RolesPage() -> impl IntoView {
 
     let roles_resource = Resource::new(
         move || (token.get(), tenant.get()),
-        move |(token_value, tenant_value)| async move {
-            request::<EmptyVariables, GraphqlRolesResponse>(
-                ROLES_QUERY,
-                EmptyVariables {},
-                token_value,
-                tenant_value,
-            )
-            .await
-        },
+        move |(token_value, tenant_value)| async move { fetch_roles(token_value, tenant_value).await },
     );
 
     view! {
@@ -109,12 +188,7 @@ pub fn RolesPage() -> impl IntoView {
                         }
                         Some(Err(err)) => view! {
                             <Alert variant=AlertVariant::Destructive>
-                                {match err {
-                                    ApiError::Unauthorized => t_string!(i18n, errors.auth.unauthorized).to_string(),
-                                    ApiError::Http(code) => format!("HTTP {}", code),
-                                    ApiError::Network => t_string!(i18n, errors.network).to_string(),
-                                    ApiError::Graphql(msg) => msg,
-                                }}
+                                {err.to_string()}
                             </Alert>
                         }.into_any(),
                     }}

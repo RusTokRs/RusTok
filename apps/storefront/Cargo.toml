@@ -5,6 +5,17 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[features]
+default = ["ssr"]
+hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "leptos_i18n/ssr",
+  "dep:loco-rs",
+  "dep:rustok-content",
+  "dep:rustok-tenant",
+]
+
 [dependencies]
 axum.workspace = true
 tokio.workspace = true
@@ -23,9 +34,14 @@ leptos_i18n = { workspace = true, features = ["ssr"] }
 leptos-next-metadata = { workspace = true }
 leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 serde_urlencoded.workspace = true
 futures = "0.3"
 rustok-api.workspace = true
+thiserror.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-content = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront" }
 rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront" }
 rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront" }

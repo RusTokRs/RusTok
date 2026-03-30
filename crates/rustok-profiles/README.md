@@ -9,6 +9,7 @@
 - Provide a single profile boundary for any authenticated platform user.
 - Keep public profile data separate from auth identity, commerce customers, and future seller accounts.
 - Own profile storage (`profiles`, `profile_translations`), migrations, and the reusable profile service contract.
+- Own profile-to-taxonomy relation storage via `profile_tags`.
 - Provide batched profile summary lookup for downstream author/member presentation without per-user fan-out.
 - Provide explicit backfill helpers for provisioning missing profiles from existing user/customer data.
 - Expose a request-scoped GraphQL `ProfileSummaryLoader` for host applications that need DataLoader-based batching and caching.
@@ -20,6 +21,8 @@
 
 - Depends on `rustok-core` for module contracts and permission vocabulary.
 - Uses SeaORM-backed storage and module-local migrations for profile persistence.
+- Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags`
+  module-owned.
 - Sits above the platform `users` identity model and references it by `user_id`.
 - Must not collapse `customer`, `seller`, or staff/admin roles into one profile record.
 - Is intended to become the canonical source for public author/member cards across host applications and module-owned UI packages.

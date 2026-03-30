@@ -27,6 +27,8 @@
   Product, pricing, and inventory migrations stay owned by their dedicated submodules.
 - `ProductResponse` now keeps backward-compatible flat fields and also returns translation groups for
   product options, variant titles, and image alt text when the normalized translation tables are populated.
+- Product create/update/list/detail contracts now expose first-class `tags`; legacy
+  `metadata.tags` is no longer part of the supported public contract.
 
 ## Events
 
@@ -57,26 +59,26 @@
 - Moving transport adapters back into `apps/server` instead of extending
   `crates/rustok-commerce/src/graphql/*` or `crates/rustok-commerce/src/controllers/*`.
 
-## Minimal contract surface
+## Минимальный набор контрактов
 
-### Input DTOs and commands
+### Входные DTO/команды
 
 - Public DTOs and command inputs are exported through this crate, even when implemented in
   `rustok-commerce-foundation`.
 - Changes to public DTO fields are breaking changes and require synchronized updates in transport adapters.
 - GraphQL and HTTP entry points remain part of the crate's public API.
 
-### Domain invariants
+### Доменные инварианты
 
 - Domain invariants remain enforced by services, DTO validation, and the order state machine.
 - Multi-tenant boundaries, permission checks, and tenant-scoped queries remain mandatory.
 
-### Events and outbox side effects
+### События / outbox-побочные эффекты
 
 - Domain events must keep using the transactional outbox flow.
 - Event payloads and event types must remain backward compatible for downstream consumers.
 
-### Errors and failure codes
+### Ошибки / коды отказов
 
 - `CommerceError` and `CommerceResult<T>` define the public failure contract of the crate.
 - Validation, auth, conflict, and not-found scenarios must preserve stable error semantics across

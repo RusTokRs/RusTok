@@ -1,7 +1,14 @@
 use axum::middleware as axum_middleware;
+use axum::routing::post;
 use axum::Extension;
 use axum::Router as AxumRouter;
+use leptos::prelude::provide_context;
+use leptos_axum::handle_server_fns_with_context;
 use loco_rs::app::AppContext;
+#[allow(unused_imports)]
+use rustok_admin as _;
+#[allow(unused_imports)]
+use rustok_storefront as _;
 
 use crate::common::settings::RustokSettings;
 use crate::middleware;
@@ -94,8 +101,27 @@ pub fn compose_application_router(
     runtime: AppRuntimeBootstrap,
     _rustok_settings: &RustokSettings,
 ) -> AxumRouter {
+    let server_fn_ctx = ctx.clone();
+    let server_fn_registry = runtime.registry.clone();
+
     mount_application_shell(
-        router,
+        router.route(
+            "/api/fn/*fn_name",
+            post(move |req| {
+                let ctx = server_fn_ctx.clone();
+                let registry = server_fn_registry.clone();
+                async move {
+                    handle_server_fns_with_context(
+                        move || {
+                            provide_context(ctx.clone());
+                            provide_context(registry.clone());
+                        },
+                        req,
+                    )
+                    .await
+                }
+            }),
+        ),
         runtime
             .deployment_surfaces
             .embed_admin

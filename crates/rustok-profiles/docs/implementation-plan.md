@@ -63,6 +63,7 @@ backfill существующих пользователей и возможно
 - public handle;
 - display name;
 - bio и другие публичные локализуемые поля;
+- taxonomy-backed tags / interests через `profile_tags`;
 - avatar/banner references через media boundary;
 - preferred locale и visibility policy;
 - summary/read contract для author/member rendering в других модулях;

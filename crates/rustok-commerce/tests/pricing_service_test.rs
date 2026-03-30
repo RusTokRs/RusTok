@@ -55,6 +55,7 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
         }],
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     };
@@ -425,6 +426,7 @@ async fn test_get_variant_prices_empty() {
         }],
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     };

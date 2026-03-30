@@ -147,6 +147,14 @@ pub struct RegistryCatalogModule {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub icon_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub screenshots: Vec<String>,
+    #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
@@ -198,6 +206,10 @@ impl RegistryCatalogModule {
             crate_name: self.crate_name,
             name: self.name,
             category: self.category,
+            tags: self.tags,
+            icon_url: self.icon_url,
+            banner_url: self.banner_url,
+            screenshots: self.screenshots,
             version: self.version,
             description: self.description,
             git: self.git,
@@ -226,6 +238,10 @@ impl RegistryCatalogModule {
             crate_name,
             name,
             category,
+            tags,
+            icon_url,
+            banner_url,
+            screenshots,
             version,
             description,
             git: _git,
@@ -273,6 +289,10 @@ impl RegistryCatalogModule {
             crate_name,
             name,
             category,
+            tags,
+            icon_url,
+            banner_url,
+            screenshots,
             version,
             description,
             git: None,
@@ -489,6 +509,10 @@ mod tests {
             crate_name: crate_name.to_string(),
             name: None,
             category: None,
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
             version: None,
             description: None,
             git: None,
@@ -560,6 +584,13 @@ mod tests {
             crate_name: "rustok-seo".to_string(),
             name: Some("SEO".to_string()),
             category: Some("marketing".to_string()),
+            tags: vec!["marketing".to_string(), "seo".to_string()],
+            icon_url: Some("https://cdn.example.test/modules/seo/icon.svg".to_string()),
+            banner_url: Some("https://cdn.example.test/modules/seo/banner.png".to_string()),
+            screenshots: vec![
+                "https://cdn.example.test/modules/seo/screenshot-1.png".to_string(),
+                "https://cdn.example.test/modules/seo/screenshot-2.png".to_string(),
+            ],
             version: Some("1.2.0".to_string()),
             description: Some("SEO tools".to_string()),
             git: None,
@@ -594,6 +625,16 @@ mod tests {
         assert_eq!(module.crate_name, "rustok-seo");
         assert_eq!(module.name.as_deref(), Some("SEO"));
         assert_eq!(module.category.as_deref(), Some("marketing"));
+        assert_eq!(module.tags, vec!["marketing", "seo"]);
+        assert_eq!(
+            module.icon_url.as_deref(),
+            Some("https://cdn.example.test/modules/seo/icon.svg")
+        );
+        assert_eq!(
+            module.banner_url.as_deref(),
+            Some("https://cdn.example.test/modules/seo/banner.png")
+        );
+        assert_eq!(module.screenshots.len(), 2);
         assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.publisher.as_deref(), Some("RusTok Labs"));
         assert_eq!(module.versions.len(), 1);
@@ -607,6 +648,10 @@ mod tests {
             crate_name: "rustok-blog".to_string(),
             name: Some("Blog".to_string()),
             category: Some("content".to_string()),
+            tags: vec!["content".to_string(), "editorial".to_string()],
+            icon_url: Some("https://cdn.example.test/modules/blog/icon.svg".to_string()),
+            banner_url: Some("https://cdn.example.test/modules/blog/banner.png".to_string()),
+            screenshots: vec!["https://cdn.example.test/modules/blog/screenshot-1.png".to_string()],
             version: Some("1.4.0".to_string()),
             description: Some("Blog module".to_string()),
             git: Some("https://example.test/blog.git".to_string()),
@@ -637,6 +682,19 @@ mod tests {
         assert_eq!(module.source, "registry");
         assert_eq!(module.name.as_deref(), Some("Blog"));
         assert_eq!(module.category.as_deref(), Some("content"));
+        assert_eq!(module.tags, vec!["content", "editorial"]);
+        assert_eq!(
+            module.icon_url.as_deref(),
+            Some("https://cdn.example.test/modules/blog/icon.svg")
+        );
+        assert_eq!(
+            module.banner_url.as_deref(),
+            Some("https://cdn.example.test/modules/blog/banner.png")
+        );
+        assert_eq!(
+            module.screenshots,
+            vec!["https://cdn.example.test/modules/blog/screenshot-1.png"]
+        );
         assert_eq!(module.description.as_deref(), Some("Blog module"));
         assert_eq!(module.path, None);
         assert_eq!(module.git, None);
@@ -655,6 +713,12 @@ mod tests {
                     "crate": "rustok-seo",
                     "name": "SEO",
                     "category": "marketing",
+                    "tags": ["marketing", "seo"],
+                    "icon_url": "https://cdn.example.test/modules/seo/icon.svg",
+                    "banner_url": "https://cdn.example.test/modules/seo/banner.png",
+                    "screenshots": [
+                        "https://cdn.example.test/modules/seo/screenshot-1.png"
+                    ],
                     "version": "1.2.0",
                     "description": "SEO tools",
                     "depends_on": ["content"],
@@ -687,6 +751,19 @@ mod tests {
         assert_eq!(module.crate_name, "rustok-seo");
         assert_eq!(module.name.as_deref(), Some("SEO"));
         assert_eq!(module.category.as_deref(), Some("marketing"));
+        assert_eq!(module.tags, vec!["marketing", "seo"]);
+        assert_eq!(
+            module.icon_url.as_deref(),
+            Some("https://cdn.example.test/modules/seo/icon.svg")
+        );
+        assert_eq!(
+            module.banner_url.as_deref(),
+            Some("https://cdn.example.test/modules/seo/banner.png")
+        );
+        assert_eq!(
+            module.screenshots,
+            vec!["https://cdn.example.test/modules/seo/screenshot-1.png"]
+        );
         assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.ownership, "third_party");
         assert_eq!(module.trust_level, "unverified");

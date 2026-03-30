@@ -11,7 +11,7 @@ fn module_metadata() {
         "Product catalog, variants, translations, options, and publication lifecycle"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-    assert!(module.dependencies().is_empty());
+    assert_eq!(module.dependencies(), &["taxonomy"]);
 }
 
 #[test]

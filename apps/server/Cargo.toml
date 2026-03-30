@@ -35,13 +35,13 @@ default = [
 redis-cache = []
 embed-admin = ["embed-admin-assets"]
 embed-admin-assets = ["dep:rust-embed"]
-embed-storefront = ["dep:rustok-storefront"]
+embed-storefront = []
 # Domain module feature flags — compile the module into the binary;
 # resolvers additionally check is_enabled(tenant_id) at runtime.
 mod-cart      = ["dep:rustok-cart"]
 mod-customer  = ["dep:rustok-customer"]
-mod-product   = ["dep:rustok-product"]
-mod-profiles  = ["dep:rustok-profiles"]
+mod-product   = ["dep:rustok-product", "mod-taxonomy"]
+mod-profiles  = ["dep:rustok-profiles", "mod-taxonomy"]
 mod-region    = ["dep:rustok-region"]
 mod-pricing   = ["dep:rustok-pricing"]
 mod-inventory = ["dep:rustok-inventory"]
@@ -68,7 +68,8 @@ rustok-channel.workspace = true
 rustok-email.workspace = true
 rustok-events.workspace = true
 flex.workspace = true
-rustok-storefront = { path = "../storefront", optional = true }
+rustok-admin = { path = "../admin", default-features = false, features = ["ssr"] }
+rustok-storefront = { path = "../storefront", default-features = false, features = ["ssr"] }
 rustok-cart      = { workspace = true, optional = true }
 rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
@@ -103,6 +104,8 @@ loco-rs.workspace = true
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["sync"] }
 axum.workspace = true
+leptos.workspace = true
+leptos_axum.workspace = true
 axum-extra = { version = "0.12", features = ["typed-header"] }
 sea-orm.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }

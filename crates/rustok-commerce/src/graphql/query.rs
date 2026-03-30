@@ -479,6 +479,7 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = filter.unwrap_or(ProductsFilter {
@@ -520,6 +521,8 @@ impl CommerceQuery {
 
         let items = load_product_list_items(
             db,
+            event_bus,
+            tenant_id,
             products,
             &locale,
             tenant.default_locale.as_str(),
@@ -611,6 +614,7 @@ impl CommerceQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -656,6 +660,8 @@ impl CommerceQuery {
 
         let items = load_product_list_items(
             db,
+            event_bus,
+            tenant_id,
             products,
             &locale,
             tenant.default_locale.as_str(),
@@ -683,6 +689,8 @@ impl CommerceQuery {
 
 async fn load_product_list_items(
     db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    tenant_id: Uuid,
     products: Vec<product::Model>,
     locale: &str,
     default_locale: &str,
@@ -717,6 +725,17 @@ async fn load_product_list_items(
             .or_default()
             .push(translation);
     }
+    let product_tags_started_at = std::time::Instant::now();
+    let product_tags = CatalogService::new(db.clone(), event_bus.clone())
+        .load_product_tag_map(tenant_id, &products, locale, Some(default_locale))
+        .await?;
+    metrics::record_read_path_query(
+        "graphql",
+        metric_path,
+        "product_tags",
+        product_tags_started_at.elapsed().as_secs_f64(),
+        product_tags.len() as u64,
+    );
 
     Ok(products
         .into_iter()
@@ -735,6 +754,7 @@ async fn load_product_list_items(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
+                tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
                 created_at: product.created_at.to_rfc3339(),
                 published_at: product.published_at.map(|value| value.to_rfc3339()),
             }

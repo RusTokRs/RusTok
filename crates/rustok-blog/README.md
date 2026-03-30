@@ -10,6 +10,7 @@
 - Own blog-specific post lifecycle, SEO, and localized blog orchestration.
 - Own blog GraphQL and REST transport adapters alongside the domain services.
 - Publish module-owned Leptos admin/storefront packages for installable UI surfaces.
+- Publish schema-driven tenant settings through `rustok-module.toml`, including curated option sets for admin forms.
 - Publish the typed `blog_posts:*` RBAC surface.
 
 ## Interactions

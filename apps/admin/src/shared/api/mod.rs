@@ -1,9 +1,26 @@
 pub mod queries;
 
+use leptos::prelude::*;
 use leptos_graphql::{
     execute as execute_graphql, persisted_query_extension, GraphqlHttpError, GraphqlRequest,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct ApiRequestContext {
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ServerGraphqlRequest {
+    query: String,
+    variables: Value,
+    persisted_query_sha256: Option<String>,
+    context: ApiRequestContext,
+}
 
 pub fn get_graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
@@ -53,6 +70,54 @@ pub fn get_stored_locale() -> Option<String> {
     }
 }
 
+fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> ApiRequestContext {
+    ApiRequestContext {
+        token,
+        tenant_slug,
+        locale: get_stored_locale(),
+    }
+}
+
+async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, GraphqlHttpError> {
+    let mut graphql_request = GraphqlRequest::new(request.query, Some(request.variables));
+
+    if let Some(sha256_hash) = request.persisted_query_sha256.as_deref() {
+        graphql_request = graphql_request.with_extensions(persisted_query_extension(sha256_hash));
+    }
+
+    execute_graphql(
+        &get_graphql_url(),
+        graphql_request,
+        request.context.token,
+        request.context.tenant_slug,
+        request.context.locale,
+    )
+    .await
+}
+
+fn map_server_fn_error(error: ServerFnError) -> ApiError {
+    let message = error.to_string();
+
+    if message == "Unauthorized" {
+        ApiError::Unauthorized
+    } else if message == "Network error" {
+        ApiError::Network
+    } else if let Some(value) = message.strip_prefix("Http error: ") {
+        ApiError::Http(value.to_string())
+    } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
+        ApiError::Graphql(value.to_string())
+    } else {
+        ApiError::Graphql(message)
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/graphql")]
+async fn admin_graphql(request: ServerGraphqlRequest) -> Result<Value, ServerFnError> {
+    execute_server_graphql(request)
+        .await
+        .map_err(|err| ServerFnError::ServerError(err.to_string()))
+}
+
 pub async fn request<V, T>(
     query: &str,
     variables: V,
@@ -63,14 +128,17 @@ where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
 {
-    execute_graphql(
-        &get_graphql_url(),
-        GraphqlRequest::new(query, Some(variables)),
-        token,
-        tenant_slug,
-        get_stored_locale(),
-    )
+    let response = admin_graphql(ServerGraphqlRequest {
+        query: query.to_string(),
+        variables: serde_json::to_value(variables)
+            .map_err(|err| ApiError::Graphql(err.to_string()))?,
+        persisted_query_sha256: None,
+        context: build_request_context(token, tenant_slug),
+    })
     .await
+    .map_err(map_server_fn_error)?;
+
+    serde_json::from_value(response).map_err(|err| ApiError::Graphql(err.to_string()))
 }
 
 pub async fn request_with_persisted<V, T>(
@@ -84,13 +152,15 @@ where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
 {
-    execute_graphql(
-        &get_graphql_url(),
-        GraphqlRequest::new(query, Some(variables))
-            .with_extensions(persisted_query_extension(sha256_hash)),
-        token,
-        tenant_slug,
-        get_stored_locale(),
-    )
+    let response = admin_graphql(ServerGraphqlRequest {
+        query: query.to_string(),
+        variables: serde_json::to_value(variables)
+            .map_err(|err| ApiError::Graphql(err.to_string()))?,
+        persisted_query_sha256: Some(sha256_hash.to_string()),
+        context: build_request_context(token, tenant_slug),
+    })
     .await
+    .map_err(map_server_fn_error)?;
+
+    serde_json::from_value(response).map_err(|err| ApiError::Graphql(err.to_string()))
 }

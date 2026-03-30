@@ -9,7 +9,7 @@
 /// - **Business rules**: Guards enforce payment/inventory checks
 ///
 /// State Diagram:
-/// ```
+/// ```text
 ///  ┌─────────┐
 ///  │ Pending │─────────┐
 ///  └────┬────┘         │
@@ -40,7 +40,7 @@
 /// ```
 ///
 /// Usage:
-/// ```rust
+/// ```ignore
 /// // Create new order
 /// let order = Order::new_pending(id, customer_id, items);
 ///

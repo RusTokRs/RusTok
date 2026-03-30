@@ -206,6 +206,7 @@ pub struct ModuleSettingField {
     pub description: Option<String>,
     pub min: Option<f64>,
     pub max: Option<f64>,
+    pub options: Vec<serde_json::Value>,
 }
 
 impl ModuleSettingField {
@@ -218,6 +219,7 @@ impl ModuleSettingField {
             description: spec.description.clone(),
             min: spec.min,
             max: spec.max,
+            options: spec.options.clone(),
         }
     }
 }
@@ -231,6 +233,10 @@ pub struct MarketplaceModule {
     pub source: String,
     pub kind: String,
     pub category: String,
+    pub tags: Vec<String>,
+    pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
+    pub screenshots: Vec<String>,
     pub crate_name: String,
     pub dependencies: Vec<String>,
     pub ownership: String,

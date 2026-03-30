@@ -117,6 +117,7 @@ mod contract_tests {
         let media = registry.get("media").expect("media module");
         let cart = registry.get("cart").expect("cart module");
         let customer = registry.get("customer").expect("customer module");
+        let product = registry.get("product").expect("product module");
         let profiles = registry.get("profiles").expect("profiles module");
         let order = registry.get("order").expect("order module");
         let payment = registry.get("payment").expect("payment module");
@@ -183,7 +184,8 @@ mod contract_tests {
         assert!(channel.dependencies().is_empty());
         assert!(cart.dependencies().is_empty());
         assert!(customer.dependencies().is_empty());
-        assert!(profiles.dependencies().is_empty());
+        assert_eq!(product.dependencies(), &["taxonomy"]);
+        assert_eq!(profiles.dependencies(), &["taxonomy"]);
         assert!(region.dependencies().is_empty());
         assert!(payment.dependencies().is_empty());
         assert!(fulfillment.dependencies().is_empty());

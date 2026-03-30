@@ -6,7 +6,11 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
+#[cfg(feature = "ssr")]
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ssr")]
+use uuid::Uuid;
 
 use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
@@ -47,6 +51,7 @@ struct GraphqlUsersConnection {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct GraphqlUserEdge {
+    cursor: String,
     node: GraphqlUser,
 }
 
@@ -83,6 +88,283 @@ struct PaginationInput {
 struct UsersFilterInput {
     role: Option<String>,
     status: Option<String>,
+}
+
+#[cfg(feature = "ssr")]
+fn server_error(message: impl Into<String>) -> ServerFnError {
+    ServerFnError::ServerError(message.into())
+}
+
+async fn fetch_users_graphql(
+    page: i64,
+    limit: i64,
+    search: String,
+    role: String,
+    status: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlUsersResponse, ApiError> {
+    let after = if page > 1 {
+        Some(cursor_for_page(page, limit))
+    } else {
+        None
+    };
+
+    request_with_persisted::<UsersVariables, GraphqlUsersResponse>(
+        USERS_QUERY,
+        UsersVariables {
+            pagination: PaginationInput {
+                first: limit,
+                after,
+            },
+            filter: Some(UsersFilterInput {
+                role: if role.is_empty() {
+                    None
+                } else {
+                    Some(role.to_uppercase())
+                },
+                status: if status.is_empty() {
+                    None
+                } else {
+                    Some(status.to_uppercase())
+                },
+            }),
+            search: if search.is_empty() {
+                None
+            } else {
+                Some(search)
+            },
+        },
+        USERS_QUERY_HASH,
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+async fn fetch_users_server(
+    page: i64,
+    limit: i64,
+    search: String,
+    role: String,
+    status: String,
+) -> Result<GraphqlUsersResponse, ServerFnError> {
+    list_users_native(page, limit, search, role, status).await
+}
+
+async fn fetch_users(
+    page: i64,
+    limit: i64,
+    search: String,
+    role: String,
+    status: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlUsersResponse, String> {
+    match fetch_users_server(page, limit, search.clone(), role.clone(), status.clone()).await {
+        Ok(response) => Ok(response),
+        Err(server_err) => {
+            fetch_users_graphql(page, limit, search, role, status, token, tenant_slug)
+                .await
+                .map_err(|graphql_err| {
+                    format!(
+                        "native path failed: {}; graphql path failed: {}",
+                        server_err, graphql_err
+                    )
+                })
+        }
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/list-users")]
+async fn list_users_native(
+    page: i64,
+    limit: i64,
+    search: String,
+    role: String,
+    status: String,
+) -> Result<GraphqlUsersResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_core::Permission;
+
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::USERS_LIST) {
+            return Err(ServerFnError::new("users:list required"));
+        }
+
+        let app_ctx = expect_context::<AppContext>();
+        let backend = app_ctx.db.get_database_backend();
+        let page = page.max(1);
+        let limit = limit.clamp(1, 100);
+        let offset = (page - 1) * limit;
+        let search = search.trim().to_ascii_lowercase();
+        let role = role.trim().to_ascii_lowercase();
+        let status = status.trim().to_ascii_lowercase();
+
+        let placeholder = |index: usize| match backend {
+            DbBackend::Sqlite => format!("?{index}"),
+            _ => format!("${index}"),
+        };
+
+        let role_sql = r#"
+COALESCE((
+    SELECT r.slug
+    FROM user_roles ur
+    JOIN roles r ON r.id = ur.role_id
+    WHERE ur.user_id = u.id
+      AND r.tenant_id = u.tenant_id
+    ORDER BY CASE r.slug
+        WHEN 'super_admin' THEN 1
+        WHEN 'admin' THEN 2
+        WHEN 'manager' THEN 3
+        WHEN 'customer' THEN 4
+        ELSE 5
+    END
+    LIMIT 1
+), 'customer')
+"#;
+
+        let mut values = vec![tenant.id.into()];
+        let mut conditions = vec![format!("u.tenant_id = {}", placeholder(1))];
+        let mut next_index = 2usize;
+
+        if !role.is_empty() {
+            conditions.push(format!("{role_sql} = {}", placeholder(next_index)));
+            values.push(role.clone().into());
+            next_index += 1;
+        }
+
+        if !status.is_empty() {
+            conditions.push(format!(
+                "LOWER(CAST(u.status AS TEXT)) = {}",
+                placeholder(next_index)
+            ));
+            values.push(status.clone().into());
+            next_index += 1;
+        }
+
+        if !search.is_empty() {
+            let search_placeholder = placeholder(next_index);
+            conditions.push(format!(
+                "(LOWER(u.email) LIKE {search_placeholder} OR LOWER(COALESCE(u.name, '')) LIKE {search_placeholder})"
+            ));
+            values.push(format!("%{search}%").into());
+            next_index += 1;
+        }
+
+        let where_sql = conditions.join(" AND ");
+
+        let count_statement = Statement::from_sql_and_values(
+            backend,
+            format!(
+                r#"
+                SELECT CAST(COUNT(*) AS INTEGER) AS total_count
+                FROM users u
+                WHERE {where_sql}
+                "#
+            ),
+            values.clone(),
+        );
+
+        let total_count = app_ctx
+            .db
+            .query_one(count_statement)
+            .await
+            .map_err(|err| server_error(err.to_string()))?
+            .map(|row| row.try_get("", "total_count"))
+            .transpose()
+            .map_err(|err| server_error(err.to_string()))?
+            .unwrap_or(0i64);
+
+        let mut page_values = values;
+        let limit_placeholder = placeholder(next_index);
+        page_values.push(limit.into());
+        next_index += 1;
+        let offset_placeholder = placeholder(next_index);
+        page_values.push(offset.into());
+
+        let page_statement = Statement::from_sql_and_values(
+            backend,
+            format!(
+                r#"
+                SELECT
+                    u.id,
+                    u.email,
+                    u.name,
+                    {role_sql} AS role,
+                    u.status,
+                    u.created_at
+                FROM users u
+                WHERE {where_sql}
+                ORDER BY u.created_at DESC
+                LIMIT {limit_placeholder}
+                OFFSET {offset_placeholder}
+                "#
+            ),
+            page_values,
+        );
+
+        let edges = app_ctx
+            .db
+            .query_all(page_statement)
+            .await
+            .map_err(|err| server_error(err.to_string()))?
+            .into_iter()
+            .enumerate()
+            .map(|(index, row)| {
+                Ok(GraphqlUserEdge {
+                    node: GraphqlUser {
+                        id: row
+                            .try_get::<Uuid>("", "id")
+                            .map(|value| value.to_string())
+                            .map_err(|err| server_error(err.to_string()))?,
+                        email: row
+                            .try_get("", "email")
+                            .map_err(|err| server_error(err.to_string()))?,
+                        name: row
+                            .try_get("", "name")
+                            .map_err(|err| server_error(err.to_string()))?,
+                        role: row
+                            .try_get("", "role")
+                            .map_err(|err| server_error(err.to_string()))?,
+                        status: row
+                            .try_get::<rustok_core::UserStatus>("", "status")
+                            .map(|value| value.to_string())
+                            .map_err(|err| server_error(err.to_string()))?,
+                        created_at: row
+                            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                            .map(|value| value.to_rfc3339())
+                            .map_err(|err| server_error(err.to_string()))?,
+                    },
+                    cursor: STANDARD.encode((offset + index as i64).to_string()),
+                })
+            })
+            .collect::<Result<Vec<_>, ServerFnError>>()?;
+
+        Ok(GraphqlUsersResponse {
+            users: GraphqlUsersConnection {
+                edges,
+                page_info: GraphqlPageInfo { total_count },
+            },
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (page, limit, search, role, status);
+        Err(ServerFnError::new(
+            "admin/list-users requires the `ssr` feature",
+        ))
+    }
 }
 
 fn cursor_for_page(page: i64, limit: i64) -> String {
@@ -183,7 +465,7 @@ pub fn Users() -> impl IntoView {
         navigate(&format!("/users{}", search_string), Default::default());
     });
 
-    let graphql_resource = Resource::new(
+    let users_resource = Resource::new(
         move || {
             (
                 refresh_counter.get(),
@@ -197,38 +479,13 @@ pub fn Users() -> impl IntoView {
         move |(_, page_val, limit_val, search_val, role_val, status_val)| {
             let token_value = token.get();
             let tenant_value = tenant.get();
-            let after = if page_val > 1 {
-                Some(cursor_for_page(page_val, limit_val))
-            } else {
-                None
-            };
             async move {
-                request_with_persisted::<UsersVariables, GraphqlUsersResponse>(
-                    USERS_QUERY,
-                    UsersVariables {
-                        pagination: PaginationInput {
-                            first: limit_val,
-                            after,
-                        },
-                        filter: Some(UsersFilterInput {
-                            role: if role_val.is_empty() {
-                                None
-                            } else {
-                                Some(role_val.to_uppercase())
-                            },
-                            status: if status_val.is_empty() {
-                                None
-                            } else {
-                                Some(status_val.to_uppercase())
-                            },
-                        }),
-                        search: if search_val.is_empty() {
-                            None
-                        } else {
-                            Some(search_val)
-                        },
-                    },
-                    USERS_QUERY_HASH,
+                fetch_users(
+                    page_val,
+                    limit_val,
+                    search_val,
+                    role_val,
+                    status_val,
                     token_value,
                     tenant_value,
                 )
@@ -356,7 +613,7 @@ pub fn Users() -> impl IntoView {
                 <Suspense
                     fallback=move || view! { <div>{users_table_skeleton()}</div> }
                 >
-                    {move || match graphql_resource.get() {
+                    {move || match users_resource.get() {
                         None => view! { <div>{users_table_skeleton()}</div> }.into_any(),
                         Some(Ok(response)) => {
                             let total_count = response.users.page_info.total_count;
@@ -474,12 +731,7 @@ pub fn Users() -> impl IntoView {
                         }
                         Some(Err(err)) => view! {
                             <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                                {match err {
-                                    ApiError::Unauthorized => t_string!(i18n, users.graphql.unauthorized).to_string(),
-                                    ApiError::Http(code) => format!("{} {}", t_string!(i18n, users.graphql.error), code),
-                                    ApiError::Network => t_string!(i18n, users.graphql.network).to_string(),
-                                    ApiError::Graphql(message) => format!("{} {}", t_string!(i18n, users.graphql.error), message),
-                                }}
+                                {err}
                             </div>
                         }
                         .into_any(),

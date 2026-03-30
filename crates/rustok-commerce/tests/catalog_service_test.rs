@@ -58,6 +58,7 @@ fn create_test_product_input() -> CreateProductInput {
         }],
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     }
@@ -180,6 +181,7 @@ async fn test_update_product_success() {
         }]),
         vendor: Some("Updated Vendor".to_string()),
         product_type: Some("Digital".to_string()),
+        tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,
     };
@@ -624,6 +626,7 @@ async fn test_update_product_metadata() {
         translations: None,
         vendor: None,
         product_type: None,
+        tags: None,
         status: None,
         metadata: Some(serde_json::json!({
             "featured": true,
@@ -681,6 +684,7 @@ async fn test_update_vendor() {
         translations: None,
         vendor: Some("New Vendor Inc".to_string()),
         product_type: None,
+        tags: None,
         status: None,
         metadata: None,
     };
@@ -716,6 +720,7 @@ async fn test_update_nonexistent_product() {
         }]),
         vendor: None,
         product_type: None,
+        tags: None,
         status: None,
         metadata: None,
     };
@@ -832,6 +837,7 @@ async fn test_create_archived_product() {
         translations: None,
         vendor: None,
         product_type: None,
+        tags: None,
         status: Some(ProductStatus::Archived),
         metadata: None,
     };

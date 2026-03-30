@@ -28,6 +28,24 @@ pub enum ProfileError {
     ProfileByHandleNotFound(String),
     #[error("profile handle already exists: {0}")]
     DuplicateHandle(String),
+    #[error("profile validation failed: {0}")]
+    Validation(String),
     #[error(transparent)]
     Database(#[from] DbErr),
+}
+
+impl From<rustok_taxonomy::TaxonomyError> for ProfileError {
+    fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
+        match value {
+            rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Validation(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
+            | rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Validation(message),
+            rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
+                Self::Validation(format!("taxonomy term not found: {term_id}"))
+            }
+        }
+    }
 }

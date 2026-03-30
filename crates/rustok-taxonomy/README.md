@@ -19,7 +19,10 @@
 - Reuses locale normalization and fallback helpers from `rustok-content`.
 - Already backs forum topic tags through forum-owned `forum_topic_tags`.
 - Already backs blog tags through blog-owned `blog_post_tags`.
-- Is intended to become the shared vocabulary layer for `blog`, `forum`, `product`, `profiles`, and future modules while leaving entity-term relation tables module-owned.
+- Already backs product tags through product-owned `product_tags`.
+- Already backs profile tags through profile-owned `profile_tags`.
+- Is the shared vocabulary layer for `blog`, `forum`, `product`, `profiles`, and future modules
+  while leaving entity-term relation tables module-owned.
 
 ## Entry points
 

@@ -46,3 +46,4 @@ loco-rs = { workspace = true, features = ["testing"] }
 tower.workspace = true
 proptest = "1.5"
 rust_decimal_macros = "1.36"
+rustok-taxonomy.workspace = true

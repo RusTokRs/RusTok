@@ -54,6 +54,14 @@ pub struct MarketplaceModule {
     pub source: String,
     pub kind: String,
     pub category: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default, rename = "iconUrl")]
+    pub icon_url: Option<String>,
+    #[serde(default, rename = "bannerUrl")]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub screenshots: Vec<String>,
     #[serde(rename = "crateName")]
     pub crate_name: String,
     pub dependencies: Vec<String>,
@@ -95,6 +103,8 @@ pub struct ModuleSettingField {
     pub description: Option<String>,
     pub min: Option<f64>,
     pub max: Option<f64>,
+    #[serde(default)]
+    pub options: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

@@ -131,6 +131,14 @@ pub struct ManifestModuleSpec {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub icon_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub screenshots: Vec<String>,
+    #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
@@ -188,6 +196,8 @@ pub struct ModuleSettingSpec {
     pub min: Option<f64>,
     #[serde(default)]
     pub max: Option<f64>,
+    #[serde(default)]
+    pub options: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -210,6 +220,10 @@ pub struct CatalogManifestModule {
     pub crate_name: String,
     pub name: Option<String>,
     pub category: Option<String>,
+    pub tags: Vec<String>,
+    pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
+    pub screenshots: Vec<String>,
     pub version: Option<String>,
     pub description: Option<String>,
     pub git: Option<String>,
@@ -398,6 +412,14 @@ struct ModulePackageMetadata {
 struct ModulePackageMarketplaceMetadata {
     #[serde(default)]
     category: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
+    screenshots: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -581,6 +603,12 @@ pub enum ManifestError {
         key: String,
         reason: String,
     },
+    #[error("Module '{slug}' has invalid marketplace metadata '{field}': {reason}")]
+    InvalidModuleMarketplaceMetadata {
+        slug: String,
+        field: String,
+        reason: String,
+    },
 }
 
 fn normalize_deps(deps: &[String]) -> HashSet<String> {
@@ -664,6 +692,45 @@ fn merge_module_package_manifest(
         .filter(|value| !value.is_empty())
     {
         spec.category = Some(category.to_string());
+    }
+    if !package_manifest.marketplace.tags.is_empty() {
+        spec.tags = package_manifest
+            .marketplace
+            .tags
+            .into_iter()
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty())
+            .collect::<Vec<_>>();
+        spec.tags.sort();
+        spec.tags.dedup();
+    }
+    if let Some(icon_url) = package_manifest
+        .marketplace
+        .icon
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.icon_url = Some(icon_url.to_string());
+    }
+    if let Some(banner_url) = package_manifest
+        .marketplace
+        .banner
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.banner_url = Some(banner_url.to_string());
+    }
+    if !package_manifest.marketplace.screenshots.is_empty() {
+        spec.screenshots = package_manifest
+            .marketplace
+            .screenshots
+            .into_iter()
+            .map(|item| item.trim().to_string())
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        spec.screenshots.dedup();
     }
 
     if !metadata.ownership.trim().is_empty() {
@@ -842,6 +909,38 @@ fn validate_setting_spec(
         });
     }
 
+    if !spec.options.is_empty() {
+        if !matches!(value_type, "string" | "integer" | "number" | "boolean") {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason:
+                    "options are only supported for scalar string/integer/number/boolean settings"
+                        .to_string(),
+            });
+        }
+
+        for option in &spec.options {
+            if !setting_value_matches_type(value_type, option) {
+                return Err(ManifestError::InvalidModuleSettingSchema {
+                    slug: slug.to_string(),
+                    key: key.to_string(),
+                    reason: "all options must match the declared type".to_string(),
+                });
+            }
+        }
+
+        if let Some(default) = &spec.default {
+            if !spec.options.iter().any(|option| option == default) {
+                return Err(ManifestError::InvalidModuleSettingSchema {
+                    slug: slug.to_string(),
+                    key: key.to_string(),
+                    reason: "default must be one of the declared options".to_string(),
+                });
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -857,6 +956,20 @@ fn validate_setting_value(
             slug: slug.to_string(),
             key: key.to_string(),
             reason: format!("expected {value_type}"),
+        });
+    }
+
+    if !spec.options.is_empty() && !spec.options.iter().any(|option| option == value) {
+        let allowed = spec
+            .options
+            .iter()
+            .map(serde_json::Value::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(ManifestError::InvalidModuleSettingValue {
+            slug: slug.to_string(),
+            key: key.to_string(),
+            reason: format!("must be one of: {allowed}"),
         });
     }
 
@@ -1524,6 +1637,113 @@ fn validate_catalog_metadata(slug: &str, spec: &ManifestModuleSpec) -> Result<()
         });
     }
 
+    validate_marketplace_metadata(slug, spec)?;
+
+    Ok(())
+}
+
+fn validate_marketplace_metadata(
+    slug: &str,
+    spec: &ManifestModuleSpec,
+) -> Result<(), ManifestError> {
+    if let Some(description) = spec
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if description.chars().count() < 20 {
+            return Err(ManifestError::InvalidModuleMarketplaceMetadata {
+                slug: slug.to_string(),
+                field: "description".to_string(),
+                reason: "must be at least 20 characters".to_string(),
+            });
+        }
+    }
+
+    if let Some(icon_url) = spec
+        .icon_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        validate_marketplace_asset_url(slug, "icon", icon_url, &["svg"])?;
+    }
+
+    if let Some(banner_url) = spec
+        .banner_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        validate_marketplace_asset_url(
+            slug,
+            "banner",
+            banner_url,
+            &["png", "jpg", "jpeg", "webp", "svg"],
+        )?;
+    }
+
+    for (index, screenshot) in spec.screenshots.iter().enumerate() {
+        let screenshot = screenshot.trim();
+        if screenshot.is_empty() {
+            continue;
+        }
+
+        validate_marketplace_asset_url(
+            slug,
+            &format!("screenshots[{index}]"),
+            screenshot,
+            &["png", "jpg", "jpeg", "webp", "svg"],
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_marketplace_asset_url(
+    slug: &str,
+    field: &str,
+    value: &str,
+    allowed_extensions: &[&str],
+) -> Result<(), ManifestError> {
+    let parsed = reqwest::Url::parse(value).map_err(|error| {
+        ManifestError::InvalidModuleMarketplaceMetadata {
+            slug: slug.to_string(),
+            field: field.to_string(),
+            reason: format!("must be a valid absolute URL: {error}"),
+        }
+    })?;
+
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(ManifestError::InvalidModuleMarketplaceMetadata {
+            slug: slug.to_string(),
+            field: field.to_string(),
+            reason: "must use http or https".to_string(),
+        });
+    }
+
+    let path = parsed.path();
+    let has_allowed_extension = allowed_extensions.iter().any(|extension| {
+        path.rsplit('/')
+            .next()
+            .map(|segment| segment.to_ascii_lowercase())
+            .is_some_and(|segment| segment.ends_with(&format!(".{extension}")))
+    });
+
+    if !has_allowed_extension {
+        let allowed = allowed_extensions
+            .iter()
+            .map(|extension| format!(".{extension}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(ManifestError::InvalidModuleMarketplaceMetadata {
+            slug: slug.to_string(),
+            field: field.to_string(),
+            reason: format!("must point to one of: {allowed}"),
+        });
+    }
+
     Ok(())
 }
 
@@ -1640,6 +1860,10 @@ impl ManifestManager {
                     crate_name: spec.crate_name,
                     name: spec.name,
                     category: spec.category,
+                    tags: spec.tags,
+                    icon_url: spec.icon_url,
+                    banner_url: spec.banner_url,
+                    screenshots: spec.screenshots,
                     version: spec.version,
                     description: spec.description,
                     git: spec.git,
@@ -2484,6 +2708,13 @@ showcase_admin_surfaces = ["next-admin", "storybook"]
 
 [marketplace]
 category = "editorial"
+tags = ["editorial", "stories", "news"]
+icon = "https://cdn.example.test/modules/blog/icon.svg"
+banner = "https://cdn.example.test/modules/blog/banner.png"
+screenshots = [
+  "https://cdn.example.test/modules/blog/screenshot-1.png",
+  "https://cdn.example.test/modules/blog/screenshot-2.png",
+]
 "#,
         )
         .unwrap();
@@ -2517,11 +2748,133 @@ category = "editorial"
         assert_eq!(blog.ownership, "third_party");
         assert_eq!(blog.trust_level, "private");
         assert_eq!(blog.category.as_deref(), Some("editorial"));
+        assert_eq!(blog.tags, vec!["editorial", "news", "stories"]);
+        assert_eq!(
+            blog.icon_url.as_deref(),
+            Some("https://cdn.example.test/modules/blog/icon.svg")
+        );
+        assert_eq!(
+            blog.banner_url.as_deref(),
+            Some("https://cdn.example.test/modules/blog/banner.png")
+        );
+        assert_eq!(
+            blog.screenshots,
+            vec![
+                "https://cdn.example.test/modules/blog/screenshot-1.png",
+                "https://cdn.example.test/modules/blog/screenshot-2.png",
+            ]
+        );
         assert_eq!(blog.recommended_admin_surfaces, vec!["custom-admin"]);
         assert_eq!(
             blog.showcase_admin_surfaces,
             vec!["next-admin", "storybook"]
         );
+    }
+
+    fn catalog_modules_error_for_blog_manifest(contents: &str) -> ManifestError {
+        let temp = tempdir().unwrap();
+        let manifest_path = temp.path().join("modules.toml");
+        let crate_dir = temp.path().join("crates").join("rustok-blog");
+        write_module_manifest(&crate_dir, contents);
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::catalog_modules(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        result.expect_err("catalog metadata should fail validation")
+    }
+
+    #[test]
+    #[serial]
+    fn catalog_modules_reject_short_marketplace_description() {
+        let error = catalog_modules_error_for_blog_manifest(
+            r#"[module]
+description = "Too short"
+ownership = "third_party"
+trust_level = "private"
+"#,
+        );
+
+        assert!(matches!(
+            error,
+            ManifestError::InvalidModuleMarketplaceMetadata {
+                slug,
+                field,
+                reason,
+            } if slug == "blog"
+                && field == "description"
+                && reason.contains("at least 20 characters")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn catalog_modules_reject_non_svg_marketplace_icon() {
+        let error = catalog_modules_error_for_blog_manifest(
+            r#"[module]
+description = "Blog metadata description is long enough."
+ownership = "third_party"
+trust_level = "private"
+
+[marketplace]
+icon = "https://cdn.example.test/modules/blog/icon.png"
+"#,
+        );
+
+        assert!(matches!(
+            error,
+            ManifestError::InvalidModuleMarketplaceMetadata {
+                slug,
+                field,
+                reason,
+            } if slug == "blog"
+                && field == "icon"
+                && reason.contains(".svg")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn catalog_modules_reject_invalid_marketplace_screenshot_url() {
+        let error = catalog_modules_error_for_blog_manifest(
+            r#"[module]
+description = "Blog metadata description is long enough."
+ownership = "third_party"
+trust_level = "private"
+
+[marketplace]
+screenshots = ["not-a-url"]
+"#,
+        );
+
+        assert!(matches!(
+            error,
+            ManifestError::InvalidModuleMarketplaceMetadata {
+                slug,
+                field,
+                reason,
+            } if slug == "blog"
+                && field == "screenshots[0]"
+                && reason.contains("valid absolute URL")
+        ));
     }
 
     #[test]
@@ -2846,6 +3199,111 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
             result,
             Err(ManifestError::InvalidModuleSettingValue { slug, key, .. })
                 if slug == "blog" && key == "postsPerPage"
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_values_outside_declared_options() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+layout = { type = "string", default = "grid", options = ["grid", "list"] }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({ "layout": "hero" }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
+                if slug == "blog"
+                    && key == "layout"
+                    && reason.contains("must be one of")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_rejects_setting_schema_with_default_outside_declared_options() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+layout = { type = "string", default = "hero", options = ["grid", "list"] }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings("blog", serde_json::json!({}));
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingSchema { slug, key, reason })
+                if slug == "blog"
+                    && key == "layout"
+                    && reason.contains("default must be one of the declared options")
         ));
     }
 

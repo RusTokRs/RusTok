@@ -11,7 +11,7 @@ fn module_metadata() {
         "Universal public profile domain for platform users"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-    assert!(module.dependencies().is_empty());
+    assert_eq!(module.dependencies(), &["taxonomy"]);
 }
 
 #[test]

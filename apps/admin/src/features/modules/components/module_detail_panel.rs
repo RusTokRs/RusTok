@@ -3,6 +3,15 @@ use std::collections::HashMap;
 
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
 
+#[derive(Clone)]
+struct MetadataChecklistItem {
+    label: &'static str,
+    state: &'static str,
+    priority: &'static str,
+    summary: &'static str,
+    detail: String,
+}
+
 fn short_checksum(value: Option<&str>) -> Option<String> {
     let value = value?;
     if value.len() > 16 {
@@ -62,6 +71,17 @@ fn setting_field_hint(field: &ModuleSettingField) -> Option<String> {
         (None, Some(max)) => parts.push(format!("Max: {}", max)),
         (None, None) => {}
     }
+    if !field.options.is_empty() {
+        parts.push(format!(
+            "Options: {}",
+            field
+                .options
+                .iter()
+                .map(setting_option_label)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
 
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
@@ -72,6 +92,40 @@ fn setting_field_placeholder(field: &ModuleSettingField) -> Option<&'static str>
         "array" => Some("[\n  \"item\"\n]"),
         "json" | "any" => Some("{\n  \"any\": true\n}"),
         _ => None,
+    }
+}
+
+fn setting_option_draft_value(value_type: &str, value: &serde_json::Value) -> String {
+    match value_type {
+        "string" => value.as_str().unwrap_or_default().to_string(),
+        "integer" => value
+            .as_i64()
+            .map(|number| number.to_string())
+            .or_else(|| value.as_u64().map(|number| number.to_string()))
+            .unwrap_or_else(|| value.to_string()),
+        "number" => value
+            .as_f64()
+            .map(|number| {
+                let mut rendered = number.to_string();
+                if rendered.ends_with(".0") {
+                    rendered.truncate(rendered.len() - 2);
+                }
+                rendered
+            })
+            .unwrap_or_else(|| value.to_string()),
+        "boolean" => value
+            .as_bool()
+            .map(|flag| flag.to_string())
+            .unwrap_or_else(|| value.to_string()),
+        _ => value.to_string(),
+    }
+}
+
+fn setting_option_label(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Null => "null".to_string(),
+        _ => value.to_string(),
     }
 }
 
@@ -182,6 +236,209 @@ fn json_value_kind(value: &serde_json::Value) -> &'static str {
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
     }
+}
+
+fn metadata_status_badge_classes(state: &str) -> &'static str {
+    match state {
+        "ready" => {
+            "inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700"
+        }
+        "warn" => {
+            "inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700"
+        }
+        _ => {
+            "inline-flex items-center rounded-full border border-border px-2 py-0.5 font-medium text-muted-foreground"
+        }
+    }
+}
+
+fn metadata_status_panel_classes(state: &str) -> &'static str {
+    match state {
+        "ready" => "border-emerald-500/30 bg-emerald-500/5",
+        "warn" => "border-amber-500/30 bg-amber-500/5",
+        _ => "border-border bg-background",
+    }
+}
+
+fn looks_like_absolute_http_url(value: &str) -> bool {
+    let value = value.trim();
+    value.starts_with("https://") || value.starts_with("http://")
+}
+
+fn asset_path_without_query(value: &str) -> &str {
+    value.split(['?', '#']).next().unwrap_or(value)
+}
+
+fn looks_like_svg_url(value: &str) -> bool {
+    looks_like_absolute_http_url(value) && asset_path_without_query(value).ends_with(".svg")
+}
+
+fn looks_like_image_url(value: &str) -> bool {
+    if !looks_like_absolute_http_url(value) {
+        return false;
+    }
+
+    let lower = asset_path_without_query(value).to_ascii_lowercase();
+    [".png", ".jpg", ".jpeg", ".webp", ".svg"]
+        .iter()
+        .any(|suffix| lower.ends_with(suffix))
+}
+
+fn marketplace_metadata_checklist(module: &MarketplaceModule) -> Vec<MetadataChecklistItem> {
+    let description_length = module.description.trim().chars().count();
+    let icon_url = module
+        .icon_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let banner_url = module
+        .banner_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let screenshots_count = module
+        .screenshots
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .count();
+    let publisher = module
+        .publisher
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let has_registry_publish_signal =
+        module.checksum_sha256.is_some() || !module.versions.is_empty();
+
+    vec![
+        if description_length >= 20 {
+            MetadataChecklistItem {
+                label: "Description",
+                state: "ready",
+                priority: "required",
+                summary: "Ready",
+                detail: format!("{description_length} characters available for catalog detail."),
+            }
+        } else {
+            MetadataChecklistItem {
+                label: "Description",
+                state: "warn",
+                priority: "required",
+                summary: "Required",
+                detail: "Needs at least 20 characters to satisfy local manifest validation."
+                    .to_string(),
+            }
+        },
+        match icon_url {
+            Some(value) if looks_like_svg_url(value) => MetadataChecklistItem {
+                label: "Icon asset",
+                state: "ready",
+                priority: "recommended",
+                summary: "Ready",
+                detail: "Absolute SVG icon is present for registry cards and detail previews."
+                    .to_string(),
+            },
+            Some(_) => MetadataChecklistItem {
+                label: "Icon asset",
+                state: "warn",
+                priority: "required",
+                summary: "Required",
+                detail: "Icon URL should be an absolute http(s) SVG asset.".to_string(),
+            },
+            None => MetadataChecklistItem {
+                label: "Icon asset",
+                state: "warn",
+                priority: "recommended",
+                summary: "Recommended",
+                detail: "Add an SVG icon URL so registry lists and cards have a visual identity."
+                    .to_string(),
+            },
+        },
+        match banner_url {
+            Some(value) if looks_like_image_url(value) => MetadataChecklistItem {
+                label: "Banner asset",
+                state: "ready",
+                priority: "recommended",
+                summary: "Ready",
+                detail: "Banner image is present for richer marketplace detail layouts."
+                    .to_string(),
+            },
+            Some(_) => MetadataChecklistItem {
+                label: "Banner asset",
+                state: "warn",
+                priority: "required",
+                summary: "Required",
+                detail: "Banner URL should be an absolute http(s) image asset.".to_string(),
+            },
+            None => MetadataChecklistItem {
+                label: "Banner asset",
+                state: "warn",
+                priority: "recommended",
+                summary: "Recommended",
+                detail:
+                    "Optional for local validation, but useful for richer registry presentation."
+                        .to_string(),
+            },
+        },
+        if screenshots_count > 0 {
+            MetadataChecklistItem {
+                label: "Screenshots",
+                state: "ready",
+                priority: "recommended",
+                summary: "Ready",
+                detail: format!("{screenshots_count} screenshot(s) available for discovery UX."),
+            }
+        } else {
+            MetadataChecklistItem {
+                label: "Screenshots",
+                state: "warn",
+                priority: "recommended",
+                summary: "Recommended",
+                detail:
+                    "Add one or more screenshots to make module capabilities easier to evaluate."
+                        .to_string(),
+            }
+        },
+        if let Some(publisher) = publisher {
+            MetadataChecklistItem {
+                label: "Publisher identity",
+                state: "ready",
+                priority: "info",
+                summary: "Known",
+                detail: format!("Publisher is exposed as {publisher}."),
+            }
+        } else {
+            MetadataChecklistItem {
+                label: "Publisher identity",
+                state: "info",
+                priority: "info",
+                summary: "Local only",
+                detail: "Workspace modules can stay unpublished; external registry entries should declare a publisher."
+                    .to_string(),
+            }
+        },
+        if has_registry_publish_signal {
+            MetadataChecklistItem {
+                label: "Registry publish signal",
+                state: "ready",
+                priority: "info",
+                summary: "Present",
+                detail:
+                    "Checksum and/or published versions indicate a registry-backed release trail."
+                        .to_string(),
+            }
+        } else {
+            MetadataChecklistItem {
+                label: "Registry publish signal",
+                state: "info",
+                priority: "info",
+                summary: "Not published",
+                detail:
+                    "No checksum or version history is visible yet, which is expected for workspace-only modules."
+                        .to_string(),
+            }
+        },
+    ]
 }
 
 fn json_value_preview(value: &serde_json::Value) -> String {
@@ -1696,6 +1953,30 @@ pub fn ModuleDetailPanel(
                 {move || {
                     detail_for_body.get_value().as_ref().map(|module| {
                         let module = module.clone();
+                        let module_name = module.name.clone();
+                        let module_tags = module.tags.clone();
+                        let module_tags_for_show = module_tags.clone();
+                        let module_icon_url = module.icon_url.clone();
+                        let module_banner_url = module.banner_url.clone();
+                        let module_banner_url_for_body = module_banner_url.clone();
+                        let module_screenshots = module.screenshots.clone();
+                        let module_screenshots_for_body = module_screenshots.clone();
+                        let has_marketplace_visuals = module_banner_url.is_some() || !module_screenshots.is_empty();
+                        let has_marketplace_screenshots = !module_screenshots.is_empty();
+                        let metadata_checklist = marketplace_metadata_checklist(&module);
+                        let metadata_checklist_for_show = metadata_checklist.clone();
+                        let metadata_required_issues = metadata_checklist
+                            .iter()
+                            .filter(|item| item.state == "warn" && item.priority == "required")
+                            .count();
+                        let metadata_recommended_gaps = metadata_checklist
+                            .iter()
+                            .filter(|item| item.state == "warn" && item.priority == "recommended")
+                            .count();
+                        let metadata_ready_count = metadata_checklist
+                            .iter()
+                            .filter(|item| item.state == "ready")
+                            .count();
                         let version_trail = module.versions.clone().into_iter().take(5).collect::<Vec<_>>();
                         let checksum = short_checksum(module.checksum_sha256.as_deref());
                         let admin_surface = admin_surface_for_body.get_value();
@@ -1711,6 +1992,16 @@ pub fn ModuleDetailPanel(
                             <div class="mt-4 space-y-4">
                                 <div class="space-y-2">
                                     <div class="flex flex-wrap items-center gap-2">
+                                        {module_icon_url.clone().map(|icon_url| {
+                                            let module_name = module_name.clone();
+                                            view! {
+                                                <img
+                                                    class="h-10 w-10 rounded-lg border border-border bg-background object-cover"
+                                                    src=icon_url
+                                                    alt=format!("{} icon", module_name)
+                                                />
+                                            }
+                                        })}
                                         <h4 class="text-lg font-semibold text-card-foreground">{module.name.clone()}</h4>
                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                                             {format!("v{}", module.latest_version)}
@@ -1747,6 +2038,17 @@ pub fn ModuleDetailPanel(
                                             </span>
                                         })}
                                     </div>
+                                    <Show when=move || !module_tags_for_show.is_empty()>
+                                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                                            {module_tags.clone().into_iter().map(|tag| {
+                                                view! {
+                                                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
+                                                        {format!("#{}", tag)}
+                                                    </span>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    </Show>
                                     <p class="text-sm text-muted-foreground">{module.description.clone()}</p>
                                 </div>
 
@@ -1871,6 +2173,102 @@ pub fn ModuleDetailPanel(
                                     </div>
                                 </div>
 
+                                <Show when=move || !metadata_checklist_for_show.is_empty()>
+                                    <div class="rounded-lg border border-border bg-background/70 p-4">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <p class="text-xs uppercase tracking-wide text-muted-foreground">"Registry readiness"</p>
+                                            <span class=metadata_status_badge_classes(if metadata_required_issues > 0 { "warn" } else { "ready" })>
+                                                {if metadata_required_issues > 0 {
+                                                    format!("{} required issue(s)", metadata_required_issues)
+                                                } else {
+                                                    "No required metadata gaps".to_string()
+                                                }}
+                                            </span>
+                                            <span class=metadata_status_badge_classes(if metadata_recommended_gaps > 0 { "warn" } else { "ready" })>
+                                                {if metadata_recommended_gaps > 0 {
+                                                    format!("{} recommended gap(s)", metadata_recommended_gaps)
+                                                } else {
+                                                    "Recommended visuals look complete".to_string()
+                                                }}
+                                            </span>
+                                            <span class=metadata_status_badge_classes("info")>
+                                                {format!("{} ready signal(s)", metadata_ready_count)}
+                                            </span>
+                                        </div>
+                                        <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                            {metadata_checklist.clone().into_iter().map(|item| {
+                                                view! {
+                                                    <div class=format!(
+                                                        "rounded-lg border p-3 text-sm {}",
+                                                        metadata_status_panel_classes(item.state)
+                                                    )>
+                                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                                            <p class="font-medium text-card-foreground">{item.label}</p>
+                                                            <span class=metadata_status_badge_classes(item.state)>
+                                                                {item.summary}
+                                                            </span>
+                                                        </div>
+                                                        <p class="mt-2 text-xs text-muted-foreground">{item.detail}</p>
+                                                    </div>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                        <p class="mt-3 text-xs text-muted-foreground">
+                                            {if module.source.eq_ignore_ascii_case("path") {
+                                                "Workspace path modules can stay unpublished; this checklist is meant to surface what is already registry-ready versus what still needs operator follow-up."
+                                            } else {
+                                                "Registry-backed modules should ideally arrive here with the required metadata already satisfied."
+                                            }}
+                                        </p>
+                                    </div>
+                                </Show>
+
+                                {if has_marketplace_visuals {
+                                    view! {
+                                        <div class="rounded-lg border border-border bg-background/70 p-4">
+                                            <p class="text-xs uppercase tracking-wide text-muted-foreground">"Marketplace visuals"</p>
+                                            <div class="mt-3 space-y-3">
+                                                {module_banner_url_for_body.clone().map(|banner_url| {
+                                                    let module_name = module_name.clone();
+                                                    view! {
+                                                        <div class="space-y-2">
+                                                            <p class="text-xs text-muted-foreground">"Banner"</p>
+                                                            <img
+                                                                class="max-h-48 w-full rounded-lg border border-border object-cover"
+                                                                src=banner_url
+                                                                alt=format!("{} banner", module_name)
+                                                            />
+                                                        </div>
+                                                    }
+                                                })}
+                                                {if has_marketplace_screenshots {
+                                                    view! {
+                                                        <div class="space-y-2">
+                                                            <p class="text-xs text-muted-foreground">"Screenshots"</p>
+                                                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                                                {module_screenshots_for_body.clone().into_iter().map(|screenshot_url| {
+                                                                    let module_name = module_name.clone();
+                                                                    view! {
+                                                                        <img
+                                                                            class="h-32 w-full rounded-lg border border-border object-cover"
+                                                                            src=screenshot_url
+                                                                            alt=format!("{} screenshot", module_name)
+                                                                        />
+                                                                    }
+                                                                }).collect_view()}
+                                                            </div>
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    ().into_any()
+                                }}
+
                                 <div class="rounded-lg border border-border bg-background/70 p-4">
                                     <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div class="space-y-1">
@@ -1934,6 +2332,7 @@ pub fn ModuleDetailPanel(
                                                         let field_hint = setting_field_hint(&field);
                                                         let field_description = field.description.clone();
                                                         let field_type = field.value_type.clone();
+                                                        let field_options = field.options.clone();
                                                         let value_for_text = {
                                                             let field_key = field_key.clone();
                                                             move || {
@@ -1993,23 +2392,50 @@ pub fn ModuleDetailPanel(
                                                                         }.into_any()
                                                                     }
                                                                     "integer" | "number" => {
-                                                                        let field_key_for_input = field_key.clone();
-                                                                        let step = if field_type == "integer" { "1" } else { "any" };
-                                                                        view! {
-                                                                            <input
-                                                                                type="number"
-                                                                                step=step
-                                                                                class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                                                                                prop:value=value_for_text
-                                                                                disabled=move || disabled.get()
-                                                                                on:input=move |event| {
-                                                                                    on_settings_field_input.run((
-                                                                                        field_key_for_input.clone(),
-                                                                                        event_target_value(&event),
-                                                                                    ))
-                                                                                }
-                                                                            />
-                                                                        }.into_any()
+                                                                        if !field_options.is_empty() {
+                                                                            let field_key_for_select = field_key.clone();
+                                                                            let field_type_for_select = field_type.clone();
+                                                                            let options_for_select = field_options.clone();
+                                                                            view! {
+                                                                                <select
+                                                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                    prop:value=value_for_text
+                                                                                    disabled=move || disabled.get()
+                                                                                    on:change=move |event| {
+                                                                                        on_settings_field_input.run((
+                                                                                            field_key_for_select.clone(),
+                                                                                            event_target_value(&event),
+                                                                                        ))
+                                                                                    }
+                                                                                >
+                                                                                    {options_for_select.into_iter().map(|option| {
+                                                                                        let option_value = setting_option_draft_value(&field_type_for_select, &option);
+                                                                                        let option_label = setting_option_label(&option);
+                                                                                        view! {
+                                                                                            <option value=option_value>{option_label}</option>
+                                                                                        }
+                                                                                    }).collect_view()}
+                                                                                </select>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            let field_key_for_input = field_key.clone();
+                                                                            let step = if field_type == "integer" { "1" } else { "any" };
+                                                                            view! {
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step=step
+                                                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                    prop:value=value_for_text
+                                                                                    disabled=move || disabled.get()
+                                                                                    on:input=move |event| {
+                                                                                        on_settings_field_input.run((
+                                                                                            field_key_for_input.clone(),
+                                                                                            event_target_value(&event),
+                                                                                        ))
+                                                                                    }
+                                                                                />
+                                                                            }.into_any()
+                                                                        }
                                                                     }
                                                                     "object" | "array" | "json" | "any" => {
                                                                         let field_key_for_input = field_key.clone();
@@ -2030,21 +2456,48 @@ pub fn ModuleDetailPanel(
                                                                         }.into_any()
                                                                     }
                                                                     _ => {
-                                                                        let field_key_for_input = field_key.clone();
-                                                                        view! {
-                                                                            <input
-                                                                                type="text"
-                                                                                class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                                                                                prop:value=value_for_text
-                                                                                disabled=move || disabled.get()
-                                                                                on:input=move |event| {
-                                                                                    on_settings_field_input.run((
-                                                                                        field_key_for_input.clone(),
-                                                                                        event_target_value(&event),
-                                                                                    ))
-                                                                                }
-                                                                            />
-                                                                        }.into_any()
+                                                                        if !field_options.is_empty() {
+                                                                            let field_key_for_select = field_key.clone();
+                                                                            let field_type_for_select = field_type.clone();
+                                                                            let options_for_select = field_options.clone();
+                                                                            view! {
+                                                                                <select
+                                                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                    prop:value=value_for_text
+                                                                                    disabled=move || disabled.get()
+                                                                                    on:change=move |event| {
+                                                                                        on_settings_field_input.run((
+                                                                                            field_key_for_select.clone(),
+                                                                                            event_target_value(&event),
+                                                                                        ))
+                                                                                    }
+                                                                                >
+                                                                                    {options_for_select.into_iter().map(|option| {
+                                                                                        let option_value = setting_option_draft_value(&field_type_for_select, &option);
+                                                                                        let option_label = setting_option_label(&option);
+                                                                                        view! {
+                                                                                            <option value=option_value>{option_label}</option>
+                                                                                        }
+                                                                                    }).collect_view()}
+                                                                                </select>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            let field_key_for_input = field_key.clone();
+                                                                            view! {
+                                                                                <input
+                                                                                    type="text"
+                                                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                    prop:value=value_for_text
+                                                                                    disabled=move || disabled.get()
+                                                                                    on:input=move |event| {
+                                                                                        on_settings_field_input.run((
+                                                                                            field_key_for_input.clone(),
+                                                                                            event_target_value(&event),
+                                                                                        ))
+                                                                                    }
+                                                                                />
+                                                                            }.into_any()
+                                                                        }
                                                                     }
                                                                 }}
                                                             </div>

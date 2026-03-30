@@ -53,6 +53,7 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
         }],
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     }
@@ -113,6 +114,7 @@ async fn test_product_update_triggers_event() {
         }]),
         vendor: Some("Updated Vendor".to_string()),
         product_type: Some("Digital".to_string()),
+        tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,
     };

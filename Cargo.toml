@@ -98,7 +98,7 @@ unicode-normalization = "0.1"
 
 # Leptos
 leptos = "0.8.17"
-leptos_axum = "0.8.11"
+leptos_axum = "0.8.8"
 leptos_router = "0.8.12"
 leptos-auth = { path = "crates/leptos-auth" }
 leptos-graphql = { path = "crates/leptos-graphql" }

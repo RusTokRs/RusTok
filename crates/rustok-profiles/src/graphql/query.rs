@@ -129,6 +129,7 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
         | ProfileError::HandleTooLong
         | ProfileError::ReservedHandle(_)
         | ProfileError::InvalidLocale(_)
+        | ProfileError::Validation(_)
         | ProfileError::DuplicateHandle(_) => {
             <FieldError as GraphQLError>::bad_user_input(&err.to_string()).into()
         }

@@ -1,6 +1,10 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_core::events::{EventHandler, HandlerResult};
+use rustok_core::{
+    events::{EventHandler, HandlerResult},
+    simple_hash,
+    slugify,
+};
 use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use serde_json::Value as JsonValue;
@@ -26,6 +30,7 @@ struct NodeRow {
     position: i32,
     depth: i32,
     reply_count: i32,
+    metadata: JsonValue,
     published_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     created_at: chrono::DateTime<chrono::FixedOffset>,
     updated_at: chrono::DateTime<chrono::FixedOffset>,
@@ -82,6 +87,7 @@ impl ContentIndexer {
                 n.position,
                 n.depth,
                 n.reply_count,
+                n.metadata,
                 n.published_at,
                 n.created_at,
                 n.updated_at,
@@ -123,8 +129,7 @@ impl ContentIndexer {
             }
         };
 
-        let tags: Vec<crate::content::model::IndexTag> =
-            self.load_node_tags(node_id).await.unwrap_or_default();
+        let tags = Self::extract_node_tags(&row.metadata);
 
         let model = IndexContentModel {
             id: Uuid::new_v4(),
@@ -163,41 +168,32 @@ impl ContentIndexer {
         Ok(Some(model))
     }
 
-    async fn load_node_tags(
-        &self,
-        node_id: Uuid,
-    ) -> IndexResult<Vec<crate::content::model::IndexTag>> {
-        #[derive(FromQueryResult)]
-        struct TagRow {
-            id: Uuid,
-            name: String,
-            slug: String,
-        }
-
-        let stmt = Statement::from_sql_and_values(
-            self.backend(),
-            r#"
-            SELECT t.id, t.name, t.slug
-            FROM tags t
-            JOIN taggables tg ON tg.tag_id = t.id
-            WHERE tg.taggable_id = $1 AND tg.taggable_type = 'node'
-            "#,
-            vec![node_id.into()],
-        );
-
-        let rows = TagRow::find_by_statement(stmt)
-            .all(&self.db)
-            .await
-            .unwrap_or_default();
-
-        Ok(rows
+    fn extract_node_tags(metadata: &JsonValue) -> Vec<crate::content::model::IndexTag> {
+        let mut seen = std::collections::HashSet::new();
+        metadata
+            .get("tags")
+            .and_then(JsonValue::as_array)
             .into_iter()
-            .map(|r| crate::content::model::IndexTag {
-                id: r.id,
-                name: r.name,
-                slug: r.slug,
+            .flatten()
+            .filter_map(JsonValue::as_str)
+            .filter_map(|tag_name| {
+                let trimmed = tag_name.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+
+                let slug = slugify(trimmed);
+                if slug.is_empty() || !seen.insert(slug.clone()) {
+                    return None;
+                }
+
+                Some(crate::content::model::IndexTag {
+                    id: Uuid::from_u128(simple_hash(&format!("content-tag:{slug}")) as u128),
+                    name: trimmed.to_string(),
+                    slug,
+                })
             })
-            .collect())
+            .collect()
     }
 
     /// Upsert the index_content row
@@ -354,6 +350,24 @@ impl ContentIndexer {
         } else {
             Ok(rows.into_iter().map(|r| r.locale).collect())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContentIndexer;
+
+    #[test]
+    fn extract_node_tags_reads_metadata_tags_without_duplicates() {
+        let tags = ContentIndexer::extract_node_tags(&serde_json::json!({
+            "tags": ["Rust", " rust ", "", "Backend", "backend"]
+        }));
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "Rust");
+        assert_eq!(tags[0].slug, "rust");
+        assert_eq!(tags[1].name, "Backend");
+        assert_eq!(tags[1].slug, "backend");
     }
 }
 

@@ -1,5 +1,9 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+};
 use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
@@ -9,6 +13,7 @@ use crate::entities::{self, ProfileRecord};
 use crate::error::{ProfileError, ProfileResult};
 
 const DEFAULT_PROFILE_LOCALE: &str = "en";
+const PROFILE_SCOPE_VALUE: &str = "profiles";
 const MIN_HANDLE_LENGTH: usize = 3;
 const MAX_HANDLE_LENGTH: usize = 32;
 const MAX_DISPLAY_NAME_LENGTH: usize = 255;
@@ -118,9 +123,10 @@ impl ProfileService {
         self.ensure_handle_available(tenant_id, &handle, Some(user_id))
             .await?;
 
+        let txn = self.db.begin().await?;
         let existing = entities::profile::Entity::find_by_id(user_id)
             .filter(entities::profile::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         let now = Utc::now();
@@ -135,7 +141,7 @@ impl ProfileService {
                 active.visibility = Set(input.visibility);
                 active.status = Set(ProfileStatus::Active);
                 active.updated_at = Set(now.into());
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
             }
             None => {
                 entities::profile::ActiveModel {
@@ -151,18 +157,22 @@ impl ProfileService {
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
-                .insert(&self.db)
+                .insert(&txn)
                 .await?;
             }
         }
 
-        self.upsert_translation(
+        self.upsert_translation_in_conn(
+            &txn,
             user_id,
             &translation_locale,
             &display_name,
             input.bio.as_deref(),
         )
         .await?;
+        self.sync_profile_tags_in_tx(&txn, tenant_id, user_id, &translation_locale, &input.tags)
+            .await?;
+        txn.commit().await?;
 
         self.get_profile(tenant_id, user_id, None, tenant_default_locale)
             .await
@@ -312,6 +322,7 @@ impl ProfileService {
             handle,
             display_name: normalized_display_name,
             bio: None,
+            tags: Vec::new(),
             avatar_media_id: None,
             banner_media_id: None,
             preferred_locale: Self::normalize_locale(preferred_locale)?,
@@ -404,8 +415,23 @@ impl ProfileService {
                 tenant_default_locale,
             )
             .await?;
+        let profile_tags = self
+            .load_profile_tag_map(
+                tenant_id,
+                std::slice::from_ref(&profile),
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await?;
 
-        Ok(map_profile(profile, translation))
+        Ok(map_profile(
+            profile.clone(),
+            translation,
+            profile_tags
+                .get(&profile.user_id)
+                .cloned()
+                .unwrap_or_default(),
+        ))
     }
 
     pub async fn get_profile_summary(
@@ -422,6 +448,7 @@ impl ProfileService {
             user_id: profile.user_id,
             handle: profile.handle,
             display_name: profile.display_name,
+            tags: profile.tags,
             avatar_media_id: profile.avatar_media_id,
             preferred_locale: profile.preferred_locale,
             visibility: profile.visibility,
@@ -473,6 +500,7 @@ impl ProfileService {
                         user_id: profile.user_id,
                         handle: profile.handle,
                         display_name: profile.display_name,
+                        tags: profile.tags,
                         avatar_media_id: profile.avatar_media_id,
                         preferred_locale: profile.preferred_locale,
                         visibility: profile.visibility,
@@ -555,13 +583,28 @@ impl ProfileService {
         display_name: &str,
         bio: Option<&str>,
     ) -> ProfileResult<()> {
+        self.upsert_translation_in_conn(&self.db, user_id, locale, display_name, bio)
+            .await
+    }
+
+    async fn upsert_translation_in_conn<C>(
+        &self,
+        conn: &C,
+        user_id: Uuid,
+        locale: &str,
+        display_name: &str,
+        bio: Option<&str>,
+    ) -> ProfileResult<()>
+    where
+        C: ConnectionTrait,
+    {
         let normalized_locale = Self::normalize_locale(Some(locale))?
             .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string());
         let now = Utc::now();
         let existing = entities::profile_translation::Entity::find()
             .filter(entities::profile_translation::Column::ProfileUserId.eq(user_id))
             .filter(entities::profile_translation::Column::Locale.eq(normalized_locale.clone()))
-            .one(&self.db)
+            .one(conn)
             .await?;
 
         match existing {
@@ -570,7 +613,7 @@ impl ProfileService {
                 active.display_name = Set(display_name.to_string());
                 active.bio = Set(bio.map(str::to_string));
                 active.updated_at = Set(now.into());
-                active.update(&self.db).await?;
+                active.update(conn).await?;
             }
             None => {
                 entities::profile_translation::ActiveModel {
@@ -582,7 +625,7 @@ impl ProfileService {
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
-                .insert(&self.db)
+                .insert(conn)
                 .await?;
             }
         }
@@ -640,6 +683,14 @@ impl ProfileService {
         let translations = self
             .load_translations_map(&profiles, requested_locale, tenant_default_locale)
             .await?;
+        let tags = self
+            .load_profile_tag_map(
+                tenant_id,
+                &profiles,
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await?;
 
         profiles
             .into_iter()
@@ -651,9 +702,128 @@ impl ProfileService {
                     requested_locale,
                     tenant_default_locale,
                 )?;
-                Ok((user_id, map_profile(profile, translation)))
+                Ok((
+                    user_id,
+                    map_profile(
+                        profile,
+                        translation,
+                        tags.get(&user_id).cloned().unwrap_or_default(),
+                    ),
+                ))
             })
             .collect()
+    }
+
+    async fn load_profile_tag_map(
+        &self,
+        tenant_id: Uuid,
+        profiles: &[entities::profile::Model],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<Uuid, Vec<String>>> {
+        if profiles.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let profile_user_ids = profiles
+            .iter()
+            .map(|profile| profile.user_id)
+            .collect::<Vec<_>>();
+        let relations = entities::profile_tag::Entity::find()
+            .filter(entities::profile_tag::Column::ProfileUserId.is_in(profile_user_ids))
+            .order_by_asc(entities::profile_tag::Column::ProfileUserId)
+            .order_by_asc(entities::profile_tag::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        if relations.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let locale = requested_locale
+            .map(|value| Self::normalize_locale(Some(value)))
+            .transpose()?
+            .flatten()
+            .or(Self::normalize_locale(tenant_default_locale)?)
+            .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string());
+        let fallback_locale = Self::normalize_locale(tenant_default_locale)?;
+
+        let mut term_ids = Vec::new();
+        let mut relations_by_profile: HashMap<Uuid, Vec<entities::profile_tag::Model>> =
+            HashMap::new();
+        for relation in relations {
+            if !term_ids.contains(&relation.term_id) {
+                term_ids.push(relation.term_id);
+            }
+            relations_by_profile
+                .entry(relation.profile_user_id)
+                .or_default()
+                .push(relation);
+        }
+
+        let names = TaxonomyService::new(self.db.clone())
+            .resolve_term_names(tenant_id, &term_ids, &locale, fallback_locale.as_deref())
+            .await?;
+
+        let mut tags_by_profile = HashMap::new();
+        for profile in profiles {
+            let tags = relations_by_profile
+                .get(&profile.user_id)
+                .into_iter()
+                .flatten()
+                .filter_map(|relation| names.get(&relation.term_id).cloned())
+                .collect::<Vec<_>>();
+            if !tags.is_empty() {
+                tags_by_profile.insert(profile.user_id, tags);
+            }
+        }
+
+        Ok(tags_by_profile)
+    }
+
+    async fn sync_profile_tags_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        locale: &str,
+        tag_names: &[String],
+    ) -> ProfileResult<()> {
+        let normalized_tags = normalize_tag_names(tag_names);
+        entities::profile_tag::Entity::delete_many()
+            .filter(entities::profile_tag::Column::ProfileUserId.eq(user_id))
+            .exec(txn)
+            .await?;
+
+        if normalized_tags.is_empty() {
+            return Ok(());
+        }
+
+        let term_ids = TaxonomyService::new(self.db.clone())
+            .ensure_terms_for_module_in_tx(
+                txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                PROFILE_SCOPE_VALUE,
+                locale,
+                &normalized_tags,
+            )
+            .await?;
+
+        let now = Utc::now();
+        for (index, term_id) in term_ids.into_iter().enumerate() {
+            entities::profile_tag::ActiveModel {
+                profile_user_id: Set(user_id),
+                term_id: Set(term_id),
+                tenant_id: Set(tenant_id),
+                // Preserve caller-provided tag order in read paths that sort by created_at.
+                created_at: Set((now + chrono::Duration::microseconds(index as i64)).into()),
+            }
+            .insert(txn)
+            .await?;
+        }
+
+        Ok(())
     }
 
     async fn load_translations_map(
@@ -898,6 +1068,7 @@ fn select_translation(
 fn map_profile(
     profile: entities::profile::Model,
     translation: Option<entities::profile_translation::Model>,
+    tags: Vec<String>,
 ) -> ProfileRecord {
     let (display_name, bio) = match translation {
         Some(translation) => (translation.display_name, translation.bio),
@@ -910,12 +1081,30 @@ fn map_profile(
         handle: profile.handle,
         display_name,
         bio,
+        tags,
         avatar_media_id: profile.avatar_media_id,
         banner_media_id: profile.banner_media_id,
         preferred_locale: profile.preferred_locale,
         visibility: profile.visibility,
         status: profile.status,
     }
+}
+
+fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
+    let mut normalized: Vec<String> = Vec::new();
+    for tag_name in tag_names {
+        let trimmed = tag_name.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !normalized
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(trimmed))
+        {
+            normalized.push(trimmed.to_string());
+        }
+    }
+    normalized
 }
 
 #[cfg(test)]

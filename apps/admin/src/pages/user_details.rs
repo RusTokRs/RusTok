@@ -2,7 +2,11 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
+#[cfg(feature = "ssr")]
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ssr")]
+use uuid::Uuid;
 
 use crate::shared::api::queries::{USER_DETAILS_QUERY, USER_DETAILS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
@@ -38,6 +42,185 @@ struct GraphqlUser {
 #[derive(Clone, Debug, Serialize)]
 struct UserVariables {
     id: String,
+}
+
+#[cfg(feature = "ssr")]
+fn server_error(message: impl Into<String>) -> ServerFnError {
+    ServerFnError::ServerError(message.into())
+}
+
+async fn fetch_user_graphql(
+    user_id: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlUserResponse, ApiError> {
+    request_with_persisted::<UserVariables, GraphqlUserResponse>(
+        USER_DETAILS_QUERY,
+        UserVariables { id: user_id },
+        USER_DETAILS_QUERY_HASH,
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+async fn fetch_user_server(user_id: String) -> Result<GraphqlUserResponse, ServerFnError> {
+    user_details_native(user_id).await
+}
+
+async fn fetch_user(
+    user_id: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlUserResponse, String> {
+    match fetch_user_server(user_id.clone()).await {
+        Ok(response) => Ok(response),
+        Err(server_err) => fetch_user_graphql(user_id, token, tenant_slug)
+            .await
+            .map_err(|graphql_err| {
+                format!(
+                    "native path failed: {}; graphql path failed: {}",
+                    server_err, graphql_err
+                )
+            }),
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/user-details")]
+async fn user_details_native(id: String) -> Result<GraphqlUserResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_core::Permission;
+
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::USERS_READ) {
+            return Err(ServerFnError::new("users:read required"));
+        }
+
+        let user_id =
+            Uuid::parse_str(&id).map_err(|err| server_error(format!("invalid user id: {err}")))?;
+        let app_ctx = expect_context::<AppContext>();
+
+        let statement = match app_ctx.db.get_database_backend() {
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                r#"
+                SELECT
+                    u.id,
+                    u.email,
+                    u.name,
+                    COALESCE((
+                        SELECT r.slug
+                        FROM user_roles ur
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.user_id = u.id
+                          AND r.tenant_id = u.tenant_id
+                        ORDER BY CASE r.slug
+                            WHEN 'super_admin' THEN 1
+                            WHEN 'admin' THEN 2
+                            WHEN 'manager' THEN 3
+                            WHEN 'customer' THEN 4
+                            ELSE 5
+                        END
+                        LIMIT 1
+                    ), 'customer') AS role,
+                    u.status,
+                    u.created_at,
+                    t.name AS tenant_name
+                FROM users u
+                JOIN tenants t ON t.id = u.tenant_id
+                WHERE u.id = ?1
+                  AND u.tenant_id = ?2
+                "#,
+                vec![user_id.into(), tenant.id.into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"
+                SELECT
+                    u.id,
+                    u.email,
+                    u.name,
+                    COALESCE((
+                        SELECT r.slug
+                        FROM user_roles ur
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.user_id = u.id
+                          AND r.tenant_id = u.tenant_id
+                        ORDER BY CASE r.slug
+                            WHEN 'super_admin' THEN 1
+                            WHEN 'admin' THEN 2
+                            WHEN 'manager' THEN 3
+                            WHEN 'customer' THEN 4
+                            ELSE 5
+                        END
+                        LIMIT 1
+                    ), 'customer') AS role,
+                    u.status,
+                    u.created_at,
+                    t.name AS tenant_name
+                FROM users u
+                JOIN tenants t ON t.id = u.tenant_id
+                WHERE u.id = $1
+                  AND u.tenant_id = $2
+                "#,
+                vec![user_id.into(), tenant.id.into()],
+            ),
+        };
+
+        let user = match app_ctx
+            .db
+            .query_one(statement)
+            .await
+            .map_err(|err| server_error(err.to_string()))?
+        {
+            Some(row) => Some(GraphqlUser {
+                id: row
+                    .try_get::<Uuid>("", "id")
+                    .map(|value| value.to_string())
+                    .map_err(|err| server_error(err.to_string()))?,
+                email: row
+                    .try_get("", "email")
+                    .map_err(|err| server_error(err.to_string()))?,
+                name: row
+                    .try_get("", "name")
+                    .map_err(|err| server_error(err.to_string()))?,
+                role: row
+                    .try_get("", "role")
+                    .map_err(|err| server_error(err.to_string()))?,
+                status: row
+                    .try_get::<rustok_core::UserStatus>("", "status")
+                    .map(|value| value.to_string())
+                    .map_err(|err| server_error(err.to_string()))?,
+                created_at: row
+                    .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                    .map(|value| value.to_rfc3339())
+                    .map_err(|err| server_error(err.to_string()))?,
+                tenant_name: row
+                    .try_get("", "tenant_name")
+                    .map_err(|err| server_error(err.to_string()))?,
+            }),
+            None => None,
+        };
+
+        Ok(GraphqlUserResponse { user })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = id;
+        Err(ServerFnError::new(
+            "admin/user-details requires the `ssr` feature",
+        ))
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -115,16 +298,7 @@ pub fn UserDetails() -> impl IntoView {
                     .unwrap_or_default()
             });
 
-            async move {
-                request_with_persisted::<UserVariables, GraphqlUserResponse>(
-                    USER_DETAILS_QUERY,
-                    UserVariables { id: user_id },
-                    USER_DETAILS_QUERY_HASH,
-                    token_value,
-                    tenant_value,
-                )
-                .await
-            }
+            async move { fetch_user(user_id, token_value, tenant_value).await }
         },
     );
 
@@ -489,12 +663,7 @@ pub fn UserDetails() -> impl IntoView {
                         }
                         Some(Err(err)) => view! {
                             <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                                {match err {
-                                    ApiError::Unauthorized => t_string!(i18n, users.graphql.unauthorized).to_string(),
-                                    ApiError::Http(code) => format!("{} {}", t_string!(i18n, users.graphql.error), code),
-                                    ApiError::Network => t_string!(i18n, users.graphql.network).to_string(),
-                                    ApiError::Graphql(message) => format!("{} {}", t_string!(i18n, users.graphql.error), message),
-                                }}
+                                {err}
                             </div>
                         }
                         .into_any(),

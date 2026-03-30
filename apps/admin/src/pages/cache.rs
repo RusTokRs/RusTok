@@ -27,6 +27,82 @@ struct CacheHealthPayload {
 #[derive(Clone, Debug, Serialize)]
 struct EmptyVariables {}
 
+async fn fetch_cache_health_graphql(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlCacheHealthResponse, ApiError> {
+    request::<EmptyVariables, GraphqlCacheHealthResponse>(
+        CACHE_HEALTH_QUERY,
+        EmptyVariables {},
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+async fn fetch_cache_health_server() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
+    cache_health_native().await
+}
+
+async fn fetch_cache_health(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<GraphqlCacheHealthResponse, String> {
+    match fetch_cache_health_server().await {
+        Ok(response) => Ok(response),
+        Err(server_err) => fetch_cache_health_graphql(token, tenant_slug)
+            .await
+            .map_err(|graphql_err| {
+                format!(
+                    "native path failed: {}; graphql path failed: {}",
+                    server_err, graphql_err
+                )
+            }),
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/cache-health")]
+async fn cache_health_native() -> Result<GraphqlCacheHealthResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_cache::CacheService;
+
+        let app_ctx = expect_context::<AppContext>();
+        let payload = if let Some(cache) = app_ctx.shared_store.get::<CacheService>() {
+            let report = cache.health().await;
+            CacheHealthPayload {
+                redis_configured: report.redis_configured,
+                redis_healthy: report.redis_healthy,
+                redis_error: report.redis_error,
+                backend: if report.redis_configured {
+                    "redis".to_string()
+                } else {
+                    "in-memory".to_string()
+                },
+            }
+        } else {
+            CacheHealthPayload {
+                redis_configured: false,
+                redis_healthy: false,
+                redis_error: None,
+                backend: "none".to_string(),
+            }
+        };
+
+        Ok(GraphqlCacheHealthResponse {
+            cache_health: payload,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "admin/cache-health requires the `ssr` feature",
+        ))
+    }
+}
+
 #[component]
 pub fn CachePage() -> impl IntoView {
     let i18n = use_i18n();
@@ -36,13 +112,7 @@ pub fn CachePage() -> impl IntoView {
     let health_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            request::<EmptyVariables, GraphqlCacheHealthResponse>(
-                CACHE_HEALTH_QUERY,
-                EmptyVariables {},
-                token_value,
-                tenant_value,
-            )
-            .await
+            fetch_cache_health(token_value, tenant_value).await
         },
     );
 
@@ -134,12 +204,7 @@ pub fn CachePage() -> impl IntoView {
                         }
                         Some(Err(err)) => view! {
                             <Alert variant=AlertVariant::Destructive>
-                                {match err {
-                                    ApiError::Unauthorized => t_string!(i18n, errors.auth.unauthorized).to_string(),
-                                    ApiError::Http(code) => format!("HTTP {}", code),
-                                    ApiError::Network => t_string!(i18n, errors.network).to_string(),
-                                    ApiError::Graphql(msg) => msg,
-                                }}
+                                {err.to_string()}
                             </Alert>
                         }.into_any(),
                     }}

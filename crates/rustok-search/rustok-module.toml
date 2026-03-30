@@ -10,6 +10,7 @@ showcase_admin_surfaces = ["next-admin"]
 
 [marketplace]
 category = "search"
+tags = ["discovery", "indexing", "search"]
 
 [crate]
 entry_type = "SearchModule"

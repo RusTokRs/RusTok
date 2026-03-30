@@ -78,7 +78,6 @@ impl TopicService {
             status: Set(topic_status::OPEN.to_string()),
             is_pinned: Set(false),
             is_locked: Set(false),
-            tags: Set(serde_json::json!(normalized_tags.clone())),
             reply_count: Set(0),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -157,7 +156,7 @@ impl TopicService {
         let translations = self.load_translations(topic_id).await?;
         let channel_slugs = self.load_channel_slugs(topic_id).await?;
         let tags = self
-            .load_topic_tags(tenant_id, &topic, &locale, fallback_locale.as_deref())
+            .load_topic_tags(tenant_id, topic.id, &locale, fallback_locale.as_deref())
             .await?;
         let solution_reply_id = self.load_solution_reply_id(topic_id).await?;
         let vote_summary = VoteService::new(self.db.clone())
@@ -202,9 +201,6 @@ impl TopicService {
         let normalized_tags = input.tags.as_ref().map(|tags| normalize_tags(tags));
 
         let mut active: forum_topic::ActiveModel = topic.into();
-        if let Some(tags) = normalized_tags.as_ref() {
-            active.tags = Set(serde_json::json!(tags));
-        }
         active.updated_at = Set(Utc::now().into());
         active.update(&txn).await?;
 
@@ -530,12 +526,12 @@ impl TopicService {
     async fn load_topic_tags(
         &self,
         tenant_id: Uuid,
-        topic: &forum_topic::Model,
+        topic_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<Vec<String>> {
         let term_ids = forum_topic_tag::Entity::find()
-            .filter(forum_topic_tag::Column::TopicId.eq(topic.id))
+            .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
             .order_by_asc(forum_topic_tag::Column::CreatedAt)
             .all(&self.db)
             .await?
@@ -544,7 +540,7 @@ impl TopicService {
             .collect::<Vec<_>>();
 
         if term_ids.is_empty() {
-            return Ok(extract_tags(&topic.tags));
+            return Ok(Vec::new());
         }
 
         let resolved_names = TaxonomyService::new(self.db.clone())
@@ -554,9 +550,6 @@ impl TopicService {
             .into_iter()
             .filter_map(|term_id| resolved_names.get(&term_id).cloned())
             .collect::<Vec<_>>();
-        if tags.is_empty() {
-            return Ok(extract_tags(&topic.tags));
-        }
         tags.sort();
         tags.dedup();
         Ok(tags)
@@ -994,15 +987,4 @@ fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|slug| !slug.is_empty())
         .map(|slug| slug.to_ascii_lowercase())
-}
-
-fn extract_tags(tags: &sea_orm::prelude::Json) -> Vec<String> {
-    tags.as_array()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                .collect()
-        })
-        .unwrap_or_default()
 }

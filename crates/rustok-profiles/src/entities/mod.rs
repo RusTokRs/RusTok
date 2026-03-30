@@ -2,6 +2,7 @@ use crate::dto::{ProfileStatus, ProfileVisibility};
 use uuid::Uuid;
 
 pub mod profile;
+pub mod profile_tag;
 pub mod profile_translation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +12,7 @@ pub struct ProfileRecord {
     pub handle: String,
     pub display_name: String,
     pub bio: Option<String>,
+    pub tags: Vec<String>,
     pub avatar_media_id: Option<Uuid>,
     pub banner_media_id: Option<Uuid>,
     pub preferred_locale: Option<String>,

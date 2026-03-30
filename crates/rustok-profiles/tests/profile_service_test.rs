@@ -26,6 +26,7 @@ fn profile_input() -> UpsertProfileInput {
         handle: "Creator-One".to_string(),
         display_name: "Creator One".to_string(),
         bio: Some("Primary profile bio".to_string()),
+        tags: vec!["rust".to_string(), "creator".to_string()],
         avatar_media_id: Some(Uuid::new_v4()),
         banner_media_id: Some(Uuid::new_v4()),
         preferred_locale: Some("ru".to_string()),
@@ -70,6 +71,10 @@ async fn upsert_and_get_profile_by_user() {
     assert_eq!(created.handle, "creator-one");
     assert_eq!(created.display_name, "Creator One");
     assert_eq!(created.bio.as_deref(), Some("Primary profile bio"));
+    assert_eq!(
+        created.tags,
+        vec!["rust".to_string(), "creator".to_string()]
+    );
     assert_eq!(created.preferred_locale.as_deref(), Some("ru"));
 
     let fetched = service
@@ -79,6 +84,10 @@ async fn upsert_and_get_profile_by_user() {
     assert_eq!(fetched.handle, "creator-one");
     assert_eq!(fetched.display_name, "Creator One");
     assert_eq!(fetched.bio.as_deref(), Some("Primary profile bio"));
+    assert_eq!(
+        fetched.tags,
+        vec!["rust".to_string(), "creator".to_string()]
+    );
 }
 
 #[tokio::test]
@@ -119,6 +128,7 @@ async fn duplicate_handle_is_rejected_per_tenant() {
                 handle: "creator-one".to_string(),
                 display_name: "Second User".to_string(),
                 bio: None,
+                tags: vec![],
                 avatar_media_id: None,
                 banner_media_id: None,
                 preferred_locale: Some("en".to_string()),
@@ -154,6 +164,10 @@ async fn summary_uses_profile_reader_path() {
     assert_eq!(summary.user_id, user_id);
     assert_eq!(summary.handle, "creator-one");
     assert_eq!(summary.display_name, "Creator One");
+    assert_eq!(
+        summary.tags,
+        vec!["rust".to_string(), "creator".to_string()]
+    );
     assert_eq!(summary.visibility, ProfileVisibility::Public);
 }
 
@@ -173,6 +187,7 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
                 handle: "creator-one".to_string(),
                 display_name: "Creator One".to_string(),
                 bio: Some("Primary profile bio".to_string()),
+                tags: vec!["rust".to_string()],
                 avatar_media_id: None,
                 banner_media_id: None,
                 preferred_locale: Some("en".to_string()),
@@ -190,6 +205,7 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
                 handle: "creator-two".to_string(),
                 display_name: "Creator Two".to_string(),
                 bio: None,
+                tags: vec!["design".to_string()],
                 avatar_media_id: None,
                 banner_media_id: None,
                 preferred_locale: Some("en".to_string()),
@@ -228,6 +244,14 @@ async fn batched_reader_uses_locale_fallback_and_skips_missing_profiles() {
         profiles.get(&second_user_id).unwrap().display_name,
         "Creator Two"
     );
+    assert_eq!(
+        profiles.get(&first_user_id).unwrap().tags,
+        vec!["rust".to_string()]
+    );
+    assert_eq!(
+        profiles.get(&second_user_id).unwrap().tags,
+        vec!["design".to_string()]
+    );
     assert!(!profiles.contains_key(&missing_user_id));
 }
 
@@ -247,6 +271,7 @@ async fn dataloader_batches_profile_summary_requests() {
                 handle: "loader-one".to_string(),
                 display_name: "Loader One".to_string(),
                 bio: None,
+                tags: vec!["rust".to_string()],
                 avatar_media_id: None,
                 banner_media_id: None,
                 preferred_locale: Some("en".to_string()),
@@ -264,6 +289,7 @@ async fn dataloader_batches_profile_summary_requests() {
                 handle: "loader-two".to_string(),
                 display_name: "Loader Two".to_string(),
                 bio: None,
+                tags: vec!["design".to_string()],
                 avatar_media_id: None,
                 banner_media_id: None,
                 preferred_locale: Some("en".to_string()),
@@ -323,6 +349,30 @@ async fn dataloader_batches_profile_summary_requests() {
             .unwrap()
             .display_name,
         "Loader Two"
+    );
+    assert_eq!(
+        loaded
+            .get(&ProfileSummaryLoaderKey {
+                tenant_id,
+                user_id: first_user_id,
+                requested_locale: Some("en".to_string()),
+                tenant_default_locale: Some("en".to_string()),
+            })
+            .unwrap()
+            .tags,
+        vec!["rust".to_string()]
+    );
+    assert_eq!(
+        loaded
+            .get(&ProfileSummaryLoaderKey {
+                tenant_id,
+                user_id: second_user_id,
+                requested_locale: Some("en".to_string()),
+                tenant_default_locale: Some("en".to_string()),
+            })
+            .unwrap()
+            .tags,
+        vec!["design".to_string()]
     );
     assert!(!loaded.contains_key(&ProfileSummaryLoaderKey {
         tenant_id,

@@ -20,6 +20,8 @@
 - в shared server runtime зарегистрирован `ProfileSummaryLoader`, а `blog/forum` используют его как request-scoped cache с fallback на service path;
 - `rustok-blog` и `rustok-forum` уже используют `ProfilesReader` для author presentation в GraphQL read-path;
 - profile write-path теперь публикует outbox-событие `profile.updated` для downstream sync/re-render/index сценариев;
+- profile write/read path теперь поддерживает taxonomy-backed `tags` через module-owned relation `profile_tags`;
+- `rustok-profiles` зависит от `rustok-taxonomy`, но словарь терминов остаётся shared, а привязки живут внутри модуля профилей;
 - `ProfileService` умеет explicit backfill missing profiles из существующих `users`/`customer`-seed данных с безопасной генерацией handle;
 - module-owned UI пока ещё не реализован.
 
@@ -36,6 +38,7 @@
 - display name с canonical fallback в `profiles` и localized overrides в `profile_translations`;
 - avatar/banner references через `rustok-media`;
 - bio и локализуемые public-поля;
+- profile tags / interests через shared taxonomy dictionary и module-owned relation `profile_tags`;
 - preferred locale и visibility policy для публичной страницы.
 
 ## Зафиксированные MVP-решения

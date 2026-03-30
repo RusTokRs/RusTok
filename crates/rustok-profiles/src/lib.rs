@@ -39,6 +39,10 @@ impl RusToKModule for ProfilesModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &["taxonomy"]
+    }
+
     fn permissions(&self) -> Vec<Permission> {
         vec![
             Permission::PROFILES_CREATE,
@@ -73,7 +77,7 @@ mod tests {
             "Universal public profile domain for platform users"
         );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-        assert!(module.dependencies().is_empty());
+        assert_eq!(module.dependencies(), &["taxonomy"]);
     }
 
     #[test]

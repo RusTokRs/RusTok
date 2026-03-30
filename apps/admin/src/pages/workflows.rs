@@ -4,7 +4,6 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 
 use crate::features::workflow::{api, TemplateGallery, WorkflowList};
-use crate::shared::api::ApiError;
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
@@ -81,7 +80,7 @@ pub fn Workflows() -> impl IntoView {
                     }
                 >
                     {move || {
-                        workflows_resource.get().map(|result: Result<_, ApiError>| {
+                        workflows_resource.get().map(|result: Result<_, String>| {
                             match result {
                                 Ok(workflows) => view! {
                                     <WorkflowList workflows=workflows />

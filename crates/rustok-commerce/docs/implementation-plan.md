@@ -135,6 +135,7 @@
 - integration tests для event publication и `rustok-index`;
 - Postgres migration tests;
 - contract tests для `/store/*` и `/admin/*`;
+- контрактные тесты покрывают все публичные use-case;
 - parity tests `REST <-> GraphQL`;
 - router/OpenAPI smoke tests;
 - tenant/RBAC regression tests.

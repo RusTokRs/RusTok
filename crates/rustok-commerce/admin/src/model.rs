@@ -41,6 +41,7 @@ pub struct ProductListItem {
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
+    pub tags: Vec<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "publishedAt")]
@@ -54,6 +55,7 @@ pub struct ProductDetail {
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
+    pub tags: Vec<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]

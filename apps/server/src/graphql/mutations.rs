@@ -131,7 +131,10 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::ConflictingModuleAdminSurface { .. }
         | ManifestError::InvalidModuleSettingKey { .. }
         | ManifestError::InvalidModuleSettingSchema { .. }
-        | ManifestError::InvalidModuleSettingValue { .. } => FieldError::new(err.to_string()),
+        | ManifestError::InvalidModuleSettingValue { .. }
+        | ManifestError::InvalidModuleMarketplaceMetadata { .. } => {
+            FieldError::new(err.to_string())
+        }
         ManifestError::Read { .. }
         | ManifestError::Parse { .. }
         | ManifestError::Write { .. }
@@ -153,7 +156,6 @@ fn map_content_error(err: rustok_content::ContentError) -> FieldError {
         | rustok_content::ContentError::Forbidden(message) => FieldError::new(message),
         rustok_content::ContentError::NodeNotFound(_)
         | rustok_content::ContentError::CategoryNotFound(_)
-        | rustok_content::ContentError::TagNotFound(_)
         | rustok_content::ContentError::TranslationNotFound { .. }
         | rustok_content::ContentError::DuplicateSlug { .. }
         | rustok_content::ContentError::ConcurrentModification { .. } => {

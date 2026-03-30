@@ -126,6 +126,11 @@ pub async fn list_products(
         .into_iter()
         .map(|translation| (translation.product_id, translation))
         .collect::<HashMap<_, _>>();
+    let catalog = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let product_tags = catalog
+        .load_product_tag_map(tenant.id, &products, locale, Some("en"))
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let items = products
         .into_iter()
@@ -142,6 +147,7 @@ pub async fn list_products(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
+                tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
                 created_at: product.created_at.to_rfc3339(),
                 published_at: product.published_at.map(|value| value.to_rfc3339()),
             }
@@ -269,6 +275,7 @@ pub struct ProductListItem {
     pub handle: String,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub tags: Vec<String>,
     pub created_at: String,
     pub published_at: Option<String>,
 }

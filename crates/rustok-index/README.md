@@ -16,6 +16,8 @@
 
 - Depends on `rustok-core` for module contracts.
 - Consumes domain events published by content, commerce, blog, forum, pages, and workflow paths.
+- Content-node tag extraction now reads `nodes.metadata.tags` directly and no longer depends on
+  legacy `tags` / `taggables` joins from `rustok-content`.
 - Used by `apps/server` runtime wiring for index rebuild and cross-module index integrations.
 - Does not publish its own RBAC surface.
 - Admin access to indexing operations is enforced by `apps/server` through the permissions

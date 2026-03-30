@@ -18,6 +18,8 @@
 
 - Depends on `rustok-core` for module contracts.
 - May ingest from domain tables or neutral read models, but keeps its own search storage and runtime.
+- Content-document tag keywords/payload are now derived from `nodes.metadata.tags` during
+  projection, not from legacy `taggables` joins.
 - Is used by `apps/server` as a core platform capability.
 - Publishes module-owned admin and storefront UI packages for host composition.
 - Keeps external engine integrations behind dedicated connector crates, rather than forcing domain modules to talk to provider SDKs directly.

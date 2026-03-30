@@ -7,7 +7,7 @@
 ## Responsibilities
 
 - Provide `ContentModule` metadata for the runtime registry.
-- Own shared content entities, legacy migrations, and orchestration state.
+- Own shared content entities, shared migrations, and orchestration state.
 - Provide shared locale, slug, and rich-text helpers used by domain modules.
 - Own orchestration state, idempotency, audit records, and canonical URL/alias mappings for cross-domain flows.
 - Expose a port-based `ContentOrchestrationService` that delegates domain work through `ContentOrchestrationBridge`.
@@ -39,7 +39,6 @@
 - `ContentOrchestrationService`
 - `ContentOrchestrationBridge`
 - `CategoryService`
-- `TagService`
 - content DTO and entity re-exports
 
 `NodeService` remains available only under `rustok-content::services` as a

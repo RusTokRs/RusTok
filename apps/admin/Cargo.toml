@@ -8,9 +8,27 @@ description.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["csr"]
+csr = ["leptos/csr", "leptos_i18n/csr"]
+hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "leptos_i18n/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:sea-orm",
+  "dep:rustok-cache",
+  "dep:rustok-core",
+  "dep:rustok-tenant",
+  "dep:rustok-workflow",
+  "dep:toml",
+]
+
 [dependencies]
 leptos = { workspace = true, features = ["csr"] }
 leptos_router = { workspace = true }
+leptos_axum = { workspace = true, optional = true }
 leptos-auth = { workspace = true }
 leptos-graphql = { workspace = true }
 leptos-ui = { workspace = true }
@@ -37,10 +55,17 @@ serde_json = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+sea-orm = { workspace = true, optional = true }
 base64 = { workspace = true }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Storage", "WebSocket", "Window"] }
 rustok-api.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-cache = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }
+rustok-workflow = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
 rustok-blog-admin = { path = "../../crates/rustok-blog/admin" }
 rustok-channel-admin = { path = "../../crates/rustok-channel/admin" }
 rustok-commerce-admin = { path = "../../crates/rustok-commerce/admin" }
@@ -57,6 +82,7 @@ toml = { workspace = true }
 [package.metadata.cargo-udeps.ignore]
 normal = [
   "leptos-auth",
+  "leptos_axum",
   "leptos-graphql",
   "leptos-hook-form",
   "leptos-struct-table",
@@ -72,9 +98,14 @@ normal = [
   "serde_urlencoded",
   "chrono-humanize",
   "chrono",
+  "toml",
   "leptos-forms",
   "uuid",
   "rustok-api",
+  "rustok-cache",
+  "rustok-core",
+  "rustok-tenant",
+  "rustok-workflow",
   "rustok-blog-admin",
   "rustok-channel-admin",
   "rustok-commerce-admin",

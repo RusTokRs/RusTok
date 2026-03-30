@@ -49,8 +49,8 @@
 | `content` | `rustok-content` | вЂ” |
 | `cart` | `rustok-cart` | вЂ” |
 | `customer` | `rustok-customer` | вЂ” |
-| `product` | `rustok-product` | вЂ” |
-| `profiles` | `rustok-profiles` | вЂ” |
+| `product` | `rustok-product` | `taxonomy` |
+| `profiles` | `rustok-profiles` | `taxonomy` |
 | `region` | `rustok-region` | вЂ” |
 | `pricing` | `rustok-pricing` | `product` |
 | `inventory` | `rustok-inventory` | `product` |

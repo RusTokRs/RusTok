@@ -9,6 +9,7 @@ recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]
 category = "commerce"
+tags = ["commerce", "catalog", "checkout"]
 
 [crate]
 entry_type = "CommerceModule"

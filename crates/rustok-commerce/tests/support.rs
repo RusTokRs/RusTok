@@ -9,6 +9,8 @@ use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{fulfillment, shipping_option};
 use rustok_order::entities::{order, order_line_item};
 use rustok_payment::entities::{payment, payment_collection};
+use rustok_product::entities::product_tag;
+use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
 
@@ -24,6 +26,24 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(product::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(taxonomy_term::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(taxonomy_term_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(taxonomy_term_alias::Entity),
     )
     .await;
     create_entity_table(
@@ -153,6 +173,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(product_image_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(product_tag::Entity),
     )
     .await;
     ensure_tenant_tables(db).await;

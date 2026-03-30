@@ -5,6 +5,7 @@ mod m20260329_000002_create_forum_votes;
 mod m20260329_000003_create_forum_subscriptions;
 mod m20260329_000004_create_forum_user_stats;
 mod m20260329_000005_create_forum_topic_tags;
+mod m20260330_000001_drop_forum_topic_legacy_tags_column;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -17,5 +18,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260329_000003_create_forum_subscriptions::Migration),
         Box::new(m20260329_000004_create_forum_user_stats::Migration),
         Box::new(m20260329_000005_create_forum_topic_tags::Migration),
+        Box::new(m20260330_000001_drop_forum_topic_legacy_tags_column::Migration),
     ]
 }

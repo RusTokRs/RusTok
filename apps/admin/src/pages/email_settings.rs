@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+#[cfg(feature = "ssr")]
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -47,6 +49,139 @@ struct UpdateSettingsPayload {
     success: bool,
 }
 
+#[cfg(feature = "ssr")]
+fn server_error(message: impl Into<String>) -> ServerFnError {
+    ServerFnError::ServerError(message.into())
+}
+
+async fn fetch_email_settings_graphql(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<PlatformSettingsResponse, crate::shared::api::ApiError> {
+    request::<PlatformSettingsVariables, PlatformSettingsResponse>(
+        PLATFORM_SETTINGS_QUERY,
+        PlatformSettingsVariables {
+            category: "email".to_string(),
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+async fn fetch_email_settings_server() -> Result<PlatformSettingsResponse, ServerFnError> {
+    email_settings_native().await
+}
+
+async fn fetch_email_settings(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<PlatformSettingsResponse, String> {
+    match fetch_email_settings_server().await {
+        Ok(response) => Ok(response),
+        Err(server_err) => fetch_email_settings_graphql(token, tenant_slug)
+            .await
+            .map_err(|graphql_err| {
+                format!(
+                    "native path failed: {}; graphql path failed: {}",
+                    server_err, graphql_err
+                )
+            }),
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/email-settings")]
+async fn email_settings_native() -> Result<PlatformSettingsResponse, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_core::Permission;
+
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(ServerFnError::new("settings:read required"));
+        }
+
+        let app_ctx = expect_context::<AppContext>();
+        let backend = app_ctx.db.get_database_backend();
+        let statement = match backend {
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1",
+                vec![tenant.id.into(), "email".into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1",
+                vec![tenant.id.into(), "email".into()],
+            ),
+        };
+
+        let settings = match app_ctx
+            .db
+            .query_one(statement)
+            .await
+            .map_err(|err| server_error(err.to_string()))?
+        {
+            Some(row) => row
+                .try_get::<Value>("", "settings")
+                .map(|value| value.to_string())
+                .or_else(|_| row.try_get::<String>("", "settings"))
+                .map_err(|err| server_error(err.to_string()))?,
+            None => {
+                let root = app_ctx
+                    .config
+                    .settings
+                    .clone()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                let email = root
+                    .get("rustok")
+                    .and_then(|value| value.get("email"))
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+
+                serde_json::json!({
+                    "smtp_host": email
+                        .pointer("/smtp/host")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("localhost"),
+                    "smtp_port": email
+                        .pointer("/smtp/port")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(1025),
+                    "smtp_username": email
+                        .pointer("/smtp/username")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or(""),
+                    "from_address": email
+                        .get("from")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("no-reply@rustok.local"),
+                })
+                .to_string()
+            }
+        };
+
+        Ok(PlatformSettingsResponse {
+            platform_settings: PlatformSettingsPayload { settings },
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "admin/email-settings requires the `ssr` feature",
+        ))
+    }
+}
+
 #[component]
 pub fn EmailSettingsPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -64,15 +199,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
     let settings_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            request::<PlatformSettingsVariables, PlatformSettingsResponse>(
-                PLATFORM_SETTINGS_QUERY,
-                PlatformSettingsVariables {
-                    category: "email".to_string(),
-                },
-                token_value,
-                tenant_value,
-            )
-            .await
+            fetch_email_settings(token_value, tenant_value).await
         },
     );
 

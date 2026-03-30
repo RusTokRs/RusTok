@@ -144,6 +144,19 @@ pub fn ModuleCard(
                             "Signed"
                         </span>
                     })}
+                    {catalog_module_value
+                        .as_ref()
+                        .map(|catalog| catalog.tags.iter().take(3).cloned().collect::<Vec<_>>())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|tag| {
+                            view! {
+                                <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
+                                    {format!("#{}", tag)}
+                                </span>
+                            }
+                        })
+                        .collect_view()}
                     {recommended_admin_surfaces
                         .into_iter()
                         .map(|surface| {

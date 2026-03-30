@@ -46,8 +46,8 @@ rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", re
 content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
 cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
-product = { crate = "rustok-product", source = "path", path = "crates/rustok-product" }
-profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles" }
+product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }
+profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles", depends_on = ["taxonomy"] }
 region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
 pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }

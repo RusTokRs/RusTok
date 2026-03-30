@@ -432,22 +432,49 @@ impl SearchProjector {
                 ON u.id = n.author_id
             LEFT JOIN LATERAL (
                 SELECT
-                    COUNT(t.id)::bigint AS tag_count,
-                    string_agg(t.name, ' ') AS tag_names,
+                    COUNT(*)::bigint AS tag_count,
+                    string_agg(tag.tag_name, ' ') AS tag_names,
                     COALESCE(
                         jsonb_agg(
                             jsonb_build_object(
-                                'id', t.id,
-                                'name', t.name,
-                                'slug', t.slug
+                                'id',
+                                LOWER(
+                                    SUBSTRING(md5(tag.slug) FROM 1 FOR 8) || '-' ||
+                                    SUBSTRING(md5(tag.slug) FROM 9 FOR 4) || '-' ||
+                                    SUBSTRING(md5(tag.slug) FROM 13 FOR 4) || '-' ||
+                                    SUBSTRING(md5(tag.slug) FROM 17 FOR 4) || '-' ||
+                                    SUBSTRING(md5(tag.slug) FROM 21 FOR 12)
+                                ),
+                                'name', tag.tag_name,
+                                'slug', tag.slug
                             )
-                        ) FILTER (WHERE t.id IS NOT NULL),
+                            ORDER BY tag.tag_name
+                        ) FILTER (WHERE tag.slug <> ''),
                         '[]'::jsonb
                     ) AS tag_list
-                FROM taggables tg
-                JOIN tags t ON t.id = tg.tag_id
-                WHERE tg.taggable_type = 'node'
-                  AND tg.taggable_id = n.id
+                FROM (
+                    SELECT DISTINCT
+                        BTRIM(tag_value) AS tag_name,
+                        LOWER(
+                            BTRIM(
+                                REGEXP_REPLACE(
+                                    BTRIM(tag_value),
+                                    '[^[:alnum:]]+',
+                                    '-',
+                                    'g'
+                                ),
+                                '-'
+                            )
+                        ) AS slug
+                    FROM jsonb_array_elements_text(
+                        CASE
+                            WHEN jsonb_typeof(n.metadata -> 'tags') = 'array' THEN n.metadata -> 'tags'
+                            ELSE '[]'::jsonb
+                        END
+                    ) AS tag_values(tag_value)
+                    WHERE BTRIM(tag_value) <> ''
+                ) tag
+                WHERE tag.slug <> ''
             ) tags ON TRUE
             {where_clause}
             ON CONFLICT (document_key) DO UPDATE SET

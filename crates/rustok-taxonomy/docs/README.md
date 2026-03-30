@@ -39,3 +39,10 @@ It does **not** own domain entity attachments. Relation tables such as `blog_pos
   forum-owned `forum_topic_tags`.
 - Forum keeps the attachment table locally, while taxonomy remains responsible
   only for term identity, translations, aliases, and scope rules.
+- `rustok-blog` uses taxonomy-backed `blog_post_tags` while keeping blog write
+  flows and public `tags: Vec<String>` contract module-owned.
+- `rustok-product` uses taxonomy-backed `product_tags`; first-class product
+  `tags` are the public contract surface and legacy `metadata.tags` is no longer
+  mirrored.
+- `rustok-profiles` uses taxonomy-backed `profile_tags` for profile labels /
+  interests without moving profile ownership into the taxonomy module.

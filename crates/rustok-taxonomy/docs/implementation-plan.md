@@ -35,5 +35,12 @@ and module-local terms without reintroducing polymorphic shared product storage.
   - [x] `rustok-blog` now keeps `blog_post_tags` as the module-owned relation table.
   - [x] Blog tag CRUD/list flows resolve through `rustok-taxonomy` instead of blog-local tag tables.
   - [x] Post create/update flows auto-create blog-scoped terms and reuse matching global terms.
-- [ ] Add product-facing `product_terms` instead of metadata-only product tags.
-- [ ] Add profile-interest terms if product requirements confirm the use case.
+- [x] Add product-facing `product_tags` relation instead of metadata-only product tags.
+  - [x] `rustok-product` now owns typed relation table `product_tags`.
+  - [x] Product create/update flows sync first-class `tags` into shared taxonomy terms.
+  - [x] Product transport surfaces expose first-class `tags`, and legacy `metadata.tags`
+    is retired.
+- [x] Add profile tags through `profile_tags`.
+  - [x] `rustok-profiles` now depends on `rustok-taxonomy`.
+  - [x] Profile upsert/read paths sync and resolve taxonomy-backed tags.
+  - [x] Public profile DTO / GraphQL surfaces expose `tags: Vec<String>`.

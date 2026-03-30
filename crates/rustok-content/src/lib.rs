@@ -15,10 +15,7 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use dto::*;
-pub use entities::{
-    Body, CanonicalUrl, Category, CategoryTranslation, Node, NodeTranslation, Tag, TagTranslation,
-    Taggable, UrlAlias,
-};
+pub use entities::{Body, CanonicalUrl, Category, CategoryTranslation, Node, NodeTranslation, UrlAlias};
 pub use error::{ContentError, ContentResult};
 pub use locale::{
     available_locales_from, normalize_locale_code, resolve_by_locale,
@@ -28,7 +25,7 @@ pub use services::{
     CanonicalUrlMutation, CanonicalUrlService, CategoryService, ContentOrchestrationBridge,
     ContentOrchestrationService, DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput,
     MergeTopicsOutput, OrchestrationResult, PromoteTopicToPostInput, PromoteTopicToPostOutput,
-    ResolvedContentRoute, RetiredCanonicalTarget, SplitTopicInput, SplitTopicOutput, TagService,
+    ResolvedContentRoute, RetiredCanonicalTarget, SplitTopicInput, SplitTopicOutput,
 };
 pub use state_machine::{Archived, ContentNode, Draft, Published, ToContentStatus};
 

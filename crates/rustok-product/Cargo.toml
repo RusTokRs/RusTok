@@ -14,6 +14,7 @@ rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
 rustok-taxonomy.workspace = true
 rust_decimal.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

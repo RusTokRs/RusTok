@@ -13,7 +13,6 @@ pub struct Model {
     pub status: String,
     pub is_pinned: bool,
     pub is_locked: bool,
-    pub tags: Json,
     pub reply_count: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

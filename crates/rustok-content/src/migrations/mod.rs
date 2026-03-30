@@ -2,7 +2,6 @@ mod shared;
 
 mod m20250130_000005_create_nodes;
 mod m20250130_000006_create_categories;
-mod m20250130_000007_create_tags;
 mod m20250130_000008_create_meta;
 mod m20250130_000009_create_media;
 mod m20260301_000002_alter_nodes_add_soft_delete;
@@ -17,7 +16,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
         Box::new(m20250130_000005_create_nodes::Migration),
         Box::new(m20250130_000006_create_categories::Migration),
-        Box::new(m20250130_000007_create_tags::Migration),
         Box::new(m20250130_000008_create_meta::Migration),
         Box::new(m20250130_000009_create_media::Migration),
         Box::new(m20260301_000002_alter_nodes_add_soft_delete::Migration),
