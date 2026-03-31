@@ -24,6 +24,6 @@ rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-telemetry.workspace = true
 parking_lot = "0.12"
-cron = "0.15"
+cron = "0.16"
 email_address = "0.2.9"
 rhai-full = { package = "rhai", git = "https://github.com/rhaiscript/rhai", tag = "v1.24.0", features = ["sync", "metadata"] }
