@@ -106,6 +106,7 @@ fn create_product_input() -> CreateProductInput {
         }],
         vendor: Some("Parity Vendor".to_string()),
         product_type: Some("physical".to_string()),
+        shipping_profile_slug: None,
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
@@ -133,6 +134,86 @@ fn request_context(tenant_id: Uuid, locale: &str) -> RequestContext {
         channel_resolution_source: None,
         locale: locale.to_string(),
     }
+}
+
+fn request_context_with_channel(
+    tenant_id: Uuid,
+    locale: &str,
+    channel_id: Uuid,
+    channel_slug: &str,
+) -> RequestContext {
+    RequestContext {
+        tenant_id,
+        user_id: None,
+        channel_id: Some(channel_id),
+        channel_slug: Some(channel_slug.to_string()),
+        channel_resolution_source: None,
+        locale: locale.to_string(),
+    }
+}
+
+async fn seed_channel_binding(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    channel_id: Uuid,
+    channel_slug: &str,
+    is_enabled: bool,
+) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            channel_id.into(),
+            tenant_id.into(),
+            channel_slug.into(),
+            format!("Channel {channel_slug}").into(),
+            true.into(),
+            false.into(),
+            "active".into(),
+            serde_json::json!({}).to_string().into(),
+        ],
+    ))
+    .await
+    .expect("channel should be inserted");
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled, settings, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            Uuid::new_v4().into(),
+            channel_id.into(),
+            "commerce".into(),
+            is_enabled.into(),
+            serde_json::json!({}).to_string().into(),
+        ],
+    ))
+    .await
+    .expect("channel binding should be inserted");
+}
+
+async fn set_stock_location_channel_visibility(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    allowed_channel_slugs: &[&str],
+) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "UPDATE stock_locations SET metadata = ? WHERE tenant_id = ?",
+        vec![
+            serde_json::json!({
+                "channel_visibility": {
+                    "allowed_channel_slugs": allowed_channel_slugs
+                }
+            })
+            .to_string()
+            .into(),
+            tenant_id.into(),
+        ],
+    ))
+    .await
+    .expect("stock location visibility should be updated");
 }
 
 fn auth_context(tenant_id: Uuid) -> AuthContext {
@@ -783,6 +864,327 @@ async fn storefront_graphql_read_path_is_stable_after_cart_snapshot_creation() {
         products_after["storefrontProducts"]["items"][0]["title"],
         Value::from("Paritaet Produkt")
     );
+}
+
+#[tokio::test]
+async fn admin_graphql_exposes_shipping_profile_slug_for_products() {
+    let (db, catalog, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let mut input = create_product_input();
+    input.shipping_profile_slug = Some("Bulky".to_string());
+    let created = catalog
+        .create_product(tenant_id, actor_id, input)
+        .await
+        .expect("product should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              products(tenantId: "{tenant_id}", locale: "en", filter: {{ page: 1, perPage: 20 }}) {{
+                items {{
+                  id
+                  shippingProfileSlug
+                }}
+              }}
+              product(tenantId: "{tenant_id}", id: "{product_id}", locale: "en") {{
+                shippingProfileSlug
+              }}
+            }}
+            "#,
+            product_id = created.id
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL shipping profile errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["products"]["items"][0]["shippingProfileSlug"],
+        Value::from("bulky")
+    );
+    assert_eq!(json["product"]["shippingProfileSlug"], Value::from("bulky"));
+}
+
+#[tokio::test]
+async fn storefront_graphql_filters_channel_hidden_products() {
+    let (db, catalog, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", true).await;
+
+    let mut visible_input = create_product_input();
+    visible_input.translations[0].title = "Visible Product".to_string();
+    visible_input.translations[0].handle = Some(unique_slug("visible-storefront-product-en"));
+    visible_input.translations[1].title = "Sichtbares Produkt".to_string();
+    visible_input.translations[1].handle = Some(unique_slug("sichtbares-storefront-product-de"));
+    visible_input.variants[0].sku = Some("GRAPHQL-VISIBLE-SKU-1".to_string());
+    let visible = catalog
+        .create_product(tenant_id, actor_id, visible_input)
+        .await
+        .expect("visible product should be created");
+    let visible = catalog
+        .publish_product(tenant_id, actor_id, visible.id)
+        .await
+        .expect("visible product should be published");
+    let visible_handle = visible
+        .translations
+        .iter()
+        .find(|translation| translation.locale == "de")
+        .map(|translation| translation.handle.clone())
+        .expect("visible product should have de handle");
+
+    let mut hidden_input = create_product_input();
+    hidden_input.translations[0].title = "Hidden Product".to_string();
+    hidden_input.translations[0].handle = Some(unique_slug("hidden-storefront-product-en"));
+    hidden_input.translations[1].title = "Verstecktes Produkt".to_string();
+    hidden_input.translations[1].handle = Some(unique_slug("verstecktes-storefront-product-de"));
+    hidden_input.variants[0].sku = Some("GRAPHQL-HIDDEN-SKU-1".to_string());
+    hidden_input.metadata = serde_json::json!({
+        "channel_visibility": {
+            "allowed_channel_slugs": ["mobile-app"]
+        }
+    });
+    let hidden = catalog
+        .create_product(tenant_id, actor_id, hidden_input)
+        .await
+        .expect("hidden product should be created");
+    let hidden = catalog
+        .publish_product(tenant_id, actor_id, hidden.id)
+        .await
+        .expect("hidden product should be published");
+    let hidden_handle = hidden
+        .translations
+        .iter()
+        .find(|translation| translation.locale == "de")
+        .map(|translation| translation.handle.clone())
+        .expect("hidden product should have de handle");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "de", channel_id, "web-store"),
+        None,
+    );
+
+    let visible_query = format!(
+        r#"
+        query {{
+          storefrontProducts(locale: "de") {{
+            total
+            items {{ title handle }}
+          }}
+          storefrontProduct(locale: "de", handle: "{visible_handle}") {{
+            translations {{ locale title handle }}
+          }}
+        }}
+        "#
+    );
+    let visible_response = schema.execute(Request::new(visible_query)).await;
+    assert!(
+        visible_response.errors.is_empty(),
+        "unexpected GraphQL errors for visible product: {:?}",
+        visible_response.errors
+    );
+    let visible_json = visible_response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(visible_json["storefrontProducts"]["total"], Value::from(1));
+    assert_eq!(
+        visible_json["storefrontProducts"]["items"][0]["title"],
+        Value::from("Sichtbares Produkt")
+    );
+    assert_eq!(
+        visible_json["storefrontProduct"]["translations"][0]["handle"],
+        Value::from(visible_handle)
+    );
+
+    let hidden_query = format!(
+        r#"
+        query {{
+          storefrontProduct(locale: "de", handle: "{hidden_handle}") {{
+            id
+          }}
+        }}
+        "#
+    );
+    let hidden_response = schema.execute(Request::new(hidden_query)).await;
+    assert!(
+        hidden_response.errors.is_empty(),
+        "unexpected GraphQL errors for hidden product: {:?}",
+        hidden_response.errors
+    );
+    let hidden_json = hidden_response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert!(hidden_json["storefrontProduct"].is_null());
+}
+
+#[tokio::test]
+async fn storefront_graphql_product_uses_channel_visible_inventory() {
+    let (db, catalog, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", true).await;
+
+    let mut input = create_product_input();
+    input.translations[0].handle = Some(unique_slug("inventory-visible-product-en"));
+    input.translations[1].handle = Some(unique_slug("inventory-visible-product-de"));
+    input.variants[0].sku = Some("GRAPHQL-INVENTORY-SKU-1".to_string());
+    input.variants[0].inventory_quantity = 8;
+    let created = catalog
+        .create_product(tenant_id, actor_id, input)
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let handle = published
+        .translations
+        .iter()
+        .find(|translation| translation.locale == "de")
+        .map(|translation| translation.handle.clone())
+        .expect("product should have de handle");
+
+    set_stock_location_channel_visibility(&db, tenant_id, &["mobile-app"]).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "de", channel_id, "web-store"),
+        None,
+    );
+
+    let query = format!(
+        r#"
+        query {{
+          storefrontProduct(locale: "de", handle: "{handle}") {{
+            variants {{
+              sku
+              inventoryQuantity
+              inStock
+            }}
+          }}
+        }}
+        "#
+    );
+    let response = schema.execute(Request::new(query)).await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected GraphQL errors for inventory visibility: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["storefrontProduct"]["variants"][0]["sku"],
+        Value::from("GRAPHQL-INVENTORY-SKU-1")
+    );
+    assert_eq!(
+        json["storefrontProduct"]["variants"][0]["inventoryQuantity"],
+        Value::from(0)
+    );
+    assert_eq!(
+        json["storefrontProduct"]["variants"][0]["inStock"],
+        Value::from(false)
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_rejects_disabled_channel_module() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", false).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "de", channel_id, "web-store"),
+        None,
+    );
+
+    let mutation = r#"
+        mutation {
+          createStorefrontCart(
+            input: {
+              email: "buyer@example.com"
+              currencyCode: "eur"
+              locale: "de"
+            }
+          ) {
+            cart { id }
+          }
+        }
+    "#;
+    let response = schema.execute(Request::new(mutation)).await;
+    assert_eq!(response.errors.len(), 1, "expected module gate error");
+    let error = &response.errors[0];
+    assert!(
+        error.message.contains("not enabled"),
+        "unexpected error message: {}",
+        error.message
+    );
+    assert!(matches!(
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code")),
+        Some(async_graphql::Value::String(code)) if code == "MODULE_NOT_ENABLED"
+    ));
+
+    let query = r#"
+        query {
+          storefrontProduct(locale: "de", id: "00000000-0000-0000-0000-000000000000") {
+            id
+          }
+        }
+    "#;
+    let query_response = schema.execute(Request::new(query)).await;
+    assert_eq!(
+        query_response.errors.len(),
+        1,
+        "expected module gate error for storefrontProduct"
+    );
+    let query_error = &query_response.errors[0];
+    assert!(
+        query_error.message.contains("not enabled"),
+        "unexpected query error message: {}",
+        query_error.message
+    );
+    assert!(matches!(
+        query_error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code")),
+        Some(async_graphql::Value::String(code)) if code == "MODULE_NOT_ENABLED"
+    ));
 }
 
 #[tokio::test]
@@ -2250,6 +2652,252 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
             "currencyCode": "EUR",
             "amount": "9.99"
         }])
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profiles() {
+    let (db, catalog, cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let mut product_input = create_product_input();
+    product_input.metadata = serde_json::json!({
+        "shipping_profile": {
+            "slug": "bulky"
+        }
+    });
+    let created = catalog
+        .create_product(tenant_id, actor_id, product_input)
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let variant = published
+        .variants
+        .first()
+        .expect("published product should include variant");
+
+    FulfillmentService::new(db.clone())
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Default Shipping".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({
+                    "shipping_profiles": {
+                        "allowed_slugs": ["default"]
+                    }
+                }),
+            },
+        )
+        .await
+        .expect("default shipping option should be created");
+    let bulky_option = FulfillmentService::new(db.clone())
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Bulky Freight".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("29.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({
+                    "shipping_profiles": {
+                        "allowed_slugs": ["bulky"]
+                    }
+                }),
+            },
+        )
+        .await
+        .expect("bulky shipping option should be created");
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("shipping-profile@example.com".to_string()),
+                region_id: None,
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-profile" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(variant.id),
+                sku: variant.sku.clone(),
+                title: variant.title.clone(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .expect("line item should be added");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontShippingOptions(
+                tenantId: "{tenant_id}",
+                filter: {{ cartId: "{cart_id}" currencyCode: "eur" }}
+              ) {{
+                id
+                name
+              }}
+            }}
+            "#,
+            cart_id = cart.id
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront shipping profile GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["storefrontShippingOptions"],
+        serde_json::json!([{
+            "id": bulky_option.id.to_string(),
+            "name": "Bulky Freight"
+        }])
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_profile_option() {
+    let (db, catalog, cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let mut product_input = create_product_input();
+    product_input.metadata = serde_json::json!({
+        "shipping_profile": {
+            "slug": "bulky"
+        }
+    });
+    let created = catalog
+        .create_product(tenant_id, actor_id, product_input)
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let variant = published
+        .variants
+        .first()
+        .expect("published product should include variant");
+
+    let incompatible_option = FulfillmentService::new(db.clone())
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Default Shipping".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({
+                    "shipping_profiles": {
+                        "allowed_slugs": ["default"]
+                    }
+                }),
+            },
+        )
+        .await
+        .expect("shipping option should be created");
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("shipping-profile@example.com".to_string()),
+                region_id: None,
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-profile" }),
+            },
+        )
+        .await
+        .expect("cart should be created");
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(variant.id),
+                sku: variant.sku.clone(),
+                title: variant.title.clone(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .expect("line item should be added");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateStorefrontCartContext(
+                tenantId: "{tenant_id}",
+                cartId: "{cart_id}",
+                input: {{ selectedShippingOptionId: "{shipping_option_id}" }}
+              ) {{
+                cart {{ id }}
+              }}
+            }}
+            "#,
+            cart_id = cart.id,
+            shipping_option_id = incompatible_option.id
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(
+        response.errors[0]
+            .message
+            .contains("not compatible with the cart shipping profiles"),
+        "unexpected GraphQL error: {}",
+        response.errors[0].message
     );
 }
 

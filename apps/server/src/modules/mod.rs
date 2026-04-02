@@ -14,6 +14,7 @@ use rustok_rbac::RbacModule;
 use rustok_search::SearchModule;
 use rustok_tenant::TenantModule;
 
+pub(crate) use manifest::module_setting_shape_value;
 pub use manifest::{
     validate_registry_vs_manifest, BuildExecutionPlan, CatalogManifestModule, CatalogModuleVersion,
     DeploymentSurfaceContract, FrontendArtifactKind, FrontendBuildPlan, FrontendBuildTool,

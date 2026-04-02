@@ -1,12 +1,41 @@
+use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 use crate::model::{
     SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload, SearchSuggestion,
     TrackSearchClickPayload,
 };
 
-pub type ApiError = GraphqlHttpError;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ApiError {
+    Graphql(String),
+    ServerFn(String),
+}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Graphql(error) => write!(f, "{error}"),
+            Self::ServerFn(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+impl From<GraphqlHttpError> for ApiError {
+    fn from(value: GraphqlHttpError) -> Self {
+        Self::Graphql(value.to_string())
+    }
+}
+
+impl From<ServerFnError> for ApiError {
+    fn from(value: ServerFnError) -> Self {
+        Self::ServerFn(value.to_string())
+    }
+}
 
 const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
 const STOREFRONT_FILTER_PRESETS_QUERY: &str = "query StorefrontSearchFilterPresets { storefrontSearchFilterPresets { key label entityTypes sourceModules statuses rankingProfile } }";
@@ -52,7 +81,7 @@ struct TrackSearchClickVariables {
     input: TrackSearchClickInput,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SearchPreviewInput {
     query: String,
     locale: Option<String>,
@@ -67,14 +96,14 @@ struct SearchPreviewInput {
     statuses: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SearchSuggestionsInput {
     query: String,
     locale: Option<String>,
     limit: Option<i32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct TrackSearchClickInput {
     #[serde(rename = "queryLogId")]
     query_log_id: String,
@@ -136,9 +165,102 @@ where
         None,
     )
     .await
+    .map_err(ApiError::from)
 }
 
 pub async fn fetch_storefront_search(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+) -> Result<SearchPreviewPayload, ApiError> {
+    match fetch_storefront_search_server(
+        query.clone(),
+        locale.clone(),
+        preset_key.clone(),
+        filters.clone(),
+    )
+    .await
+    {
+        Ok(payload) => Ok(payload),
+        Err(_) => fetch_storefront_search_graphql(query, locale, preset_key, filters).await,
+    }
+}
+
+pub async fn fetch_storefront_filter_presets() -> Result<Vec<SearchFilterPreset>, ApiError> {
+    match fetch_storefront_filter_presets_server().await {
+        Ok(payload) => Ok(payload),
+        Err(_) => fetch_storefront_filter_presets_graphql().await,
+    }
+}
+
+pub async fn fetch_storefront_suggestions(
+    query: String,
+    locale: Option<String>,
+) -> Result<Vec<SearchSuggestion>, ApiError> {
+    match fetch_storefront_suggestions_server(query.clone(), locale.clone()).await {
+        Ok(payload) => Ok(payload),
+        Err(_) => fetch_storefront_suggestions_graphql(query, locale).await,
+    }
+}
+
+pub async fn track_search_click(
+    query_log_id: String,
+    document_id: String,
+    position: Option<i32>,
+    href: Option<String>,
+) -> Result<TrackSearchClickPayload, ApiError> {
+    match track_search_click_server(
+        query_log_id.clone(),
+        document_id.clone(),
+        position,
+        href.clone(),
+    )
+    .await
+    {
+        Ok(payload) => Ok(payload),
+        Err(_) => track_search_click_graphql(query_log_id, document_id, position, href).await,
+    }
+}
+
+pub async fn fetch_storefront_search_server(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+) -> Result<SearchPreviewPayload, ApiError> {
+    storefront_search_native(query, locale, preset_key, filters)
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn fetch_storefront_filter_presets_server() -> Result<Vec<SearchFilterPreset>, ApiError> {
+    storefront_filter_presets_native()
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn fetch_storefront_suggestions_server(
+    query: String,
+    locale: Option<String>,
+) -> Result<Vec<SearchSuggestion>, ApiError> {
+    storefront_search_suggestions_native(query, locale)
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn track_search_click_server(
+    query_log_id: String,
+    document_id: String,
+    position: Option<i32>,
+    href: Option<String>,
+) -> Result<TrackSearchClickPayload, ApiError> {
+    storefront_track_search_click_native(query_log_id, document_id, position, href)
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn fetch_storefront_search_graphql(
     query: String,
     locale: Option<String>,
     preset_key: Option<String>,
@@ -165,14 +287,15 @@ pub async fn fetch_storefront_search(
     Ok(response.storefront_search)
 }
 
-pub async fn fetch_storefront_filter_presets() -> Result<Vec<SearchFilterPreset>, ApiError> {
+pub async fn fetch_storefront_filter_presets_graphql() -> Result<Vec<SearchFilterPreset>, ApiError>
+{
     let response: StorefrontFilterPresetsResponse =
         request(STOREFRONT_FILTER_PRESETS_QUERY, ()).await?;
 
     Ok(response.storefront_search_filter_presets)
 }
 
-pub async fn fetch_storefront_suggestions(
+pub async fn fetch_storefront_suggestions_graphql(
     query: String,
     locale: Option<String>,
 ) -> Result<Vec<SearchSuggestion>, ApiError> {
@@ -191,7 +314,7 @@ pub async fn fetch_storefront_suggestions(
     Ok(response.storefront_search_suggestions)
 }
 
-pub async fn track_search_click(
+pub async fn track_search_click_graphql(
     query_log_id: String,
     document_id: String,
     position: Option<i32>,
@@ -211,4 +334,84 @@ pub async fn track_search_click(
     .await?;
 
     Ok(response.track_search_click)
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/storefront-search")]
+async fn storefront_search_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        fetch_storefront_search_graphql(query, locale, preset_key, filters)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (query, locale, preset_key, filters);
+        Err(ServerFnError::new(
+            "search/storefront-search requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/storefront-filter-presets")]
+async fn storefront_filter_presets_native() -> Result<Vec<SearchFilterPreset>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        fetch_storefront_filter_presets_graphql()
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "search/storefront-filter-presets requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/storefront-suggestions")]
+async fn storefront_search_suggestions_native(
+    query: String,
+    locale: Option<String>,
+) -> Result<Vec<SearchSuggestion>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        fetch_storefront_suggestions_graphql(query, locale)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (query, locale);
+        Err(ServerFnError::new(
+            "search/storefront-suggestions requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/storefront-track-click")]
+async fn storefront_track_search_click_native(
+    query_log_id: String,
+    document_id: String,
+    position: Option<i32>,
+    href: Option<String>,
+) -> Result<TrackSearchClickPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        track_search_click_graphql(query_log_id, document_id, position, href)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (query_log_id, document_id, position, href);
+        Err(ServerFnError::new(
+            "search/storefront-track-click requires the `ssr` feature",
+        ))
+    }
 }

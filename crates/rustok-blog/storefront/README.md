@@ -7,7 +7,8 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Exposes the blog storefront root view used by `apps/storefront`.
 - Keeps blog-specific storefront UI inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
-- Owns the standard GraphQL read-path for published posts and selected `?slug=` rendering.
+- Owns dual-path read access for published posts and selected `?slug=` rendering.
+- Native Leptos `#[server]` calls are added as the internal path, with GraphQL kept as a required parallel fallback.
 
 ## Entry Points
 
@@ -16,7 +17,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 ## Interactions
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
-- Uses the `rustok-blog` GraphQL contract plus shared host libraries such as `UiRouteContext`.
+- Uses native `#[server] -> PostService -> DB` on the SSR path and falls back to the `rustok-blog` GraphQL contract when native transport is unavailable.
 - Should remain compatible with the host storefront slot and generic module page contract.
 
 ## Documentation

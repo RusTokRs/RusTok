@@ -20,6 +20,7 @@ use crate::{
     dto::ProductResponse,
     entities::{product, product_translation},
     search::product_translation_title_search_condition,
+    storefront_shipping::shipping_profile_slug_from_product_metadata,
     CatalogService,
 };
 
@@ -147,6 +148,9 @@ pub async fn list_products(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
+                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                    &product.metadata,
+                )),
                 tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
                 created_at: product.created_at.to_rfc3339(),
                 published_at: product.published_at.map(|value| value.to_rfc3339()),
@@ -275,6 +279,7 @@ pub struct ProductListItem {
     pub handle: String,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
     pub created_at: String,
     pub published_at: Option<String>,

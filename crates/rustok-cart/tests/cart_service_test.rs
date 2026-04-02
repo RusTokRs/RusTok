@@ -91,6 +91,26 @@ async fn create_cart_persists_multilingual_context_snapshot() {
 }
 
 #[tokio::test]
+async fn create_cart_with_channel_persists_channel_snapshot() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            create_cart_input(),
+            Some(channel_id),
+            Some("web-store".to_string()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.channel_id, Some(channel_id));
+    assert_eq!(cart.channel_slug.as_deref(), Some("web-store"));
+}
+
+#[tokio::test]
 async fn update_cart_context_rewrites_snapshot_fields() {
     let service = setup().await;
     let tenant_id = Uuid::new_v4();

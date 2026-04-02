@@ -8,9 +8,7 @@ use rustok_api::{
     loco::transactional_event_bus_from_context, OptionalAuthContext, RequestContext, TenantContext,
 };
 use rustok_cart::CartError;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -26,6 +24,16 @@ use crate::{
     },
     entities::{price, product, product_translation, product_variant, variant_translation},
     search::product_translation_title_search_condition,
+    storefront_channel::{
+        apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
+        is_module_enabled_for_request_channel,
+        load_available_inventory_for_variant_in_public_channel, normalize_public_channel_slug,
+        public_channel_slug_from_request,
+    },
+    storefront_shipping::{
+        is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
+        shipping_profile_slug_from_product_metadata,
+    },
     CartService, CatalogService, CustomerService, FulfillmentService, OrderService, PaymentService,
     ProductResponse, RegionService, StoreContextService,
 };
@@ -69,6 +77,8 @@ pub fn routes() -> Routes {
         .add("/customers/me", axum::routing::get(get_me))
 }
 
+const MODULE_SLUG: &str = "commerce";
+
 /// List published storefront products
 #[utoipa::path(
     get,
@@ -86,6 +96,8 @@ pub async fn list_products(
     request_context: RequestContext,
     Query(params): Query<StoreListProductsParams>,
 ) -> Result<Json<PaginatedResponse<ProductListItem>>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let _requested_limit = params
         .pagination
         .as_ref()
@@ -96,9 +108,11 @@ pub async fn list_products(
         .as_deref()
         .unwrap_or(request_context.locale.as_str());
 
+    let public_channel_slug = public_channel_slug_from_request(&request_context);
     let mut query = product::Entity::find()
         .filter(product::Column::TenantId.eq(tenant.id))
-        .filter(product::Column::Status.eq("published"));
+        .filter(product::Column::Status.eq(product::ProductStatus::Active))
+        .filter(product::Column::PublishedAt.is_not_null());
 
     if let Some(vendor) = &params.vendor {
         query = query.filter(product::Column::Vendor.eq(vendor));
@@ -114,18 +128,26 @@ pub async fn list_products(
         ));
     }
 
-    let total = query
-        .clone()
-        .count(&ctx.db)
-        .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
-    let products = query
+    let visible_products = query
+        .order_by_desc(product::Column::PublishedAt)
         .order_by_desc(product::Column::CreatedAt)
-        .offset(pagination.offset())
-        .limit(pagination.limit())
         .all(&ctx.db)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .into_iter()
+        .filter(|product| {
+            is_metadata_visible_for_public_channel(
+                &product.metadata,
+                public_channel_slug.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let total = visible_products.len() as u64;
+    let products = visible_products
+        .into_iter()
+        .skip(pagination.offset() as usize)
+        .take(pagination.limit() as usize)
+        .collect::<Vec<_>>();
 
     let product_ids = products
         .iter()
@@ -167,6 +189,9 @@ pub async fn list_products(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
+                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                    &product.metadata,
+                )),
                 tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
                 created_at: product.created_at.to_rfc3339(),
                 published_at: product.published_at.map(|value| value.to_rfc3339()),
@@ -194,17 +219,36 @@ pub async fn list_products(
 pub async fn show_product(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProductResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
-    let product = service
+    let public_channel_slug = public_channel_slug_from_request(&request_context);
+    let mut product = service
         .get_product(tenant.id, id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    if product.status.to_string() != "published" {
+    if product.status != product::ProductStatus::Active
+        || product.published_at.is_none()
+        || !is_metadata_visible_for_public_channel(
+            &product.metadata,
+            public_channel_slug.as_deref(),
+        )
+    {
         return Err(Error::NotFound);
     }
+
+    apply_public_channel_inventory_to_product(
+        &ctx.db,
+        tenant.id,
+        &mut product,
+        public_channel_slug.as_deref(),
+    )
+    .await
+    .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok(Json(product))
 }
@@ -221,7 +265,10 @@ pub async fn show_product(
 pub async fn list_regions(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
+    request_context: RequestContext,
 ) -> Result<Json<Vec<RegionResponse>>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let service = RegionService::new(ctx.db.clone());
     let regions = service
         .list_regions(tenant.id)
@@ -247,27 +294,42 @@ pub async fn list_shipping_options(
     request_context: RequestContext,
     Query(query): Query<StoreContextQuery>,
 ) -> Result<Json<Vec<ShippingOptionResponse>>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let context = if let Some(cart_id) = query.cart_id {
-        let cart_service = CartService::new(ctx.db.clone());
-        let cart = cart_service
-            .get_cart(tenant.id, cart_id)
-            .await
-            .map_err(map_cart_error)?;
-        ensure_store_cart_access(&cart, customer_id)?;
-        resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?
-    } else {
-        resolve_context(
-            &ctx,
-            tenant.id,
-            &request_context,
-            query.region_id,
-            query.country_code.clone(),
-            query.locale.clone(),
-            query.currency_code.clone(),
-        )
-        .await?
-    };
+    let (context, public_channel_slug, required_shipping_profiles) =
+        if let Some(cart_id) = query.cart_id {
+            let cart_service = CartService::new(ctx.db.clone());
+            let cart = cart_service
+                .get_cart(tenant.id, cart_id)
+                .await
+                .map_err(map_cart_error)?;
+            ensure_store_cart_access(&cart, customer_id)?;
+            let required_shipping_profiles =
+                load_cart_shipping_profile_slugs(&ctx.db, tenant.id, &cart)
+                    .await
+                    .map_err(|err| Error::BadRequest(err.to_string()))?;
+            (
+                resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?,
+                storefront_public_channel_slug_for_cart(&cart, &request_context),
+                required_shipping_profiles,
+            )
+        } else {
+            (
+                resolve_context(
+                    &ctx,
+                    tenant.id,
+                    &request_context,
+                    query.region_id,
+                    query.country_code.clone(),
+                    query.locale.clone(),
+                    query.currency_code.clone(),
+                )
+                .await?,
+                public_channel_slug_from_request(&request_context),
+                Default::default(),
+            )
+        };
 
     let service = FulfillmentService::new(ctx.db.clone());
     let mut options = service
@@ -278,6 +340,13 @@ pub async fn list_shipping_options(
     if let Some(currency_code) = context.currency_code.as_deref() {
         options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
     }
+    options.retain(|option| {
+        is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug.as_deref())
+            && is_shipping_option_compatible_with_profiles(
+                &option.metadata,
+                &required_shipping_profiles,
+            )
+    });
 
     Ok(Json(options))
 }
@@ -300,6 +369,8 @@ pub async fn create_cart(
     request_context: RequestContext,
     Json(input): Json<StoreCreateCartInput>,
 ) -> Result<(StatusCode, Json<StoreCartResponse>)> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let context = resolve_context(
         &ctx,
@@ -324,7 +395,7 @@ pub async fn create_cart(
 
     let service = CartService::new(ctx.db.clone());
     let cart = service
-        .create_cart(
+        .create_cart_with_channel(
             tenant.id,
             CreateCartInput {
                 customer_id,
@@ -336,6 +407,8 @@ pub async fn create_cart(
                 currency_code,
                 metadata: input.metadata,
             },
+            request_context.channel_id,
+            request_context.channel_slug.clone(),
         )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -362,8 +435,11 @@ pub async fn get_cart(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<CartResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let service = CartService::new(ctx.db.clone());
     let cart = service
@@ -395,6 +471,8 @@ pub async fn update_cart_context(
     Path(id): Path<Uuid>,
     Json(input): Json<StoreUpdateCartInput>,
 ) -> Result<Json<StoreCartResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let cart_service = CartService::new(ctx.db.clone());
     let cart = cart_service
@@ -442,6 +520,8 @@ pub async fn add_cart_line_item(
     Path(id): Path<Uuid>,
     Json(input): Json<StoreAddCartLineItemInput>,
 ) -> Result<Json<CartResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let service = CartService::new(ctx.db.clone());
     let existing = service
@@ -457,6 +537,7 @@ pub async fn add_cart_line_item(
             .locale_code
             .as_deref()
             .unwrap_or(request_context.locale.as_str()),
+        storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
         input,
     )
     .await?;
@@ -488,9 +569,12 @@ pub async fn update_cart_line_item(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
+    request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<StoreUpdateCartLineItemInput>,
 ) -> Result<Json<CartResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let service = CartService::new(ctx.db.clone());
     let existing = service
@@ -498,6 +582,18 @@ pub async fn update_cart_line_item(
         .await
         .map_err(map_cart_error)?;
     ensure_store_cart_access(&existing, customer_id)?;
+    if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id) {
+        if let Some(variant_id) = existing_line_item.variant_id {
+            validate_store_line_item_quantity(
+                &ctx.db,
+                tenant.id,
+                variant_id,
+                input.quantity,
+                storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
+            )
+            .await?;
+        }
+    }
 
     let cart = service
         .update_line_item_quantity(tenant.id, id, line_id, input.quantity)
@@ -525,8 +621,11 @@ pub async fn remove_cart_line_item(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
+    request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<CartResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let service = CartService::new(ctx.db.clone());
     let existing = service
@@ -561,6 +660,8 @@ pub async fn create_payment_collection(
     request_context: RequestContext,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> Result<(StatusCode, Json<PaymentCollectionResponse>)> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
     let cart_service = CartService::new(ctx.db.clone());
     let cart = cart_service
@@ -617,6 +718,8 @@ pub async fn complete_cart_checkout(
     Path(cart_id): Path<Uuid>,
     Json(input): Json<StoreCompleteCartInput>,
 ) -> Result<Json<CompleteCheckoutResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let cart_service = CartService::new(ctx.db.clone());
     let cart = cart_service
         .get_cart(tenant.id, cart_id)
@@ -682,8 +785,11 @@ pub async fn complete_cart_checkout(
 pub async fn get_me(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
+    request_context: RequestContext,
     auth: rustok_api::AuthContext,
 ) -> Result<Json<CustomerResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let service = CustomerService::new(ctx.db.clone());
     let customer = service
         .get_customer_by_user(tenant.id, auth.user_id)
@@ -707,9 +813,12 @@ pub async fn get_me(
 pub async fn get_order(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
+    request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<OrderResponse>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
     let customer_id = current_customer_id(&ctx, tenant.id, Some(&auth))
         .await?
         .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
@@ -787,6 +896,32 @@ async fn current_customer_id(
     }
 }
 
+async fn ensure_storefront_channel_enabled(
+    ctx: &AppContext,
+    request_context: &RequestContext,
+) -> Result<()> {
+    let enabled = is_module_enabled_for_request_channel(&ctx.db, request_context, MODULE_SLUG)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    if !enabled {
+        return Err(Error::Unauthorized(format!(
+            "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
+            request_context.channel_slug.as_deref().unwrap_or("current"),
+        )));
+    }
+
+    Ok(())
+}
+
+fn storefront_public_channel_slug_for_cart(
+    cart: &CartResponse,
+    request_context: &RequestContext,
+) -> Option<String> {
+    normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| public_channel_slug_from_request(request_context))
+}
+
 fn ensure_store_cart_access(cart: &CartResponse, customer_id: Option<Uuid>) -> Result<()> {
     if let Some(expected_customer_id) = cart.customer_id {
         if customer_id != Some(expected_customer_id) {
@@ -826,8 +961,10 @@ async fn apply_cart_context_patch(
     validate_selected_shipping_option(
         ctx,
         tenant_id,
+        cart,
         requested.selected_shipping_option_id,
         &cart.currency_code,
+        storefront_public_channel_slug_for_cart(cart, request_context).as_deref(),
     )
     .await?;
 
@@ -881,8 +1018,10 @@ fn requested_cart_context(
 async fn validate_selected_shipping_option(
     ctx: &AppContext,
     tenant_id: Uuid,
+    cart: &CartResponse,
     selected_shipping_option_id: Option<Uuid>,
     currency_code: &str,
+    public_channel_slug: Option<&str>,
 ) -> Result<()> {
     let Some(selected_shipping_option_id) = selected_shipping_option_id else {
         return Ok(());
@@ -899,6 +1038,21 @@ async fn validate_selected_shipping_option(
             option.id, option.currency_code, currency_code
         )));
     }
+    if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
+        return Err(Error::BadRequest(format!(
+            "Shipping option {} is not available for the current channel",
+            option.id
+        )));
+    }
+    let required_shipping_profiles = load_cart_shipping_profile_slugs(&ctx.db, tenant_id, cart)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    if !is_shipping_option_compatible_with_profiles(&option.metadata, &required_shipping_profiles) {
+        return Err(Error::BadRequest(format!(
+            "Shipping option {} is not compatible with the cart shipping profiles",
+            option.id
+        )));
+    }
 
     Ok(())
 }
@@ -908,6 +1062,7 @@ async fn resolve_store_line_item_input(
     tenant_id: Uuid,
     currency_code: &str,
     locale: &str,
+    public_channel_slug: Option<&str>,
     input: StoreAddCartLineItemInput,
 ) -> Result<AddCartLineItemInput> {
     let variant = product_variant::Entity::find_by_id(input.variant_id)
@@ -923,6 +1078,12 @@ async fn resolve_store_line_item_input(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?
         .ok_or(Error::NotFound)?;
+    if product_model.status != product::ProductStatus::Active
+        || product_model.published_at.is_none()
+        || !is_metadata_visible_for_public_channel(&product_model.metadata, public_channel_slug)
+    {
+        return Err(Error::NotFound);
+    }
 
     let product_translation_model = product_translation::Entity::find()
         .filter(product_translation::Column::ProductId.eq(product_model.id))
@@ -961,6 +1122,8 @@ async fn resolve_store_line_item_input(
                 variant.id, currency_code
             ))
         })?;
+    validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
+        .await?;
 
     let base_title = product_translation_model
         .as_ref()
@@ -988,6 +1151,61 @@ async fn resolve_store_line_item_input(
         unit_price: selected_price.amount,
         metadata: input.metadata,
     })
+}
+
+async fn validate_store_line_item_quantity(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> Result<()> {
+    let Some(variant) = product_variant::Entity::find_by_id(variant_id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+    else {
+        return Ok(());
+    };
+
+    validate_store_variant_inventory(
+        db,
+        tenant_id,
+        &variant,
+        requested_quantity,
+        public_channel_slug,
+    )
+    .await
+}
+
+async fn validate_store_variant_inventory(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    variant: &product_variant::Model,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> Result<()> {
+    if variant.inventory_policy == "continue" {
+        return Ok(());
+    }
+
+    let available_inventory = load_available_inventory_for_variant_in_public_channel(
+        db,
+        tenant_id,
+        variant.id,
+        public_channel_slug,
+    )
+    .await
+    .map_err(|err| Error::BadRequest(err.to_string()))?;
+    if available_inventory < requested_quantity {
+        return Err(Error::BadRequest(format!(
+            "Variant {} does not have enough available inventory for the current channel",
+            variant.id
+        )));
+    }
+
+    Ok(())
 }
 
 fn map_cart_error(error: CartError) -> Error {
@@ -1024,6 +1242,8 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
 fn cart_context_metadata(cart: &CartResponse, context: &StoreContextResponse) -> Value {
     json!({
         "cart_context": {
+            "channel_id": cart.channel_id,
+            "channel_slug": cart.channel_slug.clone(),
             "region_id": context.region.as_ref().map(|region| region.id),
             "country_code": cart.country_code.clone(),
             "locale": context.locale.clone(),
@@ -1144,10 +1364,10 @@ mod tests {
     use super::{
         cart_context_metadata, checkout_actor_id, ensure_store_cart_access, merge_metadata,
         requested_cart_context, resolve_store_line_item_input, RequestedCartContext,
-        StoreAddCartLineItemInput, StoreCartContextPatch,
+        StoreAddCartLineItemInput, StoreCartContextPatch, MODULE_SLUG,
     };
     use axum::body::{to_bytes, Body};
-    use axum::extract::State;
+    use axum::extract::{Path, State};
     use axum::http::{Request, StatusCode};
     use axum::middleware::{from_fn_with_state, Next};
     use axum::response::Response;
@@ -1158,15 +1378,19 @@ mod tests {
     use loco_rs::storage::{self, Storage};
     use loco_rs::tests_cfg::config::test_config;
     use rust_decimal::Decimal;
+    use rustok_api::context::ChannelResolutionSource;
     use rustok_api::RequestContext;
-    use rustok_api::{AuthContext, AuthContextExtension, TenantContext, TenantContextExtension};
+    use rustok_api::{
+        AuthContext, AuthContextExtension, ChannelContext, ChannelContextExtension, TenantContext,
+        TenantContextExtension,
+    };
     use rustok_core::events::EventTransport;
     use rustok_core::Permission;
     use rustok_region::dto::{CreateRegionInput, RegionResponse};
     use rustok_region::services::RegionService;
     use rustok_test_utils::db::setup_test_db;
     use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
-    use sea_orm::ConnectionTrait;
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
     use serde_json::json;
     use std::str::FromStr;
     use std::sync::Arc;
@@ -1174,10 +1398,11 @@ mod tests {
     use uuid::Uuid;
 
     use crate::dto::{
-        CartResponse, CreateProductInput, CreateShippingOptionInput, CreateVariantInput,
-        PriceInput, ProductTranslationInput, StoreContextResponse,
+        AddCartLineItemInput, CartResponse, CreateCartInput, CreateProductInput,
+        CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+        StoreContextResponse,
     };
-    use crate::{CatalogService, CustomerService, FulfillmentService};
+    use crate::{CartService, CatalogService, CustomerService, FulfillmentService};
     use rustok_customer::dto::CreateCustomerInput;
 
     #[path = "../../../../tests/support.rs"]
@@ -1187,6 +1412,8 @@ mod tests {
         CartResponse {
             id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
+            channel_id: None,
+            channel_slug: None,
             customer_id,
             email: Some("buyer@example.com".to_string()),
             region_id: None,
@@ -1262,6 +1489,84 @@ mod tests {
             channel_resolution_source: None,
             locale: locale.to_string(),
         }
+    }
+
+    fn sample_channel_context(slug: &str) -> ChannelContext {
+        ChannelContext {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            slug: slug.to_string(),
+            name: format!("Channel {slug}"),
+            is_active: true,
+            status: "active".to_string(),
+            target_type: Some("web_domain".to_string()),
+            target_value: Some(format!("{slug}.example.test")),
+            settings: json!({}),
+            resolution_source: ChannelResolutionSource::Host,
+        }
+    }
+
+    async fn seed_channel_binding(
+        db: &sea_orm::DatabaseConnection,
+        channel: &ChannelContext,
+        module_slug: &str,
+        is_enabled: bool,
+    ) {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                channel.id.into(),
+                channel.tenant_id.into(),
+                channel.slug.clone().into(),
+                channel.name.clone().into(),
+                channel.is_active.into(),
+                false.into(),
+                channel.status.clone().into(),
+                channel.settings.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("channel should be inserted for test");
+
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled, settings, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                Uuid::new_v4().into(),
+                channel.id.into(),
+                module_slug.into(),
+                is_enabled.into(),
+                json!({}).to_string().into(),
+            ],
+        ))
+        .await
+        .expect("channel module binding should be inserted for test");
+    }
+
+    async fn set_stock_location_channel_visibility(
+        db: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        allowed_channel_slugs: &[&str],
+    ) {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE stock_locations SET metadata = ? WHERE tenant_id = ?",
+            vec![
+                json!({
+                    "channel_visibility": {
+                        "allowed_channel_slugs": allowed_channel_slugs
+                    }
+                })
+                .to_string()
+                .into(),
+                tenant_id.into(),
+            ],
+        ))
+        .await
+        .expect("stock location visibility should be updated");
     }
 
     #[test]
@@ -1423,7 +1728,10 @@ mod tests {
         let customer_id = Uuid::new_v4();
         let region_id = Uuid::new_v4();
         let shipping_option_id = Uuid::new_v4();
+        let channel_id = Uuid::new_v4();
         let mut cart = sample_cart(Some(customer_id));
+        cart.channel_id = Some(channel_id);
+        cart.channel_slug = Some("web-store".to_string());
         cart.region_id = Some(region_id);
         cart.country_code = Some("DE".to_string());
         cart.locale_code = Some("de".to_string());
@@ -1455,6 +1763,8 @@ mod tests {
             metadata,
             json!({
                 "cart_context": {
+                    "channel_id": channel_id,
+                    "channel_slug": "web-store",
                     "region_id": region_id,
                     "country_code": "DE",
                     "locale": "de",
@@ -1465,6 +1775,670 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[tokio::test]
+    async fn store_cart_transport_persists_channel_snapshot() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let mut channel = sample_channel_context("web-store");
+        channel.tenant_id = tenant_id;
+        let channel_id = channel.id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "channel-cart@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&body).expect("create cart response should be JSON");
+        assert_eq!(created_cart["cart"]["channel_id"], json!(channel_id));
+        assert_eq!(created_cart["cart"]["channel_slug"], json!("web-store"));
+    }
+
+    #[tokio::test]
+    async fn store_products_transport_rejects_disabled_channel_module() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let mut channel = sample_channel_context("web-store");
+        channel.tenant_id = tenant_id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, false).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/store/products")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("store products request should complete");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn store_products_transport_filters_channel_hidden_products() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+
+        let mut visible_input = storefront_product_input();
+        visible_input.translations[0].title = "Visible Product".to_string();
+        visible_input.translations[0].handle = Some("visible-storefront-product-en".to_string());
+        visible_input.translations[1].title = "Sichtbares Produkt".to_string();
+        visible_input.translations[1].handle = Some("sichtbares-storefront-product-de".to_string());
+        visible_input.variants[0].sku = Some("STOREFRONT-VISIBLE-SKU-1".to_string());
+        let visible = catalog
+            .create_product(tenant_id, actor_id, visible_input)
+            .await
+            .expect("visible product should be created");
+        catalog
+            .publish_product(tenant_id, actor_id, visible.id)
+            .await
+            .expect("visible product should be published");
+
+        let mut hidden_input = storefront_product_input();
+        hidden_input.translations[0].title = "Hidden Product".to_string();
+        hidden_input.translations[0].handle = Some("hidden-storefront-product-en".to_string());
+        hidden_input.translations[1].title = "Verstecktes Produkt".to_string();
+        hidden_input.translations[1].handle = Some("verstecktes-storefront-product-de".to_string());
+        hidden_input.variants[0].sku = Some("STOREFRONT-HIDDEN-SKU-1".to_string());
+        hidden_input.metadata = json!({
+            "channel_visibility": {
+                "allowed_channel_slugs": ["mobile-app"]
+            }
+        });
+        let hidden = catalog
+            .create_product(tenant_id, actor_id, hidden_input)
+            .await
+            .expect("hidden product should be created");
+        catalog
+            .publish_product(tenant_id, actor_id, hidden.id)
+            .await
+            .expect("hidden product should be published");
+
+        let mut channel = sample_channel_context("web-store");
+        channel.tenant_id = tenant_id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/store/products?locale=de")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("store products request should succeed");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("store products body should read");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).expect("store products response should be JSON");
+        let items = json["data"]
+            .as_array()
+            .expect("product list should be an array");
+        assert_eq!(json["meta"]["total"], json!(1));
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"], json!("Sichtbares Produkt"));
+    }
+
+    #[tokio::test]
+    async fn store_shipping_options_transport_filters_channel_hidden_options() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let fulfillment = FulfillmentService::new(db.clone());
+        let visible_option = fulfillment
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    name: "Visible Shipping".to_string(),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    metadata: json!({}),
+                },
+            )
+            .await
+            .expect("visible shipping option should be created");
+        fulfillment
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    name: "Hidden Shipping".to_string(),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("19.99").expect("valid decimal"),
+                    provider_id: None,
+                    metadata: json!({
+                        "channel_visibility": {
+                            "allowed_channel_slugs": ["mobile-app"]
+                        }
+                    }),
+                },
+            )
+            .await
+            .expect("hidden shipping option should be created");
+
+        let mut channel = sample_channel_context("web-store");
+        channel.tenant_id = tenant_id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/store/shipping-options?currency_code=eur&locale=de")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("shipping options request should succeed");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("shipping options body should read");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).expect("shipping options response should be JSON");
+        let options = json
+            .as_array()
+            .expect("shipping options should be an array");
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0]["id"], json!(visible_option.id));
+    }
+
+    #[tokio::test]
+    async fn store_shipping_options_transport_filters_incompatible_shipping_profiles() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let channel_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let mut product_input = storefront_product_input();
+        product_input.metadata = json!({
+            "shipping_profile": {
+                "slug": "bulky"
+            }
+        });
+        let created = catalog
+            .create_product(tenant_id, actor_id, product_input)
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product should include variant");
+
+        let fulfillment = FulfillmentService::new(db.clone());
+        fulfillment
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    name: "Default Shipping".to_string(),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    metadata: json!({
+                        "shipping_profiles": {
+                            "allowed_slugs": ["default"]
+                        }
+                    }),
+                },
+            )
+            .await
+            .expect("default shipping option should be created");
+        let bulky_option = fulfillment
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    name: "Bulky Freight".to_string(),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("29.99").expect("valid decimal"),
+                    provider_id: None,
+                    metadata: json!({
+                        "shipping_profiles": {
+                            "allowed_slugs": ["bulky"]
+                        }
+                    }),
+                },
+            )
+            .await
+            .expect("bulky shipping option should be created");
+
+        let cart_service = CartService::new(db.clone());
+        let cart = cart_service
+            .create_cart_with_channel(
+                tenant_id,
+                CreateCartInput {
+                    customer_id: None,
+                    email: Some("buyer@example.com".to_string()),
+                    region_id: None,
+                    country_code: Some("de".to_string()),
+                    locale_code: Some("de".to_string()),
+                    selected_shipping_option_id: None,
+                    currency_code: "eur".to_string(),
+                    metadata: json!({ "source": "store-shipping-profile-filter" }),
+                },
+                Some(channel_id),
+                Some("web-store".to_string()),
+            )
+            .await
+            .expect("cart should be created");
+        cart_service
+            .add_line_item(
+                tenant_id,
+                cart.id,
+                AddCartLineItemInput {
+                    product_id: Some(published.id),
+                    variant_id: Some(variant.id),
+                    sku: variant.sku.clone(),
+                    title: variant.title.clone(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                    metadata: json!({ "slot": 1 }),
+                },
+            )
+            .await
+            .expect("line item should be added");
+
+        let mut channel = sample_channel_context("web-store");
+        channel.id = channel_id;
+        channel.tenant_id = tenant_id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/store/shipping-options?cart_id={}&currency_code=eur&locale=de",
+                        cart.id
+                    ))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("shipping options request should succeed");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("shipping options body should read");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).expect("shipping options response should be JSON");
+        let options = json
+            .as_array()
+            .expect("shipping options should be an array");
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0]["id"], json!(bulky_option.id));
+    }
+
+    #[tokio::test]
+    async fn store_update_cart_context_rejects_incompatible_shipping_profile_option() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let channel_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let mut product_input = storefront_product_input();
+        product_input.metadata = json!({
+            "shipping_profile": {
+                "slug": "bulky"
+            }
+        });
+        let created = catalog
+            .create_product(tenant_id, actor_id, product_input)
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product should include variant");
+
+        let incompatible_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    name: "Default Shipping".to_string(),
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    metadata: json!({
+                        "shipping_profiles": {
+                            "allowed_slugs": ["default"]
+                        }
+                    }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+
+        let cart_service = CartService::new(db.clone());
+        let cart = cart_service
+            .create_cart_with_channel(
+                tenant_id,
+                CreateCartInput {
+                    customer_id: None,
+                    email: Some("buyer@example.com".to_string()),
+                    region_id: None,
+                    country_code: Some("de".to_string()),
+                    locale_code: Some("de".to_string()),
+                    selected_shipping_option_id: None,
+                    currency_code: "eur".to_string(),
+                    metadata: json!({ "source": "store-shipping-profile-update" }),
+                },
+                Some(channel_id),
+                Some("web-store".to_string()),
+            )
+            .await
+            .expect("cart should be created");
+        cart_service
+            .add_line_item(
+                tenant_id,
+                cart.id,
+                AddCartLineItemInput {
+                    product_id: Some(published.id),
+                    variant_id: Some(variant.id),
+                    sku: variant.sku.clone(),
+                    title: variant.title.clone(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                    metadata: json!({ "slot": 1 }),
+                },
+            )
+            .await
+            .expect("line item should be added");
+
+        let mut channel = sample_channel_context("web-store");
+        channel.id = channel_id;
+        channel.tenant_id = tenant_id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{}", cart.id))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "selected_shipping_option_id": incompatible_option.id
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should complete");
+
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("update cart body should read");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "unexpected update cart body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(
+            String::from_utf8_lossy(&body)
+                .contains("not compatible with the cart shipping profiles"),
+            "unexpected update cart body: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    async fn store_cart_line_item_transport_rejects_channel_hidden_product() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let mut hidden_input = storefront_product_input();
+        hidden_input.translations[0].handle = Some("channel-hidden-variant-en".to_string());
+        hidden_input.translations[1].handle = Some("channel-hidden-variant-de".to_string());
+        hidden_input.variants[0].sku = Some("STOREFRONT-CHANNEL-HIDDEN-SKU-1".to_string());
+        hidden_input.metadata = json!({
+            "channel_visibility": {
+                "allowed_channel_slugs": ["mobile-app"]
+            }
+        });
+        let hidden = catalog
+            .create_product(tenant_id, actor_id, hidden_input)
+            .await
+            .expect("hidden product should be created");
+        let hidden = catalog
+            .publish_product(tenant_id, actor_id, hidden.id)
+            .await
+            .expect("hidden product should be published");
+        let variant = hidden
+            .variants
+            .first()
+            .expect("hidden product should have variant");
+
+        let mut channel = sample_channel_context("web-store");
+        channel.tenant_id = tenant_id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "buyer@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+
+        let add_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 1,
+                            "metadata": {}
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should complete");
+
+        assert_eq!(add_response.status(), StatusCode::NOT_FOUND);
     }
 
     fn storefront_product_input() -> CreateProductInput {
@@ -1506,6 +2480,7 @@ mod tests {
             }],
             vendor: Some("Storefront Vendor".to_string()),
             product_type: Some("physical".to_string()),
+            shipping_profile_slug: None,
             tags: vec![],
             publish: false,
             metadata: json!({}),
@@ -1614,6 +2589,7 @@ mod tests {
     struct TransportRequestContext {
         tenant: TenantContext,
         auth: Option<AuthContext>,
+        channel: Option<ChannelContext>,
     }
 
     async fn inject_transport_context(
@@ -1625,6 +2601,10 @@ mod tests {
             .insert(TenantContextExtension(context.tenant));
         if let Some(auth) = context.auth {
             req.extensions_mut().insert(AuthContextExtension(auth));
+        }
+        if let Some(channel) = context.channel {
+            req.extensions_mut()
+                .insert(ChannelContextExtension(channel));
         }
         next.run(req).await
     }
@@ -1638,6 +2618,15 @@ mod tests {
         tenant: TenantContext,
         auth: Option<AuthContext>,
     ) -> Router {
+        commerce_transport_router_with_context(ctx, tenant, auth, None)
+    }
+
+    fn commerce_transport_router_with_context(
+        ctx: AppContext,
+        tenant: TenantContext,
+        auth: Option<AuthContext>,
+        channel: Option<ChannelContext>,
+    ) -> Router {
         let routes = crate::controllers::routes();
         let mut router = Router::new();
         for handler in routes.handlers {
@@ -1645,7 +2634,11 @@ mod tests {
         }
 
         router.layer(from_fn_with_state(
-            TransportRequestContext { tenant, auth },
+            TransportRequestContext {
+                tenant,
+                auth,
+                channel,
+            },
             inject_transport_context,
         ))
     }
@@ -1676,6 +2669,7 @@ mod tests {
             tenant_id,
             "EUR",
             "de",
+            None,
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
                 quantity: 2,
@@ -1726,6 +2720,7 @@ mod tests {
             tenant_id,
             "USD",
             "de",
+            None,
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
                 quantity: 1,
@@ -1771,6 +2766,7 @@ mod tests {
             tenant_id,
             "EUR",
             "fr",
+            None,
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
                 quantity: 1,
@@ -1800,6 +2796,7 @@ mod tests {
             Uuid::new_v4(),
             "EUR",
             "de",
+            None,
             StoreAddCartLineItemInput {
                 variant_id: Uuid::new_v4(),
                 quantity: 1,
@@ -1810,6 +2807,110 @@ mod tests {
         .expect_err("unknown variant must not resolve");
 
         assert_eq!(error.to_string(), "not found");
+    }
+
+    #[tokio::test]
+    async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_inventory() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+
+        let mut input = storefront_product_input();
+        input.variants[0].inventory_quantity = 5;
+        let created = service
+            .create_product(tenant_id, actor_id, input)
+            .await
+            .expect("product should be created");
+        let published = service
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        set_stock_location_channel_visibility(&db, tenant_id, &["mobile-app"]).await;
+
+        let error = resolve_store_line_item_input(
+            &db,
+            tenant_id,
+            "EUR",
+            "de",
+            Some("web-store"),
+            StoreAddCartLineItemInput {
+                variant_id: variant.id,
+                quantity: 1,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect_err("hidden inventory should reject storefront line item resolution");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Variant {} does not have enough available inventory for the current channel",
+                variant.id
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn store_product_transport_uses_channel_visible_inventory() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let mut channel = sample_channel_context("web-store");
+        channel.tenant_id = tenant_id;
+
+        let mut input = storefront_product_input();
+        input.variants[0].inventory_quantity = 7;
+        let created = service
+            .create_product(tenant_id, actor_id, input)
+            .await
+            .expect("product should be created");
+        let published = service
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        set_stock_location_channel_visibility(&db, tenant_id, &["mobile-app"]).await;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let request_context = RequestContext {
+            tenant_id,
+            user_id: None,
+            channel_id: Some(channel.id),
+            channel_slug: Some(channel.slug.clone()),
+            channel_resolution_source: Some(ChannelResolutionSource::Host),
+            locale: "de".to_string(),
+        };
+
+        let product = super::show_product(
+            State(test_app_context(db)),
+            tenant,
+            request_context,
+            Path(published.id),
+        )
+        .await
+        .expect("store product handler should succeed")
+        .0;
+
+        assert_eq!(product.variants.len(), 1);
+        assert_eq!(product.variants[0].inventory_quantity, 0);
+        assert!(!product.variants[0].in_stock);
     }
 
     #[tokio::test]
@@ -3112,6 +4213,154 @@ mod tests {
             "unexpected complete checkout body: {}",
             String::from_utf8_lossy(&body)
         );
+    }
+
+    #[tokio::test]
+    async fn store_checkout_transport_carries_cart_channel_snapshot_into_order() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let mut channel = sample_channel_context("marketplace-eu");
+        channel.tenant_id = tenant_id;
+        let channel_id = channel.id;
+        seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
+        let app = commerce_transport_router_with_context(
+            test_app_context(db),
+            tenant,
+            None,
+            Some(channel),
+        );
+
+        let create_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/carts")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "email": "guest@example.com",
+                            "currency_code": "eur",
+                            "locale": "de"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create cart request should succeed");
+        assert_eq!(create_cart_response.status(), StatusCode::CREATED);
+        let create_cart_body = to_bytes(create_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("create cart body should read");
+        let created_cart: serde_json::Value =
+            serde_json::from_slice(&create_cart_body).expect("create cart response should be JSON");
+        let cart_id = created_cart["cart"]["id"]
+            .as_str()
+            .expect("cart id should be returned");
+        assert_eq!(created_cart["cart"]["channel_id"], json!(channel_id));
+        assert_eq!(
+            created_cart["cart"]["channel_slug"],
+            json!("marketplace-eu")
+        );
+
+        let add_line_item_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/line-items"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "variant_id": variant.id,
+                            "quantity": 1,
+                            "metadata": { "source": "channel-checkout-line-item" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("add line item request should succeed");
+        assert_eq!(add_line_item_response.status(), StatusCode::OK);
+
+        let payment_collection_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/store/payment-collections")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "cart_id": cart_id,
+                            "metadata": { "source": "channel-checkout-payment" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create payment collection request should succeed");
+        assert_eq!(payment_collection_response.status(), StatusCode::CREATED);
+
+        let complete_checkout_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}/complete"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "create_fulfillment": false,
+                            "metadata": { "source": "channel-checkout-complete" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("complete checkout request should succeed");
+        assert_eq!(complete_checkout_response.status(), StatusCode::OK);
+
+        let complete_checkout_body = to_bytes(complete_checkout_response.into_body(), usize::MAX)
+            .await
+            .expect("complete checkout body should read");
+        let completed: serde_json::Value = serde_json::from_slice(&complete_checkout_body)
+            .expect("complete checkout response should be JSON");
+        assert_eq!(completed["order"]["channel_id"], json!(channel_id));
+        assert_eq!(completed["order"]["channel_slug"], json!("marketplace-eu"));
     }
 
     #[tokio::test]

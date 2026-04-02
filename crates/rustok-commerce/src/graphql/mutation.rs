@@ -12,6 +12,13 @@ use uuid::Uuid;
 
 use crate::{
     entities::{price, product, product_translation, product_variant, variant_translation},
+    storefront_channel::{
+        is_metadata_visible_for_public_channel,
+        load_available_inventory_for_variant_in_public_channel, normalize_public_channel_slug,
+    },
+    storefront_shipping::{
+        is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
+    },
     CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
     OrderService, PaymentService, StoreContextService,
 };
@@ -30,6 +37,7 @@ impl CommerceMutation {
         input: CreateStorefrontCartInput,
     ) -> Result<GqlStoreCart> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -63,7 +71,7 @@ impl CommerceMutation {
             })?;
 
         let cart = CartService::new(db.clone())
-            .create_cart(
+            .create_cart_with_channel(
                 tenant_id,
                 crate::dto::CreateCartInput {
                     customer_id,
@@ -75,6 +83,8 @@ impl CommerceMutation {
                     currency_code,
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
+                request_context.channel_id,
+                request_context.channel_slug.clone(),
             )
             .await?;
 
@@ -92,6 +102,7 @@ impl CommerceMutation {
         input: AddStorefrontCartLineItemInput,
     ) -> Result<GqlCart> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -110,6 +121,7 @@ impl CommerceMutation {
             cart.locale_code
                 .as_deref()
                 .unwrap_or(request_context.locale.as_str()),
+            storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
             input,
         )
         .await?;
@@ -128,6 +140,7 @@ impl CommerceMutation {
         input: UpdateStorefrontCartContextInput,
     ) -> Result<GqlStoreCart> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -170,8 +183,10 @@ impl CommerceMutation {
         validate_selected_shipping_option(
             db,
             tenant_id,
+            &cart,
             requested_shipping_option_id,
             &cart.currency_code,
+            storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
         )
         .await?;
 
@@ -204,6 +219,7 @@ impl CommerceMutation {
         input: UpdateStorefrontCartLineItemInput,
     ) -> Result<GqlCart> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -214,6 +230,18 @@ impl CommerceMutation {
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        if let Some(existing_line_item) = cart.line_items.iter().find(|item| item.id == line_id) {
+            if let Some(variant_id) = existing_line_item.variant_id {
+                validate_storefront_line_item_quantity(
+                    db,
+                    tenant_id,
+                    variant_id,
+                    input.quantity,
+                    storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
+                )
+                .await?;
+            }
+        }
         let updated = cart_service
             .update_line_item_quantity(tenant_id, cart_id, line_id, input.quantity)
             .await?;
@@ -228,6 +256,7 @@ impl CommerceMutation {
         line_id: Uuid,
     ) -> Result<GqlCart> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -251,6 +280,7 @@ impl CommerceMutation {
         input: CreateStorefrontPaymentCollectionInput,
     ) -> Result<GqlPaymentCollection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -312,6 +342,7 @@ impl CommerceMutation {
         input: CompleteStorefrontCheckoutInput,
     ) -> Result<GqlCompleteCheckout> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -686,6 +717,7 @@ impl CommerceMutation {
             }),
             vendor: input.vendor,
             product_type: input.product_type,
+            shipping_profile_slug: input.shipping_profile_slug,
             tags: input.tags,
             metadata: None,
             status: input.status.map(Into::into),
@@ -814,6 +846,7 @@ fn convert_create_product_input(
         variants,
         vendor: input.vendor,
         product_type: input.product_type,
+        shipping_profile_slug: input.shipping_profile_slug,
         tags: input.tags.unwrap_or_default(),
         metadata: serde_json::Value::Object(Default::default()),
         publish: input.publish.unwrap_or(false),
@@ -902,11 +935,28 @@ fn cart_context_metadata(
     })
 }
 
+fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {
+    ctx.data_opt::<RequestContext>()
+        .and_then(|request_context| {
+            normalize_public_channel_slug(request_context.channel_slug.as_deref())
+        })
+}
+
+fn storefront_public_channel_slug_for_cart(
+    cart: &crate::dto::CartResponse,
+    ctx: &Context<'_>,
+) -> Option<String> {
+    normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| request_public_channel_slug(ctx))
+}
+
 async fn validate_selected_shipping_option(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
+    cart: &crate::dto::CartResponse,
     selected_shipping_option_id: Option<Uuid>,
     currency_code: &str,
+    public_channel_slug: Option<&str>,
 ) -> Result<()> {
     let Some(selected_shipping_option_id) = selected_shipping_option_id else {
         return Ok(());
@@ -919,6 +969,19 @@ async fn validate_selected_shipping_option(
         return Err(async_graphql::Error::new(format!(
             "Shipping option {} uses currency {}, expected {}",
             option.id, option.currency_code, currency_code
+        )));
+    }
+    if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
+        return Err(async_graphql::Error::new(format!(
+            "Shipping option {} is not available for the current channel",
+            option.id
+        )));
+    }
+    let required_shipping_profiles = load_cart_shipping_profile_slugs(db, tenant_id, cart).await?;
+    if !is_shipping_option_compatible_with_profiles(&option.metadata, &required_shipping_profiles) {
+        return Err(async_graphql::Error::new(format!(
+            "Shipping option {} is not compatible with the cart shipping profiles",
+            option.id
         )));
     }
 
@@ -941,6 +1004,7 @@ async fn resolve_storefront_line_item_input(
     tenant_id: Uuid,
     currency_code: &str,
     locale: &str,
+    public_channel_slug: Option<&str>,
     input: AddStorefrontCartLineItemInput,
 ) -> Result<crate::dto::AddCartLineItemInput> {
     let variant = product_variant::Entity::find_by_id(input.variant_id)
@@ -954,6 +1018,12 @@ async fn resolve_storefront_line_item_input(
         .one(db)
         .await?
         .ok_or_else(|| async_graphql::Error::new("Product not found"))?;
+    if product_model.status != product::ProductStatus::Active
+        || product_model.published_at.is_none()
+        || !is_metadata_visible_for_public_channel(&product_model.metadata, public_channel_slug)
+    {
+        return Err(async_graphql::Error::new("Product not found"));
+    }
 
     let product_translation_model = product_translation::Entity::find()
         .filter(product_translation::Column::ProductId.eq(product_model.id))
@@ -988,6 +1058,14 @@ async fn resolve_storefront_line_item_input(
                 variant.id, currency_code
             ))
         })?;
+    validate_storefront_variant_inventory(
+        db,
+        tenant_id,
+        &variant,
+        input.quantity,
+        public_channel_slug,
+    )
+    .await?;
 
     let base_title = product_translation_model
         .as_ref()
@@ -1015,4 +1093,58 @@ async fn resolve_storefront_line_item_input(
         unit_price: selected_price.amount,
         metadata: parse_optional_metadata(input.metadata.as_deref())?,
     })
+}
+
+async fn validate_storefront_line_item_quantity(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> Result<()> {
+    let Some(variant) = product_variant::Entity::find_by_id(variant_id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+    else {
+        return Ok(());
+    };
+
+    validate_storefront_variant_inventory(
+        db,
+        tenant_id,
+        &variant,
+        requested_quantity,
+        public_channel_slug,
+    )
+    .await
+}
+
+async fn validate_storefront_variant_inventory(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    variant: &product_variant::Model,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> Result<()> {
+    if variant.inventory_policy == "continue" {
+        return Ok(());
+    }
+
+    let available_inventory = load_available_inventory_for_variant_in_public_channel(
+        db,
+        tenant_id,
+        variant.id,
+        public_channel_slug,
+    )
+    .await
+    .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+    if available_inventory < requested_quantity {
+        return Err(async_graphql::Error::new(format!(
+            "Variant {} does not have enough available inventory for the current channel",
+            variant.id
+        )));
+    }
+
+    Ok(())
 }

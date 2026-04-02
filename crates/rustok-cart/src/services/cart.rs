@@ -37,6 +37,18 @@ impl CartService {
         tenant_id: Uuid,
         input: CreateCartInput,
     ) -> CartResult<CartResponse> {
+        self.create_cart_with_channel(tenant_id, input, None, None)
+            .await
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
+    pub async fn create_cart_with_channel(
+        &self,
+        tenant_id: Uuid,
+        input: CreateCartInput,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+    ) -> CartResult<CartResponse> {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
@@ -57,6 +69,9 @@ impl CartService {
             .as_deref()
             .map(normalize_locale_code)
             .transpose()?;
+        let channel_slug = channel_slug
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         let cart_id = generate_id();
         let now = Utc::now();
@@ -64,6 +79,8 @@ impl CartService {
         entities::cart::ActiveModel {
             id: Set(cart_id),
             tenant_id: Set(tenant_id),
+            channel_id: Set(channel_id),
+            channel_slug: Set(channel_slug),
             customer_id: Set(input.customer_id),
             email: Set(input.email),
             region_id: Set(input.region_id),
@@ -384,6 +401,8 @@ impl CartService {
         Ok(CartResponse {
             id: cart.id,
             tenant_id: cart.tenant_id,
+            channel_id: cart.channel_id,
+            channel_slug: cart.channel_slug,
             customer_id: cart.customer_id,
             email: cart.email,
             region_id: cart.region_id,

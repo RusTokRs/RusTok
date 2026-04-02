@@ -44,6 +44,19 @@ impl OrderService {
         actor_id: Uuid,
         input: CreateOrderInput,
     ) -> OrderResult<OrderResponse> {
+        self.create_order_with_channel(tenant_id, actor_id, input, None, None)
+            .await
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
+    pub async fn create_order_with_channel(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: CreateOrderInput,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+    ) -> OrderResult<OrderResponse> {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -54,6 +67,9 @@ impl OrderService {
                 "currency_code must be a 3-letter code".to_string(),
             ));
         }
+        let channel_slug = channel_slug
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         let mut total_amount = Decimal::ZERO;
         for item in &input.line_items {
@@ -68,6 +84,8 @@ impl OrderService {
         entities::order::ActiveModel {
             id: Set(order_id),
             tenant_id: Set(tenant_id),
+            channel_id: Set(channel_id),
+            channel_slug: Set(channel_slug),
             customer_id: Set(input.customer_id),
             status: Set(STATUS_PENDING.to_string()),
             currency_code: Set(currency_code.clone()),
@@ -458,6 +476,8 @@ impl OrderService {
         Ok(OrderResponse {
             id: order.id,
             tenant_id: order.tenant_id,
+            channel_id: order.channel_id,
+            channel_slug: order.channel_slug,
             customer_id: order.customer_id,
             status: order.status,
             currency_code: order.currency_code,

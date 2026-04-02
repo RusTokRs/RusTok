@@ -18,6 +18,47 @@ use crate::modules::{
 pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
 const REGISTRY_CATALOG_PATH: &str = "/v1/catalog";
 const LEGACY_REGISTRY_CATALOG_PATH: &str = "/catalog";
+const REGISTRY_CATALOG_MODULE_PATH: &str = "/v1/catalog/{slug}";
+const LEGACY_REGISTRY_CATALOG_MODULE_PATH: &str = "/catalog/{slug}";
+
+#[derive(Debug, Clone, Default)]
+pub struct MarketplaceCatalogQuery {
+    pub search: Option<String>,
+    pub category: Option<String>,
+    pub tag: Option<String>,
+}
+
+impl MarketplaceCatalogQuery {
+    fn normalized_search(&self) -> Option<&str> {
+        self.search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    fn normalized_category(&self) -> Option<&str> {
+        self.category
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    fn normalized_tag(&self) -> Option<&str> {
+        self.tag
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    fn cache_fragment(&self) -> String {
+        format!(
+            "search={}|category={}|tag={}",
+            self.normalized_search().unwrap_or_default(),
+            self.normalized_category().unwrap_or_default(),
+            self.normalized_tag().unwrap_or_default()
+        )
+    }
+}
 
 #[async_trait]
 pub trait MarketplaceCatalogProvider: Send + Sync {
@@ -27,7 +68,23 @@ pub trait MarketplaceCatalogProvider: Send + Sync {
         &self,
         manifest: &ModulesManifest,
         registry: &ModuleRegistry,
+        query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>>;
+
+    async fn get_module(
+        &self,
+        manifest: &ModulesManifest,
+        registry: &ModuleRegistry,
+        _query: &MarketplaceCatalogQuery,
+        slug: &str,
+    ) -> anyhow::Result<Option<CatalogManifestModule>> {
+        let default_query = MarketplaceCatalogQuery::default();
+        Ok(self
+            .list_modules(manifest, registry, &default_query)
+            .await?
+            .into_iter()
+            .find(|module| module.slug.eq_ignore_ascii_case(slug)))
+    }
 }
 
 pub struct LocalManifestMarketplaceProvider;
@@ -42,8 +99,10 @@ impl MarketplaceCatalogProvider for LocalManifestMarketplaceProvider {
         &self,
         manifest: &ModulesManifest,
         _registry: &ModuleRegistry,
+        query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        ManifestManager::catalog_modules(manifest).map_err(Into::into)
+        let modules = ManifestManager::catalog_modules(manifest).map_err(anyhow::Error::from)?;
+        Ok(filter_catalog_modules(modules, query))
     }
 }
 
@@ -74,7 +133,7 @@ impl RegistryMarketplaceProvider {
             .build()
             .unwrap_or_else(|_| Client::new());
         let catalog_cache = Cache::builder()
-            .max_capacity(1)
+            .max_capacity(32)
             .time_to_live(Duration::from_secs(cache_ttl_secs))
             .build();
 
@@ -88,9 +147,10 @@ impl RegistryMarketplaceProvider {
     async fn fetch_catalog(
         &self,
         registry_url: &str,
+        query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
         match self
-            .fetch_catalog_from_path(registry_url, REGISTRY_CATALOG_PATH)
+            .fetch_catalog_from_path(registry_url, REGISTRY_CATALOG_PATH, query)
             .await
         {
             Ok(modules) => Ok(modules),
@@ -99,9 +159,12 @@ impl RegistryMarketplaceProvider {
                     registry_url,
                     primary_path = REGISTRY_CATALOG_PATH,
                     fallback_path = LEGACY_REGISTRY_CATALOG_PATH,
+                    search = query.normalized_search(),
+                    category = query.normalized_category(),
+                    tag = query.normalized_tag(),
                     "Registry marketplace provider falling back to legacy catalog path"
                 );
-                self.fetch_catalog_from_path(registry_url, LEGACY_REGISTRY_CATALOG_PATH)
+                self.fetch_catalog_from_path(registry_url, LEGACY_REGISTRY_CATALOG_PATH, query)
                     .await
             }
             Err(err) => Err(err),
@@ -112,9 +175,20 @@ impl RegistryMarketplaceProvider {
         &self,
         registry_url: &str,
         path: &str,
+        query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
         let endpoint = format!("{}{}", registry_url.trim_end_matches('/'), path);
-        let response = self.client.get(&endpoint).send().await?;
+        let mut request = self.client.get(&endpoint);
+        if let Some(search) = query.normalized_search() {
+            request = request.query(&[("search", search)]);
+        }
+        if let Some(category) = query.normalized_category() {
+            request = request.query(&[("category", category)]);
+        }
+        if let Some(tag) = query.normalized_tag() {
+            request = request.query(&[("tag", tag)]);
+        }
+        let response = request.send().await?;
         let response = response.error_for_status()?;
         let payload = response.json::<RegistryCatalogResponse>().await?;
         validate_registry_schema_version(payload.schema_version)?;
@@ -124,6 +198,56 @@ impl RegistryMarketplaceProvider {
             .into_iter()
             .map(RegistryCatalogModule::into_catalog_module)
             .collect())
+    }
+
+    async fn fetch_module(
+        &self,
+        registry_url: &str,
+        slug: &str,
+    ) -> anyhow::Result<Option<CatalogManifestModule>> {
+        match self
+            .fetch_module_from_path(registry_url, REGISTRY_CATALOG_MODULE_PATH, slug)
+            .await
+        {
+            Ok(module) => Ok(Some(module)),
+            Err(err) if should_fallback_to_legacy_catalog_path(&err) => {
+                tracing::info!(
+                    registry_url,
+                    primary_path = REGISTRY_CATALOG_MODULE_PATH,
+                    fallback_path = LEGACY_REGISTRY_CATALOG_MODULE_PATH,
+                    slug,
+                    "Registry marketplace provider falling back to legacy catalog detail path"
+                );
+                match self
+                    .fetch_module_from_path(registry_url, LEGACY_REGISTRY_CATALOG_MODULE_PATH, slug)
+                    .await
+                {
+                    Ok(module) => Ok(Some(module)),
+                    Err(err) if should_fallback_to_legacy_catalog_path(&err) => Ok(self
+                        .fetch_catalog(registry_url, &MarketplaceCatalogQuery::default())
+                        .await?
+                        .into_iter()
+                        .find(|module| module.slug.eq_ignore_ascii_case(slug))),
+                    Err(err) => Err(err),
+                }
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    async fn fetch_module_from_path(
+        &self,
+        registry_url: &str,
+        path: &str,
+        slug: &str,
+    ) -> anyhow::Result<CatalogManifestModule> {
+        let path = path.replace("{slug}", slug);
+        let endpoint = format!("{}{}", registry_url.trim_end_matches('/'), path);
+        let response = self.client.get(&endpoint).send().await?;
+        let response = response.error_for_status()?;
+        let payload = response.json::<RegistryCatalogModule>().await?;
+
+        Ok(payload.into_catalog_module())
     }
 }
 
@@ -364,30 +488,59 @@ impl MarketplaceCatalogProvider for RegistryMarketplaceProvider {
         &self,
         _manifest: &ModulesManifest,
         _registry: &ModuleRegistry,
+        query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
         let Some(registry_url) = &self.registry_url else {
             return Ok(Vec::new());
         };
 
-        if let Some(modules) = self.catalog_cache.get(registry_url).await {
+        let cache_key = format!("{}#{}", registry_url, query.cache_fragment());
+
+        if let Some(modules) = self.catalog_cache.get(&cache_key).await {
             return Ok(modules.as_ref().clone());
         }
 
-        match self.fetch_catalog(registry_url).await {
+        match self.fetch_catalog(registry_url, query).await {
             Ok(modules) => {
                 let modules = Arc::new(modules);
-                self.catalog_cache
-                    .insert(registry_url.clone(), modules.clone())
-                    .await;
+                self.catalog_cache.insert(cache_key, modules.clone()).await;
                 Ok(modules.as_ref().clone())
             }
             Err(err) => {
                 tracing::warn!(
                     registry_url,
+                    search = query.normalized_search(),
+                    category = query.normalized_category(),
+                    tag = query.normalized_tag(),
                     error = %err,
                     "Registry marketplace provider fetch failed; falling back to local catalog only"
                 );
                 Ok(Vec::new())
+            }
+        }
+    }
+
+    async fn get_module(
+        &self,
+        _manifest: &ModulesManifest,
+        _registry: &ModuleRegistry,
+        _query: &MarketplaceCatalogQuery,
+        slug: &str,
+    ) -> anyhow::Result<Option<CatalogManifestModule>> {
+        let Some(registry_url) = &self.registry_url else {
+            return Ok(None);
+        };
+
+        match self.fetch_module(registry_url, slug).await {
+            Ok(module) => Ok(module),
+            Err(err) => {
+                tracing::warn!(
+                    registry_url,
+                    slug,
+                    error = %err,
+                    "Registry marketplace provider detail fetch failed; falling back to local catalog only"
+                );
+                Ok(None)
             }
         }
     }
@@ -420,11 +573,12 @@ impl MarketplaceCatalogService {
         &self,
         manifest: &ModulesManifest,
         registry: &ModuleRegistry,
+        query: &MarketplaceCatalogQuery,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
         let mut modules_by_slug = HashMap::<String, CatalogManifestModule>::new();
 
         for provider in &self.providers {
-            let modules = provider.list_modules(manifest, registry).await?;
+            let modules = provider.list_modules(manifest, registry, query).await?;
             for module in modules {
                 modules_by_slug.entry(module.slug.clone()).or_insert(module);
             }
@@ -433,6 +587,22 @@ impl MarketplaceCatalogService {
         let mut modules = modules_by_slug.into_values().collect::<Vec<_>>();
         modules.sort_by(|left, right| left.slug.cmp(&right.slug));
         Ok(modules)
+    }
+
+    pub async fn get_module(
+        &self,
+        manifest: &ModulesManifest,
+        registry: &ModuleRegistry,
+        query: &MarketplaceCatalogQuery,
+        slug: &str,
+    ) -> anyhow::Result<Option<CatalogManifestModule>> {
+        for provider in &self.providers {
+            if let Some(module) = provider.get_module(manifest, registry, query, slug).await? {
+                return Ok(Some(module));
+            }
+        }
+
+        Ok(None)
     }
 
     pub fn provider_keys(&self) -> Vec<&'static str> {
@@ -462,6 +632,14 @@ pub fn legacy_registry_catalog_path() -> &'static str {
     LEGACY_REGISTRY_CATALOG_PATH
 }
 
+pub fn registry_catalog_module_path() -> &'static str {
+    REGISTRY_CATALOG_MODULE_PATH
+}
+
+pub fn legacy_registry_catalog_module_path() -> &'static str {
+    LEGACY_REGISTRY_CATALOG_MODULE_PATH
+}
+
 pub fn registry_catalog_from_modules(
     modules: Vec<CatalogManifestModule>,
 ) -> RegistryCatalogResponse {
@@ -475,6 +653,44 @@ pub fn registry_catalog_from_modules(
         schema_version: REGISTRY_CATALOG_SCHEMA_VERSION,
         modules,
     }
+}
+
+pub fn filter_catalog_modules(
+    modules: Vec<CatalogManifestModule>,
+    query: &MarketplaceCatalogQuery,
+) -> Vec<CatalogManifestModule> {
+    modules
+        .into_iter()
+        .filter(|module| {
+            query.normalized_search().is_none_or(|search| {
+                let search = search.to_ascii_lowercase();
+                module.slug.to_ascii_lowercase().contains(&search)
+                    || module
+                        .name
+                        .as_deref()
+                        .is_some_and(|name| name.to_ascii_lowercase().contains(&search))
+                    || module.description.as_deref().is_some_and(|description| {
+                        description.to_ascii_lowercase().contains(&search)
+                    })
+            })
+        })
+        .filter(|module| {
+            query.normalized_category().is_none_or(|category| {
+                module
+                    .category
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case(category))
+            })
+        })
+        .filter(|module| {
+            query.normalized_tag().is_none_or(|tag| {
+                module
+                    .tags
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(tag))
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -497,8 +713,9 @@ mod tests {
             &self,
             _manifest: &ModulesManifest,
             _registry: &ModuleRegistry,
+            query: &MarketplaceCatalogQuery,
         ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-            Ok(self.modules.clone())
+            Ok(filter_catalog_modules(self.modules.clone(), query))
         }
     }
 
@@ -554,7 +771,11 @@ mod tests {
         ]);
 
         let modules = service
-            .list_modules(&ModulesManifest::default(), &ModuleRegistry::new())
+            .list_modules(
+                &ModulesManifest::default(),
+                &ModuleRegistry::new(),
+                &MarketplaceCatalogQuery::default(),
+            )
             .await
             .expect("catalog providers should resolve");
 
@@ -569,11 +790,122 @@ mod tests {
         assert_eq!(modules[0].crate_name, "rustok-blog");
     }
 
+    #[tokio::test]
+    async fn provider_order_keeps_first_provider_for_single_module_lookup() {
+        let service = MarketplaceCatalogService::new(vec![
+            Arc::new(TestProvider {
+                key: "local-manifest",
+                modules: vec![catalog_module("blog", "path", "rustok-blog")],
+            }),
+            Arc::new(TestProvider {
+                key: "registry",
+                modules: vec![catalog_module("blog", "registry", "community-blog")],
+            }),
+        ]);
+
+        let module = service
+            .get_module(
+                &ModulesManifest::default(),
+                &ModuleRegistry::new(),
+                &MarketplaceCatalogQuery::default(),
+                "blog",
+            )
+            .await
+            .expect("catalog providers should resolve")
+            .expect("module should resolve");
+
+        assert_eq!(module.source, "path");
+        assert_eq!(module.crate_name, "rustok-blog");
+    }
+
     #[test]
     fn evolutionary_defaults_include_local_manifest_and_registry_skeleton() {
         let service = MarketplaceCatalogService::evolutionary_defaults();
 
         assert_eq!(service.provider_keys(), vec!["local-manifest", "registry"]);
+    }
+
+    #[tokio::test]
+    async fn list_modules_applies_catalog_query_before_provider_merge() {
+        let service = MarketplaceCatalogService::new(vec![Arc::new(TestProvider {
+            key: "local-manifest",
+            modules: vec![
+                CatalogManifestModule {
+                    slug: "blog".to_string(),
+                    source: "path".to_string(),
+                    crate_name: "rustok-blog".to_string(),
+                    name: Some("Blog".to_string()),
+                    category: Some("content".to_string()),
+                    tags: vec!["editorial".to_string()],
+                    icon_url: None,
+                    banner_url: None,
+                    screenshots: Vec::new(),
+                    version: None,
+                    description: Some("Blog module".to_string()),
+                    git: None,
+                    rev: None,
+                    path: None,
+                    required: false,
+                    depends_on: Vec::new(),
+                    ownership: "first_party".to_string(),
+                    trust_level: "verified".to_string(),
+                    rustok_min_version: None,
+                    rustok_max_version: None,
+                    publisher: None,
+                    checksum_sha256: None,
+                    signature: None,
+                    versions: Vec::new(),
+                    recommended_admin_surfaces: Vec::new(),
+                    showcase_admin_surfaces: Vec::new(),
+                    settings_schema: HashMap::new(),
+                },
+                CatalogManifestModule {
+                    slug: "forum".to_string(),
+                    source: "path".to_string(),
+                    crate_name: "rustok-forum".to_string(),
+                    name: Some("Forum".to_string()),
+                    category: Some("community".to_string()),
+                    tags: vec!["discussion".to_string()],
+                    icon_url: None,
+                    banner_url: None,
+                    screenshots: Vec::new(),
+                    version: None,
+                    description: Some("Forum module".to_string()),
+                    git: None,
+                    rev: None,
+                    path: None,
+                    required: false,
+                    depends_on: Vec::new(),
+                    ownership: "first_party".to_string(),
+                    trust_level: "verified".to_string(),
+                    rustok_min_version: None,
+                    rustok_max_version: None,
+                    publisher: None,
+                    checksum_sha256: None,
+                    signature: None,
+                    versions: Vec::new(),
+                    recommended_admin_surfaces: Vec::new(),
+                    showcase_admin_surfaces: Vec::new(),
+                    settings_schema: HashMap::new(),
+                },
+            ],
+        })]);
+
+        let modules = service
+            .list_modules(
+                &ModulesManifest::default(),
+                &ModuleRegistry::new(),
+                &MarketplaceCatalogQuery {
+                    search: Some("blog".to_string()),
+                    category: Some("content".to_string()),
+                    tag: Some("editorial".to_string()),
+                },
+            )
+            .await
+            .expect("catalog query should resolve");
+
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].slug, "blog");
     }
 
     #[test]

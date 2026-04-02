@@ -5,8 +5,29 @@ edition.workspace = true
 license.workspace = true
 description = "Leptos storefront UI package for the rustok-pages module"
 
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-channel",
+  "dep:rustok-content",
+  "dep:rustok-core",
+  "dep:rustok-tenant",
+]
+
 [dependencies]
 leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
+loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 rustok-api.workspace = true
+rustok-channel = { workspace = true, optional = true }
+rustok-content = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-pages.workspace = true
+rustok-tenant = { workspace = true, optional = true }

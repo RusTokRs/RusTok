@@ -30,6 +30,7 @@ use crate::models::users;
 use crate::modules::ManifestManager;
 use crate::services::build_service::BuildService;
 use crate::services::marketplace_catalog::marketplace_catalog_from_context;
+use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
 use crate::services::rbac_service::RbacService;
 #[cfg(feature = "mod-content")]
 use rustok_content::CanonicalUrlService;
@@ -486,9 +487,23 @@ async fn load_marketplace_catalog(
     app_ctx: &loco_rs::app::AppContext,
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
+    query: &MarketplaceCatalogQuery,
 ) -> Result<Vec<crate::modules::CatalogManifestModule>> {
     marketplace_catalog_from_context(app_ctx)
-        .list_modules(manifest, registry)
+        .list_modules(manifest, registry, query)
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
+}
+
+async fn load_marketplace_module(
+    app_ctx: &loco_rs::app::AppContext,
+    manifest: &crate::modules::ModulesManifest,
+    registry: &ModuleRegistry,
+    query: &MarketplaceCatalogQuery,
+    slug: &str,
+) -> Result<Option<crate::modules::CatalogManifestModule>> {
+    marketplace_catalog_from_context(app_ctx)
+        .get_module(manifest, registry, query, slug)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
@@ -584,8 +599,9 @@ impl RootQuery {
         let limit = clamp_collection_limit(limit);
         let manifest = ManifestManager::load()
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let query = MarketplaceCatalogQuery::default();
         let catalog_by_slug: HashMap<String, crate::modules::CatalogManifestModule> =
-            load_marketplace_catalog(app_ctx, &manifest, registry)
+            load_marketplace_catalog(app_ctx, &manifest, registry, &query)
                 .await?
                 .into_iter()
                 .map(|module| (module.slug.clone(), module))
@@ -719,6 +735,7 @@ impl RootQuery {
         ctx: &Context<'_>,
         search: Option<String>,
         category: Option<String>,
+        tag: Option<String>,
         source: Option<String>,
         trust_level: Option<String>,
         only_compatible: Option<bool>,
@@ -743,6 +760,11 @@ impl RootQuery {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_lowercase);
+        let tag = tag
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_lowercase);
         let trust_level = trust_level
             .as_deref()
             .map(str::trim)
@@ -753,9 +775,14 @@ impl RootQuery {
             .filter(|value| !value.is_empty());
         let only_compatible = only_compatible.unwrap_or(true);
         let installed_only = installed_only.unwrap_or(false);
+        let query = MarketplaceCatalogQuery {
+            search: search.map(str::to_string),
+            category: category.clone(),
+            tag: tag.clone(),
+        };
 
         let modules = marketplace_modules_from_catalog(
-            load_marketplace_catalog(app_ctx, &manifest, registry).await?,
+            load_marketplace_catalog(app_ctx, &manifest, registry, &query).await?,
             registry,
             &installed_modules,
         )
@@ -769,6 +796,14 @@ impl RootQuery {
             category
                 .as_ref()
                 .is_none_or(|category| module.category.eq_ignore_ascii_case(category))
+        })
+        .filter(|module| {
+            tag.as_ref().is_none_or(|tag| {
+                module
+                    .tags
+                    .iter()
+                    .any(|module_tag| module_tag.eq_ignore_ascii_case(tag))
+            })
         })
         .filter(|module| {
             search.is_none_or(|search| {
@@ -806,14 +841,12 @@ impl RootQuery {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let installed_modules = ManifestManager::installed_modules(&manifest);
         let slug = slug.trim().to_lowercase();
+        let query = MarketplaceCatalogQuery::default();
+        let module = load_marketplace_module(app_ctx, &manifest, registry, &query, &slug).await?;
 
-        Ok(marketplace_modules_from_catalog(
-            load_marketplace_catalog(app_ctx, &manifest, registry).await?,
-            registry,
-            &installed_modules,
-        )
-        .into_iter()
-        .find(|module| module.slug.eq_ignore_ascii_case(&slug)))
+        Ok(module.map(|entry| {
+            marketplace_module_from_catalog_entry(entry, registry, &installed_modules)
+        }))
     }
 
     async fn active_build(&self, ctx: &Context<'_>) -> Result<Option<BuildJob>> {

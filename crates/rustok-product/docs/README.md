@@ -17,6 +17,9 @@
 - canonical vocabulary и attach semantics для product tags живут в
   `rustok-taxonomy` + `product_tags`, а public contract использует first-class
   поле `tags` вместо legacy `metadata.tags`.
+- shipping profile для товара теперь тоже имеет first-class surface в product
+  DTO (`shipping_profile_slug`), хотя на этапе Phase 7 физически всё ещё
+  хранится через metadata-backed contract `shipping_profile.slug`.
 
 ## Связанные документы
 

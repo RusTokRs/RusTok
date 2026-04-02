@@ -133,6 +133,7 @@ pub fn CommerceAdmin() -> impl IntoView {
             description: description.get_untracked().trim().to_string(),
             vendor: vendor.get_untracked().trim().to_string(),
             product_type: product_type.get_untracked().trim().to_string(),
+            shipping_profile_slug: None,
             sku: sku.get_untracked().trim().to_string(),
             barcode: String::new(),
             currency_code: currency_code.get_untracked().trim().to_string(),

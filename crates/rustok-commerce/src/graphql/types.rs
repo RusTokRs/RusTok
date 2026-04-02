@@ -36,6 +36,7 @@ pub struct GqlProduct {
     pub status: GqlProductStatus,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -103,6 +104,7 @@ pub struct GqlProductListItem {
     pub handle: String,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
     pub created_at: String,
     pub published_at: Option<String>,
@@ -171,6 +173,8 @@ pub struct GqlStoreContext {
 pub struct GqlCart {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
     pub customer_id: Option<Uuid>,
     pub email: Option<String>,
     pub region_id: Option<Uuid>,
@@ -223,6 +227,8 @@ pub struct GqlStoreCart {
 pub struct GqlOrder {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
     pub customer_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
@@ -356,6 +362,7 @@ pub struct CreateProductInput {
     pub variants: Vec<CreateVariantInput>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub tags: Option<Vec<String>>,
     pub publish: Option<bool>,
 }
@@ -400,6 +407,7 @@ pub struct UpdateProductInput {
     pub translations: Option<Vec<ProductTranslationInput>>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub tags: Option<Vec<String>>,
     pub status: Option<GqlProductStatus>,
 }
@@ -577,6 +585,7 @@ impl From<dto::ProductResponse> for GqlProduct {
             status: product.status.into(),
             vendor: product.vendor,
             product_type: product.product_type,
+            shipping_profile_slug: product.shipping_profile_slug,
             tags: product.tags,
             created_at: product.created_at.to_rfc3339(),
             updated_at: product.updated_at.to_rfc3339(),
@@ -728,6 +737,8 @@ impl From<dto::CartResponse> for GqlCart {
         Self {
             id: value.id,
             tenant_id: value.tenant_id,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
             customer_id: value.customer_id,
             email: value.email,
             region_id: value.region_id,
@@ -792,6 +803,8 @@ impl From<dto::OrderResponse> for GqlOrder {
         Self {
             id: order.id,
             tenant_id: order.tenant_id,
+            channel_id: order.channel_id,
+            channel_slug: order.channel_slug,
             customer_id: order.customer_id,
             status: order.status,
             currency_code: order.currency_code,

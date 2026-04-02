@@ -58,6 +58,7 @@ fn create_test_product_input() -> CreateProductInput {
         }],
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        shipping_profile_slug: None,
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
@@ -83,6 +84,48 @@ async fn test_create_product_success() {
     assert_eq!(product.translations[0].title, "Test Product");
     assert_eq!(product.variants.len(), 1);
     assert_eq!(product.status, ProductStatus::Draft);
+}
+
+#[tokio::test]
+async fn test_shipping_profile_slug_round_trips_through_catalog_service() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let mut input = create_test_product_input();
+    input.shipping_profile_slug = Some(" Bulky ".to_string());
+
+    let created = service
+        .create_product(tenant_id, actor_id, input)
+        .await
+        .expect("product should be created");
+    assert_eq!(created.shipping_profile_slug.as_deref(), Some("bulky"));
+    assert_eq!(created.metadata["shipping_profile"]["slug"], "bulky");
+
+    let updated = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            created.id,
+            UpdateProductInput {
+                translations: None,
+                vendor: None,
+                product_type: None,
+                shipping_profile_slug: Some("Cold-Chain".to_string()),
+                tags: None,
+                status: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("product should be updated");
+    assert_eq!(updated.shipping_profile_slug.as_deref(), Some("cold-chain"));
+    assert_eq!(updated.metadata["shipping_profile"]["slug"], "cold-chain");
+
+    let fetched = service
+        .get_product(tenant_id, created.id)
+        .await
+        .expect("product should load");
+    assert_eq!(fetched.shipping_profile_slug.as_deref(), Some("cold-chain"));
 }
 
 #[tokio::test]
@@ -181,6 +224,7 @@ async fn test_update_product_success() {
         }]),
         vendor: Some("Updated Vendor".to_string()),
         product_type: Some("Digital".to_string()),
+        shipping_profile_slug: None,
         tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,
@@ -626,6 +670,7 @@ async fn test_update_product_metadata() {
         translations: None,
         vendor: None,
         product_type: None,
+        shipping_profile_slug: None,
         tags: None,
         status: None,
         metadata: Some(serde_json::json!({
@@ -684,6 +729,7 @@ async fn test_update_vendor() {
         translations: None,
         vendor: Some("New Vendor Inc".to_string()),
         product_type: None,
+        shipping_profile_slug: None,
         tags: None,
         status: None,
         metadata: None,
@@ -720,6 +766,7 @@ async fn test_update_nonexistent_product() {
         }]),
         vendor: None,
         product_type: None,
+        shipping_profile_slug: None,
         tags: None,
         status: None,
         metadata: None,
@@ -837,6 +884,7 @@ async fn test_create_archived_product() {
         translations: None,
         vendor: None,
         product_type: None,
+        shipping_profile_slug: None,
         tags: None,
         status: Some(ProductStatus::Archived),
         metadata: None,

@@ -41,6 +41,8 @@ pub struct ProductListItem {
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
@@ -55,6 +57,8 @@ pub struct ProductDetail {
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
@@ -124,6 +128,7 @@ pub struct ProductDraft {
     pub description: String,
     pub vendor: String,
     pub product_type: String,
+    pub shipping_profile_slug: Option<String>,
     pub sku: String,
     pub barcode: String,
     pub currency_code: String,

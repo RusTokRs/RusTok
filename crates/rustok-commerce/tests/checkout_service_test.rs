@@ -1,9 +1,11 @@
 use rust_decimal::Decimal;
 use rustok_commerce::dto::{
-    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateShippingOptionInput,
+    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateProductInput,
+    CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
 };
 use rustok_commerce::services::{
-    CartService, CheckoutError, CheckoutService, FulfillmentService, OrderService, PaymentService,
+    CartService, CatalogService, CheckoutError, CheckoutService, FulfillmentService, OrderService,
+    PaymentService,
 };
 use rustok_region::dto::CreateRegionInput;
 use rustok_region::services::RegionService;
@@ -29,6 +31,115 @@ async fn setup() -> (
         CheckoutService::new(db.clone(), event_bus),
         FulfillmentService::new(db),
     )
+}
+
+fn create_product_input() -> CreateProductInput {
+    CreateProductInput {
+        translations: vec![
+            ProductTranslationInput {
+                locale: "en".to_string(),
+                title: "Checkout Inventory Product".to_string(),
+                description: Some("English description".to_string()),
+                handle: Some(format!("checkout-inventory-en-{}", Uuid::new_v4())),
+                meta_title: None,
+                meta_description: None,
+            },
+            ProductTranslationInput {
+                locale: "de".to_string(),
+                title: "Checkout Inventar Produkt".to_string(),
+                description: Some("German description".to_string()),
+                handle: Some(format!("checkout-inventory-de-{}", Uuid::new_v4())),
+                meta_title: None,
+                meta_description: None,
+            },
+        ],
+        options: vec![],
+        variants: vec![CreateVariantInput {
+            sku: Some("CHK-INVENTORY-SKU-1".to_string()),
+            barcode: None,
+            option1: Some("Default".to_string()),
+            option2: None,
+            option3: None,
+            prices: vec![PriceInput {
+                currency_code: "USD".to_string(),
+                amount: Decimal::from_str("25.00").expect("valid decimal"),
+                compare_at_amount: None,
+            }],
+            inventory_quantity: 5,
+            inventory_policy: "deny".to_string(),
+            weight: None,
+            weight_unit: None,
+        }],
+        vendor: Some("Checkout Vendor".to_string()),
+        product_type: Some("physical".to_string()),
+        shipping_profile_slug: None,
+        tags: vec![],
+        publish: false,
+        metadata: serde_json::json!({}),
+    }
+}
+
+async fn seed_channel_binding(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    channel_id: Uuid,
+    channel_slug: &str,
+) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            channel_id.into(),
+            tenant_id.into(),
+            channel_slug.into(),
+            format!("Channel {channel_slug}").into(),
+            true.into(),
+            false.into(),
+            "active".into(),
+            serde_json::json!({}).to_string().into(),
+        ],
+    ))
+    .await
+    .expect("channel should be inserted");
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled, settings, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            Uuid::new_v4().into(),
+            channel_id.into(),
+            "commerce".into(),
+            true.into(),
+            serde_json::json!({}).to_string().into(),
+        ],
+    ))
+    .await
+    .expect("channel binding should be inserted");
+}
+
+async fn set_stock_location_channel_visibility(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    allowed_channel_slugs: &[&str],
+) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "UPDATE stock_locations SET metadata = ? WHERE tenant_id = ?",
+        vec![
+            serde_json::json!({
+                "channel_visibility": {
+                    "allowed_channel_slugs": allowed_channel_slugs
+                }
+            })
+            .to_string()
+            .into(),
+            tenant_id.into(),
+        ],
+    ))
+    .await
+    .expect("stock location visibility should be updated");
 }
 
 #[tokio::test]
@@ -186,6 +297,409 @@ async fn complete_checkout_rejects_empty_cart() {
     match error {
         CheckoutError::EmptyCart(cart_id) => assert_eq!(cart_id, cart.id),
         other => panic!("expected empty cart error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn complete_checkout_rejects_shipping_option_hidden_for_cart_channel() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store").await;
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Hidden Shipping".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({
+                    "channel_visibility": {
+                        "allowed_channel_slugs": ["mobile-app"]
+                    }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-hidden-shipping" }),
+            },
+            Some(channel_id),
+            Some("web-store".to_string()),
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(Uuid::new_v4()),
+                variant_id: Some(Uuid::new_v4()),
+                sku: Some("CHK-HIDDEN-1".to_string()),
+                title: "Checkout Hidden Shipping Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-hidden-shipping" }),
+            },
+        )
+        .await
+        .expect_err("hidden shipping option must fail checkout");
+
+    match error {
+        CheckoutError::Validation(message) => {
+            assert!(
+                message.contains("not available for the cart channel"),
+                "unexpected validation message: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn complete_checkout_rejects_line_item_hidden_for_cart_channel() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store").await;
+
+    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let mut product_input = create_product_input();
+    product_input.metadata = serde_json::json!({
+        "channel_visibility": {
+            "allowed_channel_slugs": ["mobile-app"]
+        }
+    });
+    let created = catalog
+        .create_product(tenant_id, actor_id, product_input)
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let variant = published
+        .variants
+        .first()
+        .expect("published product should include variant");
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Visible Shipping".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-hidden-product" }),
+            },
+            Some(channel_id),
+            Some("web-store".to_string()),
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(variant.id),
+                sku: variant.sku.clone(),
+                title: variant.title.clone(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-hidden-product" }),
+            },
+        )
+        .await
+        .expect_err("channel-hidden product must fail checkout");
+
+    match error {
+        CheckoutError::Validation(message) => {
+            assert!(
+                message.contains("is not available for the cart channel"),
+                "unexpected validation message: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn complete_checkout_rejects_line_item_without_channel_visible_inventory() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store").await;
+
+    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let variant = published
+        .variants
+        .first()
+        .expect("published product should include variant");
+    set_stock_location_channel_visibility(&db, tenant_id, &["mobile-app"]).await;
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Visible Shipping".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-hidden-inventory" }),
+            },
+            Some(channel_id),
+            Some("web-store".to_string()),
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(variant.id),
+                sku: variant.sku.clone(),
+                title: variant.title.clone(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-hidden-inventory" }),
+            },
+        )
+        .await
+        .expect_err("channel-hidden inventory must fail checkout");
+
+    match error {
+        CheckoutError::Validation(message) => {
+            assert!(
+                message.contains("does not have enough available inventory for the cart channel"),
+                "unexpected validation message: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shipping_profiles() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let mut product_input = create_product_input();
+    product_input.metadata = serde_json::json!({
+        "shipping_profile": {
+            "slug": "bulky"
+        }
+    });
+    let created = catalog
+        .create_product(tenant_id, actor_id, product_input)
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let variant = published
+        .variants
+        .first()
+        .expect("published product should include variant");
+
+    let incompatible_shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Default Only".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                metadata: serde_json::json!({
+                    "shipping_profiles": {
+                        "allowed_slugs": ["default"]
+                    }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(incompatible_shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-shipping-profile" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(variant.id),
+                sku: variant.sku.clone(),
+                title: variant.title.clone(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-shipping-profile" }),
+            },
+        )
+        .await
+        .expect_err("incompatible shipping profile must fail checkout");
+
+    match error {
+        CheckoutError::Validation(message) => {
+            assert!(
+                message.contains("not compatible with the cart shipping profiles"),
+                "unexpected validation message: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
     }
 }
 

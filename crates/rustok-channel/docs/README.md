@@ -43,6 +43,7 @@
 - module-owned Leptos admin UI package `rustok-channel-admin`, подключаемый в `apps/admin` через manifest-driven wiring и уже показывающий explicit resolution source в runtime context bootstrap panel.
 - первый живой consumer в `rustok-pages`: public read-path уже использует `channel_module_bindings` для runtime gating, а поверх этого появился первый publication-level proof point через `channel_slug` allowlist в metadata страниц.
 - второй живой consumer в `rustok-blog`: тот же паттерн теперь тоже расширен до publication-level semantics через metadata-based `channelSlugs` allowlist.
+- третий живой consumer в `rustok-commerce`: storefront REST/GraphQL уже используют `channel_module_bindings` для runtime gating, cart/order snapshot'ы сохраняют `channel_id`/`channel_slug`, а catalog/shipping visibility и storefront inventory availability могут ограничиваться metadata-based allowlist по `channel_slug`.
 
 ## Что проверено
 
@@ -90,4 +91,4 @@
 - tenant lifecycle не управляет включением/выключением `channel`, потому что это `Core`;
 - admin UI уже module-owned и живёт в `crates/rustok-channel/admin`;
 - доменные модули могут постепенно становиться channel-aware через request context или channel bindings;
-- `rustok-pages` и `rustok-blog` уже служат первыми proof point-ами для этого подхода.
+- `rustok-pages`, `rustok-blog` и `rustok-commerce` уже служат живыми proof point-ами для этого подхода.

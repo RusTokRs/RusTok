@@ -99,8 +99,16 @@ pub fn compose_application_router(
     router: AxumRouter,
     ctx: &AppContext,
     runtime: AppRuntimeBootstrap,
-    _rustok_settings: &RustokSettings,
+    rustok_settings: &RustokSettings,
 ) -> AxumRouter {
+    if rustok_settings.runtime.is_registry_only() {
+        return router
+            .layer(axum_middleware::from_fn(
+                middleware::security_headers::security_headers,
+            ))
+            .layer(axum_middleware::from_fn(middleware::locale::resolve_locale));
+    }
+
     let server_fn_ctx = ctx.clone();
     let server_fn_registry = runtime.registry.clone();
 

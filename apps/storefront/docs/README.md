@@ -10,9 +10,19 @@
 - Для storefront сейчас заведены прямые server functions:
   - `/api/fn/storefront/list-enabled-modules`
   - `/api/fn/storefront/resolve-canonical-route`
+  - `/api/fn/pages/storefront-data`
+  - `/api/fn/blog/storefront-data`
+  - `/api/fn/commerce/storefront-data`
+  - `/api/fn/forum/storefront-data`
+  - `/api/fn/search/storefront-search`
+  - `/api/fn/search/storefront-filter-presets`
+  - `/api/fn/search/storefront-suggestions`
+  - `/api/fn/search/storefront-track-click`
 - Server-side реализация этих функций берёт `AppContext` из `leptos_axum` context и идёт прямо в `rustok-tenant::TenantService` / `rustok-content::CanonicalUrlService`.
 - Рядом сохранён GraphQL transport в `shared/api`, а в `shared/context` доступны оба варианта вызова: `*_server` и `*_graphql`.
 - Runtime default для `enabled_modules` и canonical-route lookup: сначала native `#[server]`, затем automatic fallback на GraphQL при недоступности native path.
+- Такой же native-first + GraphQL-fallback path теперь используется и в module-owned storefront packages `rustok-pages-storefront` и `rustok-blog-storefront`; GraphQL в этих пакетах не удаляется.
+- Такой же native-first + GraphQL-fallback path теперь заведён и для `rustok-commerce-storefront`, `rustok-forum-storefront`, `rustok-search-storefront`; GraphQL во всех module-owned storefront пакетах сохраняется.
 - По умолчанию storefront сейчас использует server-fn preflight `resolve_canonical_route`, но GraphQL-вариант остаётся валидным и не удаляется.
 - Если server возвращает alias-hit, storefront отдаёт HTTP redirect на canonical URL до рендера страницы.
 - Для canonical lookup параметр `lang` не входит в route key: locale передаётся в query отдельно.
@@ -42,8 +52,11 @@
 
 ## Рабочие exemplar-ы
 
-- `rustok-blog-storefront` — content read-path с generic module page и data-driven публикациями.
-- `rustok-pages-storefront` — page-driven surface поверх того же host contract.
+- `rustok-blog-storefront` — module-owned blog surface с native `#[server]` read-path через `PostService` и обязательным GraphQL fallback.
+- `rustok-commerce-storefront` — catalog/package surface с native `#[server]` boundary и GraphQL fallback для списка и selected product detail.
+- `rustok-forum-storefront` — module-owned forum surface с native `#[server]` boundary и GraphQL fallback для categories/topics/replies.
+- `rustok-pages-storefront` — page-driven surface с native `#[server]` read-path через `PageService` и обязательным GraphQL fallback.
+- `rustok-search-storefront` — search/package surface с native `#[server]` boundary и GraphQL fallback для preview, presets, suggestions и click tracking.
 - `rustok-forum-storefront` — forum read-path без storefront-specific логики в host.
 - `rustok-commerce-storefront` — public catalog read-path, теперь подключённый через `[provides.storefront_ui]`.
 - `rustok-search-storefront` — storefront slot/page exemplar с manifest-driven route и search-specific UX внутри пакета модуля.

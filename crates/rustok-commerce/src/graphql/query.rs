@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
-    AuthContext, TenantContext,
+    AuthContext, RequestContext, TenantContext,
 };
 use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
@@ -16,6 +16,14 @@ use uuid::Uuid;
 use crate::{
     entities::{product, product_translation},
     search::product_translation_title_search_condition,
+    storefront_channel::{
+        apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
+        normalize_public_channel_slug, public_channel_slug_from_request,
+    },
+    storefront_shipping::{
+        is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
+        shipping_profile_slug_from_product_metadata,
+    },
     CatalogService, CommerceError, CustomerService, FulfillmentService, OrderService,
     PaymentService, RegionService, StoreContextService,
 };
@@ -33,6 +41,7 @@ impl CommerceQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<Vec<GqlRegion>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -51,6 +60,7 @@ impl CommerceQuery {
         filter: Option<StorefrontContextFilter>,
     ) -> Result<Vec<GqlShippingOption>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -65,33 +75,44 @@ impl CommerceQuery {
             locale: None,
             currency_code: None,
         });
-        let context = if let Some(cart_id) = filter.cart_id {
-            let cart = crate::CartService::new(db.clone())
-                .get_cart(tenant_id, cart_id)
-                .await?;
-            ensure_storefront_cart_access(&cart, customer_id)?;
-            resolve_storefront_context(
-                db,
-                ctx,
-                tenant_id,
-                cart.region_id,
-                cart.country_code.clone(),
-                cart.locale_code.clone(),
-                Some(cart.currency_code.clone()),
-            )
-            .await?
-        } else {
-            resolve_storefront_context(
-                db,
-                ctx,
-                tenant_id,
-                filter.region_id,
-                filter.country_code,
-                filter.locale,
-                filter.currency_code,
-            )
-            .await?
-        };
+        let (context, public_channel_slug, required_shipping_profiles) =
+            if let Some(cart_id) = filter.cart_id {
+                let cart = crate::CartService::new(db.clone())
+                    .get_cart(tenant_id, cart_id)
+                    .await?;
+                ensure_storefront_cart_access(&cart, customer_id)?;
+                let required_shipping_profiles =
+                    load_cart_shipping_profile_slugs(db, tenant_id, &cart).await?;
+                (
+                    resolve_storefront_context(
+                        db,
+                        ctx,
+                        tenant_id,
+                        cart.region_id,
+                        cart.country_code.clone(),
+                        cart.locale_code.clone(),
+                        Some(cart.currency_code.clone()),
+                    )
+                    .await?,
+                    storefront_public_channel_slug_for_cart(&cart, ctx),
+                    required_shipping_profiles,
+                )
+            } else {
+                (
+                    resolve_storefront_context(
+                        db,
+                        ctx,
+                        tenant_id,
+                        filter.region_id,
+                        filter.country_code,
+                        filter.locale,
+                        filter.currency_code,
+                    )
+                    .await?,
+                    request_public_channel_slug(ctx),
+                    Default::default(),
+                )
+            };
 
         let mut options = FulfillmentService::new(db.clone())
             .list_shipping_options(tenant_id)
@@ -99,6 +120,13 @@ impl CommerceQuery {
         if let Some(currency_code) = context.currency_code.as_deref() {
             options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
         }
+        options.retain(|option| {
+            is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug.as_deref())
+                && is_shipping_option_compatible_with_profiles(
+                    &option.metadata,
+                    &required_shipping_profiles,
+                )
+        });
 
         Ok(options.into_iter().map(Into::into).collect())
     }
@@ -109,6 +137,7 @@ impl CommerceQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<GqlCustomer> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -136,6 +165,7 @@ impl CommerceQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlOrder>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -178,6 +208,7 @@ impl CommerceQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlCart>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -441,6 +472,7 @@ impl CommerceQuery {
         locale: Option<String>,
     ) -> Result<Option<GqlProduct>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_READ],
@@ -556,6 +588,7 @@ impl CommerceQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlProduct>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -563,6 +596,7 @@ impl CommerceQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
+        let public_channel_slug = request_public_channel_slug(ctx);
         let product_id = match (id, handle.as_deref().map(str::trim)) {
             (Some(id), _) => Some(id),
             (None, Some(handle)) if !handle.is_empty() => {
@@ -572,6 +606,7 @@ impl CommerceQuery {
                     handle,
                     &locale,
                     tenant.default_locale.as_str(),
+                    public_channel_slug.as_deref(),
                 )
                 .await?
             }
@@ -587,7 +622,7 @@ impl CommerceQuery {
         };
 
         let service = CatalogService::new(db.clone(), event_bus.clone());
-        let product = match service.get_product(tenant_id, product_id).await {
+        let mut product = match service.get_product(tenant_id, product_id).await {
             Ok(product) => product,
             Err(CommerceError::ProductNotFound(_)) => return Ok(None),
             Err(err) => return Err(err.to_string().into()),
@@ -595,9 +630,22 @@ impl CommerceQuery {
 
         if product.status != crate::entities::product::ProductStatus::Active
             || product.published_at.is_none()
+            || !is_metadata_visible_for_public_channel(
+                &product.metadata,
+                public_channel_slug.as_deref(),
+            )
         {
             return Ok(None);
         }
+
+        apply_public_channel_inventory_to_product(
+            db,
+            tenant_id,
+            &mut product,
+            public_channel_slug.as_deref(),
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
         Ok(Some(
             localized_product_response(product, &locale, tenant.default_locale.as_str()).into(),
@@ -612,6 +660,7 @@ impl CommerceQuery {
         filter: Option<StorefrontProductsFilter>,
     ) -> Result<GqlProductList> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -629,6 +678,7 @@ impl CommerceQuery {
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(12).clamp(1, 48);
         let offset = (page.saturating_sub(1)) * per_page;
+        let public_channel_slug = request_public_channel_slug(ctx);
 
         let mut query = product::Entity::find()
             .filter(product::Column::TenantId.eq(tenant_id))
@@ -649,14 +699,25 @@ impl CommerceQuery {
             ));
         }
 
-        let total = query.clone().count(db).await?;
-        let products = query
+        let visible_products = query
             .order_by_desc(product::Column::PublishedAt)
             .order_by_desc(product::Column::CreatedAt)
-            .offset(offset)
-            .limit(per_page)
             .all(db)
-            .await?;
+            .await?
+            .into_iter()
+            .filter(|product| {
+                is_metadata_visible_for_public_channel(
+                    &product.metadata,
+                    public_channel_slug.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let total = visible_products.len() as u64;
+        let products = visible_products
+            .into_iter()
+            .skip(offset as usize)
+            .take(per_page as usize)
+            .collect::<Vec<_>>();
 
         let items = load_product_list_items(
             db,
@@ -754,6 +815,9 @@ async fn load_product_list_items(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
+                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                    &product.metadata,
+                )),
                 tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
                 created_at: product.created_at.to_rfc3339(),
                 published_at: product.published_at.map(|value| value.to_rfc3339()),
@@ -820,22 +884,30 @@ async fn find_published_product_id_by_handle(
     handle: &str,
     locale: &str,
     default_locale: &str,
+    public_channel_slug: Option<&str>,
 ) -> Result<Option<Uuid>> {
     if let Some(product_id) =
-        find_published_product_id_for_locale(db, tenant_id, handle, locale).await?
+        find_published_product_id_for_locale(db, tenant_id, handle, locale, public_channel_slug)
+            .await?
     {
         return Ok(Some(product_id));
     }
 
     if default_locale != locale {
-        if let Some(product_id) =
-            find_published_product_id_for_locale(db, tenant_id, handle, default_locale).await?
+        if let Some(product_id) = find_published_product_id_for_locale(
+            db,
+            tenant_id,
+            handle,
+            default_locale,
+            public_channel_slug,
+        )
+        .await?
         {
             return Ok(Some(product_id));
         }
     }
 
-    find_published_product_id_any_locale(db, tenant_id, handle).await
+    find_published_product_id_any_locale(db, tenant_id, handle, public_channel_slug).await
 }
 
 async fn find_published_product_id_for_locale(
@@ -843,6 +915,7 @@ async fn find_published_product_id_for_locale(
     tenant_id: Uuid,
     handle: &str,
     locale: &str,
+    public_channel_slug: Option<&str>,
 ) -> Result<Option<Uuid>> {
     let translations = product_translation::Entity::find()
         .filter(product_translation::Column::Handle.eq(handle))
@@ -850,26 +923,28 @@ async fn find_published_product_id_for_locale(
         .all(db)
         .await?;
 
-    find_first_published_product(db, tenant_id, translations).await
+    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
 }
 
 async fn find_published_product_id_any_locale(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     handle: &str,
+    public_channel_slug: Option<&str>,
 ) -> Result<Option<Uuid>> {
     let translations = product_translation::Entity::find()
         .filter(product_translation::Column::Handle.eq(handle))
         .all(db)
         .await?;
 
-    find_first_published_product(db, tenant_id, translations).await
+    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
 }
 
 async fn find_first_published_product(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     translations: Vec<product_translation::Model>,
+    public_channel_slug: Option<&str>,
 ) -> Result<Option<Uuid>> {
     for translation in translations {
         let product = product::Entity::find_by_id(translation.product_id)
@@ -878,7 +953,9 @@ async fn find_first_published_product(
             .filter(product::Column::PublishedAt.is_not_null())
             .one(db)
             .await?;
-        if product.is_some() {
+        if product.as_ref().is_some_and(|product| {
+            is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+        }) {
             return Ok(Some(translation.product_id));
         }
     }
@@ -888,6 +965,19 @@ async fn find_first_published_product(
 
 fn product_list_path(path: &'static str) -> &'static str {
     path
+}
+
+fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {
+    ctx.data_opt::<RequestContext>()
+        .and_then(|request_context| public_channel_slug_from_request(request_context))
+}
+
+fn storefront_public_channel_slug_for_cart(
+    cart: &crate::dto::CartResponse,
+    ctx: &Context<'_>,
+) -> Option<String> {
+    normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| request_public_channel_slug(ctx))
 }
 
 async fn resolve_optional_storefront_customer_id(

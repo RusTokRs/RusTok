@@ -8,12 +8,20 @@ use rustok_fulfillment::error::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
     CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreatePaymentCollectionInput, ResolveStoreContextInput,
+};
+use crate::entities::{product, product_variant};
+use crate::storefront_channel::{
+    is_metadata_visible_for_public_channel, load_available_inventory_for_variant_in_public_channel,
+    normalize_public_channel_slug,
+};
+use crate::storefront_shipping::{
+    is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
 };
 use crate::{CartService, FulfillmentService, OrderService, PaymentService, StoreContextService};
 
@@ -40,6 +48,7 @@ pub enum CheckoutError {
 pub type CheckoutResult<T> = Result<T, CheckoutError>;
 
 pub struct CheckoutService {
+    db: DatabaseConnection,
     cart_service: CartService,
     order_service: OrderService,
     payment_service: PaymentService,
@@ -50,6 +59,7 @@ pub struct CheckoutService {
 impl CheckoutService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
+            db: db.clone(),
             cart_service: CartService::new(db.clone()),
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
@@ -106,6 +116,45 @@ impl CheckoutService {
         let shipping_option_id = cart
             .selected_shipping_option_id
             .or(input.shipping_option_id);
+        self.validate_cart_inventory(tenant_id, &cart).await?;
+        if let Some(shipping_option_id) = shipping_option_id {
+            let required_shipping_profiles =
+                load_cart_shipping_profile_slugs(&self.db, tenant_id, &cart)
+                    .await
+                    .map_err(stage_error("load_shipping_profiles"))?;
+            let option = self
+                .fulfillment_service
+                .get_shipping_option(tenant_id, shipping_option_id)
+                .await
+                .map_err(stage_error("load_shipping_option"))?;
+            if !option
+                .currency_code
+                .eq_ignore_ascii_case(&cart.currency_code)
+            {
+                return Err(CheckoutError::Validation(format!(
+                    "Shipping option {} uses currency {}, expected {}",
+                    option.id, option.currency_code, cart.currency_code
+                )));
+            }
+            if !is_metadata_visible_for_public_channel(
+                &option.metadata,
+                normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref(),
+            ) {
+                return Err(CheckoutError::Validation(format!(
+                    "Shipping option {} is not available for the cart channel",
+                    option.id
+                )));
+            }
+            if !is_shipping_option_compatible_with_profiles(
+                &option.metadata,
+                &required_shipping_profiles,
+            ) {
+                return Err(CheckoutError::Validation(format!(
+                    "Shipping option {} is not compatible with the cart shipping profiles",
+                    option.id
+                )));
+            }
+        }
         let context = self
             .context_service
             .resolve_context(
@@ -122,7 +171,7 @@ impl CheckoutService {
         let checkout_result: CheckoutResult<CompleteCheckoutResponse> = async {
             let mut order = self
                 .order_service
-                .create_order(
+                .create_order_with_channel(
                     tenant_id,
                     actor_id,
                     CreateOrderInput {
@@ -143,6 +192,8 @@ impl CheckoutService {
                             .collect(),
                         metadata: input.metadata.clone(),
                     },
+                    cart.channel_id,
+                    cart.channel_slug.clone(),
                 )
                 .await
                 .map_err(stage_error("create_order"))?;
@@ -396,6 +447,78 @@ impl CheckoutService {
         }
 
         checkout_result
+    }
+
+    async fn validate_cart_inventory(
+        &self,
+        tenant_id: Uuid,
+        cart: &rustok_cart::dto::CartResponse,
+    ) -> CheckoutResult<()> {
+        let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
+
+        for line_item in &cart.line_items {
+            let Some(variant_id) = line_item.variant_id else {
+                continue;
+            };
+
+            let Some(variant) = product_variant::Entity::find_by_id(variant_id)
+                .filter(product_variant::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await
+                .map_err(stage_error("load_variant"))?
+            else {
+                return Err(CheckoutError::Validation(format!(
+                    "Variant {} is no longer available for checkout",
+                    variant_id
+                )));
+            };
+
+            let product_id = line_item.product_id.unwrap_or(variant.product_id);
+            let Some(product) = product::Entity::find_by_id(product_id)
+                .filter(product::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await
+                .map_err(stage_error("load_product"))?
+            else {
+                return Err(CheckoutError::Validation(format!(
+                    "Product {} is no longer available for checkout",
+                    product_id
+                )));
+            };
+            if product.status != product::ProductStatus::Active
+                || product.published_at.is_none()
+                || !is_metadata_visible_for_public_channel(
+                    &product.metadata,
+                    public_channel_slug.as_deref(),
+                )
+            {
+                return Err(CheckoutError::Validation(format!(
+                    "Product {} is not available for the cart channel",
+                    product.id
+                )));
+            }
+
+            if variant.inventory_policy == "continue" {
+                continue;
+            }
+
+            let available_inventory = load_available_inventory_for_variant_in_public_channel(
+                &self.db,
+                tenant_id,
+                variant.id,
+                public_channel_slug.as_deref(),
+            )
+            .await
+            .map_err(stage_error("load_inventory"))?;
+            if available_inventory < line_item.quantity {
+                return Err(CheckoutError::Validation(format!(
+                    "Variant {} does not have enough available inventory for the cart channel",
+                    variant.id
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     async fn recover_existing_checkout(

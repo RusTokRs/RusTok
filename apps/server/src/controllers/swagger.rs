@@ -108,6 +108,7 @@ use utoipa::OpenApi;
         crate::controllers::metrics::metrics,
         // Marketplace
         crate::controllers::marketplace_registry::catalog,
+        crate::controllers::marketplace_registry::catalog_module,
         // Admin Events
         crate::controllers::admin_events::list_dlq,
         crate::controllers::admin_events::replay_dlq_event,
@@ -358,6 +359,10 @@ mod tests {
         assert!(
             openapi.paths.paths.contains_key("/v1/catalog"),
             "OpenAPI spec must include /v1/catalog"
+        );
+        assert!(
+            openapi.paths.paths.contains_key("/v1/catalog/{slug}"),
+            "OpenAPI spec must include /v1/catalog/{slug}"
         );
     }
 }

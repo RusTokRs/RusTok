@@ -2,8 +2,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_core::{
     events::{EventHandler, HandlerResult},
-    simple_hash,
-    slugify,
+    simple_hash, slugify,
 };
 use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};

@@ -248,7 +248,8 @@ fn render_admin_registry_codegen(
         } else {
             format!(
                 "&[{}]",
-                entry.recommended_admin_surfaces
+                entry
+                    .recommended_admin_surfaces
                     .iter()
                     .map(|surface| format!("\"{surface}\""))
                     .collect::<Vec<_>>()
@@ -260,7 +261,8 @@ fn render_admin_registry_codegen(
         } else {
             format!(
                 "&[{}]",
-                entry.showcase_admin_surfaces
+                entry
+                    .showcase_admin_surfaces
                     .iter()
                     .map(|surface| format!("\"{surface}\""))
                     .collect::<Vec<_>>()

@@ -38,6 +38,7 @@ pub fn Modules() -> impl IntoView {
                 api::MarketplaceVariables {
                     search: None,
                     category: None,
+                    tag: None,
                     source: None,
                     trust_level: None,
                     only_compatible: None,

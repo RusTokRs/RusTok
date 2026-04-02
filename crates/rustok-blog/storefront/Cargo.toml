@@ -4,10 +4,25 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-channel",
+  "dep:rustok-tenant",
+]
+
 [dependencies]
 leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
+loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 rustok-core.workspace = true
 rustok-blog.workspace = true
 rustok-api.workspace = true
+rustok-channel = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }

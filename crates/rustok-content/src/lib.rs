@@ -15,7 +15,9 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use dto::*;
-pub use entities::{Body, CanonicalUrl, Category, CategoryTranslation, Node, NodeTranslation, UrlAlias};
+pub use entities::{
+    Body, CanonicalUrl, Category, CategoryTranslation, Node, NodeTranslation, UrlAlias,
+};
 pub use error::{ContentError, ContentResult};
 pub use locale::{
     available_locales_from, normalize_locale_code, resolve_by_locale,

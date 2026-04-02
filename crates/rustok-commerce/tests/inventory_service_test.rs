@@ -58,6 +58,7 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
         }],
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        shipping_profile_slug: None,
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),

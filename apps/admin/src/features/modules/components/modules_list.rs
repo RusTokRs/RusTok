@@ -34,6 +34,7 @@ enum ModulesTab {
 struct CatalogFilters {
     search: String,
     category: String,
+    tag: String,
     source: String,
     trust_level: String,
     only_compatible: bool,
@@ -45,6 +46,7 @@ impl Default for CatalogFilters {
         Self {
             search: String::new(),
             category: "all".to_string(),
+            tag: "all".to_string(),
             source: "all".to_string(),
             trust_level: "all".to_string(),
             only_compatible: false,
@@ -273,6 +275,7 @@ fn normalize_catalog_filters(filters: &CatalogFilters) -> api::MarketplaceVariab
     api::MarketplaceVariables {
         search: (!filters.search.trim().is_empty()).then(|| filters.search.trim().to_string()),
         category: (filters.category != "all").then(|| filters.category.clone()),
+        tag: (filters.tag != "all").then(|| filters.tag.clone()),
         source: (filters.source != "all").then(|| filters.source.clone()),
         trust_level: (filters.trust_level != "all").then(|| filters.trust_level.clone()),
         only_compatible: filters.only_compatible.then_some(true),
@@ -354,6 +357,16 @@ pub fn ModulesList(
             .into_iter()
             .collect::<Vec<_>>(),
     );
+    let (known_tags, set_known_tags) = signal(
+        marketplace_catalog
+            .get_untracked()
+            .into_iter()
+            .flat_map(|module| module.tags)
+            .filter(|tag| !tag.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>(),
+    );
     let (known_sources, set_known_sources) = signal(
         marketplace_catalog
             .get_untracked()
@@ -417,6 +430,19 @@ pub fn ModulesList(
                     categories.sort();
                     categories.dedup();
                 });
+                set_known_tags.update(|tags| {
+                    for tag in marketplace
+                        .iter()
+                        .flat_map(|module| module.tags.iter().cloned())
+                        .filter(|tag| !tag.is_empty())
+                    {
+                        if !tags.contains(&tag) {
+                            tags.push(tag);
+                        }
+                    }
+                    tags.sort();
+                    tags.dedup();
+                });
                 set_known_sources.update(|sources| {
                     for source in marketplace
                         .iter()
@@ -473,6 +499,19 @@ pub fn ModulesList(
                         }
                         categories.sort();
                         categories.dedup();
+                    });
+                    set_known_tags.update(|tags| {
+                        for tag in marketplace
+                            .iter()
+                            .flat_map(|module| module.tags.iter().cloned())
+                            .filter(|tag| !tag.is_empty())
+                        {
+                            if !tags.contains(&tag) {
+                                tags.push(tag);
+                            }
+                        }
+                        tags.sort();
+                        tags.dedup();
                     });
                     set_known_sources.update(|sources| {
                         for source in marketplace
@@ -1254,7 +1293,7 @@ pub fn ModulesList(
                         "Narrow Marketplace and Updates to the modules you actually want to review."
                     </p>
                 </div>
-                <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto_auto]">
+                <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto_auto]">
                     <input
                         class="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
                         prop:value=move || catalog_filter_draft.get().search
@@ -1276,6 +1315,21 @@ pub fn ModulesList(
                         {move || known_categories.get().into_iter().map(|category| {
                             view! {
                                 <option value=category.clone()>{humanize_label(&category)}</option>
+                            }
+                        }).collect_view()}
+                    </select>
+                    <select
+                        class="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                        prop:value=move || catalog_filter_draft.get().tag
+                        on:change=move |event| {
+                            let value = event_target_value(&event);
+                            set_catalog_filter_draft.update(|filters| filters.tag = value);
+                        }
+                    >
+                        <option value="all">"All tags"</option>
+                        {move || known_tags.get().into_iter().map(|tag| {
+                            view! {
+                                <option value=tag.clone()>{humanize_label(&tag)}</option>
                             }
                         }).collect_view()}
                     </select>
@@ -1369,6 +1423,11 @@ pub fn ModulesList(
                         <Show when=move || applied_catalog_filters.get().category != "all">
                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                 {move || format!("Category: {}", humanize_label(&applied_catalog_filters.get().category))}
+                            </span>
+                        </Show>
+                        <Show when=move || applied_catalog_filters.get().tag != "all">
+                            <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
+                                {move || format!("Tag: {}", humanize_label(&applied_catalog_filters.get().tag))}
                             </span>
                         </Show>
                         <Show when=move || applied_catalog_filters.get().source != "all">

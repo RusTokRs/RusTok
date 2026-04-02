@@ -82,6 +82,20 @@ fn setting_field_hint(field: &ModuleSettingField) -> Option<String> {
                 .join(", ")
         ));
     }
+    if !field.object_keys.is_empty() {
+        parts.push(format!(
+            "Object keys: {}",
+            field
+                .object_keys
+                .iter()
+                .map(|key| humanize_setting_key(key))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if let Some(item_type) = field.item_type.as_deref() {
+        parts.push(format!("Array items: {}", humanize_token(item_type)));
+    }
 
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
@@ -126,6 +140,223 @@ fn setting_option_label(value: &serde_json::Value) -> String {
         serde_json::Value::String(value) => value.clone(),
         serde_json::Value::Null => "null".to_string(),
         _ => value.to_string(),
+    }
+}
+
+fn setting_shape_properties(shape: Option<&serde_json::Value>) -> Vec<(String, serde_json::Value)> {
+    let Some(shape) = shape else {
+        return Vec::new();
+    };
+    let Some(properties) = shape.get("properties").and_then(|value| value.as_object()) else {
+        return Vec::new();
+    };
+
+    let mut entries = properties
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    entries
+}
+
+fn setting_shape_items(shape: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    shape.and_then(|shape| shape.get("items")).cloned()
+}
+
+fn setting_shape_property(
+    shape: Option<&serde_json::Value>,
+    key: &str,
+) -> Option<serde_json::Value> {
+    shape
+        .and_then(|shape| shape.get("properties"))
+        .and_then(|value| value.as_object())
+        .and_then(|properties| properties.get(key))
+        .cloned()
+}
+
+fn setting_shape_type(shape: Option<&serde_json::Value>) -> Option<String> {
+    shape
+        .and_then(|shape| shape.get("type"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+}
+
+fn setting_shape_options(shape: Option<&serde_json::Value>) -> Vec<serde_json::Value> {
+    shape
+        .and_then(|shape| shape.get("options"))
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn setting_shape_numeric_bound(shape: Option<&serde_json::Value>, key: &str) -> Option<String> {
+    let value = shape.and_then(|shape| shape.get(key))?;
+
+    value
+        .as_i64()
+        .map(|number| number.to_string())
+        .or_else(|| value.as_u64().map(|number| number.to_string()))
+        .or_else(|| {
+            value.as_f64().map(|number| {
+                let mut rendered = number.to_string();
+                if rendered.ends_with(".0") {
+                    rendered.truncate(rendered.len() - 2);
+                }
+                rendered
+            })
+        })
+}
+
+fn parse_scalar_input_value(raw: &str, value_type: &str) -> Option<serde_json::Value> {
+    match value_type {
+        "string" => Some(serde_json::Value::String(raw.to_string())),
+        "boolean" => raw.parse::<bool>().ok().map(serde_json::Value::Bool),
+        "integer" => raw
+            .parse::<i64>()
+            .ok()
+            .map(|number| serde_json::Value::Number(number.into()))
+            .or_else(|| {
+                raw.parse::<u64>()
+                    .ok()
+                    .map(|number| serde_json::Value::Number(number.into()))
+            }),
+        "number" => raw
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map(serde_json::Value::Number),
+        _ => None,
+    }
+}
+
+fn render_scalar_value_editor(
+    current_value: serde_json::Value,
+    shape: Option<serde_json::Value>,
+    #[allow(unused_variables)] disabled: Signal<bool>,
+    on_input: Callback<serde_json::Value>,
+) -> AnyView {
+    let value_type = setting_shape_type(shape.as_ref())
+        .unwrap_or_else(|| json_value_kind(&current_value).to_string());
+    let options = setting_shape_options(shape.as_ref());
+    let current_raw = setting_option_draft_value(&value_type, &current_value);
+    let min = setting_shape_numeric_bound(shape.as_ref(), "min");
+    let max = setting_shape_numeric_bound(shape.as_ref(), "max");
+
+    match value_type.as_str() {
+        "boolean" if options.is_empty() => {
+            let checked = current_value.as_bool().unwrap_or(false);
+            view! {
+                <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
+                    <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
+                        checked=checked
+                        disabled=move || disabled.get()
+                        on:change=move |event| {
+                            on_input.run(serde_json::Value::Bool(event_target_checked(&event)))
+                        }
+                    />
+                    <span>"Enabled"</span>
+                </label>
+            }
+            .into_any()
+        }
+        "string" | "integer" | "number" | "boolean" if !options.is_empty() => {
+            let options_for_select = options.clone();
+            let value_type_for_select = value_type.clone();
+            view! {
+                <select
+                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                    prop:value=current_raw.clone()
+                    disabled=move || disabled.get()
+                    on:change=move |event| {
+                        if let Some(next_value) = parse_scalar_input_value(
+                            &event_target_value(&event),
+                            &value_type_for_select,
+                        ) {
+                            on_input.run(next_value);
+                        }
+                    }
+                >
+                    {options_for_select.into_iter().map(|option| {
+                        let option_value = setting_option_draft_value(&value_type, &option);
+                        let option_label = setting_option_label(&option);
+                        view! {
+                            <option value=option_value>{option_label}</option>
+                        }
+                    }).collect_view()}
+                </select>
+            }
+            .into_any()
+        }
+        "integer" | "number" => {
+            let step = if value_type == "integer" { "1" } else { "any" };
+            let value_type_for_input = value_type.clone();
+            view! {
+                <input
+                    type="number"
+                    step=step
+                    min=min
+                    max=max
+                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                    value=current_raw
+                    disabled=move || disabled.get()
+                    on:input=move |event| {
+                        if let Some(next_value) = parse_scalar_input_value(
+                            &event_target_value(&event),
+                            &value_type_for_input,
+                        ) {
+                            on_input.run(next_value);
+                        }
+                    }
+                />
+            }
+            .into_any()
+        }
+        _ => view! {
+            <input
+                type="text"
+                class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                value=current_raw
+                disabled=move || disabled.get()
+                on:input=move |event| {
+                    on_input.run(serde_json::Value::String(event_target_value(&event)))
+                }
+            />
+        }
+        .into_any(),
+    }
+}
+
+fn default_value_for_schema_shape(shape: Option<&serde_json::Value>) -> serde_json::Value {
+    let Some(shape) = shape else {
+        return serde_json::Value::Null;
+    };
+
+    if let Some(default) = shape.get("default") {
+        return default.clone();
+    }
+
+    match setting_shape_type(Some(shape)).as_deref() {
+        Some("object") => {
+            let object = setting_shape_properties(Some(shape))
+                .into_iter()
+                .map(|(key, property_shape)| {
+                    (key, default_value_for_schema_shape(Some(&property_shape)))
+                })
+                .collect::<serde_json::Map<String, serde_json::Value>>();
+            serde_json::Value::Object(object)
+        }
+        Some("array") => serde_json::json!([]),
+        Some(value_type) => default_value_for_setting_type(value_type),
+        None => serde_json::Value::Null,
+    }
+}
+
+fn schema_action_label(shape: Option<&serde_json::Value>) -> String {
+    match setting_shape_type(shape).as_deref() {
+        Some(value_type) => add_item_button_label(value_type),
+        None => "Add item".to_string(),
     }
 }
 
@@ -587,6 +818,30 @@ fn default_json_root(root_type: &str) -> serde_json::Value {
     }
 }
 
+fn default_value_for_setting_type(value_type: &str) -> serde_json::Value {
+    match value_type {
+        "string" => serde_json::Value::String(String::new()),
+        "integer" | "number" => serde_json::json!(0),
+        "boolean" => serde_json::Value::Bool(false),
+        "object" => serde_json::json!({}),
+        "array" => serde_json::json!([]),
+        "json" | "any" => serde_json::Value::Null,
+        _ => serde_json::Value::Null,
+    }
+}
+
+fn add_item_button_label(value_type: &str) -> String {
+    match value_type {
+        "string" => "Add text".to_string(),
+        "boolean" => "Add flag".to_string(),
+        "integer" | "number" => "Add number".to_string(),
+        "object" => "Add object".to_string(),
+        "array" => "Add array".to_string(),
+        "json" | "any" => "Add item".to_string(),
+        _ => format!("Add {}", humanize_token(value_type)),
+    }
+}
+
 fn parse_json_root(raw: &str, root_type: &str) -> Result<serde_json::Value, String> {
     Ok(parse_json_editor_value(raw, root_type)?.unwrap_or_else(|| default_json_root(root_type)))
 }
@@ -770,76 +1025,147 @@ fn nested_array_child_added(
     })
 }
 
+fn nested_object_contains_key(
+    raw: &str,
+    root_type: &str,
+    path: &[JsonPathSegment],
+    key: &str,
+) -> bool {
+    let Ok(mut root) = parse_json_root(raw, root_type) else {
+        return false;
+    };
+
+    value_at_path_mut(&mut root, path)
+        .and_then(|target| target.as_object().map(|object| object.contains_key(key)))
+        .unwrap_or(false)
+}
+
 fn render_nested_json_children(
     root_type: String,
     root_value: Signal<String>,
     path: Vec<JsonPathSegment>,
     current: serde_json::Value,
+    current_shape: Option<serde_json::Value>,
     disabled: Signal<bool>,
     on_input: Callback<String>,
 ) -> AnyView {
     match current {
-        serde_json::Value::Object(object) => view! {
+        serde_json::Value::Object(object) => {
+            let declared_properties = setting_shape_properties(current_shape.as_ref());
+            let schema_locks_keys = !declared_properties.is_empty();
+            view! {
             <div class="space-y-3">
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newText", serde_json::Value::String(String::new())) {
-                                on_input.run(next);
+                    {if declared_properties.is_empty() {
+                        view! {
+                            <>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newText", serde_json::Value::String(String::new())) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add text"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newFlag", serde_json::Value::Bool(false)) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add flag"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newNumber", serde_json::json!(0)) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add number"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newObject", serde_json::json!({})) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add object"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newArray", serde_json::json!([])) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add array"</button>
+                            </>
+                        }.into_any()
+                    } else {
+                        declared_properties.clone().into_iter().map(|(property_key, property_shape)| {
+                            let button_label = format!("Add {}", humanize_setting_key(&property_key));
+                            view! {
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                    disabled={
+                                        let root_type = root_type.clone();
+                                        let root_value = root_value;
+                                        let path = path.clone();
+                                        let property_key = property_key.clone();
+                                        move || {
+                                            disabled.get()
+                                                || nested_object_contains_key(
+                                                    &root_value.get(),
+                                                    &root_type,
+                                                    &path,
+                                                    &property_key,
+                                                )
+                                        }
+                                    }
+                                    on:click={
+                                        let root_type = root_type.clone();
+                                        let root_value = root_value;
+                                        let path = path.clone();
+                                        let property_key = property_key.clone();
+                                        let property_shape = property_shape.clone();
+                                        move |_| {
+                                            if let Ok(next) = nested_object_child_added(
+                                                &root_value.get(),
+                                                &root_type,
+                                                &path,
+                                                &property_key,
+                                                default_value_for_schema_shape(Some(&property_shape)),
+                                            ) {
+                                                on_input.run(next);
+                                            }
+                                        }
+                                    }
+                                >
+                                    {button_label}
+                                </button>
                             }
-                        }
-                    }>"Add text"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newFlag", serde_json::Value::Bool(false)) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add flag"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newNumber", serde_json::json!(0)) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add number"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newObject", serde_json::json!({})) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add object"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newArray", serde_json::json!([])) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add array"</button>
+                        }).collect_view().into_any()
+                    }}
                 </div>
                 {object.into_iter().map(|(key, item_value)| {
                     let kind = json_value_kind(&item_value).to_string();
                     let preview = json_value_preview(&item_value);
+                    let property_shape = setting_shape_property(current_shape.as_ref(), &key);
                     let mut item_path = path.clone();
                     item_path.push(JsonPathSegment::Key(key.clone()));
                     match item_value.clone() {
-                        serde_json::Value::String(current) => {
+                        scalar_value @ (serde_json::Value::String(_) | serde_json::Value::Bool(_) | serde_json::Value::Number(_)) => {
                             let item_path_for_input = item_path.clone();
                             let item_path_for_remove = item_path.clone();
                             let item_path_for_rename = item_path.clone();
@@ -847,7 +1173,7 @@ fn render_nested_json_children(
                                 <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() on:change={
+                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
                                                 let root_type = root_type.clone();
                                                 let root_value = root_value;
                                                 move |event| {
@@ -868,103 +1194,25 @@ fn render_nested_json_children(
                                             }
                                         }>"Remove"</button>
                                     </div>
-                                    <input type="text" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=current disabled=move || disabled.get() on:input={
-                                        let root_type = root_type.clone();
-                                        let root_value = root_value;
-                                        move |event| {
-                                            if let Ok(next) = nested_value_updated(&root_value.get(), &root_type, &item_path_for_input, serde_json::Value::String(event_target_value(&event))) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    } />
-                                </div>
-                            }.into_any()
-                        }
-                        serde_json::Value::Bool(current) => {
-                            let item_path_for_input = item_path.clone();
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_rename = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() on:change={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |event| {
-                                                    if let Ok(next) = nested_object_key_renamed(&root_value.get(), &root_type, &item_path_for_rename, &event_target_value(&event)) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            } />
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    {render_scalar_value_editor(
+                                        scalar_value,
+                                        property_shape.clone(),
+                                        disabled,
+                                        Callback::new({
                                             let root_type = root_type.clone();
                                             let root_value = root_value;
-                                            move |_| {
-                                                if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
+                                            move |next_value| {
+                                                if let Ok(next) = nested_value_updated(
+                                                    &root_value.get(),
+                                                    &root_type,
+                                                    &item_path_for_input,
+                                                    next_value,
+                                                ) {
                                                     on_input.run(next);
                                                 }
                                             }
-                                        }>"Remove"</button>
-                                    </div>
-                                    <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
-                                        <input type="checkbox" class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20" checked=current disabled=move || disabled.get() on:change={
-                                            let root_type = root_type.clone();
-                                            let root_value = root_value;
-                                            move |event| {
-                                                if let Ok(next) = nested_value_updated(&root_value.get(), &root_type, &item_path_for_input, serde_json::Value::Bool(event_target_checked(&event))) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        } />
-                                        <span>"Enabled"</span>
-                                    </label>
-                                </div>
-                            }.into_any()
-                        }
-                        serde_json::Value::Number(current) => {
-                            let item_path_for_input = item_path.clone();
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_rename = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() on:change={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |event| {
-                                                    if let Ok(next) = nested_object_key_renamed(&root_value.get(), &root_type, &item_path_for_rename, &event_target_value(&event)) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            } />
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                            let root_type = root_type.clone();
-                                            let root_value = root_value;
-                                            move |_| {
-                                                if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }>"Remove"</button>
-                                    </div>
-                                    <input type="number" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=current.to_string() disabled=move || disabled.get() on:input={
-                                        let root_type = root_type.clone();
-                                        let root_value = root_value;
-                                        move |event| {
-                                            let raw = event_target_value(&event);
-                                            let Ok(parsed) = raw.parse::<f64>() else { return; };
-                                            let Some(number) = serde_json::Number::from_f64(parsed) else { return; };
-                                            if let Ok(next) = nested_value_updated(&root_value.get(), &root_type, &item_path_for_input, serde_json::Value::Number(number)) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    } />
+                                        }),
+                                    )}
                                 </div>
                             }.into_any()
                         }
@@ -975,7 +1223,7 @@ fn render_nested_json_children(
                                 <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() on:change={
+                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
                                                 let root_type = root_type.clone();
                                                 let root_value = root_value;
                                                 move |event| {
@@ -997,67 +1245,96 @@ fn render_nested_json_children(
                                         }>"Remove"</button>
                                     </div>
                                     <p class="text-sm text-muted-foreground">{preview}</p>
-                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, disabled, on_input)}
+                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, property_shape.clone(), disabled, on_input)}
                                 </div>
                             }.into_any()
                         }
                     }
                 }).collect_view()}
             </div>
-        }.into_any(),
-        serde_json::Value::Array(items) => view! {
+        }.into_any()
+        }
+        serde_json::Value::Array(items) => {
+            let item_shape = setting_shape_items(current_shape.as_ref());
+            view! {
             <div class="space-y-3">
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::String(String::new())) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add text"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::Bool(false)) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add flag"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!(0)) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add number"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!({})) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add object"</button>
-                    <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                        let root_type = root_type.clone();
-                        let root_value = root_value;
-                        let path = path.clone();
-                        move |_| {
-                            if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!([])) {
-                                on_input.run(next);
-                            }
-                        }
-                    }>"Add array"</button>
+                    {if let Some(item_shape) = item_shape.clone() {
+                        let button_label = schema_action_label(Some(&item_shape));
+                        view! {
+                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                let root_type = root_type.clone();
+                                let root_value = root_value;
+                                let path = path.clone();
+                                let item_shape = item_shape.clone();
+                                move |_| {
+                                    if let Ok(next) = nested_array_child_added(
+                                        &root_value.get(),
+                                        &root_type,
+                                        &path,
+                                        default_value_for_schema_shape(Some(&item_shape)),
+                                    ) {
+                                        on_input.run(next);
+                                    }
+                                }
+                            }>{button_label}</button>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::String(String::new())) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add text"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::Bool(false)) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add flag"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!(0)) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add number"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!({})) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add object"</button>
+                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
+                                    let root_type = root_type.clone();
+                                    let root_value = root_value;
+                                    let path = path.clone();
+                                    move |_| {
+                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!([])) {
+                                            on_input.run(next);
+                                        }
+                                    }
+                                }>"Add array"</button>
+                            </>
+                        }.into_any()
+                    }}
                 </div>
                 {items.into_iter().enumerate().map(|(index, item_value)| {
                     let kind = json_value_kind(&item_value).to_string();
@@ -1065,7 +1342,9 @@ fn render_nested_json_children(
                     let mut item_path = path.clone();
                     item_path.push(JsonPathSegment::Index(index));
                     match item_value.clone() {
-                        serde_json::Value::String(current) => {
+                        scalar_value @ (serde_json::Value::String(_)
+                        | serde_json::Value::Bool(_)
+                        | serde_json::Value::Number(_)) => {
                             let item_path_for_input = item_path.clone();
                             let item_path_for_remove = item_path.clone();
                             let item_path_for_move_up = item_path.clone();
@@ -1107,129 +1386,25 @@ fn render_nested_json_children(
                                             }>"Remove"</button>
                                         </div>
                                     </div>
-                                    <input type="text" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=current disabled=move || disabled.get() on:input={
-                                        let root_type = root_type.clone();
-                                        let root_value = root_value;
-                                        move |event| {
-                                            if let Ok(next) = nested_value_updated(&root_value.get(), &root_type, &item_path_for_input, serde_json::Value::String(event_target_value(&event))) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    } />
-                                </div>
-                            }.into_any()
-                        }
-                        serde_json::Value::Bool(current) => {
-                            let item_path_for_input = item_path.clone();
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_move_up = item_path.clone();
-                            let item_path_for_move_down = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span class="text-sm font-medium text-card-foreground">{format!("Item {}", index + 1)}</span>
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_up, -1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>"Up"</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_down, 1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>"Down"</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>"Remove"</button>
-                                        </div>
-                                    </div>
-                                    <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
-                                        <input type="checkbox" class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20" checked=current disabled=move || disabled.get() on:change={
+                                    {render_scalar_value_editor(
+                                        scalar_value,
+                                        item_shape.clone(),
+                                        disabled,
+                                        Callback::new({
                                             let root_type = root_type.clone();
                                             let root_value = root_value;
-                                            move |event| {
-                                                if let Ok(next) = nested_value_updated(&root_value.get(), &root_type, &item_path_for_input, serde_json::Value::Bool(event_target_checked(&event))) {
+                                            move |next_value| {
+                                                if let Ok(next) = nested_value_updated(
+                                                    &root_value.get(),
+                                                    &root_type,
+                                                    &item_path_for_input,
+                                                    next_value,
+                                                ) {
                                                     on_input.run(next);
                                                 }
                                             }
-                                        } />
-                                        <span>"Enabled"</span>
-                                    </label>
-                                </div>
-                            }.into_any()
-                        }
-                        serde_json::Value::Number(current) => {
-                            let item_path_for_input = item_path.clone();
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_move_up = item_path.clone();
-                            let item_path_for_move_down = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span class="text-sm font-medium text-card-foreground">{format!("Item {}", index + 1)}</span>
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_up, -1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>"Up"</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_down, 1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>"Down"</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>"Remove"</button>
-                                        </div>
-                                    </div>
-                                    <input type="number" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=current.to_string() disabled=move || disabled.get() on:input={
-                                        let root_type = root_type.clone();
-                                        let root_value = root_value;
-                                        move |event| {
-                                            let raw = event_target_value(&event);
-                                            let Ok(parsed) = raw.parse::<f64>() else { return; };
-                                            let Some(number) = serde_json::Number::from_f64(parsed) else { return; };
-                                            if let Ok(next) = nested_value_updated(&root_value.get(), &root_type, &item_path_for_input, serde_json::Value::Number(number)) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    } />
+                                        }),
+                                    )}
                                 </div>
                             }.into_any()
                         }
@@ -1275,14 +1450,15 @@ fn render_nested_json_children(
                                         </div>
                                     </div>
                                     <p class="text-sm text-muted-foreground">{preview}</p>
-                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, disabled, on_input)}
+                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, item_shape.clone(), disabled, on_input)}
                                 </div>
                             }.into_any()
                         }
                     }
                 }).collect_view()}
             </div>
-        }.into_any(),
+        }.into_any()
+        }
         _ => ().into_any(),
     }
 }
@@ -1291,9 +1467,13 @@ fn render_nested_json_children(
 fn StructuredObjectEditor(
     #[prop(into)] value: Signal<String>,
     #[prop(into)] disabled: Signal<bool>,
+    object_shape: Option<serde_json::Value>,
     on_input: Callback<String>,
 ) -> impl IntoView {
     let object_entries = Signal::derive(move || parse_object_root(&value.get()));
+    let declared_properties = setting_shape_properties(object_shape.as_ref());
+    let object_shape_for_items = StoredValue::new(object_shape.clone());
+    let schema_locks_keys = !declared_properties.is_empty();
 
     view! {
         <Show when=move || object_entries.get().is_ok()>
@@ -1303,67 +1483,119 @@ fn StructuredObjectEditor(
                         "Structured object editor"
                     </p>
                     <div class="flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                move |_| {
-                                    if let Ok(next) = object_with_new_property(
-                                        &value.get(),
-                                        "newText",
-                                        serde_json::Value::String(String::new()),
-                                    ) {
-                                        on_input.run(next);
+                        {if declared_properties.is_empty() {
+                            view! {
+                                <>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                        disabled=move || disabled.get()
+                                        on:click={
+                                            let value = value;
+                                            move |_| {
+                                                if let Ok(next) = object_with_new_property(
+                                                    &value.get(),
+                                                    "newText",
+                                                    serde_json::Value::String(String::new()),
+                                                ) {
+                                                    on_input.run(next);
+                                                }
+                                            }
+                                        }
+                                    >
+                                        "Add text"
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                        disabled=move || disabled.get()
+                                        on:click={
+                                            let value = value;
+                                            move |_| {
+                                                if let Ok(next) = object_with_new_property(
+                                                    &value.get(),
+                                                    "newFlag",
+                                                    serde_json::Value::Bool(false),
+                                                ) {
+                                                    on_input.run(next);
+                                                }
+                                            }
+                                        }
+                                    >
+                                        "Add flag"
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                        disabled=move || disabled.get()
+                                        on:click={
+                                            let value = value;
+                                            move |_| {
+                                                if let Ok(next) = object_with_new_property(
+                                                    &value.get(),
+                                                    "newNumber",
+                                                    serde_json::json!(0),
+                                                ) {
+                                                    on_input.run(next);
+                                                }
+                                            }
+                                        }
+                                    >
+                                        "Add number"
+                                    </button>
+                                </>
+                            }.into_any()
+                        } else {
+                            declared_properties
+                                .clone()
+                                .into_iter()
+                                .map(|(property_key, property_shape)| {
+                                    let button_label = format!(
+                                        "Add {}",
+                                        humanize_setting_key(&property_key)
+                                    );
+                                    view! {
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                            disabled={
+                                                let value = value;
+                                                let property_key = property_key.clone();
+                                                move || {
+                                                    disabled.get()
+                                                        || parse_object_root(&value.get())
+                                                            .map(|object| object.contains_key(&property_key))
+                                                            .unwrap_or(false)
+                                                }
+                                            }
+                                            on:click={
+                                                let value = value;
+                                                let property_key = property_key.clone();
+                                                let property_shape = property_shape.clone();
+                                                move |_| {
+                                                    if let Ok(next) = object_with_updated_property(
+                                                        &value.get(),
+                                                        &property_key,
+                                                        default_value_for_schema_shape(Some(&property_shape)),
+                                                    ) {
+                                                        on_input.run(next);
+                                                    }
+                                                }
+                                            }
+                                        >
+                                            {button_label}
+                                        </button>
                                     }
-                                }
-                            }
-                        >
-                            "Add text"
-                        </button>
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                move |_| {
-                                    if let Ok(next) = object_with_new_property(
-                                        &value.get(),
-                                        "newFlag",
-                                        serde_json::Value::Bool(false),
-                                    ) {
-                                        on_input.run(next);
-                                    }
-                                }
-                            }
-                        >
-                            "Add flag"
-                        </button>
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                move |_| {
-                                    if let Ok(next) = object_with_new_property(
-                                        &value.get(),
-                                        "newNumber",
-                                        serde_json::json!(0),
-                                    ) {
-                                        on_input.run(next);
-                                    }
-                                }
-                            }
-                        >
-                            "Add number"
-                        </button>
+                                })
+                                .collect_view()
+                                .into_any()
+                        }}
                     </div>
                 </div>
                 <div class="mt-3 space-y-3">
-                    {move || match object_entries.get() {
+                    {move || {
+                        let object_shape_for_items = object_shape_for_items.get_value();
+                        match object_entries.get() {
                         Ok(object) if object.is_empty() => view! {
                             <p class="text-sm text-muted-foreground">
                                 "Object is empty. Use the quick actions to add top-level properties."
@@ -1374,13 +1606,16 @@ fn StructuredObjectEditor(
                             .map(|(key, item_value)| {
                                 let kind = json_value_kind(&item_value).to_string();
                                 let preview = json_value_preview(&item_value);
+                                let property_shape = setting_shape_property(object_shape_for_items.as_ref(), &key);
                                 let key_for_remove = key.clone();
                                 let key_for_rename = key.clone();
+                                let mut item_path = Vec::new();
+                                item_path.push(JsonPathSegment::Key(key.clone()));
                                 view! {
                                     <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
                                         <div class="flex flex-wrap items-center justify-between gap-2">
                                             <div class="flex flex-wrap items-center gap-2">
-                                                <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() on:change={
+                                                <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
                                                     let value = value;
                                                     move |event| {
                                                         if let Ok(next) = object_with_renamed_property(&value.get(), &key_for_rename, &event_target_value(&event)) {
@@ -1409,90 +1644,50 @@ fn StructuredObjectEditor(
                                             </button>
                                         </div>
                                         {match item_value {
-                                            serde_json::Value::String(current) => {
+                                            scalar_value @ (serde_json::Value::String(_)
+                                            | serde_json::Value::Bool(_)
+                                            | serde_json::Value::Number(_)) => {
                                                 let key_for_input = key.clone();
                                                 view! {
-                                                    <input
-                                                        type="text"
-                                                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                                                        value=current
-                                                        disabled=move || disabled.get()
-                                                        on:input={
+                                                    {render_scalar_value_editor(
+                                                        scalar_value,
+                                                        property_shape.clone(),
+                                                        disabled,
+                                                        Callback::new({
                                                             let value = value;
-                                                            move |event| {
+                                                            move |next_value| {
                                                                 if let Ok(next) = object_with_updated_property(
                                                                     &value.get(),
                                                                     &key_for_input,
-                                                                    serde_json::Value::String(event_target_value(&event)),
+                                                                    next_value,
                                                                 ) {
                                                                     on_input.run(next);
                                                                 }
                                                             }
-                                                        }
-                                                    />
+                                                        }),
+                                                    )}
                                                 }.into_any()
                                             }
-                                            serde_json::Value::Bool(current) => {
-                                                let key_for_input = key.clone();
+                                            nested_value => {
+                                                let nested_path = item_path.clone();
+                                                let nested_shape = property_shape.clone();
                                                 view! {
-                                                    <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
-                                                        <input
-                                                            type="checkbox"
-                                                            class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                                                            checked=current
-                                                            disabled=move || disabled.get()
-                                                            on:change={
-                                                                let value = value;
-                                                                move |event| {
-                                                                    if let Ok(next) = object_with_updated_property(
-                                                                        &value.get(),
-                                                                        &key_for_input,
-                                                                        serde_json::Value::Bool(event_target_checked(&event)),
-                                                                    ) {
-                                                                        on_input.run(next);
-                                                                    }
-                                                                }
-                                                            }
-                                                        />
-                                                        <span>"Enabled"</span>
-                                                    </label>
+                                                    <>
+                                                        <p class="text-sm text-muted-foreground">
+                                                            {format!("Nested {}: {}.", kind, preview)}
+                                                        </p>
+                                                        {render_nested_json_children(
+                                                            "object".to_string(),
+                                                            value,
+                                                            nested_path,
+                                                            nested_value,
+                                                            nested_shape,
+                                                            disabled,
+                                                            on_input,
+                                                        )}
+                                                    </>
                                                 }.into_any()
                                             }
-                                            serde_json::Value::Number(current) => {
-                                                let key_for_input = key.clone();
-                                                view! {
-                                                    <input
-                                                        type="number"
-                                                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                                                        value=current.to_string()
-                                                        disabled=move || disabled.get()
-                                                        on:input={
-                                                            let value = value;
-                                                            move |event| {
-                                                                let raw = event_target_value(&event);
-                                                                let Ok(parsed) = raw.parse::<f64>() else {
-                                                                    return;
-                                                                };
-                                                                let Some(number) = serde_json::Number::from_f64(parsed) else {
-                                                                    return;
-                                                                };
-                                                                if let Ok(next) = object_with_updated_property(
-                                                                    &value.get(),
-                                                                    &key_for_input,
-                                                                    serde_json::Value::Number(number),
-                                                                ) {
-                                                                    on_input.run(next);
-                                                                }
-                                                            }
-                                                        }
-                                                    />
-                                                }.into_any()
-                                            }
-                                            _ => view! {
-                                                <p class="text-sm text-muted-foreground">
-                                                    {format!("Nested {}: {}. Continue editing it in the JSON editor below.", kind, preview)}
-                                                </p>
-                                            }.into_any(),
                                         }}
                                     </div>
                                 }
@@ -1500,7 +1695,7 @@ fn StructuredObjectEditor(
                             .collect_view()
                             .into_any(),
                         Err(_) => ().into_any(),
-                    }}
+                    }}}
                 </div>
             </div>
         </Show>
@@ -1511,9 +1706,12 @@ fn StructuredObjectEditor(
 fn StructuredArrayEditor(
     #[prop(into)] value: Signal<String>,
     #[prop(into)] disabled: Signal<bool>,
+    array_item_type: Option<String>,
+    array_item_shape: Option<serde_json::Value>,
     on_input: Callback<String>,
 ) -> impl IntoView {
     let array_entries = Signal::derive(move || parse_array_root(&value.get()));
+    let array_item_shape_for_items = StoredValue::new(array_item_shape.clone());
 
     view! {
         <Show when=move || array_entries.get().is_ok()>
@@ -1523,63 +1721,121 @@ fn StructuredArrayEditor(
                         "Structured array editor"
                     </p>
                     <div class="flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                move |_| {
-                                    if let Ok(next) = array_with_appended_item(
-                                        &value.get(),
-                                        serde_json::Value::String(String::new()),
-                                    ) {
-                                        on_input.run(next);
+                        {if let Some(item_shape) = array_item_shape.clone() {
+                            let button_label = schema_action_label(Some(&item_shape));
+                            view! {
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                    disabled=move || disabled.get()
+                                    on:click={
+                                        let value = value;
+                                        let item_shape = item_shape.clone();
+                                        move |_| {
+                                            if let Ok(next) = array_with_appended_item(
+                                                &value.get(),
+                                                default_value_for_schema_shape(Some(&item_shape)),
+                                            ) {
+                                                on_input.run(next);
+                                            }
+                                        }
                                     }
-                                }
-                            }
-                        >
-                            "Add text"
-                        </button>
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                move |_| {
-                                    if let Ok(next) = array_with_appended_item(
-                                        &value.get(),
-                                        serde_json::Value::Bool(false),
-                                    ) {
-                                        on_input.run(next);
+                                >
+                                    {button_label}
+                                </button>
+                            }.into_any()
+                        } else if let Some(item_type) = array_item_type
+                            .clone()
+                            .map(|value| value.trim().to_string())
+                            .filter(|value| !value.is_empty())
+                        {
+                            let button_label = add_item_button_label(&item_type);
+                            view! {
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                    disabled=move || disabled.get()
+                                    on:click={
+                                        let value = value;
+                                        let item_type = item_type.clone();
+                                        move |_| {
+                                            if let Ok(next) = array_with_appended_item(
+                                                &value.get(),
+                                                default_value_for_setting_type(&item_type),
+                                            ) {
+                                                on_input.run(next);
+                                            }
+                                        }
                                     }
-                                }
-                            }
-                        >
-                            "Add flag"
-                        </button>
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                move |_| {
-                                    if let Ok(next) =
-                                        array_with_appended_item(&value.get(), serde_json::json!(0))
-                                    {
-                                        on_input.run(next);
-                                    }
-                                }
-                            }
-                        >
-                            "Add number"
-                        </button>
+                                >
+                                    {button_label}
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                        disabled=move || disabled.get()
+                                        on:click={
+                                            let value = value;
+                                            move |_| {
+                                                if let Ok(next) = array_with_appended_item(
+                                                    &value.get(),
+                                                    serde_json::Value::String(String::new()),
+                                                ) {
+                                                    on_input.run(next);
+                                                }
+                                            }
+                                        }
+                                    >
+                                        "Add text"
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                        disabled=move || disabled.get()
+                                        on:click={
+                                            let value = value;
+                                            move |_| {
+                                                if let Ok(next) = array_with_appended_item(
+                                                    &value.get(),
+                                                    serde_json::Value::Bool(false),
+                                                ) {
+                                                    on_input.run(next);
+                                                }
+                                            }
+                                        }
+                                    >
+                                        "Add flag"
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                        disabled=move || disabled.get()
+                                        on:click={
+                                            let value = value;
+                                            move |_| {
+                                                if let Ok(next) =
+                                                    array_with_appended_item(&value.get(), serde_json::json!(0))
+                                                {
+                                                    on_input.run(next);
+                                                }
+                                            }
+                                        }
+                                    >
+                                        "Add number"
+                                    </button>
+                                </>
+                            }.into_any()
+                        }}
                     </div>
                 </div>
                 <div class="mt-3 space-y-3">
-                    {move || match array_entries.get() {
+                    {move || {
+                        let array_item_shape_for_items = array_item_shape_for_items.get_value();
+                        match array_entries.get() {
                         Ok(items) if items.is_empty() => view! {
                             <p class="text-sm text-muted-foreground">
                                 "Array is empty. Use the quick actions to add top-level items."
@@ -1591,6 +1847,8 @@ fn StructuredArrayEditor(
                             .map(|(index, item_value)| {
                                 let kind = json_value_kind(&item_value).to_string();
                                 let preview = json_value_preview(&item_value);
+                                let mut item_path = Vec::new();
+                                item_path.push(JsonPathSegment::Index(index));
                                 view! {
                                     <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
                                         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1649,81 +1907,49 @@ fn StructuredArrayEditor(
                                             </div>
                                         </div>
                                         {match item_value {
-                                            serde_json::Value::String(current) => view! {
-                                                <input
-                                                    type="text"
-                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                                                    value=current
-                                                    disabled=move || disabled.get()
-                                                    on:input={
-                                                        let value = value;
-                                                        move |event| {
-                                                            if let Ok(next) = array_with_updated_item(
-                                                                &value.get(),
-                                                                index,
-                                                                serde_json::Value::String(event_target_value(&event)),
-                                                            ) {
-                                                                on_input.run(next);
-                                                            }
-                                                        }
-                                                    }
-                                                />
-                                            }.into_any(),
-                                            serde_json::Value::Bool(current) => view! {
-                                                <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
-                                                    <input
-                                                        type="checkbox"
-                                                        class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                                                        checked=current
-                                                        disabled=move || disabled.get()
-                                                        on:change={
+                                            scalar_value @ (serde_json::Value::String(_)
+                                            | serde_json::Value::Bool(_)
+                                            | serde_json::Value::Number(_)) => {
+                                                view! {
+                                                    {render_scalar_value_editor(
+                                                        scalar_value,
+                                                        array_item_shape_for_items.clone(),
+                                                        disabled,
+                                                        Callback::new({
                                                             let value = value;
-                                                            move |event| {
+                                                            move |next_value| {
                                                                 if let Ok(next) = array_with_updated_item(
                                                                     &value.get(),
                                                                     index,
-                                                                    serde_json::Value::Bool(event_target_checked(&event)),
+                                                                    next_value,
                                                                 ) {
                                                                     on_input.run(next);
                                                                 }
                                                             }
-                                                        }
-                                                    />
-                                                    <span>"Enabled"</span>
-                                                </label>
-                                            }.into_any(),
-                                            serde_json::Value::Number(current) => view! {
-                                                <input
-                                                    type="number"
-                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                                                    value=current.to_string()
-                                                    disabled=move || disabled.get()
-                                                    on:input={
-                                                        let value = value;
-                                                        move |event| {
-                                                            let raw = event_target_value(&event);
-                                                            let Ok(parsed) = raw.parse::<f64>() else {
-                                                                return;
-                                                            };
-                                                            let Some(number) = serde_json::Number::from_f64(parsed) else {
-                                                                return;
-                                                            };
-                                                            if let Ok(next) = array_with_updated_item(
-                                                                &value.get(),
-                                                                index,
-                                                                serde_json::Value::Number(number),
-                                                            ) {
-                                                                on_input.run(next);
-                                                            }
-                                                        }
-                                                    }
-                                                />
-                                            }.into_any(),
-                                            _ => view! {
-                                                <p class="text-sm text-muted-foreground">
-                                                    {format!("Nested {}: {}. Continue editing it in the JSON editor below.", kind, preview)}
-                                                </p>
-                                            }.into_any(),
+                                                        }),
+                                                    )}
+                                                }.into_any()
+                                            }
+                                            nested_value => {
+                                                let nested_path = item_path.clone();
+                                                let nested_shape = array_item_shape_for_items.clone();
+                                                view! {
+                                                    <>
+                                                        <p class="text-sm text-muted-foreground">
+                                                            {format!("Nested {}: {}.", kind, preview)}
+                                                        </p>
+                                                    {render_nested_json_children(
+                                                        "array".to_string(),
+                                                        value,
+                                                        nested_path,
+                                                        nested_value,
+                                                        nested_shape.or_else(|| array_item_shape_for_items.clone()),
+                                                        disabled,
+                                                        on_input,
+                                                    )}
+                                                    </>
+                                                }.into_any()
+                                            }
                                         }}
                                     </div>
                                 }
@@ -1731,7 +1957,7 @@ fn StructuredArrayEditor(
                             .collect_view()
                             .into_any(),
                         Err(_) => ().into_any(),
-                    }}
+                    }}}
                 </div>
             </div>
         </Show>
@@ -1742,6 +1968,8 @@ fn StructuredArrayEditor(
 fn ComplexSettingEditor(
     field_type: String,
     placeholder: &'static str,
+    array_item_type: Option<String>,
+    schema_shape: Option<serde_json::Value>,
     #[prop(into)] value: Signal<String>,
     #[prop(into)] disabled: Signal<bool>,
     on_input: Callback<String>,
@@ -1789,36 +2017,49 @@ fn ComplexSettingEditor(
                 </Show>
             </div>
             {if field_type == "object" {
-                view! { <StructuredObjectEditor value=value disabled=disabled on_input=on_input /> }.into_any()
+                view! { <StructuredObjectEditor value=value disabled=disabled object_shape=schema_shape.clone() on_input=on_input /> }.into_any()
             } else if field_type == "array" {
-                view! { <StructuredArrayEditor value=value disabled=disabled on_input=on_input /> }.into_any()
+                view! {
+                    <StructuredArrayEditor
+                        value=value
+                        disabled=disabled
+                        array_item_type=array_item_type.clone()
+                        array_item_shape=setting_shape_items(schema_shape.as_ref())
+                        on_input=on_input
+                    />
+                }.into_any()
             } else {
                 ().into_any()
             }}
-            {{
-                let field_type_for_nested = field_type.clone();
-                move || {
-                nested_root
-                    .get()
-                    .filter(|value| matches!(value, serde_json::Value::Object(_) | serde_json::Value::Array(_)))
-                    .map(|root| {
-                        view! {
-                            <div class="space-y-2 rounded-lg border border-border/60 bg-background/60 p-3">
-                                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                    "Nested editor"
-                                </p>
-                                {render_nested_json_children(
-                                    field_type_for_nested.clone(),
-                                    value,
-                                    Vec::new(),
-                                    root,
-                                    disabled,
-                                    on_input,
-                                )}
-                            </div>
-                        }
-                    })
-                }
+            {if matches!(field_type.as_str(), "json" | "any") {
+                {
+                    let field_type_for_nested = field_type.clone();
+                    move || {
+                    nested_root
+                        .get()
+                        .filter(|value| matches!(value, serde_json::Value::Object(_) | serde_json::Value::Array(_)))
+                        .map(|root| {
+                            view! {
+                                <div class="space-y-2 rounded-lg border border-border/60 bg-background/60 p-3">
+                                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                        "Nested editor"
+                                    </p>
+                                    {render_nested_json_children(
+                                        field_type_for_nested.clone(),
+                                        value,
+                                        Vec::new(),
+                                        root,
+                                        schema_shape.clone(),
+                                        disabled,
+                                        on_input,
+                                    )}
+                                </div>
+                            }
+                        })
+                    }
+                }.into_any()
+            } else {
+                ().into_any()
             }}
             <div class="flex flex-wrap items-center gap-2">
                 <button
@@ -2368,28 +2609,55 @@ pub fn ModuleDetailPanel(
 
                                                                 {match field_type.as_str() {
                                                                     "boolean" => {
-                                                                        let field_key_for_toggle = field_key.clone();
-                                                                        view! {
-                                                                            <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                                                                                    prop:checked=move || value_for_text() == "true"
+                                                                        if !field_options.is_empty() {
+                                                                            let field_key_for_select = field_key.clone();
+                                                                            let field_type_for_select = field_type.clone();
+                                                                            let options_for_select = field_options.clone();
+                                                                            view! {
+                                                                                <select
+                                                                                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                    prop:value=value_for_text
                                                                                     disabled=move || disabled.get()
                                                                                     on:change=move |event| {
                                                                                         on_settings_field_input.run((
-                                                                                            field_key_for_toggle.clone(),
-                                                                                            if event_target_checked(&event) {
-                                                                                                "true".to_string()
-                                                                                            } else {
-                                                                                                "false".to_string()
-                                                                                            },
+                                                                                            field_key_for_select.clone(),
+                                                                                            event_target_value(&event),
                                                                                         ))
                                                                                     }
-                                                                                />
-                                                                                <span>"Enabled"</span>
-                                                                            </label>
-                                                                        }.into_any()
+                                                                                >
+                                                                                    {options_for_select.into_iter().map(|option| {
+                                                                                        let option_value = setting_option_draft_value(&field_type_for_select, &option);
+                                                                                        let option_label = setting_option_label(&option);
+                                                                                        view! {
+                                                                                            <option value=option_value>{option_label}</option>
+                                                                                        }
+                                                                                    }).collect_view()}
+                                                                                </select>
+                                                                            }.into_any()
+                                                                        } else {
+                                                                            let field_key_for_toggle = field_key.clone();
+                                                                            view! {
+                                                                                <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
+                                                                                        prop:checked=move || value_for_text() == "true"
+                                                                                        disabled=move || disabled.get()
+                                                                                        on:change=move |event| {
+                                                                                            on_settings_field_input.run((
+                                                                                                field_key_for_toggle.clone(),
+                                                                                                if event_target_checked(&event) {
+                                                                                                    "true".to_string()
+                                                                                                } else {
+                                                                                                    "false".to_string()
+                                                                                                },
+                                                                                            ))
+                                                                                        }
+                                                                                    />
+                                                                                    <span>"Enabled"</span>
+                                                                                </label>
+                                                                            }.into_any()
+                                                                        }
                                                                     }
                                                                     "integer" | "number" => {
                                                                         if !field_options.is_empty() {
@@ -2444,6 +2712,8 @@ pub fn ModuleDetailPanel(
                                                                             <ComplexSettingEditor
                                                                                 field_type=field_type.clone()
                                                                                 placeholder=placeholder
+                                                                                array_item_type=field.item_type.clone()
+                                                                                schema_shape=field.shape.clone()
                                                                                 value=Signal::derive(value_for_text)
                                                                                 disabled=disabled
                                                                                 on_input=Callback::new(move |next| {

@@ -12,6 +12,8 @@ pub mod migrations;
 mod search;
 pub mod services;
 pub mod state_machine;
+mod storefront_channel;
+mod storefront_shipping;
 
 #[cfg(test)]
 extern crate self as rustok_commerce;

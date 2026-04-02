@@ -7,11 +7,11 @@ pub type ApiError = GraphqlHttpError;
 
 const BOOTSTRAP_QUERY: &str =
     "query CommerceAdminBootstrap { currentTenant { id slug name } me { id email name } }";
-const PRODUCTS_QUERY: &str = "query CommerceProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType tags createdAt publishedAt } } }";
-const PRODUCT_QUERY: &str = "query CommerceProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status vendor productType tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
-const CREATE_PRODUCT_MUTATION: &str = "mutation CommerceCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status vendor productType tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation CommerceUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status vendor productType tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
-const PUBLISH_PRODUCT_MUTATION: &str = "mutation CommercePublishProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { publishProduct(tenantId: $tenantId, userId: $userId, id: $id) { id status vendor productType tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const PRODUCTS_QUERY: &str = "query CommerceProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
+const PRODUCT_QUERY: &str = "query CommerceProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation CommerceCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation CommerceUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const PUBLISH_PRODUCT_MUTATION: &str = "mutation CommercePublishProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { publishProduct(tenantId: $tenantId, userId: $userId, id: $id) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation CommerceDeleteProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { deleteProduct(tenantId: $tenantId, userId: $userId, id: $id) }";
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +119,8 @@ struct CreateProductInput {
     vendor: Option<String>,
     #[serde(rename = "productType")]
     product_type: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    shipping_profile_slug: Option<String>,
     publish: Option<bool>,
 }
 
@@ -128,6 +130,8 @@ struct UpdateProductInput {
     vendor: Option<String>,
     #[serde(rename = "productType")]
     product_type: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    shipping_profile_slug: Option<String>,
     status: Option<String>,
 }
 
@@ -320,6 +324,7 @@ pub async fn update_product(
                     translations: Some(vec![build_translation_input(&draft)]),
                     vendor: optional_text(draft.vendor.as_str()),
                     product_type: optional_text(draft.product_type.as_str()),
+                    shipping_profile_slug: draft.shipping_profile_slug.clone(),
                     status: None,
                 },
             },
@@ -371,6 +376,7 @@ pub async fn change_product_status(
                     translations: None,
                     vendor: None,
                     product_type: None,
+                    shipping_profile_slug: None,
                     status: Some(status.to_string()),
                 },
             },
@@ -431,6 +437,7 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
         }],
         vendor: optional_text(draft.vendor.as_str()),
         product_type: optional_text(draft.product_type.as_str()),
+        shipping_profile_slug: draft.shipping_profile_slug,
         publish: Some(draft.publish_now),
     }
 }

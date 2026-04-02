@@ -1,9 +1,38 @@
+use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 use crate::model::{ProductDetail, ProductList, StorefrontCommerceData};
 
-pub type ApiError = GraphqlHttpError;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ApiError {
+    Graphql(String),
+    ServerFn(String),
+}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Graphql(error) => write!(f, "{error}"),
+            Self::ServerFn(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+impl From<GraphqlHttpError> for ApiError {
+    fn from(value: GraphqlHttpError) -> Self {
+        Self::Graphql(value.to_string())
+    }
+}
+
+impl From<ServerFnError> for ApiError {
+    fn from(value: ServerFnError) -> Self {
+        Self::ServerFn(value.to_string())
+    }
+}
 
 const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType tags createdAt publishedAt } } }";
 const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
@@ -90,9 +119,29 @@ where
         None,
     )
     .await
+    .map_err(ApiError::from)
 }
 
 pub async fn fetch_storefront_commerce(
+    selected_handle: Option<String>,
+    locale: Option<String>,
+) -> Result<StorefrontCommerceData, ApiError> {
+    match fetch_storefront_commerce_server(selected_handle.clone(), locale.clone()).await {
+        Ok(data) => Ok(data),
+        Err(_) => fetch_storefront_commerce_graphql(selected_handle, locale).await,
+    }
+}
+
+pub async fn fetch_storefront_commerce_server(
+    selected_handle: Option<String>,
+    locale: Option<String>,
+) -> Result<StorefrontCommerceData, ApiError> {
+    storefront_commerce_native(selected_handle, locale)
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn fetch_storefront_commerce_graphql(
     selected_handle: Option<String>,
     locale: Option<String>,
 ) -> Result<StorefrontCommerceData, ApiError> {
@@ -136,4 +185,24 @@ pub async fn fetch_storefront_commerce(
         selected_product,
         selected_handle: resolved_handle,
     })
+}
+
+#[server(prefix = "/api/fn", endpoint = "commerce/storefront-data")]
+async fn storefront_commerce_native(
+    selected_handle: Option<String>,
+    locale: Option<String>,
+) -> Result<StorefrontCommerceData, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        fetch_storefront_commerce_graphql(selected_handle, locale)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (selected_handle, locale);
+        Err(ServerFnError::new(
+            "commerce/storefront-data requires the `ssr` feature",
+        ))
+    }
 }

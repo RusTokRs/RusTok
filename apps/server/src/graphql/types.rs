@@ -10,7 +10,9 @@ use crate::graphql::loaders::TenantNameLoader;
 use crate::models::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
 use crate::models::release::{Model as ReleaseModel, ReleaseStatus};
 use crate::models::users;
-use crate::modules::{BuildExecutionPlan, InstalledManifestModule, ModuleSettingSpec};
+use crate::modules::{
+    module_setting_shape_value, BuildExecutionPlan, InstalledManifestModule, ModuleSettingSpec,
+};
 use crate::services::build_service::BuildEvent;
 use crate::services::rbac_service::RbacService;
 
@@ -207,10 +209,27 @@ pub struct ModuleSettingField {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub options: Vec<serde_json::Value>,
+    pub object_keys: Vec<String>,
+    pub item_type: Option<String>,
+    pub shape: Option<serde_json::Value>,
 }
 
 impl ModuleSettingField {
     pub fn from_spec(key: String, spec: &ModuleSettingSpec) -> Self {
+        let object_keys = if spec.properties.is_empty() {
+            spec.object_keys.clone()
+        } else {
+            let mut keys = spec.properties.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            keys
+        };
+        let item_type = spec
+            .items
+            .as_deref()
+            .map(|item| item.value_type.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| spec.item_type.clone());
+
         Self {
             key,
             value_type: spec.value_type.clone(),
@@ -220,6 +239,9 @@ impl ModuleSettingField {
             min: spec.min,
             max: spec.max,
             options: spec.options.clone(),
+            object_keys,
+            item_type,
+            shape: module_setting_shape_value(spec),
         }
     }
 }

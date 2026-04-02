@@ -71,7 +71,7 @@ pub struct SearchFilterPreset {
     pub ranking_profile: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SearchPreviewFilters {
     pub entity_types: Vec<String>,
     pub source_modules: Vec<String>,

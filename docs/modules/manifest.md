@@ -113,6 +113,24 @@ showAuthor = { type = "boolean", default = true }
 heroTitle = { type = "string", min = 3, max = 80 }
 ```
 
+Более богатый nested-контракт тоже поддерживается:
+
+```toml
+[settings]
+seo = { type = "object", properties = {
+  metaTitle = { type = "string", max = 80, description = "Tenant-specific SEO title override." },
+  indexable = { type = "boolean", default = true }
+} }
+
+contentBlocks = { type = "array", items = {
+  type = "object",
+  properties = {
+    kind = { type = "string", options = ["hero", "grid", "faq"] },
+    enabled = { type = "boolean", default = true }
+  }
+} }
+```
+
 Поддерживаемые `type`:
 
 - `string`

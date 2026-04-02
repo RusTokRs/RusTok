@@ -14,6 +14,9 @@
 - Orchestrate submodules of the ecommerce family through the compatibility layer.
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
 - Own store-context resolution across region, currency, and tenant locale policy.
+- Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
+- Apply metadata-backed shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation.
+- Expose first-class `shipping_profile_slug` on product create/update/read contracts while the underlying storage still uses the metadata-backed shipping profile shape.
 - Re-export the shared DTO/entity/error surface from `rustok-commerce-foundation`.
 - Re-export `CartService`, `CustomerService`, `CatalogService`, `PricingService`, `InventoryService`, `OrderService`, `PaymentService`, `FulfillmentService`, and `CheckoutService` from the split modules and orchestration layer.
 - Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
@@ -30,6 +33,7 @@
   `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment` as the default cart,
   customer, product, region, pricing, inventory, order, payment, and fulfillment submodules of the ecommerce family.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
+- Depends on `rustok-channel` for platform-level channel bindings and request-aware storefront visibility rules.
 - Depends on `rustok-outbox` and `rustok-events` for transactional domain-event publishing.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
 - `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned catalog control room mounted under `/modules/commerce`.

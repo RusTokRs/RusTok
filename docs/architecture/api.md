@@ -38,6 +38,11 @@ RusToK использует гибридный подход:
 - storefront GraphQL discovery surface теперь включает `storefrontRegions` и `storefrontShippingOptions`, причём `storefrontShippingOptions` уважает cart-context precedence и customer ownership так же, как live `/store/shipping-options`;
 - storefront GraphQL surface также включает mutations `createStorefrontPaymentCollection` и `completeStorefrontCheckout`, которые повторяют live semantics store REST для guest/customer cart access и reuse существующей cart-bound payment collection;
 - storefront GraphQL surface также покрывает базовый cart lifecycle: `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, `removeStorefrontCartLineItem`, с теми же guest/customer ownership и backend line-item resolution semantics, что и `/store/carts/*`;
+- storefront REST и storefront GraphQL теперь channel-aware поверх platform `ChannelContext`: если commerce не включён для request channel через `channel_module_bindings`, storefront surface отвечает как disabled module;
+- storefront catalog и shipping discovery используют metadata-based allowlist по `channel_slug`, а checkout/cart mutation path не пропускают товары и shipping options, скрытые для текущего channel context.
+- storefront product detail, cart line-item validation и checkout completion теперь также переоценивают product visibility и доступный inventory по видимым stock locations для текущего `channel_slug`.
+- storefront shipping discovery, cart context patch и checkout также используют metadata-backed shipping profile compatibility: `shipping_profile.slug` на product и `shipping_profiles.allowed_slugs` на shipping option.
+- admin/storefront product read contracts и admin write contracts теперь также знают first-class `shipping_profile_slug`; на текущем этапе он нормализуется в metadata-backed storage без отдельной product schema migration.
 - storefront GraphQL cart context patch `updateStorefrontCartContext` использует tri-state input contract (`omitted` vs `null` vs explicit value) и повторяет semantics live `POST /store/carts/{id}` без потери patch-значения;
 - storefront locale может приходить через `locale` query param и `x-medusa-locale`;
 - storefront cart line items описываются как `variant_id + quantity`, а title/price резолвятся backend-ом;

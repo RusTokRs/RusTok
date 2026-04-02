@@ -102,23 +102,44 @@ impl Hooks for App {
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        let routes = AppRoutes::with_default_routes()
-            .add_route(controllers::health::routes())
-            .add_route(controllers::marketplace_registry::routes())
-            .add_route(controllers::metrics::routes())
-            .add_route(controllers::swagger::routes())
-            .add_route(controllers::admin_events::routes())
-            .add_route(controllers::auth::routes())
-            .add_route(controllers::channel::routes())
-            .add_route(controllers::graphql::routes())
-            .add_route(controllers::mcp::routes())
-            .add_route(controllers::oauth::routes())
-            .add_route(controllers::oauth_metadata::routes())
-            .add_route(controllers::users::routes());
+        let registry_only = _ctx
+            .config
+            .settings
+            .as_ref()
+            .and_then(|_| RustokSettings::from_settings(&_ctx.config.settings).ok())
+            .is_some_and(|settings| settings.runtime.is_registry_only());
 
-        let mut routes = routes_codegen::append_optional_module_routes(routes);
+        let routes = if registry_only {
+            AppRoutes::with_default_routes()
+                .add_route(controllers::health::routes())
+                .add_route(controllers::marketplace_registry::routes())
+                .add_route(controllers::metrics::routes())
+                .add_route(controllers::swagger::routes())
+        } else {
+            AppRoutes::with_default_routes()
+                .add_route(controllers::health::routes())
+                .add_route(controllers::marketplace_registry::routes())
+                .add_route(controllers::metrics::routes())
+                .add_route(controllers::swagger::routes())
+                .add_route(controllers::admin_events::routes())
+                .add_route(controllers::auth::routes())
+                .add_route(controllers::channel::routes())
+                .add_route(controllers::graphql::routes())
+                .add_route(controllers::mcp::routes())
+                .add_route(controllers::oauth::routes())
+                .add_route(controllers::oauth_metadata::routes())
+                .add_route(controllers::users::routes())
+        };
 
-        routes = routes.add_route(channels::builds::routes());
+        let mut routes = if registry_only {
+            routes
+        } else {
+            routes_codegen::append_optional_module_routes(routes)
+        };
+
+        if !registry_only {
+            routes = routes.add_route(channels::builds::routes());
+        }
 
         routes
     }
@@ -334,5 +355,399 @@ mod tests {
         assert!(modules
             .iter()
             .all(|module| module["ownership"] == "first_party"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_detail_endpoint_serves_module_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry catalog detail smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog/blog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("v1 catalog detail request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v1 catalog detail body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v1/catalog/blog response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v1 catalog detail payload should be valid json");
+
+        assert_eq!(payload["slug"], "blog");
+        assert_eq!(payload["source"], "registry");
+        assert_eq!(payload["ownership"], "first_party");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_endpoint_supports_query_filters() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry catalog filter smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog?search=blog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("v1 catalog filtered request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v1 catalog filtered body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v1/catalog?search=blog response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value = serde_json::from_slice(&body)
+            .expect("v1 catalog filtered payload should be valid json");
+        let modules = payload["modules"]
+            .as_array()
+            .expect("v1 catalog filtered response should return modules array");
+
+        assert!(
+            !modules.is_empty(),
+            "filtered v1 catalog should not be empty"
+        );
+        assert!(modules.iter().all(|module| {
+            module["slug"]
+                .as_str()
+                .is_some_and(|slug| slug.eq_ignore_ascii_case("blog"))
+        }));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_endpoint_supports_limit_and_offset() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry catalog pagination smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog?limit=1&offset=1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("v1 catalog paged request should succeed");
+        let status = response.status();
+        let total_count = response
+            .headers()
+            .get("x-total-count")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<usize>().ok())
+            .expect("v1 catalog paged response should include x-total-count header");
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v1 catalog paged body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v1/catalog?limit=1&offset=1 response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v1 catalog paged payload should be valid json");
+        let modules = payload["modules"]
+            .as_array()
+            .expect("v1 catalog paged response should return modules array");
+
+        assert_eq!(modules.len(), 1, "paged v1 catalog should honor limit=1");
+        assert!(
+            total_count >= modules.len(),
+            "x-total-count should describe the full filtered collection"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_endpoint_is_sorted_by_slug_for_stable_paging() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry catalog sort smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("v1 catalog sorted request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v1 catalog sorted body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v1/catalog sorted response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v1 catalog sorted payload should be valid json");
+        let modules = payload["modules"]
+            .as_array()
+            .expect("v1 catalog sorted response should return modules array");
+        let slugs = modules
+            .iter()
+            .filter_map(|module| module["slug"].as_str())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let mut sorted_slugs = slugs.clone();
+        sorted_slugs.sort();
+
+        assert_eq!(
+            slugs, sorted_slugs,
+            "v1 catalog should use stable slug ordering for pagination"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_endpoint_honors_if_none_match() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry cache smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let first_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog?limit=1")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("initial v1 catalog cache request should succeed");
+        let first_status = first_response.status();
+        let etag = first_response
+            .headers()
+            .get("etag")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
+            .expect("initial v1 catalog cache response should include etag");
+        let total_count = first_response
+            .headers()
+            .get("x-total-count")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
+            .expect("initial v1 catalog cache response should include x-total-count");
+        assert_eq!(first_status, StatusCode::OK);
+
+        let second_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog?limit=1")
+                    .header("if-none-match", etag.as_str())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("conditional v1 catalog request should succeed");
+        let second_status = second_response.status();
+        let second_etag = second_response
+            .headers()
+            .get("etag")
+            .and_then(|value| value.to_str().ok())
+            .expect("conditional v1 catalog response should keep etag");
+        let second_total_count = second_response
+            .headers()
+            .get("x-total-count")
+            .and_then(|value| value.to_str().ok())
+            .expect("conditional v1 catalog response should keep x-total-count");
+        let second_cache_control = second_response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            .expect("conditional v1 catalog response should keep cache-control");
+        let second_body = to_bytes(second_response.into_body(), usize::MAX)
+            .await
+            .expect("conditional v1 catalog body should read");
+
+        assert_eq!(second_status, StatusCode::NOT_MODIFIED);
+        assert_eq!(second_etag, etag);
+        assert_eq!(second_total_count, total_count);
+        assert_eq!(second_cache_control, "public, max-age=60");
+        assert!(
+            second_body.is_empty(),
+            "304 response should not include catalog body"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_only_host_mode_limits_exposed_surface() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry-only smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "runtime": {
+                    "host_mode": "registry_only"
+                },
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("registry-only base router should build");
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("registry-only after_routes should wire runtime");
+
+        let catalog_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only catalog request should succeed");
+        assert_eq!(catalog_response.status(), StatusCode::OK);
+
+        let graphql_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graphql")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only graphql request should complete");
+        assert_eq!(graphql_response.status(), StatusCode::NOT_FOUND);
+
+        let auth_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only auth request should complete");
+        assert_eq!(auth_response.status(), StatusCode::NOT_FOUND);
+
+        let admin_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/admin")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only admin request should complete");
+        assert_eq!(admin_response.status(), StatusCode::NOT_FOUND);
     }
 }

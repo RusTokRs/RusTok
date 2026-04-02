@@ -13,7 +13,9 @@
 ## Interactions
 
 - Used by `apps/storefront` through manifest-driven generated wiring.
-- Uses the pages module GraphQL read contract plus shared `UiRouteContext` to render a slug-selected page and a small page directory.
+- Uses dual-path data access: native Leptos `#[server]` functions first, then GraphQL fallback.
+- Native `#[server]` path goes from the storefront host into `PageService` and DB without removing GraphQL.
+- Keeps the pages module GraphQL read contract active in parallel with the native path while rendering a slug-selected page and a small page directory.
 - Follows the generic storefront host contract: slots plus `/modules/:route_segment`.
 
 ## Entry points

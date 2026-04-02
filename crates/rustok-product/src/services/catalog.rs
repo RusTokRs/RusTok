@@ -70,8 +70,11 @@ impl CatalogService {
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
-        let (normalized_metadata, normalized_tags) =
-            Self::normalize_create_product_tags(input.tags.clone(), input.metadata.clone());
+        let (normalized_metadata, normalized_tags) = Self::normalize_create_product_metadata(
+            input.tags.clone(),
+            input.shipping_profile_slug.clone(),
+            input.metadata.clone(),
+        );
 
         let txn = self.db.begin().await?;
 
@@ -554,6 +557,7 @@ impl CatalogService {
             status: product.status,
             vendor: product.vendor,
             product_type: product.product_type,
+            shipping_profile_slug: Self::extract_shipping_profile_slug(&product.metadata),
             tags: product_tags.tags,
             metadata: Self::strip_metadata_tags(product.metadata.clone()),
             created_at: product.created_at.into(),
@@ -653,8 +657,9 @@ impl CatalogService {
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.updated_at = Set(Utc::now().into());
 
-        let metadata_update = Self::normalize_update_product_tags(
+        let metadata_update = Self::normalize_update_product_metadata(
             input.tags.clone(),
+            input.shipping_profile_slug.clone(),
             input.metadata.clone(),
             existing_product.metadata.clone(),
         );
@@ -1108,36 +1113,115 @@ impl CatalogService {
         metadata
     }
 
-    fn normalize_create_product_tags(
+    fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
+        let normalized = value.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    }
+
+    fn extract_shipping_profile_slug(metadata: &Value) -> Option<String> {
+        metadata
+            .get("shipping_profile")
+            .and_then(|profile| profile.get("slug"))
+            .and_then(Value::as_str)
+            .and_then(Self::normalize_shipping_profile_slug)
+            .or_else(|| {
+                metadata
+                    .get("shipping_profile_slug")
+                    .and_then(Value::as_str)
+                    .and_then(Self::normalize_shipping_profile_slug)
+            })
+    }
+
+    fn apply_shipping_profile_to_metadata(
+        mut metadata: Value,
+        shipping_profile_slug: Option<String>,
+    ) -> Value {
+        let normalized_slug =
+            shipping_profile_slug.and_then(|value| Self::normalize_shipping_profile_slug(&value));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+
+        if let Some(object) = metadata.as_object_mut() {
+            object.remove("shipping_profile_slug");
+            match normalized_slug {
+                Some(slug) => {
+                    object.insert(
+                        "shipping_profile".to_string(),
+                        serde_json::json!({ "slug": slug }),
+                    );
+                }
+                None => {
+                    object.remove("shipping_profile");
+                }
+            }
+        }
+
+        metadata
+    }
+
+    fn normalize_create_product_metadata(
         input_tags: Vec<String>,
+        shipping_profile_slug: Option<String>,
         metadata: Value,
     ) -> (Value, Option<Vec<String>>) {
         let normalized_input_tags = Self::normalize_tag_names(&input_tags);
         (
-            Self::strip_metadata_tags(metadata),
+            Self::apply_shipping_profile_to_metadata(
+                Self::strip_metadata_tags(metadata),
+                shipping_profile_slug,
+            ),
             Some(normalized_input_tags),
         )
     }
 
-    fn normalize_update_product_tags(
+    fn normalize_update_product_metadata(
         input_tags: Option<Vec<String>>,
+        shipping_profile_slug: Option<String>,
         metadata: Option<Value>,
         existing_metadata: Value,
     ) -> Option<(Value, Option<Vec<String>>)> {
-        match (input_tags, metadata) {
-            (Some(tags), Some(metadata)) => {
-                let normalized_tags = Self::normalize_tag_names(&tags);
-                Some((Self::strip_metadata_tags(metadata), Some(normalized_tags)))
-            }
-            (Some(tags), None) => {
+        match (input_tags, shipping_profile_slug, metadata) {
+            (Some(tags), profile_slug, Some(metadata)) => {
                 let normalized_tags = Self::normalize_tag_names(&tags);
                 Some((
-                    Self::strip_metadata_tags(existing_metadata),
+                    Self::apply_shipping_profile_to_metadata(
+                        Self::strip_metadata_tags(metadata),
+                        profile_slug,
+                    ),
                     Some(normalized_tags),
                 ))
             }
-            (None, Some(metadata)) => Some((Self::strip_metadata_tags(metadata), None)),
-            (None, None) => None,
+            (Some(tags), profile_slug, None) => {
+                let normalized_tags = Self::normalize_tag_names(&tags);
+                Some((
+                    Self::apply_shipping_profile_to_metadata(
+                        Self::strip_metadata_tags(existing_metadata),
+                        profile_slug,
+                    ),
+                    Some(normalized_tags),
+                ))
+            }
+            (None, Some(profile_slug), Some(metadata)) => Some((
+                Self::apply_shipping_profile_to_metadata(
+                    Self::strip_metadata_tags(metadata),
+                    Some(profile_slug),
+                ),
+                None,
+            )),
+            (None, Some(profile_slug), None) => Some((
+                Self::apply_shipping_profile_to_metadata(
+                    Self::strip_metadata_tags(existing_metadata),
+                    Some(profile_slug),
+                ),
+                None,
+            )),
+            (None, None, Some(metadata)) => Some((Self::strip_metadata_tags(metadata), None)),
+            (None, None, None) => None,
         }
     }
 

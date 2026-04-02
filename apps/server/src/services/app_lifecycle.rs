@@ -76,6 +76,11 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     let settings = RustokSettings::from_settings(&ctx.config.settings)
         .map_err(|error| Error::Message(format!("Invalid rustok settings: {error}")))?;
 
+    if settings.runtime.is_registry_only() {
+        tracing::info!("Skipping background workers for registry-only host mode");
+        return Ok(());
+    }
+
     // Register graceful-shutdown handle if not already present.
     if !ctx.shared_store.contains::<StopHandle>() {
         let (handle, _rx) = StopHandle::new();

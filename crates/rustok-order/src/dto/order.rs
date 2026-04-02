@@ -68,6 +68,8 @@ pub struct CancelOrderInput {
 pub struct OrderResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
     pub customer_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,

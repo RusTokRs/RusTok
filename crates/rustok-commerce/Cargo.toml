@@ -28,6 +28,7 @@ sea-orm-migration.workspace = true
 chrono.workspace = true
 loco-rs.workspace = true
 rustok-api.workspace = true
+rustok-channel.workspace = true
 rustok-telemetry.workspace = true
 serde.workspace = true
 serde_json.workspace = true

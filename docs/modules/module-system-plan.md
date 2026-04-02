@@ -29,9 +29,9 @@
 - ✅ Основные GraphQL/REST адаптеры уже вынесены из `apps/server` в crate-ы модулей, а `apps/server` удерживает роль composition root.
 - ✅ Build/release pipeline теперь исполняет полный manifest-derived план: `cargo build` для `apps/server`, `trunk build` для `apps/admin` и `cargo build -p rustok-storefront` для Leptos storefront; filesystem/container backend публикуют реальные `server`/`admin`/`storefront` артефакты и заполняют отдельные artifact URLs, а `container` дополнительно поддерживает generic rollout hook без знания о конкретном orchestrator.
 - ✅ `ManifestManager` теперь валидирует не только metadata path-модулей и admin-surface конфликты, но и semver-диапазоны зависимостей, product/runtime-конфликты модулей и ошибки schema-driven module settings contract.
-- ✅ `updateModuleSettings` теперь закрыт end-to-end: GraphQL mutation и `/modules` в Leptos Admin валидируют payload по `[settings]` из `rustok-module.toml`, применяют `default`, рендерят typed controls для scalar-полей, top-level structured editor и deep nested editor с create-actions / key rename / array reorder для `object` / `array`, и per-field JSON editors с helper-actions (`Format JSON`, `Reset`, `Add property/item`) для complex values.
+- ✅ `updateModuleSettings` теперь закрыт end-to-end: GraphQL mutation и `/modules` в Leptos Admin валидируют payload по `[settings]` из `rustok-module.toml`, применяют `default`, рендерят typed controls для scalar-полей, top-level structured editor и deep nested editor с create-actions / key rename / array reorder для `object` / `array`, а recursive `shape` (`properties` / `items`) уже направляет schema-driven add actions и schema-locked object keys не только наверху, но и внутри nested JSON tree; nested `object` / `array` children уже редактируются inline в structured editors, а nested scalar children начинают уважать child `type`, `options`, `min` и `max`. Per-field JSON editors с helper-actions (`Format JSON`, `Reset`, `Add property/item`) остаются для complex values и schema-less fallback.
 - ✅ `buildProgress` теперь работает end-to-end: `apps/server` поднимает GraphQL WS transport на `/api/graphql/ws`, а `/modules` в `apps/admin` подписывается на live progress и держит polling только как fallback.
-- ⚠️ Read-only registry V1 теперь имеет референсную server-side реализацию: `apps/server` публикует schema-versioned `GET /v1/catalog` (с legacy alias `GET /catalog`), payload уже несёт module `name` / `description`, manifest-driven `category` / `tags` и optional visual metadata (`icon`, `banner`, `screenshots`) для registry-only UX, endpoint включён в host OpenAPI как часть внешнего API-контракта, а `RegistryMarketplaceProvider` ходит в V1-path и откатывается на legacy path только как backward-compatible fallback. Отдельный `modules.rustok.dev` deployment и publish/governance слой всё ещё не подняты.
+- ⚠️ Read-only registry V1 теперь имеет референсную server-side реализацию: `apps/server` публикует schema-versioned list/detail contract `GET /v1/catalog` и `GET /v1/catalog/{slug}` (с legacy aliases под `GET /catalog`), list endpoint уже поддерживает optional query filters `search`, `category`, `tag` и page-window `limit` / `offset`, а также `X-Total-Count`, а итоговая выдача стабильно сортируется по `slug`, payload уже несёт module `name` / `description`, manifest-driven `category` / `tags` и optional visual metadata (`icon`, `banner`, `screenshots`) для registry-only UX, endpoints включены в host OpenAPI как часть внешнего API-контракта, причём cache/paging headers теперь тоже задокументированы в спецификации, endpoints отдают `ETag` + `Cache-Control` и уважают `If-None-Match` / `304 Not Modified`, `RegistryMarketplaceProvider` ходит в V1 list-path и откатывается на legacy path только как backward-compatible fallback, single-module consumer path (`MarketplaceCatalogService::get_module` / GraphQL `marketplaceModule`) уже использует detail-aware lookup вместо обязательной полной загрузки каталога, а list consumer path теперь тоже умеет прокидывать shared catalog query в provider chain, чтобы registry-backed discovery не тянул полный каталог без необходимости. GraphQL `marketplace` и `/modules` filter bar теперь тоже экспонируют `tag`, так что provider-side narrowing доступен не только HTTP registry contract, но и операторскому UI. Поверх этого `apps/server` уже умеет работать в `settings.rustok.runtime.host_mode = "registry_only"` как выделенный read-only catalog host: остаются только `health` / `metrics` / `swagger` / registry routes, deployment surface принудительно становится `HeadlessApi`, background workers не поднимаются, optional module routes не добавляются, а GraphQL/auth/MCP/admin/storefront shell не экспонируются; `/health/ready` при этом уже выровнен под этот reduced surface и не требует event/search/module runtime, которых у dedicated catalog host нет по определению. Отдельный `modules.rustok.dev` deployment и publish/governance слой всё ещё не подняты.
 - ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, а `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections и generic route `/modules/{route_segment}`. По факту кода dual-surface Leptos exemplar-ами теперь являются `blog`, `commerce`, `forum`, `pages` и `search`; admin-only manifest-wired slice уже есть у `workflow` и `channel`. Перенос остальных модулей и внешний registry всё ещё открыты.
 
 > [!NOTE]
@@ -53,7 +53,7 @@
 | `[conflicts]` | несовместимые модули | ✅ парсится и валидируется как product/runtime conflict |
 | `[crate]` | name, entry_type | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 | `[provides]` | graphql/http entry points, `admin_ui`, `storefront_ui`, nested admin pages | ✅ server/admin/storefront codegen уже читает эти секции; richer UI contract остаётся эволюционной темой |
-| `[settings]` | схема настроек модуля (`type`, `default`, `min`, `max`, `options`) | ✅ парсится, валидируется и рендерится в `/modules` как schema-driven form; scalar `options` уже дают typed `select`, raw JSON остаётся только для модулей без schema |
+| `[settings]` | схема настроек модуля (`type`, `default`, `min`, `max`, `options`, `object_keys`, `item_type`, `properties`, `items`) | ✅ парсится, валидируется и рендерится в `/modules` как schema-driven form; scalar `options` уже дают typed `select`, recursive nested metadata (`properties` / `items`) уже доходит до host как `shape`, а object/array editors используют её и на top-level, и внутри nested JSON tree для schema-driven add actions, schema-locked keys, inline nested child editors и nested scalar controls по child `type` / `options` / `min` / `max`; raw JSON остаётся только для модулей без schema |
 | `[locales]` | supported, default | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 
 **Р¤Р°Р№Р»С‹**:
@@ -228,8 +228,8 @@ async fn update_module_settings(
 
 **Что остаётся**:
 
-- richer field metadata для nested object contracts, если понадобится не просто JSON editor, а полноценно вложенная форма; scalar `options` уже можно рендерить как typed `select`, так что этот остаток теперь в основном про nested/object shape metadata;
-- richer nested schema metadata для object/array children, если понадобится уйти от generic JSON-tree UX к полностью type-directed subforms;
+- richer field metadata для nested object contracts, если понадобится не просто JSON editor, а полноценно вложенная форма; scalar `options`, `object_keys`, `item_type`, `properties` и `items` уже дают typed `select`, recursive shape contract, deep schema-driven add actions, schema-locked nested keys, inline nested child editors и nested scalar controls по child constraints, так что этот остаток теперь в основном про fully type-directed child controls beyond current generic JSON tree;
+- richer nested schema metadata для object/array children, если понадобится уйти от generic JSON-tree UX к полностью type-directed subforms beyond current recursive `shape` propagation;
 - при желании отдельный read/query contract, чтобы другие admin surfaces рендерили форму из того же server-side schema source of truth.
 
 ---
@@ -415,7 +415,7 @@ buildHistory(limit: Int, offset: Int): [BuildJob!]!
 ```
 MarketplaceCatalogService
   в”њв”Ђ LocalManifestMarketplaceProvider   в†’ РІСЃС‚СЂРѕРµРЅРЅС‹Рµ path-РјРѕРґСѓР»Рё РёР· modules.toml
-  в””в”Ђ RegistryMarketplaceProvider        в†’ РІРЅРµС€РЅРёР№ СЂРµРµСЃС‚СЂ (RUSTOK_MARKETPLACE_REGISTRY_URL, `GET /v1/catalog`)
+  в””в”Ђ RegistryMarketplaceProvider        в†’ РІРЅРµС€РЅРёР№ СЂРµРµСЃС‚СЂ (RUSTOK_MARKETPLACE_REGISTRY_URL, `GET /v1/catalog`, detail `GET /v1/catalog/{slug}`, shared query forwarding)
        в””в”Ђ moka cache (TTL: RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS, default 60s)
 ```
 
@@ -438,6 +438,7 @@ MarketplaceCatalogService
 marketplace(
   search: String
   category: String
+  tag: String
   source: String          # "path" | "registry" | "git"
   installed: Boolean
   trust_level: String     # "core" | "verified" | "unverified" | "private"
@@ -465,17 +466,18 @@ marketplaceModule(slug: String!): MarketplaceModule
 ### ⚠️ Внешний реестр `modules.rustok.dev`
 
 `RegistryMarketplaceProvider` уже ходит в schema-versioned `GET /v1/catalog` и сохраняет
-legacy fallback на `GET /catalog`, а `apps/server` теперь публикует этот read-only контракт как
+legacy fallback на `GET /catalog`, а `apps/server` теперь публикует этот list/detail read-only контракт как
 референсную реализацию для first-party модулей. Отдельный внешний сервис и publish/governance
 слой всё ещё не существуют.
 
 **Scope V1** (read-only, first-party РјРѕРґСѓР»Рё):
 ```
 modules.rustok.dev
-в””в”Ђв”Ђ GET /v1/catalog в†’ [{ slug, name, version, ... }]
+в”њв”Ђ GET /v1/catalog в†’ [{ slug, name, version, ... }] + filters + `limit/offset` + `X-Total-Count`
+в””в”Ђ GET /v1/catalog/{slug} в†’ { slug, name, version, ... }
 ```
 Позволяет проверить весь `RegistryMarketplaceProvider` → AdminUI flow, включая registry-only `name` / `description` metadata. В текущем workspace этот
-контракт можно локально поднять через `apps/server`, но dedicated host ещё не выделен.
+контракт уже можно локально поднять через `apps/server` в режиме `settings.rustok.runtime.host_mode = "registry_only"`, причём readiness в этом режиме уже не ждёт event/search/module runtime, но отдельный `modules.rustok.dev` deployment и операционный rollout для него ещё не выделены. HTTP-слой уже cache-friendly: `ETag`, `Cache-Control`, `If-None-Match`, `304 Not Modified`.
 
 **Scope V2** (РїРѕР»РЅС‹Р№):
 ```
@@ -497,7 +499,7 @@ modules.rustok.dev
 |---|---|
 | РЎРїРёСЃРѕРє СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… РјРѕРґСѓР»РµР№ (`modules` query) | вњ… |
 | РљР°С‚Р°Р»РѕРі РјР°СЂРєРµС‚РїР»РµР№СЃР° (`marketplace` query) | вњ… |
-| Р¤РёР»СЊС‚СЂС‹: РїРѕРёСЃРє, РєР°С‚РµРіРѕСЂРёСЏ, trust level, compatibility | вњ… |
+| Р¤РёР»СЊС‚СЂС‹: РїРѕРёСЃРє, РєР°С‚РµРіРѕСЂРёСЏ, tag, trust level, compatibility | вњ… |
 | Р”РµС‚Р°Р»СЊРЅР°СЏ РїР°РЅРµР»СЊ `marketplaceModule(slug)` | ✅ включает operator-facing metadata readiness hints для registry/publish flow |
 | Deep-link `?module=slug` | вњ… |
 | Install / Uninstall РєРЅРѕРїРєРё в†’ `installModule` / `uninstallModule` | вњ… |
@@ -797,7 +799,7 @@ page_title    = "Search"
 | **1** | **Довести manifest-wired Leptos UI coverage до последовательного состояния** | Большая | Критическая — dual-surface exemplar-ы уже есть у `blog`, `commerce`, `forum`, `pages`, `search`; admin-only slice сейчас осознанно остаётся у `workflow` и `channel`, но у остальных модулей отсутствие manifest registration всё ещё не должно маскироваться наличием подпапки или отдельного crate |
 | 2 | Внешний реестр V1 (read-only catalog) | Большая | Высокая — фундамент marketplace |
 | 3 | Внешний реестр V2 + publish/governance | Очень большая | Средняя — следующий шаг после read-only каталога |
-| 4 | richer nested schema metadata для type-directed subforms beyond generic JSON tree | Средняя | Средняя — текущий editor уже рабочий, но nested contracts пока не описывают shape/items декларативно |
+| 4 | richer nested schema metadata для type-directed subforms beyond generic JSON tree | Средняя | Средняя — текущий editor уже рабочий, recursive `shape` уже доходит до deep JSON tree и даёт schema-driven add actions / key locking, nested child editors уже встроены inline, а nested scalar controls уже уважают child `type` / `options` / bounds; основной остаток теперь в fully type-directed child forms для complex descendants |
 
 > П. 3 остаётся текущим UI/extensibility блоком: после закрытия nested admin contract главный остаток — перевести больше модулей в publishable пакеты без scaffold-only результата.
 

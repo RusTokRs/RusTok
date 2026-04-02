@@ -77,6 +77,27 @@ struct ReadinessResponse {
     degraded_reasons: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReadinessProfile {
+    registry_only: bool,
+}
+
+impl ReadinessProfile {
+    fn from_settings(settings: &RustokSettings) -> Self {
+        Self {
+            registry_only: settings.runtime.is_registry_only(),
+        }
+    }
+
+    fn includes_runtime_dependencies(self) -> bool {
+        !self.registry_only
+    }
+
+    fn includes_module_health(self) -> bool {
+        !self.registry_only
+    }
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ModuleHealth {
     pub slug: String,
@@ -142,6 +163,7 @@ pub async fn ready(
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
     let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+    let profile = ReadinessProfile::from_settings(&settings);
 
     let mut checks = vec![
         run_guarded_check(
@@ -158,85 +180,126 @@ pub async fn ready(
             || check_cache_backend(&ctx),
         )
         .await,
-        run_guarded_check(
-            "tenant_cache_invalidation",
-            DependencyCriticality::NonCritical,
-            "dependency",
-            || check_tenant_invalidation_listener(&ctx),
-        )
-        .await,
-        run_guarded_check(
-            "event_transport",
-            DependencyCriticality::Critical,
-            "dependency",
-            || check_event_transport(&ctx),
-        )
-        .await,
     ];
 
-    if settings.rate_limit.enabled {
+    if profile.includes_runtime_dependencies() {
         checks.push(
             run_guarded_check(
-                "rate_limit:api",
-                DependencyCriticality::Critical,
+                "tenant_cache_invalidation",
+                DependencyCriticality::NonCritical,
                 "dependency",
-                || check_rate_limit_backend(&ctx, "api"),
+                || check_tenant_invalidation_listener(&ctx),
             )
             .await,
         );
         checks.push(
             run_guarded_check(
-                "rate_limit:auth",
+                "event_transport",
                 DependencyCriticality::Critical,
                 "dependency",
-                || check_rate_limit_backend(&ctx, "auth"),
+                || check_event_transport(&ctx),
             )
             .await,
         );
+
+        if settings.rate_limit.enabled {
+            checks.push(
+                run_guarded_check(
+                    "rate_limit:api",
+                    DependencyCriticality::Critical,
+                    "dependency",
+                    || check_rate_limit_backend(&ctx, "api"),
+                )
+                .await,
+            );
+            checks.push(
+                run_guarded_check(
+                    "rate_limit:auth",
+                    DependencyCriticality::Critical,
+                    "dependency",
+                    || check_rate_limit_backend(&ctx, "auth"),
+                )
+                .await,
+            );
+            checks.push(
+                run_guarded_check(
+                    "rate_limit:oauth",
+                    DependencyCriticality::Critical,
+                    "dependency",
+                    || check_rate_limit_backend(&ctx, "oauth"),
+                )
+                .await,
+            );
+        }
+
         checks.push(
             run_guarded_check(
-                "rate_limit:oauth",
-                DependencyCriticality::Critical,
+                "search_backend",
+                DependencyCriticality::NonCritical,
                 "dependency",
-                || check_rate_limit_backend(&ctx, "oauth"),
+                || async {
+                    let (host, port) = parse_host_port(&settings.search.url)?;
+                    TcpStream::connect((host.as_str(), port))
+                        .await
+                        .map(|_| ())
+                        .map_err(|error| format!("search connect error: {error}"))
+                },
             )
             .await,
         );
+        checks.push(check_runtime_guardrails(&ctx).await);
+
+        #[cfg(feature = "mod-media")]
+        checks.push(
+            run_guarded_check(
+                "storage",
+                DependencyCriticality::NonCritical,
+                "dependency",
+                || check_storage_backend(&ctx),
+            )
+            .await,
+        );
+    } else {
+        checks.push(ReadinessCheck {
+            name: "host_mode".to_string(),
+            kind: "runtime",
+            criticality: DependencyCriticality::NonCritical,
+            status: ReadinessStatus::Ok,
+            latency_ms: 0,
+            reason: Some("registry_only host mode skips runtime-only readiness checks".to_string()),
+        });
     }
 
-    checks.push(check_runtime_guardrails(&ctx).await);
-    checks.push(check_search_backend(&settings.search).await);
-
-    #[cfg(feature = "mod-media")]
-    checks.push(
-        run_guarded_check(
-            "storage",
-            DependencyCriticality::NonCritical,
-            "dependency",
-            || check_storage_backend(&ctx),
-        )
-        .await,
-    );
-
     let mut module_checks = Vec::new();
-    for module in registry.modules() {
-        let criticality = if CRITICAL_MODULES.contains(&module.slug()) {
-            DependencyCriticality::Critical
-        } else {
-            DependencyCriticality::NonCritical
-        };
+    if profile.includes_module_health() {
+        for module in registry.modules() {
+            let criticality = if CRITICAL_MODULES.contains(&module.slug()) {
+                DependencyCriticality::Critical
+            } else {
+                DependencyCriticality::NonCritical
+            };
 
-        let slug = module.slug().to_string();
-        let module_name = format!("module:{slug}");
-        let module_health = run_guarded_check(&module_name, criticality, "module", || async {
-            match module.health().await {
-                HealthStatus::Healthy => Ok(()),
-                HealthStatus::Degraded => Err("module reported degraded".to_string()),
-                HealthStatus::Unhealthy => Err("module reported unhealthy".to_string()),
-            }
-        })
-        .await;
-        module_checks.push(module_health);
+            let slug = module.slug().to_string();
+            let module_name = format!("module:{slug}");
+            let module_health = run_guarded_check(&module_name, criticality, "module", || async {
+                match module.health().await {
+                    HealthStatus::Healthy => Ok(()),
+                    HealthStatus::Degraded => Err("module reported degraded".to_string()),
+                    HealthStatus::Unhealthy => Err("module reported unhealthy".to_string()),
+                }
+            })
+            .await;
+            module_checks.push(module_health);
+        }
+    } else {
+        module_checks.push(ReadinessCheck {
+            name: "module_runtime".to_string(),
+            kind: "module",
+            criticality: DependencyCriticality::NonCritical,
+            status: ReadinessStatus::Ok,
+            latency_ms: 0,
+            reason: Some("registry_only host mode skips module health gating".to_string()),
+        });
     }
 
     let status = aggregate_status(&checks, &module_checks);
@@ -422,33 +485,6 @@ async fn check_rate_limit_backend(
             .map_err(|error| format!("oauth rate-limit backend check failed: {error}")),
         _ => Err(format!("unknown rate-limit namespace: {namespace}")),
     }
-}
-
-async fn check_search_backend(search: &crate::common::settings::SearchSettings) -> ReadinessCheck {
-    if !search.enabled {
-        return ReadinessCheck {
-            name: "search_backend".to_string(),
-            kind: "dependency",
-            criticality: DependencyCriticality::NonCritical,
-            status: ReadinessStatus::Ok,
-            latency_ms: 0,
-            reason: Some("search disabled".to_string()),
-        };
-    }
-
-    run_guarded_check(
-        "search_backend",
-        DependencyCriticality::NonCritical,
-        "dependency",
-        || async {
-            let (host, port) = parse_host_port(&search.url)?;
-            TcpStream::connect((host.as_str(), port))
-                .await
-                .map(|_| ())
-                .map_err(|error| format!("search connect error: {error}"))
-        },
-    )
-    .await
 }
 
 async fn check_runtime_guardrails(ctx: &AppContext) -> ReadinessCheck {
@@ -763,5 +799,16 @@ mod tests {
 
         assert_eq!(healthy.status.metric_value(), 2);
         assert_eq!(degraded.status.metric_value(), 3);
+    }
+
+    #[test]
+    fn readiness_profile_skips_runtime_dependencies_for_registry_only_mode() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::RegistryOnly;
+
+        let profile = ReadinessProfile::from_settings(&settings);
+
+        assert!(!profile.includes_runtime_dependencies());
+        assert!(!profile.includes_module_health());
     }
 }

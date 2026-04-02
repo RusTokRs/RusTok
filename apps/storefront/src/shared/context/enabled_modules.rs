@@ -1,4 +1,4 @@
-﻿use std::collections::HashSet;
+use std::collections::HashSet;
 
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -58,7 +58,9 @@ pub async fn fetch_enabled_modules() -> Result<Vec<String>, ApiError> {
 }
 
 pub async fn fetch_enabled_modules_server(tenant_slug: String) -> Result<Vec<String>, ApiError> {
-    list_enabled_modules(tenant_slug).await.map_err(ApiError::from)
+    list_enabled_modules(tenant_slug)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_enabled_modules_graphql(tenant_slug: String) -> Result<Vec<String>, ApiError> {
@@ -68,9 +70,7 @@ pub async fn fetch_enabled_modules_graphql(tenant_slug: String) -> Result<Vec<St
 }
 
 #[server(prefix = "/api/fn", endpoint = "storefront/list-enabled-modules")]
-async fn list_enabled_modules(
-    tenant_slug: String,
-) -> Result<Vec<String>, ServerFnError> {
+async fn list_enabled_modules(tenant_slug: String) -> Result<Vec<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;

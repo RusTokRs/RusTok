@@ -61,46 +61,58 @@ pub async fn bootstrap_app_runtime(
 ) -> Result<AppRuntimeBootstrap> {
     let cache_service = CacheService::from_url(settings.cache.redis_url.as_deref());
     ctx.shared_store.insert(cache_service.clone());
-    let event_runtime = build_event_runtime(ctx).await?;
-    ctx.shared_store.insert(event_runtime.transport.clone());
-    spawn_index_dispatcher(ctx, settings);
-    spawn_search_dispatcher(ctx);
-    ctx.shared_store.insert(Arc::new(event_runtime));
-    ctx.shared_store
-        .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
 
     init_marketplace_catalog(ctx);
 
     let manifest = ManifestManager::load()
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
-    let deployment_surfaces = ManifestManager::deployment_surface_contract(&manifest);
-    validate_compiled_surface_contract(
-        &deployment_surfaces,
-        cfg!(feature = "embed-admin"),
-        cfg!(feature = "embed-storefront"),
-    )?;
+    let deployment_surfaces = if settings.runtime.is_registry_only() {
+        DeploymentSurfaceContract {
+            profile: crate::models::build::DeploymentProfile::HeadlessApi,
+            embed_admin: false,
+            embed_storefront: false,
+        }
+    } else {
+        let deployment_surfaces = ManifestManager::deployment_surface_contract(&manifest);
+        validate_compiled_surface_contract(
+            &deployment_surfaces,
+            cfg!(feature = "embed-admin"),
+            cfg!(feature = "embed-storefront"),
+        )?;
+        deployment_surfaces
+    };
 
     let registry = modules::build_registry();
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
-    sync_manifest_managed_apps_for_all_tenants(&ctx.db, &manifest)
-        .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to sync manifest-managed OAuth apps: {error}"
-            ))
-        })?;
-    middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
-    init_content_orchestration(ctx);
+    if !settings.runtime.is_registry_only() {
+        let event_runtime = build_event_runtime(ctx).await?;
+        ctx.shared_store.insert(event_runtime.transport.clone());
+        spawn_index_dispatcher(ctx, settings);
+        spawn_search_dispatcher(ctx);
+        ctx.shared_store.insert(Arc::new(event_runtime));
+        ctx.shared_store
+            .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
+        sync_manifest_managed_apps_for_all_tenants(&ctx.db, &manifest)
+            .await
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Failed to sync manifest-managed OAuth apps: {error}"
+                ))
+            })?;
+        middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
+        init_content_orchestration(ctx);
 
-    #[cfg(feature = "mod-media")]
-    init_storage(ctx, settings);
+        #[cfg(feature = "mod-media")]
+        init_storage(ctx, settings);
 
-    #[cfg(feature = "mod-workflow")]
-    init_workflow_runtime(ctx);
+        #[cfg(feature = "mod-workflow")]
+        init_workflow_runtime(ctx);
 
-    init_alloy_runtime(ctx);
+        init_alloy_runtime(ctx);
+    }
+
     let graphql_schema = init_graphql_schema(ctx);
     let rate_limits = init_rate_limit_layers(ctx, settings, &cache_service)?;
 
@@ -312,8 +324,10 @@ fn build_namespaced_rate_limiter(
 #[cfg(test)]
 mod tests {
     use super::validate_compiled_surface_contract;
+    use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
     use crate::models::build::DeploymentProfile;
     use crate::modules::DeploymentSurfaceContract;
+    use loco_rs::tests_cfg::app::get_app_context;
 
     #[test]
     fn compiled_surface_contract_rejects_missing_embedded_admin() {
@@ -350,5 +364,26 @@ mod tests {
         };
 
         assert!(validate_compiled_surface_contract(&contract, true, true).is_ok());
+    }
+
+    #[tokio::test]
+    async fn bootstrap_registry_only_runtime_forces_headless_surfaces() {
+        let ctx = get_app_context().await;
+        let mut settings = RustokSettings::default();
+        settings.runtime = RuntimeSettings {
+            host_mode: RuntimeHostMode::RegistryOnly,
+            ..RuntimeSettings::default()
+        };
+
+        let runtime = super::bootstrap_app_runtime(&ctx, &settings)
+            .await
+            .expect("registry-only runtime should bootstrap");
+
+        assert_eq!(
+            runtime.deployment_surfaces.profile,
+            DeploymentProfile::HeadlessApi
+        );
+        assert!(!runtime.deployment_surfaces.embed_admin);
+        assert!(!runtime.deployment_surfaces.embed_storefront);
     }
 }

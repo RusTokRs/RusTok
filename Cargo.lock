@@ -9786,9 +9786,13 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
  "rustok-api",
  "rustok-blog",
+ "rustok-channel",
  "rustok-core",
+ "rustok-tenant",
  "serde",
 ]
 
@@ -9891,6 +9895,7 @@ dependencies = [
  "rust_decimal_macros",
  "rustok-api",
  "rustok-cart",
+ "rustok-channel",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-customer",
@@ -10338,8 +10343,16 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
  "rustok-api",
+ "rustok-channel",
+ "rustok-content",
+ "rustok-core",
+ "rustok-pages",
+ "rustok-tenant",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::entities::workflow::{WorkflowDetail, WorkflowExecution, WorkflowSummary};
 #[cfg(feature = "ssr")]
 use crate::entities::workflow::{
     ExecutionStatus, OnError, StepExecution, StepType, WorkflowStatus, WorkflowStep,
 };
+use crate::entities::workflow::{WorkflowDetail, WorkflowExecution, WorkflowSummary};
 use crate::shared::api::{request, ApiError};
 
 pub const WORKFLOWS_QUERY: &str =
@@ -178,8 +178,7 @@ async fn workflow_server_context(
 
 #[cfg(feature = "ssr")]
 fn parse_uuid_arg(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value)
-        .map_err(|err| server_error(format!("invalid {field_name}: {err}")))
+    uuid::Uuid::parse_str(value).map_err(|err| server_error(format!("invalid {field_name}: {err}")))
 }
 
 #[cfg(feature = "ssr")]
@@ -437,7 +436,9 @@ async fn workflow_native(id: String) -> Result<Option<WorkflowDetail>, ServerFnE
     #[cfg(not(feature = "ssr"))]
     {
         let _ = id;
-        Err(ServerFnError::new("admin/workflow requires the `ssr` feature"))
+        Err(ServerFnError::new(
+            "admin/workflow requires the `ssr` feature",
+        ))
     }
 }
 
@@ -459,10 +460,8 @@ async fn workflow_executions_native(
             .await
             .map_err(|err| server_error(err.to_string()))?;
 
-        if !has_any_effective_permission(
-            &auth.permissions,
-            &[Permission::WORKFLOW_EXECUTIONS_LIST],
-        ) {
+        if !has_any_effective_permission(&auth.permissions, &[Permission::WORKFLOW_EXECUTIONS_LIST])
+        {
             return Err(ServerFnError::new("workflow_executions:list required"));
         }
 
@@ -490,14 +489,16 @@ pub async fn fetch_workflows(
 ) -> Result<Vec<WorkflowSummary>, String> {
     match fetch_workflows_server().await {
         Ok(response) => Ok(response),
-        Err(server_err) => fetch_workflows_graphql(token, tenant_slug)
-            .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+        Err(server_err) => {
+            fetch_workflows_graphql(token, tenant_slug)
+                .await
+                .map_err(|graphql_err| {
+                    format!(
+                        "native path failed: {}; graphql path failed: {}",
+                        server_err, graphql_err
+                    )
+                })
+        }
     }
 }
 
@@ -543,11 +544,9 @@ async fn create_workflow_native(input: CreateWorkflowInput) -> Result<String, Se
     {
         use rustok_core::Permission;
 
-        let (db, auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_CREATE],
-            "workflows:create required",
-        )
-        .await?;
+        let (db, auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_CREATE], "workflows:create required")
+                .await?;
 
         rustok_workflow::WorkflowService::new(db)
             .create(
@@ -579,11 +578,9 @@ async fn delete_workflow_native(id: String) -> Result<(), ServerFnError> {
     {
         use rustok_core::Permission;
 
-        let (db, _auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_DELETE],
-            "workflows:delete required",
-        )
-        .await?;
+        let (db, _auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_DELETE], "workflows:delete required")
+                .await?;
         let workflow_id = parse_uuid_arg(&id, "workflow id")?;
 
         rustok_workflow::WorkflowService::new(db)
@@ -606,11 +603,9 @@ async fn activate_workflow_native(id: String) -> Result<(), ServerFnError> {
     {
         use rustok_core::Permission;
 
-        let (db, auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_UPDATE],
-            "workflows:update required",
-        )
-        .await?;
+        let (db, auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
+                .await?;
         let workflow_id = parse_uuid_arg(&id, "workflow id")?;
 
         rustok_workflow::WorkflowService::new(db)
@@ -641,11 +636,9 @@ async fn pause_workflow_native(id: String) -> Result<(), ServerFnError> {
     {
         use rustok_core::Permission;
 
-        let (db, auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_UPDATE],
-            "workflows:update required",
-        )
-        .await?;
+        let (db, auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
+                .await?;
         let workflow_id = parse_uuid_arg(&id, "workflow id")?;
 
         rustok_workflow::WorkflowService::new(db)
@@ -679,11 +672,9 @@ async fn add_step_native(
     {
         use rustok_core::Permission;
 
-        let (db, _auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_UPDATE],
-            "workflows:update required",
-        )
-        .await?;
+        let (db, _auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
+                .await?;
         let workflow_id = parse_uuid_arg(&workflow_id, "workflow id")?;
         let step_type = parse_step_type_arg(&input.step_type)?;
         let on_error = parse_on_error_arg(&input.on_error)?;
@@ -719,11 +710,9 @@ async fn delete_step_native(workflow_id: String, step_id: String) -> Result<(), 
     {
         use rustok_core::Permission;
 
-        let (db, _auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_UPDATE],
-            "workflows:update required",
-        )
-        .await?;
+        let (db, _auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
+                .await?;
         let workflow_id = parse_uuid_arg(&workflow_id, "workflow id")?;
         let step_id = parse_uuid_arg(&step_id, "step id")?;
 
@@ -810,9 +799,12 @@ pub async fn pause_workflow(
     match pause_workflow_native(id.clone()).await {
         Ok(()) => Ok(()),
         Err(server_err) => {
-            let _: serde_json::Value = request(PAUSE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug)
-                .await
-                .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
+            let _: serde_json::Value =
+                request(PAUSE_WORKFLOW_MUTATION, IdVars { id }, token, tenant_slug)
+                    .await
+                    .map_err(|graphql_err| {
+                        combine_native_and_graphql_error(server_err, graphql_err)
+                    })?;
             Ok(())
         }
     }
@@ -983,11 +975,9 @@ async fn create_from_template_native(
     {
         use rustok_core::Permission;
 
-        let (db, auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_CREATE],
-            "workflows:create required",
-        )
-        .await?;
+        let (db, auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_CREATE], "workflows:create required")
+                .await?;
 
         rustok_workflow::WorkflowService::new(db)
             .create_from_template(tenant.id, Some(auth.user_id), &template_id, name)
@@ -1083,11 +1073,9 @@ async fn restore_version_native(workflow_id: String, version: i32) -> Result<(),
     {
         use rustok_core::Permission;
 
-        let (db, auth, tenant) = workflow_server_context(
-            &[Permission::WORKFLOWS_UPDATE],
-            "workflows:update required",
-        )
-        .await?;
+        let (db, auth, tenant) =
+            workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
+                .await?;
         let workflow_id = parse_uuid_arg(&workflow_id, "workflow id")?;
 
         rustok_workflow::WorkflowService::new(db)
@@ -1110,14 +1098,16 @@ pub async fn fetch_templates(
 ) -> Result<Vec<WorkflowTemplateDto>, String> {
     match fetch_templates_server().await {
         Ok(response) => Ok(response),
-        Err(server_err) => fetch_templates_graphql(token, tenant_slug)
-            .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+        Err(server_err) => {
+            fetch_templates_graphql(token, tenant_slug)
+                .await
+                .map_err(|graphql_err| {
+                    format!(
+                        "native path failed: {}; graphql path failed: {}",
+                        server_err, graphql_err
+                    )
+                })
+        }
     }
 }
 

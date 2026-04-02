@@ -330,7 +330,17 @@ pub struct RateLimitSettings {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RuntimeSettings {
     #[serde(default)]
+    pub host_mode: RuntimeHostMode,
+    #[serde(default)]
     pub guardrails: RuntimeGuardrailSettings,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeHostMode {
+    #[default]
+    Full,
+    RegistryOnly,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -482,6 +492,7 @@ impl Default for RateLimitSettings {
 impl Default for RuntimeSettings {
     fn default() -> Self {
         Self {
+            host_mode: RuntimeHostMode::Full,
             guardrails: RuntimeGuardrailSettings::default(),
         }
     }
@@ -775,6 +786,12 @@ impl RustokSettings {
         )?;
 
         Ok(parsed)
+    }
+}
+
+impl RuntimeSettings {
+    pub fn is_registry_only(&self) -> bool {
+        self.host_mode == RuntimeHostMode::RegistryOnly
     }
 }
 
@@ -1412,6 +1429,26 @@ mod tests {
         assert!(err.to_string().contains(
             "rustok.runtime.guardrails.rate_limit_memory_thresholds.auth.critical_entries must be > warning_entries"
         ));
+    }
+
+    #[test]
+    fn parses_registry_only_runtime_host_mode() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "runtime": {
+                    "host_mode": "registry_only"
+                }
+            }
+        });
+
+        let settings =
+            RustokSettings::from_settings(&Some(raw)).expect("registry-only settings parse");
+        assert!(settings.runtime.is_registry_only());
     }
 
     #[test]

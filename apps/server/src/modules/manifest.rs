@@ -198,6 +198,14 @@ pub struct ModuleSettingSpec {
     pub max: Option<f64>,
     #[serde(default)]
     pub options: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub object_keys: Vec<String>,
+    #[serde(default)]
+    pub item_type: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub properties: HashMap<String, ModuleSettingSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Box<ModuleSettingSpec>>,
 }
 
 #[derive(Debug, Clone)]
@@ -836,6 +844,68 @@ fn is_valid_module_setting_key(value: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
 }
 
+fn is_supported_setting_type(value_type: &str) -> bool {
+    matches!(
+        value_type,
+        "string" | "integer" | "number" | "boolean" | "object" | "array" | "json" | "any"
+    )
+}
+
+fn declared_object_keys(spec: &ModuleSettingSpec) -> Vec<String> {
+    if !spec.properties.is_empty() {
+        let mut keys = spec.properties.keys().cloned().collect::<Vec<_>>();
+        keys.sort();
+        keys
+    } else {
+        spec.object_keys.clone()
+    }
+}
+
+fn declared_item_type(spec: &ModuleSettingSpec) -> Option<&str> {
+    spec.items
+        .as_deref()
+        .map(|item| item.value_type.trim())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            spec.item_type
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+}
+
+pub(crate) fn module_setting_shape_value(spec: &ModuleSettingSpec) -> Option<serde_json::Value> {
+    let mut shape = serde_json::Map::new();
+
+    if !spec.properties.is_empty() {
+        let properties = spec
+            .properties
+            .iter()
+            .map(|(key, property_spec)| {
+                (
+                    key.clone(),
+                    serde_json::to_value(property_spec)
+                        .expect("module setting schema should serialize to shape json"),
+                )
+            })
+            .collect::<serde_json::Map<String, serde_json::Value>>();
+        shape.insert(
+            "properties".to_string(),
+            serde_json::Value::Object(properties),
+        );
+    }
+
+    if let Some(items) = &spec.items {
+        shape.insert(
+            "items".to_string(),
+            serde_json::to_value(items.as_ref())
+                .expect("module setting item schema should serialize to shape json"),
+        );
+    }
+
+    (!shape.is_empty()).then_some(serde_json::Value::Object(shape))
+}
+
 fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
     match value_type {
         "string" => value.is_string(),
@@ -860,6 +930,8 @@ fn validate_setting_spec(
     key: &str,
     spec: &ModuleSettingSpec,
 ) -> Result<(), ManifestError> {
+    use std::collections::HashSet;
+
     if !is_valid_module_setting_key(key) {
         return Err(ManifestError::InvalidModuleSettingKey {
             slug: slug.to_string(),
@@ -868,10 +940,7 @@ fn validate_setting_spec(
     }
 
     let value_type = spec.value_type.trim();
-    if !matches!(
-        value_type,
-        "string" | "integer" | "number" | "boolean" | "object" | "array" | "json" | "any"
-    ) {
+    if !is_supported_setting_type(value_type) {
         return Err(ManifestError::InvalidModuleSettingSchema {
             slug: slug.to_string(),
             key: key.to_string(),
@@ -941,6 +1010,156 @@ fn validate_setting_spec(
         }
     }
 
+    if !spec.object_keys.is_empty() {
+        if value_type != "object" {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: "object_keys are only supported for object settings".to_string(),
+            });
+        }
+
+        let mut seen_keys = HashSet::new();
+        for object_key in &spec.object_keys {
+            if !is_valid_module_setting_key(object_key) {
+                return Err(ManifestError::InvalidModuleSettingSchema {
+                    slug: slug.to_string(),
+                    key: key.to_string(),
+                    reason: format!("invalid object key '{object_key}'"),
+                });
+            }
+
+            if !seen_keys.insert(object_key.clone()) {
+                return Err(ManifestError::InvalidModuleSettingSchema {
+                    slug: slug.to_string(),
+                    key: key.to_string(),
+                    reason: format!("duplicate object key '{object_key}'"),
+                });
+            }
+        }
+
+        if let Some(default) = &spec.default {
+            if let Some(object) = default.as_object() {
+                if let Some(unknown_key) = object
+                    .keys()
+                    .find(|candidate| !spec.object_keys.iter().any(|allowed| allowed == *candidate))
+                {
+                    return Err(ManifestError::InvalidModuleSettingSchema {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("default contains undeclared object key '{unknown_key}'"),
+                    });
+                }
+            }
+        }
+    }
+
+    if !spec.properties.is_empty() {
+        if value_type != "object" {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: "properties are only supported for object settings".to_string(),
+            });
+        }
+
+        let mut property_keys = spec.properties.keys().cloned().collect::<Vec<_>>();
+        property_keys.sort();
+        let mut explicit_object_keys = spec.object_keys.clone();
+        explicit_object_keys.sort();
+        if !spec.object_keys.is_empty() && property_keys != explicit_object_keys {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: "object_keys must match declared properties when both are provided"
+                    .to_string(),
+            });
+        }
+
+        for (property_key, property_spec) in &spec.properties {
+            validate_setting_spec(slug, &format!("{key}.{property_key}"), property_spec)?;
+        }
+
+        if let Some(default) = &spec.default {
+            if let Some(object) = default.as_object() {
+                for (property_key, property_value) in object {
+                    if let Some(property_spec) = spec.properties.get(property_key) {
+                        validate_setting_value(
+                            slug,
+                            &format!("{key}.{property_key}"),
+                            property_spec,
+                            property_value,
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(item_type) = spec.item_type.as_deref() {
+        let item_type = item_type.trim();
+        if value_type != "array" {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: "item_type is only supported for array settings".to_string(),
+            });
+        }
+
+        if !is_supported_setting_type(item_type) {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: format!("unsupported array item type '{item_type}'"),
+            });
+        }
+
+        if let Some(default) = &spec.default {
+            if let Some(items) = default.as_array() {
+                if items
+                    .iter()
+                    .any(|item| !setting_value_matches_type(item_type, item))
+                {
+                    return Err(ManifestError::InvalidModuleSettingSchema {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: "default array items must match declared item_type".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(items) = &spec.items {
+        if value_type != "array" {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: "items are only supported for array settings".to_string(),
+            });
+        }
+
+        validate_setting_spec(slug, &format!("{key}[]"), items)?;
+
+        if let Some(item_type) = spec.item_type.as_deref() {
+            if items.value_type.trim() != item_type.trim() {
+                return Err(ManifestError::InvalidModuleSettingSchema {
+                    slug: slug.to_string(),
+                    key: key.to_string(),
+                    reason: "item_type must match items.type when both are provided".to_string(),
+                });
+            }
+        }
+
+        if let Some(default) = &spec.default {
+            if let Some(array) = default.as_array() {
+                for (index, item) in array.iter().enumerate() {
+                    validate_setting_value(slug, &format!("{key}[{index}]"), items, item)?;
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -971,6 +1190,71 @@ fn validate_setting_value(
             key: key.to_string(),
             reason: format!("must be one of: {allowed}"),
         });
+    }
+
+    if !declared_object_keys(spec).is_empty() {
+        let object = value
+            .as_object()
+            .expect("object_keys validation only runs for object values");
+        let allowed_keys = declared_object_keys(spec);
+        let mut unknown_keys = object
+            .keys()
+            .filter(|candidate| !allowed_keys.iter().any(|allowed| allowed == *candidate))
+            .cloned()
+            .collect::<Vec<_>>();
+        unknown_keys.sort();
+        if let Some(unknown_key) = unknown_keys.first() {
+            return Err(ManifestError::InvalidModuleSettingValue {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: format!(
+                    "unknown object key '{unknown_key}'; allowed keys: {}",
+                    allowed_keys.join(", ")
+                ),
+            });
+        }
+    }
+
+    if let Some(item_type) = declared_item_type(spec) {
+        let array = value
+            .as_array()
+            .expect("item_type validation only runs for array values");
+        if let Some((index, _)) = array
+            .iter()
+            .enumerate()
+            .find(|(_, item)| !setting_value_matches_type(item_type, item))
+        {
+            return Err(ManifestError::InvalidModuleSettingValue {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: format!("array item at index {index} must be {item_type}"),
+            });
+        }
+    }
+
+    if !spec.properties.is_empty() {
+        let object = value
+            .as_object()
+            .expect("properties validation only runs for object values");
+        for (property_key, property_value) in object {
+            if let Some(property_spec) = spec.properties.get(property_key) {
+                validate_setting_value(
+                    slug,
+                    &format!("{key}.{property_key}"),
+                    property_spec,
+                    property_value,
+                )?;
+            }
+        }
+    }
+
+    if let Some(items) = &spec.items {
+        let array = value
+            .as_array()
+            .expect("items validation only runs for array values");
+        for (index, item) in array.iter().enumerate() {
+            validate_setting_value(slug, &format!("{key}[{index}]"), items, item)?;
+        }
     }
 
     match value_type {
@@ -3304,6 +3588,287 @@ layout = { type = "string", default = "hero", options = ["grid", "list"] }
                 if slug == "blog"
                     && key == "layout"
                     && reason.contains("default must be one of the declared options")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_unknown_object_keys_outside_declared_shape() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+seo = { type = "object", object_keys = ["metaTitle", "metaDescription", "indexable"] }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({
+                "seo": {
+                    "metaTitle": "Welcome",
+                    "unknown": true
+                }
+            }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
+                if slug == "blog"
+                    && key == "seo"
+                    && reason.contains("unknown object key 'unknown'")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_array_items_that_do_not_match_declared_item_type() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+featuredPostIds = { type = "array", item_type = "string", default = [] }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({ "featuredPostIds": ["post-1", 2] }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
+                if slug == "blog"
+                    && key == "featuredPostIds"
+                    && reason.contains("array item at index 1 must be string")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_rejects_setting_schema_with_item_type_on_non_array_setting() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+seo = { type = "object", item_type = "string" }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings("blog", serde_json::json!({}));
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingSchema { slug, key, reason })
+                if slug == "blog"
+                    && key == "seo"
+                    && reason.contains("item_type is only supported for array settings")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_nested_object_property_type_mismatch() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+seo = { type = "object", properties = { metaTitle = { type = "string" }, indexable = { type = "boolean", default = true } } }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({
+                "seo": {
+                    "metaTitle": 42
+                }
+            }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
+                if slug == "blog"
+                    && key == "seo.metaTitle"
+                    && reason.contains("expected string")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_nested_array_item_schema_mismatch() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+contentBlocks = { type = "array", items = { type = "object", properties = { kind = { type = "string" }, enabled = { type = "boolean" } } } }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({
+                "contentBlocks": [
+                    { "kind": "hero", "enabled": true },
+                    { "kind": "gallery", "enabled": "yes" }
+                ]
+            }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
+                if slug == "blog"
+                    && key == "contentBlocks[1].enabled"
+                    && reason.contains("expected boolean")
         ));
     }
 

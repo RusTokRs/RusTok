@@ -20,6 +20,12 @@ pub struct CreateProductInput {
     pub vendor: Option<String>,
     #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
     pub product_type: Option<String>,
+    #[validate(length(
+        min = 1,
+        max = 64,
+        message = "Shipping profile slug must be 1-64 characters"
+    ))]
+    pub shipping_profile_slug: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -63,6 +69,12 @@ pub struct UpdateProductInput {
     pub vendor: Option<String>,
     #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
     pub product_type: Option<String>,
+    #[validate(length(
+        min = 1,
+        max = 64,
+        message = "Shipping profile slug must be 1-64 characters"
+    ))]
+    pub shipping_profile_slug: Option<String>,
     pub tags: Option<Vec<String>>,
     pub metadata: Option<serde_json::Value>,
     pub status: Option<ProductStatus>,
@@ -75,6 +87,7 @@ pub struct ProductResponse {
     pub status: ProductStatus,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,

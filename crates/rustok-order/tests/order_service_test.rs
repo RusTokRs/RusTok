@@ -60,6 +60,28 @@ async fn create_order_persists_snapshot_and_total() {
 }
 
 #[tokio::test]
+async fn create_order_with_channel_persists_channel_snapshot() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    let created = service
+        .create_order_with_channel(
+            tenant_id,
+            actor_id,
+            create_order_input(),
+            Some(channel_id),
+            Some("marketplace-eu".to_string()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(created.channel_id, Some(channel_id));
+    assert_eq!(created.channel_slug.as_deref(), Some("marketplace-eu"));
+}
+
+#[tokio::test]
 async fn order_lifecycle_transitions_persist_status_metadata() {
     let service = setup().await;
     let tenant_id = Uuid::new_v4();

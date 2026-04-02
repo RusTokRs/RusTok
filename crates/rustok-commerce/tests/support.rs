@@ -1,4 +1,5 @@
 use rustok_cart::entities::{cart, cart_line_item};
+use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
     inventory_item, inventory_level, price, product, product_image, product_image_translation,
     product_option, product_option_translation, product_option_value,
@@ -179,6 +180,18 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(product_tag::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(channel::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(channel_module_binding::Entity),
     )
     .await;
     ensure_tenant_tables(db).await;

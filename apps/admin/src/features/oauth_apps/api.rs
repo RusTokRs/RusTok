@@ -467,10 +467,16 @@ async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, ServerFnErr
                         .try_get("", "is_active")
                         .map_err(|err| server_error(err.to_string()))?,
                     can_edit: is_manual
-                        && matches!(app_type_value.as_str(), "third_party" | "mobile" | "service"),
+                        && matches!(
+                            app_type_value.as_str(),
+                            "third_party" | "mobile" | "service"
+                        ),
                     can_rotate_secret: app_type_value != "embedded" && client_secret_hash.is_some(),
                     can_revoke: is_manual
-                        && matches!(app_type_value.as_str(), "third_party" | "mobile" | "service"),
+                        && matches!(
+                            app_type_value.as_str(),
+                            "third_party" | "mobile" | "service"
+                        ),
                     active_token_count: row
                         .try_get("", "active_token_count")
                         .map_err(|err| server_error(err.to_string()))?,

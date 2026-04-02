@@ -105,6 +105,11 @@ pub struct ModuleSettingField {
     pub max: Option<f64>,
     #[serde(default)]
     pub options: Vec<serde_json::Value>,
+    #[serde(default, rename = "objectKeys")]
+    pub object_keys: Vec<String>,
+    #[serde(rename = "itemType")]
+    pub item_type: Option<String>,
+    pub shape: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

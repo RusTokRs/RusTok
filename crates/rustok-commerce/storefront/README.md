@@ -7,7 +7,8 @@ Leptos storefront UI package for the `rustok-commerce` module.
 - Exposes the commerce storefront root view used by `apps/storefront`.
 - Keeps catalog-specific public UX inside the module package.
 - Participates in the manifest-driven storefront composition path through `rustok-module.toml`.
-- Owns the public GraphQL read-path for published products and selected product detail.
+- Owns dual-path storefront data access for published products and selected product detail.
+- Adds native Leptos `#[server]` calls in parallel with the existing GraphQL transport instead of replacing it.
 
 ## Entry Points
 
@@ -16,7 +17,7 @@ Leptos storefront UI package for the `rustok-commerce` module.
 ## Interactions
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
-- Uses the `rustok-commerce` GraphQL storefront contract plus shared host route context from `rustok-api`.
+- Uses native-first `#[server]` calls with GraphQL fallback and stays compatible with the `rustok-commerce` storefront contract.
 - Should remain compatible with the host storefront slot and generic module page contract.
 
 ## Documentation
