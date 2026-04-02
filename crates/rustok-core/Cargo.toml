@@ -27,7 +27,7 @@ sea-orm-migration.workspace = true
 rustok-telemetry.workspace = true
 rustok-events.workspace = true
 moka.workspace = true
-redis = { version = "1.0", features = ["tokio-comp", "connection-manager"], optional = true }
+redis = { version = "1.1", features = ["tokio-comp", "connection-manager"], optional = true }
 url = "2.5"
 futures = "0.3"
 rand = "0.10"
@@ -46,4 +46,4 @@ rustok-outbox.workspace = true
 sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
 sea-orm-migration = { workspace = true, features = ["sqlx-sqlite"] }
 futures = "0.3"
-proptest = "1.5"
+proptest = "1.11"
