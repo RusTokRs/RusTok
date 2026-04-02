@@ -145,10 +145,7 @@ impl CheckoutService {
                     option.id
                 )));
             }
-            if !is_shipping_option_compatible_with_profiles(
-                &option.metadata,
-                &required_shipping_profiles,
-            ) {
+            if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
                 return Err(CheckoutError::Validation(format!(
                     "Shipping option {} is not compatible with the cart shipping profiles",
                     option.id

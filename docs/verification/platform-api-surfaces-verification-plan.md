@@ -8,6 +8,8 @@
 
 ## Фаза 8: API — GraphQL
 
+GraphQL остаётся обязательным transport surface даже там, где Leptos UI добавил native `#[server]` path. Проверка GraphQL не пропускается из-за наличия `/api/fn/*`.
+
 ### 8.1 Сборка schema и composition-root
 
 **Файлы:**
@@ -61,6 +63,7 @@
 - [ ] `/metrics` отражён в плане.
 - [ ] `/api/openapi.json` и `/api/openapi.yaml` отражены в плане.
 - [ ] `/api/graphql` и `/api/graphql/ws` отражены в плане как transport endpoints, а не domain REST.
+- [ ] `/api/fn/*` отражён в плане как Leptos server-functions transport endpoint, который живёт параллельно `/api/graphql`.
 
 ### 9.2 Auth и users
 

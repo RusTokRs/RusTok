@@ -19,7 +19,9 @@
   поле `tags` вместо legacy `metadata.tags`.
 - shipping profile для товара теперь тоже имеет first-class surface в product
   DTO (`shipping_profile_slug`), хотя на этапе Phase 7 физически всё ещё
-  хранится через metadata-backed contract `shipping_profile.slug`.
+  хранится через metadata-backed contract `shipping_profile.slug`; omission
+  first-class поля на write-path не должен затирать уже существующий metadata-backed
+  shipping profile.
 
 ## Связанные документы
 

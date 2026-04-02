@@ -68,6 +68,9 @@
 - Для write-flow с межмодульными событиями используется transactional outbox.
 - Tenant isolation и RBAC обязательны в сервисном слое.
 - События и обработчики должны оставаться совместимыми по `DomainEvent` / `EventEnvelope`.
+- Для Leptos host-приложений и module-owned Leptos UI пакетов внутренний data-layer по умолчанию строится через `#[server]`-функции.
+- GraphQL остаётся обязательным параллельным контрактом: для headless-клиентов, Next.js UI и fallback-веток в Leptos во время миграции/частичного покрытия.
+- Новый Leptos UI код не должен рождаться как GraphQL-only путь, если для сценария возможен native `#[server]`-слой.
 
 ## Замены loco-подсистем — обязательно к прочтению
 
@@ -176,9 +179,11 @@ error[E0599]: no function or associated item named `get` found for struct `Admin
 - Используй только реально существующие API из кода и docs.
 - Для доменных write-flow с событиями применяй `publish_in_tx`, когда нужен атомарный publish.
 - Проверяй, что docs отражают текущий код, а не старые архитектурные предположения.
+- Для Leptos UI сначала проектируй локальный API-слой `view -> local api -> #[server]`, а GraphQL оставляй как параллельный transport/fallback.
 
 ### Don't
 
 - Не придумывай третий тип модулей кроме `Core` и `Optional`.
 - Не подменяй архитектурный статус модуля способом runtime wiring.
 - Не обходи outbox в production event-flow.
+- Не удаляй GraphQL resolver/path только потому, что рядом появился native `#[server]` путь.

@@ -10,6 +10,8 @@
 - Prepare a stable shipping boundary for checkout orchestration.
 - Keep shipment lifecycle transitions isolated from the ecommerce umbrella.
 - Provide a built-in manual/default fulfillment flow for the current stage, without external carrier providers.
+- Normalize first-class `allowed_shipping_profile_slugs` on shipping-option contracts into the temporary metadata-backed compatibility shape.
+- Provide create/update read-side service operations for shipping-option management that the commerce facade exposes over admin REST and GraphQL.
 
 ## Interactions
 

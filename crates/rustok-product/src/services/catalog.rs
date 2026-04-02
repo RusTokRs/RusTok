@@ -1140,25 +1140,21 @@ impl CatalogService {
         mut metadata: Value,
         shipping_profile_slug: Option<String>,
     ) -> Value {
-        let normalized_slug =
-            shipping_profile_slug.and_then(|value| Self::normalize_shipping_profile_slug(&value));
+        let Some(normalized_slug) =
+            shipping_profile_slug.and_then(|value| Self::normalize_shipping_profile_slug(&value))
+        else {
+            return metadata;
+        };
         if !metadata.is_object() {
             metadata = Value::Object(Default::default());
         }
 
         if let Some(object) = metadata.as_object_mut() {
             object.remove("shipping_profile_slug");
-            match normalized_slug {
-                Some(slug) => {
-                    object.insert(
-                        "shipping_profile".to_string(),
-                        serde_json::json!({ "slug": slug }),
-                    );
-                }
-                None => {
-                    object.remove("shipping_profile");
-                }
-            }
+            object.insert(
+                "shipping_profile".to_string(),
+                serde_json::json!({ "slug": normalized_slug }),
+            );
         }
 
         metadata

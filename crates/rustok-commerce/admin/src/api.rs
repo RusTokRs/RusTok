@@ -1,7 +1,10 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{CommerceAdminBootstrap, ProductDetail, ProductDraft, ProductList};
+use crate::model::{
+    CommerceAdminBootstrap, ProductDetail, ProductDraft, ProductList, ShippingOption,
+    ShippingOptionDraft, ShippingOptionList,
+};
 
 pub type ApiError = GraphqlHttpError;
 
@@ -9,10 +12,16 @@ const BOOTSTRAP_QUERY: &str =
     "query CommerceAdminBootstrap { currentTenant { id slug name } me { id email name } }";
 const PRODUCTS_QUERY: &str = "query CommerceProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
 const PRODUCT_QUERY: &str = "query CommerceProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const SHIPPING_OPTIONS_QUERY: &str = "query CommerceShippingOptions($tenantId: UUID!, $filter: ShippingOptionsFilter) { shippingOptions(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } } }";
+const SHIPPING_OPTION_QUERY: &str = "query CommerceShippingOption($tenantId: UUID!, $id: UUID!) { shippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
 const CREATE_PRODUCT_MUTATION: &str = "mutation CommerceCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const UPDATE_PRODUCT_MUTATION: &str = "mutation CommerceUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const PUBLISH_PRODUCT_MUTATION: &str = "mutation CommercePublishProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { publishProduct(tenantId: $tenantId, userId: $userId, id: $id) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation CommerceDeleteProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { deleteProduct(tenantId: $tenantId, userId: $userId, id: $id) }";
+const CREATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceCreateShippingOption($tenantId: UUID!, $input: CreateShippingOptionInput!) { createShippingOption(tenantId: $tenantId, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const UPDATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceUpdateShippingOption($tenantId: UUID!, $id: UUID!, $input: UpdateShippingOptionInput!) { updateShippingOption(tenantId: $tenantId, id: $id, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const DEACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceDeactivateShippingOption($tenantId: UUID!, $id: UUID!) { deactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const REACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceReactivateShippingOption($tenantId: UUID!, $id: UUID!) { reactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -29,6 +38,18 @@ struct ProductsResponse {
 #[derive(Debug, Deserialize)]
 struct ProductResponse {
     product: Option<ProductDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShippingOptionsResponse {
+    #[serde(rename = "shippingOptions")]
+    shipping_options: ShippingOptionList,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShippingOptionResponse {
+    #[serde(rename = "shippingOption")]
+    shipping_option: Option<ShippingOption>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +74,30 @@ struct PublishProductResponse {
 struct DeleteProductResponse {
     #[serde(rename = "deleteProduct")]
     delete_product: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateShippingOptionResponse {
+    #[serde(rename = "createShippingOption")]
+    create_shipping_option: ShippingOption,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateShippingOptionResponse {
+    #[serde(rename = "updateShippingOption")]
+    update_shipping_option: ShippingOption,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeactivateShippingOptionResponse {
+    #[serde(rename = "deactivateShippingOption")]
+    deactivate_shipping_option: ShippingOption,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReactivateShippingOptionResponse {
+    #[serde(rename = "reactivateShippingOption")]
+    reactivate_shipping_option: ShippingOption,
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +131,11 @@ struct ProductVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct ShippingOptionVariables {
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
 struct ProductIdVariables {
     id: String,
 }
@@ -102,9 +152,38 @@ struct UpdateProductVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct CreateShippingOptionVariables {
+    input: CreateShippingOptionInput,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateShippingOptionVariables {
+    id: String,
+    input: UpdateShippingOptionInput,
+}
+
+#[derive(Debug, Serialize)]
 struct ProductsFilter {
     status: Option<String>,
     vendor: Option<String>,
+    search: Option<String>,
+    page: Option<u64>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct ShippingOptionsVariables {
+    filter: ShippingOptionsFilter,
+}
+
+#[derive(Debug, Serialize)]
+struct ShippingOptionsFilter {
+    active: Option<bool>,
+    #[serde(rename = "currencyCode")]
+    currency_code: Option<String>,
+    #[serde(rename = "providerId")]
+    provider_id: Option<String>,
     search: Option<String>,
     page: Option<u64>,
     #[serde(rename = "perPage")]
@@ -133,6 +212,32 @@ struct UpdateProductInput {
     #[serde(rename = "shippingProfileSlug")]
     shipping_profile_slug: Option<String>,
     status: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateShippingOptionInput {
+    name: String,
+    #[serde(rename = "currencyCode")]
+    currency_code: String,
+    amount: String,
+    #[serde(rename = "providerId")]
+    provider_id: Option<String>,
+    #[serde(rename = "allowedShippingProfileSlugs")]
+    allowed_shipping_profile_slugs: Option<Vec<String>>,
+    metadata: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateShippingOptionInput {
+    name: Option<String>,
+    #[serde(rename = "currencyCode")]
+    currency_code: Option<String>,
+    amount: Option<String>,
+    #[serde(rename = "providerId")]
+    provider_id: Option<String>,
+    #[serde(rename = "allowedShippingProfileSlugs")]
+    allowed_shipping_profile_slugs: Option<Vec<String>>,
+    metadata: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -282,6 +387,55 @@ pub async fn fetch_product(
     Ok(response.product)
 }
 
+pub async fn fetch_shipping_options(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    search: Option<String>,
+    currency_code: Option<String>,
+    provider_id: Option<String>,
+) -> Result<ShippingOptionList, ApiError> {
+    let response: ShippingOptionsResponse = request(
+        SHIPPING_OPTIONS_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingOptionsVariables {
+                filter: ShippingOptionsFilter {
+                    active: None,
+                    currency_code,
+                    provider_id,
+                    search,
+                    page: Some(1),
+                    per_page: Some(24),
+                },
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.shipping_options)
+}
+
+pub async fn fetch_shipping_option(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+) -> Result<Option<ShippingOption>, ApiError> {
+    let response: ShippingOptionResponse = request(
+        SHIPPING_OPTION_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingOptionVariables { id },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.shipping_option)
+}
+
 pub async fn create_product(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -409,6 +563,88 @@ pub async fn delete_product(
     Ok(response.delete_product)
 }
 
+pub async fn create_shipping_option(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    draft: ShippingOptionDraft,
+) -> Result<ShippingOption, ApiError> {
+    let response: CreateShippingOptionResponse = request(
+        CREATE_SHIPPING_OPTION_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: CreateShippingOptionVariables {
+                input: build_create_shipping_option_input(draft),
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_shipping_option)
+}
+
+pub async fn update_shipping_option(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    draft: ShippingOptionDraft,
+) -> Result<ShippingOption, ApiError> {
+    let response: UpdateShippingOptionResponse = request(
+        UPDATE_SHIPPING_OPTION_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: UpdateShippingOptionVariables {
+                id,
+                input: build_update_shipping_option_input(draft),
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.update_shipping_option)
+}
+
+pub async fn deactivate_shipping_option(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+) -> Result<ShippingOption, ApiError> {
+    let response: DeactivateShippingOptionResponse = request(
+        DEACTIVATE_SHIPPING_OPTION_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingOptionVariables { id },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.deactivate_shipping_option)
+}
+
+pub async fn reactivate_shipping_option(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+) -> Result<ShippingOption, ApiError> {
+    let response: ReactivateShippingOptionResponse = request(
+        REACTIVATE_SHIPPING_OPTION_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingOptionVariables { id },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.reactivate_shipping_option)
+}
+
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {
         translations: vec![build_translation_input(&draft)],
@@ -442,6 +678,31 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     }
 }
 
+fn build_create_shipping_option_input(draft: ShippingOptionDraft) -> CreateShippingOptionInput {
+    CreateShippingOptionInput {
+        name: draft.name.trim().to_string(),
+        currency_code: normalize_currency_code(draft.currency_code.as_str()),
+        amount: normalize_amount(draft.amount.as_str()),
+        provider_id: optional_text(draft.provider_id.as_str()),
+        allowed_shipping_profile_slugs: csv_or_none(draft.allowed_shipping_profile_slugs.as_str()),
+        metadata: optional_json_text(draft.metadata_json.as_str()),
+    }
+}
+
+fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShippingOptionInput {
+    UpdateShippingOptionInput {
+        name: optional_text(draft.name.as_str()),
+        currency_code: optional_text(draft.currency_code.as_str())
+            .map(|value| normalize_currency_code(value.as_str())),
+        amount: optional_text(draft.amount.as_str()).map(|value| normalize_amount(value.as_str())),
+        provider_id: optional_text(draft.provider_id.as_str()),
+        allowed_shipping_profile_slugs: Some(csv_or_empty(
+            draft.allowed_shipping_profile_slugs.as_str(),
+        )),
+        metadata: optional_json_text(draft.metadata_json.as_str()),
+    }
+}
+
 fn build_translation_input(draft: &ProductDraft) -> ProductTranslationInput {
     ProductTranslationInput {
         locale: draft.locale.clone(),
@@ -454,6 +715,51 @@ fn build_translation_input(draft: &ProductDraft) -> ProductTranslationInput {
 }
 
 fn optional_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn csv_or_none(value: &str) -> Option<Vec<String>> {
+    let items = csv_or_empty(value);
+    if items.is_empty() {
+        None
+    } else {
+        Some(items)
+    }
+}
+
+fn csv_or_empty(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn normalize_currency_code(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        "USD".to_string()
+    } else {
+        trimmed.to_uppercase()
+    }
+}
+
+fn normalize_amount(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        "0.00".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn optional_json_text(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         None

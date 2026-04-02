@@ -570,6 +570,120 @@ impl CommerceMutation {
         Ok(collection.into())
     }
 
+    async fn create_shipping_option(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        input: CreateShippingOptionInputObject,
+    ) -> Result<GqlShippingOption> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_CREATE],
+            "Permission denied: fulfillments:create required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                crate::dto::CreateShippingOptionInput {
+                    name: input.name,
+                    currency_code: input.currency_code,
+                    amount: parse_decimal(&input.amount)?,
+                    provider_id: input.provider_id,
+                    allowed_shipping_profile_slugs: input.allowed_shipping_profile_slugs,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(option.into())
+    }
+
+    async fn update_shipping_option(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: UpdateShippingOptionInputObject,
+    ) -> Result<GqlShippingOption> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let option = FulfillmentService::new(db.clone())
+            .update_shipping_option(
+                tenant_id,
+                id,
+                crate::dto::UpdateShippingOptionInput {
+                    name: input.name,
+                    currency_code: input.currency_code,
+                    amount: parse_optional_decimal(input.amount.as_deref())?,
+                    provider_id: input.provider_id,
+                    allowed_shipping_profile_slugs: input.allowed_shipping_profile_slugs,
+                    metadata: input
+                        .metadata
+                        .as_deref()
+                        .map(|value| {
+                            serde_json::from_str(value).map_err(|_| {
+                                async_graphql::Error::new("Invalid JSON metadata payload")
+                            })
+                        })
+                        .transpose()?,
+                },
+            )
+            .await?;
+
+        Ok(option.into())
+    }
+
+    async fn deactivate_shipping_option(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<GqlShippingOption> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let option = FulfillmentService::new(db.clone())
+            .deactivate_shipping_option(tenant_id, id)
+            .await?;
+
+        Ok(option.into())
+    }
+
+    async fn reactivate_shipping_option(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<GqlShippingOption> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let option = FulfillmentService::new(db.clone())
+            .reactivate_shipping_option(tenant_id, id)
+            .await?;
+
+        Ok(option.into())
+    }
+
     async fn ship_fulfillment(
         &self,
         ctx: &Context<'_>,
@@ -978,7 +1092,7 @@ async fn validate_selected_shipping_option(
         )));
     }
     let required_shipping_profiles = load_cart_shipping_profile_slugs(db, tenant_id, cart).await?;
-    if !is_shipping_option_compatible_with_profiles(&option.metadata, &required_shipping_profiles) {
+    if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
         return Err(async_graphql::Error::new(format!(
             "Shipping option {} is not compatible with the cart shipping profiles",
             option.id

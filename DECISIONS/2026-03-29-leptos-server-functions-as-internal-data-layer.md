@@ -1,182 +1,120 @@
 # Leptos `#[server]` functions как внутренний слой данных для Leptos-приложений
 
 - Date: 2026-03-29
-- Status: Accepted
+- Status: Accepted, amended on 2026-04-02
 - Supersedes: `2026-03-07-deployment-profiles-and-ui-stack.md` (в части транспорта между Leptos UI и сервером)
 
 ## Context
 
-Сейчас оба Leptos-приложения общаются с сервером через HTTP + GraphQL, даже когда
-запущены в одном процессе (монолитный деплой):
+Leptos-контур RusToK теперь поддерживает два transport path одновременно:
 
-```
-Монолит сейчас:
-  browser → HTTP POST /api/graphql → GraphQL resolver → service layer → DB
-```
+- GraphQL HTTP (`/api/graphql`);
+- Leptos server functions (`/api/fn/*`).
 
-`apps/admin` — чистый CSR (`features = ["csr"]`), WASM-бандл, раздаётся как
-статика из сервера. Всегда работает в браузере, всегда HTTP.
+Изначальная формулировка ADR была слишком жёсткой и трактовала `#[server]`
+как полную замену GraphQL для Leptos UI. По факту код и platform rule пошли в
+другую сторону: native path добавляется **параллельно**, а GraphQL остаётся
+живым transport contract.
 
-`apps/storefront` — чистый SSR (`features = ["ssr"]`), Axum-сервер рендерит HTML,
-но за данными ходит в GraphQL через `reqwest`. HTTP присутствует даже в монолите.
+Это нужно по трём причинам:
 
-Это означает: обещание «монолит — один бинарник» реализовано лишь на уровне
-упаковки артефактов, но не на уровне транспорта. Между слоями приложения всё
-равно есть HTTP, сериализация GraphQL и resolver-слой.
+1. GraphQL уже является внешним контрактом для Next.js, мобильных клиентов и интеграций.
+2. Миграция Leptos host-приложений и module-owned UI crates происходит поэтапно, coverage не везде полная.
+3. Даже после ввода native path платформа не хочет терять GraphQL как совместимый transport и fallback.
 
 ## Decision
 
 ### Принцип
 
-**Leptos `#[server]`-функции — единственный транспорт между Leptos UI и серверным
-слоем данных.**
+**Leptos `#[server]`-функции становятся основным внутренним data-layer для
+Leptos UI, но не заменяют GraphQL на уровне платформы.**
 
-GraphQL остаётся, но только как **внешний API** для headless-клиентов: Next.js,
-мобильные приложения, сторонние интеграции. Leptos-приложения GraphQL не используют.
+То есть:
 
-### Как работают `#[server]`-функции в разных режимах
+- для `apps/admin`, `apps/storefront` и module-owned Leptos UI packages путь по умолчанию:
 
-```rust
-#[server]
-pub async fn list_users(page: u32) -> Result<Vec<User>, ServerFnError> {
-    // Этот код выполняется только на сервере.
-    // В монолите — in-process вызов сервисного слоя.
-    // В headless — HTTP POST на /api/fn/list_users.
-    UserService::list(page).await
-}
+```text
+UI -> local api -> #[server] -> service layer -> DB
 ```
 
-| Контекст | Что происходит |
-|---|---|
-| SSR-рендер в монолите | Прямой in-process вызов, никакого HTTP |
-| Гидратация / client navigation | HTTP POST `/api/fn/<name>` (бинарный кодек) |
-| Standalone Leptos (headless деплой) | HTTP POST `/api/fn/<name>` к удалённому серверу |
+- GraphQL остаётся обязательным параллельным transport:
 
-Один и тот же код, разный транспорт в зависимости от топологии — без изменений
-в логике приложения.
-
-### Изменения в `apps/admin`
-
-**Было:** `features = ["csr"]`, WASM SPA, GraphQL через `reqwest`.
-
-**Станет:** `features = ["ssr", "hydrate"]` — приложение рендерится на сервере
-при первом запросе, гидратируется в браузере для интерактивности. Данные через
-`#[server]`-функции.
-
-```
-Монолит после:
-  HTTP request → Axum → Leptos SSR render → #[server] fn → service layer → DB
-                                          ↑ in-process, без HTTP
+```text
+client -> /api/graphql -> GraphQL resolver -> service layer -> DB
 ```
 
-После гидратации навигация внутри admin делает POST на `/api/fn/*` — это HTTP,
-но в пределах одного процесса, короткий путь без GraphQL resolver-слоя.
+### Что это означает для Leptos UI
 
-### Изменения в `apps/storefront`
+#### Монолит / SSR
 
-**Было:** `features = ["ssr"]`, GraphQL через `reqwest`, без гидратации.
-
-**Станет:** `features = ["ssr", "hydrate"]` (там где нужна интерактивность),
-данные через `#[server]`-функции. Статические страницы могут остаться без
-гидратации — только SSR.
-
-### GraphQL — только внешний контракт
-
-GraphQL API (`/api/graphql`) продолжает существовать и поддерживаться. Он нужен:
-
-- `apps/next-admin` — Next.js панель администратора
-- `apps/next-frontend` — Next.js storefront
-- Мобильные клиенты
-- Сторонние интеграции
-
-Leptos-приложения GraphQL больше не используют. Это разделяет две роли:
-`#[server]` — внутренний типобезопасный транспорт, GraphQL — внешний контракт.
-
-### Итоговые профили деплоя
-
-**Чистый монолит (WordPress-стиль):**
-```toml
-[build.server]
-embed_admin = true       # Leptos admin встроен, SSR in-process
-embed_storefront = true  # Leptos storefront встроен, SSR in-process
-```
-```
-Один бинарник. Ни одного HTTP-вызова между слоями платформы.
-Браузер ↔ Axum ↔ #[server] fn ↔ DB — всё в одном процессе.
+```text
+HTTP request -> Axum -> Leptos SSR -> #[server] fn -> service layer -> DB
 ```
 
-**Сервер + admin вместе, storefront отдельно:**
-```toml
-[build.server]
-embed_admin = true
-embed_storefront = false
+Во многих SSR-сценариях это in-process путь без GraphQL resolver-слоя.
 
-[[build.storefront]]
-stack = "leptos"  # или "next"
-```
-```
-Admin: in-process.
-Storefront: отдельный бинарник, ходит на /api/fn/* или /api/graphql.
+#### Hydration / client navigation / standalone Leptos
+
+```text
+browser -> POST /api/fn/* -> server -> service layer -> DB
 ```
 
-**Чистый headless:**
-```toml
-[build.server]
-embed_admin = false
-embed_storefront = false
-```
-```
-Сервер: только API (GraphQL + /api/fn/*).
-Admin и storefront: отдельные процессы, любой стек.
+Это нативный Leptos transport через `leptos_axum`.
+
+#### Параллельный GraphQL path
+
+GraphQL остаётся:
+
+- внешним API для `apps/next-admin`, `apps/next-frontend`, mobile и integrations;
+- fallback-веткой для Leptos UI там, где native coverage ещё не полная;
+- transport surface для старых модулей и persisted-query сценариев.
+
+### Правило для новых модулей
+
+Если новый модуль поставляет Leptos UI:
+
+- нельзя проектировать его как GraphQL-only data path, если возможен native `#[server]` слой;
+- нужно добавлять local API boundary и native-first вызовы;
+- GraphQL query/mutation path нельзя удалять, если он уже существует или нужен для внешних клиентов.
+
+## Deployment consequences
+
+### Монолит
+
+```text
+browser -> Axum -> Leptos SSR -> #[server] fn -> service layer -> DB
 ```
 
-**Мультисайт:**
-```toml
-[build.server]
-embed_admin = true
+Native path минимизирует внутренний transport overhead, но `/api/graphql`
+остаётся поднятым и доступным.
 
-[[build.storefront]]
-id = "site-eu"
-stack = "leptos"
+### Headless
 
-[[build.storefront]]
-id = "site-us"
-stack = "next"
+```text
+Leptos -> POST /api/fn/*
+Next.js / external clients -> POST /api/graphql
 ```
+
+Оба transport surface живут рядом.
 
 ## Consequences
 
 ### Позитивные
 
-- **Настоящий монолит**: один бинарник, нулевой HTTP между слоями. Деплой
-  буквально как WordPress — скопировал бинарник, настроил БД, запустил.
-- **Настоящий headless**: GraphQL как единственный внешний контракт, Leptos
-  при раздельном деплое ходит на `/api/fn/*`.
-- **Типобезопасность сквозная**: `#[server]`-функции компилируются вместе с
-  клиентским кодом — несоответствие типов не скомпилируется.
-- **Удаление GraphQL как зависимости из Leptos-приложений**: меньше кода,
-  нет `leptos-graphql` crate в admin и storefront.
-- **Производительность в монолите**: убирается serialization/deserialization
-  GraphQL, resolver-слой, TCP round-trip.
+- Monolith получает короткий native data path для Leptos UI.
+- GraphQL не теряется как публичный контракт.
+- Миграция host-приложений и module-owned UI crates возможна по частям.
+- Один и тот же модуль может обслуживать и Leptos UI, и внешние headless-клиенты.
 
 ### Негативные
 
-- **Переписывание слоя данных в admin и storefront**: текущий код с
-  `request_with_persisted(USERS_QUERY, ...)` заменяется на `#[server]`-функции.
-  Это значительный объём работы.
-- **SSR + hydrate сложнее чем чистый CSR**: нужно следить чтобы код корректно
-  работал в обоих контекстах (сервер и браузер), избегать browser-only API
-  в SSR-ветке.
-- **`#[server]`-функции — не GraphQL**: для headless-клиентов (Next.js и др.)
-  они недоступны напрямую, там по-прежнему GraphQL.
+- Нужно поддерживать dual-path документацию и verification.
+- Leptos-коду нужен явный local API layer, а не прямые вызовы transport из view.
+- Нельзя бездумно удалять старые GraphQL operations, даже если рядом уже есть `#[server]`.
 
-### Follow-up
+## Follow-up
 
-1. Перевести `apps/admin` с `csr` на `ssr + hydrate`, убрать `leptos-graphql`,
-   написать `#[server]`-функции для всех операций.
-2. Перевести `apps/storefront` на `#[server]`-функции, убрать GraphQL HTTP-вызовы.
-3. Убрать `leptos-graphql` crate из зависимостей admin и storefront.
-4. Обновить `apps/server`: `#[server]`-эндпоинты регистрируются через
-   `leptos_axum::handle_server_fns()` рядом с GraphQL-роутом.
-5. Обновить документацию по деплою: зафиксировать оба крайних случая
-   (монолит и headless) и все промежуточные конфигурации.
+1. Документация должна везде фиксировать dual-path rule: native `#[server]` first, GraphQL parallel.
+2. `apps/server` обязан держать и `/api/graphql`, и `/api/fn/*`.
+3. Новые module-owned Leptos UI crates должны следовать той же схеме.
+4. Verification-планы должны проверять не только GraphQL, но и Leptos server functions transport.

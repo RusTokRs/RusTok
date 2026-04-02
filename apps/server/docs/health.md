@@ -10,6 +10,9 @@
 - `GET /health/runtime` — operator-facing snapshot runtime guardrails.
 - `GET /health/modules` — health только по зарегистрированным модулям.
 
+Если `apps/server` запущен в `settings.rustok.runtime.host_mode = "registry_only"`, health/observability surface
+работает как read-only catalog host, а не как full monolith.
+
 ## Readiness модель
 
 `/health/ready` возвращает:
@@ -27,6 +30,14 @@
 - `event_transport` — критичная проверка инициализации event transport;
 - `search_backend` — не-критичная проверка search connectivity.
 
+### Registry-only mode
+
+В `settings.rustok.runtime.host_mode = "registry_only"` readiness выравнивается под реально поднятый surface:
+
+- остаются только `database`, `cache_backend` и marker-check `host_mode`;
+- не проверяются `tenant_cache_invalidation`, `event_transport`, `search_backend`, rate-limit runtime и module runtime;
+- `modules` в readiness не используются как hard gate и возвращают operator marker вместо попытки валидировать полный module runtime.
+
 ## Aggregation
 
 - если есть `critical` проверка со статусом `unhealthy`, общий статус `unhealthy`;
@@ -39,8 +50,15 @@
 
 - `status` и `observed_status` для effective/raw severity;
 - `rollout` (`observe|enforce`);
+- `host_mode` (`full|registry_only`);
+- `runtime_dependencies_enabled` — поднят ли полный runtime dependency layer;
 - `reasons` с человекочитаемыми причинами деградации;
 - `rate_limits`, `event_bus`, `event_transport`.
+
+Prometheus surface теперь также публикует:
+
+- `rustok_runtime_guardrail_runtime_dependencies_enabled`
+- `rustok_runtime_guardrail_host_mode{mode="full|registry_only"}`
 
 Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
 

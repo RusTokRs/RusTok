@@ -59,7 +59,7 @@
 | `BL-09` | region tax flags vs отдельный tax domain | вынести tax calculation/rules/providers из плоской `region`-модели в отдельный bounded context |
 | `BL-10` | линейный order lifecycle vs post-order reality | добавить returns, refunds, exchanges, claims, order changes и draft/edit semantics |
 | `BL-11` | manual/default providers vs extensibility | стабилизировать payment/fulfillment provider SPI вместо смешивания базовой модели с внешними интеграциями |
-| `BL-12` | metadata-backed shipping profile baseline и product-level typed field уже есть, но typed shipping-option/admin semantics и отдельный domain ещё нет | довести catalog/fulfillment boundary до полноценного shipping profile domain и channel-aware deliverability |
+| `BL-12` | metadata-backed shipping profile baseline и first-class product/shipping-option fields уже есть, но отдельный shipping profile domain, admin write-flow и mixed-cart policy ещё не оформлены | довести catalog/fulfillment boundary до полноценного shipping profile domain и channel-aware deliverability |
 
 ## Фазы
 
@@ -203,7 +203,9 @@ Deliverables:
 Что уже закрыто в текущем срезе:
 
 - введён metadata-backed baseline без новой schema/migration: product metadata может задавать `shipping_profile.slug`, а shipping option metadata ограничивает совместимость через `shipping_profiles.allowed_slugs`;
-- product create/update/read contracts уже экспонируют first-class `shipping_profile_slug`, а `CatalogService` нормализует его в metadata-backed storage shape и возвращает в REST/GraphQL/admin read paths;
+- product create/update/read contracts уже экспонируют first-class `shipping_profile_slug`, а shipping option read/create contracts экспонируют first-class `allowed_shipping_profile_slugs`;
+- admin REST/GraphQL surface уже умеет `list/show/create/update` shipping options с typed `allowed_shipping_profile_slugs`, так что shipping profile compatibility больше не живёт только в service/tests;
+- `CatalogService` и `FulfillmentService` нормализуют эти поля в metadata-backed storage shape; при этом omission `shipping_profile_slug` на product write-path не затирает уже существующий metadata-backed shipping profile;
 - `/store/shipping-options` и `storefrontShippingOptions` теперь фильтруют delivery options по shipping profiles уже лежащих в cart catalog items;
 - `POST /store/carts/{id}`, `updateStorefrontCartContext` и `CheckoutService` теперь режут selected shipping option, если он несовместим с cart shipping profiles;
 - regression tests уже покрывают REST/GraphQL discovery path, cart context patch и checkout reject path для несовместимого shipping profile.

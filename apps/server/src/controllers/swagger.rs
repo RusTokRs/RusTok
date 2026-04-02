@@ -1,14 +1,17 @@
 use axum::{
+    extract::State,
     http::{header::CONTENT_TYPE, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
 };
+use loco_rs::app::AppContext;
 use loco_rs::{controller::Routes, Result};
 use utoipa::openapi::path::OperationBuilder;
 use utoipa::openapi::request_body::RequestBodyBuilder;
 use utoipa::openapi::response::{ResponseBuilder, ResponsesBuilder};
-use utoipa::openapi::{Content, Ref};
+use utoipa::openapi::{Content, OpenApi as OpenApiDoc, Ref};
 
+use crate::common::settings::RustokSettings;
 use crate::error::Error;
 use utoipa::OpenApi;
 
@@ -109,6 +112,9 @@ use utoipa::OpenApi;
         // Marketplace
         crate::controllers::marketplace_registry::catalog,
         crate::controllers::marketplace_registry::catalog_module,
+        // Swagger
+        crate::controllers::swagger::openapi_json,
+        crate::controllers::swagger::openapi_yaml,
         // Admin Events
         crate::controllers::admin_events::list_dlq,
         crate::controllers::admin_events::replay_dlq_event,
@@ -251,6 +257,30 @@ use utoipa::OpenApi;
 )]
 pub struct ApiDoc;
 
+const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
+    "/health",
+    "/health/live",
+    "/health/ready",
+    "/health/runtime",
+    "/health/modules",
+    "/metrics",
+    "/v1/catalog",
+    "/v1/catalog/{slug}",
+    "/api/openapi.json",
+    "/api/openapi.yaml",
+];
+
+fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
+    let mut openapi = ApiDoc::openapi();
+    if settings.runtime.is_registry_only() {
+        openapi
+            .paths
+            .paths
+            .retain(|path, _| REGISTRY_ONLY_OPENAPI_PATHS.contains(&path.as_str()));
+    }
+    openapi
+}
+
 /// GET /api/openapi.json — OpenAPI specification in JSON format
 #[utoipa::path(
     get,
@@ -260,8 +290,9 @@ pub struct ApiDoc;
         (status = 200, description = "OpenAPI specification in JSON format", content_type = "application/json"),
     )
 )]
-pub async fn openapi_json() -> Result<Response> {
-    let spec = ApiDoc::openapi()
+pub async fn openapi_json(State(ctx): State<AppContext>) -> Result<Response> {
+    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+    let spec = build_openapi_document(&settings)
         .to_json()
         .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec: {e}")))?;
     Ok((
@@ -281,8 +312,9 @@ pub async fn openapi_json() -> Result<Response> {
         (status = 200, description = "OpenAPI specification in YAML format", content_type = "text/yaml"),
     )
 )]
-pub async fn openapi_yaml() -> Result<Response> {
-    let spec = ApiDoc::openapi()
+pub async fn openapi_yaml(State(ctx): State<AppContext>) -> Result<Response> {
+    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+    let spec = build_openapi_document(&settings)
         .to_yaml()
         .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}")))?;
     Ok((
@@ -349,7 +381,8 @@ impl utoipa::Modify for SecurityAddon {
 
 #[cfg(test)]
 mod tests {
-    use super::ApiDoc;
+    use super::{build_openapi_document, ApiDoc};
+    use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
 
     #[test]
@@ -364,5 +397,19 @@ mod tests {
             openapi.paths.paths.contains_key("/v1/catalog/{slug}"),
             "OpenAPI spec must include /v1/catalog/{slug}"
         );
+    }
+
+    #[test]
+    fn registry_only_openapi_filters_non_registry_surface() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::RegistryOnly;
+
+        let openapi = build_openapi_document(&settings);
+
+        assert!(openapi.paths.paths.contains_key("/v1/catalog"));
+        assert!(openapi.paths.paths.contains_key("/metrics"));
+        assert!(openapi.paths.paths.contains_key("/api/openapi.json"));
+        assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
+        assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));
     }
 }

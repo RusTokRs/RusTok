@@ -248,6 +248,22 @@ fn admin_order_auth_context(tenant_id: Uuid) -> AuthContext {
     }
 }
 
+fn admin_fulfillment_auth_context(tenant_id: Uuid) -> AuthContext {
+    AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![
+            Permission::FULFILLMENTS_READ,
+            Permission::FULFILLMENTS_CREATE,
+            Permission::FULFILLMENTS_UPDATE,
+        ],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    }
+}
+
 fn customer_auth_context(tenant_id: Uuid, user_id: Uuid) -> AuthContext {
     AuthContext {
         user_id,
@@ -922,6 +938,249 @@ async fn admin_graphql_exposes_shipping_profile_slug_for_products() {
 }
 
 #[tokio::test]
+async fn admin_graphql_supports_shipping_option_create_update_and_list() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_fulfillment_auth_context(tenant_id)),
+    );
+
+    let created = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              createShippingOption(
+                tenantId: "{tenant_id}",
+                input: {{
+                  name: "Bulky Freight",
+                  currencyCode: "eur",
+                  amount: "29.99",
+                  providerId: "manual",
+                  allowedShippingProfileSlugs: [" bulky ", "cold-chain", "bulky"],
+                  metadata: "{{\"source\":\"graphql-admin-shipping-option\"}}"
+                }}
+              ) {{
+                id
+                name
+                currencyCode
+                providerId
+                allowedShippingProfileSlugs
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        created.errors.is_empty(),
+        "unexpected admin shipping option create errors: {:?}",
+        created.errors
+    );
+    let created_json = created
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let shipping_option_id = created_json["createShippingOption"]["id"]
+        .as_str()
+        .expect("shipping option id should be present")
+        .to_string();
+    assert_eq!(
+        created_json["createShippingOption"]["allowedShippingProfileSlugs"],
+        serde_json::json!(["bulky", "cold-chain"])
+    );
+
+    let updated = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateShippingOption(
+                tenantId: "{tenant_id}",
+                id: "{shipping_option_id}",
+                input: {{
+                  name: "Cold Chain Freight",
+                  currencyCode: "usd",
+                  amount: "39.99",
+                  providerId: "custom-provider",
+                  allowedShippingProfileSlugs: ["cold-chain"],
+                  metadata: "{{\"updated\":true}}"
+                }}
+              ) {{
+                id
+                name
+                currencyCode
+                providerId
+                allowedShippingProfileSlugs
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        updated.errors.is_empty(),
+        "unexpected admin shipping option update errors: {:?}",
+        updated.errors
+    );
+    let updated_json = updated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        updated_json["updateShippingOption"]["name"],
+        Value::from("Cold Chain Freight")
+    );
+    assert_eq!(
+        updated_json["updateShippingOption"]["currencyCode"],
+        Value::from("USD")
+    );
+    assert_eq!(
+        updated_json["updateShippingOption"]["allowedShippingProfileSlugs"],
+        serde_json::json!(["cold-chain"])
+    );
+
+    let queried = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              shippingOptions(
+                tenantId: "{tenant_id}",
+                filter: {{ search: "chain", page: 1, perPage: 20 }}
+              ) {{
+                total
+                items {{
+                  id
+                  name
+                  currencyCode
+                  allowedShippingProfileSlugs
+                }}
+              }}
+              shippingOption(tenantId: "{tenant_id}", id: "{shipping_option_id}") {{
+                id
+                providerId
+                metadata
+                allowedShippingProfileSlugs
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        queried.errors.is_empty(),
+        "unexpected admin shipping option query errors: {:?}",
+        queried.errors
+    );
+    let queried_json = queried
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(queried_json["shippingOptions"]["total"], Value::from(1));
+    assert_eq!(
+        queried_json["shippingOptions"]["items"][0]["id"],
+        Value::from(shipping_option_id.clone())
+    );
+    assert_eq!(
+        queried_json["shippingOption"]["providerId"],
+        Value::from("custom-provider")
+    );
+    assert_eq!(
+        queried_json["shippingOption"]["allowedShippingProfileSlugs"],
+        serde_json::json!(["cold-chain"])
+    );
+
+    let deactivated = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              deactivateShippingOption(tenantId: "{tenant_id}", id: "{shipping_option_id}") {{
+                id
+                active
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        deactivated.errors.is_empty(),
+        "unexpected admin shipping option deactivate errors: {:?}",
+        deactivated.errors
+    );
+    let deactivated_json = deactivated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        deactivated_json["deactivateShippingOption"]["active"],
+        Value::from(false)
+    );
+
+    let inactive_query = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              shippingOptions(
+                tenantId: "{tenant_id}",
+                filter: {{ active: false, page: 1, perPage: 20 }}
+              ) {{
+                total
+                items {{
+                  id
+                  active
+                }}
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        inactive_query.errors.is_empty(),
+        "unexpected inactive shipping option query errors: {:?}",
+        inactive_query.errors
+    );
+    let inactive_json = inactive_query
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(inactive_json["shippingOptions"]["total"], Value::from(1));
+    assert_eq!(
+        inactive_json["shippingOptions"]["items"][0]["id"],
+        Value::from(shipping_option_id.clone())
+    );
+    assert_eq!(
+        inactive_json["shippingOptions"]["items"][0]["active"],
+        Value::from(false)
+    );
+
+    let reactivated = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              reactivateShippingOption(tenantId: "{tenant_id}", id: "{shipping_option_id}") {{
+                id
+                active
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        reactivated.errors.is_empty(),
+        "unexpected admin shipping option reactivate errors: {:?}",
+        reactivated.errors
+    );
+    let reactivated_json = reactivated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        reactivated_json["reactivateShippingOption"]["active"],
+        Value::from(true)
+    );
+}
+
+#[tokio::test]
 async fn storefront_graphql_filters_channel_hidden_products() {
     let (db, catalog, _) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -1322,6 +1581,7 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "graphql-checkout-parity" }),
             },
         )
@@ -1461,6 +1721,7 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "admin-graphql-checkout-parity" }),
             },
         )
@@ -1587,6 +1848,7 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "legacy-checkout-parity" }),
             },
         )
@@ -2059,6 +2321,7 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "storefront-graphql-checkout" }),
             },
         )
@@ -2481,6 +2744,7 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "storefront-graphql-cart-context" }),
             },
         )
@@ -2582,6 +2846,7 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
             },
         )
@@ -2595,6 +2860,7 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("14.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
             },
         )
@@ -2689,6 +2955,7 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["default".to_string()]),
                 metadata: serde_json::json!({
                     "shipping_profiles": {
                         "allowed_slugs": ["default"]
@@ -2706,6 +2973,7 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("29.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["bulky".to_string()]),
                 metadata: serde_json::json!({
                     "shipping_profiles": {
                         "allowed_slugs": ["bulky"]
@@ -2765,6 +3033,7 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
               ) {{
                 id
                 name
+                allowedShippingProfileSlugs
               }}
             }}
             "#,
@@ -2785,7 +3054,8 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
         json["storefrontShippingOptions"],
         serde_json::json!([{
             "id": bulky_option.id.to_string(),
-            "name": "Bulky Freight"
+            "name": "Bulky Freight",
+            "allowedShippingProfileSlugs": ["bulky"]
         }])
     );
 }
@@ -2824,6 +3094,7 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["default".to_string()]),
                 metadata: serde_json::json!({
                     "shipping_profiles": {
                         "allowed_slugs": ["default"]

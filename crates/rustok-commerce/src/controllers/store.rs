@@ -342,10 +342,7 @@ pub async fn list_shipping_options(
     }
     options.retain(|option| {
         is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug.as_deref())
-            && is_shipping_option_compatible_with_profiles(
-                &option.metadata,
-                &required_shipping_profiles,
-            )
+            && is_shipping_option_compatible_with_profiles(option, &required_shipping_profiles)
     });
 
     Ok(Json(options))
@@ -1047,7 +1044,7 @@ async fn validate_selected_shipping_option(
     let required_shipping_profiles = load_cart_shipping_profile_slugs(&ctx.db, tenant_id, cart)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    if !is_shipping_option_compatible_with_profiles(&option.metadata, &required_shipping_profiles) {
+    if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
         return Err(Error::BadRequest(format!(
             "Shipping option {} is not compatible with the cart shipping profiles",
             option.id
@@ -1989,6 +1986,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: None,
                     metadata: json!({}),
                 },
             )
@@ -2002,6 +2000,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("19.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: None,
                     metadata: json!({
                         "channel_visibility": {
                             "allowed_channel_slugs": ["mobile-app"]
@@ -2095,6 +2094,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: Some(vec!["default".to_string()]),
                     metadata: json!({
                         "shipping_profiles": {
                             "allowed_slugs": ["default"]
@@ -2112,6 +2112,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("29.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: Some(vec!["bulky".to_string()]),
                     metadata: json!({
                         "shipping_profiles": {
                             "allowed_slugs": ["bulky"]
@@ -2196,6 +2197,10 @@ mod tests {
             .expect("shipping options should be an array");
         assert_eq!(options.len(), 1);
         assert_eq!(options[0]["id"], json!(bulky_option.id));
+        assert_eq!(
+            options[0]["allowed_shipping_profile_slugs"],
+            json!(["bulky"])
+        );
     }
 
     #[tokio::test]
@@ -2244,6 +2249,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: Some(vec!["default".to_string()]),
                     metadata: json!({
                         "shipping_profiles": {
                             "allowed_slugs": ["default"]
@@ -3109,6 +3115,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: None,
                     metadata: json!({ "source": "store-shipping-options-eur" }),
                 },
             )
@@ -3122,6 +3129,7 @@ mod tests {
                     currency_code: "usd".to_string(),
                     amount: Decimal::from_str("19.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: None,
                     metadata: json!({ "source": "store-shipping-options-usd" }),
                 },
             )
@@ -3592,6 +3600,7 @@ mod tests {
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
+                    allowed_shipping_profile_slugs: None,
                     metadata: json!({ "source": "store-checkout-flow-shipping-option" }),
                 },
             )

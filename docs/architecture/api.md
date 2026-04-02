@@ -42,7 +42,8 @@ RusToK использует гибридный подход:
 - storefront catalog и shipping discovery используют metadata-based allowlist по `channel_slug`, а checkout/cart mutation path не пропускают товары и shipping options, скрытые для текущего channel context.
 - storefront product detail, cart line-item validation и checkout completion теперь также переоценивают product visibility и доступный inventory по видимым stock locations для текущего `channel_slug`.
 - storefront shipping discovery, cart context patch и checkout также используют metadata-backed shipping profile compatibility: `shipping_profile.slug` на product и `shipping_profiles.allowed_slugs` на shipping option.
-- admin/storefront product read contracts и admin write contracts теперь также знают first-class `shipping_profile_slug`; на текущем этапе он нормализуется в metadata-backed storage без отдельной product schema migration.
+- admin/storefront product read contracts и admin write contracts теперь также знают first-class `shipping_profile_slug`, а shipping option contracts знают first-class `allowed_shipping_profile_slugs`; на текущем этапе оба поля нормализуются в metadata-backed storage без отдельной schema migration.
+- admin transport для delivery теперь включает shipping-option management: REST `/admin/shipping-options*` и GraphQL `shippingOptions/shippingOption/createShippingOption/updateShippingOption` работают поверх того же `FulfillmentService`, что и storefront/read path.
 - storefront GraphQL cart context patch `updateStorefrontCartContext` использует tri-state input contract (`omitted` vs `null` vs explicit value) и повторяет semantics live `POST /store/carts/{id}` без потери patch-значения;
 - storefront locale может приходить через `locale` query param и `x-medusa-locale`;
 - storefront cart line items описываются как `variant_id + quantity`, а title/price резолвятся backend-ом;

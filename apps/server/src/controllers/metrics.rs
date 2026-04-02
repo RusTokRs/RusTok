@@ -159,6 +159,8 @@ rustok_runtime_guardrail_rate_limit_config{{namespace=\"{namespace}\",setting=\"
         "rustok_runtime_guardrail_rollout_mode {rollout_mode}\n\
 rustok_runtime_guardrail_observed_status {observed_status}\n\
 rustok_runtime_guardrail_status {overall_status}\n\
+rustok_runtime_guardrail_runtime_dependencies_enabled {runtime_dependencies_enabled}\n\
+rustok_runtime_guardrail_host_mode{{mode=\"{host_mode}\"}} 1\n\
 rustok_runtime_guardrail_event_transport_fallback_active {relay_fallback_active}\n\
 rustok_runtime_guardrail_event_backpressure_enabled {backpressure_enabled}\n\
 rustok_runtime_guardrail_event_backpressure_state {backpressure_state}\n\
@@ -170,6 +172,12 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
         rollout_mode = snapshot.rollout.metric_value(),
         observed_status = snapshot.observed_status.metric_value(),
         overall_status = snapshot.status.metric_value(),
+        runtime_dependencies_enabled = if snapshot.runtime_dependencies_enabled {
+            1
+        } else {
+            0
+        },
+        host_mode = snapshot.host_mode,
         relay_fallback_active = if snapshot.event_transport.relay_fallback_active {
             1
         } else {
@@ -552,6 +560,8 @@ mod tests {
             status: RuntimeGuardrailStatus::Ok,
             observed_status: RuntimeGuardrailStatus::Ok,
             rollout: RuntimeGuardrailRollout::Observe,
+            host_mode: "full".to_string(),
+            runtime_dependencies_enabled: true,
             reasons: Vec::new(),
             rate_limits: vec![RateLimitGuardrailSnapshot {
                 namespace: "oauth",
@@ -605,5 +615,7 @@ mod tests {
             "rustok_runtime_guardrail_rate_limit_config",
             "{namespace=\"oauth\",setting=\"memory_critical_entries\"}",
         );
+        assert!(payload.contains("rustok_runtime_guardrail_runtime_dependencies_enabled 1"));
+        assert!(payload.contains("rustok_runtime_guardrail_host_mode{mode=\"full\"} 1"));
     }
 }

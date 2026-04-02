@@ -15,7 +15,21 @@ pub struct CreateShippingOptionInput {
     pub amount: Decimal,
     #[validate(length(min = 1, max = 100))]
     pub provider_id: Option<String>,
+    pub allowed_shipping_profile_slugs: Option<Vec<String>>,
     pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct UpdateShippingOptionInput {
+    #[validate(length(min = 1, max = 120))]
+    pub name: Option<String>,
+    #[validate(length(equal = 3))]
+    pub currency_code: Option<String>,
+    pub amount: Option<Decimal>,
+    #[validate(length(min = 1, max = 100))]
+    pub provider_id: Option<String>,
+    pub allowed_shipping_profile_slugs: Option<Vec<String>>,
+    pub metadata: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -69,6 +83,7 @@ pub struct ShippingOptionResponse {
     pub amount: Decimal,
     pub provider_id: String,
     pub active: bool,
+    pub allowed_shipping_profile_slugs: Option<Vec<String>>,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

@@ -56,3 +56,4 @@ Rules mandatory for all automated agents operating in this repository:
 4. Never bypass or disable pre-commit/pre-push hooks. Fix the root cause of failures.
 5. Do not edit CI/CD workflow files unless explicitly requested.
 6. Do not modify other branches — only work on the assigned task branch.
+7. For Leptos apps and module-owned Leptos UI packages, use native `#[server]` functions as the default internal data layer and keep GraphQL in parallel. Do not remove or replace GraphQL when adding server functions.

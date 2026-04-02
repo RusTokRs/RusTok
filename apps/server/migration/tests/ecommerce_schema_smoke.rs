@@ -464,8 +464,8 @@ fn create_product_input() -> CreateProductInput {
             },
             ProductTranslationInput {
                 locale: "ru".to_string(),
-                title: "Товар из миграций".to_string(),
-                description: Some("Русская локализация".to_string()),
+                title: "РўРѕРІР°СЂ РёР· РјРёРіСЂР°С†РёР№".to_string(),
+                description: Some("Р СѓСЃСЃРєР°СЏ Р»РѕРєР°Р»РёР·Р°С†РёСЏ".to_string()),
                 handle: Some(format!("tovar-iz-migraciy-{}", Uuid::new_v4())),
                 meta_title: Some("RU meta".to_string()),
                 meta_description: Some("RU description".to_string()),
@@ -623,6 +623,7 @@ fn create_shipping_option_input() -> CreateShippingOptionInput {
         currency_code: "usd".to_string(),
         amount: Decimal::from_str("12.50").expect("valid decimal"),
         provider_id: None,
+        allowed_shipping_profile_slugs: None,
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
 }
@@ -663,6 +664,6 @@ async fn catalog_service_supports_multilingual_catalog_data_on_migrated_schema()
             .iter()
             .find(|item| item.locale == "ru")
             .map(|item| item.title.as_str()),
-        Some("Товар из миграций")
+        Some("РўРѕРІР°СЂ РёР· РјРёРіСЂР°С†РёР№")
     );
 }

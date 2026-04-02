@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_fulfillment::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
-    DeliverFulfillmentInput, ShipFulfillmentInput,
+    DeliverFulfillmentInput, ShipFulfillmentInput, UpdateShippingOptionInput,
 };
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::services::FulfillmentService;
@@ -23,6 +23,7 @@ fn create_shipping_option_input() -> CreateShippingOptionInput {
         currency_code: "usd".to_string(),
         amount: Decimal::from_str("9.99").expect("valid decimal"),
         provider_id: None,
+        allowed_shipping_profile_slugs: None,
         metadata: serde_json::json!({ "source": "fulfillment-test" }),
     }
 }
@@ -41,6 +42,128 @@ async fn create_and_list_shipping_options() {
     let listed = service.list_shipping_options(tenant_id).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, created.id);
+}
+
+#[tokio::test]
+async fn create_shipping_option_normalizes_allowed_shipping_profile_slugs() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Bulky Freight".to_string(),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("29.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec![
+                    " Bulky ".to_string(),
+                    "cold-chain".to_string(),
+                    "bulky".to_string(),
+                ]),
+                metadata: serde_json::json!({ "source": "typed-shipping-profiles" }),
+            },
+        )
+        .await
+        .expect("shipping option should be created");
+
+    assert_eq!(
+        created.allowed_shipping_profile_slugs,
+        Some(vec!["bulky".to_string(), "cold-chain".to_string()])
+    );
+    assert_eq!(
+        created.metadata["shipping_profiles"]["allowed_slugs"],
+        serde_json::json!(["bulky", "cold-chain"])
+    );
+}
+
+#[tokio::test]
+async fn update_shipping_option_normalizes_allowed_shipping_profile_slugs() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let created = service
+        .create_shipping_option(tenant_id, create_shipping_option_input())
+        .await
+        .expect("shipping option should be created");
+
+    let updated = service
+        .update_shipping_option(
+            tenant_id,
+            created.id,
+            UpdateShippingOptionInput {
+                name: Some("Freight".to_string()),
+                currency_code: Some("eur".to_string()),
+                amount: Some(Decimal::from_str("14.99").expect("valid decimal")),
+                provider_id: Some(" custom-provider ".to_string()),
+                allowed_shipping_profile_slugs: Some(vec![
+                    " bulky ".to_string(),
+                    "cold-chain".to_string(),
+                    "bulky".to_string(),
+                ]),
+                metadata: Some(serde_json::json!({ "updated": true })),
+            },
+        )
+        .await
+        .expect("shipping option should be updated");
+
+    assert_eq!(updated.name, "Freight");
+    assert_eq!(updated.currency_code, "EUR");
+    assert_eq!(
+        updated.amount,
+        Decimal::from_str("14.99").expect("valid decimal")
+    );
+    assert_eq!(updated.provider_id, "custom-provider");
+    assert_eq!(
+        updated.allowed_shipping_profile_slugs,
+        Some(vec!["bulky".to_string(), "cold-chain".to_string()])
+    );
+    assert_eq!(updated.metadata["updated"], serde_json::json!(true));
+    assert_eq!(
+        updated.metadata["shipping_profiles"]["allowed_slugs"],
+        serde_json::json!(["bulky", "cold-chain"])
+    );
+}
+
+#[tokio::test]
+async fn deactivate_and_reactivate_shipping_option_changes_admin_visibility() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let created = service
+        .create_shipping_option(tenant_id, create_shipping_option_input())
+        .await
+        .expect("shipping option should be created");
+
+    let deactivated = service
+        .deactivate_shipping_option(tenant_id, created.id)
+        .await
+        .expect("shipping option should be deactivated");
+    assert!(!deactivated.active);
+    assert!(service
+        .list_shipping_options(tenant_id)
+        .await
+        .expect("active shipping options should load")
+        .is_empty());
+    let all_options = service
+        .list_all_shipping_options(tenant_id)
+        .await
+        .expect("all shipping options should load");
+    assert_eq!(all_options.len(), 1);
+    assert!(!all_options[0].active);
+
+    let reactivated = service
+        .reactivate_shipping_option(tenant_id, created.id)
+        .await
+        .expect("shipping option should be reactivated");
+    assert!(reactivated.active);
+    assert_eq!(
+        service
+            .list_shipping_options(tenant_id)
+            .await
+            .expect("active shipping options should load")
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]

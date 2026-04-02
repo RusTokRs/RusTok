@@ -1,6 +1,6 @@
 # RusToK Admin (Leptos)
 
-`apps/admin` — Leptos CSR админка RusToK, развиваемая параллельно с `apps/next-admin` для функционального паритета.
+`apps/admin` — Leptos admin RusToK с `csr`, `ssr` и `hydrate` профилями, развиваемая параллельно с `apps/next-admin` для функционального паритета.
 
 ## Роль в платформе
 
@@ -26,18 +26,19 @@
 
 ### Ядро
 
-- `leptos`, `leptos_router` — UI и маршрутизация (CSR/WASM);
+- `leptos`, `leptos_router` — UI, маршрутизация и dual runtime (`csr` / `ssr` / `hydrate`);
 - `tailwindcss` + shadcn token model;
 
 ### i18n
 
-- `leptos_i18n` 0.6 (feature `csr`) — compile-time многоязычность через `t_string!()` / `t!()` макросы;
+- `leptos_i18n` 0.6 — compile-time многоязычность для `csr` / `ssr` / `hydrate` путей через `t_string!()` / `t!()` макросы;
 - `leptos_i18n_build` — кодогенерация i18n-модуля из `locales/*.json` через `build.rs`;
 - файлы локалей: `locales/en.json`, `locales/ru.json` (вложенный JSON, ~260 ключей).
 
 ### Данные и API
 
-- `leptos-graphql` — GraphQL transport/контракты;
+- `#[server]` server functions — основной внутренний data-layer для Leptos host/UI;
+- `leptos-graphql` — параллельный GraphQL transport/контракты, который не удаляется и остаётся fallback/внешним контрактом;
 - `leptos-auth` — auth/session контракты;
 - `leptos_query` — кэширование/prefetch запросов.
 
@@ -50,7 +51,7 @@
 
 ## Взаимодействие
 
-- `apps/server` (HTTP/GraphQL API)
+- `apps/server` (`/api/graphql` и `/api/fn/*`) как backend для dual-path data access
 - `crates/rustok-rbac` и другие доменные модули через backend
 - общий UI контракт с `apps/next-admin` и storefront приложениями
 - manifest-driven Leptos module UI через `apps/admin/build.rs`, registry и generic route `/modules/:module_slug`

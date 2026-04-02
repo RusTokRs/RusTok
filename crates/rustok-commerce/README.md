@@ -15,13 +15,15 @@
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
 - Own store-context resolution across region, currency, and tenant locale policy.
 - Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
-- Apply metadata-backed shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation.
-- Expose first-class `shipping_profile_slug` on product create/update/read contracts while the underlying storage still uses the metadata-backed shipping profile shape.
+- Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, while the underlying storage still uses metadata-backed profile rules.
+- Expose first-class `shipping_profile_slug` on product create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts, with normalization into the metadata-backed shipping profile shape.
+- Expose admin shipping-option management over REST and GraphQL (`list/show/create/update`) on top of `FulfillmentService`, so delivery compatibility is configurable without dropping to direct service calls.
 - Re-export the shared DTO/entity/error surface from `rustok-commerce-foundation`.
 - Re-export `CartService`, `CustomerService`, `CatalogService`, `PricingService`, `InventoryService`, `OrderService`, `PaymentService`, `FulfillmentService`, and `CheckoutService` from the split modules and orchestration layer.
 - Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
 - Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
+- Let the module-owned Leptos admin UI package manage both product shipping-profile assignment and typed shipping-option compatibility rules on top of the commerce GraphQL contract.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
 - Publish the typed RBAC surface for commerce resources.
 
@@ -36,7 +38,7 @@
 - Depends on `rustok-channel` for platform-level channel bindings and request-aware storefront visibility rules.
 - Depends on `rustok-outbox` and `rustok-events` for transactional domain-event publishing.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
-- `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned catalog control room mounted under `/modules/commerce`.
+- `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned commerce control room mounted under `/modules/commerce` for catalog and shipping-option operations.
 - `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with a public catalog surface mounted under `/modules/commerce`.
 - `rustok-module.toml` exports both surfaces through `[provides.admin_ui]` and `[provides.storefront_ui]`, so host wiring stays manifest-derived instead of relying on manual route registration.
 - Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,

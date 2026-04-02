@@ -171,6 +171,7 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-test" }),
             },
         )
@@ -317,6 +318,7 @@ async fn complete_checkout_rejects_shipping_option_hidden_for_cart_channel() {
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({
                     "channel_visibility": {
                         "allowed_channel_slugs": ["mobile-app"]
@@ -427,6 +429,7 @@ async fn complete_checkout_rejects_line_item_hidden_for_cart_channel() {
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({}),
             },
         )
@@ -528,6 +531,7 @@ async fn complete_checkout_rejects_line_item_without_channel_visible_inventory()
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({}),
             },
         )
@@ -632,6 +636,7 @@ async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shippi
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["default".to_string()]),
                 metadata: serde_json::json!({
                     "shipping_profiles": {
                         "allowed_slugs": ["default"]
@@ -731,6 +736,7 @@ async fn repeated_complete_checkout_recovers_existing_result() {
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-retry-test" }),
             },
         )
@@ -841,6 +847,7 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-existing-collection-test" }),
             },
         )
@@ -964,6 +971,7 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-context-priority-test" }),
             },
         )
@@ -977,6 +985,7 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("12.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-context-priority-test" }),
             },
         )
@@ -1082,6 +1091,7 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-recovery-test" }),
             },
         )
@@ -1388,6 +1398,7 @@ async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-retry-after-failure-test" }),
             },
         )
@@ -1511,6 +1522,7 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
+                allowed_shipping_profile_slugs: None,
                 metadata: serde_json::json!({ "source": "checkout-without-fulfillment-test" }),
             },
         )

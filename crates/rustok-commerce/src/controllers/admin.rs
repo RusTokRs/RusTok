@@ -13,10 +13,11 @@ use uuid::Uuid;
 use crate::{
     dto::{
         AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelPaymentInput,
-        CapturePaymentInput, CreateProductInput, DeliverFulfillmentInput, DeliverOrderInput,
-        FulfillmentResponse, ListFulfillmentsInput, ListPaymentCollectionsInput,
-        MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse, ProductResponse,
-        ShipFulfillmentInput, ShipOrderInput, UpdateProductInput,
+        CapturePaymentInput, CreateProductInput, CreateShippingOptionInput,
+        DeliverFulfillmentInput, DeliverOrderInput, FulfillmentResponse, ListFulfillmentsInput,
+        ListPaymentCollectionsInput, MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse,
+        ProductResponse, ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse,
+        UpdateProductInput, UpdateShippingOptionInput,
     },
     CatalogService, FulfillmentService, OrderService, PaymentService,
 };
@@ -75,6 +76,22 @@ pub fn routes() -> Routes {
             "/payment-collections/{id}/cancel",
             axum::routing::post(cancel_payment_collection),
         )
+        .add(
+            "/shipping-options",
+            axum::routing::get(list_shipping_options).post(create_shipping_option),
+        )
+        .add(
+            "/shipping-options/{id}",
+            axum::routing::get(show_shipping_option).post(update_shipping_option),
+        )
+        .add(
+            "/shipping-options/{id}/deactivate",
+            axum::routing::post(deactivate_shipping_option),
+        )
+        .add(
+            "/shipping-options/{id}/reactivate",
+            axum::routing::post(reactivate_shipping_option),
+        )
         .add("/fulfillments", axum::routing::get(list_fulfillments))
         .add("/fulfillments/{id}", axum::routing::get(show_fulfillment))
         .add(
@@ -123,6 +140,16 @@ pub struct ListFulfillmentsParams {
     pub status: Option<String>,
     pub order_id: Option<Uuid>,
     pub customer_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ListShippingOptionsParams {
+    #[serde(flatten)]
+    pub pagination: Option<super::common::PaginationParams>,
+    pub currency_code: Option<String>,
+    pub provider_id: Option<String>,
+    pub search: Option<String>,
+    pub active: Option<bool>,
 }
 
 /// List admin ecommerce products
@@ -608,6 +635,243 @@ pub async fn show_payment_collection(
     Ok(Json(collection))
 }
 
+/// List admin shipping options
+#[utoipa::path(
+    get,
+    path = "/admin/shipping-options",
+    tag = "admin",
+    params(ListShippingOptionsParams),
+    responses(
+        (status = 200, description = "Shipping options", body = PaginatedResponse<ShippingOptionResponse>),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_shipping_options(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(params): Query<ListShippingOptionsParams>,
+) -> Result<Json<PaginatedResponse<ShippingOptionResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let pagination = params.pagination.unwrap_or_default();
+    let mut items = FulfillmentService::new(ctx.db.clone())
+        .list_all_shipping_options(tenant.id)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    if let Some(active) = params.active {
+        items.retain(|option| option.active == active);
+    }
+    if let Some(currency_code) = params.currency_code.as_deref() {
+        items.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
+    }
+    if let Some(provider_id) = params.provider_id.as_deref() {
+        items.retain(|option| option.provider_id.eq_ignore_ascii_case(provider_id));
+    }
+    if let Some(search) = params.search.as_deref() {
+        let search = search.trim().to_ascii_lowercase();
+        if !search.is_empty() {
+            items.retain(|option| option.name.to_ascii_lowercase().contains(&search));
+        }
+    }
+    let total = items.len() as u64;
+    let data = items
+        .into_iter()
+        .skip(pagination.offset() as usize)
+        .take(pagination.limit() as usize)
+        .collect();
+
+    Ok(Json(PaginatedResponse {
+        data,
+        meta: super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+    }))
+}
+
+/// Create admin shipping option
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-options",
+    tag = "admin",
+    request_body = CreateShippingOptionInput,
+    responses(
+        (status = 201, description = "Shipping option created successfully", body = ShippingOptionResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn create_shipping_option(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<CreateShippingOptionInput>,
+) -> Result<(StatusCode, Json<ShippingOptionResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_CREATE],
+        "Permission denied: fulfillments:create required",
+    )?;
+
+    let option = FulfillmentService::new(ctx.db.clone())
+        .create_shipping_option(tenant.id, input)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    Ok((StatusCode::CREATED, Json(option)))
+}
+
+/// Show admin shipping option
+#[utoipa::path(
+    get,
+    path = "/admin/shipping-options/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    responses(
+        (status = 200, description = "Shipping option details", body = ShippingOptionResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping option not found")
+    )
+)]
+pub async fn show_shipping_option(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ShippingOptionResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let option = FulfillmentService::new(ctx.db.clone())
+        .get_shipping_option(tenant.id, id)
+        .await
+        .map_err(|err| match err {
+            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
+                Error::NotFound
+            }
+            other => Error::BadRequest(other.to_string()),
+        })?;
+
+    Ok(Json(option))
+}
+
+/// Update admin shipping option
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-options/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    request_body = UpdateShippingOptionInput,
+    responses(
+        (status = 200, description = "Shipping option updated successfully", body = ShippingOptionResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping option not found")
+    )
+)]
+pub async fn update_shipping_option(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateShippingOptionInput>,
+) -> Result<Json<ShippingOptionResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let option = FulfillmentService::new(ctx.db.clone())
+        .update_shipping_option(tenant.id, id, input)
+        .await
+        .map_err(|err| match err {
+            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
+                Error::NotFound
+            }
+            other => Error::BadRequest(other.to_string()),
+        })?;
+
+    Ok(Json(option))
+}
+
+/// Deactivate admin shipping option
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-options/{id}/deactivate",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    responses(
+        (status = 200, description = "Shipping option deactivated successfully", body = ShippingOptionResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping option not found")
+    )
+)]
+pub async fn deactivate_shipping_option(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ShippingOptionResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let option = FulfillmentService::new(ctx.db.clone())
+        .deactivate_shipping_option(tenant.id, id)
+        .await
+        .map_err(|err| match err {
+            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
+                Error::NotFound
+            }
+            other => Error::BadRequest(other.to_string()),
+        })?;
+
+    Ok(Json(option))
+}
+
+/// Reactivate admin shipping option
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-options/{id}/reactivate",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    responses(
+        (status = 200, description = "Shipping option reactivated successfully", body = ShippingOptionResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping option not found")
+    )
+)]
+pub async fn reactivate_shipping_option(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ShippingOptionResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let option = FulfillmentService::new(ctx.db.clone())
+        .reactivate_shipping_option(tenant.id, id)
+        .await
+        .map_err(|err| match err {
+            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
+                Error::NotFound
+            }
+            other => Error::BadRequest(other.to_string()),
+        })?;
+
+    Ok(Json(option))
+}
+
 /// List admin fulfillments
 #[utoipa::path(
     get,
@@ -937,7 +1201,7 @@ mod tests {
 
     use crate::dto::{
         CancelPaymentInput, CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
-        CreatePaymentCollectionInput, ShipFulfillmentInput,
+        CreatePaymentCollectionInput, ShipFulfillmentInput, UpdateShippingOptionInput,
     };
     use crate::{FulfillmentService, OrderService, PaymentService};
 
@@ -1401,6 +1665,242 @@ mod tests {
         assert_eq!(data[0]["status"], json!("cancelled"));
         assert_eq!(payload["meta"]["total"], json!(1));
         assert_ne!(data[0]["id"], json!(first_collection.id));
+    }
+
+    #[tokio::test]
+    async fn admin_shipping_options_transport_supports_create_update_and_list() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![
+                Permission::FULFILLMENTS_READ,
+                Permission::FULFILLMENTS_CREATE,
+                Permission::FULFILLMENTS_UPDATE,
+            ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admin/shipping-options")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "name": "Bulky Freight",
+                            "currency_code": "eur",
+                            "amount": "29.99",
+                            "provider_id": " manual ",
+                            "allowed_shipping_profile_slugs": [" bulky ", "cold-chain", "bulky"],
+                            "metadata": { "source": "admin-shipping-options" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create request should succeed");
+        let create_status = create_response.status();
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create response should read");
+        assert_eq!(
+            create_status,
+            StatusCode::CREATED,
+            "unexpected create body: {}",
+            String::from_utf8_lossy(&create_body)
+        );
+
+        let created: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create response should be JSON");
+        let option_id = created["id"]
+            .as_str()
+            .expect("created shipping option id should be present");
+        assert_eq!(
+            created["allowed_shipping_profile_slugs"],
+            json!(["bulky", "cold-chain"])
+        );
+
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/admin/shipping-options?search=freight&page=1&per_page=10")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("list request should succeed");
+        let list_status = list_response.status();
+        let list_body = to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .expect("list response should read");
+        assert_eq!(
+            list_status,
+            StatusCode::OK,
+            "unexpected list body: {}",
+            String::from_utf8_lossy(&list_body)
+        );
+        let listed: serde_json::Value =
+            serde_json::from_slice(&list_body).expect("list response should be JSON");
+        assert_eq!(listed["meta"]["total"], json!(1));
+        assert_eq!(listed["data"][0]["id"], json!(option_id));
+
+        let update_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/shipping-options/{option_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        serde_json::to_string(&UpdateShippingOptionInput {
+                            name: Some("Cold Chain Freight".to_string()),
+                            currency_code: Some("usd".to_string()),
+                            amount: Some(Decimal::from_str("39.99").expect("valid decimal")),
+                            provider_id: Some("custom-provider".to_string()),
+                            allowed_shipping_profile_slugs: Some(vec!["cold-chain".to_string()]),
+                            metadata: Some(json!({ "updated": true })),
+                        })
+                        .expect("update payload should serialize"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update request should succeed");
+        let update_status = update_response.status();
+        let update_body = to_bytes(update_response.into_body(), usize::MAX)
+            .await
+            .expect("update response should read");
+        assert_eq!(
+            update_status,
+            StatusCode::OK,
+            "unexpected update body: {}",
+            String::from_utf8_lossy(&update_body)
+        );
+        let updated: serde_json::Value =
+            serde_json::from_slice(&update_body).expect("update response should be JSON");
+        assert_eq!(updated["name"], json!("Cold Chain Freight"));
+        assert_eq!(updated["currency_code"], json!("USD"));
+        assert_eq!(updated["provider_id"], json!("custom-provider"));
+        assert_eq!(
+            updated["allowed_shipping_profile_slugs"],
+            json!(["cold-chain"])
+        );
+
+        let show_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/admin/shipping-options/{option_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("show request should succeed");
+        let show_status = show_response.status();
+        let show_body = to_bytes(show_response.into_body(), usize::MAX)
+            .await
+            .expect("show response should read");
+        assert_eq!(
+            show_status,
+            StatusCode::OK,
+            "unexpected show body: {}",
+            String::from_utf8_lossy(&show_body)
+        );
+        let shown: serde_json::Value =
+            serde_json::from_slice(&show_body).expect("show response should be JSON");
+        assert_eq!(shown["id"], json!(option_id));
+        assert_eq!(shown["metadata"]["updated"], json!(true));
+        assert_eq!(
+            shown["metadata"]["shipping_profiles"]["allowed_slugs"],
+            json!(["cold-chain"])
+        );
+
+        let deactivate_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/shipping-options/{option_id}/deactivate"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("deactivate request should succeed");
+        let deactivate_body = to_bytes(deactivate_response.into_body(), usize::MAX)
+            .await
+            .expect("deactivate response should read");
+        let deactivated: serde_json::Value =
+            serde_json::from_slice(&deactivate_body).expect("deactivate response should be JSON");
+        assert_eq!(deactivated["active"], json!(false));
+
+        let inactive_list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/admin/shipping-options?active=false&page=1&per_page=10")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("inactive list request should succeed");
+        let inactive_list_body = to_bytes(inactive_list_response.into_body(), usize::MAX)
+            .await
+            .expect("inactive list response should read");
+        let inactive_listed: serde_json::Value =
+            serde_json::from_slice(&inactive_list_body).expect("inactive list should be JSON");
+        assert_eq!(inactive_listed["meta"]["total"], json!(1));
+        assert_eq!(inactive_listed["data"][0]["id"], json!(option_id));
+        assert_eq!(inactive_listed["data"][0]["active"], json!(false));
+
+        let reactivate_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/shipping-options/{option_id}/reactivate"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("reactivate request should succeed");
+        let reactivate_body = to_bytes(reactivate_response.into_body(), usize::MAX)
+            .await
+            .expect("reactivate response should read");
+        let reactivated: serde_json::Value =
+            serde_json::from_slice(&reactivate_body).expect("reactivate response should be JSON");
+        assert_eq!(reactivated["active"], json!(true));
     }
 
     #[tokio::test]

@@ -122,10 +122,7 @@ impl CommerceQuery {
         }
         options.retain(|option| {
             is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug.as_deref())
-                && is_shipping_option_compatible_with_profiles(
-                    &option.metadata,
-                    &required_shipping_profiles,
-                )
+                && is_shipping_option_compatible_with_profiles(option, &required_shipping_profiles)
         });
 
         Ok(options.into_iter().map(Into::into).collect())
@@ -383,6 +380,95 @@ impl CommerceQuery {
 
         Ok(GqlPaymentCollectionList {
             items: items.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
+    async fn shipping_option(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlShippingOption>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let option = match FulfillmentService::new(db.clone())
+            .get_shipping_option(tenant_id, id)
+            .await
+        {
+            Ok(option) => option,
+            Err(rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_)) => {
+                return Ok(None)
+            }
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        Ok(Some(option.into()))
+    }
+
+    async fn shipping_options(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<ShippingOptionsFilter>,
+    ) -> Result<GqlShippingOptionList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let filter = filter.unwrap_or(ShippingOptionsFilter {
+            active: None,
+            currency_code: None,
+            provider_id: None,
+            search: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let mut items = FulfillmentService::new(db.clone())
+            .list_all_shipping_options(tenant_id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        if let Some(active) = filter.active {
+            items.retain(|option| option.active == active);
+        }
+        if let Some(currency_code) = filter.currency_code.as_deref() {
+            items.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
+        }
+        if let Some(provider_id) = filter.provider_id.as_deref() {
+            items.retain(|option| option.provider_id.eq_ignore_ascii_case(provider_id));
+        }
+        if let Some(search) = filter.search.as_deref() {
+            let search = search.trim().to_ascii_lowercase();
+            if !search.is_empty() {
+                items.retain(|option| option.name.to_ascii_lowercase().contains(&search));
+            }
+        }
+        let total = items.len() as u64;
+        let offset = (page - 1) * per_page;
+        let paged = items
+            .into_iter()
+            .skip(offset as usize)
+            .take(per_page as usize)
+            .map(Into::into)
+            .collect();
+
+        Ok(GqlShippingOptionList {
+            items: paged,
             total,
             page,
             per_page,

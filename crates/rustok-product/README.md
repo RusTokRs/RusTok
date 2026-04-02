@@ -12,7 +12,8 @@
 - Product-side synchronization of first-class `tags` contract fields with the
   taxonomy-backed dictionary.
 - Product-side normalization of first-class `shipping_profile_slug` onto the
-  temporary metadata-backed shipping profile contract.
+  temporary metadata-backed shipping profile contract, without erasing an
+  existing metadata-backed profile when the typed field is omitted.
 - Product module metadata for runtime registration.
 
 ## Interactions

@@ -1,6 +1,6 @@
 ﻿# RusToK Leptos Storefront
 
-`apps/storefront` вЂ” Leptos SSR РІРёС‚СЂРёРЅР° RusToK (Rust-first РІР°СЂРёР°РЅС‚ storefront).
+`apps/storefront` — Leptos storefront RusToK с `ssr` и `hydrate` путями для Rust-first storefront сценариев.
 
 ## Р РѕР»СЊ РІ РїР»Р°С‚С„РѕСЂРјРµ
 
@@ -25,9 +25,9 @@
 
 ## Р‘РёР±Р»РёРѕС‚РµРєРё
 
-### РЇРґСЂРѕ
+### Ядро
 
-- `leptos`, `leptos_router` вЂ” UI Рё SSR-СЂРµРЅРґРµСЂРёРЅРі (С‡РёСЃС‚С‹Р№ SSR, Р±РµР· hydration)
+- `leptos`, `leptos_router` — UI, SSR и выборочный hydrate path
 - `axum`, `tokio` вЂ” HTTP СЃРµСЂРІРµСЂ
 
 ### i18n
@@ -37,15 +37,16 @@
 - С„Р°Р№Р»С‹ Р»РѕРєР°Р»РµР№: `locales/en.json`, `locales/ru.json`;
 - РІС‹Р±РѕСЂ СЏР·С‹РєР°: query-РїР°СЂР°РјРµС‚СЂ `?lang=ru`.
 
-### Р’РЅСѓС‚СЂРµРЅРЅРёРµ crates
+### Внутренние crates
 
-- `leptos-auth`, `leptos-graphql` вЂ” auth/GraphQL РєРѕРЅС‚СЂР°РєС‚С‹
+- `#[server]` server functions — основной внутренний data-layer для Leptos storefront и module-owned storefront packages
+- `leptos-auth`, `leptos-graphql` — auth и параллельный GraphQL transport, который остаётся fallback/внешним контрактом
 - `leptos-table`, `leptos-hook-form`, `leptos-zod`, `leptos-zustand` вЂ” С„РѕСЂРјС‹/СЃРѕСЃС‚РѕСЏРЅРёРµ
 - `leptos-shadcn-pagination`, `leptos-next-metadata`, `leptos_query` вЂ” UI-СѓС‚РёР»РёС‚С‹
 
 ## Р’Р·Р°РёРјРѕРґРµР№СЃС‚РІРёРµ
 
-- `apps/server` (API)
+- `apps/server` (`/api/graphql` и `/api/fn/*`) как backend для dual-path data access
 - РґРѕРјРµРЅРЅС‹Рµ `crates/rustok-*` С‡РµСЂРµР· backend
 - РѕР±С‰РёР№ UI-РєРѕРЅС‚СѓСЂ СЃ `apps/admin` / `apps/next-frontend`
 
@@ -59,3 +60,5 @@
 - Storefront SSR now fetches `enabledModules` before rendering and provides them through `EnabledModulesProvider`.
 - `src/modules/registry.rs` filters slot components by `module_slug` so optional widgets disappear when a tenant disables the owning module.
 - The standalone Leptos storefront keeps the same module contract as the Next storefront: core widgets use `module_slug = None`, optional module widgets must declare their owning slug.
+- Для host-кода и module-owned storefront UI packages действует один transport rule: native `#[server]` first, GraphQL fallback second.
+- Добавление native пути не отменяет `/api/graphql`; оба транспорта должны сосуществовать.

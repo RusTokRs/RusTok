@@ -46,7 +46,7 @@
 
 - `rustok-pages-admin` — базовый page CRUD.
 - `rustok-blog-admin` — content CRUD без blog-specific логики в host.
-- `rustok-commerce-admin` — commerce catalog CRUD без переноса catalog-specific UI в host.
+- `rustok-commerce-admin` — commerce catalog CRUD плюс shipping-option compatibility management без переноса commerce-specific UI в host.
 - `rustok-search-admin` — nested control-plane exemplar с manifest-driven secondary nav (`playground`, `engines`, `dictionaries`, `analytics`) без ручного router wiring в host.
 - `rustok-forum-admin` — admin-only forum surface с category/topic CRUD через модульный REST contract.
 - `rustok-channel-admin` — core-module admin slice с nested pages (`targets`, `apps`) через тот же manifest-driven contract.

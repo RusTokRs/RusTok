@@ -6,9 +6,15 @@
 ## Взаимодействие
 - crates/rustok-core
 - доменные модули crates/rustok-*
-- apps/admin и apps/next-frontend как клиенты API
+- apps/admin, apps/storefront и Next.js приложения как клиенты API/transport endpoints
 - `rustok-mcp` как platform MCP adapter; persisted MCP management/API, Alloy scaffold draft control plane и DB-backed runtime bridge живут в `apps/server`, включая live bridge обратно в persisted draft store
 - `rustok-content` orchestration runtime bridge и GraphQL conversion-команды (`promote_topic_to_post`, `demote_post_to_topic`, `split_topic`, `merge_topics`) также живут в `apps/server`
+
+## UI transport surfaces
+
+- `/api/graphql` остаётся обязательным публичным и headless-friendly контрактом.
+- `/api/fn/*` обслуживает Leptos `#[server]` functions через `leptos_axum`.
+- Для Leptos UI native `#[server]` transport добавляется параллельно GraphQL и не заменяет его.
 
 ## Документация
 - Локальная документация: `./docs/`

@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 use crate::{
-    dto::CartResponse,
+    dto::{CartResponse, ShippingOptionResponse},
     entities::{product, product_variant},
     CommerceResult,
 };
@@ -36,20 +36,35 @@ pub fn shipping_profile_slug_from_product_metadata(metadata: &Value) -> String {
 }
 
 pub fn is_shipping_option_compatible_with_profiles(
-    metadata: &Value,
+    option: &ShippingOptionResponse,
     required_profiles: &BTreeSet<String>,
 ) -> bool {
     if required_profiles.is_empty() {
         return true;
     }
 
-    let Some(allowed_profiles) = extract_allowed_shipping_profile_slugs(metadata) else {
+    let Some(allowed_profiles) = allowed_shipping_profile_slugs_from_option(option) else {
         return true;
     };
 
     required_profiles
         .iter()
         .all(|profile_slug| allowed_profiles.contains(profile_slug))
+}
+
+fn allowed_shipping_profile_slugs_from_option(
+    option: &ShippingOptionResponse,
+) -> Option<BTreeSet<String>> {
+    option
+        .allowed_shipping_profile_slugs
+        .as_ref()
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| normalize_shipping_profile_slug(value))
+                .collect()
+        })
+        .or_else(|| extract_allowed_shipping_profile_slugs_from_metadata(&option.metadata))
 }
 
 pub async fn load_cart_shipping_profile_slugs(
@@ -100,7 +115,9 @@ pub async fn load_cart_shipping_profile_slugs(
         .collect())
 }
 
-fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<BTreeSet<String>> {
+fn extract_allowed_shipping_profile_slugs_from_metadata(
+    metadata: &Value,
+) -> Option<BTreeSet<String>> {
     metadata
         .get("shipping_profiles")
         .and_then(|profiles| profiles.get("allowed_slugs"))
@@ -112,4 +129,37 @@ fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<BTreeSet<S
                 .filter_map(normalize_shipping_profile_slug)
                 .collect()
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_shipping_option_compatible_with_profiles;
+    use crate::dto::ShippingOptionResponse;
+    use chrono::Utc;
+    use rust_decimal::Decimal;
+    use std::collections::BTreeSet;
+    use uuid::Uuid;
+
+    #[test]
+    fn shipping_option_compatibility_uses_typed_allowed_profiles() {
+        let option = ShippingOptionResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Bulky Freight".to_string(),
+            currency_code: "EUR".to_string(),
+            amount: Decimal::new(2999, 2),
+            provider_id: "manual".to_string(),
+            active: true,
+            allowed_shipping_profile_slugs: Some(vec![" bulky ".to_string()]),
+            metadata: serde_json::json!({}),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let required_profiles = BTreeSet::from([String::from("bulky")]);
+
+        assert!(is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ));
+    }
 }

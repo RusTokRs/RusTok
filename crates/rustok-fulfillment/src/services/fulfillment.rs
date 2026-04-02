@@ -4,6 +4,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set,
 };
+use serde_json::{Map, Value};
+use std::collections::BTreeSet;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
@@ -13,7 +15,7 @@ use rustok_core::generate_id;
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
     DeliverFulfillmentInput, FulfillmentResponse, ListFulfillmentsInput, ShipFulfillmentInput,
-    ShippingOptionResponse,
+    ShippingOptionResponse, UpdateShippingOptionInput,
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
@@ -43,17 +45,29 @@ impl FulfillmentService {
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
-        let currency_code = normalize_currency_code(&input.currency_code)?;
-        if input.amount < Decimal::ZERO {
+        let CreateShippingOptionInput {
+            name,
+            currency_code,
+            amount,
+            provider_id,
+            allowed_shipping_profile_slugs,
+            metadata,
+        } = input;
+
+        let currency_code = normalize_currency_code(&currency_code)?;
+        if amount < Decimal::ZERO {
             return Err(FulfillmentError::Validation(
                 "amount cannot be negative".to_string(),
             ));
         }
-        let provider_id = input
-            .provider_id
+        let provider_id = provider_id
             .map(|provider_id| provider_id.trim().to_string())
             .filter(|provider_id| !provider_id.is_empty())
             .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+        let allowed_shipping_profile_slugs =
+            normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs);
+        let metadata =
+            apply_allowed_shipping_profiles_to_metadata(metadata, allowed_shipping_profile_slugs);
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
@@ -61,12 +75,12 @@ impl FulfillmentService {
         entities::shipping_option::ActiveModel {
             id: Set(shipping_option_id),
             tenant_id: Set(tenant_id),
-            name: Set(input.name),
+            name: Set(name),
             currency_code: Set(currency_code),
-            amount: Set(input.amount),
+            amount: Set(amount),
             provider_id: Set(provider_id),
             active: Set(true),
-            metadata: Set(input.metadata),
+            metadata: Set(metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -91,6 +105,89 @@ impl FulfillmentService {
         Ok(rows.into_iter().map(map_shipping_option).collect())
     }
 
+    pub async fn list_all_shipping_options(
+        &self,
+        tenant_id: Uuid,
+    ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+        let rows = entities::shipping_option::Entity::find()
+            .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+            .order_by_asc(entities::shipping_option::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        Ok(rows.into_iter().map(map_shipping_option).collect())
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, shipping_option_id = %shipping_option_id))]
+    pub async fn update_shipping_option(
+        &self,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+        input: UpdateShippingOptionInput,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
+        input
+            .validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+
+        let UpdateShippingOptionInput {
+            name,
+            currency_code,
+            amount,
+            provider_id,
+            allowed_shipping_profile_slugs,
+            metadata,
+        } = input;
+
+        if let Some(amount) = amount {
+            if amount < Decimal::ZERO {
+                return Err(FulfillmentError::Validation(
+                    "amount cannot be negative".to_string(),
+                ));
+            }
+        }
+
+        let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
+            .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
+        let mut active: entities::shipping_option::ActiveModel = shipping_option.into();
+
+        if let Some(name) = name {
+            active.name = Set(name);
+        }
+        if let Some(currency_code) = currency_code {
+            active.currency_code = Set(normalize_currency_code(&currency_code)?);
+        }
+        if let Some(amount) = amount {
+            active.amount = Set(amount);
+        }
+        if let Some(provider_id) = provider_id {
+            let provider_id = Some(provider_id)
+                .map(|provider_id| provider_id.trim().to_string())
+                .filter(|provider_id| !provider_id.is_empty())
+                .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+            active.provider_id = Set(provider_id);
+        }
+        if metadata.is_some() || allowed_shipping_profile_slugs.is_some() {
+            let current_metadata = active.metadata.clone().take().unwrap_or_default();
+            let metadata = match metadata {
+                Some(patch) => merge_metadata(current_metadata, patch),
+                None => current_metadata,
+            };
+            active.metadata = Set(apply_allowed_shipping_profiles_to_metadata(
+                metadata,
+                normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs),
+            ));
+        }
+
+        active.updated_at = Set(Utc::now().into());
+        active.update(&self.db).await?;
+
+        self.get_shipping_option(tenant_id, shipping_option_id)
+            .await
+    }
+
     pub async fn get_shipping_option(
         &self,
         tenant_id: Uuid,
@@ -102,6 +199,24 @@ impl FulfillmentService {
             .await?
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
         Ok(map_shipping_option(option))
+    }
+
+    pub async fn deactivate_shipping_option(
+        &self,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
+        self.set_shipping_option_active(tenant_id, shipping_option_id, false)
+            .await
+    }
+
+    pub async fn reactivate_shipping_option(
+        &self,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
+        self.set_shipping_option_active(tenant_id, shipping_option_id, true)
+            .await
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
@@ -299,6 +414,27 @@ impl FulfillmentService {
             .await?
             .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))
     }
+
+    async fn set_shipping_option_active(
+        &self,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+        active: bool,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
+        let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
+            .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
+
+        let mut option: entities::shipping_option::ActiveModel = shipping_option.into();
+        option.active = Set(active);
+        option.updated_at = Set(Utc::now().into());
+        option.update(&self.db).await?;
+
+        self.get_shipping_option(tenant_id, shipping_option_id)
+            .await
+    }
 }
 
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
@@ -323,6 +459,74 @@ fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde
     }
 }
 
+fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_allowed_shipping_profile_slugs(values: Option<Vec<String>>) -> Option<Vec<String>> {
+    values.map(|values| {
+        values
+            .into_iter()
+            .filter_map(|value| normalize_shipping_profile_slug(&value))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    })
+}
+
+fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String>> {
+    metadata
+        .get("shipping_profiles")
+        .and_then(|profiles| profiles.get("allowed_slugs"))
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(normalize_shipping_profile_slug)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+}
+
+fn apply_allowed_shipping_profiles_to_metadata(
+    metadata: Value,
+    allowed_shipping_profile_slugs: Option<Vec<String>>,
+) -> Value {
+    let Some(allowed_shipping_profile_slugs) = allowed_shipping_profile_slugs else {
+        return metadata;
+    };
+
+    let mut metadata_object = match metadata {
+        Value::Object(object) => object,
+        _ => Map::new(),
+    };
+    let mut shipping_profiles = match metadata_object.remove("shipping_profiles") {
+        Some(Value::Object(object)) => object,
+        _ => Map::new(),
+    };
+    shipping_profiles.insert(
+        "allowed_slugs".to_string(),
+        Value::Array(
+            allowed_shipping_profile_slugs
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    metadata_object.insert(
+        "shipping_profiles".to_string(),
+        Value::Object(shipping_profiles),
+    );
+    Value::Object(metadata_object)
+}
+
 fn map_shipping_option(option: entities::shipping_option::Model) -> ShippingOptionResponse {
     ShippingOptionResponse {
         id: option.id,
@@ -332,6 +536,7 @@ fn map_shipping_option(option: entities::shipping_option::Model) -> ShippingOpti
         amount: option.amount,
         provider_id: option.provider_id,
         active: option.active,
+        allowed_shipping_profile_slugs: extract_allowed_shipping_profile_slugs(&option.metadata),
         metadata: option.metadata,
         created_at: option.created_at.with_timezone(&Utc),
         updated_at: option.updated_at.with_timezone(&Utc),

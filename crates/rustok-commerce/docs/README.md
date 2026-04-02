@@ -20,7 +20,9 @@
 - Платформа уже пробрасывает `ChannelContext` через `rustok-api` и `apps/server`, а `commerce` начал использовать этот слой как реальный storefront input: `/store/*` и storefront GraphQL теперь уважают `channel_module_bindings`, а catalog/shipping visibility можно ограничивать metadata-based allowlist'ом по `channel_slug`.
 - Storefront product detail, cart mutation path и checkout validation теперь учитывают не только channel-aware видимость товаров и shipping options, но и доступный inventory по stock locations, видимым для текущего `channel_slug`; stale cart больше не проходит checkout ни с hidden product, ни с уже недоступным для канала остатком.
 - Для shipping profiles введён metadata-backed baseline: product metadata может задавать `shipping_profile.slug`, shipping option metadata может ограничивать совместимость через `shipping_profiles.allowed_slugs`, а storefront discovery, cart context patch и checkout не пропускают несовместимые комбинации.
-- Product catalog surface теперь дополнительно экспонирует first-class `shipping_profile_slug` в create/update/read contract, а `CatalogService` нормализует его в metadata-backed storage shape без отдельной миграции.
+- Product catalog surface теперь дополнительно экспонирует first-class `shipping_profile_slug` в create/update/read contract, а shipping option surface экспонирует first-class `allowed_shipping_profile_slugs`; `CatalogService` и `FulfillmentService` нормализуют их в metadata-backed storage shape без отдельной миграции.
+- Admin REST и admin GraphQL теперь тоже имеют typed shipping-option management surface: `list/show/create/update` для shipping options поверх `FulfillmentService`, включая `allowed_shipping_profile_slugs`.
+- Module-owned admin UI пакет `rustok-commerce/admin` теперь потребляет этот typed surface напрямую: operator может управлять `shipping_profile_slug` у товара и `allowed_shipping_profile_slugs` у shipping options без raw GraphQL запросов.
 - Publishable UI пакеты для admin/storefront живут внутри модуля и подключаются host-приложениями через manifest-driven composition.
 
 ## Контракты событий

@@ -49,6 +49,8 @@ pub struct RuntimeGuardrailSnapshot {
     pub status: RuntimeGuardrailStatus,
     pub observed_status: RuntimeGuardrailStatus,
     pub rollout: RuntimeGuardrailRollout,
+    pub host_mode: String,
+    pub runtime_dependencies_enabled: bool,
     pub reasons: Vec<String>,
     pub rate_limits: Vec<RateLimitGuardrailSnapshot>,
     pub event_bus: EventBusGuardrailSnapshot,
@@ -95,7 +97,8 @@ pub struct EventTransportGuardrailSnapshot {
 }
 
 pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuardrailSnapshot {
-    let policy = load_runtime_guardrail_policy(ctx);
+    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+    let policy = runtime_guardrail_policy_from_settings(&settings);
     let mut reasons = Vec::new();
     let mut observed_status = RuntimeGuardrailStatus::Ok;
 
@@ -300,6 +303,12 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         status,
         observed_status,
         rollout: policy.rollout,
+        host_mode: if settings.runtime.is_registry_only() {
+            "registry_only".to_string()
+        } else {
+            "full".to_string()
+        },
+        runtime_dependencies_enabled: !settings.runtime.is_registry_only(),
         reasons,
         rate_limits,
         event_bus,
@@ -369,9 +378,8 @@ impl RuntimeGuardrailPolicy {
     }
 }
 
-fn load_runtime_guardrail_policy(ctx: &AppContext) -> RuntimeGuardrailPolicy {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
-    let guardrails = settings.runtime.guardrails;
+fn runtime_guardrail_policy_from_settings(settings: &RustokSettings) -> RuntimeGuardrailPolicy {
+    let guardrails = settings.runtime.guardrails.clone();
     let thresholds = guardrails.rate_limit_memory_thresholds;
 
     RuntimeGuardrailPolicy {

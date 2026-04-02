@@ -14,6 +14,13 @@
 - Enabled modules резолвятся отдельно и фильтруют registry до SSR.
 - Для async module surfaces используется in-order HTML streaming.
 
+## Data-layer rule для Leptos storefront
+
+- Для `apps/storefront` и module-owned storefront packages путь по умолчанию: `UI -> local api -> #[server] -> service layer`.
+- В SSR-монолите это даёт in-process вызов; при hydrate/client navigation и в standalone деплое используется `POST /api/fn/*`.
+- GraphQL (`/api/graphql`) остаётся обязательным параллельным контрактом и fallback-веткой; его нельзя удалять при добавлении native path.
+- Новый module-owned Leptos storefront UI не должен проектироваться как GraphQL-only, если может жить через `#[server]`.
+
 ## Canonical route resolution
 
 - Canonical URL policy и alias storage живут в `rustok-content`, а не в storefront.

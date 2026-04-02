@@ -4,6 +4,8 @@
 - Status: Partially superseded by `2026-03-29-leptos-server-functions-as-internal-data-layer.md`
   (компонуемые профили деплоя остаются в силе; транспорт между Leptos UI и сервером пересмотрен)
 
+> Уточнение после внедрения `#[server]`: для Leptos UI native server functions и GraphQL живут параллельно. `#[server]` стал preferred internal path, но `/api/graphql` не удаляется.
+
 ## Context
 
 RusTok поддерживает два UI-стека:

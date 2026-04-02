@@ -8,6 +8,8 @@
 - схема `fulfillments`;
 - `FulfillmentModule` и `FulfillmentService`;
 - shipping boundary для checkout-цепочки `cart -> payment -> order -> fulfillment`;
+- first-class `allowed_shipping_profile_slugs` в shipping-option contract, который пока нормализуется в metadata-backed `shipping_profiles.allowed_slugs`;
+- admin REST/admin GraphQL и module-owned `rustok-commerce-admin` UI уже потребляют этот shipping-option contract как typed operator surface поверх `FulfillmentService`;
 - встроенный manual/default fulfillment flow без внешних carrier providers на текущем этапе.
 
 ## Архитектурная граница

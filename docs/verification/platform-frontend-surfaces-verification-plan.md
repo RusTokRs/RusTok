@@ -17,7 +17,7 @@
 
 - [ ] Leptos Admin остаётся host-приложением с module-owned routing через `/modules/:module_slug` и `/modules/:module_slug/*module_path`.
 - [ ] Базовые host-страницы соответствуют коду: dashboard, profile, security, modules, users, apps, workflows.
-- [ ] Auth и GraphQL integration отражают текущие `leptos-auth` / `leptos-graphql` usage patterns.
+- [ ] Auth и data-layer integration отражают текущий dual-path: native `#[server]` first для Leptos data access, GraphQL параллельно через `leptos-auth` / `leptos-graphql` и fallback-ветки.
 - [ ] Admin module registry и module request context описаны корректно.
 - [ ] План не обещает встроенные product/content/blog/pages screens там, где в host есть только generic module-owned surfaces.
 
@@ -31,6 +31,7 @@
 - [ ] Leptos Storefront отражён как SSR host shell с module-owned pages и slot-based composition.
 - [ ] В плане отражены `StorefrontSlot`, page registry и enabled-modules gating.
 - [ ] Home shell, static locale data и module-owned page rendering задокументированы корректно.
+- [ ] Data-layer storefront отражает текущий dual-path: native `#[server]` path и сохранённый GraphQL fallback.
 - [ ] План не обещает отдельные catalog/blog/cart screens, если в текущем host-коде они ещё не оформлены как самостоятельные маршруты.
 
 ---
@@ -86,6 +87,7 @@
 
 - [ ] `UI/leptos` отражён как текущий shared design-system/runtime workspace.
 - [ ] `docs/UI/README.md`, `graphql-architecture.md`, `storefront.md`, `rust-ui-component-catalog.md` не расходятся с кодом.
+- [ ] `docs/UI/graphql-architecture.md` и локальные app/crate docs не утверждают GraphQL-only модель там, где код уже работает через `#[server]` + GraphQL parallel path.
 - [ ] Если между Leptos и Next.js есть shared design language, это задокументировано честно, без обещаний parity там, где её ещё нет.
 
 ### 12.3 TypeScript packages (`packages/`)

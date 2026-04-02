@@ -155,9 +155,19 @@ pub struct GqlShippingOption {
     pub amount: String,
     pub provider_id: String,
     pub active: bool,
+    pub allowed_shipping_profile_slugs: Option<Vec<String>>,
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlShippingOptionList {
+    pub items: Vec<GqlShippingOption>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
 }
 
 #[derive(SimpleObject)]
@@ -467,6 +477,16 @@ pub struct FulfillmentsFilter {
 }
 
 #[derive(InputObject)]
+pub struct ShippingOptionsFilter {
+    pub active: Option<bool>,
+    pub currency_code: Option<String>,
+    pub provider_id: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
 pub struct MarkPaidOrderInput {
     pub payment_id: String,
     pub payment_method: String,
@@ -575,6 +595,28 @@ pub struct DeliverFulfillmentInputObject {
 #[graphql(name = "CancelFulfillmentInput")]
 pub struct CancelFulfillmentInputObject {
     pub reason: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "CreateShippingOptionInput")]
+pub struct CreateShippingOptionInputObject {
+    pub name: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub provider_id: Option<String>,
+    pub allowed_shipping_profile_slugs: Option<Vec<String>>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "UpdateShippingOptionInput")]
+pub struct UpdateShippingOptionInputObject {
+    pub name: Option<String>,
+    pub currency_code: Option<String>,
+    pub amount: Option<String>,
+    pub provider_id: Option<String>,
+    pub allowed_shipping_profile_slugs: Option<Vec<String>>,
     pub metadata: Option<String>,
 }
 
@@ -713,6 +755,7 @@ impl From<dto::ShippingOptionResponse> for GqlShippingOption {
             amount: value.amount.to_string(),
             provider_id: value.provider_id,
             active: value.active,
+            allowed_shipping_profile_slugs: value.allowed_shipping_profile_slugs,
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
