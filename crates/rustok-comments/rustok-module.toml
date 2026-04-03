@@ -6,3 +6,8 @@ description = "Generic comments domain for blog and other opt-in non-forum discu
 ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[provides.admin_ui]
+leptos_crate = "rustok-comments-admin"
+route_segment = "comments"
+nav_label = "Comments"

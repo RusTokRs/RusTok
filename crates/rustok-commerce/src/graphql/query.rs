@@ -25,7 +25,7 @@ use crate::{
         shipping_profile_slug_from_product_metadata,
     },
     CatalogService, CommerceError, CustomerService, FulfillmentService, OrderService,
-    PaymentService, RegionService, StoreContextService,
+    PaymentService, RegionService, ShippingProfileService, StoreContextService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -415,6 +415,32 @@ impl CommerceQuery {
         Ok(Some(option.into()))
     }
 
+    async fn shipping_profile(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlShippingProfile>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let profile = match ShippingProfileService::new(db.clone())
+            .get_shipping_profile(tenant_id, id)
+            .await
+        {
+            Ok(profile) => profile,
+            Err(CommerceError::ShippingProfileNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        Ok(Some(profile.into()))
+    }
+
     async fn shipping_options(
         &self,
         ctx: &Context<'_>,
@@ -469,6 +495,50 @@ impl CommerceQuery {
 
         Ok(GqlShippingOptionList {
             items: paged,
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
+    async fn shipping_profiles(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<ShippingProfilesFilter>,
+    ) -> Result<GqlShippingProfileList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let filter = filter.unwrap_or(ShippingProfilesFilter {
+            active: None,
+            search: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let (items, total) = ShippingProfileService::new(db.clone())
+            .list_shipping_profiles(
+                tenant_id,
+                crate::dto::ListShippingProfilesInput {
+                    page,
+                    per_page,
+                    active: filter.active,
+                    search: filter.search,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlShippingProfileList {
+            items: items.into_iter().map(Into::into).collect(),
             total,
             page,
             per_page,

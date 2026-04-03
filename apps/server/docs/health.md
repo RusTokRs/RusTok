@@ -13,6 +13,11 @@
 Если `apps/server` запущен в `settings.rustok.runtime.host_mode = "registry_only"`, health/observability surface
 работает как read-only catalog host, а не как full monolith.
 
+Важно: `host_mode` не заменяет deployment profile. `DeploymentProfile` продолжает описывать build/deploy
+surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-api`), а
+`settings.rustok.runtime.host_mode` описывает только runtime-exposed API surface (`full` или
+`registry_only`).
+
 ## Readiness модель
 
 `/health/ready` возвращает:
@@ -61,6 +66,34 @@ Prometheus surface теперь также публикует:
 - `rustok_runtime_guardrail_host_mode{mode="full|registry_only"}`
 
 Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
+
+## Локальный runbook для `registry_only`
+
+Если нужно локально поднять read-only catalog host из того же бинарника `apps/server`, канонический
+минимум сейчас такой:
+
+```bash
+RUSTOK_RUNTIME_HOST_MODE=registry_only cargo run -p rustok-server
+```
+
+Минимальный smoke после старта:
+
+```bash
+curl -i http://127.0.0.1:5150/health/ready
+curl -i http://127.0.0.1:5150/health/modules
+curl -i http://127.0.0.1:5150/v1/catalog?limit=1
+curl -i http://127.0.0.1:5150/api/openapi.json
+```
+
+Ожидаемое поведение:
+
+- `GET /health/ready` и `GET /health/modules` возвращают `200`, несмотря на reduced surface;
+- `GET /v1/catalog` возвращает read-only catalog contract с `ETag`, `Cache-Control` и `X-Total-Count`;
+- `GET /api/openapi.json` рекламирует только registry/health/metrics/swagger surface;
+- `GET /api/graphql`, `GET /api/auth/me`, `GET /admin` не должны быть доступны и в норме дают `404`.
+
+Для автоматизированной локальной проверки тот же runtime contract покрыт в
+`scripts/verify/verify-deployment-profiles.sh`.
 
 ## Надёжность проверок
 

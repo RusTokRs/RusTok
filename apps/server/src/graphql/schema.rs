@@ -16,6 +16,7 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
+use super::ai::{AiMutation, AiQuery};
 use super::auth::{AuthMutation, AuthQuery};
 use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
@@ -47,6 +48,7 @@ pub mod module_slug {
 #[derive(MergedObject, Default)]
 pub struct Query(
     RootQuery,
+    AiQuery,
     SearchQueryRoot,
     AuthQuery,
     OAuthQuery,
@@ -61,6 +63,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    AiMutation,
     SearchMutationRoot,
     AuthMutation,
     OAuthMutation,

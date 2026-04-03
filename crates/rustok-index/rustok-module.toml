@@ -6,3 +6,8 @@ description = "Cross-module indexing and read-model module"
 ownership = "first_party"
 trust_level = "core"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[provides.admin_ui]
+leptos_crate = "rustok-index-admin"
+route_segment = "index"
+nav_label = "Index"

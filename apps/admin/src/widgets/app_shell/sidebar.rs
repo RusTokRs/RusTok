@@ -47,6 +47,7 @@ pub fn Sidebar() -> impl IntoView {
                                 <NavLink href="/modules" icon="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" label=t_string!(i18n, app.nav.modules).to_string() />
                                 <NavLink href="/modules/search" icon="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" label=t_string!(i18n, app.nav.search).to_string() />
                                 <NavLink href="/apps" icon="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" label=t_string!(i18n, app.nav.apps).to_string() />
+                                <NavLink href="/ai" icon="M9.5 3h5M12 3v3m-7 6a7 7 0 1114 0c0 1.947-.794 3.709-2.076 4.977L18 21h-2.5l-1.154-1.154A6.965 6.965 0 0112 20a6.965 6.965 0 01-2.346-.154L8.5 21H6l1.076-4.023A6.965 6.965 0 015 12z" label="AI".to_string() />
                                 <NavLink href="/email" icon="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" label="Email Settings".to_string() />
                                 <NavLink href="/cache" icon="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" label="Cache".to_string() />
                                 <NavLink href="/events" icon="M13 10V3L4 14h7v7l9-11h-7z" label=t_string!(i18n, events.title).to_string() />

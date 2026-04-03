@@ -73,8 +73,13 @@
 
 1. Добавить UI-модуль как npm-пакет в `apps/next-admin/packages/<slug>/`.
 2. Пакет должен иметь имя `@rustok/<slug>-admin`.
-3. Убедиться, что корневой `package.json` зависит от этого пакета (`workspace:*`).
+3. Убедиться, что корневой `package.json` явно зависит от этого пакета (`file:` или `workspace:*`, в зависимости от текущей настройки host).
 4. Запустить `npm install && npm run build`.
+
+Текущий capability-пример этого паттерна:
+
+- `apps/next-admin/packages/rustok-ai/` → `@rustok/ai-admin`
+- host route `/dashboard/ai` только монтирует пакет и не забирает AI business UI в `src/app`
 
 ## Документация
 

@@ -1,0 +1,28 @@
+[package]
+name = "rustok-comments-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-comments module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-api.workspace = true
+rustok-comments.workspace = true
+serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true

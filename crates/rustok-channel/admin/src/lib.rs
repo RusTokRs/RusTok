@@ -63,7 +63,7 @@ pub fn ChannelAdmin() -> impl IntoView {
                         create_name.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    Err(err) => set_error.set(Some(err)),
+                    Err(err) => set_error.set(Some(err.to_string())),
                 }
 
                 create_busy.set(false);
@@ -313,7 +313,7 @@ fn ChannelCard(
                         )));
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    Err(err) => set_error.set(Some(err)),
+                    Err(err) => set_error.set(Some(err.to_string())),
                 }
                 busy.set(false);
             }
@@ -361,7 +361,7 @@ fn ChannelCard(
                         target_primary.set(true);
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    Err(err) => set_error.set(Some(err)),
+                    Err(err) => set_error.set(Some(err.to_string())),
                 }
                 busy.set(false);
             }
@@ -404,7 +404,7 @@ fn ChannelCard(
                         editing_module_slug.set(None);
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    Err(err) => set_error.set(Some(err)),
+                    Err(err) => set_error.set(Some(err.to_string())),
                 }
                 busy.set(false);
             }
@@ -447,7 +447,7 @@ fn ChannelCard(
                         bind_oauth_role.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    Err(err) => set_error.set(Some(err)),
+                    Err(err) => set_error.set(Some(err.to_string())),
                 }
                 busy.set(false);
             }
@@ -603,7 +603,7 @@ fn ChannelCard(
                                                                         )));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
-                                                                    Err(err) => set_error.set(Some(err)),
+                                                                    Err(err) => set_error.set(Some(err.to_string())),
                                                                 }
                                                                 busy.set(false);
                                                             }
@@ -730,7 +730,7 @@ fn ChannelCard(
                                                                         )));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
-                                                                    Err(err) => set_error.set(Some(err)),
+                                                                    Err(err) => set_error.set(Some(err.to_string())),
                                                                 }
                                                                 busy.set(false);
                                                             }
@@ -868,7 +868,7 @@ fn ChannelCard(
                                                                         )));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
-                                                                    Err(err) => set_error.set(Some(err)),
+                                                                    Err(err) => set_error.set(Some(err.to_string())),
                                                                 }
                                                                 busy.set(false);
                                                             }

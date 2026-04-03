@@ -18,7 +18,8 @@ Leptos admin UI package for the `rustok-channel` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Mounted by the Leptos admin host under `/modules/channels` through the generic module page route.
-- Uses the thin REST surface exposed by `apps/server/src/controllers/channel.rs`.
+- Uses native-first Leptos `#[server]` functions for bootstrap, channel CRUD, target CRUD, module bindings, and OAuth app bindings.
+- Keeps the thin REST surface exposed by `apps/server/src/controllers/channel.rs` as a parallel fallback path; native server functions do not replace `/api/channels/*`.
 - Must keep API assumptions aligned with the `rustok-channel` module and server wiring.
 
 ## Documentation

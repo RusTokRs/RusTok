@@ -533,6 +533,10 @@ impl RustokSettings {
             parsed.events.transport = parse_event_transport(&raw_transport)?;
         }
 
+        if let Ok(raw_host_mode) = std::env::var("RUSTOK_RUNTIME_HOST_MODE") {
+            parsed.runtime.host_mode = parse_runtime_host_mode(&raw_host_mode)?;
+        }
+
         if parsed.events.relay_retry_policy.max_attempts <= 0 {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -809,6 +813,19 @@ fn parse_event_transport(value: &str) -> Result<EventTransportKind, serde_json::
     }
 }
 
+fn parse_runtime_host_mode(value: &str) -> Result<RuntimeHostMode, serde_json::Error> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "full" => Ok(RuntimeHostMode::Full),
+        "registry_only" => Ok(RuntimeHostMode::RegistryOnly),
+        other => Err(serde_json::Error::io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "invalid RUSTOK_RUNTIME_HOST_MODE `{other}`; expected `full` or `registry_only`"
+            ),
+        ))),
+    }
+}
+
 fn default_tenant_id() -> Uuid {
     DEFAULT_TENANT_ID
 }
@@ -1000,6 +1017,7 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     const EVENT_TRANSPORT_ENV: &str = "RUSTOK_EVENT_TRANSPORT";
+    const RUNTIME_HOST_MODE_ENV: &str = "RUSTOK_RUNTIME_HOST_MODE";
     const RUSTOK_REDIS_URL_ENV: &str = "RUSTOK_REDIS_URL";
     const REDIS_URL_ENV: &str = "REDIS_URL";
 
@@ -1435,6 +1453,7 @@ mod tests {
     fn parses_registry_only_runtime_host_mode() {
         let _guard = env_lock().lock().expect("env lock poisoned");
         let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _host_mode_guard = EnvVarGuard::clear(RUNTIME_HOST_MODE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
 
@@ -1449,6 +1468,35 @@ mod tests {
         let settings =
             RustokSettings::from_settings(&Some(raw)).expect("registry-only settings parse");
         assert!(settings.runtime.is_registry_only());
+    }
+
+    #[test]
+    fn env_overrides_runtime_host_mode() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _host_mode_guard = EnvVarGuard::set(RUNTIME_HOST_MODE_ENV, "registry_only");
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let settings = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
+            .expect("runtime host mode env override parse");
+
+        assert!(settings.runtime.is_registry_only());
+    }
+
+    #[test]
+    fn rejects_invalid_runtime_host_mode_env_override() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _host_mode_guard = EnvVarGuard::set(RUNTIME_HOST_MODE_ENV, "broken");
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let err = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
+            .expect_err("invalid host mode env override expected");
+        assert!(err.to_string().contains(
+            "invalid RUSTOK_RUNTIME_HOST_MODE `broken`; expected `full` or `registry_only`"
+        ));
     }
 
     #[test]

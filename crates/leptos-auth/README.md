@@ -2,37 +2,30 @@
 
 ## Назначение
 
-`crates/leptos-auth` — Leptos authentication library для RusToK, использующая **только GraphQL** для всех операций.
+`crates/leptos-auth` — Leptos authentication library для RusToK с dual-path transport boundary: native Leptos `#[server]` first и сохранённый GraphQL fallback.
 
 ## Архитектура
 
-**Главное правило:** ✅ **Только GraphQL, никакого REST API!**
+**Главное правило:** Leptos auth surfaces идут через local API boundary. Native `#[server]` path добавляется параллельно, но GraphQL path не удаляется.
 
 Эта библиотека предоставляет:
 - Компоненты для защищённых маршрутов (`ProtectedRoute`, `GuestRoute`)
 - Hooks для работы с аутентификацией (`use_auth`, `use_token`, `use_tenant`)
-- GraphQL API client для auth operations (`signIn`, `signUp`, `signOut`)
+- Native-first API boundary для auth operations (`signIn`, `signUp`, `signOut`, `refresh`, `forgot password`, `current user`)
 - LocalStorage helpers для сохранения сессии
 
 ## Взаимодействие
 
 - `apps/admin` — использует для аутентификации
 - `apps/storefront` — использует для аутентификации
-- `crates/leptos-graphql` — использует как HTTP transport layer
-- `apps/server` — GraphQL mutations/queries на backend (`/api/graphql`)
+- `crates/leptos-graphql` — GraphQL fallback transport layer
+- `apps/server` — server functions на `/api/fn/*` и GraphQL mutations/queries на `/api/graphql`
 
-### Почему только GraphQL?
+### Transport contract
 
-**Best practice:** Единый API endpoint для всех операций (auth + data).
-
-**Причины:**
-1. ✅ Единая точка входа — `/api/graphql`
-2. ✅ Type-safe queries и mutations
-3. ✅ Меньше конфигурации (не нужно настраивать REST + GraphQL)
-4. ✅ Лучшая производительность (batch запросы, DataLoader)
-5. ✅ Проще для frontend (один клиент вместо двух)
-
-**⚠️ ВАЖНО:** Смешивать REST и GraphQL — плохая практика! Используйте ТОЛЬКО GraphQL.
+1. Native Leptos UI сначала вызывает local API / `#[server]` path.
+2. Если native path недоступен, Leptos откатывается к GraphQL transport.
+3. GraphQL остаётся обязательным параллельным контрактом для headless/Next.js и migration fallback.
 
 ## Структура
 

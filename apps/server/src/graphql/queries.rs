@@ -32,6 +32,9 @@ use crate::services::build_service::BuildService;
 use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
 use crate::services::rbac_service::RbacService;
+use crate::services::registry_governance::{
+    RegistryGovernanceService, RegistryModuleLifecycleSnapshot,
+};
 #[cfg(feature = "mod-content")]
 use rustok_content::CanonicalUrlService;
 
@@ -324,6 +327,10 @@ fn marketplace_module_from_catalog_entry(
     registry: &ModuleRegistry,
     installed_modules: &[crate::modules::InstalledManifestModule],
 ) -> MarketplaceModule {
+    let catalog_version_fallback = entry
+        .versions
+        .first()
+        .map(|version| version.version.clone());
     let compatible = is_catalog_module_compatible(&entry);
     let signature_present = entry.signature.is_some();
     let runtime_module = registry.get(&entry.slug);
@@ -333,6 +340,7 @@ fn marketplace_module_from_catalog_entry(
     let latest_version = runtime_module
         .map(|module| module.version().to_string())
         .or_else(|| entry.version.clone())
+        .or(catalog_version_fallback)
         .unwrap_or_else(|| "workspace".to_string());
     let installed_version = installed_module.and_then(|module| module.version.clone());
     let dependencies = runtime_module
@@ -409,6 +417,7 @@ fn marketplace_module_from_catalog_entry(
         checksum_sha256: entry.checksum_sha256,
         signature_present,
         versions,
+        registry_lifecycle: None,
         compatible,
         recommended_admin_surfaces: entry.recommended_admin_surfaces,
         showcase_admin_surfaces: entry.showcase_admin_surfaces,
@@ -418,6 +427,40 @@ fn marketplace_module_from_catalog_entry(
         update_available: installed_version
             .as_ref()
             .is_some_and(|version| version != &latest_version),
+    }
+}
+
+fn registry_module_lifecycle_from_snapshot(
+    snapshot: RegistryModuleLifecycleSnapshot,
+) -> crate::graphql::types::RegistryModuleLifecycle {
+    crate::graphql::types::RegistryModuleLifecycle {
+        latest_request: snapshot.latest_request.map(|request| {
+            crate::graphql::types::RegistryPublishRequestLifecycle {
+                id: request.id,
+                status: request.status,
+                requested_by: request.requested_by,
+                approved_by: request.approved_by,
+                rejected_by: request.rejected_by,
+                rejection_reason: request.rejection_reason,
+                warnings: request.warnings,
+                errors: request.errors,
+                created_at: request.created_at,
+                updated_at: request.updated_at,
+                published_at: request.published_at,
+            }
+        }),
+        latest_release: snapshot.latest_release.map(|release| {
+            crate::graphql::types::RegistryReleaseLifecycle {
+                version: release.version,
+                status: release.status,
+                publisher: release.publisher,
+                checksum_sha256: release.checksum_sha256,
+                published_at: release.published_at,
+                yanked_reason: release.yanked_reason,
+                yanked_by: release.yanked_by,
+                yanked_at: release.yanked_at,
+            }
+        }),
     }
 }
 
@@ -843,10 +886,18 @@ impl RootQuery {
         let slug = slug.trim().to_lowercase();
         let query = MarketplaceCatalogQuery::default();
         let module = load_marketplace_module(app_ctx, &manifest, registry, &query, &slug).await?;
+        let Some(entry) = module else {
+            return Ok(None);
+        };
 
-        Ok(module.map(|entry| {
-            marketplace_module_from_catalog_entry(entry, registry, &installed_modules)
-        }))
+        let mut module = marketplace_module_from_catalog_entry(entry, registry, &installed_modules);
+        module.registry_lifecycle = RegistryGovernanceService::new(app_ctx.db.clone())
+            .lifecycle_snapshot(&module.slug)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .map(registry_module_lifecycle_from_snapshot);
+
+        Ok(Some(module))
     }
 
     async fn active_build(&self, ctx: &Context<'_>) -> Result<Option<BuildJob>> {
@@ -1335,6 +1386,7 @@ mod tests {
             checksum_sha256: None,
             signature_present: false,
             versions: Vec::new(),
+            registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
@@ -1372,6 +1424,7 @@ mod tests {
             checksum_sha256: None,
             signature_present: false,
             versions: Vec::new(),
+            registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
@@ -1428,6 +1481,40 @@ mod tests {
         );
 
         assert_eq!(module.tags, vec!["discovery", "search"]);
+    }
+
+    #[test]
+    fn marketplace_mapping_derives_latest_version_from_version_trail() {
+        let mut entry = catalog_module(None, None);
+        entry.version = None;
+        entry.versions = vec![
+            crate::modules::CatalogModuleVersion {
+                version: "2.1.0".to_string(),
+                changelog: None,
+                yanked: false,
+                published_at: Some("2026-03-10T00:00:00Z".to_string()),
+                checksum_sha256: None,
+                signature: None,
+            },
+            crate::modules::CatalogModuleVersion {
+                version: "1.9.0".to_string(),
+                changelog: None,
+                yanked: false,
+                published_at: Some("2026-03-01T00:00:00Z".to_string()),
+                checksum_sha256: None,
+                signature: None,
+            },
+        ];
+
+        let module = marketplace_module_from_catalog_entry(
+            entry,
+            &ModuleRegistry::new(),
+            &Vec::<InstalledManifestModule>::new(),
+        );
+
+        assert_eq!(module.latest_version, "2.1.0");
+        assert_eq!(module.versions.len(), 2);
+        assert_eq!(module.versions[0].version, "2.1.0");
     }
 
     #[test]

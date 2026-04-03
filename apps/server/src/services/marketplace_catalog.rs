@@ -1,12 +1,15 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use chrono::{DateTime, SecondsFormat, Utc};
 use loco_rs::app::AppContext;
 use moka::future::Cache;
 use reqwest::{Client, StatusCode};
 use rustok_core::ModuleRegistry;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -16,10 +19,17 @@ use crate::modules::{
 };
 
 pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
+pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 const REGISTRY_CATALOG_PATH: &str = "/v1/catalog";
 const LEGACY_REGISTRY_CATALOG_PATH: &str = "/catalog";
 const REGISTRY_CATALOG_MODULE_PATH: &str = "/v1/catalog/{slug}";
 const LEGACY_REGISTRY_CATALOG_MODULE_PATH: &str = "/catalog/{slug}";
+const REGISTRY_PUBLISH_PATH: &str = "/v2/catalog/publish";
+const REGISTRY_PUBLISH_STATUS_PATH: &str = "/v2/catalog/publish/{request_id}";
+const REGISTRY_PUBLISH_ARTIFACT_PATH: &str = "/v2/catalog/publish/{request_id}/artifact";
+const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
+const REGISTRY_PUBLISH_REJECT_PATH: &str = "/v2/catalog/publish/{request_id}/reject";
+const REGISTRY_YANK_PATH: &str = "/v2/catalog/yank";
 
 #[derive(Debug, Clone, Default)]
 pub struct MarketplaceCatalogQuery {
@@ -318,11 +328,14 @@ pub struct RegistryCatalogModule {
 
 impl RegistryCatalogModule {
     fn into_catalog_module(self) -> CatalogManifestModule {
-        let versions = self
-            .versions
-            .into_iter()
-            .map(RegistryCatalogVersion::into_catalog_version)
-            .collect::<Vec<_>>();
+        let publisher = normalize_optional_registry_publisher(self.publisher);
+        let checksum_sha256 = normalize_optional_registry_checksum(self.checksum_sha256);
+        let versions = normalize_registry_versions(
+            self.versions
+                .into_iter()
+                .map(RegistryCatalogVersion::into_catalog_version)
+                .collect::<Vec<_>>(),
+        );
 
         CatalogManifestModule {
             slug: self.slug,
@@ -345,8 +358,8 @@ impl RegistryCatalogModule {
             trust_level: self.trust_level,
             rustok_min_version: self.rustok_min_version,
             rustok_max_version: self.rustok_max_version,
-            publisher: self.publisher,
-            checksum_sha256: self.checksum_sha256,
+            publisher,
+            checksum_sha256,
             signature: self.signature,
             versions,
             recommended_admin_surfaces: self.recommended_admin_surfaces,
@@ -406,6 +419,15 @@ impl RegistryCatalogModule {
                 .map(RegistryCatalogVersion::from_catalog_version)
                 .collect()
         };
+        let versions = normalize_registry_versions(
+            versions
+                .into_iter()
+                .map(RegistryCatalogVersion::into_catalog_version)
+                .collect(),
+        )
+        .into_iter()
+        .map(RegistryCatalogVersion::from_catalog_version)
+        .collect();
 
         Self {
             slug,
@@ -428,8 +450,8 @@ impl RegistryCatalogModule {
             trust_level,
             rustok_min_version,
             rustok_max_version,
-            publisher,
-            checksum_sha256,
+            publisher: normalize_optional_registry_publisher(publisher),
+            checksum_sha256: normalize_optional_registry_checksum(checksum_sha256),
             signature,
             versions,
             recommended_admin_surfaces,
@@ -460,8 +482,8 @@ impl RegistryCatalogVersion {
             version: self.version,
             changelog: self.changelog,
             yanked: self.yanked,
-            published_at: self.published_at,
-            checksum_sha256: self.checksum_sha256,
+            published_at: normalize_optional_registry_published_at(self.published_at),
+            checksum_sha256: normalize_optional_registry_checksum(self.checksum_sha256),
             signature: self.signature,
         }
     }
@@ -471,11 +493,111 @@ impl RegistryCatalogVersion {
             version: version.version,
             changelog: version.changelog,
             yanked: version.yanked,
-            published_at: version.published_at,
-            checksum_sha256: version.checksum_sha256,
+            published_at: normalize_optional_registry_published_at(version.published_at),
+            checksum_sha256: normalize_optional_registry_checksum(version.checksum_sha256),
             signature: version.signature,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryMutationResponse {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub action: String,
+    pub dry_run: bool,
+    pub accepted: bool,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    pub slug: String,
+    pub version: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    pub next_step: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishStatusResponse {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    pub status: String,
+    pub accepted: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    pub next_step: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishDecisionRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    pub module: RegistryPublishModuleRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishModuleRequest {
+    pub slug: String,
+    pub version: String,
+    pub crate_name: String,
+    pub name: String,
+    pub description: String,
+    pub ownership: String,
+    pub trust_level: String,
+    pub license: String,
+    pub entry_type: Option<String>,
+    #[serde(default)]
+    pub marketplace: RegistryPublishMarketplaceRequest,
+    #[serde(default)]
+    pub ui_packages: RegistryPublishUiPackagesRequest,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishMarketplaceRequest {
+    pub category: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishUiPackagesRequest {
+    pub admin: Option<RegistryPublishUiPackageRequest>,
+    pub storefront: Option<RegistryPublishUiPackageRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishUiPackageRequest {
+    pub crate_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryYankRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    pub slug: String,
+    pub version: String,
+    pub reason: Option<String>,
 }
 
 #[async_trait]
@@ -638,6 +760,30 @@ pub fn registry_catalog_module_path() -> &'static str {
 
 pub fn legacy_registry_catalog_module_path() -> &'static str {
     LEGACY_REGISTRY_CATALOG_MODULE_PATH
+}
+
+pub fn registry_publish_path() -> &'static str {
+    REGISTRY_PUBLISH_PATH
+}
+
+pub fn registry_publish_status_path() -> &'static str {
+    REGISTRY_PUBLISH_STATUS_PATH
+}
+
+pub fn registry_publish_artifact_path() -> &'static str {
+    REGISTRY_PUBLISH_ARTIFACT_PATH
+}
+
+pub fn registry_publish_approve_path() -> &'static str {
+    REGISTRY_PUBLISH_APPROVE_PATH
+}
+
+pub fn registry_publish_reject_path() -> &'static str {
+    REGISTRY_PUBLISH_REJECT_PATH
+}
+
+pub fn registry_yank_path() -> &'static str {
+    REGISTRY_YANK_PATH
 }
 
 pub fn registry_catalog_from_modules(
@@ -935,14 +1081,18 @@ mod tests {
             rustok_min_version: None,
             rustok_max_version: None,
             publisher: Some("RusTok Labs".to_string()),
-            checksum_sha256: Some("abc123".to_string()),
+            checksum_sha256: Some(
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+            ),
             signature: Some("sig-1".to_string()),
             versions: vec![RegistryCatalogVersion {
                 version: "1.2.0".to_string(),
                 changelog: Some("Initial release".to_string()),
                 yanked: false,
                 published_at: Some("2026-03-08T00:00:00Z".to_string()),
-                checksum_sha256: Some("abc123".to_string()),
+                checksum_sha256: Some(
+                    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                ),
                 signature: Some("sig-1".to_string()),
             }],
             recommended_admin_surfaces: vec!["leptos-admin".to_string()],
@@ -969,7 +1119,15 @@ mod tests {
         assert_eq!(module.screenshots.len(), 2);
         assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.publisher.as_deref(), Some("RusTok Labs"));
+        assert_eq!(
+            module.checksum_sha256.as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
         assert_eq!(module.versions.len(), 1);
+        assert_eq!(
+            module.versions[0].checksum_sha256.as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
     }
 
     #[test]
@@ -996,7 +1154,9 @@ mod tests {
             rustok_min_version: Some("0.9.0".to_string()),
             rustok_max_version: None,
             publisher: Some("RusTok Labs".to_string()),
-            checksum_sha256: Some("sum123".to_string()),
+            checksum_sha256: Some(
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            ),
             signature: Some("sig123".to_string()),
             versions: Vec::new(),
             recommended_admin_surfaces: vec!["leptos-admin".to_string()],
@@ -1033,6 +1193,10 @@ mod tests {
         assert_eq!(module.rev, None);
         assert_eq!(module.versions.len(), 1);
         assert_eq!(module.versions[0].version, "1.4.0");
+        assert_eq!(
+            module.checksum_sha256.as_deref(),
+            Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        );
     }
 
     #[test]
@@ -1055,13 +1219,13 @@ mod tests {
                     "description": "SEO tools",
                     "depends_on": ["content"],
                     "publisher": "RusTok Labs",
-                    "checksum_sha256": "abc123",
+                    "checksum_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "signature": "sig-1",
                     "recommended_admin_surfaces": ["leptos-admin"],
                     "versions": [
                         {
                             "version": "1.2.0",
-                            "checksum_sha256": "abc123",
+                            "checksum_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                             "signature": "sig-1",
                             "published_at": "2026-03-08T00:00:00Z"
                         }
@@ -1104,6 +1268,121 @@ mod tests {
     }
 
     #[test]
+    fn registry_catalog_module_drops_invalid_publish_metadata() {
+        let module = RegistryCatalogModule {
+            slug: "seo".to_string(),
+            source: default_registry_source(),
+            crate_name: "rustok-seo".to_string(),
+            name: Some("SEO".to_string()),
+            category: None,
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
+            version: Some("1.2.0".to_string()),
+            description: Some("SEO tools".to_string()),
+            git: None,
+            rev: None,
+            path: None,
+            required: false,
+            depends_on: Vec::new(),
+            ownership: default_registry_ownership(),
+            trust_level: default_registry_trust_level(),
+            rustok_min_version: None,
+            rustok_max_version: None,
+            publisher: Some("   ".to_string()),
+            checksum_sha256: Some("not-a-checksum".to_string()),
+            signature: Some("sig-1".to_string()),
+            versions: vec![RegistryCatalogVersion {
+                version: "1.2.0".to_string(),
+                changelog: None,
+                yanked: false,
+                published_at: Some("2026-03-08T00:00:00Z".to_string()),
+                checksum_sha256: Some("still-not-a-checksum".to_string()),
+                signature: Some("sig-1".to_string()),
+            }],
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+            settings_schema: HashMap::new(),
+        }
+        .into_catalog_module();
+
+        assert_eq!(module.publisher, None);
+        assert_eq!(module.checksum_sha256, None);
+        assert_eq!(module.versions.len(), 1);
+        assert_eq!(module.versions[0].checksum_sha256, None);
+    }
+
+    #[test]
+    fn registry_catalog_module_normalizes_and_sorts_version_trail() {
+        let module = RegistryCatalogModule {
+            slug: "seo".to_string(),
+            source: default_registry_source(),
+            crate_name: "rustok-seo".to_string(),
+            name: Some("SEO".to_string()),
+            category: None,
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
+            version: None,
+            description: Some("SEO tools".to_string()),
+            git: None,
+            rev: None,
+            path: None,
+            required: false,
+            depends_on: Vec::new(),
+            ownership: default_registry_ownership(),
+            trust_level: default_registry_trust_level(),
+            rustok_min_version: None,
+            rustok_max_version: None,
+            publisher: Some("RusTok Labs".to_string()),
+            checksum_sha256: None,
+            signature: None,
+            versions: vec![
+                RegistryCatalogVersion {
+                    version: "1.0.0".to_string(),
+                    changelog: None,
+                    yanked: false,
+                    published_at: Some("2026-03-08T03:00:00+03:00".to_string()),
+                    checksum_sha256: None,
+                    signature: None,
+                },
+                RegistryCatalogVersion {
+                    version: "2.0.0".to_string(),
+                    changelog: None,
+                    yanked: false,
+                    published_at: Some("2026-03-10T00:00:00Z".to_string()),
+                    checksum_sha256: None,
+                    signature: None,
+                },
+                RegistryCatalogVersion {
+                    version: "3.0.0".to_string(),
+                    changelog: None,
+                    yanked: true,
+                    published_at: Some("not-a-date".to_string()),
+                    checksum_sha256: None,
+                    signature: None,
+                },
+            ],
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+            settings_schema: HashMap::new(),
+        }
+        .into_catalog_module();
+
+        assert_eq!(module.versions.len(), 3);
+        assert_eq!(module.versions[0].version, "2.0.0");
+        assert_eq!(module.versions[1].version, "1.0.0");
+        assert_eq!(module.versions[2].version, "3.0.0");
+        assert_eq!(
+            module.versions[1].published_at.as_deref(),
+            Some("2026-03-08T00:00:00Z")
+        );
+        assert_eq!(module.versions[2].published_at, None);
+    }
+
+    #[test]
     fn registry_schema_version_is_validated() {
         assert!(validate_registry_schema_version(1).is_ok());
         assert!(validate_registry_schema_version(2).is_err());
@@ -1118,12 +1397,74 @@ fn default_registry_catalog_schema_version() -> u32 {
     REGISTRY_CATALOG_SCHEMA_VERSION
 }
 
+fn default_registry_mutation_schema_version() -> u32 {
+    REGISTRY_MUTATION_SCHEMA_VERSION
+}
+
 fn default_registry_ownership() -> String {
     "third_party".to_string()
 }
 
 fn default_registry_trust_level() -> String {
     "unverified".to_string()
+}
+
+fn normalize_optional_registry_publisher(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_optional_registry_checksum(value: Option<String>) -> Option<String> {
+    let value = value?.trim().to_ascii_lowercase();
+    (value.len() == 64 && value.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(value)
+}
+
+fn normalize_optional_registry_published_at(value: Option<String>) -> Option<String> {
+    let value = value?.trim().to_string();
+    if value.is_empty() {
+        return None;
+    }
+
+    DateTime::parse_from_rfc3339(&value).ok().map(|value| {
+        value
+            .with_timezone(&Utc)
+            .to_rfc3339_opts(SecondsFormat::Secs, true)
+    })
+}
+
+fn normalize_registry_versions(
+    mut versions: Vec<CatalogModuleVersion>,
+) -> Vec<CatalogModuleVersion> {
+    for version in &mut versions {
+        version.published_at =
+            normalize_optional_registry_published_at(version.published_at.take());
+        version.checksum_sha256 =
+            normalize_optional_registry_checksum(version.checksum_sha256.take());
+    }
+
+    versions.sort_by(compare_registry_versions);
+    versions
+}
+
+fn compare_registry_versions(
+    left: &CatalogModuleVersion,
+    right: &CatalogModuleVersion,
+) -> Ordering {
+    left.yanked
+        .cmp(&right.yanked)
+        .then_with(|| compare_registry_semver_desc(&left.version, &right.version))
+        .then_with(|| right.published_at.cmp(&left.published_at))
+        .then_with(|| right.version.cmp(&left.version))
+}
+
+fn compare_registry_semver_desc(left: &str, right: &str) -> Ordering {
+    match (Version::parse(left), Version::parse(right)) {
+        (Ok(left), Ok(right)) => right.cmp(&left),
+        (Ok(_), Err(_)) => Ordering::Less,
+        (Err(_), Ok(_)) => Ordering::Greater,
+        (Err(_), Err(_)) => Ordering::Equal,
+    }
 }
 
 fn should_fallback_to_legacy_catalog_path(err: &anyhow::Error) -> bool {
@@ -1145,5 +1486,16 @@ fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {
     anyhow::bail!(
         "Unsupported registry catalog schema_version={schema_version}; expected {}",
         REGISTRY_CATALOG_SCHEMA_VERSION
+    );
+}
+
+pub fn validate_registry_mutation_schema_version(schema_version: u32) -> anyhow::Result<()> {
+    if schema_version == REGISTRY_MUTATION_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "Unsupported registry mutation schema_version={schema_version}; expected {}",
+        REGISTRY_MUTATION_SCHEMA_VERSION
     );
 }

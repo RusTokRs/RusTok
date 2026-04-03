@@ -17,6 +17,9 @@
 - shared rich-text/body-format и locale fallback contract выровнены с `rustok-content`;
 - thread status contract больше не декоративный: `closed` реально блокирует новый
   create-path, а terminal comment statuses (`spam`, `trash`) требуют moderation scope;
+- модуль теперь публикует `rustok-comments-admin` как module-owned Leptos moderation UI;
+- для operator-facing read/write path добавлены service-level методы `list_threads`,
+  `get_thread_detail`, `set_thread_status` и `set_comment_status`;
 - product decision по `pages <-> comments` зафиксирован: у `rustok-pages` нет default
   integration с `rustok-comments`, а будущие page-like discussion surfaces возможны только
   как explicit opt-in.
@@ -29,6 +32,13 @@
   для комментариев;
 - будущие conversion flow `post + comments -> topic + replies` и обратно должны жить в orchestration,
   а не через общую таблицу или live sync.
+
+## Module-owned admin UI и transport rule
+
+- `rustok-comments-admin` монтируется в Leptos Admin как module-owned UI на `/modules/comments`.
+- Внутренний data-layer для moderation surface строится через native `#[server]` calls поверх `CommentsService`.
+- Отдельный GraphQL/REST fallback для этого UI не добавляется: у `rustok-comments` не было собственного legacy transport surface, и это зафиксированное исключение из общего dual-path правила.
+- Существующая интеграция `rustok-blog -> rustok-comments` при этом не меняется.
 
 ## Status contract
 

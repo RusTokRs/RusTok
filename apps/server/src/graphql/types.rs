@@ -199,6 +199,39 @@ pub struct MarketplaceModuleVersion {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct RegistryPublishRequestLifecycle {
+    pub id: String,
+    pub status: String,
+    pub requested_by: String,
+    pub approved_by: Option<String>,
+    pub rejected_by: Option<String>,
+    pub rejection_reason: Option<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub published_at: Option<String>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryReleaseLifecycle {
+    pub version: String,
+    pub status: String,
+    pub publisher: String,
+    pub checksum_sha256: Option<String>,
+    pub published_at: String,
+    pub yanked_reason: Option<String>,
+    pub yanked_by: Option<String>,
+    pub yanked_at: Option<String>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryModuleLifecycle {
+    pub latest_request: Option<RegistryPublishRequestLifecycle>,
+    pub latest_release: Option<RegistryReleaseLifecycle>,
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct ModuleSettingField {
     pub key: String,
     #[graphql(name = "type")]
@@ -269,6 +302,7 @@ pub struct MarketplaceModule {
     pub checksum_sha256: Option<String>,
     pub signature_present: bool,
     pub versions: Vec<MarketplaceModuleVersion>,
+    pub registry_lifecycle: Option<RegistryModuleLifecycle>,
     pub compatible: bool,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,

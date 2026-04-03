@@ -1,18 +1,18 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useTransition, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
-import { Input } from '@/shared/ui/input';
-import { Label } from '@/shared/ui/label';
-import { Button } from '@/shared/ui/button';
+import { useTransition, useState, type ChangeEvent } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import { Input } from '@/shared/ui/shadcn/input';
+import { Label } from '@/shared/ui/shadcn/label';
+import { Button } from '@/shared/ui/shadcn/button';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
-} from '@/shared/ui/select';
+} from '@/shared/ui/shadcn/select';
 import { saveEventsSettings, type EventsSettings, type EventsStatus } from '../api/events';
 
 interface EventsFormProps {
@@ -153,7 +153,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('outbox.relayIntervalMs')}</Label>
                 <Input
                   value={relayIntervalMs}
-                  onChange={e => setRelayIntervalMs(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setRelayIntervalMs(e.target.value)
+                  }
                   placeholder='1000'
                 />
               </div>
@@ -161,7 +163,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('outbox.maxAttempts')}</Label>
                 <Input
                   value={maxAttempts}
-                  onChange={e => setMaxAttempts(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setMaxAttempts(e.target.value)
+                  }
                   placeholder='5'
                 />
               </div>
@@ -171,7 +175,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                   id='dlq-enabled'
                   className='h-4 w-4 rounded border-input'
                   checked={dlqEnabled}
-                  onChange={e => setDlqEnabled(e.target.checked)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setDlqEnabled(e.target.checked)
+                  }
                 />
                 <Label htmlFor='dlq-enabled'>{t('outbox.dlqEnabled')}</Label>
               </div>
@@ -192,7 +198,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('iggy.addresses')}</Label>
                 <Input
                   value={iggyAddresses}
-                  onChange={e => setIggyAddresses(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyAddresses(e.target.value)
+                  }
                   placeholder='127.0.0.1:8090'
                 />
                 <p className='text-xs text-muted-foreground'>Comma-separated list of addresses</p>
@@ -213,7 +221,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('iggy.username')}</Label>
                 <Input
                   value={iggyUsername}
-                  onChange={e => setIggyUsername(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyUsername(e.target.value)
+                  }
                   placeholder='iggy'
                 />
               </div>
@@ -222,7 +232,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Input
                   type='password'
                   value={iggyPassword}
-                  onChange={e => setIggyPassword(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyPassword(e.target.value)
+                  }
                   placeholder='••••••••'
                 />
               </div>
@@ -232,7 +244,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                   id='iggy-tls'
                   className='h-4 w-4 rounded border-input'
                   checked={iggyTls}
-                  onChange={e => setIggyTls(e.target.checked)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyTls(e.target.checked)
+                  }
                 />
                 <Label htmlFor='iggy-tls'>{t('iggy.tlsEnabled')}</Label>
               </div>
@@ -240,7 +254,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('iggy.stream')}</Label>
                 <Input
                   value={iggyStream}
-                  onChange={e => setIggyStream(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyStream(e.target.value)
+                  }
                   placeholder='rustok'
                 />
               </div>
@@ -248,7 +264,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('iggy.partitions')}</Label>
                 <Input
                   value={iggyPartitions}
-                  onChange={e => setIggyPartitions(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyPartitions(e.target.value)
+                  }
                   placeholder='8'
                 />
               </div>
@@ -256,7 +274,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <Label>{t('iggy.replication')}</Label>
                 <Input
                   value={iggyReplication}
-                  onChange={e => setIggyReplication(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setIggyReplication(e.target.value)
+                  }
                   placeholder='1'
                 />
               </div>

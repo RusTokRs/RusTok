@@ -67,7 +67,7 @@ pub struct SearchPreviewPayload {
     pub facets: Vec<SearchFacetGroup>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SearchPreviewFilters {
     pub entity_types: Vec<String>,
     pub source_modules: Vec<String>,

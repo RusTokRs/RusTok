@@ -209,8 +209,12 @@ Smoke-check поддерживаемых build surfaces:
 - `monolith` — default feature set + startup smoke
 - `server+admin` — `--no-default-features --features redis-cache,embed-admin`
 - `headless-api` — `--no-default-features --features redis-cache`
+- `registry-only` — runtime host mode `RUSTOK_RUNTIME_HOST_MODE=registry_only` поверх минимального headless feature-profile (`--no-default-features --features redis-cache`)
 
-Скрипт запускает по каждой конфигурации `cargo check` и один профильный smoke-test router/startup, чтобы manifest/build contract не расползался между feature sets.
+Скрипт запускает по каждой конфигурации `cargo check` и профильный smoke-test router/startup. Для
+`registry-only` дополнительно проверяются env override `RUSTOK_RUNTIME_HOST_MODE=registry_only`,
+суженный runtime surface и reduced OpenAPI, чтобы deployment contract для read-only catalog host не
+расползался между docs и фактическим runtime.
 
 **Severity:** HIGH. Поломка profile matrix = build contract задокументирован, но не воспроизводим.
 

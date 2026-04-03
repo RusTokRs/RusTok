@@ -103,6 +103,7 @@ pub fn compose_application_router(
 ) -> AxumRouter {
     if rustok_settings.runtime.is_registry_only() {
         return router
+            .layer(Extension(runtime.registry))
             .layer(axum_middleware::from_fn(
                 middleware::security_headers::security_headers,
             ))

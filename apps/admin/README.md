@@ -54,7 +54,7 @@
 - `apps/server` (`/api/graphql` и `/api/fn/*`) как backend для dual-path data access
 - `crates/rustok-rbac` и другие доменные модули через backend
 - общий UI контракт с `apps/next-admin` и storefront приложениями
-- manifest-driven Leptos module UI через `apps/admin/build.rs`, registry и generic route `/modules/:module_slug`
+- manifest-driven Leptos module UI через `apps/admin/build.rs`, registry и generic route `/modules/:module_slug`, включая core module-owned surfaces `channel`, `index`, `outbox`, `tenant`, `rbac`
 
 ## Документация
 

@@ -20,6 +20,9 @@ mod m20260315_000001_create_user_field_definitions;
 mod m20260316_000001_create_platform_settings;
 mod m20260319_000001_create_mcp_management_tables;
 mod m20260320_000001_create_mcp_scaffold_drafts;
+mod m20260403_000001_create_ai_control_plane_tables;
+mod m20260403_000002_create_registry_publish_tables;
+mod m20260403_000003_expand_ai_control_plane_for_multiprovider;
 
 pub struct Migrator;
 
@@ -44,6 +47,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260316_000001_create_platform_settings::Migration),
             Box::new(m20260319_000001_create_mcp_management_tables::Migration),
             Box::new(m20260320_000001_create_mcp_scaffold_drafts::Migration),
+            Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
+            Box::new(m20260403_000002_create_registry_publish_tables::Migration),
+            Box::new(m20260403_000003_expand_ai_control_plane_for_multiprovider::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

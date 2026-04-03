@@ -1,8 +1,10 @@
 mod checkout;
 mod context;
+mod shipping_profile;
 
 pub use checkout::*;
 pub use context::*;
+pub use shipping_profile::*;
 
 pub use rustok_cart::dto::*;
 pub use rustok_commerce_foundation::dto::*;

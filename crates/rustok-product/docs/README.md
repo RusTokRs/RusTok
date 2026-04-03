@@ -22,6 +22,9 @@
   хранится через metadata-backed contract `shipping_profile.slug`; omission
   first-class поля на write-path не должен затирать уже существующий metadata-backed
   shipping profile.
+- transport-level validation для `shipping_profile_slug` теперь живёт в фасаде
+  `rustok-commerce` и проверяет ссылку против active shipping profiles из typed
+  registry `shipping_profiles`, чтобы product write-path не принимал произвольные slug'и.
 
 ## Связанные документы
 

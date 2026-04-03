@@ -30,13 +30,13 @@ struct ProfileData {
     name: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct UpdateProfileResponse {
     #[serde(rename = "updateProfile")]
     update_profile: ProfileUser,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct ProfileUser {
     #[allow(dead_code)]
     id: String,
@@ -45,6 +45,65 @@ struct ProfileUser {
     name: Option<String>,
     #[allow(dead_code)]
     role: String,
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/update-profile")]
+async fn update_profile_native(
+    token: String,
+    tenant: String,
+    name: Option<String>,
+) -> Result<ProfileUser, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+
+        #[derive(Deserialize)]
+        struct RestProfileUser {
+            id: String,
+            email: String,
+            name: Option<String>,
+            role: String,
+        }
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!(
+                "{}/api/auth/profile",
+                crate::shared::api::api_base_url()
+            ))
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(CONTENT_TYPE, "application/json")
+            .header("X-Tenant-ID", tenant)
+            .json(&serde_json::json!({ "name": name }))
+            .send()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        if !response.status().is_success() {
+            return Err(ServerFnError::new(
+                crate::shared::api::extract_http_error(response).await,
+            ));
+        }
+
+        let user = response
+            .json::<RestProfileUser>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(ProfileUser {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, name);
+        Err(ServerFnError::new(
+            "admin/update-profile requires the `ssr` feature",
+        ))
+    }
 }
 
 #[component]
@@ -87,21 +146,39 @@ pub fn Profile() -> impl IntoView {
         set_success_message.set(None);
 
         spawn_local(async move {
-            let result = request::<UpdateProfileInput, UpdateProfileResponse>(
-                UPDATE_PROFILE_MUTATION,
-                UpdateProfileInput {
-                    input: ProfileData {
-                        name: if name_value.is_empty() {
-                            None
-                        } else {
-                            Some(name_value)
-                        },
-                    },
+            let native_result = update_profile_native(
+                token_value.clone().unwrap_or_default(),
+                tenant_value.clone().unwrap_or_default(),
+                if name_value.is_empty() {
+                    None
+                } else {
+                    Some(name_value.clone())
                 },
-                token_value,
-                tenant_value,
             )
             .await;
+
+            let result = match native_result {
+                Ok(user) => Ok(UpdateProfileResponse {
+                    update_profile: user,
+                }),
+                Err(_) => {
+                    request::<UpdateProfileInput, UpdateProfileResponse>(
+                        UPDATE_PROFILE_MUTATION,
+                        UpdateProfileInput {
+                            input: ProfileData {
+                                name: if name_value.is_empty() {
+                                    None
+                                } else {
+                                    Some(name_value)
+                                },
+                            },
+                        },
+                        token_value,
+                        tenant_value,
+                    )
+                    .await
+                }
+            };
 
             match result {
                 Ok(response) => {

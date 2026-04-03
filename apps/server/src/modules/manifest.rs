@@ -442,6 +442,10 @@ struct ModulePackageProvides {
     graphql: Option<ModulePackageGraphqlProvides>,
     #[serde(default)]
     http: Option<ModulePackageHttpProvides>,
+    #[serde(default)]
+    admin_ui: Option<ModulePackageUiProvides>,
+    #[serde(default)]
+    storefront_ui: Option<ModulePackageUiProvides>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -458,6 +462,12 @@ struct ModulePackageHttpProvides {
     routes: Option<String>,
     #[serde(default)]
     webhook_routes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct ModulePackageUiProvides {
+    #[serde(default)]
+    leptos_crate: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -615,6 +625,12 @@ pub enum ManifestError {
     InvalidModuleMarketplaceMetadata {
         slug: String,
         field: String,
+        reason: String,
+    },
+    #[error("Module '{slug}' has invalid {surface} UI wiring: {reason}")]
+    InvalidModuleUiWiring {
+        slug: String,
+        surface: String,
         reason: String,
     },
 }
@@ -1509,6 +1525,63 @@ fn validate_module_package_metadata(
     Ok(())
 }
 
+fn validate_module_ui_wiring(
+    slug: &str,
+    module_root: &Path,
+    package_manifest: &ModulePackageManifest,
+) -> Result<(), ManifestError> {
+    for (surface, declared_crate) in [
+        (
+            "admin",
+            package_manifest
+                .provides
+                .admin_ui
+                .as_ref()
+                .and_then(|ui| ui.leptos_crate.as_deref()),
+        ),
+        (
+            "storefront",
+            package_manifest
+                .provides
+                .storefront_ui
+                .as_ref()
+                .and_then(|ui| ui.leptos_crate.as_deref()),
+        ),
+    ] {
+        let manifest_path = module_root.join(surface).join("Cargo.toml");
+        let has_subcrate = manifest_path.exists();
+        let declared_crate = declared_crate
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+
+        if has_subcrate && declared_crate.is_none() {
+            return Err(ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!(
+                    "{} exists, but rustok-module.toml is missing [provides.{}_ui].leptos_crate",
+                    manifest_path.display(),
+                    surface
+                ),
+            });
+        }
+
+        if !has_subcrate && declared_crate.is_some() {
+            return Err(ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!(
+                    "declares [provides.{}_ui].leptos_crate, but {} is missing",
+                    surface,
+                    manifest_path.display()
+                ),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn apply_module_package_manifest(
     slug: &str,
     spec: &ManifestModuleSpec,
@@ -1531,6 +1604,9 @@ fn apply_module_package_manifest(
             error: error.to_string(),
         })?;
     validate_module_package_metadata(slug, &package_manifest)?;
+    if let Some(module_root) = module_root_path(spec) {
+        validate_module_ui_wiring(slug, &module_root, &package_manifest)?;
+    }
 
     Ok(merge_module_package_manifest(
         spec.clone(),
@@ -2757,6 +2833,18 @@ mod tests {
     fn write_module_manifest(crate_dir: &std::path::Path, contents: &str) {
         std::fs::create_dir_all(crate_dir).unwrap();
         std::fs::write(crate_dir.join("rustok-module.toml"), contents).unwrap();
+    }
+
+    fn write_surface_manifest(crate_dir: &std::path::Path, surface: &str, crate_name: &str) {
+        let surface_dir = crate_dir.join(surface);
+        std::fs::create_dir_all(&surface_dir).unwrap();
+        std::fs::write(
+            surface_dir.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+            ),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -4053,5 +4141,100 @@ trust_level = "verified"
             result.is_ok(),
             "expected dependency version to be resolved from rustok-module.toml"
         );
+    }
+
+    #[test]
+    #[serial]
+    fn validate_rejects_admin_subcrate_without_manifest_wiring() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+"#,
+        );
+        write_surface_manifest(&blog_dir, "admin", "rustok-blog-admin");
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", temp.path().join("modules.toml"));
+        }
+
+        let result = ManifestManager::validate(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleUiWiring { slug, surface, reason })
+                if slug == "blog"
+                    && surface == "admin"
+                    && reason.contains("[provides.admin_ui].leptos_crate")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_rejects_storefront_wiring_without_subcrate() {
+        let temp = tempdir().unwrap();
+        let pages_dir = temp.path().join("crates").join("rustok-pages");
+        write_module_manifest(
+            &pages_dir,
+            r#"[module]
+slug = "pages"
+name = "Pages"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-pages-storefront"
+"#,
+        );
+
+        let mut manifest =
+            manifest_with_modules(&["index", "outbox", "pages", "content", "tenant", "rbac"]);
+        manifest.modules.get_mut("pages").unwrap().path = Some("crates/rustok-pages".to_string());
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", temp.path().join("modules.toml"));
+        }
+
+        let result = ManifestManager::validate(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleUiWiring { slug, surface, reason })
+                if slug == "pages"
+                    && surface == "storefront"
+                    && reason.contains("declares [provides.storefront_ui].leptos_crate")
+        ));
     }
 }

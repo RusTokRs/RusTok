@@ -41,6 +41,17 @@ pub enum Resource {
     // Scripting (alloy)
     Scripts,
     Mcp,
+    AiProviders,
+    AiTaskProfiles,
+    AiSessions,
+    AiRuns,
+    AiApprovals,
+    AiRouter,
+    AiTextTasks,
+    AiImageTasks,
+    AiCodeTasks,
+    AiAlloyTasks,
+    AiMultimodalTasks,
     // Workflow automation
     Workflows,
     WorkflowExecutions,
@@ -81,6 +92,17 @@ impl fmt::Display for Resource {
             Self::ForumReplies => "forum_replies",
             Self::Scripts => "scripts",
             Self::Mcp => "mcp",
+            Self::AiProviders => "ai:providers",
+            Self::AiTaskProfiles => "ai:task_profiles",
+            Self::AiSessions => "ai:sessions",
+            Self::AiRuns => "ai:runs",
+            Self::AiApprovals => "ai:approvals",
+            Self::AiRouter => "ai:router",
+            Self::AiTextTasks => "ai:tasks:text",
+            Self::AiImageTasks => "ai:tasks:image",
+            Self::AiCodeTasks => "ai:tasks:code",
+            Self::AiAlloyTasks => "ai:tasks:alloy",
+            Self::AiMultimodalTasks => "ai:tasks:multimodal",
             Self::Workflows => "workflows",
             Self::WorkflowExecutions => "workflow_executions",
         };
@@ -125,6 +147,17 @@ impl FromStr for Resource {
             "forum_replies" => Ok(Self::ForumReplies),
             "scripts" => Ok(Self::Scripts),
             "mcp" => Ok(Self::Mcp),
+            "ai:providers" => Ok(Self::AiProviders),
+            "ai:task_profiles" => Ok(Self::AiTaskProfiles),
+            "ai:sessions" => Ok(Self::AiSessions),
+            "ai:runs" => Ok(Self::AiRuns),
+            "ai:approvals" => Ok(Self::AiApprovals),
+            "ai:router" => Ok(Self::AiRouter),
+            "ai:tasks:text" => Ok(Self::AiTextTasks),
+            "ai:tasks:image" => Ok(Self::AiImageTasks),
+            "ai:tasks:code" => Ok(Self::AiCodeTasks),
+            "ai:tasks:alloy" => Ok(Self::AiAlloyTasks),
+            "ai:tasks:multimodal" => Ok(Self::AiMultimodalTasks),
             "workflows" => Ok(Self::Workflows),
             "workflow_executions" => Ok(Self::WorkflowExecutions),
             _ => Err(format!("Unknown resource: {value}")),
@@ -147,6 +180,10 @@ pub enum Action {
     Publish,
     Moderate,
     Execute,
+    Run,
+    Cancel,
+    Resolve,
+    Override,
 }
 
 impl fmt::Display for Action {
@@ -163,6 +200,10 @@ impl fmt::Display for Action {
             Self::Publish => "publish",
             Self::Moderate => "moderate",
             Self::Execute => "execute",
+            Self::Run => "run",
+            Self::Cancel => "cancel",
+            Self::Resolve => "resolve",
+            Self::Override => "override",
         };
         write!(f, "{value}")
     }
@@ -184,6 +225,10 @@ impl FromStr for Action {
             "publish" => Ok(Self::Publish),
             "moderate" => Ok(Self::Moderate),
             "execute" => Ok(Self::Execute),
+            "run" => Ok(Self::Run),
+            "cancel" => Ok(Self::Cancel),
+            "resolve" => Ok(Self::Resolve),
+            "override" => Ok(Self::Override),
             _ => Err(format!("Unknown action: {value}")),
         }
     }
@@ -206,12 +251,11 @@ impl FromStr for Permission {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let mut parts = value.split(':');
-        let resource = Resource::from_str(parts.next().ok_or("Missing resource")?)?;
-        let action = Action::from_str(parts.next().ok_or("Missing action")?)?;
-        if parts.next().is_some() {
-            return Err("Too many parts in permission string".to_string());
-        }
+        let (resource, action) = value
+            .rsplit_once(':')
+            .ok_or_else(|| "Missing action".to_string())?;
+        let resource = Resource::from_str(resource)?;
+        let action = Action::from_str(action)?;
         Ok(Self { resource, action })
     }
 }
@@ -396,6 +440,21 @@ impl Permission {
     pub const MCP_DELETE: Self = Self::new(Resource::Mcp, Action::Delete);
     pub const MCP_LIST: Self = Self::new(Resource::Mcp, Action::List);
     pub const MCP_MANAGE: Self = Self::new(Resource::Mcp, Action::Manage);
+
+    pub const AI_PROVIDERS_READ: Self = Self::new(Resource::AiProviders, Action::Read);
+    pub const AI_PROVIDERS_MANAGE: Self = Self::new(Resource::AiProviders, Action::Manage);
+    pub const AI_TASK_PROFILES_READ: Self = Self::new(Resource::AiTaskProfiles, Action::Read);
+    pub const AI_TASK_PROFILES_MANAGE: Self = Self::new(Resource::AiTaskProfiles, Action::Manage);
+    pub const AI_SESSIONS_READ: Self = Self::new(Resource::AiSessions, Action::Read);
+    pub const AI_SESSIONS_RUN: Self = Self::new(Resource::AiSessions, Action::Run);
+    pub const AI_RUNS_CANCEL: Self = Self::new(Resource::AiRuns, Action::Cancel);
+    pub const AI_APPROVALS_RESOLVE: Self = Self::new(Resource::AiApprovals, Action::Resolve);
+    pub const AI_ROUTER_OVERRIDE: Self = Self::new(Resource::AiRouter, Action::Override);
+    pub const AI_TASKS_TEXT_RUN: Self = Self::new(Resource::AiTextTasks, Action::Run);
+    pub const AI_TASKS_IMAGE_RUN: Self = Self::new(Resource::AiImageTasks, Action::Run);
+    pub const AI_TASKS_CODE_RUN: Self = Self::new(Resource::AiCodeTasks, Action::Run);
+    pub const AI_TASKS_ALLOY_RUN: Self = Self::new(Resource::AiAlloyTasks, Action::Run);
+    pub const AI_TASKS_MULTIMODAL_RUN: Self = Self::new(Resource::AiMultimodalTasks, Action::Run);
 
     pub const WORKFLOWS_CREATE: Self = Self::new(Resource::Workflows, Action::Create);
     pub const WORKFLOWS_READ: Self = Self::new(Resource::Workflows, Action::Read);

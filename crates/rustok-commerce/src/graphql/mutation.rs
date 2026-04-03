@@ -18,9 +18,10 @@ use crate::{
     },
     storefront_shipping::{
         is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
+        normalize_shipping_profile_slug,
     },
     CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
-    OrderService, PaymentService, StoreContextService,
+    OrderService, PaymentService, ShippingProfileService, StoreContextService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -584,6 +585,12 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        validate_shipping_option_profile_inputs(
+            db,
+            tenant_id,
+            input.allowed_shipping_profile_slugs.as_ref(),
+        )
+        .await?;
         let option = FulfillmentService::new(db.clone())
             .create_shipping_option(
                 tenant_id,
@@ -616,6 +623,12 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        validate_shipping_option_profile_inputs(
+            db,
+            tenant_id,
+            input.allowed_shipping_profile_slugs.as_ref(),
+        )
+        .await?;
         let option = FulfillmentService::new(db.clone())
             .update_shipping_option(
                 tenant_id,
@@ -640,6 +653,112 @@ impl CommerceMutation {
             .await?;
 
         Ok(option.into())
+    }
+
+    async fn create_shipping_profile(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        input: CreateShippingProfileInputObject,
+    ) -> Result<GqlShippingProfile> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_CREATE],
+            "Permission denied: fulfillments:create required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let profile = ShippingProfileService::new(db.clone())
+            .create_shipping_profile(
+                tenant_id,
+                crate::dto::CreateShippingProfileInput {
+                    slug: input.slug,
+                    name: input.name,
+                    description: input.description,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(profile.into())
+    }
+
+    async fn update_shipping_profile(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: UpdateShippingProfileInputObject,
+    ) -> Result<GqlShippingProfile> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let profile = ShippingProfileService::new(db.clone())
+            .update_shipping_profile(
+                tenant_id,
+                id,
+                crate::dto::UpdateShippingProfileInput {
+                    slug: input.slug,
+                    name: input.name,
+                    description: input.description,
+                    metadata: if input.metadata.is_some() {
+                        Some(parse_optional_metadata(input.metadata.as_deref())?)
+                    } else {
+                        None
+                    },
+                },
+            )
+            .await?;
+
+        Ok(profile.into())
+    }
+
+    async fn deactivate_shipping_profile(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<GqlShippingProfile> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let profile = ShippingProfileService::new(db.clone())
+            .deactivate_shipping_profile(tenant_id, id)
+            .await?;
+
+        Ok(profile.into())
+    }
+
+    async fn reactivate_shipping_profile(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<GqlShippingProfile> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let profile = ShippingProfileService::new(db.clone())
+            .reactivate_shipping_profile(tenant_id, id)
+            .await?;
+
+        Ok(profile.into())
     }
 
     async fn deactivate_shipping_option(
@@ -789,6 +908,12 @@ impl CommerceMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
+        validate_product_shipping_profile_input(
+            db,
+            tenant_id,
+            input.shipping_profile_slug.as_deref(),
+        )
+        .await?;
         let domain_input = convert_create_product_input(input)?;
         let product = catalog
             .create_product(tenant_id, user_id, domain_input)
@@ -815,6 +940,12 @@ impl CommerceMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
+        validate_product_shipping_profile_input(
+            db,
+            tenant_id,
+            input.shipping_profile_slug.as_deref(),
+        )
+        .await?;
         let domain_input = crate::dto::UpdateProductInput {
             translations: input.translations.map(|translations| {
                 translations
@@ -1098,6 +1229,40 @@ async fn validate_selected_shipping_option(
             option.id
         )));
     }
+
+    Ok(())
+}
+
+async fn validate_product_shipping_profile_input(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    shipping_profile_slug: Option<&str>,
+) -> Result<()> {
+    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slug_exists(tenant_id, &slug)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    Ok(())
+}
+
+async fn validate_shipping_option_profile_inputs(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    allowed_shipping_profile_slugs: Option<&Vec<String>>,
+) -> Result<()> {
+    let Some(slugs) = allowed_shipping_profile_slugs else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
     Ok(())
 }

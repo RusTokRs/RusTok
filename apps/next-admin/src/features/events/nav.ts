@@ -1,10 +1,17 @@
-import type { AdminNavItem } from '@/modules/types';
+import type { NavItem } from '@/types';
 
-export const eventsNavItems: AdminNavItem[] = [
+export const eventsNavItems: NavItem[] = [
   {
-    group: 'Infrastructure',
-    label: 'Events & Outbox',
-    href: '/dashboard/events',
-    icon: 'bolt'
+    title: 'Infrastructure',
+    url: '#',
+    icon: 'dashboard',
+    isActive: false,
+    items: [
+      {
+        title: 'Events & Outbox',
+        url: '/dashboard/events'
+      }
+    ],
+    access: { role: 'admin' }
   }
 ];

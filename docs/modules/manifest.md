@@ -181,6 +181,10 @@ fallback-режимом для модулей без `[settings]`, а серве
 - **Leptos UI** поставляется из суб-крейтов модуля: `crates/rustok-<module>/admin/` и `crates/rustok-<module>/storefront/`.
 - **Next.js UI** поставляется из npm-пакетов приложений: `apps/next-admin/packages/<module>/` и `apps/next-frontend/packages/<module>/`.
 
+Тот же package-based ownership contract применяется и к capability-слоям вне runtime module registry.
+Текущий пример: `rustok-ai` поставляет Leptos UI из `crates/rustok-ai/admin/`, а Next.js UI из
+`apps/next-admin/packages/rustok-ai/`, при этом host-приложения остаются только composition root.
+
 Рантайм-контракты и entry-points:
 
 - `leptos_crate` (в `rustok-module.toml`) — указывает имя Rust-субкрейта для админки или витрины.

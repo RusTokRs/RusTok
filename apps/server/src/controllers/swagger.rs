@@ -112,6 +112,12 @@ use utoipa::OpenApi;
         // Marketplace
         crate::controllers::marketplace_registry::catalog,
         crate::controllers::marketplace_registry::catalog_module,
+        crate::controllers::marketplace_registry::publish,
+        crate::controllers::marketplace_registry::publish_status,
+        crate::controllers::marketplace_registry::upload_publish_artifact,
+        crate::controllers::marketplace_registry::approve_publish_request,
+        crate::controllers::marketplace_registry::reject_publish_request,
+        crate::controllers::marketplace_registry::yank,
         // Swagger
         crate::controllers::swagger::openapi_json,
         crate::controllers::swagger::openapi_yaml,
@@ -228,6 +234,15 @@ use utoipa::OpenApi;
             crate::services::marketplace_catalog::RegistryCatalogResponse,
             crate::services::marketplace_catalog::RegistryCatalogModule,
             crate::services::marketplace_catalog::RegistryCatalogVersion,
+            crate::services::marketplace_catalog::RegistryMutationResponse,
+            crate::services::marketplace_catalog::RegistryPublishRequest,
+            crate::services::marketplace_catalog::RegistryPublishDecisionRequest,
+            crate::services::marketplace_catalog::RegistryPublishStatusResponse,
+            crate::services::marketplace_catalog::RegistryPublishModuleRequest,
+            crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest,
+            crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
+            crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
+            crate::services::marketplace_catalog::RegistryYankRequest,
             crate::modules::ModuleSettingSpec,
 
             // Health
@@ -397,6 +412,42 @@ mod tests {
             openapi.paths.paths.contains_key("/v1/catalog/{slug}"),
             "OpenAPI spec must include /v1/catalog/{slug}"
         );
+        assert!(
+            openapi.paths.paths.contains_key("/v2/catalog/publish"),
+            "OpenAPI spec must include /v2/catalog/publish"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}"),
+            "OpenAPI spec must include /v2/catalog/publish/{request_id}"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/artifact"),
+            "OpenAPI spec must include /v2/catalog/publish/{request_id}/artifact"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/approve"),
+            "OpenAPI spec must include /v2/catalog/publish/{request_id}/approve"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/reject"),
+            "OpenAPI spec must include /v2/catalog/publish/{request_id}/reject"
+        );
+        assert!(
+            openapi.paths.paths.contains_key("/v2/catalog/yank"),
+            "OpenAPI spec must include /v2/catalog/yank"
+        );
     }
 
     #[test]
@@ -409,6 +460,23 @@ mod tests {
         assert!(openapi.paths.paths.contains_key("/v1/catalog"));
         assert!(openapi.paths.paths.contains_key("/metrics"));
         assert!(openapi.paths.paths.contains_key("/api/openapi.json"));
+        assert!(!openapi.paths.paths.contains_key("/v2/catalog/publish"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/artifact"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/approve"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/reject"));
         assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
         assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));
     }

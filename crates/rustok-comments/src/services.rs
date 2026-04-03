@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, JoinType,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set, TransactionTrait,
 };
 use std::{collections::HashMap, time::Instant};
 use tracing::instrument;
@@ -14,7 +14,8 @@ use rustok_core::{Action, PermissionScope, Resource, SecurityContext};
 use rustok_telemetry::metrics;
 
 use crate::dto::{
-    CommentListItem, CommentRecord, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
+    CommentListItem, CommentRecord, CommentThreadDetail, CommentThreadSummary, CreateCommentInput,
+    ListCommentsFilter, UpdateCommentInput,
 };
 use crate::entities::{comment, comment_body, comment_thread};
 use crate::error::{CommentsError, CommentsResult};
@@ -492,6 +493,211 @@ impl CommentsService {
         result
     }
 
+    #[instrument(skip(self, security))]
+    pub async fn list_threads(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page: u64,
+        per_page: u64,
+        target_type: Option<&str>,
+        thread_status: Option<crate::dto::CommentThreadStatus>,
+        comment_status: Option<crate::dto::CommentStatus>,
+    ) -> CommentsResult<(Vec<CommentThreadSummary>, u64)> {
+        record_entrypoint("list_threads");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_read_scope(&security, Action::List)?;
+
+            let mut query = comment_thread::Entity::find()
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .order_by_desc(comment_thread::Column::LastCommentedAt)
+                .order_by_desc(comment_thread::Column::UpdatedAt);
+
+            if let Some(target_type) = target_type.map(str::trim).filter(|value| !value.is_empty())
+            {
+                query = query.filter(comment_thread::Column::TargetType.eq(target_type));
+            }
+
+            if let Some(thread_status) = thread_status {
+                query = query.filter(comment_thread::Column::Status.eq(thread_status));
+            }
+
+            if let Some(comment_status) = comment_status {
+                query = query
+                    .join(
+                        JoinType::InnerJoin,
+                        comment_thread::Relation::Comments.def(),
+                    )
+                    .filter(comment::Column::DeletedAt.is_null())
+                    .filter(comment::Column::Status.eq(comment_status))
+                    .distinct();
+            }
+
+            let paginator = query.paginate(&self.db, per_page.max(1));
+            let total = paginator.num_items().await?;
+            let threads = paginator.fetch_page(page.saturating_sub(1)).await?;
+
+            Ok((
+                threads
+                    .into_iter()
+                    .map(Self::map_thread_summary)
+                    .collect::<Vec<_>>(),
+                total,
+            ))
+        }
+        .await;
+        record_operation_result("comments.list_threads", started, &result);
+        result
+    }
+
+    #[instrument(skip(self, security))]
+    pub async fn get_thread_detail(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        thread_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        page: u64,
+        per_page: u64,
+    ) -> CommentsResult<CommentThreadDetail> {
+        record_entrypoint("get_thread_detail");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_read_scope(&security, Action::Read)?;
+            let locale = normalize_locale(locale)?;
+            let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+            let thread = comment_thread::Entity::find_by_id(thread_id)
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: "unknown".to_string(),
+                    target_id: Uuid::nil(),
+                })?;
+
+            let paginator = comment::Entity::find()
+                .filter(comment::Column::TenantId.eq(tenant_id))
+                .filter(comment::Column::ThreadId.eq(thread.id))
+                .filter(comment::Column::DeletedAt.is_null())
+                .order_by_asc(comment::Column::Position)
+                .paginate(&self.db, per_page.max(1));
+            let total_comments = paginator.num_items().await?;
+            let comments = paginator.fetch_page(page.saturating_sub(1)).await?;
+
+            let comment_ids = comments.iter().map(|item| item.id).collect::<Vec<_>>();
+            let mut bodies_map: HashMap<Uuid, Vec<comment_body::Model>> = HashMap::new();
+            if !comment_ids.is_empty() {
+                let bodies = comment_body::Entity::find()
+                    .filter(comment_body::Column::CommentId.is_in(comment_ids))
+                    .all(&self.db)
+                    .await?;
+                for body in bodies {
+                    bodies_map.entry(body.comment_id).or_default().push(body);
+                }
+            }
+
+            let comments = comments
+                .into_iter()
+                .map(|comment| {
+                    let comment_id = comment.id;
+                    self.build_comment_record(
+                        comment,
+                        thread.clone(),
+                        bodies_map.remove(&comment_id).unwrap_or_default(),
+                        &locale,
+                        fallback_locale.as_deref(),
+                    )
+                })
+                .collect::<CommentsResult<Vec<_>>>()?;
+
+            Ok(CommentThreadDetail {
+                thread: Self::map_thread_summary(thread),
+                comments,
+                total_comments,
+            })
+        }
+        .await;
+        record_operation_result("comments.get_thread_detail", started, &result);
+        result
+    }
+
+    #[instrument(skip(self, security), fields(tenant_id = %tenant_id, comment_id = %comment_id, status = ?status))]
+    pub async fn set_comment_status(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        comment_id: Uuid,
+        status: crate::dto::CommentStatus,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> CommentsResult<CommentRecord> {
+        record_entrypoint("set_comment_status");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_moderation_scope(&security)?;
+            let locale = normalize_locale(locale)?;
+            let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+            let existing = self.find_comment(tenant_id, comment_id, false).await?;
+            if existing.status != status {
+                let mut active: comment::ActiveModel = existing.clone().into();
+                active.status = Set(status);
+                active.updated_at = Set(Utc::now().into());
+                active.update(&self.db).await?;
+            }
+
+            self.get_comment(
+                tenant_id,
+                security,
+                comment_id,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await
+        }
+        .await;
+        record_operation_result("comments.set_comment_status", started, &result);
+        result
+    }
+
+    #[instrument(skip(self, security), fields(tenant_id = %tenant_id, thread_id = %thread_id, status = ?status))]
+    pub async fn set_thread_status(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        thread_id: Uuid,
+        status: crate::dto::CommentThreadStatus,
+    ) -> CommentsResult<CommentThreadSummary> {
+        record_entrypoint("set_thread_status");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_moderation_scope(&security)?;
+            let thread = comment_thread::Entity::find_by_id(thread_id)
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: "unknown".to_string(),
+                    target_id: Uuid::nil(),
+                })?;
+
+            if thread.status == status {
+                return Ok(Self::map_thread_summary(thread));
+            }
+
+            let mut active: comment_thread::ActiveModel = thread.clone().into();
+            active.status = Set(status);
+            active.updated_at = Set(Utc::now().into());
+            let thread = active.update(&self.db).await?;
+            Ok(Self::map_thread_summary(thread))
+        }
+        .await;
+        record_operation_result("comments.set_thread_status", started, &result);
+        result
+    }
+
     async fn find_or_create_thread_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -672,6 +878,20 @@ impl CommentsService {
             created_at: comment.created_at.to_rfc3339(),
             updated_at: comment.updated_at.to_rfc3339(),
         })
+    }
+
+    fn map_thread_summary(thread: comment_thread::Model) -> CommentThreadSummary {
+        CommentThreadSummary {
+            id: thread.id,
+            tenant_id: thread.tenant_id,
+            target_type: thread.target_type,
+            target_id: thread.target_id,
+            status: thread.status,
+            comment_count: thread.comment_count,
+            last_commented_at: thread.last_commented_at.map(|value| value.to_rfc3339()),
+            created_at: thread.created_at.to_rfc3339(),
+            updated_at: thread.updated_at.to_rfc3339(),
+        }
     }
 
     fn enforce_create_scope(&self, security: &SecurityContext) -> CommentsResult<Uuid> {

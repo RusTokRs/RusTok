@@ -1,7 +1,11 @@
 use leptos::prelude::*;
 use std::collections::HashMap;
 
+use crate::entities::module::model::{
+    MarketplaceModuleVersion, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
+};
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
+use crate::{use_i18n, Locale};
 
 #[derive(Clone)]
 struct MetadataChecklistItem {
@@ -12,6 +16,13 @@ struct MetadataChecklistItem {
     detail: String,
 }
 
+fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
+    match locale {
+        Locale::ru => ru,
+        _ => en,
+    }
+}
+
 fn short_checksum(value: Option<&str>) -> Option<String> {
     let value = value?;
     if value.len() > 16 {
@@ -19,6 +30,106 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
     } else {
         Some(value.to_string())
     }
+}
+
+fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&MarketplaceModuleVersion> {
+    module.versions.iter().find(|version| !version.yanked)
+}
+
+fn registry_governance_hint(module: &MarketplaceModule, locale: Locale) -> String {
+    match (
+        module.ownership.as_str(),
+        module
+            .registry_lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.latest_request.as_ref()),
+        module
+            .registry_lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.latest_release.as_ref()),
+    ) {
+        ("first_party", Some(request), _) if request.status == "REJECTED" => tr(
+            locale,
+            "Request needs operator follow-up before this module can be published again.",
+            "Запросу требуется доработка оператором, прежде чем модуль можно будет снова публиковать.",
+        )
+        .to_string(),
+        ("first_party", Some(_), Some(release)) if release.status == "YANKED" => tr(
+            locale,
+            "Latest published release is yanked; future publish/yank actions should preserve the audit trail.",
+            "Последний опубликованный релиз отозван; дальнейшие publish/yank-действия должны сохранять аудит-след.",
+        )
+        .to_string(),
+        ("first_party", Some(_), _) => tr(
+            locale,
+            "First-party module is already tracked by the V2 publish lifecycle.",
+            "First-party модуль уже находится под управлением V2 publish lifecycle.",
+        )
+        .to_string(),
+        ("first_party", None, _) => tr(
+            locale,
+            "First-party modules can create V2 publish requests from a full host or through cargo xtask.",
+            "First-party модули могут создавать V2 publish-запросы с full host или через cargo xtask.",
+        )
+        .to_string(),
+        _ => tr(
+            locale,
+            "Third-party ownership still needs richer governance/moderation flow before live publish should be treated as production-ready.",
+            "Для third-party ownership всё ещё нужен более полный governance/moderation flow, прежде чем live publish можно будет считать production-ready.",
+        )
+        .to_string(),
+    }
+}
+
+fn registry_request_status_badge_classes(status: &str) -> &'static str {
+    match status {
+        "PUBLISHED" | "ACTIVE" => {
+            "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
+        }
+        "REJECTED" | "YANKED" => {
+            "inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700"
+        }
+        _ => {
+            "inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+        }
+    }
+}
+
+fn lifecycle_detail_lines(
+    request: Option<&RegistryPublishRequestLifecycle>,
+    locale: Locale,
+) -> Vec<String> {
+    let Some(request) = request else {
+        return Vec::new();
+    };
+
+    let mut lines = Vec::new();
+    if !request.warnings.is_empty() {
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Warnings", "Предупреждения"),
+            request.warnings.join("; ")
+        ));
+    }
+    if !request.errors.is_empty() {
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Errors", "Ошибки"),
+            request.errors.join("; ")
+        ));
+    }
+    if let Some(reason) = request
+        .rejection_reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        lines.push(format!(
+            "{}: {reason}",
+            tr(locale, "Rejection reason", "Причина отклонения")
+        ));
+    }
+    lines
 }
 
 fn humanize_token(value: &str) -> String {
@@ -57,23 +168,33 @@ fn humanize_setting_key(value: &str) -> String {
     humanize_token(rendered.trim())
 }
 
-fn setting_field_hint(field: &ModuleSettingField) -> Option<String> {
+fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<String> {
     let mut parts = Vec::new();
     if field.required {
-        parts.push("Required".to_string());
+        parts.push(tr(locale, "Required", "Обязательно").to_string());
     }
     if let Some(default) = &field.default_value {
-        parts.push(format!("Default: {}", default));
+        parts.push(format!("{}: {}", tr(locale, "Default", "По умолчанию"), default));
     }
     match (field.min, field.max) {
-        (Some(min), Some(max)) => parts.push(format!("Range: {}..{}", min, max)),
-        (Some(min), None) => parts.push(format!("Min: {}", min)),
-        (None, Some(max)) => parts.push(format!("Max: {}", max)),
+        (Some(min), Some(max)) => parts.push(format!(
+            "{}: {}..{}",
+            tr(locale, "Range", "Диапазон"),
+            min,
+            max
+        )),
+        (Some(min), None) => {
+            parts.push(format!("{}: {}", tr(locale, "Min", "Минимум"), min))
+        }
+        (None, Some(max)) => {
+            parts.push(format!("{}: {}", tr(locale, "Max", "Максимум"), max))
+        }
         (None, None) => {}
     }
     if !field.options.is_empty() {
         parts.push(format!(
-            "Options: {}",
+            "{}: {}",
+            tr(locale, "Options", "Опции"),
             field
                 .options
                 .iter()
@@ -84,7 +205,8 @@ fn setting_field_hint(field: &ModuleSettingField) -> Option<String> {
     }
     if !field.object_keys.is_empty() {
         parts.push(format!(
-            "Object keys: {}",
+            "{}: {}",
+            tr(locale, "Object keys", "Ключи объекта"),
             field
                 .object_keys
                 .iter()
@@ -94,7 +216,11 @@ fn setting_field_hint(field: &ModuleSettingField) -> Option<String> {
         ));
     }
     if let Some(item_type) = field.item_type.as_deref() {
-        parts.push(format!("Array items: {}", humanize_token(item_type)));
+        parts.push(format!(
+            "{}: {}",
+            tr(locale, "Array items", "Элементы массива"),
+            humanize_token(item_type)
+        ));
     }
 
     (!parts.is_empty()).then(|| parts.join(" · "))
@@ -353,10 +479,10 @@ fn default_value_for_schema_shape(shape: Option<&serde_json::Value>) -> serde_js
     }
 }
 
-fn schema_action_label(shape: Option<&serde_json::Value>) -> String {
+fn schema_action_label(shape: Option<&serde_json::Value>, locale: Locale) -> String {
     match setting_shape_type(shape).as_deref() {
-        Some(value_type) => add_item_button_label(value_type),
-        None => "Add item".to_string(),
+        Some(value_type) => add_item_button_label(value_type, locale),
+        None => tr(locale, "Add item", "Добавить элемент").to_string(),
     }
 }
 
@@ -538,8 +664,17 @@ fn marketplace_metadata_checklist(module: &MarketplaceModule) -> Vec<MetadataChe
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let has_registry_publish_signal =
-        module.checksum_sha256.is_some() || !module.versions.is_empty();
+    let latest_release = latest_active_registry_version(module).cloned();
+    let latest_release_version = latest_release
+        .as_ref()
+        .map(|version| version.version.as_str());
+    let latest_release_date = latest_release
+        .as_ref()
+        .and_then(|version| version.published_at.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let has_yanked_only_versions = !module.versions.is_empty() && latest_release.is_none();
+    let has_registry_publish_signal = module.checksum_sha256.is_some() || latest_release.is_some();
 
     vec![
         if description_length >= 20 {
@@ -650,22 +785,43 @@ fn marketplace_metadata_checklist(module: &MarketplaceModule) -> Vec<MetadataChe
         },
         if has_registry_publish_signal {
             MetadataChecklistItem {
-                label: "Registry publish signal",
+                label: "Release trail",
                 state: "ready",
                 priority: "info",
                 summary: "Present",
+                detail: match (latest_release_version, latest_release_date) {
+                    (Some(version), Some(date)) => {
+                        format!("Latest non-yanked release is v{version} published at {date}.")
+                    }
+                    (Some(version), None) => {
+                        format!(
+                            "Latest non-yanked release is v{version}, but publish date is missing."
+                        )
+                    }
+                    (None, _) => {
+                        "Checksum is present even though no active version entry is visible."
+                            .to_string()
+                    }
+                },
+            }
+        } else if has_yanked_only_versions {
+            MetadataChecklistItem {
+                label: "Release trail",
+                state: "warn",
+                priority: "info",
+                summary: "Only yanked",
                 detail:
-                    "Checksum and/or published versions indicate a registry-backed release trail."
+                    "Version history exists, but every visible release is yanked, so there is no active publish trail."
                         .to_string(),
             }
         } else {
             MetadataChecklistItem {
-                label: "Registry publish signal",
+                label: "Release trail",
                 state: "info",
                 priority: "info",
                 summary: "Not published",
                 detail:
-                    "No checksum or version history is visible yet, which is expected for workspace-only modules."
+                    "No checksum or active version history is visible yet, which is expected for workspace-only modules."
                         .to_string(),
             }
         },
@@ -830,15 +986,19 @@ fn default_value_for_setting_type(value_type: &str) -> serde_json::Value {
     }
 }
 
-fn add_item_button_label(value_type: &str) -> String {
+fn add_item_button_label(value_type: &str, locale: Locale) -> String {
     match value_type {
-        "string" => "Add text".to_string(),
-        "boolean" => "Add flag".to_string(),
-        "integer" | "number" => "Add number".to_string(),
-        "object" => "Add object".to_string(),
-        "array" => "Add array".to_string(),
-        "json" | "any" => "Add item".to_string(),
-        _ => format!("Add {}", humanize_token(value_type)),
+        "string" => tr(locale, "Add text", "Добавить текст").to_string(),
+        "boolean" => tr(locale, "Add flag", "Добавить флаг").to_string(),
+        "integer" | "number" => tr(locale, "Add number", "Добавить число").to_string(),
+        "object" => tr(locale, "Add object", "Добавить объект").to_string(),
+        "array" => tr(locale, "Add array", "Добавить массив").to_string(),
+        "json" | "any" => tr(locale, "Add item", "Добавить элемент").to_string(),
+        _ => format!(
+            "{} {}",
+            tr(locale, "Add", "Добавить"),
+            humanize_token(value_type)
+        ),
     }
 }
 
@@ -2219,6 +2379,18 @@ pub fn ModuleDetailPanel(
                             .filter(|item| item.state == "ready")
                             .count();
                         let version_trail = module.versions.clone().into_iter().take(5).collect::<Vec<_>>();
+                        let latest_release = latest_active_registry_version(&module).cloned();
+                        let latest_registry_request = module
+                            .registry_lifecycle
+                            .as_ref()
+                            .and_then(|lifecycle| lifecycle.latest_request.clone());
+                        let latest_registry_release = module
+                            .registry_lifecycle
+                            .as_ref()
+                            .and_then(|lifecycle| lifecycle.latest_release.clone());
+                        let lifecycle_note_lines = lifecycle_detail_lines(latest_registry_request.as_ref());
+                        let lifecycle_note_lines_for_show = lifecycle_note_lines.clone();
+                        let governance_hint = registry_governance_hint(&module);
                         let checksum = short_checksum(module.checksum_sha256.as_deref());
                         let admin_surface = admin_surface_for_body.get_value();
                         let primary_here = module
@@ -2349,12 +2521,29 @@ pub fn ModuleDetailPanel(
                                                 <dt class="text-muted-foreground">"Checksum"</dt>
                                                 <dd class="font-mono text-right">{checksum.unwrap_or_else(|| "Not published".to_string())}</dd>
                                             </div>
+                                            <div class="flex items-start justify-between gap-3">
+                                                <dt class="text-muted-foreground">"Latest published"</dt>
+                                                <dd class="text-right">
+                                                    {latest_release
+                                                        .as_ref()
+                                                        .map(|version| format!(
+                                                            "v{}{}",
+                                                            version.version,
+                                                            version
+                                                                .published_at
+                                                                .as_ref()
+                                                                .map(|value| format!(" · {}", value))
+                                                                .unwrap_or_default()
+                                                        ))
+                                                        .unwrap_or_else(|| "No active release".to_string())}
+                                                </dd>
+                                            </div>
                                         </dl>
                                     </div>
 
-                                <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
-                                    <p class="text-xs uppercase tracking-wide text-muted-foreground">"Surface policy"</p>
-                                    <div class="mt-3 space-y-3">
+                                    <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
+                                        <p class="text-xs uppercase tracking-wide text-muted-foreground">"Surface policy"</p>
+                                        <div class="mt-3 space-y-3">
                                             <div class="flex flex-wrap gap-2">
                                                 {if module.recommended_admin_surfaces.is_empty() {
                                                     view! {
@@ -2412,6 +2601,98 @@ pub fn ModuleDetailPanel(
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+
+                                <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="text-xs uppercase tracking-wide text-muted-foreground">"Publish lifecycle"</p>
+                                        {latest_registry_request.as_ref().map(|request| {
+                                            view! {
+                                                <span class=registry_request_status_badge_classes(&request.status)>
+                                                    {format!("Request: {}", humanize_token(&request.status))}
+                                                </span>
+                                            }
+                                        })}
+                                        {latest_registry_release.as_ref().map(|release| {
+                                            view! {
+                                                <span class=registry_request_status_badge_classes(&release.status)>
+                                                    {format!("Release: {}", humanize_token(&release.status))}
+                                                </span>
+                                            }
+                                        })}
+                                        {if latest_registry_request.is_none() && latest_registry_release.is_none() {
+                                            view! {
+                                                <span class=registry_request_status_badge_classes("info")>
+                                                    "No V2 activity yet"
+                                                </span>
+                                            }.into_any()
+                                        } else {
+                                            ().into_any()
+                                        }}
+                                    </div>
+                                    <dl class="mt-3 space-y-2">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <dt class="text-muted-foreground">"Latest request"</dt>
+                                            <dd class="text-right">
+                                                {latest_registry_request
+                                                    .as_ref()
+                                                    .map(|request| format!("{} В· {}", request.id, humanize_token(&request.status)))
+                                                    .unwrap_or_else(|| "No publish request recorded".to_string())}
+                                            </dd>
+                                        </div>
+                                        <div class="flex items-start justify-between gap-3">
+                                            <dt class="text-muted-foreground">"Request actor"</dt>
+                                            <dd class="text-right">
+                                                {latest_registry_request
+                                                    .as_ref()
+                                                    .map(|request| request.requested_by.clone())
+                                                    .unwrap_or_else(|| "Unknown".to_string())}
+                                            </dd>
+                                        </div>
+                                        <div class="flex items-start justify-between gap-3">
+                                            <dt class="text-muted-foreground">"Request updated"</dt>
+                                            <dd class="text-right">
+                                                {latest_registry_request
+                                                    .as_ref()
+                                                    .map(|request| request.updated_at.clone())
+                                                    .unwrap_or_else(|| "No request activity".to_string())}
+                                            </dd>
+                                        </div>
+                                        <div class="flex items-start justify-between gap-3">
+                                            <dt class="text-muted-foreground">"Latest release state"</dt>
+                                            <dd class="text-right">
+                                                {latest_registry_release
+                                                    .as_ref()
+                                                    .map(|release: &RegistryReleaseLifecycle| format!(
+                                                        "v{} В· {}{}",
+                                                        release.version,
+                                                        humanize_token(&release.status),
+                                                        if release.status == "YANKED" {
+                                                            release
+                                                                .yanked_at
+                                                                .as_ref()
+                                                                .map(|value| format!(" В· {}", value))
+                                                                .unwrap_or_default()
+                                                        } else {
+                                                            format!(" В· {}", release.published_at)
+                                                        }
+                                                    ))
+                                                    .unwrap_or_else(|| "No persisted release state".to_string())}
+                                            </dd>
+                                        </div>
+                                    </dl>
+                                    <p class="mt-3 text-xs text-muted-foreground">{governance_hint}</p>
+                                    <Show when=move || !lifecycle_note_lines_for_show.is_empty()>
+                                        <div class="mt-3 space-y-2">
+                                            {lifecycle_note_lines.clone().into_iter().map(|line| {
+                                                view! {
+                                                    <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                                                        {line}
+                                                    </div>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    </Show>
                                 </div>
 
                                 <Show when=move || !metadata_checklist_for_show.is_empty()>

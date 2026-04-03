@@ -27,7 +27,8 @@ pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
     CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService, CustomerService,
     FulfillmentService, InventoryService, OrderService, PaymentService, PricingService,
-    RegionService, StoreContextError, StoreContextResult, StoreContextService,
+    RegionService, ShippingProfileService, StoreContextError, StoreContextResult,
+    StoreContextService,
 };
 pub use state_machine::{
     Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,

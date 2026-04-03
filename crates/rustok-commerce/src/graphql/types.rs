@@ -162,6 +162,28 @@ pub struct GqlShippingOption {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlShippingProfile {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub active: bool,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlShippingProfileList {
+    pub items: Vec<GqlShippingProfile>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlShippingOptionList {
     pub items: Vec<GqlShippingOption>,
     pub total: u64,
@@ -487,6 +509,14 @@ pub struct ShippingOptionsFilter {
 }
 
 #[derive(InputObject)]
+pub struct ShippingProfilesFilter {
+    pub active: Option<bool>,
+    pub search: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
 pub struct MarkPaidOrderInput {
     pub payment_id: String,
     pub payment_method: String,
@@ -617,6 +647,24 @@ pub struct UpdateShippingOptionInputObject {
     pub amount: Option<String>,
     pub provider_id: Option<String>,
     pub allowed_shipping_profile_slugs: Option<Vec<String>>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "CreateShippingProfileInput")]
+pub struct CreateShippingProfileInputObject {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "UpdateShippingProfileInput")]
+pub struct UpdateShippingProfileInputObject {
+    pub slug: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
     pub metadata: Option<String>,
 }
 
@@ -756,6 +804,22 @@ impl From<dto::ShippingOptionResponse> for GqlShippingOption {
             provider_id: value.provider_id,
             active: value.active,
             allowed_shipping_profile_slugs: value.allowed_shipping_profile_slugs,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::ShippingProfileResponse> for GqlShippingProfile {
+    fn from(value: dto::ShippingProfileResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            slug: value.slug,
+            name: value.name,
+            description: value.description,
+            active: value.active,
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),

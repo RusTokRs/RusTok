@@ -14,6 +14,7 @@
 
 - Depends on `rustok-core` for module contracts and permission vocabulary.
 - Used by `apps/server` tenant middleware, tenant admin flows, and module toggle orchestration.
+- Exposes a module-owned Leptos admin overview through `rustok-tenant-admin`.
 - Declares permissions via `rustok-core::Permission`.
 - `apps/server` enforces those permissions through `RbacService` and GraphQL/REST RBAC guards.
 - Module lifecycle orchestration lives in `apps/server`, while `rustok-tenant` owns the

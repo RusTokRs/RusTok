@@ -9,3 +9,8 @@ recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
 entry_type = "OutboxModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-outbox-admin"
+route_segment = "outbox"
+nav_label = "Outbox"

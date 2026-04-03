@@ -1,8 +1,15 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use reqwest::blocking::Client;
+use reqwest::Url;
+use semver::Version;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use toml::Value as TomlValue;
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
@@ -50,10 +57,24 @@ struct Settings {
 struct ModulePackageManifest {
     #[serde(default)]
     module: ModulePackageMetadata,
+    #[serde(default)]
+    marketplace: ModulePackageMarketplaceMetadata,
+    #[serde(rename = "crate", default)]
+    crate_contract: ModulePackageCrateContract,
+    #[serde(default)]
+    provides: ModulePackageProvides,
 }
 
 #[derive(Debug, Deserialize, Default)]
 struct ModulePackageMetadata {
+    #[serde(default)]
+    slug: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    description: String,
     #[serde(default)]
     ownership: String,
     #[serde(default)]
@@ -63,6 +84,188 @@ struct ModulePackageMetadata {
     #[serde(default)]
     showcase_admin_surfaces: Vec<String>,
 }
+
+#[derive(Debug, Deserialize, Default)]
+struct ModulePackageMarketplaceMetadata {
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModulePackageCrateContract {
+    #[serde(default)]
+    entry_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModulePackageProvides {
+    #[serde(default)]
+    admin_ui: Option<ModuleUiProvides>,
+    #[serde(default)]
+    storefront_ui: Option<ModuleUiProvides>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModuleUiProvides {
+    #[serde(default)]
+    leptos_crate: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ModulePublishDryRunPreview {
+    slug: String,
+    version: String,
+    crate_name: String,
+    module_name: String,
+    module_description: String,
+    ownership: String,
+    trust_level: String,
+    license: String,
+    manifest_path: String,
+    package_manifest_path: String,
+    module_entry_type: Option<String>,
+    marketplace: ModuleMarketplacePreview,
+    ui_packages: ModuleUiPackagesPreview,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleMarketplacePreview {
+    category: Option<String>,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleUiPackagesPreview {
+    admin: Option<ModuleUiPackagePreview>,
+    storefront: Option<ModuleUiPackagePreview>,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleUiPackagePreview {
+    crate_name: String,
+    manifest_path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryPublishHttpRequest {
+    schema_version: u32,
+    dry_run: bool,
+    module: RegistryPublishModuleHttpRequest,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryPublishModuleHttpRequest {
+    slug: String,
+    version: String,
+    crate_name: String,
+    name: String,
+    description: String,
+    ownership: String,
+    trust_level: String,
+    license: String,
+    entry_type: Option<String>,
+    marketplace: RegistryPublishMarketplaceHttpRequest,
+    ui_packages: RegistryPublishUiPackagesHttpRequest,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryPublishMarketplaceHttpRequest {
+    category: Option<String>,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryPublishUiPackagesHttpRequest {
+    admin: Option<RegistryPublishUiPackageHttpRequest>,
+    storefront: Option<RegistryPublishUiPackageHttpRequest>,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryPublishUiPackageHttpRequest {
+    crate_name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryYankHttpRequest {
+    schema_version: u32,
+    dry_run: bool,
+    slug: String,
+    version: String,
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct RegistryMutationHttpResponse {
+    accepted: bool,
+    #[allow(dead_code)]
+    action: Option<String>,
+    #[allow(dead_code)]
+    dry_run: Option<bool>,
+    request_id: Option<String>,
+    status: Option<String>,
+    #[serde(default)]
+    warnings: Vec<String>,
+    #[serde(default)]
+    errors: Vec<String>,
+    next_step: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct RegistryPublishStatusHttpResponse {
+    request_id: String,
+    slug: String,
+    version: String,
+    status: String,
+    accepted: bool,
+    #[serde(default)]
+    warnings: Vec<String>,
+    #[serde(default)]
+    errors: Vec<String>,
+    next_step: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryPublishDecisionHttpRequest {
+    schema_version: u32,
+    dry_run: bool,
+    reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleYankDryRunPreview {
+    action: String,
+    slug: String,
+    version: String,
+    crate_name: String,
+    current_local_version: String,
+    matches_local_version: bool,
+    package_manifest_path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleTestPlanPreview {
+    slug: String,
+    version: String,
+    commands: Vec<ModuleCommandPreview>,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleCommandPreview {
+    label: String,
+    argv: Vec<String>,
+}
+
+#[derive(Debug)]
+struct ResolvedCargoPackage {
+    name: String,
+    version: String,
+    license: Option<String>,
+    manifest_path: PathBuf,
+}
+
+const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -76,6 +279,7 @@ fn main() -> Result<()> {
         "generate-registry" => generate_registry()?,
         "validate-manifest" => validate_manifest()?,
         "list-modules" => list_modules()?,
+        "module" => module_command(&args[2..])?,
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             print_usage();
@@ -93,6 +297,10 @@ fn print_usage() {
     println!("  generate-registry   Generate ModuleRegistry from modules.toml");
     println!("  validate-manifest   Validate modules.toml and rustok-module.toml files");
     println!("  list-modules        List all configured modules");
+    println!("  module validate     Validate module publish-readiness contracts");
+    println!("  module test         Run or preview local module smoke checks");
+    println!("  module publish      Emit a dry-run publish payload preview");
+    println!("  module yank         Emit a dry-run yank payload preview");
 }
 
 fn manifest_path() -> PathBuf {
@@ -135,6 +343,92 @@ fn load_module_package_manifest(path: &Path) -> Result<ModulePackageManifest> {
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
     toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(PathBuf::from)
+        .expect("xtask should live under the workspace root")
+}
+
+fn workspace_manifest_path() -> PathBuf {
+    workspace_root().join("Cargo.toml")
+}
+
+fn load_workspace_manifest() -> Result<TomlValue> {
+    let path = workspace_manifest_path();
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn load_toml_value(path: &Path) -> Result<TomlValue> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn resolve_workspace_inherited_string(
+    value: Option<&TomlValue>,
+    workspace_manifest: &TomlValue,
+    field: &str,
+) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+
+    if let Some(string) = value.as_str() {
+        return Ok(Some(string.trim().to_string()));
+    }
+
+    if let Some(table) = value.as_table() {
+        if table.get("workspace").and_then(TomlValue::as_bool) == Some(true) {
+            let inherited = workspace_manifest
+                .get("workspace")
+                .and_then(TomlValue::as_table)
+                .and_then(|workspace| workspace.get("package"))
+                .and_then(TomlValue::as_table)
+                .and_then(|package| package.get(field))
+                .and_then(TomlValue::as_str)
+                .map(|value| value.trim().to_string());
+            return Ok(inherited);
+        }
+    }
+
+    anyhow::bail!("Unsupported package.{field} declaration in Cargo manifest")
+}
+
+fn load_resolved_cargo_package(
+    path: &Path,
+    workspace_manifest: &TomlValue,
+) -> Result<ResolvedCargoPackage> {
+    let manifest = load_toml_value(path)?;
+    let package = manifest
+        .get("package")
+        .and_then(TomlValue::as_table)
+        .with_context(|| format!("{} is missing [package]", path.display()))?;
+
+    let name = package
+        .get("name")
+        .and_then(TomlValue::as_str)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .with_context(|| format!("{} is missing package.name", path.display()))?;
+    let version =
+        resolve_workspace_inherited_string(package.get("version"), workspace_manifest, "version")?
+            .filter(|value| !value.is_empty())
+            .with_context(|| format!("{} is missing package.version", path.display()))?;
+    let license =
+        resolve_workspace_inherited_string(package.get("license"), workspace_manifest, "license")?
+            .filter(|value| !value.is_empty());
+
+    Ok(ResolvedCargoPackage {
+        name,
+        version,
+        license,
+        manifest_path: path.to_path_buf(),
+    })
 }
 
 fn is_valid_module_ownership(value: &str) -> bool {
@@ -210,6 +504,963 @@ fn validate_module_package_metadata(slug: &str, metadata: &ModulePackageMetadata
     }
 
     Ok(())
+}
+
+fn module_command(args: &[String]) -> Result<()> {
+    if args.is_empty() {
+        print_module_usage();
+        anyhow::bail!("Missing module subcommand");
+    }
+
+    match args[0].as_str() {
+        "validate" => module_validate_command(&args[1..]),
+        "test" => module_test_command(&args[1..]),
+        "publish" => module_publish_command(&args[1..]),
+        "yank" => module_yank_command(&args[1..]),
+        other => {
+            print_module_usage();
+            anyhow::bail!("Unknown module subcommand: {other}");
+        }
+    }
+}
+
+fn print_module_usage() {
+    println!("Usage:");
+    println!("  cargo xtask module validate [slug]");
+    println!("  cargo xtask module test <slug> [--dry-run]");
+    println!("  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>]");
+    println!(
+        "  cargo xtask module yank <slug> <version> [--dry-run] [--reason <text>] [--registry-url <url>]"
+    );
+}
+
+fn module_validate_command(args: &[String]) -> Result<()> {
+    let manifest_path = manifest_path();
+    let manifest = load_manifest_from(&manifest_path)?;
+    let workspace_manifest = load_workspace_manifest()?;
+    let explicit_slug = args.first().map(String::as_str);
+    let targets = selected_modules(&manifest, explicit_slug)?;
+    let mut skipped_without_package_manifest = 0usize;
+
+    println!("Validating module publish-readiness contracts...");
+
+    for (slug, spec) in targets {
+        if explicit_slug.is_none() {
+            let Some(package_manifest_path) = module_package_manifest_path(&manifest_path, spec)
+            else {
+                continue;
+            };
+            if !package_manifest_path.exists() {
+                skipped_without_package_manifest += 1;
+                continue;
+            }
+        }
+
+        let preview =
+            build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
+        println!(
+            "  PASS {slug} -> {} v{}",
+            preview.crate_name, preview.version
+        );
+    }
+
+    if skipped_without_package_manifest > 0 {
+        println!(
+            "  Skipped {skipped_without_package_manifest} path modules without rustok-module.toml publish contract"
+        );
+    }
+
+    Ok(())
+}
+
+fn module_publish_command(args: &[String]) -> Result<()> {
+    if args.is_empty() {
+        print_module_usage();
+        anyhow::bail!("module publish requires a module slug");
+    }
+
+    let slug = args[0].as_str();
+    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
+
+    let manifest_path = manifest_path();
+    let manifest = load_manifest_from(&manifest_path)?;
+    let workspace_manifest = load_workspace_manifest()?;
+    let spec = manifest
+        .modules
+        .get(slug)
+        .with_context(|| format!("Unknown module slug '{slug}'"))?;
+    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
+    let registry_url = registry_url_argument(&args[1..]);
+    if dry_run {
+        if let Some(registry_url) = registry_url {
+            let payload = publish_via_registry_dry_run(&registry_url, &preview)?;
+            println!("{payload}");
+        } else {
+            let payload = serde_json::to_string_pretty(&preview)?;
+            println!("{payload}");
+        }
+    } else {
+        let registry_url = registry_url.with_context(|| {
+            "Live module publish requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
+        })?;
+        let payload = publish_via_registry_live(&registry_url, &preview)?;
+        println!("{payload}");
+    }
+
+    Ok(())
+}
+
+fn module_test_command(args: &[String]) -> Result<()> {
+    if args.is_empty() {
+        print_module_usage();
+        anyhow::bail!("module test requires a module slug");
+    }
+
+    let slug = args[0].as_str();
+    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
+    let manifest_path = manifest_path();
+    let manifest = load_manifest_from(&manifest_path)?;
+    let workspace_manifest = load_workspace_manifest()?;
+    let spec = manifest
+        .modules
+        .get(slug)
+        .with_context(|| format!("Unknown module slug '{slug}'"))?;
+    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
+    let plan = build_module_test_plan(&preview);
+
+    if dry_run {
+        let payload = serde_json::to_string_pretty(&plan)?;
+        println!("{payload}");
+        return Ok(());
+    }
+
+    println!(
+        "Running local module smoke checks for {slug} v{}...",
+        preview.version
+    );
+    for command in &plan.commands {
+        println!("  > {}", command.argv.join(" "));
+        run_command(command)?;
+    }
+
+    Ok(())
+}
+
+fn module_yank_command(args: &[String]) -> Result<()> {
+    if args.len() < 2 {
+        print_module_usage();
+        anyhow::bail!("module yank requires a module slug and version");
+    }
+
+    let slug = args[0].as_str();
+    let version = args[1].trim();
+    let dry_run = args.iter().skip(2).any(|arg| arg == "--dry-run");
+    Version::parse(version)
+        .with_context(|| format!("module yank version '{version}' is not valid semver"))?;
+
+    let manifest_path = manifest_path();
+    let manifest = load_manifest_from(&manifest_path)?;
+    let workspace_manifest = load_workspace_manifest()?;
+    let spec = manifest
+        .modules
+        .get(slug)
+        .with_context(|| format!("Unknown module slug '{slug}'"))?;
+    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
+    let payload = ModuleYankDryRunPreview {
+        action: "yank".to_string(),
+        slug: slug.to_string(),
+        version: version.to_string(),
+        crate_name: preview.crate_name.clone(),
+        current_local_version: preview.version.clone(),
+        matches_local_version: preview.version == version,
+        package_manifest_path: preview.package_manifest_path,
+    };
+    let registry_url = registry_url_argument(&args[2..]);
+    let reason = reason_argument(&args[2..]);
+    if dry_run {
+        if let Some(registry_url) = registry_url {
+            let remote_payload = yank_via_registry_dry_run(&registry_url, &payload, reason)?;
+            println!("{remote_payload}");
+        } else {
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+    } else {
+        let registry_url = registry_url.with_context(|| {
+            "Live module yank requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
+        })?;
+        let reason = reason.with_context(|| "Live module yank requires --reason <text>")?;
+        let remote_payload = yank_via_registry_live(&registry_url, &payload, reason)?;
+        println!("{remote_payload}");
+    }
+
+    Ok(())
+}
+
+fn selected_modules<'a>(
+    manifest: &'a Manifest,
+    slug: Option<&'a str>,
+) -> Result<Vec<(&'a str, &'a ModuleSpec)>> {
+    if let Some(slug) = slug {
+        let spec = manifest
+            .modules
+            .get(slug)
+            .with_context(|| format!("Unknown module slug '{slug}'"))?;
+        return Ok(vec![(slug, spec)]);
+    }
+
+    let mut modules = manifest
+        .modules
+        .iter()
+        .filter(|(_, spec)| spec.source == "path")
+        .map(|(slug, spec)| (slug.as_str(), spec))
+        .collect::<Vec<_>>();
+    modules.sort_by(|left, right| left.0.cmp(right.0));
+    Ok(modules)
+}
+
+fn registry_url_argument(args: &[String]) -> Option<String> {
+    if let Some(index) = args.iter().position(|arg| arg == "--registry-url") {
+        return args
+            .get(index + 1)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+
+    std::env::var("RUSTOK_MODULE_REGISTRY_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn reason_argument(args: &[String]) -> Option<String> {
+    if let Some(index) = args.iter().position(|arg| arg == "--reason") {
+        return args
+            .get(index + 1)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+
+    None
+}
+
+fn publish_via_registry_dry_run(
+    registry_url: &str,
+    preview: &ModulePublishDryRunPreview,
+) -> Result<String> {
+    let endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
+    let request = build_publish_registry_request(preview);
+
+    post_registry_json(&endpoint, &request)
+}
+
+fn publish_via_registry_live(
+    registry_url: &str,
+    preview: &ModulePublishDryRunPreview,
+) -> Result<String> {
+    let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
+    let create_request = build_live_publish_registry_request(preview);
+    let create_response: RegistryMutationHttpResponse = post_registry_json_parsed(
+        &create_endpoint,
+        &create_request,
+        Some("xtask:module-publish"),
+    )?;
+    if !create_response.accepted {
+        anyhow::bail!(
+            "Registry publish request was not accepted: {}",
+            join_registry_errors(&create_response.errors)
+        );
+    }
+
+    let request_id = create_response
+        .request_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .with_context(|| {
+            format!(
+                "Registry publish did not return request_id; status={:?}, next_step={:?}",
+                create_response.status, create_response.next_step
+            )
+        })?;
+
+    let artifact_bytes = build_publish_artifact_bytes(preview)?;
+    let upload_endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}/artifact",
+        registry_url.trim_end_matches('/')
+    );
+    let upload_response: RegistryMutationHttpResponse = put_registry_bytes_parsed(
+        &upload_endpoint,
+        &artifact_bytes,
+        "application/json",
+        Some("xtask:module-publish"),
+    )?;
+    ensure_publish_step_accepted(
+        "artifact upload",
+        upload_response.accepted,
+        upload_response.status.as_deref(),
+        &upload_response.errors,
+    )?;
+
+    let approve_endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}/approve",
+        registry_url.trim_end_matches('/')
+    );
+    let approve_request = RegistryPublishDecisionHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run: false,
+        reason: None,
+    };
+    let approve_response: RegistryMutationHttpResponse = post_registry_json_parsed(
+        &approve_endpoint,
+        &approve_request,
+        Some("xtask:module-publish"),
+    )?;
+    ensure_publish_step_accepted(
+        "approval",
+        approve_response.accepted,
+        approve_response.status.as_deref(),
+        &approve_response.errors,
+    )?;
+
+    let status_endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}",
+        registry_url.trim_end_matches('/')
+    );
+    let status = poll_registry_publish_status(&status_endpoint, Some("xtask:module-publish"))?;
+    ensure_publish_status_not_rejected(&status)?;
+    pretty_json(&status)
+}
+
+fn yank_via_registry_dry_run(
+    registry_url: &str,
+    preview: &ModuleYankDryRunPreview,
+    reason: Option<String>,
+) -> Result<String> {
+    let endpoint = format!("{}/v2/catalog/yank", registry_url.trim_end_matches('/'));
+    let request = build_yank_registry_request(preview, reason);
+
+    post_registry_json(&endpoint, &request)
+}
+
+fn yank_via_registry_live(
+    registry_url: &str,
+    preview: &ModuleYankDryRunPreview,
+    reason: String,
+) -> Result<String> {
+    let endpoint = format!("{}/v2/catalog/yank", registry_url.trim_end_matches('/'));
+    let request = build_live_yank_registry_request(preview, Some(reason));
+    let response: RegistryMutationHttpResponse =
+        post_registry_json_parsed(&endpoint, &request, Some("xtask:module-yank"))?;
+    if !response.accepted {
+        anyhow::bail!(
+            "Registry yank request was not accepted: {}",
+            join_registry_errors(&response.errors)
+        );
+    }
+
+    pretty_json(&response)
+}
+
+fn build_publish_registry_request(
+    preview: &ModulePublishDryRunPreview,
+) -> RegistryPublishHttpRequest {
+    build_publish_registry_request_with_dry_run(preview, true)
+}
+
+fn build_live_publish_registry_request(
+    preview: &ModulePublishDryRunPreview,
+) -> RegistryPublishHttpRequest {
+    build_publish_registry_request_with_dry_run(preview, false)
+}
+
+fn build_publish_registry_request_with_dry_run(
+    preview: &ModulePublishDryRunPreview,
+    dry_run: bool,
+) -> RegistryPublishHttpRequest {
+    RegistryPublishHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run,
+        module: RegistryPublishModuleHttpRequest {
+            slug: preview.slug.clone(),
+            version: preview.version.clone(),
+            crate_name: preview.crate_name.clone(),
+            name: preview.module_name.clone(),
+            description: preview.module_description.clone(),
+            ownership: preview.ownership.clone(),
+            trust_level: preview.trust_level.clone(),
+            license: preview.license.clone(),
+            entry_type: preview.module_entry_type.clone(),
+            marketplace: RegistryPublishMarketplaceHttpRequest {
+                category: preview.marketplace.category.clone(),
+                tags: preview.marketplace.tags.clone(),
+            },
+            ui_packages: RegistryPublishUiPackagesHttpRequest {
+                admin: preview.ui_packages.admin.as_ref().map(|ui| {
+                    RegistryPublishUiPackageHttpRequest {
+                        crate_name: ui.crate_name.clone(),
+                    }
+                }),
+                storefront: preview.ui_packages.storefront.as_ref().map(|ui| {
+                    RegistryPublishUiPackageHttpRequest {
+                        crate_name: ui.crate_name.clone(),
+                    }
+                }),
+            },
+        },
+    }
+}
+
+fn build_yank_registry_request(
+    preview: &ModuleYankDryRunPreview,
+    reason: Option<String>,
+) -> RegistryYankHttpRequest {
+    build_yank_registry_request_with_dry_run(preview, reason, true)
+}
+
+fn build_live_yank_registry_request(
+    preview: &ModuleYankDryRunPreview,
+    reason: Option<String>,
+) -> RegistryYankHttpRequest {
+    build_yank_registry_request_with_dry_run(preview, reason, false)
+}
+
+fn build_yank_registry_request_with_dry_run(
+    preview: &ModuleYankDryRunPreview,
+    reason: Option<String>,
+    dry_run: bool,
+) -> RegistryYankHttpRequest {
+    RegistryYankHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run,
+        slug: preview.slug.clone(),
+        version: preview.version.clone(),
+        reason,
+    }
+}
+
+fn post_registry_json<T>(endpoint: &str, payload: &T) -> Result<String>
+where
+    T: Serialize,
+{
+    let value: serde_json::Value = post_registry_json_parsed(endpoint, payload, None)?;
+    pretty_json(&value)
+}
+
+fn post_registry_json_parsed<T, U>(endpoint: &str, payload: &T, actor: Option<&str>) -> Result<U>
+where
+    T: Serialize,
+    U: DeserializeOwned,
+{
+    let client = build_registry_http_client(endpoint)?;
+    let mut request = client.post(endpoint).json(payload);
+    if let Some(actor) = actor {
+        request = request.header("x-rustok-actor", actor);
+    }
+    let response = request
+        .send()
+        .with_context(|| format!("Failed to call registry endpoint {endpoint}"))?;
+    parse_registry_json_response(endpoint, response)
+}
+
+fn put_registry_bytes_parsed<U>(
+    endpoint: &str,
+    payload: &[u8],
+    content_type: &str,
+    actor: Option<&str>,
+) -> Result<U>
+where
+    U: DeserializeOwned,
+{
+    let client = build_registry_http_client(endpoint)?;
+    let mut request = client
+        .put(endpoint)
+        .header("content-type", content_type)
+        .body(payload.to_vec());
+    if let Some(actor) = actor {
+        request = request.header("x-rustok-actor", actor);
+    }
+    let response = request
+        .send()
+        .with_context(|| format!("Failed to call registry upload endpoint {endpoint}"))?;
+    parse_registry_json_response(endpoint, response)
+}
+
+fn get_registry_json_parsed<U>(endpoint: &str, actor: Option<&str>) -> Result<U>
+where
+    U: DeserializeOwned,
+{
+    let client = build_registry_http_client(endpoint)?;
+    let mut request = client.get(endpoint);
+    if let Some(actor) = actor {
+        request = request.header("x-rustok-actor", actor);
+    }
+    let response = request
+        .send()
+        .with_context(|| format!("Failed to call registry endpoint {endpoint}"))?;
+    parse_registry_json_response(endpoint, response)
+}
+
+fn parse_registry_json_response<U>(
+    endpoint: &str,
+    response: reqwest::blocking::Response,
+) -> Result<U>
+where
+    U: DeserializeOwned,
+{
+    let response = response
+        .error_for_status()
+        .with_context(|| format!("Registry endpoint {endpoint} returned an error status"))?;
+    response
+        .json::<U>()
+        .with_context(|| format!("Failed to parse registry response from {endpoint}"))
+}
+
+fn build_publish_artifact_bytes(preview: &ModulePublishDryRunPreview) -> Result<Vec<u8>> {
+    let package_manifest_path = workspace_root().join(&preview.package_manifest_path);
+    let package_manifest = fs::read_to_string(&package_manifest_path).with_context(|| {
+        format!(
+            "Failed to read publish package manifest {}",
+            package_manifest_path.display()
+        )
+    })?;
+    let module_root = package_manifest_path.parent().with_context(|| {
+        format!(
+            "Failed to resolve module root for {}",
+            package_manifest_path.display()
+        )
+    })?;
+    let crate_manifest_path = module_root.join("Cargo.toml");
+    let crate_manifest = fs::read_to_string(&crate_manifest_path).with_context(|| {
+        format!(
+            "Failed to read crate manifest {}",
+            crate_manifest_path.display()
+        )
+    })?;
+
+    let admin_manifest = preview
+        .ui_packages
+        .admin
+        .as_ref()
+        .map(|ui| {
+            let path = workspace_root().join(&ui.manifest_path);
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read admin UI manifest {}", path.display()))?;
+            Ok::<String, anyhow::Error>(content)
+        })
+        .transpose()?;
+    let storefront_manifest = preview
+        .ui_packages
+        .storefront
+        .as_ref()
+        .map(|ui| {
+            let path = workspace_root().join(&ui.manifest_path);
+            let content = fs::read_to_string(&path).with_context(|| {
+                format!("Failed to read storefront UI manifest {}", path.display())
+            })?;
+            Ok::<String, anyhow::Error>(content)
+        })
+        .transpose()?;
+
+    let payload = serde_json::json!({
+        "schema_version": REGISTRY_MUTATION_SCHEMA_VERSION,
+        "artifact_type": "rustok-module-publish-bundle",
+        "module": preview,
+        "files": {
+            "rustok-module.toml": package_manifest,
+            "Cargo.toml": crate_manifest,
+            "admin/Cargo.toml": admin_manifest,
+            "storefront/Cargo.toml": storefront_manifest,
+        }
+    });
+
+    serde_json::to_vec_pretty(&payload).context("Failed to serialize publish artifact bundle")
+}
+
+fn poll_registry_publish_status(
+    endpoint: &str,
+    actor: Option<&str>,
+) -> Result<RegistryPublishStatusHttpResponse> {
+    let mut last_status = None;
+
+    for attempt in 0..10 {
+        let status: RegistryPublishStatusHttpResponse = get_registry_json_parsed(endpoint, actor)?;
+        let terminal = matches!(status.status.as_str(), "published" | "rejected");
+        last_status = Some(status);
+        if terminal {
+            break;
+        }
+        if attempt < 9 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+
+    last_status.with_context(|| format!("Registry status endpoint {endpoint} returned no payload"))
+}
+
+fn ensure_publish_step_accepted(
+    step: &str,
+    accepted: bool,
+    status: Option<&str>,
+    errors: &[String],
+) -> Result<()> {
+    if accepted && status != Some("rejected") {
+        return Ok(());
+    }
+
+    let status_label = status.unwrap_or("unknown");
+    anyhow::bail!(
+        "Registry publish {step} finished with status '{status_label}': {}",
+        join_registry_errors(errors)
+    );
+}
+
+fn ensure_publish_status_not_rejected(status: &RegistryPublishStatusHttpResponse) -> Result<()> {
+    if status.accepted && status.status != "rejected" {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "Registry publish request '{}' was rejected: {}",
+        status.request_id,
+        join_registry_errors(&status.errors)
+    );
+}
+
+fn join_registry_errors(errors: &[String]) -> String {
+    if errors.is_empty() {
+        "no error details returned".to_string()
+    } else {
+        errors.join("; ")
+    }
+}
+
+fn pretty_json<T>(value: &T) -> Result<String>
+where
+    T: Serialize,
+{
+    serde_json::to_string_pretty(value).context("Failed to pretty-print registry payload")
+}
+
+fn build_registry_http_client(endpoint: &str) -> Result<Client> {
+    let mut builder = Client::builder().timeout(std::time::Duration::from_secs(15));
+    if registry_endpoint_uses_loopback(endpoint) {
+        builder = builder.no_proxy();
+    }
+
+    builder
+        .build()
+        .context("Failed to build registry HTTP client")
+}
+
+fn registry_endpoint_uses_loopback(endpoint: &str) -> bool {
+    Url::parse(endpoint)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host.to_string()))
+        .is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<IpAddr>()
+                    .map(|address| address.is_loopback())
+                    .unwrap_or(false)
+        })
+}
+
+fn build_module_test_plan(preview: &ModulePublishDryRunPreview) -> ModuleTestPlanPreview {
+    let mut commands = vec![ModuleCommandPreview {
+        label: "module validate".to_string(),
+        argv: vec![
+            "cargo".to_string(),
+            "run".to_string(),
+            "-p".to_string(),
+            "xtask".to_string(),
+            "--".to_string(),
+            "module".to_string(),
+            "validate".to_string(),
+            preview.slug.clone(),
+        ],
+    }];
+
+    commands.push(package_check_command("module crate", &preview.crate_name));
+
+    if let Some(admin) = preview.ui_packages.admin.as_ref() {
+        commands.push(package_check_command("admin ui crate", &admin.crate_name));
+    }
+
+    if let Some(storefront) = preview.ui_packages.storefront.as_ref() {
+        commands.push(package_check_command(
+            "storefront ui crate",
+            &storefront.crate_name,
+        ));
+    }
+
+    ModuleTestPlanPreview {
+        slug: preview.slug.clone(),
+        version: preview.version.clone(),
+        commands,
+    }
+}
+
+fn package_check_command(label: &str, package: &str) -> ModuleCommandPreview {
+    ModuleCommandPreview {
+        label: label.to_string(),
+        argv: vec![
+            "cargo".to_string(),
+            "check".to_string(),
+            "-p".to_string(),
+            package.to_string(),
+        ],
+    }
+}
+
+fn run_command(command: &ModuleCommandPreview) -> Result<()> {
+    let program = command
+        .argv
+        .first()
+        .with_context(|| format!("Command '{}' has empty argv", command.label))?;
+    let status = Command::new(program)
+        .args(&command.argv[1..])
+        .current_dir(workspace_root())
+        .status()
+        .with_context(|| format!("Failed to launch '{}'", command.argv.join(" ")))?;
+    if !status.success() {
+        anyhow::bail!(
+            "Command '{}' failed with status {}",
+            command.argv.join(" "),
+            status
+        );
+    }
+    Ok(())
+}
+
+fn build_module_publish_preview(
+    manifest_path: &Path,
+    slug: &str,
+    spec: &ModuleSpec,
+    workspace_manifest: &TomlValue,
+) -> Result<ModulePublishDryRunPreview> {
+    if spec.source != "path" {
+        anyhow::bail!(
+            "Module '{slug}' uses source='{}'; publish dry-run currently supports only local path modules",
+            spec.source
+        );
+    }
+
+    let package_manifest_path = module_package_manifest_path(manifest_path, spec)
+        .with_context(|| format!("Module '{slug}' has source='path' but no path specified"))?;
+    if !package_manifest_path.exists() {
+        anyhow::bail!(
+            "Module '{slug}' requires rustok-module.toml at {}",
+            package_manifest_path.display()
+        );
+    }
+
+    let package_manifest = load_module_package_manifest(&package_manifest_path)?;
+    validate_module_package_metadata(slug, &package_manifest.module)?;
+    validate_module_publish_contract(slug, &package_manifest)?;
+
+    let declared_slug = package_manifest.module.slug.trim();
+    if declared_slug != slug {
+        anyhow::bail!(
+            "Module '{slug}' declares slug '{}' in rustok-module.toml",
+            declared_slug
+        );
+    }
+
+    let module_root = package_manifest_path
+        .parent()
+        .map(PathBuf::from)
+        .with_context(|| {
+            format!(
+                "Failed to resolve module root for '{}'",
+                package_manifest_path.display()
+            )
+        })?;
+    let crate_manifest_path = module_root.join("Cargo.toml");
+    let crate_package = load_resolved_cargo_package(&crate_manifest_path, workspace_manifest)?;
+
+    if crate_package.name != spec.crate_name {
+        anyhow::bail!(
+            "Module '{slug}' points to crate '{}' in modules.toml, but Cargo.toml declares '{}'",
+            spec.crate_name,
+            crate_package.name
+        );
+    }
+
+    if crate_package.version != package_manifest.module.version {
+        anyhow::bail!(
+            "Module '{slug}' version mismatch: rustok-module.toml has '{}', Cargo.toml resolves to '{}'",
+            package_manifest.module.version,
+            crate_package.version
+        );
+    }
+
+    let license = crate_package.license.clone().with_context(|| {
+        format!(
+            "Module '{slug}' must resolve package.license via {}",
+            crate_package.manifest_path.display()
+        )
+    })?;
+
+    validate_module_ui_surface_contract(
+        slug,
+        &module_root,
+        "admin",
+        package_manifest
+            .provides
+            .admin_ui
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+    )?;
+    validate_module_ui_surface_contract(
+        slug,
+        &module_root,
+        "storefront",
+        package_manifest
+            .provides
+            .storefront_ui
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+    )?;
+
+    let admin_preview = validate_module_ui_package(
+        slug,
+        &module_root,
+        "admin",
+        package_manifest
+            .provides
+            .admin_ui
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+        &package_manifest.module.version,
+        workspace_manifest,
+    )?;
+    let storefront_preview = validate_module_ui_package(
+        slug,
+        &module_root,
+        "storefront",
+        package_manifest
+            .provides
+            .storefront_ui
+            .as_ref()
+            .and_then(|ui| ui.leptos_crate.as_deref()),
+        &package_manifest.module.version,
+        workspace_manifest,
+    )?;
+
+    Ok(ModulePublishDryRunPreview {
+        slug: slug.to_string(),
+        version: package_manifest.module.version.clone(),
+        crate_name: crate_package.name,
+        module_name: package_manifest.module.name.clone(),
+        module_description: package_manifest.module.description.clone(),
+        ownership: package_manifest.module.ownership.clone(),
+        trust_level: package_manifest.module.trust_level.clone(),
+        license,
+        manifest_path: manifest_path.display().to_string(),
+        package_manifest_path: package_manifest_path.display().to_string(),
+        module_entry_type: package_manifest.crate_contract.entry_type.clone(),
+        marketplace: ModuleMarketplacePreview {
+            category: package_manifest.marketplace.category.clone(),
+            tags: package_manifest.marketplace.tags.clone(),
+        },
+        ui_packages: ModuleUiPackagesPreview {
+            admin: admin_preview,
+            storefront: storefront_preview,
+        },
+    })
+}
+
+fn validate_module_publish_contract(slug: &str, manifest: &ModulePackageManifest) -> Result<()> {
+    let module_slug = manifest.module.slug.trim();
+    if module_slug.is_empty() {
+        anyhow::bail!("Module '{slug}' is missing module.slug in rustok-module.toml");
+    }
+
+    if manifest.module.name.trim().is_empty() {
+        anyhow::bail!("Module '{slug}' is missing module.name in rustok-module.toml");
+    }
+
+    let version = manifest.module.version.trim();
+    if version.is_empty() {
+        anyhow::bail!("Module '{slug}' is missing module.version in rustok-module.toml");
+    }
+    Version::parse(version)
+        .with_context(|| format!("Module '{slug}' has non-semver module.version '{version}'"))?;
+
+    if manifest.module.description.trim().len() < 20 {
+        anyhow::bail!(
+            "Module '{slug}' description must be at least 20 characters for publish readiness"
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_module_ui_surface_contract(
+    slug: &str,
+    module_root: &Path,
+    surface: &str,
+    crate_name: Option<&str>,
+) -> Result<()> {
+    let manifest_path = module_root.join(surface).join("Cargo.toml");
+    let has_subcrate = manifest_path.exists();
+    let crate_name = crate_name.map(str::trim).filter(|value| !value.is_empty());
+
+    if has_subcrate && crate_name.is_none() {
+        anyhow::bail!(
+            "Module '{slug}' contains {}, but rustok-module.toml is missing [provides.{surface}_ui].leptos_crate",
+            manifest_path.display()
+        );
+    }
+
+    if !has_subcrate && crate_name.is_some() {
+        anyhow::bail!(
+            "Module '{slug}' declares [provides.{surface}_ui].leptos_crate, but {} is missing",
+            manifest_path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_module_ui_package(
+    slug: &str,
+    module_root: &Path,
+    surface: &str,
+    crate_name: Option<&str>,
+    expected_version: &str,
+    workspace_manifest: &TomlValue,
+) -> Result<Option<ModuleUiPackagePreview>> {
+    let Some(crate_name) = crate_name else {
+        return Ok(None);
+    };
+
+    let manifest_path = module_root.join(surface).join("Cargo.toml");
+    if !manifest_path.exists() {
+        anyhow::bail!(
+            "Module '{slug}' declares provides.{surface}_ui.leptos_crate='{crate_name}', but {} is missing",
+            manifest_path.display()
+        );
+    }
+
+    let package = load_resolved_cargo_package(&manifest_path, workspace_manifest)?;
+    if package.name != crate_name {
+        anyhow::bail!(
+            "Module '{slug}' declares provides.{surface}_ui.leptos_crate='{crate_name}', but {} declares '{}'",
+            manifest_path.display(),
+            package.name
+        );
+    }
+    if package.version != expected_version {
+        anyhow::bail!(
+            "Module '{slug}' {surface} package version mismatch: expected '{expected_version}', got '{}'",
+            package.version
+        );
+    }
+
+    Ok(Some(ModuleUiPackagePreview {
+        crate_name: package.name,
+        manifest_path: manifest_path.display().to_string(),
+    }))
 }
 
 fn generate_registry() -> Result<()> {
@@ -391,4 +1642,241 @@ fn to_pascal_case(s: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_module_test_plan, build_publish_registry_request, build_yank_registry_request,
+        registry_endpoint_uses_loopback, resolve_workspace_inherited_string,
+        validate_module_publish_contract, validate_module_ui_surface_contract,
+        ModuleMarketplacePreview, ModulePackageManifest, ModulePublishDryRunPreview,
+        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleYankDryRunPreview,
+        REGISTRY_MUTATION_SCHEMA_VERSION,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn resolve_workspace_inherited_string_uses_workspace_package_value() {
+        let package_manifest: toml::Value = toml::from_str(
+            r#"
+                [package]
+                version.workspace = true
+            "#,
+        )
+        .expect("package manifest should parse");
+        let workspace_manifest: toml::Value = toml::from_str(
+            r#"
+                [workspace.package]
+                version = "1.2.3"
+            "#,
+        )
+        .expect("workspace manifest should parse");
+
+        let resolved = resolve_workspace_inherited_string(
+            package_manifest
+                .get("package")
+                .and_then(toml::Value::as_table)
+                .and_then(|table| table.get("version")),
+            &workspace_manifest,
+            "version",
+        )
+        .expect("version should resolve");
+
+        assert_eq!(resolved.as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn validate_module_publish_contract_rejects_short_description() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "blog"
+                name = "Blog"
+                version = "1.2.3"
+                description = "Too short"
+                ownership = "first_party"
+                trust_level = "verified"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_publish_contract("blog", &manifest)
+            .expect_err("short descriptions must fail");
+        assert!(error.to_string().contains("at least 20 characters"));
+    }
+
+    #[test]
+    fn validate_module_ui_surface_contract_rejects_declared_missing_subcrate() {
+        let error = validate_module_ui_surface_contract(
+            "blog",
+            Path::new("crates/rustok-blog"),
+            "preview",
+            Some("rustok-blog-preview"),
+        )
+        .expect_err("declared surface without subcrate must fail");
+
+        assert!(error
+            .to_string()
+            .contains("declares [provides.preview_ui].leptos_crate"));
+    }
+
+    #[test]
+    fn validate_module_ui_surface_contract_accepts_wired_existing_admin_subcrate() {
+        validate_module_ui_surface_contract(
+            "blog",
+            &super::workspace_root().join("crates").join("rustok-blog"),
+            "admin",
+            Some("rustok-blog-admin"),
+        )
+        .expect("wired admin subcrate should validate");
+    }
+
+    #[test]
+    fn build_module_test_plan_includes_main_and_ui_crates() {
+        let preview = ModulePublishDryRunPreview {
+            slug: "blog".to_string(),
+            version: "1.2.3".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            module_name: "Blog".to_string(),
+            module_description: "A blog module description long enough.".to_string(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            license: "MIT".to_string(),
+            manifest_path: "modules.toml".to_string(),
+            package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+            module_entry_type: Some("BlogModule".to_string()),
+            marketplace: ModuleMarketplacePreview {
+                category: Some("content".to_string()),
+                tags: vec!["content".to_string()],
+            },
+            ui_packages: ModuleUiPackagesPreview {
+                admin: Some(ModuleUiPackagePreview {
+                    crate_name: "rustok-blog-admin".to_string(),
+                    manifest_path: "crates/rustok-blog/admin/Cargo.toml".to_string(),
+                }),
+                storefront: Some(ModuleUiPackagePreview {
+                    crate_name: "rustok-blog-storefront".to_string(),
+                    manifest_path: "crates/rustok-blog/storefront/Cargo.toml".to_string(),
+                }),
+            },
+        };
+
+        let plan = build_module_test_plan(&preview);
+        let commands = plan
+            .commands
+            .iter()
+            .map(|command| command.argv.join(" "))
+            .collect::<Vec<_>>();
+
+        assert_eq!(commands.len(), 4);
+        assert!(commands[0].contains("module validate blog"));
+        assert!(commands[1].contains("cargo check -p rustok-blog"));
+        assert!(commands[2].contains("cargo check -p rustok-blog-admin"));
+        assert!(commands[3].contains("cargo check -p rustok-blog-storefront"));
+    }
+
+    #[test]
+    fn build_publish_registry_request_serializes_v2_contract() {
+        let preview = ModulePublishDryRunPreview {
+            slug: "blog".to_string(),
+            version: "1.2.3".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            module_name: "Blog".to_string(),
+            module_description: "A blog module description long enough.".to_string(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            license: "MIT".to_string(),
+            manifest_path: "modules.toml".to_string(),
+            package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+            module_entry_type: Some("BlogModule".to_string()),
+            marketplace: ModuleMarketplacePreview {
+                category: Some("content".to_string()),
+                tags: vec!["content".to_string(), "editorial".to_string()],
+            },
+            ui_packages: ModuleUiPackagesPreview {
+                admin: Some(ModuleUiPackagePreview {
+                    crate_name: "rustok-blog-admin".to_string(),
+                    manifest_path: "crates/rustok-blog/admin/Cargo.toml".to_string(),
+                }),
+                storefront: Some(ModuleUiPackagePreview {
+                    crate_name: "rustok-blog-storefront".to_string(),
+                    manifest_path: "crates/rustok-blog/storefront/Cargo.toml".to_string(),
+                }),
+            },
+        };
+
+        let request_body = serde_json::to_value(build_publish_registry_request(&preview))
+            .expect("request should serialize");
+        assert_eq!(
+            request_body["schema_version"],
+            REGISTRY_MUTATION_SCHEMA_VERSION
+        );
+        assert_eq!(request_body["dry_run"], true);
+        assert_eq!(request_body["module"]["slug"], "blog");
+        assert_eq!(request_body["module"]["version"], "1.2.3");
+        assert_eq!(request_body["module"]["crate_name"], "rustok-blog");
+        assert_eq!(request_body["module"]["name"], "Blog");
+        assert_eq!(
+            request_body["module"]["description"],
+            "A blog module description long enough."
+        );
+        assert_eq!(request_body["module"]["ownership"], "first_party");
+        assert_eq!(request_body["module"]["trust_level"], "verified");
+        assert_eq!(request_body["module"]["license"], "MIT");
+        assert_eq!(request_body["module"]["entry_type"], "BlogModule");
+        assert_eq!(request_body["module"]["marketplace"]["category"], "content");
+        assert_eq!(
+            request_body["module"]["marketplace"]["tags"],
+            serde_json::json!(["content", "editorial"])
+        );
+        assert_eq!(
+            request_body["module"]["ui_packages"]["admin"]["crate_name"],
+            "rustok-blog-admin"
+        );
+        assert_eq!(
+            request_body["module"]["ui_packages"]["storefront"]["crate_name"],
+            "rustok-blog-storefront"
+        );
+    }
+
+    #[test]
+    fn build_yank_registry_request_serializes_v2_contract() {
+        let preview = ModuleYankDryRunPreview {
+            action: "yank".to_string(),
+            slug: "blog".to_string(),
+            version: "1.2.3".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            current_local_version: "1.2.3".to_string(),
+            matches_local_version: true,
+            package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        };
+
+        let request_body = serde_json::to_value(build_yank_registry_request(
+            &preview,
+            Some("Accidental publish".to_string()),
+        ))
+        .expect("request should serialize");
+        assert_eq!(
+            request_body["schema_version"],
+            REGISTRY_MUTATION_SCHEMA_VERSION
+        );
+        assert_eq!(request_body["dry_run"], true);
+        assert_eq!(request_body["slug"], "blog");
+        assert_eq!(request_body["version"], "1.2.3");
+        assert_eq!(request_body["reason"], "Accidental publish");
+    }
+
+    #[test]
+    fn registry_endpoint_uses_loopback_for_local_urls() {
+        assert!(registry_endpoint_uses_loopback(
+            "http://127.0.0.1:5150/v2/catalog/publish"
+        ));
+        assert!(registry_endpoint_uses_loopback(
+            "http://localhost:5150/v2/catalog/yank"
+        ));
+        assert!(!registry_endpoint_uses_loopback(
+            "https://modules.rustok.dev/v2/catalog/publish"
+        ));
+    }
 }

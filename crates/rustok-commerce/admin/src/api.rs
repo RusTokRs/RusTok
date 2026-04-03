@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     CommerceAdminBootstrap, ProductDetail, ProductDraft, ProductList, ShippingOption,
-    ShippingOptionDraft, ShippingOptionList,
+    ShippingOptionDraft, ShippingOptionList, ShippingProfile, ShippingProfileDraft,
+    ShippingProfileList,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -14,6 +15,8 @@ const PRODUCTS_QUERY: &str = "query CommerceProducts($tenantId: UUID!, $locale: 
 const PRODUCT_QUERY: &str = "query CommerceProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const SHIPPING_OPTIONS_QUERY: &str = "query CommerceShippingOptions($tenantId: UUID!, $filter: ShippingOptionsFilter) { shippingOptions(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } } }";
 const SHIPPING_OPTION_QUERY: &str = "query CommerceShippingOption($tenantId: UUID!, $id: UUID!) { shippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const SHIPPING_PROFILES_QUERY: &str = "query CommerceShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active metadata createdAt updatedAt } } }";
+const SHIPPING_PROFILE_QUERY: &str = "query CommerceShippingProfile($tenantId: UUID!, $id: UUID!) { shippingProfile(tenantId: $tenantId, id: $id) { id tenantId slug name description active metadata createdAt updatedAt } }";
 const CREATE_PRODUCT_MUTATION: &str = "mutation CommerceCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const UPDATE_PRODUCT_MUTATION: &str = "mutation CommerceUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const PUBLISH_PRODUCT_MUTATION: &str = "mutation CommercePublishProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { publishProduct(tenantId: $tenantId, userId: $userId, id: $id) { id status vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } options { id name values position } variants { id sku barcode title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
@@ -22,6 +25,10 @@ const CREATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceCreateShippingOp
 const UPDATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceUpdateShippingOption($tenantId: UUID!, $id: UUID!, $input: UpdateShippingOptionInput!) { updateShippingOption(tenantId: $tenantId, id: $id, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
 const DEACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceDeactivateShippingOption($tenantId: UUID!, $id: UUID!) { deactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
 const REACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation CommerceReactivateShippingOption($tenantId: UUID!, $id: UUID!) { reactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const CREATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceCreateShippingProfile($tenantId: UUID!, $input: CreateShippingProfileInput!) { createShippingProfile(tenantId: $tenantId, input: $input) { id tenantId slug name description active metadata createdAt updatedAt } }";
+const UPDATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceUpdateShippingProfile($tenantId: UUID!, $id: UUID!, $input: UpdateShippingProfileInput!) { updateShippingProfile(tenantId: $tenantId, id: $id, input: $input) { id tenantId slug name description active metadata createdAt updatedAt } }";
+const DEACTIVATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceDeactivateShippingProfile($tenantId: UUID!, $id: UUID!) { deactivateShippingProfile(tenantId: $tenantId, id: $id) { id tenantId slug name description active metadata createdAt updatedAt } }";
+const REACTIVATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceReactivateShippingProfile($tenantId: UUID!, $id: UUID!) { reactivateShippingProfile(tenantId: $tenantId, id: $id) { id tenantId slug name description active metadata createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -50,6 +57,18 @@ struct ShippingOptionsResponse {
 struct ShippingOptionResponse {
     #[serde(rename = "shippingOption")]
     shipping_option: Option<ShippingOption>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShippingProfilesResponse {
+    #[serde(rename = "shippingProfiles")]
+    shipping_profiles: ShippingProfileList,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShippingProfileResponse {
+    #[serde(rename = "shippingProfile")]
+    shipping_profile: Option<ShippingProfile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +119,30 @@ struct ReactivateShippingOptionResponse {
     reactivate_shipping_option: ShippingOption,
 }
 
+#[derive(Debug, Deserialize)]
+struct CreateShippingProfileResponse {
+    #[serde(rename = "createShippingProfile")]
+    create_shipping_profile: ShippingProfile,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateShippingProfileResponse {
+    #[serde(rename = "updateShippingProfile")]
+    update_shipping_profile: ShippingProfile,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeactivateShippingProfileResponse {
+    #[serde(rename = "deactivateShippingProfile")]
+    deactivate_shipping_profile: ShippingProfile,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReactivateShippingProfileResponse {
+    #[serde(rename = "reactivateShippingProfile")]
+    reactivate_shipping_profile: ShippingProfile,
+}
+
 #[derive(Debug, Serialize)]
 struct TenantScopedVariables<T> {
     #[serde(rename = "tenantId")]
@@ -136,6 +179,11 @@ struct ShippingOptionVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct ShippingProfileVariables {
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
 struct ProductIdVariables {
     id: String,
 }
@@ -163,6 +211,22 @@ struct UpdateShippingOptionVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct ShippingProfilesVariables {
+    filter: ShippingProfilesFilter,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateShippingProfileVariables {
+    input: CreateShippingProfileInput,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateShippingProfileVariables {
+    id: String,
+    input: UpdateShippingProfileInput,
+}
+
+#[derive(Debug, Serialize)]
 struct ProductsFilter {
     status: Option<String>,
     vendor: Option<String>,
@@ -184,6 +248,15 @@ struct ShippingOptionsFilter {
     currency_code: Option<String>,
     #[serde(rename = "providerId")]
     provider_id: Option<String>,
+    search: Option<String>,
+    page: Option<u64>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct ShippingProfilesFilter {
+    active: Option<bool>,
     search: Option<String>,
     page: Option<u64>,
     #[serde(rename = "perPage")]
@@ -237,6 +310,22 @@ struct UpdateShippingOptionInput {
     provider_id: Option<String>,
     #[serde(rename = "allowedShippingProfileSlugs")]
     allowed_shipping_profile_slugs: Option<Vec<String>>,
+    metadata: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateShippingProfileInput {
+    slug: String,
+    name: String,
+    description: Option<String>,
+    metadata: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateShippingProfileInput {
+    slug: Option<String>,
+    name: Option<String>,
+    description: Option<String>,
     metadata: Option<String>,
 }
 
@@ -434,6 +523,51 @@ pub async fn fetch_shipping_option(
     )
     .await?;
     Ok(response.shipping_option)
+}
+
+pub async fn fetch_shipping_profiles(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    search: Option<String>,
+) -> Result<ShippingProfileList, ApiError> {
+    let response: ShippingProfilesResponse = request(
+        SHIPPING_PROFILES_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingProfilesVariables {
+                filter: ShippingProfilesFilter {
+                    active: None,
+                    search,
+                    page: Some(1),
+                    per_page: Some(24),
+                },
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.shipping_profiles)
+}
+
+pub async fn fetch_shipping_profile(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+) -> Result<Option<ShippingProfile>, ApiError> {
+    let response: ShippingProfileResponse = request(
+        SHIPPING_PROFILE_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingProfileVariables { id },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.shipping_profile)
 }
 
 pub async fn create_product(
@@ -645,6 +779,88 @@ pub async fn reactivate_shipping_option(
     Ok(response.reactivate_shipping_option)
 }
 
+pub async fn create_shipping_profile(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    draft: ShippingProfileDraft,
+) -> Result<ShippingProfile, ApiError> {
+    let response: CreateShippingProfileResponse = request(
+        CREATE_SHIPPING_PROFILE_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: CreateShippingProfileVariables {
+                input: build_create_shipping_profile_input(draft),
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_shipping_profile)
+}
+
+pub async fn update_shipping_profile(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    draft: ShippingProfileDraft,
+) -> Result<ShippingProfile, ApiError> {
+    let response: UpdateShippingProfileResponse = request(
+        UPDATE_SHIPPING_PROFILE_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: UpdateShippingProfileVariables {
+                id,
+                input: build_update_shipping_profile_input(draft),
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.update_shipping_profile)
+}
+
+pub async fn deactivate_shipping_profile(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+) -> Result<ShippingProfile, ApiError> {
+    let response: DeactivateShippingProfileResponse = request(
+        DEACTIVATE_SHIPPING_PROFILE_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingProfileVariables { id },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.deactivate_shipping_profile)
+}
+
+pub async fn reactivate_shipping_profile(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+) -> Result<ShippingProfile, ApiError> {
+    let response: ReactivateShippingProfileResponse = request(
+        REACTIVATE_SHIPPING_PROFILE_MUTATION,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ShippingProfileVariables { id },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.reactivate_shipping_profile)
+}
+
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {
         translations: vec![build_translation_input(&draft)],
@@ -699,6 +915,24 @@ fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShipp
         allowed_shipping_profile_slugs: Some(csv_or_empty(
             draft.allowed_shipping_profile_slugs.as_str(),
         )),
+        metadata: optional_json_text(draft.metadata_json.as_str()),
+    }
+}
+
+fn build_create_shipping_profile_input(draft: ShippingProfileDraft) -> CreateShippingProfileInput {
+    CreateShippingProfileInput {
+        slug: draft.slug.trim().to_string(),
+        name: draft.name.trim().to_string(),
+        description: optional_text(draft.description.as_str()),
+        metadata: optional_json_text(draft.metadata_json.as_str()),
+    }
+}
+
+fn build_update_shipping_profile_input(draft: ShippingProfileDraft) -> UpdateShippingProfileInput {
+    UpdateShippingProfileInput {
+        slug: optional_text(draft.slug.as_str()),
+        name: optional_text(draft.name.as_str()),
+        description: optional_text(draft.description.as_str()),
         metadata: optional_json_text(draft.metadata_json.as_str()),
     }
 }

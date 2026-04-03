@@ -22,6 +22,7 @@
 - Если модуль поставляет admin UI, он остаётся module-owned package рядом с модулем независимо от `Core`/`Optional`.
 - `apps/next-admin` выступает host/composition root и не забирает модульный business UI в свой код.
 - Core-модули с UI подчиняются тому же правилу, что и optional-модули: host монтирует surface, но не становится владельцем модульного UI.
+- Capability-пакеты подчиняются тому же правилу: `rustok-ai` поставляется как `apps/next-admin/packages/rustok-ai` и монтируется host'ом под `/dashboard/ai`, а не реализуется в `apps/next-admin/src/app` как ad-hoc feature.
 
 Открытые доработки и остаточный scope ведутся только в [`implementation-plan.md`](./implementation-plan.md).
 

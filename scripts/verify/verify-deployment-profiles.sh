@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # RusTok - deployment profile smoke validation
-# Verifies the supported server build surfaces:
+# Verifies the supported server build/runtime surfaces:
 # - monolith
 # - server+admin
 # - headless-api
+# - registry-only host mode
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,6 +63,24 @@ run_cmd \
   "headless-api router smoke" \
   cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
     services::app_router::tests::mount_application_shell_skips_admin_and_storefront_for_headless_profile --lib \
+    --no-default-features --features redis-cache
+
+run_cmd \
+  "registry-only env override parse" \
+  cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
+    common::settings::tests::env_overrides_runtime_host_mode --lib \
+    --no-default-features --features redis-cache
+
+run_cmd \
+  "registry-only runtime smoke" \
+  cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
+    app::tests::registry_only_host_mode_limits_exposed_surface --lib \
+    --no-default-features --features redis-cache
+
+run_cmd \
+  "registry-only openapi smoke" \
+  cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
+    controllers::swagger::tests::registry_only_openapi_filters_non_registry_surface --lib \
     --no-default-features --features redis-cache
 
 echo ""

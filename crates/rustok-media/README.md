@@ -8,6 +8,7 @@
 
 - Provide the shared media domain service and SeaORM entities for uploads and localized metadata.
 - Own media GraphQL and REST transport adapters for module-facing APIs.
+- Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Integrate storage-backed file lifecycle with tenant-aware media records.
 
 ## Interactions
@@ -19,6 +20,9 @@
   and re-export shim for media transport entry points.
 - REST adapters require authenticated `AuthContext`; GraphQL resolvers keep the existing
   module-enabled guard and tenant-explicit contract.
+- `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer,
+  keeps GraphQL as the fallback for `list/detail/translations/delete/usage`, and preserves REST-first
+  upload via `/api/media`.
 
 ## Entry points
 
@@ -26,6 +30,7 @@
 - `graphql::MediaQuery`
 - `graphql::MediaMutation`
 - `controllers::routes`
+- `rustok-media-admin`
 - `MediaItem`
 - `MediaTranslationItem`
 - `UploadInput`

@@ -199,6 +199,14 @@ upsertMediaTranslation(
 
 Все резолверы проверяют `require_module_enabled(MEDIA)` (runtime guard по `tenant_modules`).
 
+## Module-owned Leptos admin UI
+
+- Модуль теперь публикует `rustok-media-admin` как module-owned Leptos admin surface для `/modules/media`.
+- Внутренний data-layer для этого UI строится по модели native `#[server]` first.
+- Для `library`, `detail`, `translations`, `delete` и `usage` сохраняется GraphQL fallback; существующие media queries/mutations не удаляются.
+- Для upload сохраняется REST-first путь `POST /api/media`; отдельный GraphQL upload adapter не добавляется.
+- Этот UI остаётся additive-поверхностью и не заменяет существующие GraphQL/REST contracts.
+
 ## SystemQuery (Observability)
 
 `SystemQuery` (всегда включён) предоставляет статистику по медиа:

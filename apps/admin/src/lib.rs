@@ -9,6 +9,7 @@ pub mod widgets;
 
 mod generated_i18n {
     #![allow(clippy::new_ret_no_self)]
+    #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/i18n/mod.rs"));
 }
 

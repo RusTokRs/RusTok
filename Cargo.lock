@@ -5904,7 +5904,10 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
  "leptos-use",
+ "leptos_axum",
  "leptos_router",
+ "loco-rs",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -9021,7 +9024,9 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "h2 0.4.13",
  "http 1.4.0",
  "http-body 1.0.1",
@@ -9032,6 +9037,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -9652,16 +9658,28 @@ dependencies = [
  "loco-rs",
  "log",
  "reqwest 0.13.2",
+ "rustok-ai-admin",
  "rustok-api",
  "rustok-blog-admin",
  "rustok-cache",
  "rustok-channel-admin",
+ "rustok-comments",
+ "rustok-comments-admin",
  "rustok-commerce-admin",
  "rustok-core",
  "rustok-forum-admin",
+ "rustok-index-admin",
+ "rustok-media",
+ "rustok-media-admin",
+ "rustok-outbox-admin",
  "rustok-pages-admin",
+ "rustok-rbac",
+ "rustok-rbac-admin",
+ "rustok-search",
  "rustok-search-admin",
+ "rustok-storage",
  "rustok-tenant",
+ "rustok-tenant-admin",
  "rustok-workflow",
  "rustok-workflow-admin",
  "sea-orm",
@@ -9673,6 +9691,47 @@ dependencies = [
  "uuid",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "rustok-ai"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "loco-rs",
+ "once_cell",
+ "reqwest 0.13.2",
+ "rustok-core",
+ "rustok-mcp",
+ "schemars 1.2.1",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-ai-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-ai",
+ "rustok-api",
+ "rustok-core",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -9854,11 +9913,17 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
+ "leptos_axum",
  "leptos_router",
+ "loco-rs",
  "reqwest 0.13.2",
  "rustok-api",
+ "rustok-channel",
+ "rustok-core",
+ "sea-orm",
  "serde",
  "serde_json",
+ "uuid",
  "web-sys",
 ]
 
@@ -9878,6 +9943,20 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-comments-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-comments",
+ "serde",
  "uuid",
 ]
 
@@ -10198,6 +10277,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-index-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-core",
+ "rustok-index",
+ "sea-orm",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-inventory"
 version = "0.1.0"
 dependencies = [
@@ -10258,6 +10353,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-media-admin"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "js-sys",
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
+ "reqwest 0.13.2",
+ "rustok-api",
+ "rustok-core",
+ "rustok-media",
+ "rustok-storage",
+ "sea-orm",
+ "serde",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "rustok-order"
 version = "0.1.0"
 dependencies = [
@@ -10295,6 +10414,21 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustok-outbox-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "serde",
 ]
 
 [[package]]
@@ -10453,6 +10587,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-rbac-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-core",
+ "rustok-rbac",
+ "serde",
+]
+
+[[package]]
 name = "rustok-region"
 version = "0.1.0"
 dependencies = [
@@ -10499,10 +10646,17 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos_axum",
  "leptos_router",
+ "loco-rs",
  "rustok-api",
+ "rustok-core",
+ "rustok-events",
+ "rustok-search",
+ "sea-orm",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -10549,6 +10703,7 @@ dependencies = [
  "rust-embed",
  "rust_decimal",
  "rustok-admin",
+ "rustok-ai",
  "rustok-api",
  "rustok-auth",
  "rustok-blog",
@@ -10714,6 +10869,22 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustok-tenant-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-core",
+ "rustok-tenant",
+ "sea-orm",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -14540,7 +14711,10 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "reqwest 0.13.2",
+ "semver",
  "serde",
+ "serde_json",
  "toml 1.0.7+spec-1.1.0",
 ]
 

@@ -1,15 +1,9 @@
-// GraphQL API для аутентификации (leptos-auth)
-// Использует leptos-graphql как transport layer
-
+use leptos::prelude::*;
 use leptos_graphql::{execute, GraphqlRequest};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{AuthError, AuthSession, AuthUser};
-
-// ============================================================================
-// GraphQL Mutations
-// ============================================================================
 
 const SIGN_IN_MUTATION: &str = r#"
 mutation SignIn($input: SignInInput!) {
@@ -94,9 +88,19 @@ query CurrentUser {
 }
 "#;
 
-// ============================================================================
-// Response types
-// ============================================================================
+#[cfg(feature = "ssr")]
+const RESET_REQUEST_MESSAGE: &str = "If the email exists, a password reset link has been sent";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NativeAuthPayload {
+    user: AuthUser,
+    session: AuthSession,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NativeCurrentUserPayload {
+    user: Option<AuthUser>,
+}
 
 #[derive(Debug, Deserialize)]
 struct SignInResponse {
@@ -131,7 +135,7 @@ struct ForgotPasswordResponse {
 
 #[derive(Debug, Deserialize)]
 struct CurrentUserResponse {
-    me: Option<AuthUserGraphQL>,
+    me: Option<AuthUserGraphql>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,11 +146,11 @@ struct AuthPayload {
     refresh_token: String,
     #[serde(rename = "expiresIn")]
     expires_in: i32,
-    user: AuthUserGraphQL,
+    user: AuthUserGraphql,
 }
 
 #[derive(Debug, Deserialize)]
-struct AuthUserGraphQL {
+struct AuthUserGraphql {
     id: String,
     email: String,
     name: Option<String>,
@@ -168,9 +172,50 @@ struct ForgotPasswordPayload {
     message: String,
 }
 
-// ============================================================================
-// Helper functions
-// ============================================================================
+#[cfg(feature = "ssr")]
+#[derive(Debug, Clone, Deserialize)]
+struct RestAuthResponse {
+    access_token: String,
+    refresh_token: String,
+    #[allow(dead_code)]
+    token_type: String,
+    expires_in: u64,
+    user: RestUserInfo,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Clone, Deserialize)]
+struct RestUserInfo {
+    id: String,
+    email: String,
+    name: Option<String>,
+    role: String,
+    #[allow(dead_code)]
+    status: String,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Clone, Deserialize)]
+struct RestUserResponse {
+    id: String,
+    email: String,
+    name: Option<String>,
+    role: String,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Clone, Deserialize)]
+struct RestStatusResponse {
+    #[allow(dead_code)]
+    status: String,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Clone, Deserialize)]
+struct RestApiErrorPayload {
+    error: Option<String>,
+    message: Option<String>,
+}
 
 fn get_api_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
@@ -211,44 +256,7 @@ fn now_unix_secs() -> i64 {
     }
 }
 
-// ============================================================================
-// Public API
-// ============================================================================
-
-/// Sign in with email and password
-pub async fn sign_in(
-    email: String,
-    password: String,
-    tenant: String,
-) -> Result<(AuthUser, AuthSession), AuthError> {
-    let url = get_graphql_url();
-
-    let variables = json!({
-        "input": {
-            "email": email,
-            "password": password,
-        }
-    });
-
-    let request = GraphqlRequest::new(SIGN_IN_MUTATION, Some(variables));
-
-    let response: SignInResponse = execute(&url, request, None, Some(tenant.clone()), None)
-        .await
-        .map_err(|e| match e {
-            leptos_graphql::GraphqlHttpError::Unauthorized => AuthError::InvalidCredentials,
-            leptos_graphql::GraphqlHttpError::Graphql(msg) => {
-                if msg.contains("Invalid") || msg.contains("credentials") {
-                    AuthError::InvalidCredentials
-                } else {
-                    AuthError::Http(400)
-                }
-            }
-            leptos_graphql::GraphqlHttpError::Http(_) => AuthError::Http(500),
-            leptos_graphql::GraphqlHttpError::Network => AuthError::Network,
-        })?;
-
-    let payload = response.sign_in;
-
+fn auth_payload_to_session(payload: AuthPayload, tenant: String) -> (AuthUser, AuthSession) {
     let user = AuthUser {
         id: payload.user.id,
         email: payload.user.email,
@@ -263,18 +271,85 @@ pub async fn sign_in(
         tenant,
     };
 
-    Ok((user, session))
+    (user, session)
 }
 
-/// Sign up with email, password, and optional name
-pub async fn sign_up(
+#[cfg(feature = "ssr")]
+fn rest_payload_to_native(payload: RestAuthResponse, tenant: String) -> NativeAuthPayload {
+    NativeAuthPayload {
+        user: AuthUser {
+            id: payload.user.id,
+            email: payload.user.email,
+            name: payload.user.name,
+            role: payload.user.role,
+        },
+        session: AuthSession {
+            token: payload.access_token,
+            refresh_token: payload.refresh_token,
+            expires_at: now_unix_secs() + payload.expires_in as i64,
+            tenant,
+        },
+    }
+}
+
+fn map_graphql_auth_error(error: leptos_graphql::GraphqlHttpError, is_login: bool) -> AuthError {
+    match error {
+        leptos_graphql::GraphqlHttpError::Unauthorized => {
+            if is_login {
+                AuthError::InvalidCredentials
+            } else {
+                AuthError::Unauthorized
+            }
+        }
+        leptos_graphql::GraphqlHttpError::Graphql(message) => {
+            let lower = message.to_ascii_lowercase();
+            if is_login && (lower.contains("invalid") || lower.contains("credential")) {
+                AuthError::InvalidCredentials
+            } else if lower.contains("unauthorized") || lower.contains("unauthenticated") {
+                AuthError::Unauthorized
+            } else {
+                AuthError::Http(400)
+            }
+        }
+        leptos_graphql::GraphqlHttpError::Http(status) => status
+            .parse::<u16>()
+            .map(AuthError::Http)
+            .unwrap_or(AuthError::Http(500)),
+        leptos_graphql::GraphqlHttpError::Network => AuthError::Network,
+    }
+}
+
+async fn sign_in_graphql(
+    email: String,
+    password: String,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
+    let variables = json!({
+        "input": {
+            "email": email,
+            "password": password,
+        }
+    });
+
+    let response: SignInResponse = execute(
+        &get_graphql_url(),
+        GraphqlRequest::new(SIGN_IN_MUTATION, Some(variables)),
+        None,
+        Some(tenant.clone()),
+        None,
+    )
+    .await
+    .map_err(|error| map_graphql_auth_error(error, true))?;
+
+    Ok(auth_payload_to_session(response.sign_in, tenant))
+}
+
+async fn sign_up_graphql(
     email: String,
     password: String,
     name: Option<String>,
     tenant: String,
 ) -> Result<(AuthUser, AuthSession), AuthError> {
-    let url = get_graphql_url();
-
     let variables = json!({
         "input": {
             "email": email,
@@ -283,120 +358,90 @@ pub async fn sign_up(
         }
     });
 
-    let request = GraphqlRequest::new(SIGN_UP_MUTATION, Some(variables));
+    let response: SignUpResponse = execute(
+        &get_graphql_url(),
+        GraphqlRequest::new(SIGN_UP_MUTATION, Some(variables)),
+        None,
+        Some(tenant.clone()),
+        None,
+    )
+    .await
+    .map_err(|error| map_graphql_auth_error(error, false))?;
 
-    let response: SignUpResponse = execute(&url, request, None, Some(tenant.clone()), None)
-        .await
-        .map_err(|e| match e {
-            leptos_graphql::GraphqlHttpError::Unauthorized => AuthError::Unauthorized,
-            leptos_graphql::GraphqlHttpError::Network => AuthError::Network,
-            _ => AuthError::Http(500),
-        })?;
-
-    let payload = response.sign_up;
-
-    let user = AuthUser {
-        id: payload.user.id,
-        email: payload.user.email,
-        name: payload.user.name,
-        role: payload.user.role,
-    };
-
-    let session = AuthSession {
-        token: payload.access_token,
-        refresh_token: payload.refresh_token,
-        expires_at: now_unix_secs() + payload.expires_in as i64,
-        tenant,
-    };
-
-    Ok((user, session))
+    Ok(auth_payload_to_session(response.sign_up, tenant))
 }
 
-/// Sign out (invalidate current session)
-pub async fn sign_out(token: String, tenant: String) -> Result<(), AuthError> {
-    let url = get_graphql_url();
-
-    let request = GraphqlRequest::new(SIGN_OUT_MUTATION, None::<serde_json::Value>);
-
-    let _response: SignOutResponse = execute(&url, request, Some(token), Some(tenant), None)
-        .await
-        .map_err(|_| AuthError::Network)?;
+async fn sign_out_graphql(token: String, tenant: String) -> Result<(), AuthError> {
+    let _response: SignOutResponse = execute(
+        &get_graphql_url(),
+        GraphqlRequest::new(SIGN_OUT_MUTATION, None::<serde_json::Value>),
+        Some(token),
+        Some(tenant),
+        None,
+    )
+    .await
+    .map_err(|error| map_graphql_auth_error(error, false))?;
 
     Ok(())
 }
 
-/// Refresh access token using refresh token
-pub async fn refresh_token(
+async fn refresh_token_graphql(
     refresh_tok: String,
     tenant: String,
 ) -> Result<(AuthSession, AuthUser), AuthError> {
-    let url = get_graphql_url();
-
     let variables = json!({
         "input": {
             "refreshToken": refresh_tok,
         }
     });
 
-    let request = GraphqlRequest::new(REFRESH_TOKEN_MUTATION, Some(variables));
+    let response: RefreshTokenResponse = execute(
+        &get_graphql_url(),
+        GraphqlRequest::new(REFRESH_TOKEN_MUTATION, Some(variables)),
+        None,
+        Some(tenant.clone()),
+        None,
+    )
+    .await
+    .map_err(|error| map_graphql_auth_error(error, false))?;
 
-    let response: RefreshTokenResponse = execute(&url, request, None, Some(tenant.clone()), None)
-        .await
-        .map_err(|_| AuthError::Network)?;
-
-    let payload = response.refresh_token;
-
-    let user = AuthUser {
-        id: payload.user.id,
-        email: payload.user.email,
-        name: payload.user.name,
-        role: payload.user.role,
-    };
-
-    let session = AuthSession {
-        token: payload.access_token,
-        refresh_token: payload.refresh_token,
-        expires_at: now_unix_secs() + payload.expires_in as i64,
-        tenant,
-    };
-
+    let (user, session) = auth_payload_to_session(response.refresh_token, tenant);
     Ok((session, user))
 }
 
-/// Request password reset
-pub async fn forgot_password(email: String, tenant: String) -> Result<String, AuthError> {
-    let url = get_graphql_url();
-
+async fn forgot_password_graphql(email: String, tenant: String) -> Result<String, AuthError> {
     let variables = json!({
         "input": {
             "email": email,
         }
     });
 
-    let request = GraphqlRequest::new(FORGOT_PASSWORD_MUTATION, Some(variables));
-
-    let response: ForgotPasswordResponse = execute(&url, request, None, Some(tenant), None)
-        .await
-        .map_err(|_| AuthError::Network)?;
+    let response: ForgotPasswordResponse = execute(
+        &get_graphql_url(),
+        GraphqlRequest::new(FORGOT_PASSWORD_MUTATION, Some(variables)),
+        None,
+        Some(tenant),
+        None,
+    )
+    .await
+    .map_err(|error| map_graphql_auth_error(error, false))?;
 
     Ok(response.forgot_password.message)
 }
 
-/// Get current user
-pub async fn fetch_current_user(
+async fn fetch_current_user_graphql(
     token: String,
     tenant: String,
 ) -> Result<Option<AuthUser>, AuthError> {
-    let url = get_graphql_url();
-
-    let request = GraphqlRequest::new(CURRENT_USER_QUERY, None::<serde_json::Value>);
-
-    let response: CurrentUserResponse = execute(&url, request, Some(token), Some(tenant), None)
-        .await
-        .map_err(|e| match e {
-            leptos_graphql::GraphqlHttpError::Unauthorized => AuthError::Unauthorized,
-            _ => AuthError::Network,
-        })?;
+    let response: CurrentUserResponse = execute(
+        &get_graphql_url(),
+        GraphqlRequest::new(CURRENT_USER_QUERY, None::<serde_json::Value>),
+        Some(token),
+        Some(tenant),
+        None,
+    )
+    .await
+    .map_err(|error| map_graphql_auth_error(error, false))?;
 
     Ok(response.me.map(|user| AuthUser {
         id: user.id,
@@ -406,9 +451,328 @@ pub async fn fetch_current_user(
     }))
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
+pub async fn sign_in(
+    email: String,
+    password: String,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
+    match sign_in_native(email.clone(), password.clone(), tenant.clone()).await {
+        Ok(payload) => Ok((payload.user, payload.session)),
+        Err(_) => sign_in_graphql(email, password, tenant).await,
+    }
+}
+
+pub async fn sign_up(
+    email: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
+    match sign_up_native(
+        email.clone(),
+        password.clone(),
+        name.clone(),
+        tenant.clone(),
+    )
+    .await
+    {
+        Ok(payload) => Ok((payload.user, payload.session)),
+        Err(_) => sign_up_graphql(email, password, name, tenant).await,
+    }
+}
+
+pub async fn sign_out(
+    token: String,
+    refresh_token: String,
+    tenant: String,
+) -> Result<(), AuthError> {
+    match sign_out_native(refresh_token.clone(), tenant.clone()).await {
+        Ok(()) => Ok(()),
+        Err(_) => sign_out_graphql(token, tenant).await,
+    }
+}
+
+pub async fn refresh_token(
+    refresh_tok: String,
+    tenant: String,
+) -> Result<(AuthSession, AuthUser), AuthError> {
+    match refresh_token_native(refresh_tok.clone(), tenant.clone()).await {
+        Ok(payload) => Ok((payload.session, payload.user)),
+        Err(_) => refresh_token_graphql(refresh_tok, tenant).await,
+    }
+}
+
+pub async fn forgot_password(email: String, tenant: String) -> Result<String, AuthError> {
+    match forgot_password_native(email.clone(), tenant.clone()).await {
+        Ok(message) => Ok(message),
+        Err(_) => forgot_password_graphql(email, tenant).await,
+    }
+}
+
+pub async fn fetch_current_user(
+    token: String,
+    tenant: String,
+) -> Result<Option<AuthUser>, AuthError> {
+    match current_user_native(token.clone(), tenant.clone()).await {
+        Ok(payload) => Ok(payload.user),
+        Err(_) => fetch_current_user_graphql(token, tenant).await,
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/sign-in")]
+async fn sign_in_native(
+    email: String,
+    password: String,
+    tenant: String,
+) -> Result<NativeAuthPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let response: RestAuthResponse = auth_rest_post(
+            "/api/auth/login",
+            &json!({
+                "email": email,
+                "password": password,
+            }),
+            None,
+            Some(tenant.clone()),
+        )
+        .await?;
+
+        Ok(rest_payload_to_native(response, tenant))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (email, password, tenant);
+        Err(ServerFnError::new(
+            "auth/sign-in requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/sign-up")]
+async fn sign_up_native(
+    email: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<NativeAuthPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let response: RestAuthResponse = auth_rest_post(
+            "/api/auth/register",
+            &json!({
+                "email": email,
+                "password": password,
+                "name": name,
+            }),
+            None,
+            Some(tenant.clone()),
+        )
+        .await?;
+
+        Ok(rest_payload_to_native(response, tenant))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (email, password, name, tenant);
+        Err(ServerFnError::new(
+            "auth/sign-up requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/sign-out")]
+async fn sign_out_native(refresh_token: String, tenant: String) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let _response: RestStatusResponse = auth_rest_post(
+            "/api/auth/logout",
+            &json!({
+                "refresh_token": refresh_token,
+            }),
+            None,
+            Some(tenant),
+        )
+        .await?;
+
+        Ok(())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (refresh_token, tenant);
+        Err(ServerFnError::new(
+            "auth/sign-out requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/refresh-token")]
+async fn refresh_token_native(
+    refresh_tok: String,
+    tenant: String,
+) -> Result<NativeAuthPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let response: RestAuthResponse = auth_rest_post(
+            "/api/auth/refresh",
+            &json!({
+                "refresh_token": refresh_tok,
+            }),
+            None,
+            Some(tenant.clone()),
+        )
+        .await?;
+
+        Ok(rest_payload_to_native(response, tenant))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (refresh_tok, tenant);
+        Err(ServerFnError::new(
+            "auth/refresh-token requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/forgot-password")]
+async fn forgot_password_native(email: String, tenant: String) -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let _response: RestStatusResponse = auth_rest_post(
+            "/api/auth/reset/request",
+            &json!({
+                "email": email,
+            }),
+            None,
+            Some(tenant),
+        )
+        .await?;
+
+        Ok(RESET_REQUEST_MESSAGE.to_string())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (email, tenant);
+        Err(ServerFnError::new(
+            "auth/forgot-password requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "auth/current-user")]
+async fn current_user_native(
+    token: String,
+    tenant: String,
+) -> Result<NativeCurrentUserPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let response: RestUserResponse =
+            auth_rest_get("/api/auth/me", Some(token), Some(tenant)).await?;
+
+        Ok(NativeCurrentUserPayload {
+            user: Some(AuthUser {
+                id: response.id,
+                email: response.email,
+                name: response.name,
+                role: response.role,
+            }),
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant);
+        Err(ServerFnError::new(
+            "auth/current-user requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn auth_rest_post<T>(
+    path: &str,
+    body: &serde_json::Value,
+    token: Option<String>,
+    tenant: Option<String>,
+) -> Result<T, ServerFnError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+
+    let client = reqwest::Client::new();
+    let mut request = client
+        .post(format!("{}{}", get_api_url(), path))
+        .header(CONTENT_TYPE, "application/json")
+        .json(body);
+
+    if let Some(token) = token {
+        request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+    }
+    if let Some(tenant) = tenant {
+        request = request.header("X-Tenant-ID", tenant);
+    }
+
+    let response = request.send().await.map_err(ServerFnError::new)?;
+    if !response.status().is_success() {
+        return Err(ServerFnError::new(rest_error_message(response).await));
+    }
+
+    response.json::<T>().await.map_err(ServerFnError::new)
+}
+
+#[cfg(feature = "ssr")]
+async fn auth_rest_get<T>(
+    path: &str,
+    token: Option<String>,
+    tenant: Option<String>,
+) -> Result<T, ServerFnError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    use reqwest::header::AUTHORIZATION;
+
+    let client = reqwest::Client::new();
+    let mut request = client.get(format!("{}{}", get_api_url(), path));
+
+    if let Some(token) = token {
+        request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+    }
+    if let Some(tenant) = tenant {
+        request = request.header("X-Tenant-ID", tenant);
+    }
+
+    let response = request.send().await.map_err(ServerFnError::new)?;
+    if !response.status().is_success() {
+        return Err(ServerFnError::new(rest_error_message(response).await));
+    }
+
+    response.json::<T>().await.map_err(ServerFnError::new)
+}
+
+#[cfg(feature = "ssr")]
+async fn rest_error_message(response: reqwest::Response) -> String {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let trimmed = text.trim();
+
+    if trimmed.is_empty() {
+        return format!("request failed with status {status}");
+    }
+
+    if let Ok(payload) = serde_json::from_str::<RestApiErrorPayload>(trimmed) {
+        if let Some(message) = payload
+            .message
+            .as_deref()
+            .or(payload.error.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return message.to_string();
+        }
+    }
+
+    trimmed.to_string()
+}
 
 #[cfg(test)]
 mod tests {

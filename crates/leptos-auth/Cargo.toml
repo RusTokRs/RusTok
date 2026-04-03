@@ -5,14 +5,27 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:reqwest",
+]
+
 [dependencies]
 leptos = { workspace = true }
+leptos_axum = { workspace = true, optional = true }
 leptos_router = { workspace = true }
 leptos-graphql = { path = "../leptos-graphql" }
 leptos-use = { workspace = true }
+loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 gloo-storage = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["json"], optional = true }
 thiserror = { workspace = true }
 
 # WASM-specific dependencies (only for window.location)

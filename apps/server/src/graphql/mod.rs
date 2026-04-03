@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod auth;
 #[cfg(feature = "mod-blog")]
 pub mod blog;

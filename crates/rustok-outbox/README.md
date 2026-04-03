@@ -24,6 +24,8 @@
 - target transport (например rustok-iggy)
 
 ## Runtime wiring
+
+Leptos admin overview for relay state lives in `crates/rustok-outbox/admin` (`rustok-outbox-admin`).
 - В `modules.toml` модуль помечен как обязательный (`required = true`).
 - В `apps/server/src/modules/mod.rs` модуль регистрируется в `ModuleRegistry` как `ModuleKind::Core`.
 - В `apps/server/src/services/app_runtime.rs` и `event_transport_factory.rs` сервер дополнительно использует outbox-настройки для event runtime bootstrap.

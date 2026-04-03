@@ -10,8 +10,8 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    CommentListItem, CommentRecord, CommentStatus, CommentThreadStatus, CreateCommentInput,
-    ListCommentsFilter, UpdateCommentInput,
+    CommentListItem, CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus,
+    CommentThreadSummary, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
 };
 pub use error::{CommentsError, CommentsResult};
 pub use services::CommentsService;

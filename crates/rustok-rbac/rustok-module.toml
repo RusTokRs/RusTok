@@ -6,3 +6,8 @@ description = "Roles, permissions, and access-control module"
 ownership = "first_party"
 trust_level = "core"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[provides.admin_ui]
+leptos_crate = "rustok-rbac-admin"
+route_segment = "rbac"
+nav_label = "RBAC"

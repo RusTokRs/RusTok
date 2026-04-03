@@ -46,8 +46,10 @@
 
 - `auth`
 - `cache`
+- `channel`
 - `email`
 - `index`
+- `search`
 - `outbox`
 - `tenant`
 - `rbac`
@@ -57,8 +59,10 @@
 - `content`
 - `commerce`
 - `blog`
+- `comments`
 - `forum`
 - `pages`
+- `taxonomy`
 - `media`
 - `workflow`
 
@@ -71,6 +75,9 @@
 - Для Leptos host-приложений и module-owned Leptos UI пакетов внутренний data-layer по умолчанию строится через `#[server]`-функции.
 - GraphQL остаётся обязательным параллельным контрактом: для headless-клиентов, Next.js UI и fallback-веток в Leptos во время миграции/частичного покрытия.
 - Новый Leptos UI код не должен рождаться как GraphQL-only путь, если для сценария возможен native `#[server]`-слой.
+- Для core-wave source of truth по составу модулей и coverage считается `modules.toml`, а не устаревшие списки в локальных notes.
+- В текущей core-wave `auth`, `search` и `channel` считаются active dual-path работой; `cache` и `email` уже покрыты host-level native-first surfaces; `index`, `outbox`, `tenant` и `rbac` теперь тоже имеют module-owned Leptos admin surfaces с native `#[server]` bootstrap.
+- Для Leptos core surfaces допустимы только два legacy fallback path: GraphQL fallback для GraphQL-backed сценариев и REST fallback для `rustok-channel-admin`, пока его thin REST client ещё поддерживается параллельно.
 
 ## Замены loco-подсистем — обязательно к прочтению
 
@@ -180,6 +187,9 @@ error[E0599]: no function or associated item named `get` found for struct `Admin
 - Для доменных write-flow с событиями применяй `publish_in_tx`, когда нужен атомарный publish.
 - Проверяй, что docs отражают текущий код, а не старые архитектурные предположения.
 - Для Leptos UI сначала проектируй локальный API-слой `view -> local api -> #[server]`, а GraphQL оставляй как параллельный transport/fallback.
+- Для optional-wave module-owned Leptos admin surfaces текущий baseline такой: `rustok-media-admin` работает по модели native `#[server]` first с GraphQL fallback для `list/detail/translations/delete/usage` и с сохранённым REST-first upload path; `rustok-comments-admin` работает по модели native-only `#[server]`, потому что legacy GraphQL/REST transport surface у `comments` не существовал.
+- `rustok-content` остаётся shared helper/orchestration boundary без собственного operator-facing UI.
+- Commerce split crates (`cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`) не получают отдельные admin UI в этой волне и продолжают жить под aggregate surface `rustok-commerce-admin`.
 
 ### Don't
 

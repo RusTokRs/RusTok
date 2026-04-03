@@ -35,6 +35,12 @@ pub enum CommerceError {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    #[error("Shipping profile not found: {0}")]
+    ShippingProfileNotFound(Uuid),
+
+    #[error("Duplicate shipping profile slug: {0}")]
+    DuplicateShippingProfileSlug(String),
+
     #[error("Product must have at least one variant")]
     NoVariants,
 
@@ -110,6 +116,20 @@ impl From<CommerceError> for RichError {
             CommerceError::Validation(msg) => {
                 RichError::new(ErrorKind::Validation, msg).with_user_message("Invalid input data")
             }
+            CommerceError::ShippingProfileNotFound(id) => RichError::new(
+                ErrorKind::NotFound,
+                format!("Shipping profile {} not found", id),
+            )
+            .with_user_message("The requested shipping profile does not exist")
+            .with_field("shipping_profile_id", id.to_string())
+            .with_error_code("SHIPPING_PROFILE_NOT_FOUND"),
+            CommerceError::DuplicateShippingProfileSlug(slug) => RichError::new(
+                ErrorKind::Conflict,
+                format!("Shipping profile slug '{}' already exists", slug),
+            )
+            .with_user_message("A shipping profile with this slug already exists")
+            .with_field("shipping_profile_slug", slug)
+            .with_error_code("DUPLICATE_SHIPPING_PROFILE_SLUG"),
             CommerceError::NoVariants => RichError::new(
                 ErrorKind::Validation,
                 "Product must have at least one variant",

@@ -25,10 +25,32 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | `rustok-iggy` | [docs](../../crates/rustok-iggy/docs/README.md) | [plan](../../crates/rustok-iggy/docs/implementation-plan.md) |
 | `rustok-iggy-connector` | [docs](../../crates/rustok-iggy-connector/docs/README.md) | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) |
 | `rustok-mcp` | [docs](../../crates/rustok-mcp/docs/README.md) | [plan](../../crates/rustok-mcp/docs/implementation-plan.md) |
+| `rustok-ai` | [docs](../../crates/rustok-ai/docs/README.md) | [plan](../../crates/rustok-ai/docs/implementation-plan.md) |
 | `flex` | [docs](../../crates/flex/docs/README.md) | n/a (Phase 4.5 extraction) |
 
 Core module UI packages:
 - `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
+- `rustok-index` admin UI: [README](../../crates/rustok-index/admin/README.md)
+- `rustok-outbox` admin UI: [README](../../crates/rustok-outbox/admin/README.md)
+- `rustok-tenant` admin UI: [README](../../crates/rustok-tenant/admin/README.md)
+- `rustok-rbac` admin UI: [README](../../crates/rustok-rbac/admin/README.md)
+
+Capability UI packages:
+- `rustok-ai` Leptos admin UI: [README](../../crates/rustok-ai/admin/README.md)
+- `rustok-ai` Next.js admin UI: `apps/next-admin/packages/rustok-ai/`
+
+Optional module UI packages:
+- `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
+- `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
+- `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
+- `rustok-forum` admin UI: [README](../../crates/rustok-forum/admin/README.md)
+- `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
+- `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
+- `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
+
+Notes:
+- `rustok-content` remains a shared helper/orchestration boundary and does not publish a dedicated operator-facing UI.
+- Commerce split crates stay under aggregate `rustok-commerce-admin` in the current wave and do not publish separate admin packages.
 
 ## Domain modules
 
@@ -60,6 +82,7 @@ Core module UI packages:
 | Capability | Docs | Implementation plan |
 |--------|------|-------------------|
 | `alloy` | [docs](../../crates/alloy/docs/README.md) | [plan](../../crates/alloy/docs/implementation-plan.md) |
+| `rustok-ai` | [docs](../../crates/rustok-ai/docs/README.md) | [plan](../../crates/rustok-ai/docs/implementation-plan.md) |
 
 ## Module template
 

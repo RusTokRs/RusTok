@@ -1,5 +1,6 @@
 pub mod checkout;
 pub mod context;
+mod shipping_profile;
 
 pub use rustok_cart::services::cart;
 pub use rustok_customer::services::customer;
@@ -22,3 +23,4 @@ pub use rustok_payment::PaymentService;
 pub use rustok_pricing::PricingService;
 pub use rustok_product::CatalogService;
 pub use rustok_region::RegionService;
+pub use shipping_profile::ShippingProfileService;

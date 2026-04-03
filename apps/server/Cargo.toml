@@ -94,6 +94,7 @@ rustok-search.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
 rustok-mcp.workspace = true
+rustok-ai = { workspace = true, features = ["server"] }
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox.workspace = true

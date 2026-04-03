@@ -17,7 +17,7 @@ pub const TENANT_MODULES_QUERY: &str =
 pub const MARKETPLACE_QUERY: &str =
     "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { latestRequest { id status requestedBy approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const ACTIVE_BUILD_QUERY: &str =
     "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ACTIVE_RELEASE_QUERY: &str =
@@ -1108,6 +1108,7 @@ fn load_runtime_marketplace_modules(
                 checksum_sha256: package_manifest.marketplace.checksum_sha256.clone(),
                 signature_present: package_manifest.marketplace.signature.is_some(),
             }],
+            registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: package_manifest.module.recommended_admin_surfaces.clone(),
             showcase_admin_surfaces: package_manifest.module.showcase_admin_surfaces.clone(),
@@ -1182,6 +1183,7 @@ fn load_runtime_marketplace_modules(
                 checksum_sha256: None,
                 signature_present: false,
             }],
+            registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
@@ -1600,6 +1602,218 @@ fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, Server
             .map(|value| value.to_rfc3339())
             .map_err(|err| server_error(err.to_string()))?,
     })
+}
+
+#[cfg(feature = "ssr")]
+fn json_message_list(value: Option<serde_json::Value>) -> Vec<String> {
+    value
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|item| item.as_str().map(ToString::to_string))
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn map_registry_publish_request_row(
+    row: sea_orm::QueryResult,
+) -> Result<RegistryPublishRequestLifecycle, ServerFnError> {
+    Ok(RegistryPublishRequestLifecycle {
+        id: row
+            .try_get("", "id")
+            .map_err(|err| server_error(err.to_string()))?,
+        status: upper_snake(
+            &row.try_get::<String>("", "status")
+                .map_err(|err| server_error(err.to_string()))?,
+        ),
+        requested_by: row
+            .try_get("", "requested_by")
+            .map_err(|err| server_error(err.to_string()))?,
+        approved_by: row
+            .try_get("", "approved_by")
+            .map_err(|err| server_error(err.to_string()))?,
+        rejected_by: row
+            .try_get("", "rejected_by")
+            .map_err(|err| server_error(err.to_string()))?,
+        rejection_reason: row
+            .try_get("", "rejection_reason")
+            .map_err(|err| server_error(err.to_string()))?,
+        warnings: json_message_list(
+            row.try_get::<Option<serde_json::Value>>("", "validation_warnings")
+                .map_err(|err| server_error(err.to_string()))?,
+        ),
+        errors: json_message_list(
+            row.try_get::<Option<serde_json::Value>>("", "validation_errors")
+                .map_err(|err| server_error(err.to_string()))?,
+        ),
+        created_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "created_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+        updated_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "updated_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+        published_at: row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "published_at")
+            .map(|value| value.map(|value| value.to_rfc3339()))
+            .map_err(|err| server_error(err.to_string()))?,
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn map_registry_release_row(
+    row: sea_orm::QueryResult,
+) -> Result<RegistryReleaseLifecycle, ServerFnError> {
+    Ok(RegistryReleaseLifecycle {
+        version: row
+            .try_get("", "version")
+            .map_err(|err| server_error(err.to_string()))?,
+        status: upper_snake(
+            &row.try_get::<String>("", "status")
+                .map_err(|err| server_error(err.to_string()))?,
+        ),
+        publisher: row
+            .try_get("", "publisher")
+            .map_err(|err| server_error(err.to_string()))?,
+        checksum_sha256: row
+            .try_get("", "checksum_sha256")
+            .map_err(|err| server_error(err.to_string()))?,
+        published_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "published_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+        yanked_reason: row
+            .try_get("", "yanked_reason")
+            .map_err(|err| server_error(err.to_string()))?,
+        yanked_by: row
+            .try_get("", "yanked_by")
+            .map_err(|err| server_error(err.to_string()))?,
+        yanked_at: row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "yanked_at")
+            .map(|value| value.map(|value| value.to_rfc3339()))
+            .map_err(|err| server_error(err.to_string()))?,
+    })
+}
+
+#[cfg(feature = "ssr")]
+async fn load_registry_module_lifecycle(
+    app_ctx: &loco_rs::app::AppContext,
+    slug: &str,
+) -> Result<Option<RegistryModuleLifecycle>, ServerFnError> {
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+    let backend = app_ctx.db.get_database_backend();
+    let request_statement = match backend {
+        DbBackend::Sqlite => Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            r#"
+            SELECT
+                id,
+                status,
+                requested_by,
+                approved_by,
+                rejected_by,
+                rejection_reason,
+                validation_warnings,
+                validation_errors,
+                created_at,
+                updated_at,
+                published_at
+            FROM registry_publish_requests
+            WHERE slug = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            [slug.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                id,
+                status,
+                requested_by,
+                approved_by,
+                rejected_by,
+                rejection_reason,
+                validation_warnings,
+                validation_errors,
+                created_at,
+                updated_at,
+                published_at
+            FROM registry_publish_requests
+            WHERE slug = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            [slug.into()],
+        ),
+    };
+    let release_statement = match backend {
+        DbBackend::Sqlite => Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            r#"
+            SELECT
+                version,
+                status,
+                publisher,
+                checksum_sha256,
+                published_at,
+                yanked_reason,
+                yanked_by,
+                yanked_at
+            FROM registry_module_releases
+            WHERE slug = ?
+            ORDER BY published_at DESC
+            LIMIT 1
+            "#,
+            [slug.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                version,
+                status,
+                publisher,
+                checksum_sha256,
+                published_at,
+                yanked_reason,
+                yanked_by,
+                yanked_at
+            FROM registry_module_releases
+            WHERE slug = $1
+            ORDER BY published_at DESC
+            LIMIT 1
+            "#,
+            [slug.into()],
+        ),
+    };
+
+    let latest_request = app_ctx
+        .db
+        .query_one(request_statement)
+        .await
+        .map_err(|err| server_error(err.to_string()))?
+        .map(map_registry_publish_request_row)
+        .transpose()?;
+    let latest_release = app_ctx
+        .db
+        .query_one(release_statement)
+        .await
+        .map_err(|err| server_error(err.to_string()))?
+        .map(map_registry_release_row)
+        .transpose()?;
+
+    if latest_request.is_none() && latest_release.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(RegistryModuleLifecycle {
+        latest_request,
+        latest_release,
+    }))
 }
 
 pub async fn fetch_enabled_modules(
@@ -2102,12 +2316,21 @@ async fn marketplace_module_native(
         use leptos::prelude::expect_context;
         use rustok_core::ModuleRegistry;
 
-        let (_app_ctx, _auth, _tenant) = modules_server_context().await?;
+        let (app_ctx, _auth, _tenant) = modules_server_context().await?;
         let registry = expect_context::<ModuleRegistry>();
         let slug = slug.trim().to_lowercase();
-        Ok(load_runtime_marketplace_modules(&registry)?
+        let module = load_runtime_marketplace_modules(&registry)?
             .into_iter()
-            .find(|module| module.slug.eq_ignore_ascii_case(&slug) && module.kind == "optional"))
+            .find(|module| module.slug.eq_ignore_ascii_case(&slug) && module.kind == "optional");
+
+        match module {
+            Some(mut module) => {
+                module.registry_lifecycle =
+                    load_registry_module_lifecycle(&app_ctx, &module.slug).await?;
+                Ok(Some(module))
+            }
+            None => Ok(None),
+        }
     }
     #[cfg(not(feature = "ssr"))]
     {

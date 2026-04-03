@@ -12,6 +12,7 @@ pub mod product_translation;
 pub mod product_variant;
 pub mod region;
 pub mod reservation_item;
+pub mod shipping_profile;
 pub mod stock_location;
 pub mod variant_translation;
 
@@ -29,5 +30,6 @@ pub use product_translation::Entity as ProductTranslation;
 pub use product_variant::Entity as ProductVariant;
 pub use region::Entity as Region;
 pub use reservation_item::Entity as ReservationItem;
+pub use shipping_profile::Entity as ShippingProfile;
 pub use stock_location::Entity as StockLocation;
 pub use variant_translation::Entity as VariantTranslation;

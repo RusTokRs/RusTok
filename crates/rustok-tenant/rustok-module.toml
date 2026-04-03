@@ -6,3 +6,8 @@ description = "Tenant lifecycle and tenancy-management module"
 ownership = "first_party"
 trust_level = "core"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[provides.admin_ui]
+leptos_crate = "rustok-tenant-admin"
+route_segment = "tenant"
+nav_label = "Tenant"

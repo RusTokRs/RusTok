@@ -8,7 +8,7 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from '@/shared/ui/shadcn/table';
+} from '@/widgets/data-table/table';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import {
   Collapsible,

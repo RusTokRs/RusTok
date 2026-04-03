@@ -8,12 +8,30 @@ description = "Leptos admin UI package for the rustok-channel module"
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-channel",
+  "dep:rustok-core",
+  "dep:sea-orm",
+]
+
 [dependencies]
-leptos = { workspace = true, features = ["csr"] }
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 leptos_router.workspace = true
+loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-channel = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
+sea-orm = { workspace = true, optional = true }
+uuid.workspace = true
 web-sys = { version = "0.3", features = ["Window", "Location"] }

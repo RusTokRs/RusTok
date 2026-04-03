@@ -10,7 +10,7 @@ use rustok_commerce::dto::{
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{
     CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
-    OrderService, PaymentService,
+    OrderService, PaymentService, ShippingProfileService,
 };
 use rustok_core::Permission;
 use rustok_region::dto::CreateRegionInput;
@@ -942,6 +942,30 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
     let (db, _, _) = setup().await;
     let tenant_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    ShippingProfileService::new(db.clone())
+        .create_shipping_profile(
+            tenant_id,
+            rustok_commerce::dto::CreateShippingProfileInput {
+                slug: "bulky".to_string(),
+                name: "Bulky".to_string(),
+                description: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("bulky profile should be created");
+    ShippingProfileService::new(db.clone())
+        .create_shipping_profile(
+            tenant_id,
+            rustok_commerce::dto::CreateShippingProfileInput {
+                slug: "cold-chain".to_string(),
+                name: "Cold Chain".to_string(),
+                description: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("cold-chain profile should be created");
 
     let schema = build_schema(
         &db,
@@ -1177,6 +1201,285 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
     assert_eq!(
         reactivated_json["reactivateShippingOption"]["active"],
         Value::from(true)
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_supports_shipping_profile_create_update_and_list() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_fulfillment_auth_context(tenant_id)),
+    );
+
+    let created = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              createShippingProfile(
+                tenantId: "{tenant_id}",
+                input: {{
+                  slug: " bulky-freight "
+                  name: "Bulky Freight"
+                  description: "Large parcel handling"
+                  metadata: "{{\"source\":\"graphql-admin-shipping-profile\"}}"
+                }}
+              ) {{
+                id
+                slug
+                name
+                description
+                active
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        created.errors.is_empty(),
+        "unexpected admin shipping profile create errors: {:?}",
+        created.errors
+    );
+    let created_json = created
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let profile_id = created_json["createShippingProfile"]["id"]
+        .as_str()
+        .expect("shipping profile id should be present")
+        .to_string();
+    assert_eq!(
+        created_json["createShippingProfile"]["slug"],
+        Value::from("bulky-freight")
+    );
+
+    let updated = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateShippingProfile(
+                tenantId: "{tenant_id}",
+                id: "{profile_id}",
+                input: {{
+                  name: "Oversize Freight"
+                  description: "Updated profile"
+                  metadata: "{{\"updated\":true}}"
+                }}
+              ) {{
+                id
+                slug
+                name
+                description
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        updated.errors.is_empty(),
+        "unexpected admin shipping profile update errors: {:?}",
+        updated.errors
+    );
+    let updated_json = updated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        updated_json["updateShippingProfile"]["name"],
+        Value::from("Oversize Freight")
+    );
+
+    let queried = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              shippingProfiles(
+                tenantId: "{tenant_id}",
+                filter: {{ search: "oversize", page: 1, perPage: 20 }}
+              ) {{
+                total
+                items {{
+                  id
+                  slug
+                  name
+                  active
+                }}
+              }}
+              shippingProfile(tenantId: "{tenant_id}", id: "{profile_id}") {{
+                id
+                slug
+                metadata
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        queried.errors.is_empty(),
+        "unexpected admin shipping profile query errors: {:?}",
+        queried.errors
+    );
+    let queried_json = queried
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(queried_json["shippingProfiles"]["total"], Value::from(1));
+    assert_eq!(
+        queried_json["shippingProfiles"]["items"][0]["id"],
+        Value::from(profile_id.clone())
+    );
+    assert_eq!(
+        queried_json["shippingProfile"]["slug"],
+        Value::from("bulky-freight")
+    );
+
+    let deactivated = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              deactivateShippingProfile(tenantId: "{tenant_id}", id: "{profile_id}") {{
+                id
+                active
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        deactivated.errors.is_empty(),
+        "unexpected admin shipping profile deactivate errors: {:?}",
+        deactivated.errors
+    );
+    let deactivated_json = deactivated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        deactivated_json["deactivateShippingProfile"]["active"],
+        Value::from(false)
+    );
+
+    let reactivated = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              reactivateShippingProfile(tenantId: "{tenant_id}", id: "{profile_id}") {{
+                id
+                active
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        reactivated.errors.is_empty(),
+        "unexpected admin shipping profile reactivate errors: {:?}",
+        reactivated.errors
+    );
+    let reactivated_json = reactivated
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    assert_eq!(
+        reactivated_json["reactivateShippingProfile"]["active"],
+        Value::from(true)
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_rejects_unknown_shipping_profile_references() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let auth = AuthContext {
+        user_id: actor_id,
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![
+            Permission::PRODUCTS_CREATE,
+            Permission::PRODUCTS_UPDATE,
+            Permission::FULFILLMENTS_CREATE,
+            Permission::FULFILLMENTS_UPDATE,
+        ],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    };
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth),
+    );
+
+    let shipping_option_response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              createShippingOption(
+                tenantId: "{tenant_id}",
+                input: {{
+                  name: "Invalid Option"
+                  currencyCode: "eur"
+                  amount: "9.99"
+                  allowedShippingProfileSlugs: ["missing-profile"]
+                }}
+              ) {{
+                id
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert_eq!(shipping_option_response.errors.len(), 1);
+    assert!(
+        shipping_option_response.errors[0]
+            .message
+            .contains("Unknown shipping profile slug: missing-profile"),
+        "unexpected shipping option error: {}",
+        shipping_option_response.errors[0].message
+    );
+
+    let product_response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              createProduct(
+                tenantId: "{tenant_id}",
+                userId: "{actor_id}",
+                input: {{
+                  translations: [{{
+                    locale: "en"
+                    title: "Shipping Profile Product"
+                    handle: "shipping-profile-product"
+                  }}]
+                  variants: [{{
+                    sku: "PROFILE-SKU-1"
+                    prices: [{{ currencyCode: "EUR", amount: "19.99" }}]
+                  }}]
+                  shippingProfileSlug: "missing-profile"
+                }}
+              ) {{
+                id
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert_eq!(product_response.errors.len(), 1);
+    assert!(
+        product_response.errors[0]
+            .message
+            .contains("Unknown shipping profile slug: missing-profile"),
+        "unexpected product error: {}",
+        product_response.errors[0].message
     );
 }
 

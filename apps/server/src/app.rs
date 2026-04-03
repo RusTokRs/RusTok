@@ -112,7 +112,7 @@ impl Hooks for App {
         let routes = if registry_only {
             AppRoutes::with_default_routes()
                 .add_route(controllers::health::routes())
-                .add_route(controllers::marketplace_registry::routes())
+                .add_route(controllers::marketplace_registry::read_only_routes())
                 .add_route(controllers::metrics::routes())
                 .add_route(controllers::swagger::routes())
         } else {
@@ -677,6 +677,143 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_publish_endpoint_accepts_dry_run_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry publish smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "module": {
+                                "slug": "blog",
+                                "version": "0.1.0",
+                                "crate_name": "rustok-blog",
+                                "name": "Blog",
+                                "description": "Blog and news module contract preview.",
+                                "ownership": "first_party",
+                                "trust_level": "verified",
+                                "license": "MIT",
+                                "entry_type": "BlogModule",
+                                "marketplace": {
+                                    "category": "content",
+                                    "tags": ["content", "editorial"]
+                                },
+                                "ui_packages": {
+                                    "admin": { "crate_name": "rustok-blog-admin" },
+                                    "storefront": { "crate_name": "rustok-blog-storefront" }
+                                }
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("v2 publish request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v2 publish body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v2/catalog/publish response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v2 publish response should be valid json");
+        assert_eq!(
+            payload.get("action").and_then(Value::as_str),
+            Some("publish")
+        );
+        assert_eq!(payload.get("dry_run").and_then(Value::as_bool), Some(true));
+        assert_eq!(payload.get("accepted").and_then(Value::as_bool), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_yank_endpoint_accepts_dry_run_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry yank smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/yank")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "slug": "blog",
+                            "version": "0.1.0",
+                            "reason": "Accidental publish"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("v2 yank request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v2 yank body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v2/catalog/yank response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v2 yank response should be valid json");
+        assert_eq!(payload.get("action").and_then(Value::as_str), Some("yank"));
+        assert_eq!(payload.get("dry_run").and_then(Value::as_bool), Some(true));
+        assert_eq!(payload.get("accepted").and_then(Value::as_bool), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
@@ -714,6 +851,60 @@ mod tests {
             .await
             .expect("registry-only catalog request should succeed");
         assert_eq!(catalog_response.status(), StatusCode::OK);
+
+        let health_ready_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/health/ready")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only health/ready request should succeed");
+        assert_eq!(health_ready_response.status(), StatusCode::OK);
+
+        let health_modules_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/health/modules")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only health/modules request should succeed");
+        assert_eq!(health_modules_response.status(), StatusCode::OK);
+
+        let publish_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "module": {
+                                "slug": "blog",
+                                "version": "0.1.0",
+                                "crate_name": "rustok-blog",
+                                "name": "Blog",
+                                "description": "Blog and news module contract preview.",
+                                "ownership": "first_party",
+                                "trust_level": "verified",
+                                "license": "MIT"
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only publish request should complete");
+        assert_eq!(publish_response.status(), StatusCode::NOT_FOUND);
 
         let graphql_response = app
             .clone()

@@ -6,3 +6,8 @@ description = "Media library, uploads and localized asset metadata module"
 ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[provides.admin_ui]
+leptos_crate = "rustok-media-admin"
+route_segment = "media"
+nav_label = "Media"

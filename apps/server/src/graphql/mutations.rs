@@ -132,9 +132,8 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::InvalidModuleSettingKey { .. }
         | ManifestError::InvalidModuleSettingSchema { .. }
         | ManifestError::InvalidModuleSettingValue { .. }
-        | ManifestError::InvalidModuleMarketplaceMetadata { .. } => {
-            FieldError::new(err.to_string())
-        }
+        | ManifestError::InvalidModuleMarketplaceMetadata { .. }
+        | ManifestError::InvalidModuleUiWiring { .. } => FieldError::new(err.to_string()),
         ManifestError::Read { .. }
         | ManifestError::Parse { .. }
         | ManifestError::Write { .. }

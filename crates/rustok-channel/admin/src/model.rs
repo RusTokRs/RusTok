@@ -94,7 +94,7 @@ pub struct AvailableOauthAppItem {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateChannelPayload {
     pub tenant_id: Option<String>,
     pub slug: String,
@@ -102,7 +102,7 @@ pub struct CreateChannelPayload {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateChannelTargetPayload {
     pub target_type: String,
     pub value: String,
@@ -110,14 +110,14 @@ pub struct CreateChannelTargetPayload {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BindChannelModulePayload {
     pub module_slug: String,
     pub is_enabled: bool,
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BindChannelOauthAppPayload {
     pub oauth_app_id: String,
     pub role: Option<String>,

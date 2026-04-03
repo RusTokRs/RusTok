@@ -32,6 +32,17 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Webhooks,
         Resource::Scripts,
         Resource::Mcp,
+        Resource::AiProviders,
+        Resource::AiTaskProfiles,
+        Resource::AiSessions,
+        Resource::AiRuns,
+        Resource::AiApprovals,
+        Resource::AiRouter,
+        Resource::AiTextTasks,
+        Resource::AiImageTasks,
+        Resource::AiCodeTasks,
+        Resource::AiAlloyTasks,
+        Resource::AiMultimodalTasks,
         Resource::BlogPosts,
         Resource::Tags,
         Resource::ForumCategories,
@@ -73,6 +84,17 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::Modules, Action::List));
     permissions.insert(Permission::new(Resource::Scripts, Action::Manage));
     permissions.insert(Permission::new(Resource::Mcp, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiProviders, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiTaskProfiles, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiSessions, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiRuns, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiApprovals, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiRouter, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiTextTasks, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiImageTasks, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiCodeTasks, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiAlloyTasks, Action::Manage));
+    permissions.insert(Permission::new(Resource::AiMultimodalTasks, Action::Manage));
     permissions.insert(Permission::new(Resource::Logs, Action::Read));
     permissions.insert(Permission::new(Resource::Logs, Action::List));
     permissions.insert(Permission::FLEX_SCHEMAS_CREATE);
@@ -161,6 +183,17 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::BLOG_POSTS_DELETE);
     permissions.insert(Permission::BLOG_POSTS_LIST);
     permissions.insert(Permission::BLOG_POSTS_PUBLISH);
+    permissions.insert(Permission::AI_PROVIDERS_READ);
+    permissions.insert(Permission::AI_TASK_PROFILES_READ);
+    permissions.insert(Permission::AI_SESSIONS_READ);
+    permissions.insert(Permission::AI_SESSIONS_RUN);
+    permissions.insert(Permission::AI_RUNS_CANCEL);
+    permissions.insert(Permission::AI_APPROVALS_RESOLVE);
+    permissions.insert(Permission::AI_TASKS_TEXT_RUN);
+    permissions.insert(Permission::AI_TASKS_IMAGE_RUN);
+    permissions.insert(Permission::AI_TASKS_CODE_RUN);
+    permissions.insert(Permission::AI_TASKS_ALLOY_RUN);
+    permissions.insert(Permission::AI_TASKS_MULTIMODAL_RUN);
 
     for action in [Action::Create, Action::Read, Action::Update, Action::List] {
         permissions.insert(Permission::new(Resource::ForumCategories, action));

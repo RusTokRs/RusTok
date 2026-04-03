@@ -14,12 +14,15 @@ use crate::{
     dto::{
         AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelPaymentInput,
         CapturePaymentInput, CreateProductInput, CreateShippingOptionInput,
-        DeliverFulfillmentInput, DeliverOrderInput, FulfillmentResponse, ListFulfillmentsInput,
-        ListPaymentCollectionsInput, MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse,
+        CreateShippingProfileInput, DeliverFulfillmentInput, DeliverOrderInput,
+        FulfillmentResponse, ListFulfillmentsInput, ListPaymentCollectionsInput,
+        ListShippingProfilesInput, MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse,
         ProductResponse, ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse,
-        UpdateProductInput, UpdateShippingOptionInput,
+        ShippingProfileResponse, UpdateProductInput, UpdateShippingOptionInput,
+        UpdateShippingProfileInput,
     },
-    CatalogService, FulfillmentService, OrderService, PaymentService,
+    storefront_shipping::normalize_shipping_profile_slug,
+    CatalogService, FulfillmentService, OrderService, PaymentService, ShippingProfileService,
 };
 
 use super::{
@@ -75,6 +78,22 @@ pub fn routes() -> Routes {
         .add(
             "/payment-collections/{id}/cancel",
             axum::routing::post(cancel_payment_collection),
+        )
+        .add(
+            "/shipping-profiles",
+            axum::routing::get(list_shipping_profiles).post(create_shipping_profile),
+        )
+        .add(
+            "/shipping-profiles/{id}",
+            axum::routing::get(show_shipping_profile).post(update_shipping_profile),
+        )
+        .add(
+            "/shipping-profiles/{id}/deactivate",
+            axum::routing::post(deactivate_shipping_profile),
+        )
+        .add(
+            "/shipping-profiles/{id}/reactivate",
+            axum::routing::post(reactivate_shipping_profile),
         )
         .add(
             "/shipping-options",
@@ -152,6 +171,14 @@ pub struct ListShippingOptionsParams {
     pub active: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ListShippingProfilesParams {
+    #[serde(flatten)]
+    pub pagination: Option<super::common::PaginationParams>,
+    pub search: Option<String>,
+    pub active: Option<bool>,
+}
+
 /// List admin ecommerce products
 #[utoipa::path(
     get,
@@ -195,6 +222,13 @@ pub async fn create_product(
         &[Permission::PRODUCTS_CREATE],
         "Permission denied: products:create required",
     )?;
+
+    validate_product_shipping_profile_input(
+        &ctx.db,
+        tenant.id,
+        input.shipping_profile_slug.as_deref(),
+    )
+    .await?;
 
     let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
@@ -249,6 +283,13 @@ pub async fn update_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+
+    validate_product_shipping_profile_input(
+        &ctx.db,
+        tenant.id,
+        input.shipping_profile_slug.as_deref(),
+    )
+    .await?;
 
     let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
@@ -638,6 +679,210 @@ pub async fn show_payment_collection(
 /// List admin shipping options
 #[utoipa::path(
     get,
+    path = "/admin/shipping-profiles",
+    tag = "admin",
+    params(ListShippingProfilesParams),
+    responses(
+        (status = 200, description = "Shipping profiles", body = PaginatedResponse<ShippingProfileResponse>),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_shipping_profiles(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(params): Query<ListShippingProfilesParams>,
+) -> Result<Json<PaginatedResponse<ShippingProfileResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let pagination = params.pagination.unwrap_or_default();
+    let (items, total) = ShippingProfileService::new(ctx.db.clone())
+        .list_shipping_profiles(
+            tenant.id,
+            ListShippingProfilesInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                active: params.active,
+                search: params.search,
+            },
+        )
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(Json(PaginatedResponse {
+        data: items,
+        meta: super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+    }))
+}
+
+/// Create admin shipping profile
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-profiles",
+    tag = "admin",
+    request_body = CreateShippingProfileInput,
+    responses(
+        (status = 201, description = "Shipping profile created successfully", body = ShippingProfileResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn create_shipping_profile(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<CreateShippingProfileInput>,
+) -> Result<(StatusCode, Json<ShippingProfileResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_CREATE],
+        "Permission denied: fulfillments:create required",
+    )?;
+
+    let profile = ShippingProfileService::new(ctx.db.clone())
+        .create_shipping_profile(tenant.id, input)
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok((StatusCode::CREATED, Json(profile)))
+}
+
+/// Show admin shipping profile
+#[utoipa::path(
+    get,
+    path = "/admin/shipping-profiles/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping profile ID")),
+    responses(
+        (status = 200, description = "Shipping profile details", body = ShippingProfileResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping profile not found")
+    )
+)]
+pub async fn show_shipping_profile(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ShippingProfileResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let profile = ShippingProfileService::new(ctx.db.clone())
+        .get_shipping_profile(tenant.id, id)
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(Json(profile))
+}
+
+/// Update admin shipping profile
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-profiles/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping profile ID")),
+    request_body = UpdateShippingProfileInput,
+    responses(
+        (status = 200, description = "Shipping profile updated successfully", body = ShippingProfileResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping profile not found")
+    )
+)]
+pub async fn update_shipping_profile(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateShippingProfileInput>,
+) -> Result<Json<ShippingProfileResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let profile = ShippingProfileService::new(ctx.db.clone())
+        .update_shipping_profile(tenant.id, id, input)
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(Json(profile))
+}
+
+/// Deactivate admin shipping profile
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-profiles/{id}/deactivate",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping profile ID")),
+    responses(
+        (status = 200, description = "Shipping profile deactivated successfully", body = ShippingProfileResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping profile not found")
+    )
+)]
+pub async fn deactivate_shipping_profile(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ShippingProfileResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let profile = ShippingProfileService::new(ctx.db.clone())
+        .deactivate_shipping_profile(tenant.id, id)
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(Json(profile))
+}
+
+/// Reactivate admin shipping profile
+#[utoipa::path(
+    post,
+    path = "/admin/shipping-profiles/{id}/reactivate",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Shipping profile ID")),
+    responses(
+        (status = 200, description = "Shipping profile reactivated successfully", body = ShippingProfileResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Shipping profile not found")
+    )
+)]
+pub async fn reactivate_shipping_profile(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ShippingProfileResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let profile = ShippingProfileService::new(ctx.db.clone())
+        .reactivate_shipping_profile(tenant.id, id)
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(Json(profile))
+}
+
+/// List admin shipping options
+#[utoipa::path(
+    get,
     path = "/admin/shipping-options",
     tag = "admin",
     params(ListShippingOptionsParams),
@@ -714,6 +959,13 @@ pub async fn create_shipping_option(
         "Permission denied: fulfillments:create required",
     )?;
 
+    validate_shipping_option_profile_inputs(
+        &ctx.db,
+        tenant.id,
+        input.allowed_shipping_profile_slugs.as_ref(),
+    )
+    .await?;
+
     let option = FulfillmentService::new(ctx.db.clone())
         .create_shipping_option(tenant.id, input)
         .await
@@ -784,6 +1036,13 @@ pub async fn update_shipping_option(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+
+    validate_shipping_option_profile_inputs(
+        &ctx.db,
+        tenant.id,
+        input.allowed_shipping_profile_slugs.as_ref(),
+    )
+    .await?;
 
     let option = FulfillmentService::new(ctx.db.clone())
         .update_shipping_option(tenant.id, id, input)
@@ -1173,6 +1432,47 @@ fn map_fulfillment_error(error: rustok_fulfillment::error::FulfillmentError) -> 
     }
 }
 
+fn map_shipping_profile_error(error: crate::CommerceError) -> Error {
+    match error {
+        crate::CommerceError::ShippingProfileNotFound(_) => Error::NotFound,
+        other => Error::BadRequest(other.to_string()),
+    }
+}
+
+async fn validate_product_shipping_profile_input(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    shipping_profile_slug: Option<&str>,
+) -> Result<()> {
+    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slug_exists(tenant_id, &slug)
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(())
+}
+
+async fn validate_shipping_option_profile_inputs(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    allowed_shipping_profile_slugs: Option<&Vec<String>>,
+) -> Result<()> {
+    let Some(slugs) = allowed_shipping_profile_slugs else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::{to_bytes, Body};
@@ -1203,7 +1503,7 @@ mod tests {
         CancelPaymentInput, CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
         CreatePaymentCollectionInput, ShipFulfillmentInput, UpdateShippingOptionInput,
     };
-    use crate::{FulfillmentService, OrderService, PaymentService};
+    use crate::{FulfillmentService, OrderService, PaymentService, ShippingProfileService};
 
     #[path = "../../../../tests/support.rs"]
     mod support;
@@ -1668,12 +1968,235 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_shipping_profiles_transport_supports_create_update_and_list() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![
+                Permission::FULFILLMENTS_READ,
+                Permission::FULFILLMENTS_CREATE,
+                Permission::FULFILLMENTS_UPDATE,
+            ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admin/shipping-profiles")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "slug": " bulky-freight ",
+                            "name": "Bulky Freight",
+                            "description": "Large parcel handling",
+                            "metadata": { "source": "admin-shipping-profiles" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create request should succeed");
+        let create_status = create_response.status();
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create response should read");
+        assert_eq!(
+            create_status,
+            StatusCode::CREATED,
+            "unexpected create body: {}",
+            String::from_utf8_lossy(&create_body)
+        );
+
+        let created: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create response should be JSON");
+        let profile_id = created["id"]
+            .as_str()
+            .expect("created shipping profile id should be present");
+        assert_eq!(created["slug"], json!("bulky-freight"));
+
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/admin/shipping-profiles?search=bulky&page=1&per_page=10")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("list request should succeed");
+        let list_status = list_response.status();
+        let list_body = to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .expect("list response should read");
+        assert_eq!(
+            list_status,
+            StatusCode::OK,
+            "unexpected list body: {}",
+            String::from_utf8_lossy(&list_body)
+        );
+        let listed: serde_json::Value =
+            serde_json::from_slice(&list_body).expect("list response should be JSON");
+        assert_eq!(listed["meta"]["total"], json!(1));
+        assert_eq!(listed["data"][0]["id"], json!(profile_id));
+
+        let update_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/shipping-profiles/{profile_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        serde_json::to_string(&crate::dto::UpdateShippingProfileInput {
+                            slug: None,
+                            name: Some("Oversize Freight".to_string()),
+                            description: Some("Updated profile".to_string()),
+                            metadata: Some(json!({ "updated": true })),
+                        })
+                        .expect("update payload should serialize"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update request should succeed");
+        let update_status = update_response.status();
+        let update_body = to_bytes(update_response.into_body(), usize::MAX)
+            .await
+            .expect("update response should read");
+        assert_eq!(
+            update_status,
+            StatusCode::OK,
+            "unexpected update body: {}",
+            String::from_utf8_lossy(&update_body)
+        );
+        let updated: serde_json::Value =
+            serde_json::from_slice(&update_body).expect("update response should be JSON");
+        assert_eq!(updated["name"], json!("Oversize Freight"));
+        assert_eq!(updated["metadata"]["updated"], json!(true));
+
+        let show_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/admin/shipping-profiles/{profile_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("show request should succeed");
+        let show_status = show_response.status();
+        let show_body = to_bytes(show_response.into_body(), usize::MAX)
+            .await
+            .expect("show response should read");
+        assert_eq!(
+            show_status,
+            StatusCode::OK,
+            "unexpected show body: {}",
+            String::from_utf8_lossy(&show_body)
+        );
+        let shown: serde_json::Value =
+            serde_json::from_slice(&show_body).expect("show response should be JSON");
+        assert_eq!(shown["id"], json!(profile_id));
+        assert_eq!(shown["slug"], json!("bulky-freight"));
+
+        let deactivate_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/shipping-profiles/{profile_id}/deactivate"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("deactivate request should succeed");
+        let deactivate_body = to_bytes(deactivate_response.into_body(), usize::MAX)
+            .await
+            .expect("deactivate response should read");
+        let deactivated: serde_json::Value =
+            serde_json::from_slice(&deactivate_body).expect("deactivate response should be JSON");
+        assert_eq!(deactivated["active"], json!(false));
+
+        let reactivate_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/shipping-profiles/{profile_id}/reactivate"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("reactivate request should succeed");
+        let reactivate_body = to_bytes(reactivate_response.into_body(), usize::MAX)
+            .await
+            .expect("reactivate response should read");
+        let reactivated: serde_json::Value =
+            serde_json::from_slice(&reactivate_body).expect("reactivate response should be JSON");
+        assert_eq!(reactivated["active"], json!(true));
+    }
+
+    #[tokio::test]
     async fn admin_shipping_options_transport_supports_create_update_and_list() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        ShippingProfileService::new(db.clone())
+            .create_shipping_profile(
+                tenant_id,
+                crate::dto::CreateShippingProfileInput {
+                    slug: "bulky".to_string(),
+                    name: "Bulky".to_string(),
+                    description: None,
+                    metadata: json!({}),
+                },
+            )
+            .await
+            .expect("bulky profile should be created");
+        ShippingProfileService::new(db.clone())
+            .create_shipping_profile(
+                tenant_id,
+                crate::dto::CreateShippingProfileInput {
+                    slug: "cold-chain".to_string(),
+                    name: "Cold Chain".to_string(),
+                    description: None,
+                    metadata: json!({}),
+                },
+            )
+            .await
+            .expect("cold-chain profile should be created");
         let tenant = TenantContext {
             id: tenant_id,
             name: "Admin Test Tenant".to_string(),

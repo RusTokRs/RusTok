@@ -104,7 +104,12 @@ impl AuthContext {
         self.is_loading.set(true);
 
         if let Some(session) = self.session.get() {
-            let _ = api::sign_out(session.token.clone(), session.tenant.clone()).await;
+            let _ = api::sign_out(
+                session.token.clone(),
+                session.refresh_token.clone(),
+                session.tenant.clone(),
+            )
+            .await;
         }
 
         storage::clear_session();

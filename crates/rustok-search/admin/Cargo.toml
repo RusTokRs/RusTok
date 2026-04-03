@@ -8,11 +8,30 @@ description = "Leptos admin UI package for the rustok-search module"
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-core",
+  "dep:rustok-events",
+  "dep:sea-orm",
+]
+
 [dependencies]
-leptos = { workspace = true, features = ["csr"] }
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 leptos-graphql.workspace = true
 leptos_router.workspace = true
+loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-events = { workspace = true, optional = true }
+rustok-search.workspace = true
+sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+uuid.workspace = true

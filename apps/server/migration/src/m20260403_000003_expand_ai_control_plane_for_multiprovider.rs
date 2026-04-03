@@ -1,0 +1,315 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(AiProviderProfiles::Table)
+                    .add_column(
+                        ColumnDef::new(AiProviderProfiles::Capabilities)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .add_column(
+                        ColumnDef::new(AiProviderProfiles::AllowedTaskProfiles)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .add_column(
+                        ColumnDef::new(AiProviderProfiles::DeniedTaskProfiles)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .add_column(
+                        ColumnDef::new(AiProviderProfiles::RestrictedRoleSlugs)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(AiTaskProfiles::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(AiTaskProfiles::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::Slug)
+                            .string_len(96)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::DisplayName)
+                            .string_len(160)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(AiTaskProfiles::Description).text().null())
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::TargetCapability)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(AiTaskProfiles::SystemPrompt).text().null())
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::AllowedProviderProfileIds)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::PreferredProviderProfileIds)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::FallbackStrategy)
+                            .string_len(64)
+                            .not_null()
+                            .default("ordered"),
+                    )
+                    .col(ColumnDef::new(AiTaskProfiles::ToolProfileId).uuid().null())
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::ApprovalPolicy)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::DefaultExecutionMode)
+                            .string_len(32)
+                            .not_null()
+                            .default("auto"),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::IsActive)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(ColumnDef::new(AiTaskProfiles::CreatedBy).uuid().null())
+                    .col(ColumnDef::new(AiTaskProfiles::UpdatedBy).uuid().null())
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(AiTaskProfiles::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(AiTaskProfiles::Table, AiTaskProfiles::TenantId)
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(AiTaskProfiles::Table, AiTaskProfiles::ToolProfileId)
+                            .to(AiToolProfiles::Table, AiToolProfiles::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_ai_task_profiles_tenant_slug")
+                    .table(AiTaskProfiles::Table)
+                    .unique()
+                    .col(AiTaskProfiles::TenantId)
+                    .col(AiTaskProfiles::Slug)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(AiChatSessions::Table)
+                    .add_column(ColumnDef::new(AiChatSessions::TaskProfileId).uuid().null())
+                    .add_column(
+                        ColumnDef::new(AiChatSessions::ExecutionMode)
+                            .string_len(32)
+                            .not_null()
+                            .default("auto"),
+                    )
+                    .add_foreign_key(
+                        TableForeignKey::new()
+                            .name("fk_ai_chat_sessions_task_profile")
+                            .from_tbl(AiChatSessions::Table)
+                            .from_col(AiChatSessions::TaskProfileId)
+                            .to_tbl(AiTaskProfiles::Table)
+                            .to_col(AiTaskProfiles::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(AiChatRuns::Table)
+                    .add_column(ColumnDef::new(AiChatRuns::TaskProfileId).uuid().null())
+                    .add_column(
+                        ColumnDef::new(AiChatRuns::ExecutionMode)
+                            .string_len(32)
+                            .not_null()
+                            .default("auto"),
+                    )
+                    .add_column(
+                        ColumnDef::new(AiChatRuns::ExecutionPath)
+                            .string_len(32)
+                            .not_null()
+                            .default("mcp_tooling"),
+                    )
+                    .add_column(
+                        ColumnDef::new(AiChatRuns::DecisionTrace)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .add_foreign_key(
+                        TableForeignKey::new()
+                            .name("fk_ai_chat_runs_task_profile")
+                            .from_tbl(AiChatRuns::Table)
+                            .from_col(AiChatRuns::TaskProfileId)
+                            .to_tbl(AiTaskProfiles::Table)
+                            .to_col(AiTaskProfiles::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(AiChatRuns::Table)
+                    .drop_foreign_key(Alias::new("fk_ai_chat_runs_task_profile"))
+                    .drop_column(AiChatRuns::DecisionTrace)
+                    .drop_column(AiChatRuns::ExecutionPath)
+                    .drop_column(AiChatRuns::ExecutionMode)
+                    .drop_column(AiChatRuns::TaskProfileId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(AiChatSessions::Table)
+                    .drop_foreign_key(Alias::new("fk_ai_chat_sessions_task_profile"))
+                    .drop_column(AiChatSessions::ExecutionMode)
+                    .drop_column(AiChatSessions::TaskProfileId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_table(Table::drop().table(AiTaskProfiles::Table).to_owned())
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(AiProviderProfiles::Table)
+                    .drop_column(AiProviderProfiles::RestrictedRoleSlugs)
+                    .drop_column(AiProviderProfiles::DeniedTaskProfiles)
+                    .drop_column(AiProviderProfiles::AllowedTaskProfiles)
+                    .drop_column(AiProviderProfiles::Capabilities)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum AiProviderProfiles {
+    Table,
+    Capabilities,
+    AllowedTaskProfiles,
+    DeniedTaskProfiles,
+    RestrictedRoleSlugs,
+}
+
+#[derive(DeriveIden)]
+enum AiToolProfiles {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum AiTaskProfiles {
+    Table,
+    Id,
+    TenantId,
+    Slug,
+    DisplayName,
+    Description,
+    TargetCapability,
+    SystemPrompt,
+    AllowedProviderProfileIds,
+    PreferredProviderProfileIds,
+    FallbackStrategy,
+    ToolProfileId,
+    ApprovalPolicy,
+    DefaultExecutionMode,
+    IsActive,
+    Metadata,
+    CreatedBy,
+    UpdatedBy,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum AiChatSessions {
+    Table,
+    TaskProfileId,
+    ExecutionMode,
+}
+
+#[derive(DeriveIden)]
+enum AiChatRuns {
+    Table,
+    TaskProfileId,
+    ExecutionMode,
+    ExecutionPath,
+    DecisionTrace,
+}

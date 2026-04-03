@@ -84,3 +84,23 @@ pub struct CommentListItem {
     pub position: i64,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentThreadSummary {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub target_type: String,
+    pub target_id: Uuid,
+    pub status: CommentThreadStatus,
+    pub comment_count: i32,
+    pub last_commented_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentThreadDetail {
+    pub thread: CommentThreadSummary,
+    pub comments: Vec<CommentRecord>,
+    pub total_comments: u64,
+}

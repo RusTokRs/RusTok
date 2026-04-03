@@ -29,16 +29,72 @@ struct ChangePasswordInput {
     new_password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct ChangePasswordResponse {
     #[serde(rename = "changePassword")]
     _change_password: SuccessPayload,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct SuccessPayload {
     #[allow(dead_code)]
     success: bool,
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/change-password")]
+async fn change_password_native(
+    token: String,
+    tenant: String,
+    current_password: String,
+    new_password: String,
+) -> Result<SuccessPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+
+        #[derive(Deserialize)]
+        struct RestStatusResponse {
+            #[allow(dead_code)]
+            status: String,
+        }
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!(
+                "{}/api/auth/change-password",
+                crate::shared::api::api_base_url()
+            ))
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .header(CONTENT_TYPE, "application/json")
+            .header("X-Tenant-ID", tenant)
+            .json(&serde_json::json!({
+                "current_password": current_password,
+                "new_password": new_password,
+            }))
+            .send()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        if !response.status().is_success() {
+            return Err(ServerFnError::new(
+                crate::shared::api::extract_http_error(response).await,
+            ));
+        }
+
+        let _ = response
+            .json::<RestStatusResponse>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(SuccessPayload { success: true })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, current_password, new_password);
+        Err(ServerFnError::new(
+            "admin/change-password requires the `ssr` feature",
+        ))
+    }
 }
 
 #[component]
@@ -77,18 +133,33 @@ pub fn Security() -> impl IntoView {
         set_success_message.set(None);
 
         spawn_local(async move {
-            let result = request::<ChangePasswordVariables, ChangePasswordResponse>(
-                CHANGE_PASSWORD_MUTATION,
-                ChangePasswordVariables {
-                    input: ChangePasswordInput {
-                        current_password: current_password_value,
-                        new_password: new_password_value,
-                    },
-                },
-                token_value,
-                tenant_value,
+            let native_result = change_password_native(
+                token_value.clone().unwrap_or_default(),
+                tenant_value.clone().unwrap_or_default(),
+                current_password_value.clone(),
+                new_password_value.clone(),
             )
             .await;
+
+            let result = match native_result {
+                Ok(payload) => Ok(ChangePasswordResponse {
+                    _change_password: payload,
+                }),
+                Err(_) => {
+                    request::<ChangePasswordVariables, ChangePasswordResponse>(
+                        CHANGE_PASSWORD_MUTATION,
+                        ChangePasswordVariables {
+                            input: ChangePasswordInput {
+                                current_password: current_password_value,
+                                new_password: new_password_value,
+                            },
+                        },
+                        token_value,
+                        tenant_value,
+                    )
+                    .await
+                }
+            };
 
             match result {
                 Ok(_) => {

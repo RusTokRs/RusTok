@@ -42,6 +42,13 @@ pub fn get_graphql_url() -> String {
     }
 }
 
+pub fn api_base_url() -> String {
+    get_graphql_url()
+        .trim_end_matches("/api/graphql")
+        .trim_end_matches('/')
+        .to_string()
+}
+
 pub fn get_graphql_ws_url() -> String {
     let graphql_url = get_graphql_url();
     let ws_base = if let Some(rest) = graphql_url.strip_prefix("https://") {
@@ -109,6 +116,30 @@ fn map_server_fn_error(error: ServerFnError) -> ApiError {
     } else {
         ApiError::Graphql(message)
     }
+}
+
+pub async fn extract_http_error(response: reqwest::Response) -> String {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let trimmed = text.trim();
+
+    if trimmed.is_empty() {
+        return format!("request failed with status {status}");
+    }
+
+    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(message) = payload
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| payload.get("error").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return message.to_string();
+        }
+    }
+
+    trimmed.to_string()
 }
 
 #[server(prefix = "/api/fn", endpoint = "admin/graphql")]

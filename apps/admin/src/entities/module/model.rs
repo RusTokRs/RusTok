@@ -78,6 +78,8 @@ pub struct MarketplaceModule {
     #[serde(rename = "signaturePresent")]
     pub signature_present: bool,
     pub versions: Vec<MarketplaceModuleVersion>,
+    #[serde(default, rename = "registryLifecycle")]
+    pub registry_lifecycle: Option<RegistryModuleLifecycle>,
     pub compatible: bool,
     #[serde(rename = "recommendedAdminSurfaces")]
     pub recommended_admin_surfaces: Vec<String>,
@@ -90,6 +92,55 @@ pub struct MarketplaceModule {
     pub installed_version: Option<String>,
     #[serde(rename = "updateAvailable")]
     pub update_available: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryModuleLifecycle {
+    #[serde(default, rename = "latestRequest")]
+    pub latest_request: Option<RegistryPublishRequestLifecycle>,
+    #[serde(default, rename = "latestRelease")]
+    pub latest_release: Option<RegistryReleaseLifecycle>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryPublishRequestLifecycle {
+    pub id: String,
+    pub status: String,
+    #[serde(rename = "requestedBy")]
+    pub requested_by: String,
+    #[serde(rename = "approvedBy")]
+    pub approved_by: Option<String>,
+    #[serde(rename = "rejectedBy")]
+    pub rejected_by: Option<String>,
+    #[serde(rename = "rejectionReason")]
+    pub rejection_reason: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(rename = "publishedAt")]
+    pub published_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryReleaseLifecycle {
+    pub version: String,
+    pub status: String,
+    pub publisher: String,
+    #[serde(rename = "checksumSha256")]
+    pub checksum_sha256: Option<String>,
+    #[serde(rename = "publishedAt")]
+    pub published_at: String,
+    #[serde(rename = "yankedReason")]
+    pub yanked_reason: Option<String>,
+    #[serde(rename = "yankedBy")]
+    pub yanked_by: Option<String>,
+    #[serde(rename = "yankedAt")]
+    pub yanked_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

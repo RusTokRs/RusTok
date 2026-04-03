@@ -15,7 +15,7 @@ const baseConfig: NextConfig = {
       }
     ]
   },
-  transpilePackages: ['geist', '@rustok/blog-admin'],
+  transpilePackages: ['geist', '@rustok/blog-admin', '@rustok/ai-admin'],
   // Turbopack configuration: set workspace root so local crate packages
   // (e.g. @rustok/blog-admin at file:../../crates/...) can resolve node_modules
   // from the workspace junction at the repo root.

@@ -1,0 +1,35 @@
+[package]
+name = "rustok-ai-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-ai capability"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-ai",
+  "dep:rustok-core",
+  "dep:sea-orm",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
+chrono.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-api.workspace = true
+rustok-ai = { workspace = true, optional = true, features = ["server"] }
+rustok-core = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sea-orm = { workspace = true, optional = true }
+uuid.workspace = true

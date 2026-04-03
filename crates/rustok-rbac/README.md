@@ -16,6 +16,7 @@
 - Depends on `rustok-core` for permission vocabulary and module contracts.
 - Used by `apps/server` through `RbacService`, RBAC extractors, and permission-aware
   `SecurityContext` creation.
+- Exposes a module-owned Leptos admin overview through `rustok-rbac-admin`.
 - Other runtime modules do not need a direct dependency on `rustok-rbac`; they publish typed
   permissions via `rustok-core`, and server transport layers enforce them through this module.
 - Manual role-based authorization in `apps/server` is not part of the live contract.

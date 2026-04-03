@@ -5,16 +5,23 @@ members = [
     "apps/admin",
     "apps/storefront",
     "crates/rustok-blog/admin",
+    "crates/rustok-ai/admin",
+    "crates/rustok-comments/admin",
     "crates/rustok-blog/storefront",
     "crates/rustok-commerce/admin",
     "crates/rustok-commerce/storefront",
     "crates/rustok-channel/admin",
+    "crates/rustok-index/admin",
+    "crates/rustok-media/admin",
+    "crates/rustok-outbox/admin",
     "crates/rustok-forum/admin",
     "crates/rustok-forum/storefront",
     "crates/rustok-pages/admin",
     "crates/rustok-pages/storefront",
     "crates/rustok-search/admin",
     "crates/rustok-search/storefront",
+    "crates/rustok-tenant/admin",
+    "crates/rustok-rbac/admin",
     "crates/rustok-workflow/admin",
     "crates/*",
     "UI/leptos",
@@ -100,7 +107,7 @@ unicode-normalization = "0.1"
 leptos = "0.8.17"
 leptos_axum = "0.8.8"
 leptos_router = "0.8.12"
-leptos-auth = { path = "crates/leptos-auth" }
+leptos-auth = { path = "crates/leptos-auth", default-features = false }
 leptos-graphql = { path = "crates/leptos-graphql" }
 iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/leptos-ui" }
@@ -185,6 +192,7 @@ rustok-forum = { path = "crates/rustok-forum" }
 rustok-tenant = { path = "crates/rustok-tenant" }
 rustok-rbac = { path = "crates/rustok-rbac" }
 rustok-mcp = { path = "crates/rustok-mcp" }
+rustok-ai = { path = "crates/rustok-ai" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
@@ -192,3 +200,4 @@ rustok-media = { path = "crates/rustok-media" }
 flex = { path = "crates/flex" }
 alloy = { path = "crates/alloy" }
 rustok-workflow = { path = "crates/rustok-workflow" }
+schemars = "1.2"
