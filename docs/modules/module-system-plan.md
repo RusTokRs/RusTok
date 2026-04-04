@@ -1,7 +1,7 @@
 ﻿# RusTok: план закрытия module-system
 
 > **Дата**: 2026-03-19  
-> **Актуализировано**: 2026-04-03  
+> **Актуализировано**: 2026-04-04  
 > **Назначение**: зафиксировать текущее состояние модульной платформы, разделение `Registry V1` и `Registry V2`, а также остаток работ до production-ready контура.
 
 Легенда:
@@ -14,7 +14,7 @@
 - `Registry V1` уже существует как постоянный read-only catalog API.
 - `Registry V2` уже существует как первый рабочий write/governance контур, но пока без полноценного async validation pipeline и богатой модели ownership/moderation.
 - `DeploymentProfile` и `RuntimeHostMode` уже разделены в коде и должны оставаться независимыми осями.
-- Manifest-wired Leptos UI уже работает для набора канонических dual-surface модулей; основной остаток здесь в покрытии и дисциплине validation/tooling.
+- Manifest-wired Leptos UI уже работает не только для канонических dual-surface модулей, но и для расширенного набора admin-only core/optional surfaces; основной остаток здесь в полном аудите `no-ui`/`admin-only` coverage и дисциплине validation/tooling.
 
 ## Архитектурные инварианты
 
@@ -61,7 +61,15 @@
   - `icon`
   - `banner`
   - `screenshots`
-- ✅ Базовая local validation для marketplace metadata уже включена.
+- ✅ Базовая local validation для marketplace metadata уже включена:
+  - `description >= 20`
+  - `icon` = absolute `http(s)` `.svg`
+  - `banner` / `screenshots` = absolute `http(s)` image URLs
+- ✅ `[provides.*_ui.i18n]` уже поддерживает manifest-level bundle contract для package-owned переводов:
+  - `default_locale`
+  - `supported_locales`
+  - явные пути к `locales/*.json` / `messages/*.json`
+- ✅ `ManifestManager` валидирует locale tags, membership для `default_locale` и наличие каждого объявленного bundle file.
 
 ### 2. Build/codegen и host wiring
 
@@ -70,46 +78,52 @@
 - ✅ `apps/storefront/build.rs` поддерживает multi-slot storefront sections и generic route `/modules/{route_segment}`.
 - ✅ Build/release pipeline исполняет manifest-derived сборку `server`, `admin` и Leptos `storefront`.
 - ✅ `ManifestManager` валидирует semver-диапазоны зависимостей, runtime/product conflicts и schema-driven settings contract.
+- ✅ Host build/codegen и `cargo xtask module validate` используют manifest wiring как источник правды, а не просто наличие sub-crate на диске.
 
 ### 3. Admin `/modules`
 
 - ✅ `updateModuleSettings` закрыт end-to-end.
 - ✅ `/modules` умеет:
   - tenant-level toggle
-  - platform install/uninstall
+  - platform install/uninstall/upgrade
   - schema-driven settings editing
   - build progress через GraphQL WS с polling fallback
-  - registry readiness summary
-  - visual marketplace preview
+  - registry readiness summary и visual marketplace preview
   - release trail summary
   - publish lifecycle block для `Registry V2`
+  - `Validation summary` с разделением automatic `validation_failed` и manual governance `reject`
+  - `Follow-up gates` summary для `compile_smoke` / `targeted_tests` / `security_policy_review`
+  - recent governance audit trail
+  - interactive V2 governance actions `validate` / `approve` / `reject` / `owner-transfer` / `yank`
 - ✅ Последние operator-facing строки в module UI выровнены под locale-aware rendering, чтобы модульный UX не разваливался на смешение русского и английского.
-
+- ✅ Detail panel уже показывает:
   - policy-aware moderation summary
   - actionable next-step hints
-  - copyable operator commands РґР»СЏ `xtask`
-  - state-aware live API actions СЃ authority / body / header hints
+  - copyable operator commands для `xtask`
+  - live-mode `xtask` snippets для publish / owner-transfer / yank
+  - state-aware live API actions с authority / body / header hints
   - Windows-friendly `curl.exe` snippets
-  - live-mode `xtask` snippets РґР»СЏ publish / owner-transfer / yank
+  - `read-only` vs `write-path` маркировку
+  - persisted owner binding и recent governance events
+- ✅ Live destructive actions (`reject`, `owner-transfer`, `yank`) идут через явный confirm-step, а `dry-run` остаётся быстрым preview path.
 
 ### 4. Manifest-wired UI coverage
 
-Текущее состояние path-модулей:
+Текущее покрытие manifest-wired Leptos UI среди path-модулей:
 
-| Модуль | Статус UI wiring | Комментарий |
+| Класс | Модули | Комментарий |
 |---|---|---|
-| `blog` | ✅ dual-surface | admin + storefront |
-| `commerce` | ✅ dual-surface | admin + storefront |
-| `forum` | ✅ dual-surface | admin + storefront |
-| `pages` | ✅ dual-surface | admin + storefront |
-| `search` | ✅ dual-surface | admin + storefront |
-| `workflow` | ✅ admin-only | осознанный admin-only slice |
-| `channel` | ✅ admin-only | осознанный admin-only slice |
+| `dual-surface` | `blog`, `commerce`, `forum`, `pages`, `search` | admin + storefront |
+| `admin-only core` | `channel`, `index`, `outbox`, `rbac`, `tenant` | осознанные module-owned admin slices |
+| `admin-only optional` | `comments`, `media`, `workflow` | осознанные module-owned admin slices |
 
 Дополнительно:
 
 - ✅ Наличие `admin/Cargo.toml` или `storefront/Cargo.toml` без соответствующего `[provides.*_ui].leptos_crate` теперь считается wiring error.
-- ✅ `cargo xtask module validate`, `apps/admin/build.rs` и `apps/storefront/build.rs` используют manifest wiring как источник правды, а не наличие sub-crate на диске.
+- ✅ Package-owned i18n contract уже живёт в manifest-driven UI:
+  - admin surfaces `workflow`, `rbac`, `tenant`, `index`, `outbox`, `pages`, `comments`, `channel`, `forum`, `search`, `commerce`
+  - storefront surfaces `blog`, `pages`, `commerce`, `forum`, `search`
+- ⚠️ Для остальных path entries в `modules.toml` финальная явная классификация как `no-ui` / `capability-only` / `future UI` всё ещё должна быть зафиксирована отдельным аудитом, а не выводиться по умолчанию из отсутствия sub-crate.
 
 ### 5. Registry V1
 
@@ -131,6 +145,7 @@
 - ✅ `If-None-Match`
 - ✅ `304 Not Modified`
 - ✅ OpenAPI coverage
+- ✅ metadata policy для visual fields и `description`
 
 Каталожные данные уже включают:
 
@@ -175,18 +190,21 @@ Consumer path:
 - ✅ `POST /v2/catalog/publish/{request_id}/validate`
 - ✅ `POST /v2/catalog/publish/{request_id}/approve`
 - ✅ `POST /v2/catalog/publish/{request_id}/reject`
+- ✅ `POST /v2/catalog/owner-transfer`
 - ✅ `POST /v2/catalog/yank`
 
 Текущее lifecycle-состояние:
 
-- ✅ request создаётся отдельно от artifact upload
+- ✅ `POST /v2/catalog/publish` делает sync metadata validation и создаёт request отдельно от artifact upload
 - ✅ upload теперь только сохраняет artifact и ставит request в `submitted`
 - ✅ validation вынесена в отдельный lifecycle-step `/validate`
 - ✅ `/validate` валидирует bundle against request
 - ✅ `/validate` теперь работает как queue boundary и переводит request в background `validating`, а не держит bundle-check inline в HTTP вызове
+- ✅ У validation теперь есть отдельный persisted job-layer `registry_validation_jobs` с попытками и статусами `queued` / `running` / `succeeded` / `failed`.
 - ✅ request проходит через `artifact_uploaded -> submitted -> validating -> approved` или `rejected`
+- ✅ `approved` теперь означает `review-ready` после automated artifact/manifest validation, а не уже опубликованный release
 - ✅ публикация release происходит отдельным governance action
-- ✅ `yank` требует обязательную причину
+- ✅ `reject`, `owner-transfer` и `yank` требуют обязательную governance reason
 - ✅ published releases уже проецируются обратно в `V1`
 
 Governance first cut:
@@ -194,10 +212,11 @@ Governance first cut:
 - ✅ header-driven actor contract уже работает
 - ✅ persisted slug owner binding уже сохраняется отдельно от governance actor; release publisher identity и `/modules` lifecycle UX теперь читают этот binding, а `x-rustok-publisher` отделён от audit actor `x-rustok-actor`
 - ✅ requested publisher identity теперь также сохраняется прямо в `registry_publish_requests`, и approve/reject policy больше не опирается только на `requested_by`
-- ✅ persisted audit trail теперь сохраняется в `registry_governance_events` и уже отражается в `/modules` как recent governance events для publish/upload/validate/approve/reject/yank/owner-binding переходов
+- ✅ persisted audit trail теперь сохраняется в `registry_governance_events` и уже отражается в `/modules` как recent governance events для publish/upload/validate/approve/reject/owner-transfer/yank/owner-binding переходов
 - ✅ есть first-cut policy для governance actors и slug-scoped publishers
 - ✅ ownership transfer теперь вынесен в явный `POST /v2/catalog/owner-transfer` с обязательной причиной, persisted owner rebind и отдельным audit event `owner_transferred`
 - ✅ approve/reject больше не считаются self-review шагом через `publisher_identity`: review path теперь требует governance actor или текущего persisted owner
+- ✅ lifecycle consumers уже получают derived `follow_up_gates` и structured `automated_checks` через GraphQL/Admin read-path
 - ✅ `xtask module publish` уже умеет live orchestration и по умолчанию останавливается на `approved` / `review-ready`; финальный governance `approve` теперь делается только по явному `--auto-approve`
 - ✅ `xtask module owner-transfer` теперь уже умеет live V2 endpoint
 - ✅ `xtask module yank` уже умеет live V2 endpoint
@@ -207,12 +226,16 @@ Governance first cut:
 
 ### Блок A. Registry V2 async validation и governance
 
-- ⚠️ Validation pipeline уже отделён от upload path и вынесен за пределы inline HTTP upload/validate round-trip, но compile/test/security/policy checks всё ещё остаются в одном лёгком background validator без отдельного job orchestration слоя.
+- ✅ Validation pipeline уже отделён от upload path и вынесен за пределы inline HTTP upload/validate round-trip; базовый artifact/manifest validator и follow-up stage orchestration теперь разделены.
 - ✅ Текущий background validator теперь явно маркирует свой scope: `approved` означает, что artifact/manifest contract checks пройдены и запрос готов к review, а compile/test/security/policy остаются внешними follow-up gates и surfaced в warnings/audit trail.
+- ✅ Lifecycle snapshots и governance events уже несут structured `automated_checks` / `follow_up_gates`, так что текущее ограничение validator scope видно не только в docs, но и в live operator UX.
 - ✅ `POST /v2/catalog/publish/{request_id}/validate` теперь умеет requeue request после автоматического `validation_failed`, но не resurrect-ит manual governance reject-path.
 - ✅ Для транзиентных сбоев загрузки artifact внутри background validator уже есть минимальный retry/backoff path с audit events `validation_retry_scheduled` / `validation_retry_exhausted`.
-- ⬜ Нужно вынести compile/test/security/policy checks в асинхронный контур.
-- ⬜ Нужен явный request lifecycle для background validation jobs и повторной обработки.
+- ✅ Явный persisted lifecycle для базовых validation jobs уже есть через `registry_validation_jobs` и audit events `validation_job_*`.
+- ✅ Для compile/test/security/policy checks теперь есть отдельный persisted orchestration-layer `registry_validation_stages` со статусами `queued` / `running` / `passed` / `failed` / `blocked`, attempt number, detail и timestamps.
+- ✅ `registryLifecycle` теперь отдаёт не только compatibility summary `followUpGates`, но и canonical `validationStages`, так что `/modules` показывает per-stage state отдельно от базовой validator summary.
+- ✅ Для ручной фиксации stage results появился live write-path `POST /v2/catalog/publish/{request_id}/stages` и matching operator command `cargo xtask module stage <request-id> <stage> <status> ...`.
+- ⚠️ Реальный local/remote runner для compile/test/security stages в этот шаг не встроен; orchestration и operator recording уже persisted, но исполнение команд всё ещё внешнее/manual.
 - ⚠️ Базовая persistence-модель для ownership и audit trail уже есть (`registry_module_owners`, `registry_governance_events`), и явный owner transfer уже поднят, но richer moderation decisions всё ещё не доведены до полного production policy.
 - ⬜ Нужен более строгий policy layer для:
   - moderator/admin approve-reject capabilities
@@ -226,24 +249,24 @@ Governance first cut:
 
 ### Блок C. Покрытие UI и operator polish
 
-- ⚠️ Канонические dual-surface proof points уже есть, но покрытие не всех модулей доведено до финального состояния.
+- ⚠️ Manifest-wired UI coverage уже заметно шире исходных dual-surface proof points: live contract включает расширенный набор admin-only core/optional surfaces, но полный аудит остальных path entries ещё не доведён до финальной классификации.
 - ⬜ Нужно продолжить аудит path-модулей на предмет честной классификации `dual-surface` / `admin-only` / `storefront-only` / `no-ui`.
-- ⚠️ `/modules` уже умеет не только показывать lifecycle, но и запускать интерактивные governance-действия, показывать policy hints, copyable `xtask`/HTTP/curl snippets, headers/body hints и operator commands.
+- ✅ `/modules` уже умеет не только показывать lifecycle, но и запускать интерактивные governance-действия, показывать policy hints, copyable `xtask`/HTTP/curl snippets, headers/body hints и operator commands.
 - ✅ `/modules` уже различает automatic validation failure и manual governance reject в `Validation summary`, а также показывает отдельный `Ready for review` сигнал для validated request, который ещё не опубликован.
 - ✅ `/modules` теперь также показывает отдельный `Follow-up gates` summary для `compile_smoke` / `targeted_tests` / `security_policy_review`, чтобы внешние async/manual gates были видны отдельно от базовой artifact/manifest validation.
 - ⬜ В operator UX осталось добить:
-  - более богатый вывод async validation feedback и moderation decisions вне текущего summary/callout уровня
-  - финальный polish вокруг owner-transfer/review authority
+  - более богатый per-check вывод async validation feedback и moderation decisions вне текущего summary/callout уровня
+  - финальный polish вокруг owner-transfer/review authority и richer moderation history
 
 ### Блок D. Тесты
 
 - ⚠️ Точечные `cargo check` по релевантным пакетам уже проходят для большинства последних шагов.
 - ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах.
 - ⬜ Нужны более устойчивые targeted tests для:
-  - V2 lifecycle transitions
+  - V2 lifecycle transitions, включая requeue/retry semantics
   - projection V2 → V1
   - `registry_only` reduced surface
-  - manifest-wired UI guardrails
+  - manifest-wired UI и `[provides.*_ui.i18n]` guardrails
 
 ## Приоритет выполнения
 
@@ -251,7 +274,7 @@ Governance first cut:
 2. Довести ownership/governance persistence и policy model до richer moderation capabilities.
 3. Закрыть production deployment path для `modules.rustok.dev`.
 4. Доработать moderation UX в `/modules` вокруг richer validation feedback и moderation decisions.
-5. Продолжить аудит и доводку manifest-wired UI coverage.
+5. Продолжить аудит и доводку manifest-wired UI / i18n coverage.
 6. Уплотнить targeted test coverage вокруг V1/V2 и reduced host.
 
 ## Критерии завершения
@@ -263,7 +286,7 @@ Governance first cut:
 - `registry_only` развёртывается как отдельный catalog host без monolith surface.
 - publish/yank flow работает и в `Monolith + full`, и в `HeadlessApi + full`.
 - `/modules` показывает operator-friendly lifecycle, validation и governance state, а также умеет запускать базовые V2 governance-действия.
-- UI wiring всех path-модулей честно классифицирован и проверяется tooling-guardrails.
+- UI wiring всех path-модулей честно классифицирован, а manifest / i18n guardrails проверяются tooling-слоем.
 
 ## Связанные документы
 
@@ -271,31 +294,9 @@ Governance first cut:
 - [Реестр модулей и владельцев](./registry.md)
 - [Обзор модульной платформы](./overview.md)
 - [Архитектура модулей](../architecture/modules.md)
+- [Архитектура i18n](../architecture/i18n.md)
 - [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
 - [Server docs](../../apps/server/docs/README.md)
+- [Health / registry_only runbook](../../apps/server/docs/health.md)
 - [Admin docs](../../apps/admin/docs/README.md)
-
-## Актуализация `/modules` на 2026-04-03
-
-- `lifecycle-aware` operator UX в `/modules` уже заметно продвинут дальше, чем описано в базовом плане выше.
-- Detail panel уже показывает:
-  - policy-aware moderation summary
-  - actionable next-step hints
-  - copyable operator commands для `xtask`
-  - state-aware live API actions
-  - authority hints по allowed actor/current owner
-  - `read-only` vs `write-path` маркировку
-  - минимальные request-body hints для mutating actions
-  - header hints для `x-rustok-actor` / `x-rustok-publisher`
-  - Windows-friendly `curl.exe` snippets
-  - live-режим `xtask` snippets там, где уже есть CLI-эквивалент
-- Таким образом, в operator UX остался уже не общий lifecycle/governance слой, а хвост по richer validation feedback и общему moderation polish.
-## Актуализация `/modules` на 2026-04-04
-
-- Operator UX в `apps/admin` продвинут дальше lifecycle summary: `/modules` detail panel теперь умеет запускать интерактивные V2 governance-действия поверх уже существующих registry endpoints.
-- Для `validate`, `approve`, `reject`, `owner-transfer` и `yank` добавлены локальные формы/кнопки с `dry-run` toggle, полями `actor` / `publisher` / `reason` / `new owner actor`, принудительным обновлением detail state и отображением `warnings` / `errors` из `RegistryMutationResponse`.
-- Admin transport для этих действий идёт через узкие `#[server]` wrappers в `features/modules/api.rs`, которые ходят в существующий `/v2/catalog/*` HTTP contract и не вводят отдельный параллельный API.
-- Дополнительно detail panel уже показывает copyable operator commands, `xtask` live-mode snippets, Windows-friendly `curl.exe` snippets, authority hints и минимальные body/header шаблоны для live governance-вызовов.
-- Дополнительно live destructive actions (`reject`, `owner-transfer`, `yank`) теперь идут через явный confirm-step в detail panel, так что оператор не отправляет такие governance-вызовы одним кликом.
-- Таким образом, в `/modules` уже закрыт базовый interactive governance слой и confirm-path для destructive actions; в хвосте остались в основном richer validation feedback и moderation polish.
 

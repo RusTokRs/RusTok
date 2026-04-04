@@ -28,15 +28,31 @@ pub fn ChannelAdmin() -> impl IntoView {
         "Channels define platform-level external delivery context, targets, enabled module surfaces, and bound OAuth apps.",
     );
     let route_label = t(ui_locale.as_deref(), "channel.route", "Route: {route}");
-    let create_title = t(ui_locale.as_deref(), "channel.create.title", "Create Channel");
+    let create_title = t(
+        ui_locale.as_deref(),
+        "channel.create.title",
+        "Create Channel",
+    );
     let create_subtitle = t(
         ui_locale.as_deref(),
         "channel.create.subtitle",
         "Start small: create the channel first, then attach targets and bindings below.",
     );
-    let slug_placeholder = t(ui_locale.as_deref(), "channel.create.slugPlaceholder", "slug");
-    let name_placeholder = t(ui_locale.as_deref(), "channel.create.namePlaceholder", "name");
-    let creating_label = t(ui_locale.as_deref(), "channel.create.creating", "Creating...");
+    let slug_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.create.slugPlaceholder",
+        "slug",
+    );
+    let name_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.create.namePlaceholder",
+        "name",
+    );
+    let creating_label = t(
+        ui_locale.as_deref(),
+        "channel.create.creating",
+        "Creating...",
+    );
     let create_label = t(ui_locale.as_deref(), "channel.create.submit", "Create");
     let empty_channels_label = t(
         ui_locale.as_deref(),
@@ -282,9 +298,17 @@ fn ChannelCard(
     let oauth_cancel_label = common_cancel_label.clone();
     let common_edit_label = t(ui_locale.as_deref(), "common.edit", "Edit");
     let common_delete_label = t(ui_locale.as_deref(), "common.delete", "Delete");
-    let targets_edit_title = t(ui_locale.as_deref(), "channel.targets.editTitle", "Edit Target");
+    let targets_edit_title = t(
+        ui_locale.as_deref(),
+        "channel.targets.editTitle",
+        "Edit Target",
+    );
     let targets_title_label = t(ui_locale.as_deref(), "channel.targets.title", "Targets");
-    let targets_empty_title = t(ui_locale.as_deref(), "channel.targets.emptyTitle", "No targets yet.");
+    let targets_empty_title = t(
+        ui_locale.as_deref(),
+        "channel.targets.emptyTitle",
+        "No targets yet.",
+    );
     let targets_empty_body = t(
         ui_locale.as_deref(),
         "channel.targets.emptyBody",
@@ -295,8 +319,11 @@ fn ChannelCard(
         "channel.targets.valuePlaceholder",
         "example.com or app id",
     );
-    let targets_primary_label =
-        t(ui_locale.as_deref(), "channel.targets.primary", "Primary target");
+    let targets_primary_label = t(
+        ui_locale.as_deref(),
+        "channel.targets.primary",
+        "Primary target",
+    );
     let targets_save_label = t(ui_locale.as_deref(), "channel.targets.save", "Save Target");
     let targets_add_label = t(ui_locale.as_deref(), "channel.targets.add", "Add Target");
     let _targets_primary_summary_template = t(
@@ -314,8 +341,11 @@ fn ChannelCard(
         "channel.modules.editTitle",
         "Edit Module Binding",
     );
-    let modules_title_label =
-        t(ui_locale.as_deref(), "channel.modules.title", "Module Bindings");
+    let modules_title_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.title",
+        "Module Bindings",
+    );
     let modules_empty_title = t(
         ui_locale.as_deref(),
         "channel.modules.emptyTitle",
@@ -327,8 +357,7 @@ fn ChannelCard(
         "Bindings are optional in v0. Add one when this channel should explicitly enable or disable a module surface.",
     );
     let modules_enabled_label = t(ui_locale.as_deref(), "channel.modules.enabled", "enabled");
-    let modules_disabled_label =
-        t(ui_locale.as_deref(), "channel.modules.disabled", "disabled");
+    let modules_disabled_label = t(ui_locale.as_deref(), "channel.modules.disabled", "disabled");
     let modules_no_descriptors_label = t(
         ui_locale.as_deref(),
         "channel.modules.noDescriptors",

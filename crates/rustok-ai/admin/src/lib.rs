@@ -7,12 +7,12 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_location;
-use rustok_api::UiRouteContext;
 #[cfg(not(target_arch = "wasm32"))]
 use model::AiLiveStreamStatePayload;
 use model::AiMetricBucketPayload;
 #[cfg(target_arch = "wasm32")]
 use model::{AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope};
+use rustok_api::UiRouteContext;
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
@@ -82,11 +82,7 @@ pub fn AiAdmin() -> impl IntoView {
     let selected_provider = RwSignal::new(String::new());
     let selected_task_profile = RwSignal::new(String::new());
     let selected_tool_profile = RwSignal::new(String::new());
-    let alloy_title = RwSignal::new(t(
-        ui_locale.as_deref(),
-        "ai.job.alloyTitle",
-        "Alloy Assist",
-    ));
+    let alloy_title = RwSignal::new(t(ui_locale.as_deref(), "ai.job.alloyTitle", "Alloy Assist"));
     let alloy_locale = RwSignal::new(String::new());
     let alloy_operation = RwSignal::new("list_scripts".to_string());
     let alloy_script_id = RwSignal::new(String::new());
@@ -94,11 +90,7 @@ pub fn AiAdmin() -> impl IntoView {
     let alloy_script_source = RwSignal::new(String::new());
     let alloy_runtime_payload = RwSignal::new(String::new());
     let alloy_prompt = RwSignal::new(String::new());
-    let image_title = RwSignal::new(t(
-        ui_locale.as_deref(),
-        "ai.job.imageTitle",
-        "Media Image",
-    ));
+    let image_title = RwSignal::new(t(ui_locale.as_deref(), "ai.job.imageTitle", "Media Image"));
     let image_locale = RwSignal::new(String::new());
     let image_prompt = RwSignal::new(String::new());
     let image_negative_prompt = RwSignal::new(String::new());
@@ -122,11 +114,7 @@ pub fn AiAdmin() -> impl IntoView {
     let product_source_meta_description = RwSignal::new(String::new());
     let product_copy_instructions = RwSignal::new(String::new());
     let product_assistant_prompt = RwSignal::new(String::new());
-    let blog_title = RwSignal::new(t(
-        ui_locale.as_deref(),
-        "ai.job.blogTitle",
-        "Blog Draft",
-    ));
+    let blog_title = RwSignal::new(t(ui_locale.as_deref(), "ai.job.blogTitle", "Blog Draft"));
     let blog_locale = RwSignal::new(String::new());
     let blog_post_id = RwSignal::new(String::new());
     let blog_source_locale = RwSignal::new(String::new());
@@ -2085,7 +2073,11 @@ fn bucket_summary(locale: Option<&str>, buckets: &[AiMetricBucketPayload]) -> St
 
 fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) -> String {
     if runs.is_empty() {
-        return t(locale, "ai.diagnostics.noRecentEvents", "No recent events yet.");
+        return t(
+            locale,
+            "ai.diagnostics.noRecentEvents",
+            "No recent events yet.",
+        );
     }
 
     let failed = runs.iter().filter(|run| run.status == "failed").count();
@@ -2115,9 +2107,7 @@ fn stream_event_kind_label(
     value: &model::AiRunStreamEventKindPayload,
 ) -> String {
     match value {
-        model::AiRunStreamEventKindPayload::Started => {
-            t(locale, "ai.status.started", "STARTED")
-        }
+        model::AiRunStreamEventKindPayload::Started => t(locale, "ai.status.started", "STARTED"),
         model::AiRunStreamEventKindPayload::Delta => t(locale, "ai.status.delta", "DELTA"),
         model::AiRunStreamEventKindPayload::Completed => {
             t(locale, "ai.status.completed", "COMPLETED")
@@ -2172,7 +2162,12 @@ fn tool_profile_summary(
     .replace("{state}", active_state_label(locale, active).as_str())
 }
 
-fn task_profile_summary(locale: Option<&str>, capability: &str, mode: &str, active: bool) -> String {
+fn task_profile_summary(
+    locale: Option<&str>,
+    capability: &str,
+    mode: &str,
+    active: bool,
+) -> String {
     t(
         locale,
         "ai.summary.taskProfileList",
@@ -2231,7 +2226,12 @@ fn session_list_summary(
     .replace("{approvals}", approvals.to_string().as_str())
 }
 
-fn session_profile_summary(locale: Option<&str>, provider: &str, model: &str, mode: &str) -> String {
+fn session_profile_summary(
+    locale: Option<&str>,
+    provider: &str,
+    model: &str,
+    mode: &str,
+) -> String {
     t(
         locale,
         "ai.summary.sessionProfile",
@@ -2246,16 +2246,24 @@ fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>, resolved: 
     let requested_value = requested
         .map(ToString::to_string)
         .unwrap_or_else(|| t(locale, "ai.common.auto", "auto"));
-    t(locale, "ai.summary.localeFlow", "locale: {requested} -> {resolved}")
-        .replace("{requested}", requested_value.as_str())
-        .replace("{resolved}", resolved)
+    t(
+        locale,
+        "ai.summary.localeFlow",
+        "locale: {requested} -> {resolved}",
+    )
+    .replace("{requested}", requested_value.as_str())
+    .replace("{resolved}", resolved)
 }
 
 fn run_path_summary(locale: Option<&str>, status: &str, mode: &str, path: &str) -> String {
-    t(locale, "ai.summary.runPath", "{status} · {mode} · path {path}")
-        .replace("{status}", status)
-        .replace("{mode}", mode)
-        .replace("{path}", path)
+    t(
+        locale,
+        "ai.summary.runPath",
+        "{status} · {mode} · path {path}",
+    )
+    .replace("{status}", status)
+    .replace("{mode}", mode)
+    .replace("{path}", path)
 }
 
 fn tool_trace_summary(locale: Option<&str>, status: &str, duration_ms: i64) -> String {
@@ -2383,10 +2391,7 @@ fn graphql_ws_url() -> String {
 
 #[cfg(target_arch = "wasm32")]
 fn browser_admin_locale(preferred: Option<&str>) -> Option<String> {
-    if let Some(preferred) = preferred
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(preferred) = preferred.map(str::trim).filter(|value| !value.is_empty()) {
         return Some(preferred.to_string());
     }
     let window = web_sys::window()?;

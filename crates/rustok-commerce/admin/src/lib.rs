@@ -25,8 +25,7 @@ pub fn CommerceAdmin() -> impl IntoView {
 
     let (editing_id, set_editing_id) = signal(Option::<String>::None);
     let (selected, set_selected) = signal(Option::<ProductDetail>::None);
-    let (locale, set_locale) =
-        signal(ui_locale.clone().unwrap_or_else(|| "en".to_string()));
+    let (locale, set_locale) = signal(ui_locale.clone().unwrap_or_else(|| "en".to_string()));
     let (title, set_title) = signal(String::new());
     let (handle, set_handle) = signal(String::new());
     let (description, set_description) = signal(String::new());
@@ -211,11 +210,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         "commerce.field.primarySku",
         "Primary SKU",
     );
-    let currency_placeholder_label = t(
-        ui_locale.as_deref(),
-        "commerce.field.currency",
-        "Currency",
-    );
+    let currency_placeholder_label = t(ui_locale.as_deref(), "commerce.field.currency", "Currency");
     let price_placeholder_label = t(ui_locale.as_deref(), "commerce.field.price", "Price");
     let inventory_placeholder_label = t(
         ui_locale.as_deref(),
@@ -650,10 +645,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                     set_shipping_metadata_json,
                 ),
                 Ok(None) => set_shipping_error.set(Some(not_found_label)),
-                Err(err) => {
-                    set_shipping_error
-                        .set(Some(format!("{load_error_label}: {err}")))
-                }
+                Err(err) => set_shipping_error.set(Some(format!("{load_error_label}: {err}"))),
             }
             set_shipping_busy.set(false);
         });
@@ -693,8 +685,9 @@ pub fn CommerceAdmin() -> impl IntoView {
                     set_shipping_profile_metadata_json,
                 ),
                 Ok(None) => set_shipping_profile_error.set(Some(not_found_label)),
-                Err(err) => set_shipping_profile_error
-                    .set(Some(format!("{load_error_label}: {err}"))),
+                Err(err) => {
+                    set_shipping_profile_error.set(Some(format!("{load_error_label}: {err}")))
+                }
             }
             set_shipping_profile_busy.set(false);
         });
@@ -819,8 +812,7 @@ pub fn CommerceAdmin() -> impl IntoView {
     let submit_shipping_option = move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_error
-                .set(Some(submit_shipping_option_bootstrap_loading_label.clone()));
+            set_shipping_error.set(Some(submit_shipping_option_bootstrap_loading_label.clone()));
             return;
         };
         let draft = ShippingOptionDraft {
@@ -894,8 +886,9 @@ pub fn CommerceAdmin() -> impl IntoView {
     let submit_shipping_profile = move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_profile_error
-                .set(Some(submit_shipping_profile_bootstrap_loading_label.clone()));
+            set_shipping_profile_error.set(Some(
+                submit_shipping_profile_bootstrap_loading_label.clone(),
+            ));
             return;
         };
         let draft = ShippingProfileDraft {
@@ -997,8 +990,7 @@ pub fn CommerceAdmin() -> impl IntoView {
             };
             match result {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-                Err(err) => set_error
-                    .set(Some(format!("{change_status_error_label}: {err}"))),
+                Err(err) => set_error.set(Some(format!("{change_status_error_label}: {err}"))),
             }
             set_busy.set(false);
         });
@@ -1120,8 +1112,9 @@ pub fn CommerceAdmin() -> impl IntoView {
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_shipping_error
-                    .set(Some(format!("{change_status_error_label}: {err}"))),
+                Err(err) => {
+                    set_shipping_error.set(Some(format!("{change_status_error_label}: {err}")))
+                }
             }
             set_shipping_busy.set(false);
         });
@@ -1131,8 +1124,9 @@ pub fn CommerceAdmin() -> impl IntoView {
     let toggle_shipping_profile_error_label = toggle_shipping_profile_error_label.clone();
     let toggle_shipping_profile = Callback::new(move |profile: ShippingProfile| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_profile_error
-                .set(Some(toggle_shipping_profile_bootstrap_loading_label.clone()));
+            set_shipping_profile_error.set(Some(
+                toggle_shipping_profile_bootstrap_loading_label.clone(),
+            ));
             return;
         };
         let token_value = token.get_untracked();
@@ -1746,9 +1740,17 @@ fn summarize_selected(locale: Option<&str>, product: &ProductDetail) -> String {
         "{title} | {} {} | {} {price} | {} {inventory} | {} {shipping_profile}",
         t(locale, "commerce.summary.product.status", "status"),
         localized_product_status(locale, product.status.as_str()),
-        t(locale, "commerce.summary.product.primaryVariantPrice", "primary variant price"),
+        t(
+            locale,
+            "commerce.summary.product.primaryVariantPrice",
+            "primary variant price"
+        ),
         t(locale, "commerce.summary.product.inventory", "inventory"),
-        t(locale, "commerce.summary.product.shippingProfile", "shipping profile"),
+        t(
+            locale,
+            "commerce.summary.product.shippingProfile",
+            "shipping profile"
+        ),
     )
 }
 
@@ -1758,9 +1760,17 @@ fn summarize_shipping_option(locale: Option<&str>, option: &ShippingOption) -> S
         option.name,
         option.currency_code,
         option.amount,
-        t(locale, "commerce.summary.shippingOption.provider", "provider"),
+        t(
+            locale,
+            "commerce.summary.shippingOption.provider",
+            "provider"
+        ),
         option.provider_id,
-        t(locale, "commerce.summary.shippingOption.profiles", "profiles"),
+        t(
+            locale,
+            "commerce.summary.shippingOption.profiles",
+            "profiles"
+        ),
         format_allowed_profiles(locale, option.allowed_shipping_profile_slugs.as_ref())
     )
 }
@@ -1771,10 +1781,11 @@ fn summarize_shipping_profile(locale: Option<&str>, profile: &ShippingProfile) -
         profile.name,
         profile.slug,
         localized_active_label(locale, profile.active),
-        profile
-            .description
-            .clone()
-            .unwrap_or_else(|| t(locale, "commerce.summary.shippingProfile.noDescription", "no description"))
+        profile.description.clone().unwrap_or_else(|| t(
+            locale,
+            "commerce.summary.shippingProfile.noDescription",
+            "no description"
+        ))
     )
 }
 
@@ -1846,8 +1857,12 @@ fn format_product_meta(locale: Option<&str>, handle: &str, vendor: Option<&str>)
 }
 
 fn format_product_shipping_profile(locale: Option<&str>, slug: &str) -> String {
-    t(locale, "commerce.summary.product.profileChip", "profile {slug}")
-        .replace("{slug}", slug)
+    t(
+        locale,
+        "commerce.summary.product.profileChip",
+        "profile {slug}",
+    )
+    .replace("{slug}", slug)
 }
 
 fn shipping_profile_chip_class(selected: bool, inactive: bool) -> &'static str {

@@ -73,11 +73,7 @@ pub fn CommentsAdmin() -> impl IntoView {
     let (target_type_filter, set_target_type_filter) = signal(String::new());
     let (thread_status_filter, set_thread_status_filter) = signal("all".to_string());
     let (comment_status_filter, set_comment_status_filter) = signal("all".to_string());
-    let (locale, set_locale) = signal(
-        ui_locale
-            .clone()
-            .unwrap_or_else(|| "en".to_string()),
-    );
+    let (locale, set_locale) = signal(ui_locale.clone().unwrap_or_else(|| "en".to_string()));
     let (mutation_error, set_mutation_error) = signal(Option::<String>::None);
     let (_busy_key, set_busy_key) = signal(Option::<String>::None);
 
@@ -118,13 +114,11 @@ pub fn CommentsAdmin() -> impl IntoView {
         move |(_, _, thread_id, _, locale_value)| async move {
             match thread_id {
                 Some(thread_id) => api::fetch_thread_detail(thread_id, locale_value, 1, 100).await,
-                None => Err(api::ApiError::ServerFn(
-                    t(
-                        Some("en"),
-                        "comments.error.selectThread",
-                        "Select a thread first",
-                    ),
-                )),
+                None => Err(api::ApiError::ServerFn(t(
+                    Some("en"),
+                    "comments.error.selectThread",
+                    "Select a thread first",
+                ))),
             }
         },
     );
@@ -167,16 +161,14 @@ pub fn CommentsAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::set_comment_status(comment_id, status, locale_value.clone()).await {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-                Err(err) => {
-                    set_mutation_error.set(Some(format!(
-                        "{}: {err}",
-                        t(
-                            Some(locale_value.as_str()),
-                            "comments.error.updateComment",
-                            "Failed to update comment",
-                        )
-                    )))
-                }
+                Err(err) => set_mutation_error.set(Some(format!(
+                    "{}: {err}",
+                    t(
+                        Some(locale_value.as_str()),
+                        "comments.error.updateComment",
+                        "Failed to update comment",
+                    )
+                ))),
             }
             set_busy_key.set(None);
         });

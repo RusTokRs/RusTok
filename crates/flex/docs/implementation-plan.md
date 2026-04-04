@@ -13,29 +13,48 @@
 | Phase 1 | Migration helper, FlexError, FieldDefRegistry, events | ✅ Done |
 | Phase 2 | Users (первый потребитель) | ✅ Done |
 | Phase 3 | Admin API (GraphQL CRUD, RBAC, кеш, пагинация) | ✅ Done |
-| Phase 4 | Commerce, Content, Forum | 🔄 В основном выполнено, есть долги |
-| Phase 4.5 | Вынос в `crates/flex` | 🔄 В процессе |
-| Phase 5 | Standalone mode | 🔄 Начат (контракты в `crates/flex`) |
+| Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | 🔄 Частично готово, есть расхождения между docs, migrator wiring и donor write-path |
+| Phase 4.5 | Вынос в `crates/flex` | 🔄 Почти завершён, остаются verification/docs долги |
+| Phase 4.6 | Ghost-module manifest integration | ⬜ Не начат |
+| Phase 5 | Standalone mode | 🔄 Начат (контракты и adapter-layer есть, live API surface ещё не опубликован) |
 | Phase 6 | Advanced features | ⬜ Не начат |
 
 ---
 
-## Phase 4 — Долги (Commerce, Content, Forum)
+## Phase 4 — Долги attached mode
 
-### Pre-req
+Flex в attached-mode уже умеет хранить field definitions и маршрутизировать CRUD по
+`entity_type`, но текущее состояние неравномерное:
 
-- [ ] Добавить `metadata JSONB` колонку в таблицу `orders`
-  - Нужна миграция в `apps/server/migration/`
-  - Без этого `order_field_definitions` таблица создана, но данные некуда писать
+- `user` — полный путь schema CRUD + donor write-path validation живой.
+- `product` / `order` / `topic` — schema CRUD зарегистрирован в registry, но donor write-path parity
+  нужно отдельно подтвердить или явно задокументировать как pending.
+- `node` — фигурирует в модульной документации Flex как attached consumer, но в текущем registry/API
+  route для `node` не смонтирован.
+
+### Canonical scope / wiring
+
+- [ ] Зафиксировать канонический список live attached consumers
+  - В docs сейчас заявлены `user`, `product`, `order`, `node`, `topic`.
+  - В registry/API реально смонтированы `user`, `product`, `order`, `topic`.
+  - Нужно либо добавить `node` service/route, либо убрать `node` из live-contract документации.
+- [ ] Выправить migrator ownership для attached migrations
+  - `product_field_definitions` и `order_field_definitions` приезжают из owning crate migrations.
+  - `topic_field_definitions` лежит в `apps/server/migration`, но не подключён в `Migrator`.
+  - Нужно либо зарегистрировать server migration, либо перенести ownership migration в owning crate.
+
+### Donor write-path parity
+
+- [ ] Подтвердить и зафиксировать donor write-path integration для `product`, `order`, `topic`
+  - Для `user` validation/defaults/strip_unknown уже подключены в GraphQL mutation flow.
+  - Для остальных attached consumers нужно либо добавить аналогичный write-path, либо явно отметить current state как schema-only admin surface.
 
 ### Тесты (integration pending)
 
-- [ ] `UserFieldService`: интеграционные CRUD/validation сценарии
-  - unit-тесты: guardrails, events, not-found ветки — есть
-  - integration: GraphQL CRUD + validation flow — pending
-- [ ] GraphQL Admin API: интеграционные сценарии RBAC, cache invalidation, pagination
-  - unit-тесты: есть
-  - integration: pending
+- [ ] Flex GraphQL CRUD: интеграционные сценарии list/find/create/update/delete/reorder
+- [ ] Cache invalidation: integration/e2e сценарии на `FieldDefinition*` events
+- [ ] RBAC integration: explicit typed permission gates для Flex surfaces
+- [ ] Attached validation flows: end-to-end проверка donor write-path там, где Flex уже заявлен live
 
 ---
 
@@ -45,7 +64,7 @@
 оставив в `apps/server` только transport/adapters (GraphQL, RBAC gate, bootstrap wiring).
 
 **Go/No-Go критерии для старта:**
-1. Закрыт pre-req по `orders.metadata`
+1. Закрыты attached-mode wiring долги по live consumers
 2. Есть полный интеграционный прогон Flex GraphQL CRUD + cache invalidation
 3. Нет незакрытых P1-багов по текущей registry маршрутизации
 
@@ -70,6 +89,39 @@
   - В workspace остаётся единый agnostic модуль `crates/flex`
 - [x] Убрать дублирование между `apps/server` и `crates/flex`
 - [x] Написать migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
+
+### Что осталось закрыть перед финализацией phase
+
+- [ ] Полный integration прогон GraphQL CRUD + cache invalidation
+- [ ] Синхронизировать docs с реальным registry routing и migrator ownership
+- [ ] Оставшееся server-side дублирование выделять в `crates/flex` только если это действительно transport-agnostic контракт, а не adapter concern
+
+---
+
+## Phase 4.6 — Ghost-module manifest integration
+
+Цель: формализовать `flex` как capability / ghost module в manifest-driven module system,
+а не как «обычный» доменный модуль.
+
+### Checklist
+
+- [ ] Добавить `crates/flex/rustok-module.toml`
+  - Минимальный contract должен быть выровнен с capability-модулями наподобие `alloy`.
+  - Manifest не должен заявлять ownership над donor persistence (`users.metadata`, `orders.metadata`, `nodes.metadata` и т.д.).
+- [ ] Зафиксировать в manifest и docs семантику ghost module
+  - `flex` расширяет donor modules custom contracts.
+  - Данные attached-mode остаются в donor tables и donor write-path.
+  - Сам `flex` поставляет shared orchestration / runtime capability, а не новый bounded context.
+- [ ] Определить policy для runtime surfaces
+  - Если standalone API ещё не live, manifest не должен притворяться publish-ready модулем с завершённым GraphQL/HTTP contract.
+  - Если standalone surface будет открываться поэтапно, manifest и docs должны явно отражать staged rollout.
+- [ ] Прогнать manifest validation flow
+  - `cargo xtask module validate flex`
+  - `cargo xtask module test flex`
+- [ ] Обновить central module docs после появления manifest
+  - `docs/modules/_index.md`
+  - `docs/modules/registry.md`
+  - при необходимости `docs/modules/manifest.md`
 
 ---
 
@@ -121,19 +173,26 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 
 ### Checklist
 
-- [x] Миграции для `flex_schemas`, `flex_entries` *(добавлена migration `m20260317_000001_create_flex_standalone_tables` в `apps/server/migration`)*
+- [~] Миграции для `flex_schemas`, `flex_entries`
+  - Файл migration добавлен: `m20260317_000001_create_flex_standalone_tables`
+  - Migration ещё не подключена в `apps/server/migration/src/lib.rs`, значит schema не считается live через canonical server migrator
 - [x] SeaORM entities *(добавлены `flex_schemas` и `flex_entries` в `apps/server/src/models/_entities` + re-export в `models/`)*
 - [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
 - [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
 - [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{slug}/entries`
 - [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations
-- [ ] RBAC permissions: `flex.schemas.*`, `flex.entries.*` → добавить в `RusToKModule::permissions()`
+- [~] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
+  - Typed permissions уже есть в `rustok-core`
+  - Standalone surfaces пока не используют полный `flex.entries.*` contract
 - [ ] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler
 - [ ] Cascade delete: при удалении entity удалять attached flex entries
 - [ ] Guardrail: max relation depth = 1 (no recursive populate)
+- [ ] Решить publish policy для standalone surface через ghost-module manifest
 - [ ] Тесты: unit + integration
-- [ ] Документация
+- [~] Документация
+  - Контракты и data model описаны
+  - Live API / rollout / governance contract для standalone surface ещё не задокументирован как completed
 
 ### События standalone mode
 

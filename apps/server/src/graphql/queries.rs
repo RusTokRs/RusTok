@@ -496,6 +496,21 @@ fn registry_module_lifecycle_from_snapshot(
                 },
             )
             .collect(),
+        validation_stages: snapshot
+            .validation_stages
+            .into_iter()
+            .map(
+                |stage| crate::graphql::types::RegistryValidationStageLifecycle {
+                    key: stage.key,
+                    status: stage.status,
+                    detail: stage.detail,
+                    attempt_number: stage.attempt_number,
+                    updated_at: stage.updated_at,
+                    started_at: stage.started_at,
+                    finished_at: stage.finished_at,
+                },
+            )
+            .collect(),
     }
 }
 

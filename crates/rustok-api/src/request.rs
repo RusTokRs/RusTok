@@ -68,8 +68,11 @@ where
             .get::<ResolvedRequestLocale>()
             .map(|resolved| resolved.effective_locale.clone())
             .unwrap_or_else(|| {
-                resolve_request_locale(parts, tenant_context.map(|tenant| tenant.default_locale.as_str()))
-                    .effective_locale
+                resolve_request_locale(
+                    parts,
+                    tenant_context.map(|tenant| tenant.default_locale.as_str()),
+                )
+                .effective_locale
             });
         let channel_context = parts
             .extensions
@@ -88,7 +91,10 @@ where
     }
 }
 
-pub fn resolve_request_locale(parts: &Parts, tenant_default_locale: Option<&str>) -> ResolvedRequestLocale {
+pub fn resolve_request_locale(
+    parts: &Parts,
+    tenant_default_locale: Option<&str>,
+) -> ResolvedRequestLocale {
     let requested_locale = extract_requested_locale(parts);
     let effective_locale = requested_locale
         .clone()

@@ -23,14 +23,16 @@ use crate::services::marketplace_catalog::{
     legacy_registry_catalog_module_path, legacy_registry_catalog_path,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
-    registry_publish_path, registry_publish_reject_path, registry_publish_status_path,
-    registry_publish_validate_path, registry_yank_path, validate_registry_mutation_schema_version,
-    RegistryCatalogModule, RegistryCatalogResponse, RegistryMutationResponse,
-    RegistryOwnerTransferRequest, RegistryPublishDecisionRequest, RegistryPublishRequest,
-    RegistryPublishStatusResponse, RegistryPublishValidationRequest, RegistryYankRequest,
+    registry_publish_path, registry_publish_reject_path, registry_publish_stage_report_path,
+    registry_publish_status_path, registry_publish_validate_path, registry_yank_path,
+    validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
+    RegistryMutationResponse, RegistryOwnerTransferRequest, RegistryPublishDecisionRequest,
+    RegistryPublishRequest, RegistryPublishStatusResponse, RegistryPublishValidationRequest,
+    RegistryValidationStageReportRequest, RegistryYankRequest,
 };
 use crate::services::registry_governance::{
-    release_status_label, request_status_label, RegistryArtifactUpload, RegistryGovernanceService,
+    release_status_label, request_status_label, validation_stage_status_label,
+    RegistryArtifactUpload, RegistryGovernanceService,
 };
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -424,21 +426,27 @@ async fn validate_publish_request_step(
     }
 
     let governance = RegistryGovernanceService::new(ctx.db.clone());
-    let (validated, queued) = governance
+    let validation = governance
         .validate_publish_request(&request_id, &actor)
         .await
         .map_err(map_registry_governance_error)?;
-    if queued {
+    if validation.queued {
         let db = ctx.db.clone();
-        let request_id = validated.id.clone();
+        let request_id = validation.request.id.clone();
+        let validation_job_id = validation.validation_job_id.clone().ok_or_else(|| {
+            Error::Message(format!(
+                "Validation was queued for publish request '{request_id}', but no validation job id was returned"
+            ))
+        })?;
         let actor = actor.clone();
         tokio::spawn(async move {
             if let Err(error) = RegistryGovernanceService::new(db)
-                .run_publish_validation_job(&request_id, &actor)
+                .run_publish_validation_job(&validation_job_id, &actor)
                 .await
             {
                 tracing::error!(
                     error = %error,
+                    validation_job_id = %validation_job_id,
                     request_id = %request_id,
                     actor = %actor,
                     "Background registry publish validation failed"
@@ -447,6 +455,7 @@ async fn validate_publish_request_step(
         });
     }
 
+    let validated = validation.request;
     let status_code = if validated.status
         == crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating
     {
@@ -469,6 +478,105 @@ async fn validate_publish_request_step(
             warnings: deserialize_message_list(&validated.validation_warnings),
             errors: deserialize_message_list(&validated.validation_errors),
             next_step: publish_request_next_step(&validated.status, &validated.id),
+        }),
+    ))
+}
+
+/// POST /v2/catalog/publish/{request_id}/stages - Record or requeue an external validation stage
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/stages",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryValidationStageReportRequest,
+    responses(
+        (
+            status = 200,
+            description = "Dry-run preview or live validation stage update accepted",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Validation stage update failed lifecycle or governance checks"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        )
+    )
+)]
+async fn report_validation_stage(
+    State(ctx): State<AppContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryValidationStageReportRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    validate_validation_stage_report_request(&request)?;
+    let existing = RegistryGovernanceService::new(ctx.db.clone())
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    let actor = request_actor_from_headers(&headers);
+
+    if request.dry_run {
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "validation_stage".to_string(),
+                dry_run: true,
+                accepted: true,
+                request_id: Some(request_id),
+                status: Some(request.status.trim().to_ascii_lowercase()),
+                slug: existing.slug,
+                version: existing.version,
+                warnings: Vec::new(),
+                errors: Vec::new(),
+                next_step: Some(
+                    "Dry-run preview only. Re-run with dry_run=false to persist the validation stage update."
+                        .to_string(),
+                ),
+            }),
+        ));
+    }
+
+    let result = RegistryGovernanceService::new(ctx.db.clone())
+        .report_validation_stage(
+            &request_id,
+            &actor,
+            &request.stage,
+            &request.status,
+            request.detail.as_deref(),
+            request.requeue,
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "validation_stage".to_string(),
+            dry_run: false,
+            accepted: true,
+            request_id: Some(result.request.id.clone()),
+            status: Some(validation_stage_status_label(result.stage.status).to_string()),
+            slug: result.request.slug,
+            version: result.request.version,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            next_step: Some(format!(
+                "Inspect {} for the updated publish lifecycle and follow-up validation stages.",
+                registry_publish_status_path().replace("{request_id}", &request_id)
+            )),
         }),
     ))
 }
@@ -846,6 +954,10 @@ pub fn routes() -> Routes {
             post(validate_publish_request_step),
         )
         .add(
+            registry_publish_stage_report_path(),
+            post(report_validation_stage),
+        )
+        .add(
             registry_publish_approve_path(),
             post(approve_publish_request),
         )
@@ -1126,6 +1238,35 @@ fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, E
     }
 
     Ok(warnings)
+}
+
+fn validate_validation_stage_report_request(
+    request: &RegistryValidationStageReportRequest,
+) -> Result<(), Error> {
+    let stage = request.stage.trim();
+    if stage.is_empty() {
+        return Err(Error::BadRequest(
+            "Registry validation stage report must include a non-empty stage".to_string(),
+        ));
+    }
+
+    let status = request.status.trim().to_ascii_lowercase();
+    let allowed = ["queued", "running", "passed", "failed", "blocked"];
+    if !allowed.iter().any(|candidate| *candidate == status) {
+        return Err(Error::BadRequest(format!(
+            "Registry validation stage report status '{}' is not supported; expected one of {}",
+            request.status.trim(),
+            allowed.join(", ")
+        )));
+    }
+
+    if request.requeue && status != "queued" {
+        return Err(Error::BadRequest(
+            "Registry validation stage requeue requires status='queued'".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 fn validate_owner_transfer_request(

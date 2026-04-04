@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::entities::module::model::{
     RegistryFollowUpGateLifecycle, RegistryGovernanceEventLifecycle, RegistryModuleLifecycle,
     RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
+    RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
@@ -22,7 +23,7 @@ pub const TENANT_MODULES_QUERY: &str =
 pub const MARKETPLACE_QUERY: &str =
     "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } followUpGates { key status detail updatedAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const ACTIVE_BUILD_QUERY: &str =
     "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ACTIVE_RELEASE_QUERY: &str =
@@ -1818,6 +1819,38 @@ fn map_registry_governance_event_row(
 }
 
 #[cfg(feature = "ssr")]
+fn map_registry_validation_stage_row(
+    row: sea_orm::QueryResult,
+) -> Result<RegistryValidationStageLifecycle, ServerFnError> {
+    Ok(RegistryValidationStageLifecycle {
+        key: row
+            .try_get("", "stage_key")
+            .map_err(|err| server_error(err.to_string()))?,
+        status: row
+            .try_get("", "status")
+            .map_err(|err| server_error(err.to_string()))?,
+        detail: row
+            .try_get("", "detail")
+            .map_err(|err| server_error(err.to_string()))?,
+        attempt_number: row
+            .try_get("", "attempt_number")
+            .map_err(|err| server_error(err.to_string()))?,
+        updated_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "updated_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+        started_at: row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "started_at")
+            .map(|value| value.map(|value| value.to_rfc3339()))
+            .map_err(|err| server_error(err.to_string()))?,
+        finished_at: row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "finished_at")
+            .map(|value| value.map(|value| value.to_rfc3339()))
+            .map_err(|err| server_error(err.to_string()))?,
+    })
+}
+
+#[cfg(feature = "ssr")]
 fn registry_follow_up_gate_detail(key: &str) -> &'static str {
     match key {
         "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
@@ -1832,10 +1865,103 @@ fn registry_follow_up_gate_detail(key: &str) -> &'static str {
 }
 
 #[cfg(feature = "ssr")]
+fn derive_registry_validation_stages(
+    latest_request: Option<&RegistryPublishRequestLifecycle>,
+    recent_events: &[RegistryGovernanceEventLifecycle],
+    stage_rows: &[RegistryValidationStageLifecycle],
+) -> Vec<RegistryValidationStageLifecycle> {
+    let gate_keys = ["compile_smoke", "targeted_tests", "security_policy_review"];
+    let mut stages = Vec::new();
+
+    for gate_key in gate_keys {
+        if let Some(stage) = stage_rows.iter().find(|stage| stage.key == gate_key) {
+            stages.push(stage.clone());
+            continue;
+        }
+
+        let latest_event = recent_events.iter().find(|event| {
+            matches!(
+                event.event_type.as_str(),
+                "follow_up_gate_queued" | "follow_up_gate_passed" | "follow_up_gate_failed"
+            ) && event
+                .details
+                .get("gate")
+                .and_then(serde_json::Value::as_str)
+                == Some(gate_key)
+        });
+
+        if let Some(event) = latest_event {
+            let status = event
+                .details
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| match event.event_type.as_str() {
+                    "follow_up_gate_passed" => "passed",
+                    "follow_up_gate_failed" => "failed",
+                    _ => "queued",
+                });
+            stages.push(RegistryValidationStageLifecycle {
+                key: gate_key.to_string(),
+                status: if status.eq_ignore_ascii_case("pending") {
+                    "queued".to_string()
+                } else {
+                    status.to_string()
+                },
+                detail: event
+                    .details
+                    .get("detail")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| registry_follow_up_gate_detail(gate_key))
+                    .to_string(),
+                attempt_number: 0,
+                updated_at: event.created_at.clone(),
+                started_at: None,
+                finished_at: None,
+            });
+            continue;
+        }
+
+        if latest_request
+            .is_some_and(|request| matches!(request.status.as_str(), "approved" | "published"))
+        {
+            stages.push(RegistryValidationStageLifecycle {
+                key: gate_key.to_string(),
+                status: "queued".to_string(),
+                detail: registry_follow_up_gate_detail(gate_key).to_string(),
+                attempt_number: 0,
+                updated_at: latest_request
+                    .map(|request| request.updated_at.clone())
+                    .unwrap_or_default(),
+                started_at: None,
+                finished_at: None,
+            });
+        }
+    }
+
+    stages
+}
+
+#[cfg(feature = "ssr")]
 fn derive_registry_follow_up_gates(
+    validation_stages: &[RegistryValidationStageLifecycle],
     latest_request: Option<&RegistryPublishRequestLifecycle>,
     recent_events: &[RegistryGovernanceEventLifecycle],
 ) -> Vec<RegistryFollowUpGateLifecycle> {
+    if !validation_stages.is_empty() {
+        return validation_stages
+            .iter()
+            .map(|stage| RegistryFollowUpGateLifecycle {
+                key: stage.key.clone(),
+                status: match stage.status.as_str() {
+                    "queued" => "pending".to_string(),
+                    other => other.to_string(),
+                },
+                detail: stage.detail.clone(),
+                updated_at: stage.updated_at.clone(),
+            })
+            .collect();
+    }
+
     let gate_keys = ["compile_smoke", "targeted_tests", "security_policy_review"];
     let mut gates = Vec::new();
 
@@ -2054,7 +2180,6 @@ async fn load_registry_module_lifecycle(
             [slug.into()],
         ),
     };
-
     let owner_binding = app_ctx
         .db
         .query_one(owner_statement)
@@ -2069,6 +2194,42 @@ async fn load_registry_module_lifecycle(
         .map_err(|err| server_error(err.to_string()))?
         .map(map_registry_publish_request_row)
         .transpose()?;
+    let stage_statement = latest_request.as_ref().map(|request| match backend {
+        DbBackend::Sqlite => Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            r#"
+                SELECT
+                    stage_key,
+                    status,
+                    detail,
+                    attempt_number,
+                    updated_at,
+                    started_at,
+                    finished_at
+                FROM registry_validation_stages
+                WHERE request_id = ?
+                ORDER BY attempt_number DESC, created_at DESC
+                "#,
+            [request.id.clone().into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+                SELECT
+                    stage_key,
+                    status,
+                    detail,
+                    attempt_number,
+                    updated_at,
+                    started_at,
+                    finished_at
+                FROM registry_validation_stages
+                WHERE request_id = $1
+                ORDER BY attempt_number DESC, created_at DESC
+                "#,
+            [request.id.clone().into()],
+        ),
+    });
     let latest_release = app_ctx
         .db
         .query_one(release_statement)
@@ -2084,16 +2245,38 @@ async fn load_registry_module_lifecycle(
         .into_iter()
         .map(map_registry_governance_event_row)
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    let validation_stage_rows = if let Some(stage_statement) = stage_statement {
+        app_ctx
+            .db
+            .query_all(stage_statement)
+            .await
+            .map_err(|err| server_error(err.to_string()))?
+            .into_iter()
+            .map(map_registry_validation_stage_row)
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    } else {
+        Vec::new()
+    };
 
     if owner_binding.is_none()
         && latest_request.is_none()
         && latest_release.is_none()
         && recent_events.is_empty()
+        && validation_stage_rows.is_empty()
     {
         return Ok(None);
     }
 
-    let follow_up_gates = derive_registry_follow_up_gates(latest_request.as_ref(), &recent_events);
+    let validation_stages = derive_registry_validation_stages(
+        latest_request.as_ref(),
+        &recent_events,
+        &validation_stage_rows,
+    );
+    let follow_up_gates = derive_registry_follow_up_gates(
+        &validation_stages,
+        latest_request.as_ref(),
+        &recent_events,
+    );
 
     Ok(Some(RegistryModuleLifecycle {
         owner_binding,
@@ -2101,6 +2284,7 @@ async fn load_registry_module_lifecycle(
         latest_release,
         recent_events,
         follow_up_gates,
+        validation_stages,
     }))
 }
 

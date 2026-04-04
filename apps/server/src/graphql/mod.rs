@@ -24,6 +24,7 @@ pub mod queries;
 pub mod rbac;
 pub mod schema;
 pub mod search;
+pub mod security;
 pub mod settings;
 pub mod subscriptions;
 pub mod system;

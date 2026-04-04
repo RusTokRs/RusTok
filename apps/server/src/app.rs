@@ -229,6 +229,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
     use migration::Migrator;
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
     use sea_orm_migration::MigratorTrait;
     use serde_json::Value;
     use serial_test::serial;
@@ -879,6 +880,295 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_validation_stage_endpoint_accepts_dry_run_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry validation stage smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let governance =
+            crate::services::registry_governance::RegistryGovernanceService::new(ctx.db.clone());
+        let created = governance
+            .create_publish_request(
+                &crate::services::marketplace_catalog::RegistryPublishRequest {
+                    schema_version: 1,
+                    dry_run: false,
+                    module: crate::services::marketplace_catalog::RegistryPublishModuleRequest {
+                        slug: "blog".to_string(),
+                        version: "0.1.0".to_string(),
+                        crate_name: "rustok-blog".to_string(),
+                        name: "Blog".to_string(),
+                        description: "Blog and news module contract preview.".to_string(),
+                        ownership: "first_party".to_string(),
+                        trust_level: "verified".to_string(),
+                        license: "MIT".to_string(),
+                        entry_type: Some("BlogModule".to_string()),
+                        marketplace:
+                            crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest {
+                                category: Some("content".to_string()),
+                                tags: vec!["content".to_string()],
+                            },
+                        ui_packages:
+                            crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest {
+                                admin: None,
+                                storefront: None,
+                            },
+                    },
+                },
+                "xtask:module-publish",
+                Some("publisher:blog"),
+                &[],
+            )
+            .await
+            .expect("publish request should be created for stage dry-run");
+        let mut approved_active =
+            crate::models::registry_publish_request::ActiveModel::from(created.clone());
+        approved_active.status = sea_orm::Set(
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved,
+        );
+        approved_active.validated_at = sea_orm::Set(Some(chrono::Utc::now()));
+        approved_active.approved_at = sea_orm::Set(Some(chrono::Utc::now()));
+        approved_active.updated_at = sea_orm::Set(chrono::Utc::now());
+        let approved = approved_active
+            .update(&ctx.db)
+            .await
+            .expect("request should become approved");
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/stages", approved.id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "stage": "compile_smoke",
+                            "status": "passed",
+                            "detail": "Compile smoke passed in external CI.",
+                            "requeue": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("v2 validation stage request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v2 validation stage body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v2/catalog/publish/{{request_id}}/stages response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value = serde_json::from_slice(&body)
+            .expect("v2 validation stage response should be valid json");
+        assert_eq!(
+            payload.get("action").and_then(Value::as_str),
+            Some("validation_stage")
+        );
+        assert_eq!(payload.get("dry_run").and_then(Value::as_bool), Some(true));
+        assert_eq!(payload.get("accepted").and_then(Value::as_bool), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_validation_stage_endpoint_persists_live_running_update() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry validation stage live update");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        insert_validation_stage(
+            &ctx,
+            &approved,
+            "compile_smoke",
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Queued,
+            1,
+            "Compile smoke queued for operator execution.",
+        )
+        .await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/stages", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "stage": "compile_smoke",
+                            "status": "running",
+                            "detail": "Compile smoke started in external CI.",
+                            "requeue": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("live validation stage request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("live validation stage body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected live /v2/catalog/publish/{{request_id}}/stages response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value = serde_json::from_slice(&body)
+            .expect("live validation stage response should be valid json");
+        assert_eq!(
+            payload.get("action").and_then(Value::as_str),
+            Some("validation_stage")
+        );
+        assert_eq!(payload.get("dry_run").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            payload.get("status").and_then(Value::as_str),
+            Some("running")
+        );
+
+        let persisted = crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id))
+            .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
+            .order_by_desc(crate::models::registry_validation_stage::Column::AttemptNumber)
+            .one(&ctx.db)
+            .await
+            .expect("stage lookup should succeed")
+            .expect("stage row should persist");
+        assert_eq!(
+            persisted.status,
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Running
+        );
+        assert_eq!(persisted.attempt_number, 1);
+        assert_eq!(persisted.detail, "Compile smoke started in external CI.");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_validation_stage_endpoint_rejects_invalid_live_transition() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry validation stage rejection");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        insert_validation_stage(
+            &ctx,
+            &approved,
+            "compile_smoke",
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Passed,
+            1,
+            "Compile smoke already passed in external CI.",
+        )
+        .await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/stages", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "stage": "compile_smoke",
+                            "status": "running",
+                            "detail": "Attempting to restart a completed stage.",
+                            "requeue": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("invalid transition request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("invalid transition body should read");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "unexpected invalid transition response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let persisted = crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id))
+            .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
+            .order_by_desc(crate::models::registry_validation_stage::Column::AttemptNumber)
+            .one(&ctx.db)
+            .await
+            .expect("stage lookup should succeed")
+            .expect("stage row should still exist");
+        assert_eq!(
+            persisted.status,
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Passed
+        );
+        assert_eq!(persisted.attempt_number, 1);
+        assert_eq!(
+            persisted.detail,
+            "Compile smoke already passed in external CI."
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
@@ -1051,5 +1341,87 @@ mod tests {
             .await
             .expect("registry-only admin request should complete");
         assert_eq!(admin_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    async fn create_approved_publish_request(
+        ctx: &loco_rs::app::AppContext,
+    ) -> crate::models::registry_publish_request::Model {
+        let governance =
+            crate::services::registry_governance::RegistryGovernanceService::new(ctx.db.clone());
+        let created = governance
+            .create_publish_request(
+                &crate::services::marketplace_catalog::RegistryPublishRequest {
+                    schema_version: 1,
+                    dry_run: false,
+                    module: crate::services::marketplace_catalog::RegistryPublishModuleRequest {
+                        slug: "blog".to_string(),
+                        version: "0.1.0".to_string(),
+                        crate_name: "rustok-blog".to_string(),
+                        name: "Blog".to_string(),
+                        description: "Blog and news module contract preview.".to_string(),
+                        ownership: "first_party".to_string(),
+                        trust_level: "verified".to_string(),
+                        license: "MIT".to_string(),
+                        entry_type: Some("BlogModule".to_string()),
+                        marketplace:
+                            crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest {
+                                category: Some("content".to_string()),
+                                tags: vec!["content".to_string()],
+                            },
+                        ui_packages:
+                            crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest {
+                                admin: None,
+                                storefront: None,
+                            },
+                    },
+                },
+                "xtask:module-publish",
+                Some("publisher:blog"),
+                &[],
+            )
+            .await
+            .expect("publish request should be created");
+        let mut approved_active =
+            crate::models::registry_publish_request::ActiveModel::from(created.clone());
+        approved_active.status =
+            Set(crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved);
+        approved_active.validated_at = Set(Some(chrono::Utc::now()));
+        approved_active.approved_at = Set(Some(chrono::Utc::now()));
+        approved_active.updated_at = Set(chrono::Utc::now());
+        approved_active
+            .update(&ctx.db)
+            .await
+            .expect("request should become approved")
+    }
+
+    async fn insert_validation_stage(
+        ctx: &loco_rs::app::AppContext,
+        request: &crate::models::registry_publish_request::Model,
+        stage_key: &str,
+        status: crate::models::registry_validation_stage::RegistryValidationStageStatus,
+        attempt_number: i32,
+        detail: &str,
+    ) -> crate::models::registry_validation_stage::Model {
+        let now = chrono::Utc::now();
+        crate::models::registry_validation_stage::ActiveModel {
+            id: Set(format!("rvs_{}", uuid::Uuid::new_v4().simple())),
+            request_id: Set(request.id.clone()),
+            slug: Set(request.slug.clone()),
+            version: Set(request.version.clone()),
+            stage_key: Set(stage_key.to_string()),
+            status: Set(status),
+            triggered_by: Set("test:stage".to_string()),
+            queue_reason: Set("test_setup".to_string()),
+            attempt_number: Set(attempt_number),
+            detail: Set(detail.to_string()),
+            started_at: Set(None),
+            finished_at: Set(None),
+            last_error: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("validation stage should insert")
     }
 }

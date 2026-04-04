@@ -106,6 +106,8 @@ pub struct RegistryModuleLifecycle {
     pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
     #[serde(default, rename = "followUpGates")]
     pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
+    #[serde(default, rename = "validationStages")]
+    pub validation_stages: Vec<RegistryValidationStageLifecycle>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -139,6 +141,21 @@ pub struct RegistryFollowUpGateLifecycle {
     pub detail: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryValidationStageLifecycle {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    #[serde(rename = "attemptNumber")]
+    pub attempt_number: i32,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(rename = "startedAt")]
+    pub started_at: Option<String>,
+    #[serde(rename = "finishedAt")]
+    pub finished_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

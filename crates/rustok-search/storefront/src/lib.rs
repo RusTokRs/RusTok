@@ -381,7 +381,11 @@ fn SearchResults(
     payload: SearchPreviewPayload,
 ) -> impl IntoView {
     let locale_context = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let query_label = t(locale_context.as_deref(), "search.results.queryLabel", "Query");
+    let query_label = t(
+        locale_context.as_deref(),
+        "search.results.queryLabel",
+        "Query",
+    );
     let results_summary_template = t(
         locale_context.as_deref(),
         "search.results.summary",
@@ -398,13 +402,21 @@ fn SearchResults(
         "search.results.locale",
         "locale = {locale}",
     );
-    let no_results_title = t(locale_context.as_deref(), "search.results.noResultsTitle", "No results");
+    let no_results_title = t(
+        locale_context.as_deref(),
+        "search.results.noResultsTitle",
+        "No results",
+    );
     let no_results_body = t(
         locale_context.as_deref(),
         "search.results.noResultsBody",
         "Try a different query or relax the storefront filters in the query string.",
     );
-    let engine_title = t(locale_context.as_deref(), "search.features.engineTitle", "Engine");
+    let engine_title = t(
+        locale_context.as_deref(),
+        "search.features.engineTitle",
+        "Engine",
+    );
     let engine_body = t(
         locale_context.as_deref(),
         "search.features.engineBody",

@@ -113,12 +113,10 @@ async fn render_module_page_response(
     locale_path_prefix: Option<&str>,
 ) -> Response {
     match fetch_canonical_route(locale, route_segment, &query_params).await {
-        Ok(Some(resolved)) if resolved.redirect_required => {
-            Redirect::permanent(
-                build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
-            )
-            .into_response()
-        }
+        Ok(Some(resolved)) if resolved.redirect_required => Redirect::permanent(
+            build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
+        )
+        .into_response(),
         Ok(_) => {
             Html(render_module_page(locale, route_segment, query_params).await).into_response()
         }
@@ -213,8 +211,13 @@ pub fn router() -> Router {
                     std::collections::HashMap<String, String>,
                 >| async move {
                     let locale = resolve_storefront_locale(None, &params);
-                    render_module_page_response(locale.as_str(), route_segment.as_str(), params, None)
-                        .await
+                    render_module_page_response(
+                        locale.as_str(),
+                        route_segment.as_str(),
+                        params,
+                        None,
+                    )
+                    .await
                 },
             ),
         )
@@ -273,7 +276,13 @@ mod tests {
 
     #[test]
     fn normalizes_storefront_locale_tags() {
-        assert_eq!(normalize_storefront_locale("ru-ru").as_deref(), Some("ru-RU"));
-        assert_eq!(normalize_storefront_locale("en_us").as_deref(), Some("en-US"));
+        assert_eq!(
+            normalize_storefront_locale("ru-ru").as_deref(),
+            Some("ru-RU")
+        );
+        assert_eq!(
+            normalize_storefront_locale("en_us").as_deref(),
+            Some("en-US")
+        );
     }
 }

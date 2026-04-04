@@ -80,8 +80,8 @@ pub fn create_orchestrator_with_engine<R: ScriptRegistry>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use rhai::Dynamic;
+    use std::sync::Arc;
 
     #[test]
     fn test_simple_script() {
@@ -295,7 +295,8 @@ mod tests {
         script.activate();
         storage.save(script).await.unwrap();
 
-        let data: std::collections::HashMap<String, Dynamic> = std::collections::HashMap::from([("value".to_string(), Dynamic::from(100_i64))]);
+        let data: std::collections::HashMap<String, Dynamic> =
+            std::collections::HashMap::from([("value".to_string(), Dynamic::from(100_i64))]);
         let entity = EntityProxy::new("test-1", "test", data);
 
         let outcome = orchestrator

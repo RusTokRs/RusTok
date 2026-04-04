@@ -205,6 +205,16 @@ struct RegistryOwnerTransferHttpRequest {
     reason: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct RegistryValidationStageHttpRequest {
+    schema_version: u32,
+    dry_run: bool,
+    stage: String,
+    status: String,
+    detail: Option<String>,
+    requeue: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct RegistryMutationHttpResponse {
     accepted: bool,
@@ -271,6 +281,16 @@ struct ModuleOwnerTransferDryRunPreview {
 }
 
 #[derive(Debug, Serialize)]
+struct ModuleValidationStageDryRunPreview {
+    action: String,
+    request_id: String,
+    stage: String,
+    status: String,
+    detail: Option<String>,
+    requeue: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct ModuleTestPlanPreview {
     slug: String,
     version: String,
@@ -326,6 +346,7 @@ fn print_usage() {
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");
     println!("  module publish      Create/preview a publish request and stop at review-ready unless --auto-approve is set");
+    println!("  module stage        Record or requeue a follow-up validation stage");
     println!("  module owner-transfer Emit a dry-run owner transfer payload preview");
     println!("  module yank         Emit a dry-run yank payload preview");
 }
@@ -543,6 +564,7 @@ fn module_command(args: &[String]) -> Result<()> {
         "validate" => module_validate_command(&args[1..]),
         "test" => module_test_command(&args[1..]),
         "publish" => module_publish_command(&args[1..]),
+        "stage" => module_stage_command(&args[1..]),
         "owner-transfer" => module_owner_transfer_command(&args[1..]),
         "yank" => module_yank_command(&args[1..]),
         other => {
@@ -558,6 +580,9 @@ fn print_module_usage() {
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
         "  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>] [--auto-approve]"
+    );
+    println!(
+        "  cargo xtask module stage <request-id> <stage> <status> [--dry-run] [--detail <text>] [--requeue] [--registry-url <url>]"
     );
     println!(
         "  cargo xtask module owner-transfer <slug> <new-owner-actor> [--dry-run] [--reason <text>] [--registry-url <url>]"
@@ -784,6 +809,68 @@ fn module_owner_transfer_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn module_stage_command(args: &[String]) -> Result<()> {
+    if args.len() < 3 {
+        print_module_usage();
+        anyhow::bail!("module stage requires a request id, stage key, and status");
+    }
+
+    let request_id = args[0].trim();
+    let stage = args[1].trim();
+    let status = args[2].trim().to_ascii_lowercase();
+    if request_id.is_empty() {
+        anyhow::bail!("module stage requires a non-empty request id");
+    }
+    if stage.is_empty() {
+        anyhow::bail!("module stage requires a non-empty stage key");
+    }
+
+    let allowed_statuses = ["queued", "running", "passed", "failed", "blocked"];
+    if !allowed_statuses
+        .iter()
+        .any(|candidate| *candidate == status)
+    {
+        anyhow::bail!(
+            "module stage status '{}' is not supported; expected one of {}",
+            status,
+            allowed_statuses.join(", ")
+        );
+    }
+
+    let dry_run = args.iter().skip(3).any(|arg| arg == "--dry-run");
+    let requeue = args.iter().skip(3).any(|arg| arg == "--requeue");
+    if requeue && status != "queued" {
+        anyhow::bail!("module stage --requeue requires status 'queued'");
+    }
+
+    let preview = ModuleValidationStageDryRunPreview {
+        action: "validation_stage".to_string(),
+        request_id: request_id.to_string(),
+        stage: stage.to_string(),
+        status,
+        detail: detail_argument(&args[3..]),
+        requeue,
+    };
+    let registry_url = registry_url_argument(&args[3..]);
+
+    if dry_run {
+        if let Some(registry_url) = registry_url {
+            let payload = validation_stage_via_registry_dry_run(&registry_url, &preview)?;
+            println!("{payload}");
+        } else {
+            println!("{}", serde_json::to_string_pretty(&preview)?);
+        }
+    } else {
+        let registry_url = registry_url.with_context(|| {
+            "Live module stage update requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
+        })?;
+        let payload = validation_stage_via_registry_live(&registry_url, &preview)?;
+        println!("{payload}");
+    }
+
+    Ok(())
+}
+
 fn selected_modules<'a>(
     manifest: &'a Manifest,
     slug: Option<&'a str>,
@@ -826,6 +913,17 @@ fn auto_approve_argument(args: &[String]) -> bool {
 
 fn reason_argument(args: &[String]) -> Option<String> {
     if let Some(index) = args.iter().position(|arg| arg == "--reason") {
+        return args
+            .get(index + 1)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+
+    None
+}
+
+fn detail_argument(args: &[String]) -> Option<String> {
+    if let Some(index) = args.iter().position(|arg| arg == "--detail") {
         return args
             .get(index + 1)
             .map(|value| value.trim().to_string())
@@ -1051,6 +1149,42 @@ fn owner_transfer_via_registry_live(
     pretty_json(&response)
 }
 
+fn validation_stage_via_registry_dry_run(
+    registry_url: &str,
+    preview: &ModuleValidationStageDryRunPreview,
+) -> Result<String> {
+    let endpoint = format!(
+        "{}/v2/catalog/publish/{}/stages",
+        registry_url.trim_end_matches('/'),
+        preview.request_id
+    );
+    let request = build_validation_stage_registry_request(preview);
+
+    post_registry_json(&endpoint, &request)
+}
+
+fn validation_stage_via_registry_live(
+    registry_url: &str,
+    preview: &ModuleValidationStageDryRunPreview,
+) -> Result<String> {
+    let endpoint = format!(
+        "{}/v2/catalog/publish/{}/stages",
+        registry_url.trim_end_matches('/'),
+        preview.request_id
+    );
+    let request = build_live_validation_stage_registry_request(preview);
+    let response: RegistryMutationHttpResponse =
+        post_registry_json_parsed(&endpoint, &request, Some("xtask:module-stage"), None)?;
+    if !response.accepted {
+        anyhow::bail!(
+            "Registry validation stage update was not accepted: {}",
+            join_registry_errors(&response.errors)
+        );
+    }
+
+    pretty_json(&response)
+}
+
 fn build_publish_registry_request(
     preview: &ModulePublishDryRunPreview,
 ) -> RegistryPublishHttpRequest {
@@ -1153,6 +1287,32 @@ fn build_owner_transfer_registry_request_with_dry_run(
         slug: preview.slug.clone(),
         new_owner_actor: preview.new_owner_actor.clone(),
         reason,
+    }
+}
+
+fn build_validation_stage_registry_request(
+    preview: &ModuleValidationStageDryRunPreview,
+) -> RegistryValidationStageHttpRequest {
+    build_validation_stage_registry_request_with_dry_run(preview, true)
+}
+
+fn build_live_validation_stage_registry_request(
+    preview: &ModuleValidationStageDryRunPreview,
+) -> RegistryValidationStageHttpRequest {
+    build_validation_stage_registry_request_with_dry_run(preview, false)
+}
+
+fn build_validation_stage_registry_request_with_dry_run(
+    preview: &ModuleValidationStageDryRunPreview,
+    dry_run: bool,
+) -> RegistryValidationStageHttpRequest {
+    RegistryValidationStageHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run,
+        stage: preview.stage.clone(),
+        status: preview.status.clone(),
+        detail: preview.detail.clone(),
+        requeue: preview.requeue,
     }
 }
 
@@ -1882,11 +2042,12 @@ fn to_pascal_case(s: &str) -> String {
 mod tests {
     use super::{
         auto_approve_argument, build_module_test_plan, build_owner_transfer_registry_request,
-        build_publish_registry_request, build_yank_registry_request,
-        registry_endpoint_uses_loopback, resolve_workspace_inherited_string,
-        validate_module_publish_contract, validate_module_ui_surface_contract,
-        ModuleMarketplacePreview, ModuleOwnerTransferDryRunPreview, ModulePackageManifest,
-        ModulePublishDryRunPreview, ModuleUiPackagePreview, ModuleUiPackagesPreview,
+        build_publish_registry_request, build_validation_stage_registry_request,
+        build_yank_registry_request, registry_endpoint_uses_loopback,
+        resolve_workspace_inherited_string, validate_module_publish_contract,
+        validate_module_ui_surface_contract, ModuleMarketplacePreview,
+        ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePublishDryRunPreview,
+        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleValidationStageDryRunPreview,
         ModuleYankDryRunPreview, REGISTRY_MUTATION_SCHEMA_VERSION,
     };
     use std::path::Path;
@@ -2072,6 +2233,52 @@ mod tests {
         assert_eq!(
             request_body["module"]["ui_packages"]["storefront"]["crate_name"],
             "rustok-blog-storefront"
+        );
+    }
+
+    #[test]
+    fn build_validation_stage_registry_request_serializes_stage_contract() {
+        let preview = ModuleValidationStageDryRunPreview {
+            action: "validation_stage".to_string(),
+            request_id: "rpr_test".to_string(),
+            stage: "compile_smoke".to_string(),
+            status: "passed".to_string(),
+            detail: Some("External CI recorded the result.".to_string()),
+            requeue: false,
+        };
+
+        let request_body = serde_json::to_value(build_validation_stage_registry_request(&preview))
+            .expect("stage request should serialize");
+
+        assert_eq!(
+            request_body
+                .get("schema_version")
+                .and_then(serde_json::Value::as_u64),
+            Some(REGISTRY_MUTATION_SCHEMA_VERSION as u64)
+        );
+        assert_eq!(
+            request_body
+                .get("dry_run")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            request_body
+                .get("stage")
+                .and_then(serde_json::Value::as_str),
+            Some("compile_smoke")
+        );
+        assert_eq!(
+            request_body
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("passed")
+        );
+        assert_eq!(
+            request_body
+                .get("requeue")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
         );
     }
 

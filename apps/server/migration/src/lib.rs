@@ -28,6 +28,8 @@ mod m20260403_000005_create_registry_module_owners;
 mod m20260403_000006_add_sessions_active_lookup_index;
 mod m20260403_000007_create_registry_governance_events;
 mod m20260403_000008_add_registry_publish_request_publisher_identity;
+mod m20260404_000001_create_registry_validation_jobs;
+mod m20260404_000002_create_registry_validation_stages;
 
 pub struct Migrator;
 
@@ -60,6 +62,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260403_000006_add_sessions_active_lookup_index::Migration),
             Box::new(m20260403_000007_create_registry_governance_events::Migration),
             Box::new(m20260403_000008_add_registry_publish_request_publisher_identity::Migration),
+            Box::new(m20260404_000001_create_registry_validation_jobs::Migration),
+            Box::new(m20260404_000002_create_registry_validation_stages::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

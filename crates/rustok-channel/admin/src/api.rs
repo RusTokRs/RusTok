@@ -3,14 +3,14 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::model::{
+    AvailableModuleItem, AvailableOauthAppItem, ChannelDetail, ResolvedChannelContext,
+};
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap,
     ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord, ChannelTargetRecord,
     CreateChannelPayload, CreateChannelTargetPayload,
-};
-#[cfg(feature = "ssr")]
-use crate::model::{
-    AvailableModuleItem, AvailableOauthAppItem, ChannelDetail, ResolvedChannelContext,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

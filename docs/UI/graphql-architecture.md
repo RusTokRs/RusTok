@@ -64,6 +64,7 @@ GraphQL остаётся:
 - transport surface для persisted queries и совместимости со старыми модулями.
 - security boundary для чувствительных admin-операций задаётся сервером по AST/root fields, а не по client-supplied `operationName`.
 - telemetry по persisted hashes допустима, но allow/deny policy должна жить в shared server/runtime contract и shared GraphQL adapters, а не в app-specific экранах.
+- текущий enforcement path в `apps/server` живёт в shared GraphQL schema extension, поэтому одинаково применяется к `/api/graphql` и GraphQL websocket execution path до входа в resolvers.
 
 ## Что обязаны делать новые Leptos модули
 

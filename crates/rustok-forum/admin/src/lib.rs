@@ -46,7 +46,11 @@ pub fn ForumAdmin() -> impl IntoView {
         "forum.header.topicsBody",
         "Review topic flow, open a thread for reply preview, and keep publishing controls next to the live feed.",
     );
-    let metric_categories = t(ui_locale.as_deref(), "forum.metric.categories", "Categories");
+    let metric_categories = t(
+        ui_locale.as_deref(),
+        "forum.metric.categories",
+        "Categories",
+    );
     let metric_topics = t(ui_locale.as_deref(), "forum.metric.topics", "Topics");
     let metric_reply_preview = t(
         ui_locale.as_deref(),
@@ -516,11 +520,7 @@ pub fn ForumAdmin() -> impl IntoView {
 }
 
 #[component]
-fn MetricCard(
-    label: String,
-    value: Signal<String>,
-    accent_class: &'static str,
-) -> impl IntoView {
+fn MetricCard(label: String, value: Signal<String>, accent_class: &'static str) -> impl IntoView {
     view! {
         <article class="rounded-[1.5rem] border border-border/80 bg-background/80 p-4 backdrop-blur">
             <div class="flex items-center gap-3">
@@ -603,55 +603,143 @@ fn CategoriesPage(
     on_reset: Callback<()>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let matrix_label = t(ui_locale.as_deref(), "forum.categories.matrixLabel", "Category matrix");
-    let matrix_title = t(ui_locale.as_deref(), "forum.categories.matrixTitle", "Forum sections");
+    let matrix_label = t(
+        ui_locale.as_deref(),
+        "forum.categories.matrixLabel",
+        "Category matrix",
+    );
+    let matrix_title = t(
+        ui_locale.as_deref(),
+        "forum.categories.matrixTitle",
+        "Forum sections",
+    );
     let new_category_label = t(ui_locale.as_deref(), "forum.categories.new", "New category");
     let matrix_body = t(
         ui_locale.as_deref(),
         "forum.categories.matrixBody",
         "This view keeps category hierarchy, counts, and moderation switches close together so moderators can shape the forum like a community map instead of a plain CRUD table.",
     );
-    let notes_label = t(ui_locale.as_deref(), "forum.categories.notesLabel", "Moderator notes");
-    let note_icon_title = t(ui_locale.as_deref(), "forum.categories.noteIconTitle", "Icon + color");
+    let notes_label = t(
+        ui_locale.as_deref(),
+        "forum.categories.notesLabel",
+        "Moderator notes",
+    );
+    let note_icon_title = t(
+        ui_locale.as_deref(),
+        "forum.categories.noteIconTitle",
+        "Icon + color",
+    );
     let note_icon_body = t(
         ui_locale.as_deref(),
         "forum.categories.noteIconBody",
         "Use both so each category reads like a quick visual stop in the sidebar.",
     );
-    let note_position_title = t(ui_locale.as_deref(), "forum.categories.notePositionTitle", "Position");
+    let note_position_title = t(
+        ui_locale.as_deref(),
+        "forum.categories.notePositionTitle",
+        "Position",
+    );
     let note_position_body = t(
         ui_locale.as_deref(),
         "forum.categories.notePositionBody",
         "Lower numbers bubble important sections to the top of the community map.",
     );
-    let note_moderated_title = t(ui_locale.as_deref(), "forum.categories.noteModeratedTitle", "Moderated");
+    let note_moderated_title = t(
+        ui_locale.as_deref(),
+        "forum.categories.noteModeratedTitle",
+        "Moderated",
+    );
     let note_moderated_body = t(
         ui_locale.as_deref(),
         "forum.categories.noteModeratedBody",
         "Turn this on for queues that need stricter review before topics go live.",
     );
-    let composer_label = t(ui_locale.as_deref(), "forum.categories.composerLabel", "Composer");
-    let edit_title = t(ui_locale.as_deref(), "forum.categories.editTitle", "Edit category");
-    let create_title = t(ui_locale.as_deref(), "forum.categories.createTitle", "Create category");
-    let live_edit_label = t(ui_locale.as_deref(), "forum.categories.liveEdit", "Live edit");
+    let composer_label = t(
+        ui_locale.as_deref(),
+        "forum.categories.composerLabel",
+        "Composer",
+    );
+    let edit_title = t(
+        ui_locale.as_deref(),
+        "forum.categories.editTitle",
+        "Edit category",
+    );
+    let create_title = t(
+        ui_locale.as_deref(),
+        "forum.categories.createTitle",
+        "Create category",
+    );
+    let live_edit_label = t(
+        ui_locale.as_deref(),
+        "forum.categories.liveEdit",
+        "Live edit",
+    );
     let locale_label = t(ui_locale.as_deref(), "forum.form.locale", "Locale");
-    let locale_hint = t(ui_locale.as_deref(), "forum.form.localeHintCategory", "Published locale for this category.");
+    let locale_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.localeHintCategory",
+        "Published locale for this category.",
+    );
     let name_label = t(ui_locale.as_deref(), "forum.form.name", "Name");
-    let name_hint = t(ui_locale.as_deref(), "forum.form.nameHint", "Human-friendly label shown in the admin and forum nav.");
+    let name_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.nameHint",
+        "Human-friendly label shown in the admin and forum nav.",
+    );
     let slug_label = t(ui_locale.as_deref(), "forum.form.slug", "Slug");
-    let slug_hint = t(ui_locale.as_deref(), "forum.form.slugHintCategory", "Stable identifier for routing and lookups.");
-    let description_label = t(ui_locale.as_deref(), "forum.form.description", "Description");
-    let description_hint = t(ui_locale.as_deref(), "forum.form.descriptionHint", "Short community-facing summary.");
+    let slug_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.slugHintCategory",
+        "Stable identifier for routing and lookups.",
+    );
+    let description_label = t(
+        ui_locale.as_deref(),
+        "forum.form.description",
+        "Description",
+    );
+    let description_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.descriptionHint",
+        "Short community-facing summary.",
+    );
     let icon_label = t(ui_locale.as_deref(), "forum.form.icon", "Icon");
-    let icon_hint = t(ui_locale.as_deref(), "forum.form.iconHint", "Optional short token or icon name.");
+    let icon_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.iconHint",
+        "Optional short token or icon name.",
+    );
     let color_label = t(ui_locale.as_deref(), "forum.form.color", "Color");
-    let color_hint = t(ui_locale.as_deref(), "forum.form.colorHint", "Accent color, for example `#f59e0b`.");
+    let color_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.colorHint",
+        "Accent color, for example `#f59e0b`.",
+    );
     let position_label = t(ui_locale.as_deref(), "forum.form.position", "Position");
-    let position_hint = t(ui_locale.as_deref(), "forum.form.positionHint", "Lower comes first in the list.");
-    let moderated_title = t(ui_locale.as_deref(), "forum.form.moderatedTitle", "Moderated queue");
-    let moderated_hint = t(ui_locale.as_deref(), "forum.form.moderatedHint", "Topics in this category should flow through stricter review.");
-    let save_category_label = t(ui_locale.as_deref(), "forum.form.saveCategory", "Save category");
-    let create_category_label = t(ui_locale.as_deref(), "forum.form.createCategory", "Create category");
+    let position_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.positionHint",
+        "Lower comes first in the list.",
+    );
+    let moderated_title = t(
+        ui_locale.as_deref(),
+        "forum.form.moderatedTitle",
+        "Moderated queue",
+    );
+    let moderated_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.moderatedHint",
+        "Topics in this category should flow through stricter review.",
+    );
+    let save_category_label = t(
+        ui_locale.as_deref(),
+        "forum.form.saveCategory",
+        "Save category",
+    );
+    let create_category_label = t(
+        ui_locale.as_deref(),
+        "forum.form.createCategory",
+        "Create category",
+    );
     let reset_label = t(ui_locale.as_deref(), "forum.form.reset", "Reset");
     view! {
         <section class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
@@ -843,45 +931,141 @@ fn TopicsPage(
     on_reset: Callback<()>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let all_categories_label = t(ui_locale.as_deref(), "forum.topics.allCategories", "All categories");
-    let filtered_category_label = t(ui_locale.as_deref(), "forum.topics.filteredCategory", "Filtered category");
+    let all_categories_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.allCategories",
+        "All categories",
+    );
+    let filtered_category_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.filteredCategory",
+        "Filtered category",
+    );
     let ready_template = t(ui_locale.as_deref(), "forum.topics.ready", "{count} ready");
-    let navigation_label = t(ui_locale.as_deref(), "forum.topics.navigationLabel", "Navigation");
-    let navigation_title = t(ui_locale.as_deref(), "forum.topics.navigationTitle", "Forum feed");
+    let navigation_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.navigationLabel",
+        "Navigation",
+    );
+    let navigation_title = t(
+        ui_locale.as_deref(),
+        "forum.topics.navigationTitle",
+        "Forum feed",
+    );
     let navigation_body = t(ui_locale.as_deref(), "forum.topics.navigationBody", "A left rail similar to NodeBB: jump between categories, keep counts visible, and open a thread into the editor on the right.");
-    let filter_title = t(ui_locale.as_deref(), "forum.topics.filterTitle", "Filter topics");
+    let filter_title = t(
+        ui_locale.as_deref(),
+        "forum.topics.filterTitle",
+        "Filter topics",
+    );
     let clear_label = t(ui_locale.as_deref(), "forum.topics.clear", "Clear");
-    let active_filter_label = t(ui_locale.as_deref(), "forum.topics.activeFilter", "Active filter");
+    let active_filter_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.activeFilter",
+        "Active filter",
+    );
     let draft_tags_label = t(ui_locale.as_deref(), "forum.topics.draftTags", "Draft tags");
-    let editing_thread_label = t(ui_locale.as_deref(), "forum.topics.editingThread", "Editing thread");
-    let open_inspector_label = t(ui_locale.as_deref(), "forum.topics.openInspector", "Open in inspector");
-    let nothing_selected_label = t(ui_locale.as_deref(), "forum.topics.nothingSelected", "Nothing selected");
-    let stream_label = t(ui_locale.as_deref(), "forum.topics.streamLabel", "Topic stream");
-    let stream_body = t(ui_locale.as_deref(), "forum.topics.streamBody", "Open a topic card to inspect replies and edit the thread without leaving the feed.");
+    let editing_thread_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.editingThread",
+        "Editing thread",
+    );
+    let open_inspector_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.openInspector",
+        "Open in inspector",
+    );
+    let nothing_selected_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.nothingSelected",
+        "Nothing selected",
+    );
+    let stream_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.streamLabel",
+        "Topic stream",
+    );
+    let stream_body = t(
+        ui_locale.as_deref(),
+        "forum.topics.streamBody",
+        "Open a topic card to inspect replies and edit the thread without leaving the feed.",
+    );
     let new_topic_label = t(ui_locale.as_deref(), "forum.topics.new", "New topic");
-    let inspector_label = t(ui_locale.as_deref(), "forum.topics.inspectorLabel", "Inspector");
+    let inspector_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.inspectorLabel",
+        "Inspector",
+    );
     let edit_topic_title = t(ui_locale.as_deref(), "forum.topics.editTitle", "Edit topic");
-    let compose_topic_title = t(ui_locale.as_deref(), "forum.topics.composeTitle", "Compose topic");
-    let thread_open_label = t(ui_locale.as_deref(), "forum.topics.threadOpen", "Thread open");
+    let compose_topic_title = t(
+        ui_locale.as_deref(),
+        "forum.topics.composeTitle",
+        "Compose topic",
+    );
+    let thread_open_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.threadOpen",
+        "Thread open",
+    );
     let locale_label = t(ui_locale.as_deref(), "forum.form.locale", "Locale");
-    let locale_hint = t(ui_locale.as_deref(), "forum.form.localeHintTopic", "Thread locale for publishing and reads.");
+    let locale_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.localeHintTopic",
+        "Thread locale for publishing and reads.",
+    );
     let category_label = t(ui_locale.as_deref(), "forum.form.category", "Category");
-    let category_hint = t(ui_locale.as_deref(), "forum.form.categoryHint", "Choose where the topic should live.");
-    let choose_category_label = t(ui_locale.as_deref(), "forum.form.chooseCategory", "Choose category");
+    let category_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.categoryHint",
+        "Choose where the topic should live.",
+    );
+    let choose_category_label = t(
+        ui_locale.as_deref(),
+        "forum.form.chooseCategory",
+        "Choose category",
+    );
     let title_label = t(ui_locale.as_deref(), "forum.form.title", "Title");
-    let title_hint = t(ui_locale.as_deref(), "forum.form.titleHint", "Headline shown in the feed.");
+    let title_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.titleHint",
+        "Headline shown in the feed.",
+    );
     let slug_label = t(ui_locale.as_deref(), "forum.form.slug", "Slug");
-    let slug_hint = t(ui_locale.as_deref(), "forum.form.slugHintTopic", "Stable thread identifier.");
+    let slug_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.slugHintTopic",
+        "Stable thread identifier.",
+    );
     let body_format_label = t(ui_locale.as_deref(), "forum.form.bodyFormat", "Body format");
-    let body_format_hint = t(ui_locale.as_deref(), "forum.form.bodyFormatHint", "Usually `markdown`.");
+    let body_format_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.bodyFormatHint",
+        "Usually `markdown`.",
+    );
     let tags_label = t(ui_locale.as_deref(), "forum.form.tags", "Tags");
-    let tags_hint = t(ui_locale.as_deref(), "forum.form.tagsHint", "Comma-separated labels for discovery.");
+    let tags_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.tagsHint",
+        "Comma-separated labels for discovery.",
+    );
     let body_label = t(ui_locale.as_deref(), "forum.form.body", "Body");
-    let body_hint = t(ui_locale.as_deref(), "forum.form.bodyHint", "Main message shown in the topic detail.");
+    let body_hint = t(
+        ui_locale.as_deref(),
+        "forum.form.bodyHint",
+        "Main message shown in the topic detail.",
+    );
     let save_topic_label = t(ui_locale.as_deref(), "forum.form.saveTopic", "Save topic");
-    let publish_topic_label = t(ui_locale.as_deref(), "forum.form.publishTopic", "Publish topic");
+    let publish_topic_label = t(
+        ui_locale.as_deref(),
+        "forum.form.publishTopic",
+        "Publish topic",
+    );
     let reset_label = t(ui_locale.as_deref(), "forum.form.reset", "Reset");
-    let preview_label = t(ui_locale.as_deref(), "forum.topics.previewLabel", "Thread preview");
+    let preview_label = t(
+        ui_locale.as_deref(),
+        "forum.topics.previewLabel",
+        "Thread preview",
+    );
     let preview_title = t(ui_locale.as_deref(), "forum.topics.previewTitle", "Replies");
     let shown_template = t(ui_locale.as_deref(), "forum.topics.shown", "{count} shown");
     let selected_category_name = Memo::new(move |_| match categories.get() {
@@ -900,7 +1084,10 @@ fn TopicsPage(
         _ => all_categories_label.clone(),
     });
     let topic_form_tag_count = move || {
-        ready_template.replace("{count}", parse_tags(tags.get().as_str()).len().to_string().as_str())
+        ready_template.replace(
+            "{count}",
+            parse_tags(tags.get().as_str()).len().to_string().as_str(),
+        )
     };
     let sidebar_locale = ui_locale.clone();
     let topic_feed_locale = ui_locale.clone();
@@ -1139,10 +1326,26 @@ fn render_category_grid(
     on_delete: Callback<String>,
     locale: Option<String>,
 ) -> AnyView {
-    let no_categories_label = t(locale.as_deref(), "forum.render.noCategories", "No categories yet.");
-    let no_description_label = t(locale.as_deref(), "forum.render.noDescription", "No description yet.");
-    let topics_count_label = t(locale.as_deref(), "forum.render.topicsCount", "topics: {count}");
-    let replies_count_label = t(locale.as_deref(), "forum.render.repliesCount", "replies: {count}");
+    let no_categories_label = t(
+        locale.as_deref(),
+        "forum.render.noCategories",
+        "No categories yet.",
+    );
+    let no_description_label = t(
+        locale.as_deref(),
+        "forum.render.noDescription",
+        "No description yet.",
+    );
+    let topics_count_label = t(
+        locale.as_deref(),
+        "forum.render.topicsCount",
+        "topics: {count}",
+    );
+    let replies_count_label = t(
+        locale.as_deref(),
+        "forum.render.repliesCount",
+        "replies: {count}",
+    );
     let icon_label = t(locale.as_deref(), "forum.render.icon", "icon: {value}");
     let editing_label = t(locale.as_deref(), "forum.render.editing", "Editing");
     let edit_label = t(locale.as_deref(), "forum.render.edit", "Edit");
@@ -1206,8 +1409,16 @@ fn render_category_sidebar(
     set_filter_category_id: WriteSignal<String>,
     locale: Option<String>,
 ) -> AnyView {
-    let no_categories_label = t(locale.as_deref(), "forum.render.noCategories", "No categories yet.");
-    let all_categories_label = t(locale.as_deref(), "forum.topics.allCategories", "All categories");
+    let no_categories_label = t(
+        locale.as_deref(),
+        "forum.render.noCategories",
+        "No categories yet.",
+    );
+    let all_categories_label = t(
+        locale.as_deref(),
+        "forum.topics.allCategories",
+        "All categories",
+    );
     match result {
         Ok(items) if items.is_empty() => view! { <div class="mt-4 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
         Ok(items) => view! {
@@ -1246,7 +1457,11 @@ fn render_topic_feed(
     let no_topics_label = t(locale.as_deref(), "forum.render.noTopics", "No topics yet.");
     let pinned_label = t(locale.as_deref(), "forum.render.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.render.locked", "Locked");
-    let thread_path_label = t(locale.as_deref(), "forum.render.threadPath", "thread/{category}/{slug}");
+    let thread_path_label = t(
+        locale.as_deref(),
+        "forum.render.threadPath",
+        "thread/{category}/{slug}",
+    );
     let replies_label = t(locale.as_deref(), "forum.render.replies", "Replies");
     let opened_label = t(locale.as_deref(), "forum.render.opened", "Opened");
     let open_thread_label = t(locale.as_deref(), "forum.render.openThread", "Open thread");
@@ -1293,8 +1508,15 @@ fn render_topic_feed(
     }
 }
 
-fn render_reply_stack(result: Result<Vec<ReplyListItem>, String>, locale: Option<String>) -> AnyView {
-    let empty_label = t(locale.as_deref(), "forum.render.openTopicForReplies", "Open a topic card to preview replies.");
+fn render_reply_stack(
+    result: Result<Vec<ReplyListItem>, String>,
+    locale: Option<String>,
+) -> AnyView {
+    let empty_label = t(
+        locale.as_deref(),
+        "forum.render.openTopicForReplies",
+        "Open a topic card to preview replies.",
+    );
     match result {
         Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-6 text-sm text-muted-foreground">{empty_label}</div> }.into_any(),
         Ok(items) => view! {

@@ -100,14 +100,22 @@ fn SelectedProductCard(product: Option<ProductDetail>) -> impl IntoView {
     let title = translation
         .as_ref()
         .map(|item| item.title.clone())
-        .unwrap_or_else(|| t(locale.as_deref(), "commerce.selected.untitled", "Untitled product"));
-    let description = translation.and_then(|item| item.description).unwrap_or_else(|| {
-        t(
-            locale.as_deref(),
-            "commerce.selected.noDescription",
-            "No localized merchandising copy yet.",
-        )
-    });
+        .unwrap_or_else(|| {
+            t(
+                locale.as_deref(),
+                "commerce.selected.untitled",
+                "Untitled product",
+            )
+        });
+    let description = translation
+        .and_then(|item| item.description)
+        .unwrap_or_else(|| {
+            t(
+                locale.as_deref(),
+                "commerce.selected.noDescription",
+                "No localized merchandising copy yet.",
+            )
+        });
     let price = variant
         .as_ref()
         .and_then(|item| item.prices.first())
@@ -128,8 +136,17 @@ fn SelectedProductCard(product: Option<ProductDetail>) -> impl IntoView {
                 format!("{} {}", item.currency_code, item.amount)
             }
         })
-        .unwrap_or_else(|| t(locale.as_deref(), "commerce.selected.noPrice", "No pricing yet"));
-    let inventory = variant.as_ref().map(|item| item.inventory_quantity).unwrap_or(0);
+        .unwrap_or_else(|| {
+            t(
+                locale.as_deref(),
+                "commerce.selected.noPrice",
+                "No pricing yet",
+            )
+        });
+    let inventory = variant
+        .as_ref()
+        .map(|item| item.inventory_quantity)
+        .unwrap_or(0);
 
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">

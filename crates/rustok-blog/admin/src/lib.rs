@@ -130,14 +130,20 @@ pub fn BlogAdmin() -> impl IntoView {
                     );
                 }
                 Ok(None) => {
-                    set_submit_error.set(Some(
-                        t(ui_locale.as_deref(), "blog.error.postNotFound", "Post not found for editing."),
-                    ));
+                    set_submit_error.set(Some(t(
+                        ui_locale.as_deref(),
+                        "blog.error.postNotFound",
+                        "Post not found for editing.",
+                    )));
                 }
                 Err(err) => {
                     set_submit_error.set(Some(format!(
                         "{}: {err}",
-                        t(ui_locale.as_deref(), "blog.error.loadPost", "Failed to load post")
+                        t(
+                            ui_locale.as_deref(),
+                            "blog.error.loadPost",
+                            "Failed to load post"
+                        )
                     )));
                 }
             }
@@ -268,7 +274,11 @@ pub fn BlogAdmin() -> impl IntoView {
                     Err(err) => {
                         set_submit_error.set(Some(format!(
                             "{}: {err}",
-                            t(ui_locale.as_deref(), "blog.error.updateStatus", "Failed to update post status")
+                            t(
+                                ui_locale.as_deref(),
+                                "blog.error.updateStatus",
+                                "Failed to update post status"
+                            )
                         )));
                     }
                 }
@@ -315,7 +325,11 @@ pub fn BlogAdmin() -> impl IntoView {
                 Err(err) => {
                     set_submit_error.set(Some(format!(
                         "{}: {err}",
-                        t(ui_locale.as_deref(), "blog.error.archivePost", "Failed to archive post")
+                        t(
+                            ui_locale.as_deref(),
+                            "blog.error.archivePost",
+                            "Failed to archive post"
+                        )
                     )));
                 }
             }
@@ -363,7 +377,11 @@ pub fn BlogAdmin() -> impl IntoView {
                 Err(err) => {
                     set_submit_error.set(Some(format!(
                         "{}: {err}",
-                        t(ui_locale.as_deref(), "blog.error.deletePost", "Failed to delete post")
+                        t(
+                            ui_locale.as_deref(),
+                            "blog.error.deletePost",
+                            "Failed to delete post"
+                        )
                     )));
                 }
             }

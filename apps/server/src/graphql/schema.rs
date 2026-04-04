@@ -27,6 +27,7 @@ use super::observability::GraphqlObservability;
 use super::queries::RootQuery;
 use super::rbac::{RbacMutation, RbacQuery};
 use super::search::{SearchMutationRoot, SearchQueryRoot};
+use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;
 use super::system::SystemQuery;
@@ -98,6 +99,7 @@ pub fn build_schema(
     .limit_depth(12)
     .limit_complexity(600)
     .extension(Analyzer)
+    .extension(GraphqlSecurityPolicy)
     .extension(GraphqlObservability)
     // DataLoaders for efficient batched queries
     .data(DataLoader::new(

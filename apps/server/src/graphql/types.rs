@@ -253,12 +253,24 @@ pub struct RegistryFollowUpGateLifecycle {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct RegistryValidationStageLifecycle {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub attempt_number: i32,
+    pub updated_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct RegistryModuleLifecycle {
     pub owner_binding: Option<RegistryOwnerLifecycle>,
     pub latest_request: Option<RegistryPublishRequestLifecycle>,
     pub latest_release: Option<RegistryReleaseLifecycle>,
     pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
     pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
+    pub validation_stages: Vec<RegistryValidationStageLifecycle>,
 }
 
 #[derive(SimpleObject, Clone)]

@@ -28,6 +28,7 @@ const REGISTRY_PUBLISH_PATH: &str = "/v2/catalog/publish";
 const REGISTRY_PUBLISH_STATUS_PATH: &str = "/v2/catalog/publish/{request_id}";
 const REGISTRY_PUBLISH_ARTIFACT_PATH: &str = "/v2/catalog/publish/{request_id}/artifact";
 const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/validate";
+const REGISTRY_PUBLISH_STAGE_REPORT_PATH: &str = "/v2/catalog/publish/{request_id}/stages";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
 const REGISTRY_PUBLISH_REJECT_PATH: &str = "/v2/catalog/publish/{request_id}/reject";
 const REGISTRY_OWNER_TRANSFER_PATH: &str = "/v2/catalog/owner-transfer";
@@ -547,6 +548,19 @@ pub struct RegistryPublishValidationRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryValidationStageReportRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    pub stage: String,
+    pub status: String,
+    pub detail: Option<String>,
+    #[serde(default)]
+    pub requeue: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegistryPublishDecisionRequest {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
@@ -797,6 +811,10 @@ pub fn registry_publish_artifact_path() -> &'static str {
 
 pub fn registry_publish_validate_path() -> &'static str {
     REGISTRY_PUBLISH_VALIDATE_PATH
+}
+
+pub fn registry_publish_stage_report_path() -> &'static str {
+    REGISTRY_PUBLISH_STAGE_REPORT_PATH
 }
 
 pub fn registry_publish_approve_path() -> &'static str {

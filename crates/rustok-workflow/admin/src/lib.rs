@@ -30,7 +30,11 @@ pub fn WorkflowAdmin() -> impl IntoView {
         "Module-owned admin surface for workflow templates and automation overview.",
     );
     let open_overview = t(locale.as_deref(), "workflow.openOverview", "Open overview");
-    let open_templates = t(locale.as_deref(), "workflow.openTemplates", "Open templates");
+    let open_templates = t(
+        locale.as_deref(),
+        "workflow.openTemplates",
+        "Open templates",
+    );
     let open_legacy = t(
         locale.as_deref(),
         "workflow.openLegacy",
@@ -156,7 +160,11 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
         "workflow.empty",
         "No workflows yet. Start with a template or open the legacy workflow screens.",
     );
-    let open_workflows = t(locale.as_deref(), "workflow.openWorkflows", "Open workflows");
+    let open_workflows = t(
+        locale.as_deref(),
+        "workflow.openWorkflows",
+        "Open workflows",
+    );
     let table_name = t(locale.as_deref(), "workflow.table.name", "Name");
     let table_status = t(locale.as_deref(), "workflow.table.status", "Status");
     let table_failures = t(locale.as_deref(), "workflow.table.failures", "Failures");

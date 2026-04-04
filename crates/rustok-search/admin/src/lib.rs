@@ -1234,7 +1234,11 @@ fn DictionariesView() -> impl IntoView {
         "search.dictionary.action.addStopWord",
         "Add Stop Word",
     );
-    let save_pin_rule_label = t(locale, "search.dictionary.action.savePinRule", "Save Pin Rule");
+    let save_pin_rule_label = t(
+        locale,
+        "search.dictionary.action.savePinRule",
+        "Save Pin Rule",
+    );
     let synonym_updated_label = t(
         locale,
         "search.dictionary.feedback.synonymUpdated",
@@ -1812,11 +1816,20 @@ fn merge_relevance_editor_config(
     preview_presets: &str,
     storefront_presets: &str,
 ) -> Result<String, String> {
-    let mut config = parse_json_for_editor(config_text)
-        .ok_or_else(|| t(locale, "search.error.invalidSettingsJson", "Settings config must be valid JSON."))?;
-    let object = config
-        .as_object_mut()
-        .ok_or_else(|| t(locale, "search.error.settingsConfigRootObject", "Settings config root must be a JSON object."))?;
+    let mut config = parse_json_for_editor(config_text).ok_or_else(|| {
+        t(
+            locale,
+            "search.error.invalidSettingsJson",
+            "Settings config must be valid JSON.",
+        )
+    })?;
+    let object = config.as_object_mut().ok_or_else(|| {
+        t(
+            locale,
+            "search.error.settingsConfigRootObject",
+            "Settings config root must be a JSON object.",
+        )
+    })?;
 
     object.insert(
         "ranking_profiles".to_string(),
@@ -1835,8 +1848,16 @@ fn merge_relevance_editor_config(
         }),
     );
 
-    serde_json::to_string_pretty(&config)
-        .map_err(|err| format!("{}: {err}", t(locale, "search.error.serializeMergedSettings", "Failed to serialize merged search settings config")))
+    serde_json::to_string_pretty(&config).map_err(|err| {
+        format!(
+            "{}: {err}",
+            t(
+                locale,
+                "search.error.serializeMergedSettings",
+                "Failed to serialize merged search settings config"
+            )
+        )
+    })
 }
 
 fn parse_json_array_for_editor(
@@ -1844,25 +1865,22 @@ fn parse_json_array_for_editor(
     label: &str,
     value: &str,
 ) -> Result<serde_json::Value, String> {
-    let parsed: serde_json::Value =
-        serde_json::from_str(value).map_err(|err| {
-            t(
-                locale,
-                "search.error.editorArrayJson",
-                "{label} must be valid JSON: {err}",
-            )
-            .replace("{label}", label)
-            .replace("{err}", err.to_string().as_str())
-        })?;
+    let parsed: serde_json::Value = serde_json::from_str(value).map_err(|err| {
+        t(
+            locale,
+            "search.error.editorArrayJson",
+            "{label} must be valid JSON: {err}",
+        )
+        .replace("{label}", label)
+        .replace("{err}", err.to_string().as_str())
+    })?;
     if !parsed.is_array() {
-        return Err(
-            t(
-                locale,
-                "search.error.editorArrayType",
-                "{label} must be a JSON array.",
-            )
-            .replace("{label}", label),
-        );
+        return Err(t(
+            locale,
+            "search.error.editorArrayType",
+            "{label} must be a JSON array.",
+        )
+        .replace("{label}", label));
     }
     Ok(parsed)
 }

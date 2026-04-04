@@ -36,7 +36,11 @@ pub fn MediaAdmin() -> impl IntoView {
     let assets_title = t(ui_locale.as_deref(), "media.assets.title", "Assets");
     let prev_label = t(ui_locale.as_deref(), "media.pagination.prev", "Prev");
     let next_label = t(ui_locale.as_deref(), "media.pagination.next", "Next");
-    let page_label_template = t(ui_locale.as_deref(), "media.pagination.page", "Page {count}");
+    let page_label_template = t(
+        ui_locale.as_deref(),
+        "media.pagination.page",
+        "Page {count}",
+    );
     let detail_title = t(ui_locale.as_deref(), "media.detail.title", "Asset Detail");
     let detail_delete = t(ui_locale.as_deref(), "media.detail.delete", "Delete");
     let detail_empty = t(
@@ -46,7 +50,11 @@ pub fn MediaAdmin() -> impl IntoView {
     );
     let translation_locale_label = t(ui_locale.as_deref(), "media.translation.locale", "Locale");
     let translation_title_placeholder = t(ui_locale.as_deref(), "media.translation.title", "Title");
-    let translation_alt_placeholder = t(ui_locale.as_deref(), "media.translation.altText", "Alt text");
+    let translation_alt_placeholder = t(
+        ui_locale.as_deref(),
+        "media.translation.altText",
+        "Alt text",
+    );
     let translation_save = t(
         ui_locale.as_deref(),
         "media.translation.save",
@@ -242,16 +250,14 @@ pub fn MediaAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::upsert_translation(media_id, payload, token_value, tenant_value).await {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-                Err(err) => {
-                    set_mutation_error.set(Some(format!(
-                        "{}: {err}",
-                        t(
-                            translation_ui_locale.as_deref(),
-                            "media.error.saveTranslation",
-                            "Failed to save translation",
-                        )
-                    )))
-                }
+                Err(err) => set_mutation_error.set(Some(format!(
+                    "{}: {err}",
+                    t(
+                        translation_ui_locale.as_deref(),
+                        "media.error.saveTranslation",
+                        "Failed to save translation",
+                    )
+                ))),
             }
             set_busy_key.set(None);
         });
@@ -273,13 +279,11 @@ pub fn MediaAdmin() -> impl IntoView {
                     set_selected_media_id.set(None);
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Ok(false) => {
-                    set_mutation_error.set(Some(t(
-                        delete_ui_locale.as_deref(),
-                        "media.error.deleteRejected",
-                        "Delete request was rejected.",
-                    )))
-                }
+                Ok(false) => set_mutation_error.set(Some(t(
+                    delete_ui_locale.as_deref(),
+                    "media.error.deleteRejected",
+                    "Delete request was rejected.",
+                ))),
                 Err(err) => set_mutation_error.set(Some(format!(
                     "{}: {err}",
                     t(

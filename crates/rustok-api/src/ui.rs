@@ -141,7 +141,8 @@ fn flatten_ui_messages(value: &Value, prefix: &str, target: &mut BTreeMap<String
 #[cfg(test)]
 mod tests {
     use super::{
-        build_ui_message_catalog, resolve_ui_message, resolve_ui_message_or_fallback, UiRouteContext,
+        build_ui_message_catalog, resolve_ui_message, resolve_ui_message_or_fallback,
+        UiRouteContext,
     };
 
     #[test]

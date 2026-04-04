@@ -111,21 +111,39 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
 
     let title = post.title;
     let effective_locale = post.effective_locale;
-    let slug = post
-        .slug
-        .unwrap_or_else(|| t(locale.as_deref(), "blog.selected.missingSlug", "missing-slug"));
-    let excerpt = post
-        .excerpt
-        .unwrap_or_else(|| t(locale.as_deref(), "blog.selected.noExcerpt", "No excerpt yet."));
-    let published_at = post
-        .published_at
-        .unwrap_or_else(|| t(locale.as_deref(), "blog.selected.unscheduled", "Unscheduled"));
+    let slug = post.slug.unwrap_or_else(|| {
+        t(
+            locale.as_deref(),
+            "blog.selected.missingSlug",
+            "missing-slug",
+        )
+    });
+    let excerpt = post.excerpt.unwrap_or_else(|| {
+        t(
+            locale.as_deref(),
+            "blog.selected.noExcerpt",
+            "No excerpt yet.",
+        )
+    });
+    let published_at = post.published_at.unwrap_or_else(|| {
+        t(
+            locale.as_deref(),
+            "blog.selected.unscheduled",
+            "Unscheduled",
+        )
+    });
     let tags = post.tags;
     let body_format = post.body_format;
     let body = post
         .body
         .map(|body| summarize_content(locale.as_deref(), body.as_str(), body_format.as_str()))
-        .unwrap_or_else(|| t(locale.as_deref(), "blog.selected.noBody", "No body content yet."));
+        .unwrap_or_else(|| {
+            t(
+                locale.as_deref(),
+                "blog.selected.noBody",
+                "No body content yet.",
+            )
+        });
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
@@ -235,7 +253,11 @@ fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> Strin
         return content.trim().to_string();
     }
 
-    t(locale, "blog.body.rawFormat", "Stored in `{format}` format. Raw body length: {count} characters.")
-        .replace("{format}", format)
-        .replace("{count}", &content.chars().count().to_string())
+    t(
+        locale,
+        "blog.body.rawFormat",
+        "Stored in `{format}` format. Raw body length: {count} characters.",
+    )
+    .replace("{format}", format)
+    .replace("{count}", &content.chars().count().to_string())
 }

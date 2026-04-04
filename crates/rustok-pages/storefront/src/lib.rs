@@ -11,7 +11,10 @@ use crate::model::{PageBlock, PageDetail, PageListItem, StorefrontPagesData};
 #[component]
 pub fn PagesView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_slug = route_context.query_value("slug").unwrap_or("home").to_string();
+    let selected_slug = route_context
+        .query_value("slug")
+        .unwrap_or("home")
+        .to_string();
     let selected_locale = route_context.locale.clone();
     let badge = t(selected_locale.as_deref(), "pages.badge", "pages");
     let title = t(
@@ -249,7 +252,11 @@ fn summarize_page_content(locale: Option<&str>, page: &PageDetail) -> String {
         return summarize_legacy_blocks(locale, &page.blocks);
     }
 
-    t(locale, "pages.body.empty", "No page body or legacy blocks yet.")
+    t(
+        locale,
+        "pages.body.empty",
+        "No page body or legacy blocks yet.",
+    )
 }
 
 fn summarize_legacy_blocks(locale: Option<&str>, blocks: &[PageBlock]) -> String {

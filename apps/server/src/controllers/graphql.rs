@@ -1,10 +1,7 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
-use async_graphql::parser::parse_query;
-use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
-use async_graphql::{Data, FieldError, Pos};
+use async_graphql::Data;
 use axum::{
     extract::{
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
@@ -19,7 +16,6 @@ use futures_util::{SinkExt, StreamExt};
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use rustok_core::i18n::Locale;
-use rustok_core::Permission;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::common::RequestContext;
@@ -27,164 +23,9 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{
     resolve_current_user_from_access_token, CurrentUser, OptionalCurrentUser,
 };
-use crate::graphql::errors::GraphQLError;
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::graphql::AppSchema;
 use rustok_core::ModuleRegistry;
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum SensitiveGraphqlField {
-    User,
-    Users,
-    CreateUser,
-    UpdateUser,
-    DisableUser,
-    DeleteUser,
-}
-
-impl SensitiveGraphqlField {
-    fn from_root_field(operation_type: OperationType, field_name: &str) -> Option<Self> {
-        match (operation_type, field_name) {
-            (OperationType::Query, "user") => Some(Self::User),
-            (OperationType::Query, "users") => Some(Self::Users),
-            (OperationType::Mutation, "createUser") => Some(Self::CreateUser),
-            (OperationType::Mutation, "updateUser") => Some(Self::UpdateUser),
-            (OperationType::Mutation, "disableUser") => Some(Self::DisableUser),
-            (OperationType::Mutation, "deleteUser") => Some(Self::DeleteUser),
-            _ => None,
-        }
-    }
-
-    fn field_name(self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Users => "users",
-            Self::CreateUser => "createUser",
-            Self::UpdateUser => "updateUser",
-            Self::DisableUser => "disableUser",
-            Self::DeleteUser => "deleteUser",
-        }
-    }
-
-    fn permission_hint(self) -> &'static str {
-        match self {
-            Self::User => "users:read",
-            Self::Users => "users:list",
-            Self::CreateUser => "users:create",
-            Self::UpdateUser => "users:update",
-            Self::DisableUser | Self::DeleteUser => "users:manage",
-        }
-    }
-
-    fn allows(self, permissions: &[Permission]) -> bool {
-        match self {
-            Self::User => permissions.contains(&Permission::USERS_READ),
-            Self::Users => permissions.contains(&Permission::USERS_LIST),
-            Self::CreateUser => {
-                permissions.contains(&Permission::USERS_CREATE)
-                    || permissions.contains(&Permission::USERS_MANAGE)
-            }
-            Self::UpdateUser => {
-                permissions.contains(&Permission::USERS_UPDATE)
-                    || permissions.contains(&Permission::USERS_MANAGE)
-            }
-            Self::DisableUser | Self::DeleteUser => permissions.contains(&Permission::USERS_MANAGE),
-        }
-    }
-}
-
-fn collect_sensitive_fields_from_selection_set(
-    operation_type: OperationType,
-    selection_set: &SelectionSet,
-    document: &ExecutableDocument,
-    fields: &mut BTreeSet<SensitiveGraphqlField>,
-) {
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                if let Some(sensitive_field) = SensitiveGraphqlField::from_root_field(
-                    operation_type,
-                    field.node.name.node.as_str(),
-                ) {
-                    fields.insert(sensitive_field);
-                }
-            }
-            Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
-                {
-                    collect_sensitive_fields_from_selection_set(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                    );
-                }
-            }
-            Selection::InlineFragment(fragment) => collect_sensitive_fields_from_selection_set(
-                operation_type,
-                &fragment.node.selection_set.node,
-                document,
-                fields,
-            ),
-        }
-    }
-}
-
-fn sensitive_graphql_fields(
-    query: &str,
-    operation_name: Option<&str>,
-) -> Result<Vec<SensitiveGraphqlField>, String> {
-    if query.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let document = parse_query(query).map_err(|error| error.to_string())?;
-    let mut fields = BTreeSet::new();
-
-    for (name, operation) in document.operations.iter() {
-        if let Some(target_name) = operation_name {
-            if name.map(|candidate| candidate.as_str()) != Some(target_name) {
-                continue;
-            }
-        }
-
-        collect_sensitive_fields_from_selection_set(
-            operation.node.ty,
-            &operation.node.selection_set.node,
-            &document,
-            &mut fields,
-        );
-    }
-
-    Ok(fields.into_iter().collect())
-}
-
-fn unauthorized_sensitive_fields(
-    fields: &[SensitiveGraphqlField],
-    current_user: Option<&CurrentUser>,
-) -> Vec<SensitiveGraphqlField> {
-    let Some(current_user) = current_user else {
-        return fields.to_vec();
-    };
-
-    fields
-        .iter()
-        .copied()
-        .filter(|field| !field.allows(&current_user.permissions))
-        .collect()
-}
-
-fn forbidden_sensitive_response(fields: &[SensitiveGraphqlField]) -> async_graphql::Response {
-    let required_permissions = fields
-        .iter()
-        .map(|field| format!("{} -> {}", field.field_name(), field.permission_hint()))
-        .collect::<Vec<_>>()
-        .join(", ");
-    async_graphql::Response::from_errors(vec![<FieldError as GraphQLError>::permission_denied(
-        &format!("Forbidden admin GraphQL operation. Required permissions: {required_permissions}"),
-    )
-    .into_server_error(Pos::default())])
-}
 
 async fn graphql_handler(
     State(ctx): State<AppContext>,
@@ -203,25 +44,6 @@ async fn graphql_handler(
             cataloged_admin_hash = is_cataloged_admin_hash(hash),
             "Observed persisted query hash for GraphQL telemetry"
         );
-    }
-
-    match sensitive_graphql_fields(req.query.as_str(), req.operation_name.as_deref()) {
-        Ok(sensitive_fields) if !sensitive_fields.is_empty() => {
-            let denied_fields =
-                unauthorized_sensitive_fields(&sensitive_fields, current_user.as_ref());
-            if !denied_fields.is_empty() {
-                tracing::warn!(
-                    denied_fields = ?denied_fields.iter().map(|field| field.field_name()).collect::<Vec<_>>(),
-                    operation_name = ?req.operation_name,
-                    "Rejected sensitive GraphQL document before resolver execution"
-                );
-                return Json(forbidden_sensitive_response(&denied_fields));
-            }
-        }
-        Ok(_) => {}
-        Err(error) => {
-            tracing::debug!(%error, "Skipping sensitive GraphQL field classification for unparsable document");
-        }
     }
 
     let mut request = req
@@ -429,145 +251,4 @@ pub fn routes() -> Routes {
         .prefix("api/graphql")
         .add("/", get(graphql_playground).post(graphql_handler))
         .add("/ws", get(graphql_ws_handler))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        sensitive_graphql_fields, unauthorized_sensitive_fields, CurrentUser, SensitiveGraphqlField,
-    };
-    use crate::models::users;
-    use chrono::Utc;
-    use rustok_core::{Permission, UserRole, UserStatus};
-    use serde_json::json;
-    use uuid::Uuid;
-
-    fn current_user_with_permissions(permissions: Vec<Permission>) -> CurrentUser {
-        CurrentUser {
-            user: users::Model {
-                id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                email: "admin@example.com".to_string(),
-                password_hash: "hash".to_string(),
-                name: Some("Admin".to_string()),
-                status: UserStatus::Active,
-                email_verified_at: Some(Utc::now().into()),
-                last_login_at: None,
-                created_at: Utc::now().into(),
-                updated_at: Utc::now().into(),
-                metadata: json!({}),
-            },
-            session_id: Uuid::new_v4(),
-            permissions,
-            inferred_role: UserRole::Admin,
-            client_id: None,
-            scopes: Vec::new(),
-            grant_type: "password".to_string(),
-        }
-    }
-
-    #[test]
-    fn classifies_sensitive_fields_independently_of_operation_name() {
-        let query = r#"
-            query TotallyDifferentName {
-                users {
-                    edges {
-                        node {
-                            id
-                        }
-                    }
-                }
-            }
-        "#;
-
-        let fields = sensitive_graphql_fields(query, Some("TotallyDifferentName"))
-            .expect("query should parse");
-
-        assert_eq!(fields, vec![SensitiveGraphqlField::Users]);
-    }
-
-    #[test]
-    fn classifies_sensitive_fields_inside_root_fragments() {
-        let query = r#"
-            query UserAdmin {
-                ...RootFields
-            }
-
-            fragment RootFields on Query {
-                user(id: "00000000-0000-0000-0000-000000000000") {
-                    id
-                }
-            }
-        "#;
-
-        let fields =
-            sensitive_graphql_fields(query, Some("UserAdmin")).expect("query should parse");
-
-        assert_eq!(fields, vec![SensitiveGraphqlField::User]);
-    }
-
-    #[test]
-    fn rejects_sensitive_fields_without_matching_permissions() {
-        let query = r#"
-            mutation RenameUser {
-                updateUser(
-                    id: "00000000-0000-0000-0000-000000000000"
-                    input: { name: "Updated" }
-                ) {
-                    id
-                }
-            }
-        "#;
-        let fields =
-            sensitive_graphql_fields(query, Some("RenameUser")).expect("query should parse");
-        let current_user = current_user_with_permissions(vec![Permission::USERS_READ]);
-
-        let denied = unauthorized_sensitive_fields(&fields, Some(&current_user));
-
-        assert_eq!(denied, vec![SensitiveGraphqlField::UpdateUser]);
-    }
-
-    #[test]
-    fn allows_sensitive_fields_with_matching_permissions() {
-        let query = r#"
-            mutation CreateAccount {
-                createUser(
-                    input: {
-                        email: "user@example.com"
-                        password: "password"
-                    }
-                ) {
-                    id
-                }
-            }
-        "#;
-        let fields =
-            sensitive_graphql_fields(query, Some("CreateAccount")).expect("query should parse");
-        let current_user = current_user_with_permissions(vec![Permission::USERS_MANAGE]);
-
-        let denied = unauthorized_sensitive_fields(&fields, Some(&current_user));
-
-        assert!(denied.is_empty());
-    }
-
-    #[test]
-    fn rejects_sensitive_fields_when_request_is_unauthenticated() {
-        let query = r#"
-            query ListUsers {
-                users {
-                    edges {
-                        node {
-                            id
-                        }
-                    }
-                }
-            }
-        "#;
-        let fields =
-            sensitive_graphql_fields(query, Some("ListUsers")).expect("query should parse");
-
-        let denied = unauthorized_sensitive_fields(&fields, None);
-
-        assert_eq!(denied, vec![SensitiveGraphqlField::Users]);
-    }
 }

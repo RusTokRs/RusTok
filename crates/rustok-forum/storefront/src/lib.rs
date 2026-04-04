@@ -344,14 +344,25 @@ fn ForumThreadPanel(
     };
 
     let status_class = topic_status_class(topic.status.as_str());
-    let body = summarize_rich_content(topic.body.as_str(), topic.body_format.as_str(), locale.as_deref());
+    let body = summarize_rich_content(
+        topic.body.as_str(),
+        topic.body_format.as_str(),
+        locale.as_deref(),
+    );
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
     let slug_template = t(locale.as_deref(), "forum.thread.slug", "slug: {slug}");
     let replies_title = t(locale.as_deref(), "forum.thread.repliesTitle", "Replies");
-    let replies_total_template =
-        t(locale.as_deref(), "forum.thread.repliesTotal", "{count} total");
-    let no_replies_label = t(locale.as_deref(), "forum.thread.noReplies", "No replies yet.");
+    let replies_total_template = t(
+        locale.as_deref(),
+        "forum.thread.repliesTotal",
+        "{count} total",
+    );
+    let no_replies_label = t(
+        locale.as_deref(),
+        "forum.thread.noReplies",
+        "No replies yet.",
+    );
 
     view! {
         <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm xl:sticky xl:top-6 xl:self-start">

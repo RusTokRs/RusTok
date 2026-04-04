@@ -24,9 +24,6 @@ impl ScriptEngine {
     pub fn new(config: EngineConfig) -> Self {
         let mut engine = Engine::new();
 
-
-
-
         engine.set_allow_looping(true);
         engine.set_allow_shadowing(true);
         engine.set_strict_variables(true);
@@ -173,4 +170,3 @@ impl ScriptEngine {
         &self.config
     }
 }
-

@@ -33,7 +33,9 @@ use crate::models::{
     users::{self, Entity as Users},
 };
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
-use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
+use crate::services::email::{
+    email_service_from_ctx, password_reset_url, EmailVerificationEmail, PasswordResetEmail,
+};
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 const DEFAULT_VERIFY_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
@@ -423,6 +425,7 @@ async fn confirm_reset(
 async fn request_verification(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
+    request_context: RequestContext,
     Json(params): Json<RequestVerificationParams>,
 ) -> Result<Response> {
     let config = auth_config_from_ctx(&ctx)?;
@@ -449,6 +452,25 @@ async fn request_verification(
     } else {
         None
     };
+
+    if let Some(verification_token_value) = verification_token.as_ref() {
+        let email_service = email_service_from_ctx(&ctx, request_context.locale.as_str())
+            .map_err(|_| Error::InternalServerError)?;
+        let recipient = params.email.clone();
+        let verification_token = verification_token_value.clone();
+
+        tokio::spawn(async move {
+            if let Err(error) = email_service
+                .send_email_verification(EmailVerificationEmail {
+                    to: recipient,
+                    verification_token,
+                })
+                .await
+            {
+                tracing::warn!(error = %error, "Failed to send email verification email");
+            }
+        });
+    }
 
     format::json(VerificationRequestResponse {
         status: "ok",
