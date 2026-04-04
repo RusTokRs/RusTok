@@ -104,6 +104,8 @@ pub struct RegistryModuleLifecycle {
     pub latest_release: Option<RegistryReleaseLifecycle>,
     #[serde(default, rename = "recentEvents")]
     pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
+    #[serde(default, rename = "followUpGates")]
+    pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -128,6 +130,15 @@ pub struct RegistryGovernanceEventLifecycle {
     pub details: serde_json::Value,
     #[serde(rename = "createdAt")]
     pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryFollowUpGateLifecycle {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

@@ -1,4 +1,5 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::ev::{MouseEvent, SubmitEvent};
@@ -7,6 +8,7 @@ use leptos::task::spawn_local;
 use leptos::web_sys;
 use rustok_api::UiRouteContext;
 
+use crate::i18n::t;
 use crate::model::{
     SearchFacetGroup, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
     SearchSuggestion,
@@ -23,6 +25,64 @@ pub fn SearchView() -> impl IntoView {
         .to_string();
     let (selected_preset, set_selected_preset) = signal(preset_key.clone());
     let locale = route_context.locale.clone();
+    let badge_label = t(locale.as_deref(), "search.badge", "search");
+    let title_label = t(
+        locale.as_deref(),
+        "search.title",
+        "Search across published content and catalog",
+    );
+    let subtitle_label = t(
+        locale.as_deref(),
+        "search.subtitle",
+        "This storefront surface is backed by PostgreSQL full-text search over published content and products.",
+    );
+    let query_label = t(locale.as_deref(), "search.form.queryLabel", "Search query");
+    let query_placeholder = t(
+        locale.as_deref(),
+        "search.form.placeholder",
+        "Search products and published content",
+    );
+    let submit_label = t(locale.as_deref(), "search.form.submit", "Search");
+    let load_presets_error = t(
+        locale.as_deref(),
+        "search.error.loadPresets",
+        "Failed to load presets",
+    );
+    let autocomplete_hint = t(
+        locale.as_deref(),
+        "search.form.autocompleteHint",
+        "Autocomplete uses popular successful queries and matching published document titles from rustok-search.",
+    );
+    let loading_suggestions_label = t(
+        locale.as_deref(),
+        "search.suggestions.loading",
+        "Loading suggestions...",
+    );
+    let suggestions_empty_label = t(
+        locale.as_deref(),
+        "search.suggestions.empty",
+        "Type at least 2 characters to see autocomplete suggestions.",
+    );
+    let load_suggestions_error = t(
+        locale.as_deref(),
+        "search.error.loadSuggestions",
+        "Failed to load search suggestions",
+    );
+    let empty_results_title = t(
+        locale.as_deref(),
+        "search.results.emptyTitle",
+        "Enter a search query",
+    );
+    let empty_results_body = t(
+        locale.as_deref(),
+        "search.results.emptyBody",
+        "Storefront search reads `?q=` from the generic module route and runs the public PostgreSQL FTS pipeline.",
+    );
+    let load_results_error = t(
+        locale.as_deref(),
+        "search.error.loadResults",
+        "Failed to load storefront search results",
+    );
     let entity_types = parse_csv(route_context.query_value("entity_types").unwrap_or(""));
     let source_modules = parse_csv(route_context.query_value("source_modules").unwrap_or(""));
     let statuses = parse_csv(route_context.query_value("statuses").unwrap_or(""));
@@ -84,13 +144,13 @@ pub fn SearchView() -> impl IntoView {
         <section class="rounded-3xl border border-border bg-card p-8 shadow-sm">
             <div class="max-w-3xl space-y-3">
                 <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                    "search"
+                    {badge_label}
                 </span>
                 <h2 class="text-3xl font-semibold text-card-foreground">
-                    "Search across published content and catalog"
+                    {title_label}
                 </h2>
                 <p class="text-sm text-muted-foreground">
-                    "This storefront surface is backed by PostgreSQL full-text search over published content and products."
+                    {subtitle_label}
                 </p>
             </div>
 
@@ -100,7 +160,7 @@ pub fn SearchView() -> impl IntoView {
                     on:submit=move |ev| submit_search(ev, search_input.get(), selected_preset.get())
                 >
                     <label class="block text-sm font-medium text-card-foreground" for="storefront-search-input">
-                        "Search query"
+                        {query_label.clone()}
                     </label>
                     <div class="mt-3 flex flex-col gap-3 md:flex-row">
                         <input
@@ -108,13 +168,13 @@ pub fn SearchView() -> impl IntoView {
                             class="min-w-0 flex-1 rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground"
                             prop:value=move || search_input.get()
                             on:input=move |ev| set_search_input.set(event_target_value(&ev))
-                            placeholder="Search products and published content"
+                            placeholder=query_placeholder.clone()
                         />
                         <button
                             class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground"
                             type="submit"
                         >
-                            "Search"
+                            {submit_label.clone()}
                         </button>
                     </div>
                     <Suspense fallback=|| view! { <div class="mt-3 h-10 animate-pulse rounded-xl bg-muted"></div> }>
@@ -123,21 +183,26 @@ pub fn SearchView() -> impl IntoView {
                                 <PresetChips presets selected_preset set_selected_preset query=search_input.get() />
                             }.into_any(),
                             Ok(_) => view! { <></> }.into_any(),
-                            Err(err) => view! { <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("Failed to load presets: {err}")}</div> }.into_any(),
+                            Err(err) => view! { <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("{}: {err}", load_presets_error.clone())}</div> }.into_any(),
                         })}
                     </Suspense>
                     <p class="mt-3 text-xs text-muted-foreground">
-                        "Autocomplete uses popular successful queries and matching published document titles from rustok-search."
+                        {autocomplete_hint}
                     </p>
                 </form>
 
-                <Suspense fallback=|| view! {
-                    <div class="rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
-                        "Loading suggestions..."
-                    </div>
+                <Suspense fallback=move || {
+                    let loading_suggestions_label = loading_suggestions_label.clone();
+                    view! {
+                        <div class="rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
+                            {loading_suggestions_label}
+                        </div>
+                    }
                 }>
                     {move || {
                         let suggestions = suggestions.clone();
+                        let suggestions_empty_label = suggestions_empty_label.clone();
+                        let load_suggestions_error = load_suggestions_error.clone();
                         Suspend::new(async move {
                             match suggestions.await {
                                 Ok(items) if !items.is_empty() => view! {
@@ -145,12 +210,12 @@ pub fn SearchView() -> impl IntoView {
                                 }.into_any(),
                                 Ok(_) => view! {
                                     <div class="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                                        "Type at least 2 characters to see autocomplete suggestions."
+                                        {suggestions_empty_label.clone()}
                                     </div>
                                 }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("Failed to load search suggestions: {err}")}
+                                        {format!("{}: {err}", load_suggestions_error.clone())}
                                     </div>
                                 }.into_any(),
                             }
@@ -173,6 +238,9 @@ pub fn SearchView() -> impl IntoView {
                         let results = results.clone();
                         let query = query_for_view.clone();
                         let preset_key = preset_for_view.clone();
+                        let empty_results_title = empty_results_title.clone();
+                        let empty_results_body = empty_results_body.clone();
+                        let load_results_error = load_results_error.clone();
                         Suspend::new(async move {
                             match results.await {
                                 Ok(Some(payload)) => view! {
@@ -180,13 +248,13 @@ pub fn SearchView() -> impl IntoView {
                                 }.into_any(),
                                 Ok(None) => view! {
                                     <EmptyState
-                                        title="Enter a search query"
-                                        body="Storefront search reads `?q=` from the generic module route and runs the public PostgreSQL FTS pipeline."
+                                        title=empty_results_title.clone()
+                                        body=empty_results_body.clone()
                                     />
                                 }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("Failed to load storefront search results: {err}")}
+                                        {format!("{}: {err}", load_results_error.clone())}
                                     </div>
                                 }.into_any(),
                             }
@@ -200,14 +268,23 @@ pub fn SearchView() -> impl IntoView {
 
 #[component]
 fn SearchSuggestionList(suggestions: Vec<SearchSuggestion>) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let suggestions_title = t(locale.as_deref(), "search.suggestions.title", "Suggestions");
+    let suggestions_badge = t(
+        locale.as_deref(),
+        "search.suggestions.badge",
+        "autocomplete",
+    );
+    let open_label = t(locale.as_deref(), "search.suggestions.open", "Open");
+    let search_label = t(locale.as_deref(), "search.suggestions.search", "Search");
     view! {
         <article class="rounded-2xl border border-border bg-background p-4">
             <div class="flex items-center justify-between gap-3">
                 <div class="text-sm font-semibold text-card-foreground">
-                    "Suggestions"
+                    {suggestions_title}
                 </div>
                 <div class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    "autocomplete"
+                    {suggestions_badge}
                 </div>
             </div>
             <div class="mt-3 grid gap-2">
@@ -250,7 +327,7 @@ fn SearchSuggestionList(suggestions: Vec<SearchSuggestion>) -> impl IntoView {
                                     </span>
                                 </span>
                                 <span class="shrink-0 text-xs text-muted-foreground">
-                                    {if suggestion_kind == "document" { "Open" } else { "Search" }}
+                                    {if suggestion_kind == "document" { open_label.clone() } else { search_label.clone() }}
                                 </span>
                             </button>
                         }
@@ -303,6 +380,46 @@ fn SearchResults(
     selected_preset: String,
     payload: SearchPreviewPayload,
 ) -> impl IntoView {
+    let locale_context = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let query_label = t(locale_context.as_deref(), "search.results.queryLabel", "Query");
+    let results_summary_template = t(
+        locale_context.as_deref(),
+        "search.results.summary",
+        "{count} results in {took_ms} ms via {engine} ({ranking_profile})",
+    );
+    let preset_template = t(
+        locale_context.as_deref(),
+        "search.results.preset",
+        "preset = {preset}",
+    );
+    let none_label = t(locale_context.as_deref(), "search.results.none", "none");
+    let locale_template = t(
+        locale_context.as_deref(),
+        "search.results.locale",
+        "locale = {locale}",
+    );
+    let no_results_title = t(locale_context.as_deref(), "search.results.noResultsTitle", "No results");
+    let no_results_body = t(
+        locale_context.as_deref(),
+        "search.results.noResultsBody",
+        "Try a different query or relax the storefront filters in the query string.",
+    );
+    let engine_title = t(locale_context.as_deref(), "search.features.engineTitle", "Engine");
+    let engine_body = t(
+        locale_context.as_deref(),
+        "search.features.engineBody",
+        "Storefront uses the public published-only search surface backed by PostgreSQL FTS.",
+    );
+    let facet_title = t(
+        locale_context.as_deref(),
+        "search.features.facetsTitle",
+        "Facet model",
+    );
+    let facet_body = t(
+        locale_context.as_deref(),
+        "search.features.facetsBody",
+        "Entity type and source module facets come from the same search payload used by admin previews.",
+    );
     let locale = payload
         .items
         .first()
@@ -355,23 +472,28 @@ fn SearchResults(
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                                "Query"
+                                {query_label}
                             </div>
                             <h3 class="mt-2 text-xl font-semibold text-foreground">{query}</h3>
                             <p class="mt-2 text-sm text-muted-foreground">
-                                {format!("{total} results in {took_ms} ms via {engine} ({ranking_profile})")}
+                                {results_summary_template
+                                    .replace("{count}", total.to_string().as_str())
+                                    .replace("{took_ms}", took_ms.to_string().as_str())
+                                    .replace("{engine}", engine.as_str())
+                                    .replace("{ranking_profile}", ranking_profile.as_str())}
                             </p>
                             <p class="mt-2 text-xs text-muted-foreground">
-                                {format!(
-                                    "preset = {}",
+                                {preset_template.replace(
+                                    "{preset}",
                                     applied_preset_key
                                         .filter(|value| !value.is_empty())
-                                        .unwrap_or_else(|| if selected_preset.is_empty() { "none".to_string() } else { selected_preset.clone() })
+                                        .unwrap_or_else(|| if selected_preset.is_empty() { none_label.clone() } else { selected_preset.clone() })
+                                        .as_str(),
                                 )}
                             </p>
                         </div>
                         <div class="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-card-foreground">
-                            {format!("locale = {locale}")}
+                            {locale_template.replace("{locale}", locale.as_str())}
                         </div>
                     </div>
                 </article>
@@ -386,8 +508,8 @@ fn SearchResults(
                 } else {
                     view! {
                         <EmptyState
-                            title="No results"
-                            body="Try a different query or relax the storefront filters in the query string."
+                            title=no_results_title
+                            body=no_results_body
                         />
                     }
                     .into_any()
@@ -396,12 +518,12 @@ fn SearchResults(
 
             <aside class="space-y-4">
                 <FeatureCard
-                    title="Engine"
-                    body="Storefront uses the public published-only search surface backed by PostgreSQL FTS."
+                    title=engine_title
+                    body=engine_body
                 />
                 <FeatureCard
-                    title="Facet model"
-                    body="Entity type and source module facets come from the same search payload used by admin previews."
+                    title=facet_title
+                    body=facet_body
                 />
                 {facet_views}
             </aside>
@@ -415,10 +537,21 @@ fn render_result_action(
     href: Option<String>,
     index: usize,
 ) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let no_target_label = t(
+        locale.as_deref(),
+        "search.results.noTarget",
+        "No storefront target is available for this result yet.",
+    );
+    let open_result_label = t(
+        locale.as_deref(),
+        "search.results.openResult",
+        "Open result",
+    );
     let Some(href_value) = href else {
         return view! {
             <p class="mt-4 text-xs text-muted-foreground">
-                "No storefront target is available for this result yet."
+                {no_target_label}
             </p>
         }
         .into_any();
@@ -430,7 +563,7 @@ fn render_result_action(
             href=href_value.clone()
             on:click=move |ev| track_result_click(ev, query_log_id.clone(), document_id.clone(), href_value.clone(), index)
         >
-            "Open result"
+            {open_result_label}
         </a>
     }
     .into_any()
@@ -498,7 +631,7 @@ fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
 }
 
 #[component]
-fn EmptyState(title: &'static str, body: &'static str) -> impl IntoView {
+fn EmptyState(title: String, body: String) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-dashed border-border p-8 text-center">
             <h3 class="text-lg font-semibold text-card-foreground">{title}</h3>

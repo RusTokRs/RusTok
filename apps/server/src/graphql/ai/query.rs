@@ -9,8 +9,9 @@ use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
     ensure_ai_task_profile_read,
     types::{
-        AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderProfileGql, AiTaskProfileGql,
-        AiToolProfileGql, AiToolTraceGql,
+        AiChatSessionDetailGql, AiChatSessionSummaryGql, AiProviderProfileGql, AiRecentRunGql,
+        AiRunStreamEventGql, AiRuntimeMetricsGql, AiTaskProfileGql, AiToolProfileGql,
+        AiToolTraceGql,
     },
 };
 
@@ -24,6 +25,48 @@ fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
 
 #[Object]
 impl AiQuery {
+    async fn ai_runtime_metrics(&self, ctx: &Context<'_>) -> Result<AiRuntimeMetricsGql> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        Ok(rustok_ai::AiManagementService::metrics_snapshot().into())
+    }
+
+    async fn ai_recent_run_stream_events(
+        &self,
+        ctx: &Context<'_>,
+        session_id: Option<Uuid>,
+        limit: Option<i32>,
+    ) -> Result<Vec<AiRunStreamEventGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        let limit = limit.unwrap_or(20).max(1) as usize;
+        Ok(
+            rustok_ai::AiManagementService::recent_stream_events(session_id, limit)
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
+    }
+
+    async fn ai_recent_runs(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+    ) -> Result<Vec<AiRecentRunGql>> {
+        let auth = require_auth_context(ctx)?;
+        ensure_ai_overview_read(auth)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let limit = limit.unwrap_or(20).max(1) as usize;
+        Ok(
+            rustok_ai::AiManagementService::list_recent_runs(db, auth.tenant_id, limit)
+                .await
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
+    }
+
     async fn ai_provider_profiles(&self, ctx: &Context<'_>) -> Result<Vec<AiProviderProfileGql>> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_read(auth)?;

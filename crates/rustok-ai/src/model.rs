@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -131,6 +132,35 @@ pub struct ProviderChatRequest {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderStreamEvent {
+    TextDelta(String),
+}
+
+#[derive(Clone)]
+pub struct ProviderStreamEmitter {
+    inner: Arc<dyn Fn(ProviderStreamEvent) + Send + Sync>,
+}
+
+impl ProviderStreamEmitter {
+    pub fn new<F>(callback: F) -> Self
+    where
+        F: Fn(ProviderStreamEvent) + Send + Sync + 'static,
+    {
+        Self {
+            inner: Arc::new(callback),
+        }
+    }
+
+    pub fn emit(&self, event: ProviderStreamEvent) {
+        (self.inner)(event);
+    }
+
+    pub fn emit_text_delta(&self, delta: impl Into<String>) {
+        self.emit(ProviderStreamEvent::TextDelta(delta.into()));
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

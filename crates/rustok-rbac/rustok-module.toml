@@ -11,3 +11,8 @@ recommended_admin_surfaces = ["leptos-admin"]
 leptos_crate = "rustok-rbac-admin"
 route_segment = "rbac"
 nav_label = "RBAC"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

@@ -1,14 +1,71 @@
 mod api;
+mod i18n;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::UiRouteContext;
 use rustok_comments::{CommentStatus, CommentThreadStatus};
+
+use crate::i18n::t;
 
 #[component]
 pub fn CommentsAdmin() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let ui_locale = route_context.locale.clone();
     let token = use_token();
     let tenant = use_tenant();
+    let badge_text = t(ui_locale.as_deref(), "comments.badge", "comments");
+    let title_text = t(
+        ui_locale.as_deref(),
+        "comments.title",
+        "Comments Moderation",
+    );
+    let subtitle_text = t(
+        ui_locale.as_deref(),
+        "comments.subtitle",
+        "Module-owned moderation surface for generic non-forum comments. This UI is native-first and intentionally does not invent a new GraphQL or REST transport.",
+    );
+    let target_type_placeholder = t(
+        ui_locale.as_deref(),
+        "comments.filters.targetTypePlaceholder",
+        "Target type",
+    );
+    let all_thread_statuses = t(
+        ui_locale.as_deref(),
+        "comments.filters.allThreadStatuses",
+        "All thread statuses",
+    );
+    let open_label = t(ui_locale.as_deref(), "comments.thread.open", "Open");
+    let closed_label = t(ui_locale.as_deref(), "comments.thread.closed", "Closed");
+    let all_comment_statuses = t(
+        ui_locale.as_deref(),
+        "comments.filters.allCommentStatuses",
+        "All comment statuses",
+    );
+    let pending_label = t(ui_locale.as_deref(), "comments.comment.pending", "Pending");
+    let approved_label = t(ui_locale.as_deref(), "comments.comment.approve", "Approve");
+    let spam_label = t(ui_locale.as_deref(), "comments.comment.spam", "Spam");
+    let trash_label = t(ui_locale.as_deref(), "comments.comment.trash", "Trash");
+    let locale_placeholder = t(
+        ui_locale.as_deref(),
+        "comments.filters.localePlaceholder",
+        "Locale",
+    );
+    let threads_title = t(ui_locale.as_deref(), "comments.threads.title", "Threads");
+    let prev_label = t(ui_locale.as_deref(), "comments.pagination.prev", "Prev");
+    let next_label = t(ui_locale.as_deref(), "comments.pagination.next", "Next");
+    let load_threads_error = t(
+        ui_locale.as_deref(),
+        "comments.error.loadThreads",
+        "Failed to load threads",
+    );
+    let thread_detail_title = t(
+        ui_locale.as_deref(),
+        "comments.detail.title",
+        "Thread Detail",
+    );
+    let thread_label = t(ui_locale.as_deref(), "comments.detail.thread", "Thread");
 
     let (page, set_page) = signal(1_u64);
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -16,7 +73,11 @@ pub fn CommentsAdmin() -> impl IntoView {
     let (target_type_filter, set_target_type_filter) = signal(String::new());
     let (thread_status_filter, set_thread_status_filter) = signal("all".to_string());
     let (comment_status_filter, set_comment_status_filter) = signal("all".to_string());
-    let (locale, set_locale) = signal("en".to_string());
+    let (locale, set_locale) = signal(
+        ui_locale
+            .clone()
+            .unwrap_or_else(|| "en".to_string()),
+    );
     let (mutation_error, set_mutation_error) = signal(Option::<String>::None);
     let (_busy_key, set_busy_key) = signal(Option::<String>::None);
 
@@ -57,7 +118,13 @@ pub fn CommentsAdmin() -> impl IntoView {
         move |(_, _, thread_id, _, locale_value)| async move {
             match thread_id {
                 Some(thread_id) => api::fetch_thread_detail(thread_id, locale_value, 1, 100).await,
-                None => Err(api::ApiError::ServerFn("Select a thread first".to_string())),
+                None => Err(api::ApiError::ServerFn(
+                    t(
+                        Some("en"),
+                        "comments.error.selectThread",
+                        "Select a thread first",
+                    ),
+                )),
             }
         },
     );
@@ -81,7 +148,14 @@ pub fn CommentsAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::set_thread_status(thread_id, status).await {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-                Err(err) => set_mutation_error.set(Some(format!("Failed to update thread: {err}"))),
+                Err(err) => set_mutation_error.set(Some(format!(
+                    "{}: {err}",
+                    t(
+                        locale.get_untracked().as_str().into(),
+                        "comments.error.updateThread",
+                        "Failed to update thread",
+                    )
+                ))),
             }
             set_busy_key.set(None);
         });
@@ -91,10 +165,17 @@ pub fn CommentsAdmin() -> impl IntoView {
         let locale_value = locale.get_untracked();
         set_busy_key.set(Some(format!("comment:{comment_id}")));
         spawn_local(async move {
-            match api::set_comment_status(comment_id, status, locale_value).await {
+            match api::set_comment_status(comment_id, status, locale_value.clone()).await {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
                 Err(err) => {
-                    set_mutation_error.set(Some(format!("Failed to update comment: {err}")))
+                    set_mutation_error.set(Some(format!(
+                        "{}: {err}",
+                        t(
+                            Some(locale_value.as_str()),
+                            "comments.error.updateComment",
+                            "Failed to update comment",
+                        )
+                    )))
                 }
             }
             set_busy_key.set(None);
@@ -106,12 +187,10 @@ pub fn CommentsAdmin() -> impl IntoView {
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-2">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        "comments"
+                        {badge_text}
                     </span>
-                    <h1 class="text-2xl font-semibold text-card-foreground">"Comments Moderation"</h1>
-                    <p class="max-w-3xl text-sm text-muted-foreground">
-                        "Module-owned moderation surface for generic non-forum comments. This UI is native-first and intentionally does not invent a new GraphQL or REST transport."
-                    </p>
+                    <h1 class="text-2xl font-semibold text-card-foreground">{title_text}</h1>
+                    <p class="max-w-3xl text-sm text-muted-foreground">{subtitle_text}</p>
                 </div>
             </header>
 
@@ -125,7 +204,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                 <div class="grid gap-3 md:grid-cols-4">
                     <input
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        placeholder="Target type"
+                        placeholder=target_type_placeholder
                         prop:value=target_type_filter
                         on:input=move |ev| set_target_type_filter.set(event_target_value(&ev))
                     />
@@ -133,23 +212,23 @@ pub fn CommentsAdmin() -> impl IntoView {
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         on:change=move |ev| set_thread_status_filter.set(event_target_value(&ev))
                     >
-                        <option value="all">"All thread statuses"</option>
-                        <option value="open">"Open"</option>
-                        <option value="closed">"Closed"</option>
+                        <option value="all">{all_thread_statuses}</option>
+                        <option value="open">{open_label.clone()}</option>
+                        <option value="closed">{closed_label.clone()}</option>
                     </select>
                     <select
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         on:change=move |ev| set_comment_status_filter.set(event_target_value(&ev))
                     >
-                        <option value="all">"All comment statuses"</option>
-                        <option value="pending">"Pending"</option>
-                        <option value="approved">"Approved"</option>
-                        <option value="spam">"Spam"</option>
-                        <option value="trash">"Trash"</option>
+                        <option value="all">{all_comment_statuses}</option>
+                        <option value="pending">{pending_label.clone()}</option>
+                        <option value="approved">{approved_label.clone()}</option>
+                        <option value="spam">{spam_label.clone()}</option>
+                        <option value="trash">{trash_label.clone()}</option>
                     </select>
                     <input
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        placeholder="Locale"
+                        placeholder=locale_placeholder
                         prop:value=locale
                         on:input=move |ev| set_locale.set(event_target_value(&ev))
                     />
@@ -159,7 +238,7 @@ pub fn CommentsAdmin() -> impl IntoView {
             <div class="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-center justify-between gap-4">
-                        <h2 class="text-lg font-semibold text-card-foreground">"Threads"</h2>
+                        <h2 class="text-lg font-semibold text-card-foreground">{threads_title}</h2>
                         <div class="flex items-center gap-2">
                             <button
                                 type="button"
@@ -167,15 +246,22 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 disabled=move || page.get() <= 1
                                 on:click=move |_| set_page.update(|value| *value = value.saturating_sub(1).max(1))
                             >
-                                "Prev"
+                                {prev_label.clone()}
                             </button>
-                            <span class="text-sm text-muted-foreground">{move || format!("Page {}", page.get())}</span>
+                            <span class="text-sm text-muted-foreground">{move || {
+                                t(
+                                    locale.get().as_str().into(),
+                                    "comments.pagination.page",
+                                    "Page {count}",
+                                )
+                                .replace("{count}", &page.get().to_string())
+                            }}</span>
                             <button
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-2 text-sm"
                                 on:click=move |_| set_page.update(|value| *value += 1)
                             >
-                                "Next"
+                                {next_label.clone()}
                             </button>
                         </div>
                     </div>
@@ -185,7 +271,11 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 Ok(payload) => view! {
                                     <div class="space-y-3">
                                         <div class="text-sm text-muted-foreground">
-                                            {format!("{} matching threads", payload.total)}
+                                            {t(
+                                                locale.get().as_str().into(),
+                                                "comments.threads.total",
+                                                "{count} matching threads",
+                                            ).replace("{count}", &payload.total.to_string())}
                                         </div>
                                         <div class="space-y-2">
                                             {payload.items.into_iter().map(|thread| {
@@ -207,7 +297,11 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 </span>
                                                             </div>
                                                             <div class="text-xs text-muted-foreground">
-                                                                {format!("{} comments", thread.comment_count)}
+                                                                {t(
+                                                                    locale.get().as_str().into(),
+                                                                    "comments.threads.count",
+                                                                    "{count} comments",
+                                                                ).replace("{count}", &thread.comment_count.to_string())}
                                                             </div>
                                                         </div>
                                                     </button>
@@ -218,7 +312,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("Failed to load threads: {err}")}
+                                        {format!("{}: {err}", load_threads_error.clone())}
                                     </div>
                                 }.into_any(),
                             })
@@ -228,21 +322,21 @@ pub fn CommentsAdmin() -> impl IntoView {
 
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-center justify-between gap-3">
-                        <h2 class="text-lg font-semibold text-card-foreground">"Thread Detail"</h2>
+                        <h2 class="text-lg font-semibold text-card-foreground">{thread_detail_title}</h2>
                         <div class="flex items-center gap-2">
                             <button
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-2 text-sm"
                                 on:click=move |_| update_thread_status(CommentThreadStatus::Open)
                             >
-                                "Open"
+                                {open_label}
                             </button>
                             <button
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-2 text-sm"
                                 on:click=move |_| update_thread_status(CommentThreadStatus::Closed)
                             >
-                                "Close"
+                                {closed_label}
                             </button>
                         </div>
                     </div>
@@ -252,12 +346,18 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 Ok(detail) => view! {
                                     <div class="space-y-4">
                                         <div class="rounded-xl border border-border bg-background/60 p-4 text-sm">
-                                            <div class="text-xs uppercase tracking-wide text-muted-foreground">"Thread"</div>
+                                            <div class="text-xs uppercase tracking-wide text-muted-foreground">{thread_label.clone()}</div>
                                             <div class="mt-2 font-medium text-card-foreground">
                                                 {format!("{}:{}", detail.thread.target_type, detail.thread.target_id)}
                                             </div>
                                             <div class="mt-2 text-xs text-muted-foreground">
-                                                {format!("{} comments, status {:?}", detail.thread.comment_count, detail.thread.status)}
+                                                {t(
+                                                    locale.get().as_str().into(),
+                                                    "comments.detail.statusLine",
+                                                    "{count} comments, status {status}",
+                                                )
+                                                .replace("{count}", &detail.thread.comment_count.to_string())
+                                                .replace("{status}", &format!("{:?}", detail.thread.status))}
                                             </div>
                                         </div>
                                         <div class="space-y-3">
@@ -267,32 +367,38 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                     <div class="rounded-xl border border-border p-4">
                                                         <div class="flex flex-wrap items-center justify-between gap-3">
                                                             <div class="text-xs text-muted-foreground">
-                                                                {format!("author {} • {}", comment.author_id, comment.created_at)}
+                                                                {t(
+                                                                    locale.get().as_str().into(),
+                                                                    "comments.detail.authorLine",
+                                                                    "author {author} · {created_at}",
+                                                                )
+                                                                .replace("{author}", &comment.author_id.to_string())
+                                                                .replace("{created_at}", comment.created_at.as_str())}
                                                             </div>
                                                             <div class="flex flex-wrap gap-2">
                                                                 <StatusButton
-                                                                    label="Pending"
+                                                                    label=pending_label.clone()
                                                                     on_click=Callback::new({
                                                                         let comment_id = comment_id.clone();
                                                                         move |_| update_comment_status(comment_id.clone(), CommentStatus::Pending)
                                                                     })
                                                                 />
                                                                 <StatusButton
-                                                                    label="Approve"
+                                                                    label=approved_label.clone()
                                                                     on_click=Callback::new({
                                                                         let comment_id = comment_id.clone();
                                                                         move |_| update_comment_status(comment_id.clone(), CommentStatus::Approved)
                                                                     })
                                                                 />
                                                                 <StatusButton
-                                                                    label="Spam"
+                                                                    label=spam_label.clone()
                                                                     on_click=Callback::new({
                                                                         let comment_id = comment_id.clone();
                                                                         move |_| update_comment_status(comment_id.clone(), CommentStatus::Spam)
                                                                     })
                                                                 />
                                                                 <StatusButton
-                                                                    label="Trash"
+                                                                    label=trash_label.clone()
                                                                     on_click=Callback::new(move |_| update_comment_status(comment_id.clone(), CommentStatus::Trash))
                                                                 />
                                                             </div>
@@ -301,7 +407,13 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                             {comment.body}
                                                         </div>
                                                         <div class="mt-2 text-xs text-muted-foreground">
-                                                            {format!("locale {} → {}", comment.requested_locale, comment.effective_locale)}
+                                                            {t(
+                                                                locale.get().as_str().into(),
+                                                                "comments.detail.localeLine",
+                                                                "locale {requested} -> {effective}",
+                                                            )
+                                                            .replace("{requested}", comment.requested_locale.as_str())
+                                                            .replace("{effective}", comment.effective_locale.as_str())}
                                                         </div>
                                                     </div>
                                                 }
@@ -324,7 +436,7 @@ pub fn CommentsAdmin() -> impl IntoView {
 }
 
 #[component]
-fn StatusButton(label: &'static str, on_click: Callback<()>) -> impl IntoView {
+fn StatusButton(label: String, on_click: Callback<()>) -> impl IntoView {
     view! {
         <button
             type="button"

@@ -20,6 +20,7 @@
 - [ ] Auth и data-layer integration отражают текущий dual-path: native `#[server]` first для Leptos data access, GraphQL параллельно через `leptos-auth` / `leptos-graphql` и fallback-ветки.
 - [ ] Module-owned Leptos admin packages описаны как часть live contract, а не как app-local исключения host-кода.
 - [ ] Admin module registry и module request context описаны корректно.
+- [ ] Leptos admin host прокидывает effective locale в `UiRouteContext`, а module-owned admin packages читают язык UI оттуда вместо собственных несогласованных fallback-цепочек.
 - [ ] План не обещает встроенные product/content/blog/pages screens там, где в host есть только generic module-owned surfaces.
 
 ### 10.2 `apps/storefront`
@@ -35,6 +36,7 @@
 - [ ] Data-layer storefront отражает текущий dual-path: native `#[server]` path и сохранённый GraphQL fallback.
 - [ ] Locale-prefixed маршруты `/{locale}` и `/{locale}/modules/{route_segment}` отражены как текущий SSR contract, а legacy `?lang=` не описывается как primary path.
 - [ ] `UiRouteContext` и effective locale прокидываются в module-owned storefront packages без собственных несовместимых fallback-цепочек.
+- [ ] Module-owned storefront packages не генерируют hardcoded `/modules/...` ссылки внутри своих view-компонентов; для внутренних generic page links используется `UiRouteContext::module_route_base()`.
 - [ ] План не обещает отдельные catalog/blog/cart screens, если в текущем host-коде они ещё не оформлены как самостоятельные маршруты.
 
 ---
@@ -114,7 +116,13 @@
 
 ## Фаза 13: Native i18n contract
 
-- [ ] Server runtime locale chain отражён одинаково в host-приложениях и module-owned UI packages: `query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`.
-- [ ] `Content-Language` и effective locale описаны как platform contract для SSR/GraphQL/server-function ответов.
-- [ ] UI bundles parity проверяется машинно через `npm run verify:i18n:ui`; docs не описывают parity как ручную договорённость без проверяемого артефакта.
-- [ ] Module-owned translation bundles не описываются как уже formalized trait contract, если в коде его ещё нет.
+> [!NOTE]
+> Эта фаза закрыта как migration wave. Остаточный remediation scope после неё ведётся в `docs/concepts/platform-remediation-execution-plan.md` и не должен переоткрывать package-owned UI migration как pending работу.
+
+- [x] Server runtime locale chain отражён одинаково в host-приложениях и module-owned UI packages: `query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`.
+- [x] `Content-Language` и effective locale описаны как platform contract для SSR/GraphQL/server-function ответов.
+- [x] UI bundles parity проверяется машинно через `npm run verify:i18n:ui`; docs не описывают parity как ручную договорённость без проверяемого артефакта.
+- [x] Module-owned translation bundles, если они существуют, описываются через manifest-level `[provides.*_ui.i18n]` contract, а не через расплывчатые WIP-формулировки.
+- [x] Locale-aware storefront route contract проверяется отдельно через `npm run verify:storefront:routes`, чтобы module-owned Leptos packages не возвращались к hardcoded `/modules/{route_segment}` вместо `UiRouteContext::module_route_base()`.
+- [x] Package-owned Leptos admin bundles (`admin/locales/*.json`) используют тот же host locale contract и не обходят `UiRouteContext.locale` локальными источниками языка, включая capability-owned `rustok-ai-admin`.
+- [x] В verification отражено текущее покрытие package-owned bundle contract: Leptos admin surfaces `workflow`, `rbac`, `tenant`, `index`, `outbox`, `pages`, `comments`, `channel`, `forum`, `search`, `commerce`, capability-owned `rustok-ai-admin`, и storefront surfaces `blog`, `pages`, `commerce`, `forum`, `search`.

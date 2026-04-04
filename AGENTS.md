@@ -57,3 +57,4 @@ Rules mandatory for all automated agents operating in this repository:
 5. Do not edit CI/CD workflow files unless explicitly requested.
 6. Do not modify other branches — only work on the assigned task branch.
 7. For Leptos apps and module-owned Leptos UI packages, use native `#[server]` functions as the default internal data layer and keep GraphQL in parallel. Do not remove or replace GraphQL when adding server functions.
+8. Do not invent package-local i18n contracts. Server locale selection is canonical; module-owned UI packages must consume the host-provided effective locale (`UiRouteContext.locale` for Leptos, host/runtime locale providers for Next) instead of introducing their own query/header/cookie fallback chains.

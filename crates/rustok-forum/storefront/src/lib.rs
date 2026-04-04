@@ -1,9 +1,11 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::prelude::*;
 use rustok_api::UiRouteContext;
 
+use crate::i18n::t;
 use crate::model::{
     ForumCategoryListItem, ForumReplyDetail, ForumTopicDetail, ForumTopicListItem,
     StorefrontForumData,
@@ -15,6 +17,22 @@ pub fn ForumView() -> impl IntoView {
     let selected_category_id = route_context.query_value("category").map(str::to_string);
     let selected_topic_id = route_context.query_value("topic").map(str::to_string);
     let locale = route_context.locale.clone();
+    let badge_label = t(locale.as_deref(), "forum.badge", "forum");
+    let title_label = t(
+        locale.as_deref(),
+        "forum.title",
+        "Community threads from the module package",
+    );
+    let subtitle_label = t(
+        locale.as_deref(),
+        "forum.subtitle",
+        "A NodeBB-inspired storefront surface that reads categories, topic feed, and thread replies through the forum module's public GraphQL contract.",
+    );
+    let load_error_label = t(
+        locale.as_deref(),
+        "forum.error.loadStorefront",
+        "Failed to load forum storefront data",
+    );
 
     let forum_resource = Resource::new_blocking(
         move || {
@@ -34,13 +52,13 @@ pub fn ForumView() -> impl IntoView {
             <div class="max-w-4xl space-y-3">
                 <span class="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                     <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-                    "forum"
+                    {badge_label}
                 </span>
                 <h2 class="text-3xl font-semibold text-card-foreground">
-                    "Community threads from the module package"
+                    {title_label}
                 </h2>
                 <p class="text-sm leading-6 text-muted-foreground">
-                    "A NodeBB-inspired storefront surface that reads categories, topic feed, and thread replies through the forum module's public GraphQL contract."
+                    {subtitle_label}
                 </p>
             </div>
 
@@ -54,12 +72,13 @@ pub fn ForumView() -> impl IntoView {
                 }>
                     {move || {
                         let forum_resource = forum_resource.clone();
+                        let load_error_label = load_error_label.clone();
                         Suspend::new(async move {
                             match forum_resource.await {
                                 Ok(data) => view! { <ForumShowcase data /> }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("Failed to load forum storefront data: {err}")}
+                                        {format!("{}: {err}", load_error_label)}
                                     </div>
                                 }.into_any(),
                             }
@@ -111,25 +130,41 @@ fn ForumCategoryRail(
     selected_category_id: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
     let route_segment = route_context
         .route_segment
+        .as_ref()
+        .cloned()
         .unwrap_or_else(|| "forum".to_string());
+    let module_route_base = route_context.module_route_base(route_segment.as_str());
+    let categories_label = t(locale.as_deref(), "forum.categories.label", "Categories");
+    let categories_title = t(locale.as_deref(), "forum.categories.title", "Community map");
+    let categories_total_template = t(
+        locale.as_deref(),
+        "forum.categories.total",
+        "{count} sections published from the forum module.",
+    );
+    let no_description_label = t(
+        locale.as_deref(),
+        "forum.categories.noDescription",
+        "No description yet.",
+    );
 
     view! {
         <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm xl:sticky xl:top-6 xl:self-start">
             <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                    "Categories"
+                    {categories_label}
                 </p>
-                <h3 class="mt-2 text-xl font-semibold text-card-foreground">"Community map"</h3>
+                <h3 class="mt-2 text-xl font-semibold text-card-foreground">{categories_title}</h3>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    {format!("{total} sections published from the forum module.")}
+                    {categories_total_template.replace("{count}", total.to_string().as_str())}
                 </p>
             </div>
 
             <div class="space-y-2">
                 {items.into_iter().map(|item| {
-                    let href = category_href(route_segment.as_str(), item.id.as_str());
+                    let href = category_href(module_route_base.as_str(), item.id.as_str());
                     let is_active = selected_category_id.as_deref() == Some(item.id.as_str());
                     let accent_style = item.color.as_deref()
                         .filter(|value| !value.trim().is_empty())
@@ -159,7 +194,7 @@ fn ForumCategoryRail(
                                     </span>
                                 </div>
                                 <p class="mt-3 line-clamp-3 text-sm text-muted-foreground">
-                                    {item.description.unwrap_or_else(|| "No description yet.".to_string())}
+                                    {item.description.unwrap_or_else(|| no_description_label.clone())}
                                 </p>
                             </div>
                         </a>
@@ -178,16 +213,33 @@ fn ForumTopicFeed(
     selected_topic_id: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
     let route_segment = route_context
         .route_segment
+        .as_ref()
+        .cloned()
         .unwrap_or_else(|| "forum".to_string());
+    let module_route_base = route_context.module_route_base(route_segment.as_str());
+    let empty_title = t(locale.as_deref(), "forum.feed.emptyTitle", "No topics yet");
+    let empty_body = t(
+        locale.as_deref(),
+        "forum.feed.emptyBody",
+        "Publish a topic from the forum admin package to light up this storefront feed.",
+    );
+    let feed_label = t(locale.as_deref(), "forum.feed.label", "Topic feed");
+    let feed_title = t(locale.as_deref(), "forum.feed.title", "Latest discussions");
+    let threads_template = t(locale.as_deref(), "forum.feed.threads", "{count} threads");
+    let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
+    let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
+    let slug_template = t(locale.as_deref(), "forum.topic.slug", "thread slug: {slug}");
+    let replies_label = t(locale.as_deref(), "forum.topic.replies", "Replies");
 
     if items.is_empty() {
         return view! {
             <section class="rounded-[1.75rem] border border-dashed border-border p-8 text-center">
-                <h3 class="text-lg font-semibold text-card-foreground">"No topics yet"</h3>
+                <h3 class="text-lg font-semibold text-card-foreground">{empty_title}</h3>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    "Publish a topic from the forum admin package to light up this storefront feed."
+                    {empty_body}
                 </p>
             </section>
         }
@@ -199,19 +251,19 @@ fn ForumTopicFeed(
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                        "Topic feed"
+                        {feed_label}
                     </p>
-                    <h3 class="mt-2 text-2xl font-semibold text-card-foreground">"Latest discussions"</h3>
+                    <h3 class="mt-2 text-2xl font-semibold text-card-foreground">{feed_title}</h3>
                 </div>
                 <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                    {format!("{total} threads")}
+                    {threads_template.replace("{count}", total.to_string().as_str())}
                 </span>
             </div>
 
             <div class="space-y-3">
                 {items.into_iter().map(|item| {
                     let href = topic_href(
-                        route_segment.as_str(),
+                        module_route_base.as_str(),
                         selected_category_id.as_deref(),
                         item.id.as_str(),
                     );
@@ -238,23 +290,23 @@ fn ForumTopicFeed(
                                         </span>
                                         {item.is_pinned.then(|| view! {
                                             <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                                                "Pinned"
+                                                {pinned_label.clone()}
                                             </span>
                                         })}
                                         {item.is_locked.then(|| view! {
                                             <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">
-                                                "Locked"
+                                                {locked_label.clone()}
                                             </span>
                                         })}
                                     </div>
                                     <div>
                                         <h4 class="text-lg font-semibold text-foreground">{item.title}</h4>
-                                        <p class="mt-1 text-sm text-muted-foreground">{format!("thread slug: {}", item.slug)}</p>
+                                        <p class="mt-1 text-sm text-muted-foreground">{slug_template.replace("{slug}", item.slug.as_str())}</p>
                                     </div>
                                 </div>
                                 <div class="text-right">
                                     <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                                        "Replies"
+                                        {replies_label.clone()}
                                     </p>
                                     <p class="mt-1 text-2xl font-semibold text-foreground">{item.reply_count}</p>
                                 </div>
@@ -273,19 +325,33 @@ fn ForumThreadPanel(
     replies: Vec<ForumReplyDetail>,
     replies_total: u64,
 ) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let open_thread_title = t(locale.as_deref(), "forum.thread.openTitle", "Open a thread");
+    let open_thread_body = t(
+        locale.as_deref(),
+        "forum.thread.openBody",
+        "Pick a topic from the feed to read the opening post and latest replies.",
+    );
     let Some(topic) = topic else {
         return view! {
             <aside class="rounded-[1.75rem] border border-dashed border-border p-8 text-center xl:sticky xl:top-6 xl:self-start">
-                <h3 class="text-lg font-semibold text-card-foreground">"Open a thread"</h3>
+                <h3 class="text-lg font-semibold text-card-foreground">{open_thread_title}</h3>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    "Pick a topic from the feed to read the opening post and latest replies."
+                    {open_thread_body}
                 </p>
             </aside>
         }.into_any();
     };
 
     let status_class = topic_status_class(topic.status.as_str());
-    let body = summarize_rich_content(topic.body.as_str(), topic.body_format.as_str());
+    let body = summarize_rich_content(topic.body.as_str(), topic.body_format.as_str(), locale.as_deref());
+    let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
+    let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
+    let slug_template = t(locale.as_deref(), "forum.thread.slug", "slug: {slug}");
+    let replies_title = t(locale.as_deref(), "forum.thread.repliesTitle", "Replies");
+    let replies_total_template =
+        t(locale.as_deref(), "forum.thread.repliesTotal", "{count} total");
+    let no_replies_label = t(locale.as_deref(), "forum.thread.noReplies", "No replies yet.");
 
     view! {
         <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm xl:sticky xl:top-6 xl:self-start">
@@ -297,18 +363,18 @@ fn ForumThreadPanel(
                     </span>
                     {topic.is_pinned.then(|| view! {
                         <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                            "Pinned"
+                            {pinned_label}
                         </span>
                     })}
                     {topic.is_locked.then(|| view! {
                         <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">
-                            "Locked"
+                            {locked_label}
                         </span>
                     })}
                 </div>
                 <div>
                     <h3 class="text-2xl font-semibold text-card-foreground">{topic.title}</h3>
-                    <p class="mt-2 text-sm text-muted-foreground">{format!("slug: {}", topic.slug)}</p>
+                    <p class="mt-2 text-sm text-muted-foreground">{slug_template.replace("{slug}", topic.slug.as_str())}</p>
                 </div>
                 <p class="whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
             </div>
@@ -329,13 +395,13 @@ fn ForumThreadPanel(
 
             <div class="rounded-[1.35rem] border border-border bg-background p-4">
                 <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-semibold text-foreground">"Replies"</p>
-                    <span class="text-xs text-muted-foreground">{format!("{replies_total} total")}</span>
+                    <p class="text-sm font-semibold text-foreground">{replies_title}</p>
+                    <span class="text-xs text-muted-foreground">{replies_total_template.replace("{count}", replies_total.to_string().as_str())}</span>
                 </div>
                 {if replies.is_empty() {
                     view! {
                         <p class="mt-3 text-sm text-muted-foreground">
-                            "No replies yet."
+                            {no_replies_label}
                         </p>
                     }.into_any()
                 } else {
@@ -353,7 +419,12 @@ fn ForumThreadPanel(
 #[component]
 fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
     let status_class = topic_status_class(reply.status.as_str());
-    let content = summarize_rich_content(reply.content.as_str(), reply.content_format.as_str());
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let content = summarize_rich_content(
+        reply.content.as_str(),
+        reply.content_format.as_str(),
+        locale.as_deref(),
+    );
 
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
@@ -368,28 +439,32 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
     }
 }
 
-fn category_href(route_segment: &str, category_id: &str) -> String {
-    format!("/modules/{route_segment}?category={category_id}")
+fn category_href(module_route_base: &str, category_id: &str) -> String {
+    format!("{module_route_base}?category={category_id}")
 }
 
-fn topic_href(route_segment: &str, category_id: Option<&str>, topic_id: &str) -> String {
+fn topic_href(module_route_base: &str, category_id: Option<&str>, topic_id: &str) -> String {
     match category_id {
         Some(category_id) if !category_id.is_empty() => {
-            format!("/modules/{route_segment}?category={category_id}&topic={topic_id}")
+            format!("{module_route_base}?category={category_id}&topic={topic_id}")
         }
-        _ => format!("/modules/{route_segment}?topic={topic_id}"),
+        _ => format!("{module_route_base}?topic={topic_id}"),
     }
 }
 
-fn summarize_rich_content(content: &str, format: &str) -> String {
+fn summarize_rich_content(content: &str, format: &str, locale: Option<&str>) -> String {
     if format.eq_ignore_ascii_case("markdown") {
         return content.trim().to_string();
     }
 
-    format!(
-        "Stored in `{format}` format. Raw content length: {} characters.",
-        content.chars().count()
-    )
+    let template = t(
+        locale,
+        "forum.richContent.summary",
+        "Stored in `{format}` format. Raw content length: {count} characters.",
+    );
+    template
+        .replace("{format}", format)
+        .replace("{count}", content.chars().count().to_string().as_str())
 }
 
 fn topic_status_class(status: &str) -> &'static str {

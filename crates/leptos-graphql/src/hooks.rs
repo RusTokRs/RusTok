@@ -1,6 +1,8 @@
 // GraphQL Hooks для Leptos
 // Reactive hooks для удобной работы с GraphQL queries и mutations
 
+#[cfg(target_arch = "wasm32")]
+use gloo_storage::Storage;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{de::DeserializeOwned, Serialize};

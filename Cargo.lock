@@ -9042,12 +9042,14 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tokio-rustls 0.26.4",
+ "tokio-util",
  "tower 0.5.3",
  "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams 0.5.0",
  "web-sys",
 ]
 
@@ -9667,6 +9669,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "chrono",
+ "futures-util",
  "loco-rs",
  "once_cell",
  "reqwest 0.13.2",
@@ -9678,11 +9681,13 @@ dependencies = [
  "rustok-mcp",
  "rustok-media",
  "rustok-storage",
+ "rustok-telemetry",
  "schemars 1.2.1",
  "sea-orm",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -9695,6 +9700,7 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos_axum",
+ "leptos_router",
  "loco-rs",
  "rustok-ai",
  "rustok-api",
@@ -9703,6 +9709,8 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -9804,6 +9812,7 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui",
  "leptos_router",
+ "rustok-api",
  "rustok-blog",
  "rustok-core",
  "serde",
@@ -9983,6 +9992,7 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "rustok-api",
  "serde",
  "serde_json",
 ]
@@ -10439,6 +10449,7 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "rustok-api",
  "serde",
 ]
 

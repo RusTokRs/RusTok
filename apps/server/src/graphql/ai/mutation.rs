@@ -3,6 +3,7 @@ use loco_rs::app::AppContext;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::common::RequestContext;
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
 use crate::models::_entities::{roles, user_roles};
@@ -46,15 +47,19 @@ async fn load_role_slugs(db: &DatabaseConnection, auth: &AuthContext) -> Result<
 }
 
 async fn operator_context(
+    ctx: &Context<'_>,
     db: &DatabaseConnection,
     auth: &AuthContext,
 ) -> Result<rustok_ai::AiOperatorContext> {
+    let preferred_locale = ctx
+        .data_opt::<RequestContext>()
+        .map(|request_context| request_context.locale.clone());
     Ok(rustok_ai::AiOperatorContext {
         tenant_id: auth.tenant_id,
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
         role_slugs: load_role_slugs(db, auth).await?,
-        preferred_locale: None,
+        preferred_locale,
     })
 }
 
@@ -68,7 +73,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let provider_kind: rustok_ai::ProviderKind = input.provider_kind.into();
         let capabilities = if input.capabilities.is_empty() {
             default_capabilities_for_kind(provider_kind)
@@ -106,7 +111,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
         let item = rustok_ai::AiManagementService::update_provider_profile(
             db,
@@ -138,7 +143,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item =
             rustok_ai::AiManagementService::rotate_provider_secret(db, &operator, id, secret)
                 .await
@@ -168,7 +173,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::deactivate_provider_profile(db, &operator, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
@@ -183,7 +188,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::create_tool_profile(
             db,
             &operator,
@@ -210,7 +215,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::create_task_profile(
             db,
             &operator,
@@ -245,7 +250,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::update_tool_profile(
             db,
             &operator,
@@ -274,7 +279,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::update_task_profile(
             db,
             &operator,
@@ -310,7 +315,7 @@ impl AiMutation {
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::start_chat_session(
             app_ctx,
             &operator,
@@ -344,7 +349,7 @@ impl AiMutation {
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::send_chat_message(
             app_ctx,
             &operator,
@@ -369,7 +374,7 @@ impl AiMutation {
         ensure_ai_approval_resolve(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::resume_approval(
             app_ctx,
             &operator,
@@ -391,7 +396,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_run_cancel(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let item = rustok_ai::AiManagementService::cancel_run(db, &operator, run_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
@@ -407,7 +412,7 @@ impl AiMutation {
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(db, auth).await?;
+        let operator = operator_context(ctx, db, auth).await?;
         let task_input_json = serde_json::from_str(&input.task_input_json)
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         let item = rustok_ai::AiManagementService::run_task_job(

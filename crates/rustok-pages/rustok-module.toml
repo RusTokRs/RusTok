@@ -29,8 +29,18 @@ leptos_crate = "rustok-pages-admin"
 route_segment = "pages"
 nav_label = "Pages"
 
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-pages-storefront"
 slot = "home_before_footer"
 route_segment = "pages"
 page_title = "Pages"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

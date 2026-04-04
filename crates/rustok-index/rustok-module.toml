@@ -11,3 +11,8 @@ recommended_admin_surfaces = ["leptos-admin"]
 leptos_crate = "rustok-index-admin"
 route_segment = "index"
 nav_label = "Index"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

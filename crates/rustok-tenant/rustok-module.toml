@@ -11,3 +11,8 @@ recommended_admin_surfaces = ["leptos-admin"]
 leptos_crate = "rustok-tenant-admin"
 route_segment = "tenant"
 nav_label = "Tenant"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

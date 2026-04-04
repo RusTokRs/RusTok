@@ -1,4 +1,5 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::ev::SubmitEvent;
@@ -7,6 +8,7 @@ use leptos::task::spawn_local;
 use rustok_api::context::ChannelResolutionSource;
 use rustok_api::UiRouteContext;
 
+use crate::i18n::t;
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,
     CreateChannelPayload, CreateChannelTargetPayload,
@@ -15,8 +17,37 @@ use crate::model::{
 #[component]
 pub fn ChannelAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let ui_locale = route_context.locale.clone();
     let token = leptos_auth::hooks::use_token();
     let tenant = leptos_auth::hooks::use_tenant();
+    let badge_label = t(ui_locale.as_deref(), "channel.badge", "Experimental Core");
+    let title_label = t(ui_locale.as_deref(), "channel.title", "Channel Management");
+    let subtitle_label = t(
+        ui_locale.as_deref(),
+        "channel.subtitle",
+        "Channels define platform-level external delivery context, targets, enabled module surfaces, and bound OAuth apps.",
+    );
+    let route_label = t(ui_locale.as_deref(), "channel.route", "Route: {route}");
+    let create_title = t(ui_locale.as_deref(), "channel.create.title", "Create Channel");
+    let create_subtitle = t(
+        ui_locale.as_deref(),
+        "channel.create.subtitle",
+        "Start small: create the channel first, then attach targets and bindings below.",
+    );
+    let slug_placeholder = t(ui_locale.as_deref(), "channel.create.slugPlaceholder", "slug");
+    let name_placeholder = t(ui_locale.as_deref(), "channel.create.namePlaceholder", "name");
+    let creating_label = t(ui_locale.as_deref(), "channel.create.creating", "Creating...");
+    let create_label = t(ui_locale.as_deref(), "channel.create.submit", "Create");
+    let empty_channels_label = t(
+        ui_locale.as_deref(),
+        "channel.empty.channels",
+        "No channels configured yet.",
+    );
+    let load_bootstrap_error = t(
+        ui_locale.as_deref(),
+        "channel.error.loadBootstrap",
+        "Failed to load channel bootstrap",
+    );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (feedback, set_feedback) = signal(Option::<String>::None);
@@ -37,6 +68,7 @@ pub fn ChannelAdmin() -> impl IntoView {
         create_busy.set(true);
         set_feedback.set(None);
         set_error.set(None);
+        let ui_locale = ui_locale.clone();
 
         spawn_local({
             let token_value = token.get_untracked();
@@ -58,7 +90,14 @@ pub fn ChannelAdmin() -> impl IntoView {
 
                 match result {
                     Ok(channel) => {
-                        set_feedback.set(Some(format!("Channel `{}` created.", channel.slug)));
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.created",
+                                "Channel `{slug}` created.",
+                            )
+                            .replace("{slug}", channel.slug.as_str()),
+                        ));
                         create_slug.set(String::new());
                         create_name.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
@@ -82,38 +121,38 @@ pub fn ChannelAdmin() -> impl IntoView {
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div class="space-y-2">
                         <span class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
-                            "Experimental Core"
+                            {badge_label.clone()}
                         </span>
-                        <h1 class="text-2xl font-semibold text-card-foreground">"Channel Management"</h1>
+                        <h1 class="text-2xl font-semibold text-card-foreground">{title_label.clone()}</h1>
                         <p class="max-w-3xl text-sm text-muted-foreground">
-                            "Channels define platform-level external delivery context, targets, enabled module surfaces, and bound OAuth apps."
+                            {subtitle_label.clone()}
                         </p>
                     </div>
                     <div class="rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
-                        {format!("Route: /modules/{route_segment}")}
+                        {route_label.replace("{route}", format!("/modules/{route_segment}").as_str())}
                     </div>
                 </div>
             </header>
 
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1">
-                    <h2 class="text-lg font-semibold text-card-foreground">"Create Channel"</h2>
+                    <h2 class="text-lg font-semibold text-card-foreground">{create_title.clone()}</h2>
                     <p class="text-sm text-muted-foreground">
-                        "Start small: create the channel first, then attach targets and bindings below."
+                        {create_subtitle.clone()}
                     </p>
                 </div>
                 <form class="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]" on:submit=on_create>
                     <input
                         type="text"
                         class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                        placeholder="slug"
+                        placeholder=slug_placeholder.clone()
                         prop:value=create_slug
                         on:input=move |ev| create_slug.set(event_target_value(&ev))
                     />
                     <input
                         type="text"
                         class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                        placeholder="name"
+                        placeholder=name_placeholder.clone()
                         prop:value=create_name
                         on:input=move |ev| create_name.set(event_target_value(&ev))
                     />
@@ -122,7 +161,7 @@ pub fn ChannelAdmin() -> impl IntoView {
                         class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
                         disabled=move || create_busy.get()
                     >
-                        {move || if create_busy.get() { "Creating..." } else { "Create" }}
+                        {move || if create_busy.get() { creating_label.clone() } else { create_label.clone() }}
                     </button>
                 </form>
                 <Show when=move || feedback.get().is_some()>
@@ -146,7 +185,7 @@ pub fn ChannelAdmin() -> impl IntoView {
                                 {if bootstrap.channels.is_empty() {
                                     view! {
                                         <div class="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                                            "No channels configured yet."
+                                            {empty_channels_label.clone()}
                                         </div>
                                     }.into_any()
                                 } else {
@@ -171,7 +210,7 @@ pub fn ChannelAdmin() -> impl IntoView {
                         }.into_any(),
                         Err(err) => view! {
                             <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">
-                                {format!("Failed to load channel bootstrap: {err}")}
+                                {format!("{}: {err}", load_bootstrap_error.clone())}
                             </div>
                         }.into_any(),
                     })
@@ -183,28 +222,41 @@ pub fn ChannelAdmin() -> impl IntoView {
 
 #[component]
 fn RuntimeContext(bootstrap: ChannelAdminBootstrap) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     view! {
         <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div class="space-y-1">
-                <h2 class="text-lg font-semibold text-card-foreground">"Runtime Context"</h2>
-                <p class="text-sm text-muted-foreground">"Channel resolved by middleware for the current request."</p>
+                <h2 class="text-lg font-semibold text-card-foreground">
+                    {t(ui_locale.as_deref(), "channel.runtime.title", "Runtime Context")}
+                </h2>
+                <p class="text-sm text-muted-foreground">
+                    {t(
+                        ui_locale.as_deref(),
+                        "channel.runtime.subtitle",
+                        "Channel resolved by middleware for the current request.",
+                    )}
+                </p>
             </div>
             {match bootstrap.current_channel {
                 Some(current) => view! {
                     <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                        <InfoPill label="Slug" value=current.slug />
-                        <InfoPill label="Name" value=current.name />
-                        <InfoPill label="Source" value=resolution_source_label(&current.resolution_source) />
-                        <InfoPill label="Target" value=current.target_value.unwrap_or_else(|| "n/a".to_string()) />
-                        <InfoPill label="Type" value=current.target_type.unwrap_or_else(|| "n/a".to_string()) />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.slug", "Slug") value=current.slug />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.name", "Name") value=current.name />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.source", "Source") value=resolution_source_label(&current.resolution_source, ui_locale.as_deref()) />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.target", "Target") value=current.target_value.unwrap_or_else(|| t(ui_locale.as_deref(), "channel.runtime.na", "n/a")) />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.type", "Type") value=current.target_type.unwrap_or_else(|| t(ui_locale.as_deref(), "channel.runtime.na", "n/a")) />
                     </div>
                     <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                        {resolution_source_description(&current.resolution_source)}
+                        {resolution_source_description(&current.resolution_source, ui_locale.as_deref())}
                     </div>
                 }.into_any(),
                 None => view! {
                     <div class="mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-                        "No channel was resolved for the current request yet."
+                        {t(
+                            ui_locale.as_deref(),
+                            "channel.runtime.empty",
+                            "No channel was resolved for the current request yet.",
+                        )}
                     </div>
                 }.into_any(),
             }}
@@ -223,6 +275,124 @@ fn ChannelCard(
     set_error: WriteSignal<Option<String>>,
     set_refresh_nonce: WriteSignal<u64>,
 ) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let common_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
+    let targets_cancel_label = common_cancel_label.clone();
+    let modules_cancel_label = common_cancel_label.clone();
+    let oauth_cancel_label = common_cancel_label.clone();
+    let common_edit_label = t(ui_locale.as_deref(), "common.edit", "Edit");
+    let common_delete_label = t(ui_locale.as_deref(), "common.delete", "Delete");
+    let targets_edit_title = t(ui_locale.as_deref(), "channel.targets.editTitle", "Edit Target");
+    let targets_title_label = t(ui_locale.as_deref(), "channel.targets.title", "Targets");
+    let targets_empty_title = t(ui_locale.as_deref(), "channel.targets.emptyTitle", "No targets yet.");
+    let targets_empty_body = t(
+        ui_locale.as_deref(),
+        "channel.targets.emptyBody",
+        "Add the first target to make this channel discoverable through a concrete delivery surface.",
+    );
+    let targets_value_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.targets.valuePlaceholder",
+        "example.com or app id",
+    );
+    let targets_primary_label =
+        t(ui_locale.as_deref(), "channel.targets.primary", "Primary target");
+    let targets_save_label = t(ui_locale.as_deref(), "channel.targets.save", "Save Target");
+    let targets_add_label = t(ui_locale.as_deref(), "channel.targets.add", "Add Target");
+    let _targets_primary_summary_template = t(
+        ui_locale.as_deref(),
+        "channel.targets.primarySummary",
+        "{type} · primary",
+    );
+    let target_removed_template = t(
+        ui_locale.as_deref(),
+        "channel.feedback.targetRemoved",
+        "Target `{target}` removed from channel `{channel}`.",
+    );
+    let modules_edit_title = t(
+        ui_locale.as_deref(),
+        "channel.modules.editTitle",
+        "Edit Module Binding",
+    );
+    let modules_title_label =
+        t(ui_locale.as_deref(), "channel.modules.title", "Module Bindings");
+    let modules_empty_title = t(
+        ui_locale.as_deref(),
+        "channel.modules.emptyTitle",
+        "No module bindings yet.",
+    );
+    let modules_empty_body = t(
+        ui_locale.as_deref(),
+        "channel.modules.emptyBody",
+        "Bindings are optional in v0. Add one when this channel should explicitly enable or disable a module surface.",
+    );
+    let modules_enabled_label = t(ui_locale.as_deref(), "channel.modules.enabled", "enabled");
+    let modules_disabled_label =
+        t(ui_locale.as_deref(), "channel.modules.disabled", "disabled");
+    let modules_no_descriptors_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.noDescriptors",
+        "No module descriptors are currently available for binding.",
+    );
+    let modules_enabled_for_channel_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.enabledForChannel",
+        "Enabled for this channel",
+    );
+    let modules_update_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.update",
+        "Update Module Binding",
+    );
+    let modules_save_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.save",
+        "Save Module Binding",
+    );
+    let module_removed_template = t(
+        ui_locale.as_deref(),
+        "channel.feedback.moduleRemoved",
+        "Module binding `{module}` removed from channel `{channel}`.",
+    );
+    let oauth_edit_title = t(
+        ui_locale.as_deref(),
+        "channel.oauth.editTitle",
+        "Edit OAuth App Binding",
+    );
+    let oauth_title_label = t(ui_locale.as_deref(), "channel.oauth.title", "OAuth Apps");
+    let oauth_empty_title = t(
+        ui_locale.as_deref(),
+        "channel.oauth.emptyTitle",
+        "No OAuth app bindings yet.",
+    );
+    let oauth_empty_body = t(
+        ui_locale.as_deref(),
+        "channel.oauth.emptyBody",
+        "Bind an existing OAuth app when this channel needs an integration-level relationship without introducing a second credential subsystem.",
+    );
+    let oauth_no_role_label = t(ui_locale.as_deref(), "channel.oauth.noRole", "no role");
+    let oauth_revoke_label = t(ui_locale.as_deref(), "channel.oauth.revoke", "Revoke");
+    let oauth_no_apps_label = t(
+        ui_locale.as_deref(),
+        "channel.oauth.noApps",
+        "No active OAuth apps are available for this tenant yet.",
+    );
+    let oauth_role_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.oauth.rolePlaceholder",
+        "role (optional)",
+    );
+    let oauth_update_label = t(
+        ui_locale.as_deref(),
+        "channel.oauth.update",
+        "Update OAuth App Binding",
+    );
+    let oauth_bind_label = t(ui_locale.as_deref(), "channel.oauth.bind", "Bind OAuth App");
+    let oauth_revoked_template = t(
+        ui_locale.as_deref(),
+        "channel.feedback.oauthRevoked",
+        "OAuth app binding `{app}` revoked for channel `{channel}`.",
+    );
     let has_available_modules = !available_modules.is_empty();
     let has_available_oauth_apps = !oauth_apps.is_empty();
     let is_default_channel = channel.channel.is_default;
@@ -295,6 +465,7 @@ fn ChannelCard(
         bind_oauth_role.set(String::new());
     };
 
+    let make_default_locale = ui_locale.clone();
     let make_default = move |_| {
         busy.set(true);
         set_feedback.set(None);
@@ -303,14 +474,19 @@ fn ChannelCard(
             let token = token_for_default.clone();
             let tenant = tenant_for_default.clone();
             let channel_id = channel_id_for_default.clone();
+            let ui_locale = make_default_locale.clone();
             async move {
                 let result = api::make_default_channel(token, tenant, &channel_id).await;
                 match result {
                     Ok(channel) => {
-                        set_feedback.set(Some(format!(
-                            "Channel `{}` is now the tenant default channel.",
-                            channel.slug
-                        )));
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.default",
+                                "Channel `{slug}` is now the tenant default channel.",
+                            )
+                            .replace("{slug}", channel.slug.as_str()),
+                        ));
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err.to_string())),
@@ -320,6 +496,7 @@ fn ChannelCard(
         });
     };
 
+    let create_target_locale = ui_locale.clone();
     let create_target = move |ev: SubmitEvent| {
         ev.prevent_default();
         busy.set(true);
@@ -331,6 +508,7 @@ fn ChannelCard(
             let channel_id = channel_id_for_target.clone();
             let channel_slug = channel_slug_for_target.clone();
             let editing_target_id_value = editing_target_id.get_untracked();
+            let ui_locale = create_target_locale.clone();
             async move {
                 let payload = CreateChannelTargetPayload {
                     target_type: target_type.get_untracked(),
@@ -346,15 +524,24 @@ fn ChannelCard(
                 };
                 match result {
                     Ok(target) => {
-                        let action = if editing_target_id_value.is_some() {
-                            "updated for"
+                        let message = if editing_target_id_value.is_some() {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.targetUpdated",
+                                "Target `{target}` updated for channel `{channel}`.",
+                            )
                         } else {
-                            "added to"
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.targetAdded",
+                                "Target `{target}` added to channel `{channel}`.",
+                            )
                         };
-                        set_feedback.set(Some(format!(
-                            "Target `{}` {action} channel `{}`.",
-                            target.value, channel_slug
-                        )));
+                        set_feedback.set(Some(
+                            message
+                                .replace("{target}", target.value.as_str())
+                                .replace("{channel}", channel_slug.as_str()),
+                        ));
                         editing_target_id.set(None);
                         target_type.set("web_domain".to_string());
                         target_value.set(String::new());
@@ -368,6 +555,7 @@ fn ChannelCard(
         });
     };
 
+    let bind_module_locale = ui_locale.clone();
     let bind_module_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         busy.set(true);
@@ -378,6 +566,7 @@ fn ChannelCard(
             let tenant = tenant_for_module.clone();
             let channel_id = channel_id_for_module.clone();
             let channel_slug = channel_slug_for_module.clone();
+            let ui_locale = bind_module_locale.clone();
             async move {
                 let result = api::bind_module(
                     token,
@@ -392,15 +581,20 @@ fn ChannelCard(
                 .await;
                 match result {
                     Ok(_) => {
-                        set_feedback.set(Some(format!(
-                            "Module binding {} channel `{}`.",
-                            if editing_module_slug.get_untracked().is_some() {
-                                "updated for"
-                            } else {
-                                "saved for"
-                            },
-                            channel_slug,
-                        )));
+                        let message = if editing_module_slug.get_untracked().is_some() {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.moduleUpdated",
+                                "Module binding updated for channel `{channel}`.",
+                            )
+                        } else {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.moduleSaved",
+                                "Module binding saved for channel `{channel}`.",
+                            )
+                        };
+                        set_feedback.set(Some(message.replace("{channel}", channel_slug.as_str())));
                         editing_module_slug.set(None);
                         set_refresh_nonce.update(|value| *value += 1);
                     }
@@ -411,6 +605,7 @@ fn ChannelCard(
         });
     };
 
+    let bind_oauth_locale = ui_locale.clone();
     let bind_oauth_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         busy.set(true);
@@ -421,6 +616,7 @@ fn ChannelCard(
             let tenant = tenant_for_app.clone();
             let channel_id = channel_id_for_app.clone();
             let channel_slug = channel_slug_for_app.clone();
+            let ui_locale = bind_oauth_locale.clone();
             async move {
                 let result = api::bind_oauth_app(
                     token,
@@ -434,15 +630,20 @@ fn ChannelCard(
                 .await;
                 match result {
                     Ok(_) => {
-                        set_feedback.set(Some(format!(
-                            "OAuth app binding {} channel `{}`.",
-                            if editing_oauth_app_id.get_untracked().is_some() {
-                                "updated for"
-                            } else {
-                                "saved for"
-                            },
-                            channel_slug,
-                        )));
+                        let message = if editing_oauth_app_id.get_untracked().is_some() {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.oauthUpdated",
+                                "OAuth app binding updated for channel `{channel}`.",
+                            )
+                        } else {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.oauthSaved",
+                                "OAuth app binding saved for channel `{channel}`.",
+                            )
+                        };
+                        set_feedback.set(Some(message.replace("{channel}", channel_slug.as_str())));
                         editing_oauth_app_id.set(None);
                         bind_oauth_role.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
@@ -468,7 +669,7 @@ fn ChannelCard(
                         {if is_default_channel {
                             view! {
                                 <span class="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
-                                    "Default"
+                                    {t(ui_locale.as_deref(), "channel.card.default", "Default")}
                                 </span>
                             }.into_any()
                         } else {
@@ -477,14 +678,25 @@ fn ChannelCard(
                     </div>
                     <h2 class="text-xl font-semibold text-card-foreground">{channel.channel.name.clone()}</h2>
                     <p class="text-sm text-muted-foreground">
-                        {format!("{} target(s), {} module binding(s), {} app binding(s)", channel.targets.len(), channel.module_bindings.len(), channel.oauth_apps.len())}
+                        {t(
+                            ui_locale.as_deref(),
+                            "channel.card.summary",
+                            "{targets} target(s), {modules} module binding(s), {apps} app binding(s)",
+                        )
+                        .replace("{targets}", channel.targets.len().to_string().as_str())
+                        .replace("{modules}", channel.module_bindings.len().to_string().as_str())
+                        .replace("{apps}", channel.oauth_apps.len().to_string().as_str())}
                     </p>
                 </div>
                 <div class="space-y-3">
                     {if is_default_channel {
                         view! {
                             <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                                "Used as the tenant's explicit default channel when no header, query or host selector matches."
+                                {t(
+                                    ui_locale.as_deref(),
+                                    "channel.card.defaultDescription",
+                                    "Used as the tenant's explicit default channel when no header, query or host selector matches.",
+                                )}
                             </div>
                         }.into_any()
                     } else {
@@ -495,13 +707,13 @@ fn ChannelCard(
                                 disabled=move || busy.get()
                                 on:click=make_default
                             >
-                                "Make Default"
+                                {t(ui_locale.as_deref(), "channel.card.makeDefault", "Make Default")}
                             </button>
                         }.into_any()
                     }}
                     <div class="grid gap-2 md:grid-cols-2">
-                    <InfoPill label="ID" value=short_id(&channel.channel.id) />
-                    <InfoPill label="Updated" value=channel.channel.updated_at.clone() />
+                    <InfoPill label=t(ui_locale.as_deref(), "channel.card.id", "ID") value=short_id(&channel.channel.id) />
+                    <InfoPill label=t(ui_locale.as_deref(), "channel.card.updated", "Updated") value=channel.channel.updated_at.clone() />
                     </div>
                 </div>
             </div>
@@ -510,7 +722,11 @@ fn ChannelCard(
                 <section class="space-y-4 rounded-xl border border-border bg-background p-4">
                     <div class="flex items-center justify-between gap-3">
                         <h3 class="text-base font-semibold text-card-foreground">
-                            {move || if editing_target_id.get().is_some() { "Edit Target" } else { "Targets" }}
+                            {move || if editing_target_id.get().is_some() {
+                                targets_edit_title.clone()
+                            } else {
+                                targets_title_label.clone()
+                            }}
                         </h3>
                         <Show when=move || editing_target_id.get().is_some()>
                             <button
@@ -518,15 +734,15 @@ fn ChannelCard(
                                 class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
                                 on:click=cancel_target_edit
                             >
-                                "Cancel"
+                                {targets_cancel_label.clone()}
                             </button>
                         </Show>
                     </div>
                     {if channel.targets.is_empty() {
                         view! {
                             <EmptyState
-                                title="No targets yet."
-                                body="Add the first target to make this channel discoverable through a concrete delivery surface."
+                                title=targets_empty_title.clone()
+                                body=targets_empty_body.clone()
                             />
                         }.into_any()
                     } else {
@@ -555,7 +771,7 @@ fn ChannelCard(
                                                     }
                                                 }
                                             >
-                                                "Edit"
+                                                {common_edit_label.clone()}
                                             </button>
                                             <button
                                                 type="button"
@@ -567,7 +783,9 @@ fn ChannelCard(
                                                     let tenant = tenant_for_target_delete.clone();
                                                     let channel_id = channel_id_for_target_delete.clone();
                                                     let channel_slug = channel_slug_for_target_delete.clone();
+                                                    let target_removed_template = target_removed_template.clone();
                                                     move |_| {
+                                                        let target_removed_template = target_removed_template.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
                                                         set_error.set(None);
@@ -577,6 +795,7 @@ fn ChannelCard(
                                                             let tenant = tenant.clone();
                                                             let channel_id = channel_id.clone();
                                                             let channel_slug = channel_slug.clone();
+                                                            let target_removed_template = target_removed_template.clone();
                                                             async move {
                                                                 let result = api::delete_target(
                                                                     token,
@@ -597,10 +816,11 @@ fn ChannelCard(
                                                                             target_value.set(String::new());
                                                                             target_primary.set(true);
                                                                         }
-                                                                        set_feedback.set(Some(format!(
-                                                                            "Target `{}` removed from channel `{}`.",
-                                                                            deleted.value, channel_slug
-                                                                        )));
+                                                                        set_feedback.set(Some(
+                                                                            target_removed_template
+                                                                                .replace("{target}", deleted.value.as_str())
+                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                        ));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
                                                                     Err(err) => set_error.set(Some(err.to_string())),
@@ -611,7 +831,7 @@ fn ChannelCard(
                                                     }
                                                 }
                                             >
-                                                "Delete"
+                                                {common_delete_label.clone()}
                                             </button>
                                         </div>
                                     </div>
@@ -627,13 +847,17 @@ fn ChannelCard(
                             <option value="embedded">"embedded"</option>
                             <option value="external">"external"</option>
                         </select>
-                        <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder="example.com or app id" prop:value=target_value on:input=move |ev| target_value.set(event_target_value(&ev)) />
+                        <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder=targets_value_placeholder.clone() prop:value=target_value on:input=move |ev| target_value.set(event_target_value(&ev)) />
                         <label class="flex items-center gap-2 text-sm text-muted-foreground">
                             <input type="checkbox" prop:checked=target_primary on:change=move |ev| target_primary.set(event_target_checked(&ev)) />
-                            "Primary target"
+                            {targets_primary_label.clone()}
                         </label>
                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
-                            {move || if editing_target_id.get().is_some() { "Save Target" } else { "Add Target" }}
+                            {move || if editing_target_id.get().is_some() {
+                                targets_save_label.clone()
+                            } else {
+                                targets_add_label.clone()
+                            }}
                         </button>
                     </form>
                 </section>
@@ -641,7 +865,11 @@ fn ChannelCard(
                 <section class="space-y-4 rounded-xl border border-border bg-background p-4">
                     <div class="flex items-center justify-between gap-3">
                         <h3 class="text-base font-semibold text-card-foreground">
-                            {move || if editing_module_slug.get().is_some() { "Edit Module Binding" } else { "Module Bindings" }}
+                            {move || if editing_module_slug.get().is_some() {
+                                modules_edit_title.clone()
+                            } else {
+                                modules_title_label.clone()
+                            }}
                         </h3>
                         <Show when=move || editing_module_slug.get().is_some()>
                             <button
@@ -649,15 +877,15 @@ fn ChannelCard(
                                 class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
                                 on:click=cancel_module_edit
                             >
-                                "Cancel"
+                                {modules_cancel_label.clone()}
                             </button>
                         </Show>
                     </div>
                     {if channel.module_bindings.is_empty() {
                         view! {
                             <EmptyState
-                                title="No module bindings yet."
-                                body="Bindings are optional in v0. Add one when this channel should explicitly enable or disable a module surface."
+                                title=modules_empty_title.clone()
+                                body=modules_empty_body.clone()
                             />
                         }.into_any()
                     } else {
@@ -668,7 +896,13 @@ fn ChannelCard(
                                         <div class="flex items-start justify-between gap-3">
                                             <div>
                                                 <div class="font-medium text-card-foreground">{binding.module_slug.clone()}</div>
-                                                <div class="mt-1 text-xs text-muted-foreground">{if binding.is_enabled { "enabled" } else { "disabled" }}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">
+                                                    {if binding.is_enabled {
+                                                        modules_enabled_label.clone()
+                                                    } else {
+                                                        modules_disabled_label.clone()
+                                                    }}
+                                                </div>
                                             </div>
                                             <button
                                                 type="button"
@@ -683,7 +917,7 @@ fn ChannelCard(
                                                     }
                                                 }
                                             >
-                                                "Edit"
+                                                {common_edit_label.clone()}
                                             </button>
                                             <button
                                                 type="button"
@@ -695,7 +929,9 @@ fn ChannelCard(
                                                     let tenant = tenant_for_module_delete.clone();
                                                     let channel_id = channel_id_for_module_delete.clone();
                                                     let channel_slug = channel_slug_for_module_delete.clone();
+                                                    let module_removed_template = module_removed_template.clone();
                                                     move |_| {
+                                                        let module_removed_template = module_removed_template.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
                                                         set_error.set(None);
@@ -705,6 +941,7 @@ fn ChannelCard(
                                                             let tenant = tenant.clone();
                                                             let channel_id = channel_id.clone();
                                                             let channel_slug = channel_slug.clone();
+                                                            let module_removed_template = module_removed_template.clone();
                                                             async move {
                                                                 let result = api::delete_module_binding(
                                                                     token,
@@ -724,10 +961,11 @@ fn ChannelCard(
                                                                             bind_module_slug.set(initial_module_slug.get_untracked());
                                                                             bind_module_enabled.set(true);
                                                                         }
-                                                                        set_feedback.set(Some(format!(
-                                                                            "Module binding `{}` removed from channel `{}`.",
-                                                                            deleted.module_slug, channel_slug
-                                                                        )));
+                                                                        set_feedback.set(Some(
+                                                                            module_removed_template
+                                                                                .replace("{module}", deleted.module_slug.as_str())
+                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                        ));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
                                                                     Err(err) => set_error.set(Some(err.to_string())),
@@ -738,7 +976,7 @@ fn ChannelCard(
                                                     }
                                                 }
                                             >
-                                                "Delete"
+                                                {common_delete_label.clone()}
                                             </button>
                                         </div>
                                     </div>
@@ -762,16 +1000,20 @@ fn ChannelCard(
                         } else {
                             view! {
                                 <div class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-                                    "No module descriptors are currently available for binding."
+                                    {modules_no_descriptors_label.clone()}
                                 </div>
                             }.into_any()
                         }}
                         <label class="flex items-center gap-2 text-sm text-muted-foreground">
                             <input type="checkbox" prop:checked=bind_module_enabled on:change=move |ev| bind_module_enabled.set(event_target_checked(&ev)) />
-                            "Enabled for this channel"
+                            {modules_enabled_for_channel_label.clone()}
                         </label>
                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get() || !has_available_modules>
-                            {move || if editing_module_slug.get().is_some() { "Update Module Binding" } else { "Save Module Binding" }}
+                            {move || if editing_module_slug.get().is_some() {
+                                modules_update_label.clone()
+                            } else {
+                                modules_save_label.clone()
+                            }}
                         </button>
                     </form>
                 </section>
@@ -779,7 +1021,11 @@ fn ChannelCard(
                 <section class="space-y-4 rounded-xl border border-border bg-background p-4">
                     <div class="flex items-center justify-between gap-3">
                         <h3 class="text-base font-semibold text-card-foreground">
-                            {move || if editing_oauth_app_id.get().is_some() { "Edit OAuth App Binding" } else { "OAuth Apps" }}
+                            {move || if editing_oauth_app_id.get().is_some() {
+                                oauth_edit_title.clone()
+                            } else {
+                                oauth_title_label.clone()
+                            }}
                         </h3>
                         <Show when=move || editing_oauth_app_id.get().is_some()>
                             <button
@@ -787,15 +1033,15 @@ fn ChannelCard(
                                 class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
                                 on:click=cancel_oauth_edit
                             >
-                                "Cancel"
+                                {oauth_cancel_label.clone()}
                             </button>
                         </Show>
                     </div>
                     {if channel.oauth_apps.is_empty() {
                         view! {
                             <EmptyState
-                                title="No OAuth app bindings yet."
-                                body="Bind an existing OAuth app when this channel needs an integration-level relationship without introducing a second credential subsystem."
+                                title=oauth_empty_title.clone()
+                                body=oauth_empty_body.clone()
                             />
                         }.into_any()
                     } else {
@@ -806,7 +1052,7 @@ fn ChannelCard(
                                         <div class="flex items-start justify-between gap-3">
                                             <div>
                                                 <div class="font-medium text-card-foreground">{binding.oauth_app_id.clone()}</div>
-                                                <div class="mt-1 text-xs text-muted-foreground">{binding.role.clone().unwrap_or_else(|| "no role".to_string())}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">{binding.role.clone().unwrap_or_else(|| oauth_no_role_label.clone())}</div>
                                             </div>
                                             <button
                                                 type="button"
@@ -821,7 +1067,7 @@ fn ChannelCard(
                                                     }
                                                 }
                                             >
-                                                "Edit"
+                                                {common_edit_label.clone()}
                                             </button>
                                             <button
                                                 type="button"
@@ -833,7 +1079,9 @@ fn ChannelCard(
                                                     let tenant = tenant_for_app_delete.clone();
                                                     let channel_id = channel_id_for_app_delete.clone();
                                                     let channel_slug = channel_slug_for_app_delete.clone();
+                                                    let oauth_revoked_template = oauth_revoked_template.clone();
                                                     move |_| {
+                                                        let oauth_revoked_template = oauth_revoked_template.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
                                                         set_error.set(None);
@@ -843,6 +1091,7 @@ fn ChannelCard(
                                                             let tenant = tenant.clone();
                                                             let channel_id = channel_id.clone();
                                                             let channel_slug = channel_slug.clone();
+                                                            let oauth_revoked_template = oauth_revoked_template.clone();
                                                             async move {
                                                                 let result = api::delete_oauth_app_binding(
                                                                     token,
@@ -862,10 +1111,11 @@ fn ChannelCard(
                                                                             bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
                                                                             bind_oauth_role.set(String::new());
                                                                         }
-                                                                        set_feedback.set(Some(format!(
-                                                                            "OAuth app binding `{}` revoked for channel `{}`.",
-                                                                            deleted.oauth_app_id, channel_slug
-                                                                        )));
+                                                                        set_feedback.set(Some(
+                                                                            oauth_revoked_template
+                                                                                .replace("{app}", deleted.oauth_app_id.as_str())
+                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                        ));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
                                                                     Err(err) => set_error.set(Some(err.to_string())),
@@ -876,7 +1126,7 @@ fn ChannelCard(
                                                     }
                                                 }
                                             >
-                                                "Revoke"
+                                                {oauth_revoke_label.clone()}
                                             </button>
                                         </div>
                                     </div>
@@ -900,13 +1150,17 @@ fn ChannelCard(
                         } else {
                             view! {
                                 <div class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-                                    "No active OAuth apps are available for this tenant yet."
+                                    {oauth_no_apps_label.clone()}
                                 </div>
                             }.into_any()
                         }}
-                        <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder="role (optional)" prop:value=bind_oauth_role on:input=move |ev| bind_oauth_role.set(event_target_value(&ev)) />
+                        <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder=oauth_role_placeholder.clone() prop:value=bind_oauth_role on:input=move |ev| bind_oauth_role.set(event_target_value(&ev)) />
                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get() || !has_available_oauth_apps>
-                            {move || if editing_oauth_app_id.get().is_some() { "Update OAuth App Binding" } else { "Bind OAuth App" }}
+                            {move || if editing_oauth_app_id.get().is_some() {
+                                oauth_update_label.clone()
+                            } else {
+                                oauth_bind_label.clone()
+                            }}
                         </button>
                     </form>
                 </section>
@@ -916,7 +1170,7 @@ fn ChannelCard(
 }
 
 #[component]
-fn InfoPill(label: &'static str, value: String) -> impl IntoView {
+fn InfoPill(label: String, value: String) -> impl IntoView {
     view! {
         <div class="rounded-xl border border-border bg-background px-4 py-3">
             <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
@@ -926,7 +1180,7 @@ fn InfoPill(label: &'static str, value: String) -> impl IntoView {
 }
 
 #[component]
-fn EmptyState(title: &'static str, body: &'static str) -> impl IntoView {
+fn EmptyState(title: String, body: String) -> impl IntoView {
     view! {
         <div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm">
             <div class="font-medium text-card-foreground">{title}</div>
@@ -948,36 +1202,50 @@ fn optional_text(value: String) -> Option<String> {
     }
 }
 
-fn resolution_source_label(source: &ChannelResolutionSource) -> String {
+fn resolution_source_label(source: &ChannelResolutionSource, locale: Option<&str>) -> String {
     match source {
-        ChannelResolutionSource::HeaderId => "Header ID".to_string(),
-        ChannelResolutionSource::HeaderSlug => "Header Slug".to_string(),
-        ChannelResolutionSource::Query => "Query".to_string(),
-        ChannelResolutionSource::Host => "Host".to_string(),
-        ChannelResolutionSource::Policy => "Policy".to_string(),
-        ChannelResolutionSource::Default => "Default".to_string(),
+        ChannelResolutionSource::HeaderId => t(locale, "channel.source.headerId", "Header ID"),
+        ChannelResolutionSource::HeaderSlug => {
+            t(locale, "channel.source.headerSlug", "Header Slug")
+        }
+        ChannelResolutionSource::Query => t(locale, "channel.source.query", "Query"),
+        ChannelResolutionSource::Host => t(locale, "channel.source.host", "Host"),
+        ChannelResolutionSource::Policy => t(locale, "channel.source.policy", "Policy"),
+        ChannelResolutionSource::Default => t(locale, "channel.source.default", "Default"),
     }
 }
 
-fn resolution_source_description(source: &ChannelResolutionSource) -> &'static str {
+fn resolution_source_description(source: &ChannelResolutionSource, locale: Option<&str>) -> String {
     match source {
-        ChannelResolutionSource::HeaderId => {
-            "The current request explicitly selected this channel through the X-Channel-ID header."
-        }
-        ChannelResolutionSource::HeaderSlug => {
-            "The current request explicitly selected this channel through the X-Channel-Slug header."
-        }
-        ChannelResolutionSource::Query => {
-            "The current request selected this channel through the query parameter fallback."
-        }
-        ChannelResolutionSource::Host => {
-            "The current request matched this channel through host-based target resolution."
-        }
-        ChannelResolutionSource::Policy => {
-            "The current request matched a tenant-scoped typed channel resolution policy."
-        }
-        ChannelResolutionSource::Default => {
-            "No explicit channel selector matched, so the tenant's explicit default channel was used."
-        }
+        ChannelResolutionSource::HeaderId => t(
+            locale,
+            "channel.sourceDescription.headerId",
+            "The current request explicitly selected this channel through the X-Channel-ID header.",
+        ),
+        ChannelResolutionSource::HeaderSlug => t(
+            locale,
+            "channel.sourceDescription.headerSlug",
+            "The current request explicitly selected this channel through the X-Channel-Slug header.",
+        ),
+        ChannelResolutionSource::Query => t(
+            locale,
+            "channel.sourceDescription.query",
+            "The current request selected this channel through the query parameter fallback.",
+        ),
+        ChannelResolutionSource::Host => t(
+            locale,
+            "channel.sourceDescription.host",
+            "The current request matched this channel through host-based target resolution.",
+        ),
+        ChannelResolutionSource::Policy => t(
+            locale,
+            "channel.sourceDescription.policy",
+            "The current request matched a tenant-scoped typed channel resolution policy.",
+        ),
+        ChannelResolutionSource::Default => t(
+            locale,
+            "channel.sourceDescription.default",
+            "No explicit channel selector matched, so the tenant's explicit default channel was used.",
+        ),
     }
 }

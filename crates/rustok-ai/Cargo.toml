@@ -10,6 +10,7 @@ default = []
 server = [
   "dep:alloy",
   "dep:bytes",
+  "dep:futures-util",
   "dep:loco-rs",
   "dep:once_cell",
   "dep:rhai",
@@ -20,8 +21,10 @@ server = [
   "dep:rustok-media",
   "dep:rustok-mcp",
   "dep:rustok-storage",
+  "dep:rustok-telemetry",
   "dep:schemars",
   "dep:sea-orm",
+  "dep:tokio",
 ]
 
 [dependencies]
@@ -33,7 +36,8 @@ alloy = { workspace = true, optional = true }
 base64.workspace = true
 loco-rs = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["json"] }
+futures-util = { version = "0.3", optional = true }
+reqwest = { workspace = true, features = ["json", "stream"] }
 rhai = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
@@ -42,10 +46,12 @@ rustok-core = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
+rustok-telemetry = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["sync"] }
 tracing.workspace = true
 uuid.workspace = true

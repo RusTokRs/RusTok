@@ -7,7 +7,7 @@ use crate::{
     mcp::McpClientAdapter,
     model::{
         ChatMessage, ChatMessageRole, ExecutionMode, PendingApproval, ProviderChatRequest,
-        RuntimeOutcome, RuntimeRequest, ToolTrace,
+        ProviderStreamEmitter, RuntimeOutcome, RuntimeRequest, ToolTrace,
     },
     policy::ToolExecutionPolicy,
     provider::ModelProvider,
@@ -36,6 +36,7 @@ impl AiRuntime {
         &self,
         config: &crate::model::AiProviderConfig,
         request: RuntimeRequest,
+        stream_emitter: Option<ProviderStreamEmitter>,
     ) -> AiResult<RuntimeOutcome> {
         let tools = if matches!(request.execution_mode, ExecutionMode::McpTooling) {
             self.tool_policy.apply(self.mcp_client.list_tools().await?)
@@ -87,7 +88,7 @@ impl AiRuntime {
         for _ in 0..request.max_turns.max(1) {
             let response = self
                 .provider
-                .complete(
+                .complete_stream(
                     config,
                     ProviderChatRequest {
                         model: request.model.clone(),
@@ -97,6 +98,7 @@ impl AiRuntime {
                         max_tokens: request.max_tokens,
                         locale: request.locale.clone(),
                     },
+                    stream_emitter.clone(),
                 )
                 .await?;
 

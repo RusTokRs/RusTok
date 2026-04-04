@@ -1,4 +1,4 @@
-# RusTok — Verification Scripts
+﻿# RusTok — Verification Scripts
 
 Автоматизированные проверки платформы, встроенные в общий verification workflow. Точка входа для ручного orchestration-прогона: [PLATFORM_VERIFICATION_PLAN.md](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md).
 
@@ -71,6 +71,7 @@
 - `unwrap_or("default")` для секретов — unsafe fallback
 
 **Severity:** HIGH. Паника крашит весь tokio runtime.
+????????????? ??? `registry-only` ??????? ??? ?????? `GET /v1/catalog/{slug}` detail-path, cache-contract ????? `ETag` / `If-None-Match` ? negative smoke ?? write-route-? `POST /v2/catalog/publish`, `POST /v2/catalog/owner-transfer` ? `POST /v2/catalog/yank`.
 
 ---
 
@@ -215,6 +216,12 @@ Smoke-check поддерживаемых build surfaces:
 `registry-only` дополнительно проверяются env override `RUSTOK_RUNTIME_HOST_MODE=registry_only`,
 суженный runtime surface и reduced OpenAPI, чтобы deployment contract для read-only catalog host не
 расползался между docs и фактическим runtime.
+Дополнительно для `registry-only` матрица уже держит `GET /v1/catalog/{slug}` detail-path,
+cache-contract через `ETag` / `If-None-Match` и negative smoke на write-route-ы
+`POST /v2/catalog/publish`, `POST /v2/catalog/owner-transfer` и `POST /v2/catalog/yank`.
+
+Для Windows / PowerShell используйте `./scripts/verify/verify-deployment-profiles.ps1`: он
+покрывает ту же матрицу профилей развёртывания, когда `bash` недоступен в локальном окружении.
 
 **Severity:** HIGH. Поломка profile matrix = build contract задокументирован, но не воспроизводим.
 
@@ -298,3 +305,4 @@ fi
 - [Forbidden Actions](../../docs/standards/forbidden-actions.md) — запреты с примерами
 - [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — ✅/❌ сравнения
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов
+

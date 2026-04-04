@@ -3,9 +3,9 @@ pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSende
 
 use std::sync::Arc;
 
-/// Cached SMTP email service stored in `shared_store` to reuse the connection pool.
+/// Cached SMTP transport stored in `shared_store` to reuse the connection pool.
 #[derive(Clone)]
-pub struct SharedSmtpEmailService(pub Arc<EmailService>);
+pub struct SharedSmtpEmailService(pub Arc<rustok_email::SmtpEmailSender>);
 
 use async_trait::async_trait;
 use loco_rs::app::AppContext;
@@ -102,6 +102,22 @@ impl LocoMailerAdapter {
     }
 }
 
+/// SMTP bridge that preserves app-level localized templates while reusing the
+/// shared SMTP transport across requests.
+pub struct TemplatedSmtpMailerAdapter {
+    sender: Arc<rustok_email::SmtpEmailSender>,
+    locale: String,
+}
+
+impl TemplatedSmtpMailerAdapter {
+    pub fn new(sender: Arc<rustok_email::SmtpEmailSender>, locale: impl Into<String>) -> Self {
+        Self {
+            sender,
+            locale: locale.into(),
+        }
+    }
+}
+
 #[async_trait]
 impl PasswordResetEmailSender for LocoMailerAdapter {
     async fn send_password_reset(
@@ -128,16 +144,28 @@ impl PasswordResetEmailSender for LocoMailerAdapter {
     }
 }
 
+#[async_trait]
+impl PasswordResetEmailSender for TemplatedSmtpMailerAdapter {
+    async fn send_password_reset(
+        &self,
+        email: PasswordResetEmail,
+    ) -> std::result::Result<(), EmailError> {
+        let rendered = render_password_reset(&self.locale, &email.reset_url)?;
+        self.sender.send_rendered(&email.to, &rendered).await
+    }
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────────
 
 /// Build a `PasswordResetEmailSender` from `AppContext`.
 ///
-/// `locale` is used only when `email.provider = "loco"` (Tera template rendering).
-/// For `smtp`, the Smtp transport is cached in `shared_store` to reuse the connection pool.
+/// `locale` is used to render localized built-in auth templates for both `loco`
+/// and `smtp` providers. The underlying SMTP transport is cached in
+/// `shared_store` to reuse the connection pool.
 ///
 /// Dispatches on `email.provider`:
 /// - `loco` → `LocoMailerAdapter` with per-request locale (requires `ctx.mailer` initialized)
-/// - `smtp` (default) → `EmailService::Smtp` cached in `shared_store`
+/// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
 /// - `none` → `EmailService::Disabled`
 pub fn email_service_from_ctx(
     ctx: &AppContext,
@@ -168,7 +196,10 @@ pub fn email_service_from_ctx(
         EmailProvider::Smtp => {
             // Return cached transport if already initialised (connection pool reuse).
             if let Some(shared) = ctx.shared_store.get::<SharedSmtpEmailService>() {
-                return Ok(Box::new((*shared.0).clone()));
+                return Ok(Box::new(TemplatedSmtpMailerAdapter::new(
+                    shared.0.clone(),
+                    locale,
+                )));
             }
 
             let config = rustok_email::EmailConfig {
@@ -183,9 +214,13 @@ pub fn email_service_from_ctx(
                 reset_base_url: settings.email.reset_base_url,
             };
             let service = EmailService::from_config(&config).map_err(email_err)?;
+            let EmailService::Smtp(sender) = service else {
+                return Ok(Box::new(EmailService::Disabled));
+            };
+            let sender = Arc::new(*sender);
             ctx.shared_store
-                .insert(SharedSmtpEmailService(Arc::new(service.clone())));
-            Ok(Box::new(service))
+                .insert(SharedSmtpEmailService(sender.clone()));
+            Ok(Box::new(TemplatedSmtpMailerAdapter::new(sender, locale)))
         }
     }
 }
@@ -232,5 +267,15 @@ mod tests {
     fn render_password_reset_ru_subject_is_non_empty() {
         let rendered = render_password_reset("ru", "https://x.com/r").unwrap();
         assert!(!rendered.subject.trim().is_empty());
+    }
+
+    #[test]
+    fn render_password_reset_regional_russian_locale_uses_russian_templates() {
+        let base = render_password_reset("ru", "https://x.com/r").unwrap();
+        let regional = render_password_reset("ru-RU", "https://x.com/r").unwrap();
+
+        assert_eq!(regional.subject, base.subject);
+        assert_eq!(regional.text, base.text);
+        assert_eq!(regional.html, base.html);
     }
 }

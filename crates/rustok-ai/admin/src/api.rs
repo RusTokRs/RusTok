@@ -1,8 +1,8 @@
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 #[cfg(feature = "ssr")]
 use sea_orm::ConnectionTrait;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 use crate::model::{
     AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiProviderProfilePayload,
@@ -11,8 +11,9 @@ use crate::model::{
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
-    AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload, AiToolCallPayload,
-    AiToolTracePayload,
+    AiApprovalRequestPayload, AiChatMessagePayload, AiChatSessionSummaryPayload,
+    AiMetricBucketPayload, AiRecentRunPayload, AiRunStreamEventKindPayload,
+    AiRunStreamEventPayload, AiRuntimeMetricsPayload, AiToolCallPayload, AiToolTracePayload,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,6 +287,7 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
         ensure_ai_overview_permission(&auth.permissions)?;
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         Ok(AiAdminBootstrap {
+            metrics: map_runtime_metrics(rustok_ai::AiManagementService::metrics_snapshot()),
             providers: rustok_ai::AiManagementService::list_provider_profiles(
                 &app_ctx.db,
                 auth.tenant_id,
@@ -322,6 +324,20 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
             .into_iter()
             .map(map_session_summary)
             .collect(),
+            recent_runs: rustok_ai::AiManagementService::list_recent_runs(
+                &app_ctx.db,
+                auth.tenant_id,
+                20,
+            )
+            .await
+            .map_err(server_error)?
+            .into_iter()
+            .map(map_recent_run)
+            .collect(),
+            recent_stream_events: rustok_ai::AiManagementService::recent_stream_events(None, 20)
+                .into_iter()
+                .map(map_stream_event)
+                .collect(),
         })
     }
     #[cfg(not(feature = "ssr"))]
@@ -351,7 +367,7 @@ async fn ai_session_native(
         )
         .await
         .map_err(server_error)?;
-        Ok(detail.map(map_session_detail))
+        Ok(detail.map(|detail| map_session_detail_with_recent_events(detail, 20)))
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -852,7 +868,10 @@ async fn ai_run_task_job_native(
             &operator(&auth, &app_ctx.db).await?,
             rustok_ai::RunAiTaskJobInput {
                 title,
-                provider_profile_id: parse_optional_uuid(provider_profile_id, "provider_profile_id")?,
+                provider_profile_id: parse_optional_uuid(
+                    provider_profile_id,
+                    "provider_profile_id",
+                )?,
                 task_profile_id: parse_uuid(&task_profile_id, "task_profile_id")?,
                 execution_mode: execution_mode
                     .as_deref()
@@ -1064,6 +1083,10 @@ async fn operator(
     auth: &rustok_api::AuthContext,
     db: &sea_orm::DatabaseConnection,
 ) -> Result<rustok_ai::AiOperatorContext, ServerFnError> {
+    let preferred_locale = leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .ok()
+        .map(|request_context| request_context.locale);
     let backend = db.get_database_backend();
     let statement = match backend {
         sea_orm::DbBackend::Sqlite => sea_orm::Statement::from_sql_and_values(
@@ -1100,7 +1123,7 @@ async fn operator(
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
         role_slugs,
-        preferred_locale: None,
+        preferred_locale,
     })
 }
 
@@ -1137,6 +1160,55 @@ fn map_provider(value: rustok_ai::AiProviderProfileRecord) -> AiProviderProfileP
         denied_task_profiles: value.usage_policy.denied_task_profiles,
         restricted_role_slugs: value.usage_policy.restricted_role_slugs,
         metadata: value.metadata.to_string(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_runtime_metrics(value: rustok_ai::AiRuntimeMetricsSnapshot) -> AiRuntimeMetricsPayload {
+    AiRuntimeMetricsPayload {
+        router_resolutions_total: value.router_resolutions_total,
+        router_overrides_total: value.router_overrides_total,
+        selected_auto_total: value.selected_auto_total,
+        selected_direct_total: value.selected_direct_total,
+        selected_mcp_total: value.selected_mcp_total,
+        completed_runs_total: value.completed_runs_total,
+        failed_runs_total: value.failed_runs_total,
+        waiting_approval_runs_total: value.waiting_approval_runs_total,
+        locale_fallback_total: value.locale_fallback_total,
+        run_latency_ms_total: value.run_latency_ms_total,
+        run_latency_samples: value.run_latency_samples,
+        provider_kind_totals: value
+            .provider_kind_totals
+            .into_iter()
+            .map(|bucket| AiMetricBucketPayload {
+                label: bucket.label,
+                total: bucket.total,
+            })
+            .collect(),
+        execution_target_totals: value
+            .execution_target_totals
+            .into_iter()
+            .map(|bucket| AiMetricBucketPayload {
+                label: bucket.label,
+                total: bucket.total,
+            })
+            .collect(),
+        task_profile_totals: value
+            .task_profile_totals
+            .into_iter()
+            .map(|bucket| AiMetricBucketPayload {
+                label: bucket.label,
+                total: bucket.total,
+            })
+            .collect(),
+        resolved_locale_totals: value
+            .resolved_locale_totals
+            .into_iter()
+            .map(|bucket| AiMetricBucketPayload {
+                label: bucket.label,
+                total: bucket.total,
+            })
+            .collect(),
     }
 }
 
@@ -1264,6 +1336,32 @@ fn map_run(value: rustok_ai::AiChatRunRecord) -> AiChatRunPayload {
 }
 
 #[cfg(feature = "ssr")]
+fn map_recent_run(value: rustok_ai::AiRecentRunRecord) -> AiRecentRunPayload {
+    AiRecentRunPayload {
+        id: value.id.to_string(),
+        session_id: value.session_id.to_string(),
+        session_title: value.session_title,
+        provider_profile_id: value.provider_profile_id.to_string(),
+        provider_display_name: value.provider_display_name,
+        provider_kind: value.provider_kind.slug().to_string(),
+        task_profile_id: value.task_profile_id.map(|value| value.to_string()),
+        task_profile_slug: value.task_profile_slug,
+        status: value.status,
+        model: value.model,
+        execution_mode: value.execution_mode.slug().to_string(),
+        execution_path: value.execution_path.slug().to_string(),
+        execution_target: value.execution_target,
+        requested_locale: value.requested_locale,
+        resolved_locale: value.resolved_locale,
+        error_message: value.error_message,
+        started_at: value.started_at.to_rfc3339(),
+        completed_at: value.completed_at.map(|value| value.to_rfc3339()),
+        updated_at: value.updated_at.to_rfc3339(),
+        duration_ms: value.duration_ms,
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_trace(value: rustok_ai::ToolTrace) -> AiToolTracePayload {
     AiToolTracePayload {
         tool_name: value.tool_name,
@@ -1311,7 +1409,23 @@ fn map_session_detail(value: rustok_ai::AiChatSessionDetail) -> AiChatSessionDet
         runs: value.runs.into_iter().map(map_run).collect(),
         tool_traces: value.tool_traces.into_iter().map(map_trace).collect(),
         approvals: value.approvals.into_iter().map(map_approval).collect(),
+        recent_stream_events: Vec::new(),
     }
+}
+
+#[cfg(feature = "ssr")]
+fn map_session_detail_with_recent_events(
+    value: rustok_ai::AiChatSessionDetail,
+    limit: usize,
+) -> AiChatSessionDetailPayload {
+    let session_id = value.session.id;
+    let mut payload = map_session_detail(value);
+    payload.recent_stream_events =
+        rustok_ai::AiManagementService::recent_stream_events(Some(session_id), limit)
+            .into_iter()
+            .map(map_stream_event)
+            .collect();
+    payload
 }
 
 #[cfg(feature = "ssr")]
@@ -1382,7 +1496,28 @@ fn parse_capabilities(
 #[cfg(feature = "ssr")]
 fn map_send_result(value: rustok_ai::AiSendMessageResult) -> AiSendMessageResultPayload {
     AiSendMessageResultPayload {
-        session: map_session_detail(value.session),
+        session: map_session_detail_with_recent_events(value.session, 20),
         run: map_run(value.run),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_stream_event(value: rustok_ai::AiRunStreamEvent) -> AiRunStreamEventPayload {
+    AiRunStreamEventPayload {
+        session_id: value.session_id.to_string(),
+        run_id: value.run_id.to_string(),
+        event_kind: match value.event_kind {
+            rustok_ai::AiRunStreamEventKind::Started => AiRunStreamEventKindPayload::Started,
+            rustok_ai::AiRunStreamEventKind::Delta => AiRunStreamEventKindPayload::Delta,
+            rustok_ai::AiRunStreamEventKind::Completed => AiRunStreamEventKindPayload::Completed,
+            rustok_ai::AiRunStreamEventKind::Failed => AiRunStreamEventKindPayload::Failed,
+            rustok_ai::AiRunStreamEventKind::WaitingApproval => {
+                AiRunStreamEventKindPayload::WaitingApproval
+            }
+        },
+        content_delta: value.content_delta,
+        accumulated_content: value.accumulated_content,
+        error_message: value.error_message,
+        created_at: value.created_at.to_rfc3339(),
     }
 }

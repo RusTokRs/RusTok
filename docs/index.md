@@ -38,7 +38,7 @@
 - [Storefront](./UI/storefront.md)
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
 - [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
-- [Архитектура i18n](./architecture/i18n.md)
+- [Архитектура i18n](./architecture/i18n.md) — request locale chain, storefront locale-prefixed routes, outbound reset-email locale contract, manifest-level module UI bundle contract
 
 ## Архитектура и foundation
 
@@ -64,6 +64,10 @@
 - [Security](./standards/security.md)
 - [Coding](./standards/coding.md)
 - [RT JSON v1](./standards/rt-json-v1.md)
+
+## Активные планы исполнения
+
+- [Активный remediation-план платформы](./concepts/platform-remediation-execution-plan.md) — текущий исполняемый план; не относится к weekly verification-прогонам
 
 ## Проверка платформы
 

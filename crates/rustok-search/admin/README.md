@@ -18,6 +18,8 @@ Leptos admin UI package for the `rustok-search` module.
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Mounted by the Leptos admin host under `/modules/search`.
 - Uses shared `UiRouteContext` so nested module-owned pages stay host-agnostic.
+- Consumes the host-provided effective locale from `UiRouteContext.locale`; package-owned strings live in `admin/locales/en.json` and `admin/locales/ru.json`.
+- Declares its package-owned translation bundles in `rustok-module.toml` through `[provides.admin_ui.i18n]`.
 - Uses native-first Leptos `#[server]` functions for bootstrap, preview, diagnostics, dictionaries, analytics, settings, and rebuild flows.
 - Keeps the existing GraphQL transport as a parallel fallback path; native server functions do not replace `/api/graphql`.
 

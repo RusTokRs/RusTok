@@ -1,0 +1,13 @@
+{
+  "index.badge": "index",
+  "index.title": "Index runtime",
+  "index.subtitle": "Модульный обзор tenant-scoped read-model таблиц и покрытия индексного слоя.",
+  "index.info.tenant": "Тенант",
+  "index.info.locale": "Локаль",
+  "index.info.backend": "FTS backend",
+  "index.info.documentTypes": "Типы документов",
+  "index.value.postgres": "postgres",
+  "index.value.generic": "generic",
+  "index.contract.title": "Контракт модуля",
+  "index.error.loadBootstrap": "Не удалось загрузить index bootstrap"
+}

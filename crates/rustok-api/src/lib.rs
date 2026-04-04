@@ -11,4 +11,7 @@ pub use context::{
     TenantContextExt, TenantContextExtension, TenantError,
 };
 pub use request::RequestContext;
-pub use ui::UiRouteContext;
+pub use ui::{
+    build_ui_message_catalog, resolve_ui_message, resolve_ui_message_or_fallback, UiMessageCatalog,
+    UiRouteContext,
+};

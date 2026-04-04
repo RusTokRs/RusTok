@@ -1,0 +1,18 @@
+{
+  "tenant.badge": "tenant",
+  "tenant.title": "Tenant runtime",
+  "tenant.subtitle": "Модульный обзор активного состояния тенанта и эффективного включения модулей.",
+  "tenant.info.tenant": "Тенант",
+  "tenant.info.name": "Имя",
+  "tenant.info.domain": "Домен",
+  "tenant.info.status": "Статус",
+  "tenant.value.notAvailable": "н/д",
+  "tenant.value.active": "активен",
+  "tenant.value.inactive": "неактивен",
+  "tenant.modules.title": "Зарегистрированные модули",
+  "tenant.modules.subtitle": "Core-модули остаются включёнными по контракту, а optional-модули отражают состояние тенанта.",
+  "tenant.modules.updated": "Обновлено",
+  "tenant.modules.enabled": "включён",
+  "tenant.modules.disabled": "выключен",
+  "tenant.error.loadBootstrap": "Не удалось загрузить tenant bootstrap"
+}

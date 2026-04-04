@@ -1051,7 +1051,7 @@ mod invalidation_tests {
             .expect("request");
 
         let result = resolve_identifier(&request, &settings);
-        assert_eq!(result, Err(axum::http::StatusCode::BAD_REQUEST));
+        assert!(matches!(result, Err(axum::http::StatusCode::BAD_REQUEST)));
     }
 
     #[test]

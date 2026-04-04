@@ -1,11 +1,14 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::UiRouteContext;
 
+use crate::i18n::t;
 use crate::model::{
     ProductDetail, ProductDraft, ProductListItem, ShippingOption, ShippingOptionDraft,
     ShippingProfile, ShippingProfileDraft,
@@ -13,13 +16,17 @@ use crate::model::{
 
 #[component]
 pub fn CommerceAdmin() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let ui_locale = route_context.locale.clone();
+    let initial_product_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
     let token = use_token();
     let tenant = use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
 
     let (editing_id, set_editing_id) = signal(Option::<String>::None);
     let (selected, set_selected) = signal(Option::<ProductDetail>::None);
-    let (locale, set_locale) = signal("en".to_string());
+    let (locale, set_locale) =
+        signal(ui_locale.clone().unwrap_or_else(|| "en".to_string()));
     let (title, set_title) = signal(String::new());
     let (handle, set_handle) = signal(String::new());
     let (description, set_description) = signal(String::new());
@@ -63,6 +70,385 @@ pub fn CommerceAdmin() -> impl IntoView {
     let (shipping_profile_search, set_shipping_profile_search) = signal(String::new());
     let (shipping_profile_busy, set_shipping_profile_busy) = signal(false);
     let (shipping_profile_error, set_shipping_profile_error) = signal(Option::<String>::None);
+
+    let badge_label = t(ui_locale.as_deref(), "commerce.badge", "commerce");
+    let title_label = t(
+        ui_locale.as_deref(),
+        "commerce.title",
+        "Commerce Control Room",
+    );
+    let subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.subtitle",
+        "Module-owned operator workspace for catalog publishing, shipping-profile registry management and delivery option compatibility. Product CRUD, profile ownership and shipping-option rules all stay inside the commerce package.",
+    );
+    let bootstrap_loading_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.bootstrapLoading",
+        "Bootstrap is still loading.",
+    );
+    let catalog_title_label = t(
+        ui_locale.as_deref(),
+        "commerce.catalog.title",
+        "Catalog Feed",
+    );
+    let catalog_subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.catalog.subtitle",
+        "Search, publish, archive and open products for editing.",
+    );
+    let search_title_placeholder = t(
+        ui_locale.as_deref(),
+        "commerce.catalog.searchPlaceholder",
+        "Search title",
+    );
+    let all_statuses_label = t(
+        ui_locale.as_deref(),
+        "commerce.catalog.status.all",
+        "All statuses",
+    );
+    let no_products_label = t(
+        ui_locale.as_deref(),
+        "commerce.catalog.empty",
+        "No products yet.",
+    );
+    let load_products_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadProducts",
+        "Failed to load products",
+    );
+    let product_not_found_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.productNotFound",
+        "Product not found.",
+    );
+    let load_product_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadProduct",
+        "Failed to load product",
+    );
+    let locale_title_required_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.localeTitleRequired",
+        "Locale and title are required.",
+    );
+    let save_product_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.saveProduct",
+        "Failed to save product",
+    );
+    let change_product_status_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.changeProductStatus",
+        "Failed to change status",
+    );
+    let delete_false_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.deleteReturnedFalse",
+        "Delete returned false.",
+    );
+    let delete_product_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.deleteProduct",
+        "Failed to delete product",
+    );
+    let edit_label = t(ui_locale.as_deref(), "commerce.action.edit", "Edit");
+    let publish_label = t(ui_locale.as_deref(), "commerce.action.publish", "Publish");
+    let move_to_draft_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.moveToDraft",
+        "Move to Draft",
+    );
+    let archive_label = t(ui_locale.as_deref(), "commerce.action.archive", "Archive");
+    let delete_label = t(ui_locale.as_deref(), "commerce.action.delete", "Delete");
+    let new_label = t(ui_locale.as_deref(), "commerce.action.new", "New");
+    let product_editor_label = t(
+        ui_locale.as_deref(),
+        "commerce.product.editor",
+        "Product Editor",
+    );
+    let create_product_label = t(
+        ui_locale.as_deref(),
+        "commerce.product.create",
+        "Create Product",
+    );
+    let product_editor_subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.product.subtitle",
+        "Single-SKU product editor backed by the module GraphQL mutations.",
+    );
+    let locale_placeholder_label = t(ui_locale.as_deref(), "commerce.field.locale", "Locale");
+    let handle_placeholder_label = t(ui_locale.as_deref(), "commerce.field.handle", "Handle");
+    let title_placeholder_label = t(ui_locale.as_deref(), "commerce.field.title", "Title");
+    let description_placeholder_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.description",
+        "Description",
+    );
+    let vendor_placeholder_label = t(ui_locale.as_deref(), "commerce.field.vendor", "Vendor");
+    let product_type_placeholder_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.productType",
+        "Product type",
+    );
+    let no_shipping_profile_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.noShippingProfile",
+        "No shipping profile",
+    );
+    let known_profiles_template = t(
+        ui_locale.as_deref(),
+        "commerce.field.knownProfiles",
+        "Known profiles: {profiles}",
+    );
+    let known_profiles_loading_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.knownProfilesLoading",
+        "Known profiles are loading from the shipping-profile registry.",
+    );
+    let primary_sku_placeholder_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.primarySku",
+        "Primary SKU",
+    );
+    let currency_placeholder_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.currency",
+        "Currency",
+    );
+    let price_placeholder_label = t(ui_locale.as_deref(), "commerce.field.price", "Price");
+    let inventory_placeholder_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.inventoryQuantity",
+        "Inventory quantity",
+    );
+    let keep_published_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.keepPublished",
+        "Keep published after save",
+    );
+    let save_product_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.saveProduct",
+        "Save product",
+    );
+    let create_product_action_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.createProduct",
+        "Create product",
+    );
+    let product_summary_empty_label = t(
+        ui_locale.as_deref(),
+        "commerce.summary.product.empty",
+        "Open a product from the feed to inspect its localized copy, primary variant and shipping-profile mapping.",
+    );
+    let shipping_options_title_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOptions.title",
+        "Shipping Options",
+    );
+    let shipping_options_subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOptions.subtitle",
+        "Review delivery options, provider bindings and shipping-profile compatibility rules.",
+    );
+    let shipping_search_placeholder = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOptions.searchPlaceholder",
+        "Search name",
+    );
+    let shipping_provider_placeholder = t(
+        ui_locale.as_deref(),
+        "commerce.field.providerId",
+        "Provider ID",
+    );
+    let no_shipping_options_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOptions.empty",
+        "No shipping options match the current filters.",
+    );
+    let load_shipping_options_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadShippingOptions",
+        "Failed to load shipping options",
+    );
+    let shipping_option_editor_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.editor",
+        "Shipping Option Editor",
+    );
+    let create_shipping_option_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.create",
+        "Create Shipping Option",
+    );
+    let shipping_option_subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.subtitle",
+        "Typed operator surface over createShippingOption and updateShippingOption.",
+    );
+    let shipping_option_name_required_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.shippingOptionNameRequired",
+        "Shipping option name is required.",
+    );
+    let shipping_option_not_found_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.shippingOptionNotFound",
+        "Shipping option not found.",
+    );
+    let load_shipping_option_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadShippingOption",
+        "Failed to load shipping option",
+    );
+    let save_shipping_option_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.saveShippingOption",
+        "Failed to save shipping option",
+    );
+    let toggle_shipping_option_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.changeShippingOptionStatus",
+        "Failed to change shipping option status",
+    );
+    let allowed_profiles_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.allowedProfiles",
+        "Allowed shipping profiles",
+    );
+    let allow_all_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.allowAll",
+        "Allow all",
+    );
+    let no_shipping_profiles_yet_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.noProfiles",
+        "No shipping profiles exist yet. Create a profile first or keep this option available to all carts.",
+    );
+    let registry_loading_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.registryLoading",
+        "Registry slugs are loading from the shipping-profile registry.",
+    );
+    let load_registry_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadRegistrySlugs",
+        "Failed to load registry slugs",
+    );
+    let selected_profiles_template = t(
+        ui_locale.as_deref(),
+        "commerce.shippingOption.selectedProfiles",
+        "Selected profiles: {profiles}",
+    );
+    let metadata_patch_placeholder_label = t(
+        ui_locale.as_deref(),
+        "commerce.field.metadataJsonPatch",
+        "Metadata JSON patch",
+    );
+    let save_shipping_option_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.saveShippingOption",
+        "Save shipping option",
+    );
+    let create_shipping_option_action_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.createShippingOption",
+        "Create shipping option",
+    );
+    let shipping_option_summary_empty_label = t(
+        ui_locale.as_deref(),
+        "commerce.summary.shippingOption.empty",
+        "Open a shipping option to inspect its provider, pricing and shipping-profile compatibility set.",
+    );
+    let metadata_hint_label = t(
+        ui_locale.as_deref(),
+        "commerce.metadata.hint",
+        "Metadata is sent as an optional JSON patch. Leaving the field blank during update keeps the existing metadata payload unchanged.",
+    );
+    let shipping_profiles_title_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfiles.title",
+        "Shipping Profiles",
+    );
+    let shipping_profiles_subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfiles.subtitle",
+        "Manage the typed profile registry used by products and shipping-option compatibility rules.",
+    );
+    let shipping_profiles_search_placeholder = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfiles.searchPlaceholder",
+        "Search slug or name",
+    );
+    let no_shipping_profiles_match_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfiles.empty",
+        "No shipping profiles match the current filters.",
+    );
+    let load_shipping_profiles_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadShippingProfiles",
+        "Failed to load shipping profiles",
+    );
+    let shipping_profile_editor_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfile.editor",
+        "Shipping Profile Editor",
+    );
+    let create_shipping_profile_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfile.create",
+        "Create Shipping Profile",
+    );
+    let shipping_profile_subtitle_label = t(
+        ui_locale.as_deref(),
+        "commerce.shippingProfile.subtitle",
+        "Typed registry editor for the slugs referenced by products and shipping options.",
+    );
+    let slug_placeholder_label = t(ui_locale.as_deref(), "commerce.field.slug", "Slug");
+    let name_placeholder_label = t(ui_locale.as_deref(), "commerce.field.name", "Name");
+    let shipping_profile_required_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.shippingProfileRequired",
+        "Shipping profile slug and name are required.",
+    );
+    let shipping_profile_not_found_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.shippingProfileNotFound",
+        "Shipping profile not found.",
+    );
+    let load_shipping_profile_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.loadShippingProfile",
+        "Failed to load shipping profile",
+    );
+    let save_shipping_profile_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.saveShippingProfile",
+        "Failed to save shipping profile",
+    );
+    let toggle_shipping_profile_error_label = t(
+        ui_locale.as_deref(),
+        "commerce.error.changeShippingProfileStatus",
+        "Failed to change shipping profile status",
+    );
+    let save_shipping_profile_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.saveShippingProfile",
+        "Save shipping profile",
+    );
+    let create_shipping_profile_action_label = t(
+        ui_locale.as_deref(),
+        "commerce.action.createShippingProfile",
+        "Create shipping profile",
+    );
+    let shipping_profile_summary_empty_label = t(
+        ui_locale.as_deref(),
+        "commerce.summary.shippingProfile.empty",
+        "Open a shipping profile to inspect its slug, description and lifecycle state.",
+    );
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -142,10 +528,11 @@ pub fn CommerceAdmin() -> impl IntoView {
         },
     );
 
+    let reset_form_initial_product_locale = initial_product_locale.clone();
     let reset_form = move || {
         set_editing_id.set(None);
         set_selected.set(None);
-        set_locale.set("en".to_string());
+        set_locale.set(reset_form_initial_product_locale.clone());
         set_title.set(String::new());
         set_handle.set(String::new());
         set_description.set(String::new());
@@ -179,14 +566,19 @@ pub fn CommerceAdmin() -> impl IntoView {
         set_shipping_profile_metadata_json.set(String::new());
     };
 
+    let edit_product_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let edit_product_not_found_label = product_not_found_label.clone();
+    let edit_product_load_error_label = load_product_error_label.clone();
     let edit_product = Callback::new(move |product_id: String| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_error.set(Some(edit_product_bootstrap_loading_label.clone()));
             return;
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let locale_value = locale.get_untracked();
+        let not_found_label = edit_product_not_found_label.clone();
+        let load_error_label = edit_product_load_error_label.clone();
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
@@ -216,20 +608,25 @@ pub fn CommerceAdmin() -> impl IntoView {
                     set_inventory_quantity,
                     set_publish_now,
                 ),
-                Ok(None) => set_error.set(Some("Product not found.".to_string())),
-                Err(err) => set_error.set(Some(format!("Failed to load product: {err}"))),
+                Ok(None) => set_error.set(Some(not_found_label)),
+                Err(err) => set_error.set(Some(format!("{load_error_label}: {err}"))),
             }
             set_busy.set(false);
         });
     });
 
+    let edit_shipping_option_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let edit_shipping_option_not_found_label = shipping_option_not_found_label.clone();
+    let edit_shipping_option_load_error_label = load_shipping_option_error_label.clone();
     let edit_shipping_option = Callback::new(move |shipping_option_id: String| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_shipping_error.set(Some(edit_shipping_option_bootstrap_loading_label.clone()));
             return;
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let not_found_label = edit_shipping_option_not_found_label.clone();
+        let load_error_label = edit_shipping_option_load_error_label.clone();
         set_shipping_busy.set(true);
         set_shipping_error.set(None);
         spawn_local(async move {
@@ -252,22 +649,29 @@ pub fn CommerceAdmin() -> impl IntoView {
                     set_shipping_allowed_profiles,
                     set_shipping_metadata_json,
                 ),
-                Ok(None) => set_shipping_error.set(Some("Shipping option not found.".to_string())),
+                Ok(None) => set_shipping_error.set(Some(not_found_label)),
                 Err(err) => {
-                    set_shipping_error.set(Some(format!("Failed to load shipping option: {err}")))
+                    set_shipping_error
+                        .set(Some(format!("{load_error_label}: {err}")))
                 }
             }
             set_shipping_busy.set(false);
         });
     });
 
+    let edit_shipping_profile_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let edit_shipping_profile_not_found_label = shipping_profile_not_found_label.clone();
+    let edit_shipping_profile_load_error_label = load_shipping_profile_error_label.clone();
     let edit_shipping_profile = Callback::new(move |shipping_profile_id: String| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_profile_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_shipping_profile_error
+                .set(Some(edit_shipping_profile_bootstrap_loading_label.clone()));
             return;
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let not_found_label = edit_shipping_profile_not_found_label.clone();
+        let load_error_label = edit_shipping_profile_load_error_label.clone();
         set_shipping_profile_busy.set(true);
         set_shipping_profile_error.set(None);
         spawn_local(async move {
@@ -288,20 +692,21 @@ pub fn CommerceAdmin() -> impl IntoView {
                     set_shipping_profile_description,
                     set_shipping_profile_metadata_json,
                 ),
-                Ok(None) => {
-                    set_shipping_profile_error.set(Some("Shipping profile not found.".to_string()))
-                }
+                Ok(None) => set_shipping_profile_error.set(Some(not_found_label)),
                 Err(err) => set_shipping_profile_error
-                    .set(Some(format!("Failed to load shipping profile: {err}"))),
+                    .set(Some(format!("{load_error_label}: {err}"))),
             }
             set_shipping_profile_busy.set(false);
         });
     });
 
+    let submit_product_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let submit_product_locale_title_required_label = locale_title_required_label.clone();
+    let submit_product_save_error_label = save_product_error_label.clone();
     let submit_product = move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_error.set(Some(submit_product_bootstrap_loading_label.clone()));
             return;
         };
         let draft = ProductDraft {
@@ -321,12 +726,13 @@ pub fn CommerceAdmin() -> impl IntoView {
             publish_now: publish_now.get_untracked(),
         };
         if draft.locale.is_empty() || draft.title.is_empty() {
-            set_error.set(Some("Locale and title are required.".to_string()));
+            set_error.set(Some(submit_product_locale_title_required_label.clone()));
             return;
         }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let current_id = editing_id.get_untracked();
+        let save_product_error_label = submit_product_save_error_label.clone();
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
@@ -401,16 +807,20 @@ pub fn CommerceAdmin() -> impl IntoView {
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_error.set(Some(format!("Failed to save product: {err}"))),
+                Err(err) => set_error.set(Some(format!("{save_product_error_label}: {err}"))),
             }
             set_busy.set(false);
         });
     };
 
+    let submit_shipping_option_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let submit_shipping_option_required_label = shipping_option_name_required_label.clone();
+    let submit_shipping_option_save_error_label = save_shipping_option_error_label.clone();
     let submit_shipping_option = move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_shipping_error
+                .set(Some(submit_shipping_option_bootstrap_loading_label.clone()));
             return;
         };
         let draft = ShippingOptionDraft {
@@ -425,12 +835,13 @@ pub fn CommerceAdmin() -> impl IntoView {
             metadata_json: shipping_metadata_json.get_untracked().trim().to_string(),
         };
         if draft.name.is_empty() {
-            set_shipping_error.set(Some("Shipping option name is required.".to_string()));
+            set_shipping_error.set(Some(submit_shipping_option_required_label.clone()));
             return;
         }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let current_id = shipping_editing_id.get_untracked();
+        let save_shipping_option_error_label = submit_shipping_option_save_error_label.clone();
         set_shipping_busy.set(true);
         set_shipping_error.set(None);
         spawn_local(async move {
@@ -470,18 +881,21 @@ pub fn CommerceAdmin() -> impl IntoView {
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => {
-                    set_shipping_error.set(Some(format!("Failed to save shipping option: {err}")))
-                }
+                Err(err) => set_shipping_error
+                    .set(Some(format!("{save_shipping_option_error_label}: {err}"))),
             }
             set_shipping_busy.set(false);
         });
     };
 
+    let submit_shipping_profile_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let submit_shipping_profile_required_label = shipping_profile_required_label.clone();
+    let submit_shipping_profile_save_error_label = save_shipping_profile_error_label.clone();
     let submit_shipping_profile = move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_profile_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_shipping_profile_error
+                .set(Some(submit_shipping_profile_bootstrap_loading_label.clone()));
             return;
         };
         let draft = ShippingProfileDraft {
@@ -497,14 +911,13 @@ pub fn CommerceAdmin() -> impl IntoView {
                 .to_string(),
         };
         if draft.slug.is_empty() || draft.name.is_empty() {
-            set_shipping_profile_error.set(Some(
-                "Shipping profile slug and name are required.".to_string(),
-            ));
+            set_shipping_profile_error.set(Some(submit_shipping_profile_required_label.clone()));
             return;
         }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let current_id = shipping_profile_editing_id.get_untracked();
+        let save_shipping_profile_error_label = submit_shipping_profile_save_error_label.clone();
         set_shipping_profile_busy.set(true);
         set_shipping_profile_error.set(None);
         spawn_local(async move {
@@ -543,19 +956,22 @@ pub fn CommerceAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_shipping_profile_error
-                    .set(Some(format!("Failed to save shipping profile: {err}"))),
+                    .set(Some(format!("{save_shipping_profile_error_label}: {err}"))),
             }
             set_shipping_profile_busy.set(false);
         });
     };
 
+    let toggle_publish_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let toggle_publish_change_status_error_label = change_product_status_error_label.clone();
     let toggle_publish = Callback::new(move |product: ProductListItem| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_error.set(Some(toggle_publish_bootstrap_loading_label.clone()));
             return;
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let change_status_error_label = toggle_publish_change_status_error_label.clone();
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
@@ -581,12 +997,15 @@ pub fn CommerceAdmin() -> impl IntoView {
             };
             match result {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-                Err(err) => set_error.set(Some(format!("Failed to change status: {err}"))),
+                Err(err) => set_error
+                    .set(Some(format!("{change_status_error_label}: {err}"))),
             }
             set_busy.set(false);
         });
     });
 
+    let archive_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let archive_change_status_error_label = change_product_status_error_label.clone();
     let archive_product = Callback::new(move |product_id: String| {
         mutate_status(
             bootstrap.get_untracked().and_then(Result::ok),
@@ -594,33 +1013,76 @@ pub fn CommerceAdmin() -> impl IntoView {
             tenant.get_untracked(),
             product_id,
             "ARCHIVED",
+            archive_bootstrap_loading_label.clone(),
+            archive_change_status_error_label.clone(),
             set_busy,
             set_error,
             set_refresh_nonce,
         )
     });
 
+    let delete_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let delete_false_label = delete_false_label.clone();
+    let delete_product_error_label = delete_product_error_label.clone();
     let delete_product = Callback::new(move |product_id: String| {
-        delete_item(
-            bootstrap.get_untracked().and_then(Result::ok),
-            token.get_untracked(),
-            tenant.get_untracked(),
-            product_id,
-            editing_id.get_untracked(),
-            reset_form,
-            set_busy,
-            set_error,
-            set_refresh_nonce,
-        )
-    });
-
-    let toggle_shipping_option = Callback::new(move |option: ShippingOption| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_error.set(Some(delete_bootstrap_loading_label.clone()));
             return;
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let current_editing_id = editing_id.get_untracked();
+        let delete_false_label = delete_false_label.clone();
+        let delete_product_error_label = delete_product_error_label.clone();
+        let reset_locale = initial_product_locale.clone();
+        set_busy.set(true);
+        set_error.set(None);
+        spawn_local(async move {
+            match api::delete_product(
+                token_value,
+                tenant_value,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                product_id.clone(),
+            )
+            .await
+            {
+                Ok(true) => {
+                    if current_editing_id.as_deref() == Some(product_id.as_str()) {
+                        set_editing_id.set(None);
+                        set_selected.set(None);
+                        set_locale.set(reset_locale);
+                        set_title.set(String::new());
+                        set_handle.set(String::new());
+                        set_description.set(String::new());
+                        set_vendor.set(String::new());
+                        set_product_type.set(String::new());
+                        set_product_shipping_profile_slug.set(String::new());
+                        set_sku.set(String::new());
+                        set_currency_code.set("USD".to_string());
+                        set_amount.set("0.00".to_string());
+                        set_inventory_quantity.set(0);
+                        set_publish_now.set(false);
+                    }
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Ok(false) => set_error.set(Some(delete_false_label)),
+                Err(err) => set_error.set(Some(format!("{delete_product_error_label}: {err}"))),
+            }
+            set_busy.set(false);
+        });
+    });
+
+    let toggle_shipping_option_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let toggle_shipping_option_error_label = toggle_shipping_option_error_label.clone();
+    let toggle_shipping_option = Callback::new(move |option: ShippingOption| {
+        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+            set_shipping_error.set(Some(toggle_shipping_option_bootstrap_loading_label.clone()));
+            return;
+        };
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let change_status_error_label = toggle_shipping_option_error_label.clone();
         set_shipping_busy.set(true);
         set_shipping_error.set(None);
         spawn_local(async move {
@@ -658,21 +1120,24 @@ pub fn CommerceAdmin() -> impl IntoView {
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_shipping_error.set(Some(format!(
-                    "Failed to change shipping option status: {err}"
-                ))),
+                Err(err) => set_shipping_error
+                    .set(Some(format!("{change_status_error_label}: {err}"))),
             }
             set_shipping_busy.set(false);
         });
     });
 
+    let toggle_shipping_profile_bootstrap_loading_label = bootstrap_loading_label.clone();
+    let toggle_shipping_profile_error_label = toggle_shipping_profile_error_label.clone();
     let toggle_shipping_profile = Callback::new(move |profile: ShippingProfile| {
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_shipping_profile_error.set(Some("Bootstrap is still loading.".to_string()));
+            set_shipping_profile_error
+                .set(Some(toggle_shipping_profile_bootstrap_loading_label.clone()));
             return;
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let change_status_error_label = toggle_shipping_profile_error_label.clone();
         set_shipping_profile_busy.set(true);
         set_shipping_profile_error.set(None);
         spawn_local(async move {
@@ -710,45 +1175,59 @@ pub fn CommerceAdmin() -> impl IntoView {
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_shipping_profile_error.set(Some(format!(
-                    "Failed to change shipping profile status: {err}"
-                ))),
+                Err(err) => set_shipping_profile_error
+                    .set(Some(format!("{change_status_error_label}: {err}"))),
             }
             set_shipping_profile_busy.set(false);
         });
     });
 
+    let ui_locale_for_product_list = ui_locale.clone();
+    let ui_locale_for_product_select = ui_locale.clone();
+    let ui_locale_for_known_profiles = ui_locale.clone();
+    let ui_locale_for_product_summary = ui_locale.clone();
+    let ui_locale_for_shipping_options = ui_locale.clone();
+    let ui_locale_for_shipping_profiles = ui_locale.clone();
+    let ui_locale_for_allowed_profile_choices = ui_locale.clone();
+    let ui_locale_for_selected_profiles = ui_locale.clone();
+    let ui_locale_for_shipping_option_summary = ui_locale.clone();
+    let ui_locale_for_shipping_profile_summary = ui_locale.clone();
+    let edit_label_for_product_list = edit_label.clone();
+    let edit_label_for_shipping_options = edit_label.clone();
+    let edit_label_for_shipping_profiles = edit_label.clone();
+
     view! {
         <section class="space-y-6">
             <div class="rounded-3xl border border-border bg-card p-8 shadow-sm">
-                <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">"commerce"</span>
-                <h2 class="mt-4 text-3xl font-semibold text-card-foreground">"Commerce Control Room"</h2>
-                <p class="mt-2 max-w-3xl text-sm text-muted-foreground">"Module-owned operator workspace for catalog publishing, shipping-profile registry management and delivery option compatibility. Product CRUD, profile ownership and shipping-option rules all stay inside the commerce package."</p>
+                <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{badge_label.clone()}</span>
+                <h2 class="mt-4 text-3xl font-semibold text-card-foreground">{title_label.clone()}</h2>
+                <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{subtitle_label.clone()}</p>
             </div>
 
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                     <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">"Catalog Feed"</h3>
-                            <p class="text-sm text-muted-foreground">"Search, publish, archive and open products for editing."</p>
+                            <h3 class="text-lg font-semibold text-card-foreground">{catalog_title_label.clone()}</h3>
+                            <p class="text-sm text-muted-foreground">{catalog_subtitle_label.clone()}</p>
                         </div>
                         <div class="flex flex-col gap-3 md:flex-row">
-                            <input class="min-w-56 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Search title" prop:value=move || search.get() on:input=move |ev| set_search.set(event_target_value(&ev)) />
+                            <input class="min-w-56 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=search_title_placeholder.clone() prop:value=move || search.get() on:input=move |ev| set_search.set(event_target_value(&ev)) />
                             <select class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || status_filter.get() on:change=move |ev| set_status_filter.set(event_target_value(&ev))>
-                                <option value="">"All statuses"</option>
-                                <option value="DRAFT">"Draft"</option>
-                                <option value="ACTIVE">"Active"</option>
-                                <option value="ARCHIVED">"Archived"</option>
+                                <option value="">{all_statuses_label.clone()}</option>
+                                <option value="DRAFT">{localized_product_status(ui_locale.as_deref(), "DRAFT")}</option>
+                                <option value="ACTIVE">{localized_product_status(ui_locale.as_deref(), "ACTIVE")}</option>
+                                <option value="ARCHIVED">{localized_product_status(ui_locale.as_deref(), "ARCHIVED")}</option>
                             </select>
                         </div>
                     </div>
                     <div class="mt-5 space-y-3">
                         {move || match products.get() {
                             None => view! { <div class="space-y-3"><div class="h-24 animate-pulse rounded-2xl bg-muted"></div><div class="h-24 animate-pulse rounded-2xl bg-muted"></div></div> }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">"No products yet."</div> }.into_any(),
+                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_products_label.clone()}</div> }.into_any(),
                             Some(Ok(list)) => view! { <>
                                 {list.items.into_iter().map(|product| {
+                                    let item_locale = ui_locale_for_product_list.clone();
                                     let edit_id = product.id.clone();
                                     let archive_id = product.id.clone();
                                     let delete_id = product.id.clone();
@@ -756,35 +1235,51 @@ pub fn CommerceAdmin() -> impl IntoView {
                                     let shipping_profile_label = product
                                         .shipping_profile_slug
                                         .clone()
-                                        .map(|value| format!("profile {value}"));
+                                        .map(|value| format_product_shipping_profile(item_locale.as_deref(), value.as_str()));
                                     let shipping_profile_for_show = shipping_profile_label.clone();
+                                    let product_status_label =
+                                        localized_product_status(item_locale.as_deref(), product.status.as_str());
+                                    let product_type_label = product
+                                        .product_type
+                                        .clone()
+                                        .unwrap_or_else(|| t(item_locale.as_deref(), "commerce.common.general", "general"));
+                                    let meta_line = format_product_meta(
+                                        item_locale.as_deref(),
+                                        product.handle.as_str(),
+                                        product.vendor.as_deref(),
+                                    );
+                                    let publish_toggle_label = if product.status == "ACTIVE" {
+                                        move_to_draft_label.clone()
+                                    } else {
+                                        publish_label.clone()
+                                    };
                                     view! {
                                         <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="space-y-2">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", status_badge(product.status.as_str()))>{product.status.clone()}</span>
-                                                        <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{product.product_type.clone().unwrap_or_else(|| "general".to_string())}</span>
+                                                        <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", status_badge(product.status.as_str()))>{product_status_label}</span>
+                                                        <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{product_type_label}</span>
                                                         <Show when=move || shipping_profile_for_show.is_some()>
                                                             <span class="text-xs text-muted-foreground">{shipping_profile_label.clone().unwrap_or_default()}</span>
                                                         </Show>
                                                     </div>
                                                     <h4 class="text-base font-semibold text-card-foreground">{product.title.clone()}</h4>
-                                                    <p class="text-sm text-muted-foreground">{format!("handle: {}{}", product.handle, product.vendor.as_ref().map(|value| format!(" | vendor: {value}")).unwrap_or_default())}</p>
+                                                    <p class="text-sm text-muted-foreground">{meta_line}</p>
                                                     <p class="text-xs text-muted-foreground">{product.published_at.clone().unwrap_or_else(|| product.created_at.clone())}</p>
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| edit_product.run(edit_id.clone())>"Edit"</button>
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| toggle_publish.run(publish_item.clone())>{if product.status == "ACTIVE" { "Move to Draft" } else { "Publish" }}</button>
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| archive_product.run(archive_id.clone())>"Archive"</button>
-                                                    <button type="button" class="inline-flex rounded-lg border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 disabled:opacity-50" disabled=move || busy.get() || product.status == "ACTIVE" on:click=move |_| delete_product.run(delete_id.clone())>"Delete"</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| edit_product.run(edit_id.clone())>{edit_label_for_product_list.clone()}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| toggle_publish.run(publish_item.clone())>{publish_toggle_label}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| archive_product.run(archive_id.clone())>{archive_label.clone()}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 disabled:opacity-50" disabled=move || busy.get() || product.status == "ACTIVE" on:click=move |_| delete_product.run(delete_id.clone())>{delete_label.clone()}</button>
                                                 </div>
                                             </div>
                                         </article>
                                     }
                                 }).collect_view()}
                             </> }.into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("Failed to load products: {err}")}</div> }.into_any(),
+                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_products_error_label}: {err}")}</div> }.into_any(),
                         }}
                     </div>
                 </section>
@@ -792,28 +1287,28 @@ pub fn CommerceAdmin() -> impl IntoView {
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                     <div class="flex items-center justify-between gap-3">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">{move || if editing_id.get().is_some() { "Product Editor" } else { "Create Product" }}</h3>
-                            <p class="text-sm text-muted-foreground">"Single-SKU product editor backed by the module GraphQL mutations."</p>
+                            <h3 class="text-lg font-semibold text-card-foreground">{move || if editing_id.get().is_some() { product_editor_label.clone() } else { create_product_label.clone() }}</h3>
+                            <p class="text-sm text-muted-foreground">{product_editor_subtitle_label.clone()}</p>
                         </div>
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_form()>"New"</button>
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_form()>{new_label.clone()}</button>
                     </div>
                     <Show when=move || error.get().is_some()>
                         <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{move || error.get().unwrap_or_default()}</div>
                     </Show>
                     <form class="mt-5 space-y-4" on:submit=submit_product>
                         <div class="grid gap-4 md:grid-cols-2">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Locale" prop:value=move || locale.get() on:input=move |ev| set_locale.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Handle" prop:value=move || handle.get() on:input=move |ev| set_handle.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=locale_placeholder_label.clone() prop:value=move || locale.get() on:input=move |ev| set_locale.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=handle_placeholder_label.clone() prop:value=move || handle.get() on:input=move |ev| set_handle.set(event_target_value(&ev)) />
                         </div>
-                        <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Title" prop:value=move || title.get() on:input=move |ev| set_title.set(event_target_value(&ev)) />
-                        <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Description" prop:value=move || description.get() on:input=move |ev| set_description.set(event_target_value(&ev)) />
+                        <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=title_placeholder_label.clone() prop:value=move || title.get() on:input=move |ev| set_title.set(event_target_value(&ev)) />
+                        <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=description_placeholder_label.clone() prop:value=move || description.get() on:input=move |ev| set_description.set(event_target_value(&ev)) />
                         <div class="grid gap-4 md:grid-cols-2">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Vendor" prop:value=move || vendor.get() on:input=move |ev| set_vendor.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Product type" prop:value=move || product_type.get() on:input=move |ev| set_product_type.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=vendor_placeholder_label.clone() prop:value=move || vendor.get() on:input=move |ev| set_vendor.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=product_type_placeholder_label.clone() prop:value=move || product_type.get() on:input=move |ev| set_product_type.set(event_target_value(&ev)) />
                         </div>
                         <div class="space-y-2">
                             <select class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || product_shipping_profile_slug.get() on:change=move |ev| set_product_shipping_profile_slug.set(event_target_value(&ev))>
-                                <option value="">"No shipping profile"</option>
+                                <option value="">{no_shipping_profile_label.clone()}</option>
                                 {move || match shipping_profiles.get() {
                                     Some(Ok(list)) => {
                                         let current_slug = product_shipping_profile_slug.get();
@@ -821,7 +1316,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                                             .into_iter()
                                             .filter(|profile| profile.active || profile.slug == current_slug)
                                             .map(|profile| {
-                                                let label = shipping_profile_choice_label(&profile);
+                                                let label = shipping_profile_choice_label(ui_locale_for_product_select.as_deref(), &profile);
                                                 let slug = profile.slug;
                                                 view! { <option value=slug.clone()>{label}</option> }
                                             })
@@ -831,24 +1326,24 @@ pub fn CommerceAdmin() -> impl IntoView {
                                     _ => view! { <></> }.into_any(),
                                 }}
                             </select>
-                            <p class="text-xs text-muted-foreground">{move || shipping_profiles.get().and_then(Result::ok).map(|list| format!("Known profiles: {}", format_known_shipping_profiles(&list.items))).unwrap_or_else(|| "Known profiles are loading from the shipping-profile registry.".to_string())}</p>
+                            <p class="text-xs text-muted-foreground">{move || shipping_profiles.get().and_then(Result::ok).map(|list| known_profiles_template.replace("{profiles}", format_known_shipping_profiles(ui_locale_for_known_profiles.as_deref(), &list.items).as_str())).unwrap_or_else(|| known_profiles_loading_label.clone())}</p>
                         </div>
                         <div class="grid gap-4 md:grid-cols-3">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Primary SKU" prop:value=move || sku.get() on:input=move |ev| set_sku.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Currency" prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Price" prop:value=move || amount.get() on:input=move |ev| set_amount.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=primary_sku_placeholder_label.clone() prop:value=move || sku.get() on:input=move |ev| set_sku.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=currency_placeholder_label.clone() prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=price_placeholder_label.clone() prop:value=move || amount.get() on:input=move |ev| set_amount.set(event_target_value(&ev)) />
                         </div>
                         <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Inventory quantity" prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(event_target_value(&ev).parse::<i32>().unwrap_or(0)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=inventory_placeholder_label.clone() prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(event_target_value(&ev).parse::<i32>().unwrap_or(0)) />
                             <label class="inline-flex items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground">
                                 <input type="checkbox" prop:checked=move || publish_now.get() on:change=move |ev| set_publish_now.set(event_target_checked(&ev)) />
-                                <span>"Keep published after save"</span>
+                                <span>{keep_published_label.clone()}</span>
                             </label>
                         </div>
-                        <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>{move || if editing_id.get().is_some() { "Save product" } else { "Create product" }}</button>
+                        <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>{move || if editing_id.get().is_some() { save_product_label.clone() } else { create_product_action_label.clone() }}</button>
                     </form>
                     <div class="mt-5 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
-                        {move || selected.get().map(|product| summarize_selected(&product)).unwrap_or_else(|| "Open a product from the feed to inspect its localized copy, primary variant and shipping-profile mapping.".to_string())}
+                        {move || selected.get().map(|product| summarize_selected(ui_locale_for_product_summary.as_deref(), &product)).unwrap_or_else(|| product_summary_empty_label.clone())}
                     </div>
                 </section>
             </div>
@@ -857,46 +1352,62 @@ pub fn CommerceAdmin() -> impl IntoView {
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                     <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">"Shipping Options"</h3>
-                            <p class="text-sm text-muted-foreground">"Review delivery options, provider bindings and shipping-profile compatibility rules."</p>
+                            <h3 class="text-lg font-semibold text-card-foreground">{shipping_options_title_label.clone()}</h3>
+                            <p class="text-sm text-muted-foreground">{shipping_options_subtitle_label.clone()}</p>
                         </div>
                         <div class="grid gap-3 md:grid-cols-3">
-                            <input class="min-w-40 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Search name" prop:value=move || shipping_search.get() on:input=move |ev| set_shipping_search.set(event_target_value(&ev)) />
-                            <input class="min-w-32 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Currency" prop:value=move || shipping_currency_filter.get() on:input=move |ev| set_shipping_currency_filter.set(event_target_value(&ev)) />
-                            <input class="min-w-32 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Provider" prop:value=move || shipping_provider_filter.get() on:input=move |ev| set_shipping_provider_filter.set(event_target_value(&ev)) />
+                            <input class="min-w-40 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=shipping_search_placeholder.clone() prop:value=move || shipping_search.get() on:input=move |ev| set_shipping_search.set(event_target_value(&ev)) />
+                            <input class="min-w-32 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=currency_placeholder_label.clone() prop:value=move || shipping_currency_filter.get() on:input=move |ev| set_shipping_currency_filter.set(event_target_value(&ev)) />
+                            <input class="min-w-32 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=shipping_provider_placeholder.clone() prop:value=move || shipping_provider_filter.get() on:input=move |ev| set_shipping_provider_filter.set(event_target_value(&ev)) />
                         </div>
                     </div>
                     <div class="mt-5 space-y-3">
                         {move || match shipping_options.get() {
                             None => view! { <div class="space-y-3"><div class="h-24 animate-pulse rounded-2xl bg-muted"></div><div class="h-24 animate-pulse rounded-2xl bg-muted"></div></div> }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">"No shipping options match the current filters."</div> }.into_any(),
+                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_shipping_options_label.clone()}</div> }.into_any(),
                             Some(Ok(list)) => view! { <>
                                 {list.items.into_iter().map(|option| {
+                                    let item_locale = ui_locale_for_shipping_options.clone();
                                     let edit_id = option.id.clone();
                                     let toggle_item = option.clone();
+                                    let option_status_label =
+                                        localized_active_label(item_locale.as_deref(), option.active);
+                                    let allowed_profiles_label_value =
+                                        format_allowed_profiles(item_locale.as_deref(), option.allowed_shipping_profile_slugs.as_ref());
+                                    let profiles_meta = t(
+                                        item_locale.as_deref(),
+                                        "commerce.shippingOption.profilesMeta",
+                                        "profiles: {profiles}",
+                                    )
+                                    .replace("{profiles}", allowed_profiles_label_value.as_str());
+                                    let toggle_label = if option.active {
+                                        t(item_locale.as_deref(), "commerce.action.deactivate", "Deactivate")
+                                    } else {
+                                        t(item_locale.as_deref(), "commerce.action.reactivate", "Reactivate")
+                                    };
                                     view! {
                                         <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="space-y-2">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", shipping_option_active_badge(option.active))>{if option.active { "ACTIVE" } else { "INACTIVE" }}</span>
+                                                        <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", shipping_option_active_badge(option.active))>{option_status_label}</span>
                                                         <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{option.provider_id.clone()}</span>
                                                     </div>
                                                     <h4 class="text-base font-semibold text-card-foreground">{option.name.clone()}</h4>
                                                     <p class="text-sm text-muted-foreground">{format!("{} {}", option.currency_code, option.amount)}</p>
-                                                    <p class="text-xs text-muted-foreground">{format!("profiles: {}", format_allowed_profiles(option.allowed_shipping_profile_slugs.as_ref()))}</p>
+                                                    <p class="text-xs text-muted-foreground">{profiles_meta}</p>
                                                     <p class="text-xs text-muted-foreground">{option.updated_at.clone()}</p>
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| edit_shipping_option.run(edit_id.clone())>"Edit"</button>
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| toggle_shipping_option.run(toggle_item.clone())>{if option.active { "Deactivate" } else { "Reactivate" }}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| edit_shipping_option.run(edit_id.clone())>{edit_label_for_shipping_options.clone()}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| toggle_shipping_option.run(toggle_item.clone())>{toggle_label}</button>
                                                 </div>
                                             </div>
                                         </article>
                                     }
                                 }).collect_view()}
                             </> }.into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("Failed to load shipping options: {err}")}</div> }.into_any(),
+                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_shipping_options_error_label}: {err}")}</div> }.into_any(),
                         }}
                     </div>
                 </section>
@@ -904,28 +1415,28 @@ pub fn CommerceAdmin() -> impl IntoView {
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                     <div class="flex items-center justify-between gap-3">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">{move || if shipping_editing_id.get().is_some() { "Shipping Option Editor" } else { "Create Shipping Option" }}</h3>
-                            <p class="text-sm text-muted-foreground">"Typed operator surface over createShippingOption and updateShippingOption."</p>
+                            <h3 class="text-lg font-semibold text-card-foreground">{move || if shipping_editing_id.get().is_some() { shipping_option_editor_label.clone() } else { create_shipping_option_label.clone() }}</h3>
+                            <p class="text-sm text-muted-foreground">{shipping_option_subtitle_label.clone()}</p>
                         </div>
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| reset_shipping_form()>"New"</button>
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| reset_shipping_form()>{new_label.clone()}</button>
                     </div>
                     <Show when=move || shipping_error.get().is_some()>
                         <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{move || shipping_error.get().unwrap_or_default()}</div>
                     </Show>
                     <form class="mt-5 space-y-4" on:submit=submit_shipping_option>
                         <div class="grid gap-4 md:grid-cols-2">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Name" prop:value=move || shipping_name.get() on:input=move |ev| set_shipping_name.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Provider ID" prop:value=move || shipping_provider_id.get() on:input=move |ev| set_shipping_provider_id.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=name_placeholder_label.clone() prop:value=move || shipping_name.get() on:input=move |ev| set_shipping_name.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=shipping_provider_placeholder.clone() prop:value=move || shipping_provider_id.get() on:input=move |ev| set_shipping_provider_id.set(event_target_value(&ev)) />
                         </div>
                         <div class="grid gap-4 md:grid-cols-2">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Currency" prop:value=move || shipping_currency_code.get() on:input=move |ev| set_shipping_currency_code.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Amount" prop:value=move || shipping_amount.get() on:input=move |ev| set_shipping_amount.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=currency_placeholder_label.clone() prop:value=move || shipping_currency_code.get() on:input=move |ev| set_shipping_currency_code.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=price_placeholder_label.clone() prop:value=move || shipping_amount.get() on:input=move |ev| set_shipping_amount.set(event_target_value(&ev)) />
                         </div>
                         <div class="space-y-3">
                             <div class="rounded-2xl border border-border bg-background p-4">
                                 <div class="flex items-center justify-between gap-3">
-                                    <p class="text-sm font-medium text-card-foreground">"Allowed shipping profiles"</p>
-                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| set_shipping_allowed_profiles.set(String::new())>"Allow all"</button>
+                                    <p class="text-sm font-medium text-card-foreground">{allowed_profiles_label.clone()}</p>
+                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| set_shipping_allowed_profiles.set(String::new())>{allow_all_label.clone()}</button>
                                 </div>
                                 <div class="mt-3 flex flex-wrap gap-2">
                                     {move || match shipping_profiles.get() {
@@ -933,7 +1444,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                                             .into_iter()
                                             .map(|profile| {
                                                 let slug = profile.slug.clone();
-                                                let label = shipping_profile_choice_label(&profile);
+                                                let label = shipping_profile_choice_label(ui_locale_for_allowed_profile_choices.as_deref(), &profile);
                                                 let inactive_disabled_slug = slug.clone();
                                                 let toggle_slug = slug.clone();
                                                 let is_inactive = !profile.active;
@@ -957,21 +1468,21 @@ pub fn CommerceAdmin() -> impl IntoView {
                                             })
                                             .collect_view()
                                             .into_any(),
-                                        Some(Ok(_)) => view! { <p class="text-sm text-muted-foreground">"No shipping profiles exist yet. Create a profile first or keep this option available to all carts."</p> }.into_any(),
-                                        Some(Err(err)) => view! { <p class="text-sm text-destructive">{format!("Failed to load registry slugs: {err}")}</p> }.into_any(),
-                                        None => view! { <p class="text-sm text-muted-foreground">"Registry slugs are loading from the shipping-profile registry."</p> }.into_any(),
+                                        Some(Ok(_)) => view! { <p class="text-sm text-muted-foreground">{no_shipping_profiles_yet_label.clone()}</p> }.into_any(),
+                                        Some(Err(err)) => view! { <p class="text-sm text-destructive">{format!("{load_registry_error_label}: {err}")}</p> }.into_any(),
+                                        None => view! { <p class="text-sm text-muted-foreground">{registry_loading_label.clone()}</p> }.into_any(),
                                     }}
                                 </div>
                             </div>
-                            <p class="text-xs text-muted-foreground">{move || format!("Selected profiles: {}", format_selected_shipping_profiles(shipping_allowed_profiles.get().as_str()))}</p>
+                            <p class="text-xs text-muted-foreground">{move || selected_profiles_template.replace("{profiles}", format_selected_shipping_profiles(ui_locale_for_selected_profiles.as_deref(), shipping_allowed_profiles.get().as_str()).as_str())}</p>
                         </div>
-                        <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Metadata JSON patch" prop:value=move || shipping_metadata_json.get() on:input=move |ev| set_shipping_metadata_json.set(event_target_value(&ev)) />
-                        <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || shipping_busy.get()>{move || if shipping_editing_id.get().is_some() { "Save shipping option" } else { "Create shipping option" }}</button>
+                        <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=metadata_patch_placeholder_label.clone() prop:value=move || shipping_metadata_json.get() on:input=move |ev| set_shipping_metadata_json.set(event_target_value(&ev)) />
+                        <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || shipping_busy.get()>{move || if shipping_editing_id.get().is_some() { save_shipping_option_label.clone() } else { create_shipping_option_action_label.clone() }}</button>
                     </form>
                     <div class="mt-5 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
-                        {move || selected_shipping_option.get().map(|option| summarize_shipping_option(&option)).unwrap_or_else(|| "Open a shipping option to inspect its provider, pricing and shipping-profile compatibility set.".to_string())}
+                        {move || selected_shipping_option.get().map(|option| summarize_shipping_option(ui_locale_for_shipping_option_summary.as_deref(), &option)).unwrap_or_else(|| shipping_option_summary_empty_label.clone())}
                     </div>
-                    <p class="mt-3 text-xs text-muted-foreground">"Metadata is sent as an optional JSON patch. Leaving the field blank during update keeps the existing metadata payload unchanged."</p>
+                    <p class="mt-3 text-xs text-muted-foreground">{metadata_hint_label.clone()}</p>
                 </section>
             </div>
 
@@ -979,29 +1490,37 @@ pub fn CommerceAdmin() -> impl IntoView {
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                     <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">"Shipping Profiles"</h3>
-                            <p class="text-sm text-muted-foreground">"Manage the typed profile registry used by products and shipping-option compatibility rules."</p>
+                            <h3 class="text-lg font-semibold text-card-foreground">{shipping_profiles_title_label.clone()}</h3>
+                            <p class="text-sm text-muted-foreground">{shipping_profiles_subtitle_label.clone()}</p>
                         </div>
                         <div class="flex flex-col gap-3 md:flex-row">
-                            <input class="min-w-56 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Search slug or name" prop:value=move || shipping_profile_search.get() on:input=move |ev| set_shipping_profile_search.set(event_target_value(&ev)) />
+                            <input class="min-w-56 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=shipping_profiles_search_placeholder.clone() prop:value=move || shipping_profile_search.get() on:input=move |ev| set_shipping_profile_search.set(event_target_value(&ev)) />
                         </div>
                     </div>
                     <div class="mt-5 space-y-3">
                         {move || match shipping_profiles.get() {
                             None => view! { <div class="space-y-3"><div class="h-24 animate-pulse rounded-2xl bg-muted"></div><div class="h-24 animate-pulse rounded-2xl bg-muted"></div></div> }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">"No shipping profiles match the current filters."</div> }.into_any(),
+                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_shipping_profiles_match_label.clone()}</div> }.into_any(),
                             Some(Ok(list)) => view! { <>
                                 {list.items.into_iter().map(|profile| {
+                                    let item_locale = ui_locale_for_shipping_profiles.clone();
                                     let edit_id = profile.id.clone();
                                     let toggle_item = profile.clone();
                                     let has_description = profile.description.is_some();
                                     let description = profile.description.clone().unwrap_or_default();
+                                    let profile_status_label =
+                                        localized_active_label(item_locale.as_deref(), profile.active);
+                                    let toggle_label = if profile.active {
+                                        t(item_locale.as_deref(), "commerce.action.deactivate", "Deactivate")
+                                    } else {
+                                        t(item_locale.as_deref(), "commerce.action.reactivate", "Reactivate")
+                                    };
                                     view! {
                                         <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="space-y-2">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", shipping_option_active_badge(profile.active))>{if profile.active { "ACTIVE" } else { "INACTIVE" }}</span>
+                                                        <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", shipping_option_active_badge(profile.active))>{profile_status_label}</span>
                                                         <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{profile.slug.clone()}</span>
                                                     </div>
                                                     <h4 class="text-base font-semibold text-card-foreground">{profile.name.clone()}</h4>
@@ -1011,15 +1530,15 @@ pub fn CommerceAdmin() -> impl IntoView {
                                                     <p class="text-xs text-muted-foreground">{profile.updated_at.clone()}</p>
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_profile_busy.get() on:click=move |_| edit_shipping_profile.run(edit_id.clone())>"Edit"</button>
-                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_profile_busy.get() on:click=move |_| toggle_shipping_profile.run(toggle_item.clone())>{if profile.active { "Deactivate" } else { "Reactivate" }}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_profile_busy.get() on:click=move |_| edit_shipping_profile.run(edit_id.clone())>{edit_label_for_shipping_profiles.clone()}</button>
+                                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_profile_busy.get() on:click=move |_| toggle_shipping_profile.run(toggle_item.clone())>{toggle_label}</button>
                                                 </div>
                                             </div>
                                         </article>
                                     }
                                 }).collect_view()}
                             </> }.into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("Failed to load shipping profiles: {err}")}</div> }.into_any(),
+                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_shipping_profiles_error_label}: {err}")}</div> }.into_any(),
                         }}
                     </div>
                 </section>
@@ -1027,27 +1546,27 @@ pub fn CommerceAdmin() -> impl IntoView {
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                     <div class="flex items-center justify-between gap-3">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">{move || if shipping_profile_editing_id.get().is_some() { "Shipping Profile Editor" } else { "Create Shipping Profile" }}</h3>
-                            <p class="text-sm text-muted-foreground">"Typed registry editor for the slugs referenced by products and shipping options."</p>
+                            <h3 class="text-lg font-semibold text-card-foreground">{move || if shipping_profile_editing_id.get().is_some() { shipping_profile_editor_label.clone() } else { create_shipping_profile_label.clone() }}</h3>
+                            <p class="text-sm text-muted-foreground">{shipping_profile_subtitle_label.clone()}</p>
                         </div>
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_profile_busy.get() on:click=move |_| reset_shipping_profile_form()>"New"</button>
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_profile_busy.get() on:click=move |_| reset_shipping_profile_form()>{new_label.clone()}</button>
                     </div>
                     <Show when=move || shipping_profile_error.get().is_some()>
                         <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{move || shipping_profile_error.get().unwrap_or_default()}</div>
                     </Show>
                     <form class="mt-5 space-y-4" on:submit=submit_shipping_profile>
                         <div class="grid gap-4 md:grid-cols-2">
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Slug" prop:value=move || shipping_profile_slug.get() on:input=move |ev| set_shipping_profile_slug.set(event_target_value(&ev)) />
-                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Name" prop:value=move || shipping_profile_name.get() on:input=move |ev| set_shipping_profile_name.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=slug_placeholder_label.clone() prop:value=move || shipping_profile_slug.get() on:input=move |ev| set_shipping_profile_slug.set(event_target_value(&ev)) />
+                            <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=name_placeholder_label.clone() prop:value=move || shipping_profile_name.get() on:input=move |ev| set_shipping_profile_name.set(event_target_value(&ev)) />
                         </div>
-                        <textarea class="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Description" prop:value=move || shipping_profile_description.get() on:input=move |ev| set_shipping_profile_description.set(event_target_value(&ev)) />
-                        <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder="Metadata JSON patch" prop:value=move || shipping_profile_metadata_json.get() on:input=move |ev| set_shipping_profile_metadata_json.set(event_target_value(&ev)) />
-                        <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || shipping_profile_busy.get()>{move || if shipping_profile_editing_id.get().is_some() { "Save shipping profile" } else { "Create shipping profile" }}</button>
+                        <textarea class="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=description_placeholder_label.clone() prop:value=move || shipping_profile_description.get() on:input=move |ev| set_shipping_profile_description.set(event_target_value(&ev)) />
+                        <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=metadata_patch_placeholder_label.clone() prop:value=move || shipping_profile_metadata_json.get() on:input=move |ev| set_shipping_profile_metadata_json.set(event_target_value(&ev)) />
+                        <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || shipping_profile_busy.get()>{move || if shipping_profile_editing_id.get().is_some() { save_shipping_profile_label.clone() } else { create_shipping_profile_action_label.clone() }}</button>
                     </form>
                     <div class="mt-5 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
-                        {move || selected_shipping_profile.get().map(|profile| summarize_shipping_profile(&profile)).unwrap_or_else(|| "Open a shipping profile to inspect its slug, description and lifecycle state.".to_string())}
+                        {move || selected_shipping_profile.get().map(|profile| summarize_shipping_profile(ui_locale_for_shipping_profile_summary.as_deref(), &profile)).unwrap_or_else(|| shipping_profile_summary_empty_label.clone())}
                     </div>
-                    <p class="mt-3 text-xs text-muted-foreground">"Metadata is sent as an optional JSON patch. Leaving the field blank during update keeps the existing metadata payload unchanged."</p>
+                    <p class="mt-3 text-xs text-muted-foreground">{metadata_hint_label.clone()}</p>
                 </section>
             </div>
         </section>
@@ -1176,12 +1695,14 @@ fn mutate_status(
     tenant: Option<String>,
     product_id: String,
     status: &str,
+    bootstrap_loading_label: String,
+    change_status_error_label: String,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     set_refresh_nonce: WriteSignal<u64>,
 ) {
     let Some(bootstrap) = bootstrap else {
-        set_error.set(Some("Bootstrap is still loading.".to_string()));
+        set_error.set(Some(bootstrap_loading_label));
         return;
     };
     let status = status.to_string();
@@ -1199,133 +1720,134 @@ fn mutate_status(
         .await
         {
             Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-            Err(err) => set_error.set(Some(format!("Failed to change status: {err}"))),
+            Err(err) => set_error.set(Some(format!("{change_status_error_label}: {err}"))),
         }
         set_busy.set(false);
     });
 }
 
-fn delete_item(
-    bootstrap: Option<crate::model::CommerceAdminBootstrap>,
-    token: Option<String>,
-    tenant: Option<String>,
-    product_id: String,
-    editing_id: Option<String>,
-    reset_form: impl Fn() + 'static,
-    set_busy: WriteSignal<bool>,
-    set_error: WriteSignal<Option<String>>,
-    set_refresh_nonce: WriteSignal<u64>,
-) {
-    let Some(bootstrap) = bootstrap else {
-        set_error.set(Some("Bootstrap is still loading.".to_string()));
-        return;
-    };
-    set_busy.set(true);
-    set_error.set(None);
-    spawn_local(async move {
-        match api::delete_product(
-            token,
-            tenant,
-            bootstrap.current_tenant.id,
-            bootstrap.me.id,
-            product_id.clone(),
-        )
-        .await
-        {
-            Ok(true) => {
-                if editing_id.as_deref() == Some(product_id.as_str()) {
-                    reset_form();
-                }
-                set_refresh_nonce.update(|value| *value += 1);
-            }
-            Ok(false) => set_error.set(Some("Delete returned false.".to_string())),
-            Err(err) => set_error.set(Some(format!("Failed to delete product: {err}"))),
-        }
-        set_busy.set(false);
-    });
-}
-
-fn summarize_selected(product: &ProductDetail) -> String {
+fn summarize_selected(locale: Option<&str>, product: &ProductDetail) -> String {
     let title = product
         .translations
         .first()
-        .map(|item| item.title.as_str())
-        .unwrap_or("Untitled");
+        .map(|item| item.title.clone())
+        .unwrap_or_else(|| t(locale, "commerce.summary.product.untitled", "Untitled"));
     let variant = product.variants.first();
     let price = variant
         .and_then(|item| item.prices.first())
         .map(|price| format!("{} {}", price.currency_code, price.amount))
-        .unwrap_or_else(|| "no pricing".to_string());
+        .unwrap_or_else(|| t(locale, "commerce.summary.product.noPricing", "no pricing"));
     let inventory = variant.map(|item| item.inventory_quantity).unwrap_or(0);
     let shipping_profile = product
         .shipping_profile_slug
-        .as_deref()
-        .unwrap_or("unassigned");
+        .clone()
+        .unwrap_or_else(|| t(locale, "commerce.summary.product.unassigned", "unassigned"));
     format!(
-        "{title} | status {} | primary variant price {price} | inventory {inventory} | shipping profile {shipping_profile}",
-        product.status
+        "{title} | {} {} | {} {price} | {} {inventory} | {} {shipping_profile}",
+        t(locale, "commerce.summary.product.status", "status"),
+        localized_product_status(locale, product.status.as_str()),
+        t(locale, "commerce.summary.product.primaryVariantPrice", "primary variant price"),
+        t(locale, "commerce.summary.product.inventory", "inventory"),
+        t(locale, "commerce.summary.product.shippingProfile", "shipping profile"),
     )
 }
 
-fn summarize_shipping_option(option: &ShippingOption) -> String {
+fn summarize_shipping_option(locale: Option<&str>, option: &ShippingOption) -> String {
     format!(
-        "{} | {} {} | provider {} | profiles {}",
+        "{} | {} {} | {} {} | {} {}",
         option.name,
         option.currency_code,
         option.amount,
+        t(locale, "commerce.summary.shippingOption.provider", "provider"),
         option.provider_id,
-        format_allowed_profiles(option.allowed_shipping_profile_slugs.as_ref())
+        t(locale, "commerce.summary.shippingOption.profiles", "profiles"),
+        format_allowed_profiles(locale, option.allowed_shipping_profile_slugs.as_ref())
     )
 }
 
-fn summarize_shipping_profile(profile: &ShippingProfile) -> String {
+fn summarize_shipping_profile(locale: Option<&str>, profile: &ShippingProfile) -> String {
     format!(
         "{} ({}) | {} | {}",
         profile.name,
         profile.slug,
-        if profile.active { "active" } else { "inactive" },
+        localized_active_label(locale, profile.active),
         profile
             .description
             .clone()
-            .unwrap_or_else(|| "no description".to_string())
+            .unwrap_or_else(|| t(locale, "commerce.summary.shippingProfile.noDescription", "no description"))
     )
 }
 
-fn format_allowed_profiles(profiles: Option<&Vec<String>>) -> String {
+fn format_allowed_profiles(locale: Option<&str>, profiles: Option<&Vec<String>>) -> String {
     match profiles {
         Some(values) if !values.is_empty() => values.join(", "),
-        _ => "all".to_string(),
+        _ => t(locale, "commerce.common.all", "all"),
     }
 }
 
-fn format_known_shipping_profiles(profiles: &[ShippingProfile]) -> String {
+fn format_known_shipping_profiles(locale: Option<&str>, profiles: &[ShippingProfile]) -> String {
     let slugs = profiles
         .iter()
         .filter(|profile| profile.active)
         .map(|profile| profile.slug.as_str())
         .collect::<Vec<_>>();
     if slugs.is_empty() {
-        "none yet".to_string()
+        t(locale, "commerce.common.noneYet", "none yet")
     } else {
         slugs.join(", ")
     }
 }
 
-fn format_selected_shipping_profiles(value: &str) -> String {
+fn format_selected_shipping_profiles(locale: Option<&str>, value: &str) -> String {
     let slugs = csv_values(value);
     if slugs.is_empty() {
-        "all carts".to_string()
+        t(locale, "commerce.common.allCarts", "all carts")
     } else {
         slugs.join(", ")
     }
 }
 
-fn shipping_profile_choice_label(profile: &ShippingProfile) -> String {
+fn shipping_profile_choice_label(locale: Option<&str>, profile: &ShippingProfile) -> String {
     if profile.active {
         format!("{} ({})", profile.name, profile.slug)
     } else {
-        format!("{} ({}, inactive)", profile.name, profile.slug)
+        format!(
+            "{} ({}, {})",
+            profile.name,
+            profile.slug,
+            t(locale, "commerce.common.inactive", "inactive")
+        )
     }
+}
+
+fn localized_product_status(locale: Option<&str>, status: &str) -> String {
+    match status {
+        "ACTIVE" => t(locale, "commerce.status.active", "Active"),
+        "ARCHIVED" => t(locale, "commerce.status.archived", "Archived"),
+        _ => t(locale, "commerce.status.draft", "Draft"),
+    }
+}
+
+fn localized_active_label(locale: Option<&str>, active: bool) -> String {
+    if active {
+        t(locale, "commerce.common.active", "ACTIVE")
+    } else {
+        t(locale, "commerce.common.inactive", "INACTIVE")
+    }
+}
+
+fn format_product_meta(locale: Option<&str>, handle: &str, vendor: Option<&str>) -> String {
+    let handle_label = t(locale, "commerce.summary.product.handle", "handle");
+    let vendor_label = t(locale, "commerce.summary.product.vendor", "vendor");
+    match vendor.filter(|value| !value.is_empty()) {
+        Some(vendor) => format!("{handle_label}: {handle} | {vendor_label}: {vendor}"),
+        None => format!("{handle_label}: {handle}"),
+    }
+}
+
+fn format_product_shipping_profile(locale: Option<&str>, slug: &str) -> String {
+    t(locale, "commerce.summary.product.profileChip", "profile {slug}")
+        .replace("{slug}", slug)
 }
 
 fn shipping_profile_chip_class(selected: bool, inactive: bool) -> &'static str {

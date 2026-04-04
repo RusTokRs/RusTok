@@ -1,4 +1,5 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::ev::SubmitEvent;
@@ -7,6 +8,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
 
+use crate::i18n::t;
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
@@ -15,6 +17,7 @@ use crate::model::{
 #[component]
 pub fn ForumAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let ui_locale = route_context.locale.clone();
     let token = use_token();
     let tenant = use_tenant();
     let default_locale = route_context
@@ -22,6 +25,74 @@ pub fn ForumAdmin() -> impl IntoView {
         .clone()
         .unwrap_or_else(|| "en".to_string());
     let is_categories_page = route_context.subpath_matches("categories");
+    let badge_label = t(ui_locale.as_deref(), "forum.badge", "forum control room");
+    let categories_title = t(
+        ui_locale.as_deref(),
+        "forum.header.categoriesTitle",
+        "Category architecture",
+    );
+    let topics_title = t(
+        ui_locale.as_deref(),
+        "forum.header.topicsTitle",
+        "NodeBB-style moderation workspace",
+    );
+    let categories_body = t(
+        ui_locale.as_deref(),
+        "forum.header.categoriesBody",
+        "Shape navigation clusters, assign moderation rules, and keep every forum area ready for new threads.",
+    );
+    let topics_body = t(
+        ui_locale.as_deref(),
+        "forum.header.topicsBody",
+        "Review topic flow, open a thread for reply preview, and keep publishing controls next to the live feed.",
+    );
+    let metric_categories = t(ui_locale.as_deref(), "forum.metric.categories", "Categories");
+    let metric_topics = t(ui_locale.as_deref(), "forum.metric.topics", "Topics");
+    let metric_reply_preview = t(
+        ui_locale.as_deref(),
+        "forum.metric.replyPreview",
+        "Reply preview",
+    );
+    let load_category_error = t(
+        ui_locale.as_deref(),
+        "forum.error.loadCategory",
+        "Failed to load category",
+    );
+    let load_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.loadTopic",
+        "Failed to load topic",
+    );
+    let category_required_error = t(
+        ui_locale.as_deref(),
+        "forum.error.categoryRequired",
+        "Category name and slug are required.",
+    );
+    let topic_required_error = t(
+        ui_locale.as_deref(),
+        "forum.error.topicRequired",
+        "Category, title and body are required.",
+    );
+    let save_category_error = t(
+        ui_locale.as_deref(),
+        "forum.error.saveCategory",
+        "Failed to save category",
+    );
+    let save_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.saveTopic",
+        "Failed to save topic",
+    );
+    let delete_category_error = t(
+        ui_locale.as_deref(),
+        "forum.error.deleteCategory",
+        "Failed to delete category",
+    );
+    let delete_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.deleteTopic",
+        "Failed to delete topic",
+    );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (error, set_error) = signal(Option::<String>::None);
@@ -127,6 +198,7 @@ pub fn ForumAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let locale = category_locale.get_untracked();
+        let load_category_error = load_category_error.clone();
         set_error.set(None);
         set_busy_key.set(Some(format!("category:edit:{category_id}")));
         spawn_local(async move {
@@ -144,7 +216,7 @@ pub fn ForumAdmin() -> impl IntoView {
                     set_category_moderated,
                     &category,
                 ),
-                Err(err) => set_error.set(Some(format!("Failed to load category: {err}"))),
+                Err(err) => set_error.set(Some(format!("{}: {err}", load_category_error))),
             }
             set_busy_key.set(None);
         });
@@ -154,6 +226,7 @@ pub fn ForumAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let locale = topic_locale.get_untracked();
+        let load_topic_error = load_topic_error.clone();
         set_error.set(None);
         set_busy_key.set(Some(format!("topic:edit:{topic_id}")));
         spawn_local(async move {
@@ -169,7 +242,7 @@ pub fn ForumAdmin() -> impl IntoView {
                     set_topic_tags,
                     &topic,
                 ),
-                Err(err) => set_error.set(Some(format!("Failed to load topic: {err}"))),
+                Err(err) => set_error.set(Some(format!("{}: {err}", load_topic_error))),
             }
             set_busy_key.set(None);
         });
@@ -189,12 +262,13 @@ pub fn ForumAdmin() -> impl IntoView {
             moderated: category_moderated.get_untracked(),
         };
         if draft.name.is_empty() || draft.slug.is_empty() {
-            set_error.set(Some("Category name and slug are required.".to_string()));
+            set_error.set(Some(category_required_error.clone()));
             return;
         }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let editing_id = editing_category_id.get_untracked();
+        let save_category_error = save_category_error.clone();
         set_busy_key.set(Some("category:save".to_string()));
         spawn_local(async move {
             let result = match editing_id {
@@ -217,7 +291,7 @@ pub fn ForumAdmin() -> impl IntoView {
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_error.set(Some(format!("Failed to save category: {err}"))),
+                Err(err) => set_error.set(Some(format!("{}: {err}", save_category_error))),
             }
             set_busy_key.set(None);
         });
@@ -236,12 +310,13 @@ pub fn ForumAdmin() -> impl IntoView {
             tags: parse_tags(topic_tags.get_untracked().as_str()),
         };
         if draft.category_id.is_empty() || draft.title.is_empty() || draft.body.is_empty() {
-            set_error.set(Some("Category, title and body are required.".to_string()));
+            set_error.set(Some(topic_required_error.clone()));
             return;
         }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let editing_id = editing_topic_id.get_untracked();
+        let save_topic_error = save_topic_error.clone();
         set_busy_key.set(Some("topic:save".to_string()));
         spawn_local(async move {
             let result = match editing_id {
@@ -263,7 +338,7 @@ pub fn ForumAdmin() -> impl IntoView {
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_error.set(Some(format!("Failed to save topic: {err}"))),
+                Err(err) => set_error.set(Some(format!("{}: {err}", save_topic_error))),
             }
             set_busy_key.set(None);
         });
@@ -272,6 +347,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let delete_category = Callback::new(move |category_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let delete_category_error = delete_category_error.clone();
         set_error.set(None);
         set_busy_key.set(Some(format!("category:delete:{category_id}")));
         spawn_local(async move {
@@ -283,7 +359,7 @@ pub fn ForumAdmin() -> impl IntoView {
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_error.set(Some(format!("Failed to delete category: {err}"))),
+                Err(err) => set_error.set(Some(format!("{}: {err}", delete_category_error))),
             }
             set_busy_key.set(None);
         });
@@ -292,6 +368,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let delete_topic = Callback::new(move |topic_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let delete_topic_error = delete_topic_error.clone();
         set_error.set(None);
         set_busy_key.set(Some(format!("topic:delete:{topic_id}")));
         spawn_local(async move {
@@ -302,7 +379,7 @@ pub fn ForumAdmin() -> impl IntoView {
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Err(err) => set_error.set(Some(format!("Failed to delete topic: {err}"))),
+                Err(err) => set_error.set(Some(format!("{}: {err}", delete_topic_error))),
             }
             set_busy_key.set(None);
         });
@@ -328,24 +405,24 @@ pub fn ForumAdmin() -> impl IntoView {
                     <div class="space-y-4">
                         <div class="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.26em] text-muted-foreground">
                             <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-                            "forum control room"
+                            {badge_label.clone()}
                         </div>
                         <div class="space-y-2">
                             <h1 class="text-3xl font-semibold tracking-tight text-card-foreground">
                                 {move || {
                                     if is_categories_page {
-                                        "Category architecture"
+                                        categories_title.clone()
                                     } else {
-                                        "NodeBB-style moderation workspace"
+                                        topics_title.clone()
                                     }
                                 }}
                             </h1>
                             <p class="max-w-2xl text-sm leading-6 text-muted-foreground">
                                 {move || {
                                     if is_categories_page {
-                                        "Shape navigation clusters, assign moderation rules, and keep every forum area ready for new threads."
+                                        categories_body.clone()
                                     } else {
-                                        "Review topic flow, open a thread for reply preview, and keep publishing controls next to the live feed."
+                                        topics_body.clone()
                                     }
                                 }}
                             </p>
@@ -353,17 +430,17 @@ pub fn ForumAdmin() -> impl IntoView {
                     </div>
                     <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
                         <MetricCard
-                            label="Categories"
+                            label=metric_categories.clone()
                             value=Signal::derive(move || format_count(category_count()))
                             accent_class="bg-sky-500"
                         />
                         <MetricCard
-                            label="Topics"
+                            label=metric_topics.clone()
                             value=Signal::derive(move || format_count(topic_count()))
                             accent_class="bg-amber-500"
                         />
                         <MetricCard
-                            label="Reply preview"
+                            label=metric_reply_preview.clone()
                             value=Signal::derive(move || format_count(reply_preview_count()))
                             accent_class="bg-emerald-500"
                         />
@@ -440,7 +517,7 @@ pub fn ForumAdmin() -> impl IntoView {
 
 #[component]
 fn MetricCard(
-    label: &'static str,
+    label: String,
     value: Signal<String>,
     accent_class: &'static str,
 ) -> impl IntoView {
@@ -458,7 +535,7 @@ fn MetricCard(
 }
 
 #[component]
-fn InsightTile(title: &'static str, body: &'static str) -> impl IntoView {
+fn InsightTile(title: String, body: String) -> impl IntoView {
     view! {
         <article class="rounded-[1.35rem] border border-border bg-background/80 p-4">
             <h3 class="text-sm font-semibold text-foreground">{title}</h3>
@@ -468,7 +545,7 @@ fn InsightTile(title: &'static str, body: &'static str) -> impl IntoView {
 }
 
 #[component]
-fn FieldShell(label: &'static str, hint: &'static str, children: Children) -> impl IntoView {
+fn FieldShell(label: String, hint: String, children: Children) -> impl IntoView {
     view! {
         <label class="block space-y-2">
             <span class="block text-sm font-medium text-foreground">{label}</span>
@@ -479,7 +556,7 @@ fn FieldShell(label: &'static str, hint: &'static str, children: Children) -> im
 }
 
 #[component]
-fn SidebarStat(label: &'static str, value: Signal<String>) -> impl IntoView {
+fn SidebarStat(label: String, value: Signal<String>) -> impl IntoView {
     view! {
         <div class="rounded-2xl border border-border bg-card px-4 py-3">
             <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -491,10 +568,10 @@ fn SidebarStat(label: &'static str, value: Signal<String>) -> impl IntoView {
 }
 
 #[component]
-fn CountChip(label: &'static str, value: i32) -> impl IntoView {
+fn CountChip(label: String, value: i32) -> impl IntoView {
     view! {
         <span class="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            {format!("{label}: {value}")}
+            {label.replace("{count}", value.to_string().as_str())}
         </span>
     }
 }
@@ -522,9 +599,60 @@ fn CategoriesPage(
     set_moderated: WriteSignal<bool>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
-    on_submit: impl Fn(SubmitEvent) + 'static + Copy,
+    on_submit: impl Fn(SubmitEvent) + 'static,
     on_reset: Callback<()>,
 ) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let matrix_label = t(ui_locale.as_deref(), "forum.categories.matrixLabel", "Category matrix");
+    let matrix_title = t(ui_locale.as_deref(), "forum.categories.matrixTitle", "Forum sections");
+    let new_category_label = t(ui_locale.as_deref(), "forum.categories.new", "New category");
+    let matrix_body = t(
+        ui_locale.as_deref(),
+        "forum.categories.matrixBody",
+        "This view keeps category hierarchy, counts, and moderation switches close together so moderators can shape the forum like a community map instead of a plain CRUD table.",
+    );
+    let notes_label = t(ui_locale.as_deref(), "forum.categories.notesLabel", "Moderator notes");
+    let note_icon_title = t(ui_locale.as_deref(), "forum.categories.noteIconTitle", "Icon + color");
+    let note_icon_body = t(
+        ui_locale.as_deref(),
+        "forum.categories.noteIconBody",
+        "Use both so each category reads like a quick visual stop in the sidebar.",
+    );
+    let note_position_title = t(ui_locale.as_deref(), "forum.categories.notePositionTitle", "Position");
+    let note_position_body = t(
+        ui_locale.as_deref(),
+        "forum.categories.notePositionBody",
+        "Lower numbers bubble important sections to the top of the community map.",
+    );
+    let note_moderated_title = t(ui_locale.as_deref(), "forum.categories.noteModeratedTitle", "Moderated");
+    let note_moderated_body = t(
+        ui_locale.as_deref(),
+        "forum.categories.noteModeratedBody",
+        "Turn this on for queues that need stricter review before topics go live.",
+    );
+    let composer_label = t(ui_locale.as_deref(), "forum.categories.composerLabel", "Composer");
+    let edit_title = t(ui_locale.as_deref(), "forum.categories.editTitle", "Edit category");
+    let create_title = t(ui_locale.as_deref(), "forum.categories.createTitle", "Create category");
+    let live_edit_label = t(ui_locale.as_deref(), "forum.categories.liveEdit", "Live edit");
+    let locale_label = t(ui_locale.as_deref(), "forum.form.locale", "Locale");
+    let locale_hint = t(ui_locale.as_deref(), "forum.form.localeHintCategory", "Published locale for this category.");
+    let name_label = t(ui_locale.as_deref(), "forum.form.name", "Name");
+    let name_hint = t(ui_locale.as_deref(), "forum.form.nameHint", "Human-friendly label shown in the admin and forum nav.");
+    let slug_label = t(ui_locale.as_deref(), "forum.form.slug", "Slug");
+    let slug_hint = t(ui_locale.as_deref(), "forum.form.slugHintCategory", "Stable identifier for routing and lookups.");
+    let description_label = t(ui_locale.as_deref(), "forum.form.description", "Description");
+    let description_hint = t(ui_locale.as_deref(), "forum.form.descriptionHint", "Short community-facing summary.");
+    let icon_label = t(ui_locale.as_deref(), "forum.form.icon", "Icon");
+    let icon_hint = t(ui_locale.as_deref(), "forum.form.iconHint", "Optional short token or icon name.");
+    let color_label = t(ui_locale.as_deref(), "forum.form.color", "Color");
+    let color_hint = t(ui_locale.as_deref(), "forum.form.colorHint", "Accent color, for example `#f59e0b`.");
+    let position_label = t(ui_locale.as_deref(), "forum.form.position", "Position");
+    let position_hint = t(ui_locale.as_deref(), "forum.form.positionHint", "Lower comes first in the list.");
+    let moderated_title = t(ui_locale.as_deref(), "forum.form.moderatedTitle", "Moderated queue");
+    let moderated_hint = t(ui_locale.as_deref(), "forum.form.moderatedHint", "Topics in this category should flow through stricter review.");
+    let save_category_label = t(ui_locale.as_deref(), "forum.form.saveCategory", "Save category");
+    let create_category_label = t(ui_locale.as_deref(), "forum.form.createCategory", "Create category");
+    let reset_label = t(ui_locale.as_deref(), "forum.form.reset", "Reset");
     view! {
         <section class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
             <div class="space-y-6">
@@ -532,10 +660,10 @@ fn CategoriesPage(
                     <div class="flex flex-wrap items-center justify-between gap-4">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                                "Category matrix"
+                                {matrix_label.clone()}
                             </p>
                             <h2 class="mt-2 text-2xl font-semibold text-card-foreground">
-                                "Forum sections"
+                                {matrix_title.clone()}
                             </h2>
                         </div>
                         <button
@@ -543,33 +671,33 @@ fn CategoriesPage(
                             class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
                             on:click=move |_| on_reset.run(())
                         >
-                            "New category"
+                            {new_category_label.clone()}
                         </button>
                     </div>
                     <p class="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                        "This view keeps category hierarchy, counts, and moderation switches close together so moderators can shape the forum like a community map instead of a plain CRUD table."
+                        {matrix_body.clone()}
                     </p>
                     <Suspense fallback=move || view! { <div class="mt-6 h-48 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || categories.get().map(|result| render_category_grid(result, editing_id.get(), busy_key.get(), on_edit, on_delete))}
+                        {move || categories.get().map(|result| render_category_grid(result, editing_id.get(), busy_key.get(), on_edit, on_delete, ui_locale.clone()))}
                     </Suspense>
                 </section>
 
                 <section class="rounded-[1.75rem] border border-border bg-gradient-to-br from-card via-card to-muted/30 p-6 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                        "Moderator notes"
+                        {notes_label.clone()}
                     </p>
                     <div class="mt-4 grid gap-4 md:grid-cols-3">
                         <InsightTile
-                            title="Icon + color"
-                            body="Use both so each category reads like a quick visual stop in the sidebar."
+                            title=note_icon_title
+                            body=note_icon_body
                         />
                         <InsightTile
-                            title="Position"
-                            body="Lower numbers bubble important sections to the top of the community map."
+                            title=note_position_title
+                            body=note_position_body
                         />
                         <InsightTile
-                            title="Moderated"
-                            body="Turn this on for queues that need stricter review before topics go live."
+                            title=note_moderated_title
+                            body=note_moderated_body
                         />
                     </div>
                 </section>
@@ -579,20 +707,20 @@ fn CategoriesPage(
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                            "Composer"
+                            {composer_label.clone()}
                         </p>
                         <h2 class="mt-2 text-xl font-semibold text-card-foreground">
-                            {move || if editing_id.get().is_some() { "Edit category" } else { "Create category" }}
+                            {move || if editing_id.get().is_some() { edit_title.clone() } else { create_title.clone() }}
                         </h2>
                     </div>
                     {move || editing_id.get().map(|_| view! {
                         <span class="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                            "Live edit"
+                            {live_edit_label.clone()}
                         </span>
                     })}
                 </div>
                 <form class="mt-6 space-y-4" on:submit=on_submit>
-                    <FieldShell label="Locale" hint="Published locale for this category.">
+                    <FieldShell label=locale_label hint=locale_hint>
                         <input
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || locale.get()
@@ -600,7 +728,7 @@ fn CategoriesPage(
                             placeholder="en"
                         />
                     </FieldShell>
-                    <FieldShell label="Name" hint="Human-friendly label shown in the admin and forum nav.">
+                    <FieldShell label=name_label hint=name_hint>
                         <input
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || name.get()
@@ -608,7 +736,7 @@ fn CategoriesPage(
                             placeholder="General discussion"
                         />
                     </FieldShell>
-                    <FieldShell label="Slug" hint="Stable identifier for routing and lookups.">
+                    <FieldShell label=slug_label hint=slug_hint>
                         <input
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                             prop:value=move || slug.get()
@@ -616,7 +744,7 @@ fn CategoriesPage(
                             placeholder="general-discussion"
                         />
                     </FieldShell>
-                    <FieldShell label="Description" hint="Short community-facing summary.">
+                    <FieldShell label=description_label hint=description_hint>
                         <textarea
                             class="min-h-24 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || description.get()
@@ -625,7 +753,7 @@ fn CategoriesPage(
                         ></textarea>
                     </FieldShell>
                     <div class="grid gap-4 sm:grid-cols-2">
-                        <FieldShell label="Icon" hint="Optional short token or icon name.">
+                        <FieldShell label=icon_label hint=icon_hint>
                             <input
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                 prop:value=move || icon.get()
@@ -633,7 +761,7 @@ fn CategoriesPage(
                                 placeholder="chat"
                             />
                         </FieldShell>
-                        <FieldShell label="Color" hint="Accent color, for example `#f59e0b`.">
+                        <FieldShell label=color_label hint=color_hint>
                             <input
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                 prop:value=move || color.get()
@@ -642,7 +770,7 @@ fn CategoriesPage(
                             />
                         </FieldShell>
                     </div>
-                    <FieldShell label="Position" hint="Lower comes first in the list.">
+                    <FieldShell label=position_label hint=position_hint>
                         <input
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || position.get().to_string()
@@ -658,9 +786,9 @@ fn CategoriesPage(
                             on:change=move |ev| set_moderated.set(event_target_checked(&ev))
                         />
                         <span class="space-y-1">
-                            <span class="block font-medium text-foreground">"Moderated queue"</span>
+                            <span class="block font-medium text-foreground">{moderated_title}</span>
                             <span class="block text-muted-foreground">
-                                "Topics in this category should flow through stricter review."
+                                {moderated_hint}
                             </span>
                         </span>
                     </label>
@@ -670,14 +798,14 @@ fn CategoriesPage(
                             class="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-95"
                             disabled=move || busy_key.get().is_some()
                         >
-                            {move || if editing_id.get().is_some() { "Save category" } else { "Create category" }}
+                            {move || if editing_id.get().is_some() { save_category_label.clone() } else { create_category_label.clone() }}
                         </button>
                         <button
                             type="button"
                             class="rounded-full border border-border px-5 py-2.5 text-sm font-medium transition hover:bg-muted"
                             on:click=move |_| on_reset.run(())
                         >
-                            "Reset"
+                            {reset_label}
                         </button>
                     </div>
                 </form>
@@ -711,71 +839,118 @@ fn TopicsPage(
     set_filter_category_id: WriteSignal<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
-    on_submit: impl Fn(SubmitEvent) + 'static + Copy,
+    on_submit: impl Fn(SubmitEvent) + 'static,
     on_reset: Callback<()>,
 ) -> impl IntoView {
-    let selected_category_name = move || match categories.get() {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let all_categories_label = t(ui_locale.as_deref(), "forum.topics.allCategories", "All categories");
+    let filtered_category_label = t(ui_locale.as_deref(), "forum.topics.filteredCategory", "Filtered category");
+    let ready_template = t(ui_locale.as_deref(), "forum.topics.ready", "{count} ready");
+    let navigation_label = t(ui_locale.as_deref(), "forum.topics.navigationLabel", "Navigation");
+    let navigation_title = t(ui_locale.as_deref(), "forum.topics.navigationTitle", "Forum feed");
+    let navigation_body = t(ui_locale.as_deref(), "forum.topics.navigationBody", "A left rail similar to NodeBB: jump between categories, keep counts visible, and open a thread into the editor on the right.");
+    let filter_title = t(ui_locale.as_deref(), "forum.topics.filterTitle", "Filter topics");
+    let clear_label = t(ui_locale.as_deref(), "forum.topics.clear", "Clear");
+    let active_filter_label = t(ui_locale.as_deref(), "forum.topics.activeFilter", "Active filter");
+    let draft_tags_label = t(ui_locale.as_deref(), "forum.topics.draftTags", "Draft tags");
+    let editing_thread_label = t(ui_locale.as_deref(), "forum.topics.editingThread", "Editing thread");
+    let open_inspector_label = t(ui_locale.as_deref(), "forum.topics.openInspector", "Open in inspector");
+    let nothing_selected_label = t(ui_locale.as_deref(), "forum.topics.nothingSelected", "Nothing selected");
+    let stream_label = t(ui_locale.as_deref(), "forum.topics.streamLabel", "Topic stream");
+    let stream_body = t(ui_locale.as_deref(), "forum.topics.streamBody", "Open a topic card to inspect replies and edit the thread without leaving the feed.");
+    let new_topic_label = t(ui_locale.as_deref(), "forum.topics.new", "New topic");
+    let inspector_label = t(ui_locale.as_deref(), "forum.topics.inspectorLabel", "Inspector");
+    let edit_topic_title = t(ui_locale.as_deref(), "forum.topics.editTitle", "Edit topic");
+    let compose_topic_title = t(ui_locale.as_deref(), "forum.topics.composeTitle", "Compose topic");
+    let thread_open_label = t(ui_locale.as_deref(), "forum.topics.threadOpen", "Thread open");
+    let locale_label = t(ui_locale.as_deref(), "forum.form.locale", "Locale");
+    let locale_hint = t(ui_locale.as_deref(), "forum.form.localeHintTopic", "Thread locale for publishing and reads.");
+    let category_label = t(ui_locale.as_deref(), "forum.form.category", "Category");
+    let category_hint = t(ui_locale.as_deref(), "forum.form.categoryHint", "Choose where the topic should live.");
+    let choose_category_label = t(ui_locale.as_deref(), "forum.form.chooseCategory", "Choose category");
+    let title_label = t(ui_locale.as_deref(), "forum.form.title", "Title");
+    let title_hint = t(ui_locale.as_deref(), "forum.form.titleHint", "Headline shown in the feed.");
+    let slug_label = t(ui_locale.as_deref(), "forum.form.slug", "Slug");
+    let slug_hint = t(ui_locale.as_deref(), "forum.form.slugHintTopic", "Stable thread identifier.");
+    let body_format_label = t(ui_locale.as_deref(), "forum.form.bodyFormat", "Body format");
+    let body_format_hint = t(ui_locale.as_deref(), "forum.form.bodyFormatHint", "Usually `markdown`.");
+    let tags_label = t(ui_locale.as_deref(), "forum.form.tags", "Tags");
+    let tags_hint = t(ui_locale.as_deref(), "forum.form.tagsHint", "Comma-separated labels for discovery.");
+    let body_label = t(ui_locale.as_deref(), "forum.form.body", "Body");
+    let body_hint = t(ui_locale.as_deref(), "forum.form.bodyHint", "Main message shown in the topic detail.");
+    let save_topic_label = t(ui_locale.as_deref(), "forum.form.saveTopic", "Save topic");
+    let publish_topic_label = t(ui_locale.as_deref(), "forum.form.publishTopic", "Publish topic");
+    let reset_label = t(ui_locale.as_deref(), "forum.form.reset", "Reset");
+    let preview_label = t(ui_locale.as_deref(), "forum.topics.previewLabel", "Thread preview");
+    let preview_title = t(ui_locale.as_deref(), "forum.topics.previewTitle", "Replies");
+    let shown_template = t(ui_locale.as_deref(), "forum.topics.shown", "{count} shown");
+    let selected_category_name = Memo::new(move |_| match categories.get() {
         Some(Ok(items)) => {
             let selected_id = filter_category_id.get();
             if selected_id.is_empty() {
-                "All categories".to_string()
+                all_categories_label.clone()
             } else {
                 items
                     .into_iter()
                     .find(|item| item.id == selected_id)
                     .map(|item| item.name)
-                    .unwrap_or_else(|| "Filtered category".to_string())
+                    .unwrap_or_else(|| filtered_category_label.clone())
             }
         }
-        _ => "All categories".to_string(),
+        _ => all_categories_label.clone(),
+    });
+    let topic_form_tag_count = move || {
+        ready_template.replace("{count}", parse_tags(tags.get().as_str()).len().to_string().as_str())
     };
-    let topic_form_tag_count = move || parse_tags(tags.get().as_str()).len();
+    let sidebar_locale = ui_locale.clone();
+    let topic_feed_locale = ui_locale.clone();
+    let replies_locale = ui_locale.clone();
 
     view! {
         <section class="grid gap-6 xl:grid-cols-[17rem_minmax(0,1fr)_24rem]">
             <aside class="space-y-6 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm xl:sticky xl:top-6 xl:self-start">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                        "Navigation"
+                        {navigation_label.clone()}
                     </p>
-                    <h2 class="mt-2 text-xl font-semibold text-card-foreground">"Forum feed"</h2>
+                    <h2 class="mt-2 text-xl font-semibold text-card-foreground">{navigation_title.clone()}</h2>
                     <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                        "A left rail similar to NodeBB: jump between categories, keep counts visible, and open a thread into the editor on the right."
+                        {navigation_body.clone()}
                     </p>
                 </div>
 
                 <div class="rounded-[1.5rem] border border-border bg-background/80 p-4">
                     <div class="flex items-center justify-between gap-3">
-                        <p class="text-sm font-medium text-foreground">"Filter topics"</p>
+                        <p class="text-sm font-medium text-foreground">{filter_title.clone()}</p>
                         <button
                             type="button"
                             class="text-xs font-medium text-muted-foreground transition hover:text-foreground"
                             on:click=move |_| set_filter_category_id.set(String::new())
                         >
-                            "Clear"
+                            {clear_label.clone()}
                         </button>
                     </div>
                     <Suspense fallback=move || view! { <div class="mt-4 h-24 animate-pulse rounded-2xl bg-muted"></div> }>
-                        {move || categories.get().map(|result| render_category_sidebar(result, filter_category_id.get(), set_filter_category_id))}
+                        {move || categories.get().map(|result| render_category_sidebar(result, filter_category_id.get(), set_filter_category_id, sidebar_locale.clone()))}
                     </Suspense>
                 </div>
 
                 <div class="space-y-3 rounded-[1.5rem] border border-border bg-gradient-to-br from-background to-muted/40 p-4">
                     <SidebarStat
-                        label="Active filter"
-                        value=Signal::derive(selected_category_name)
+                        label=active_filter_label.clone()
+                        value=Signal::derive(move || selected_category_name.get())
                     />
                     <SidebarStat
-                        label="Draft tags"
-                        value=Signal::derive(move || format!("{} ready", topic_form_tag_count()))
+                        label=draft_tags_label.clone()
+                        value=Signal::derive(topic_form_tag_count)
                     />
                     <SidebarStat
-                        label="Editing thread"
+                        label=editing_thread_label.clone()
                         value=Signal::derive(move || {
                             editing_id
                                 .get()
-                                .map(|_| "Open in inspector".to_string())
-                                .unwrap_or_else(|| "Nothing selected".to_string())
+                                .map(|_| open_inspector_label.clone())
+                                .unwrap_or_else(|| nothing_selected_label.clone())
                         })
                     />
                 </div>
@@ -786,13 +961,13 @@ fn TopicsPage(
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                                "Topic stream"
+                                {stream_label.clone()}
                             </p>
                             <h2 class="mt-2 text-2xl font-semibold text-card-foreground">
-                                {selected_category_name}
+                                {move || selected_category_name.get()}
                             </h2>
                             <p class="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                                "Open a topic card to inspect replies and edit the thread without leaving the feed."
+                                {stream_body.clone()}
                             </p>
                         </div>
                         <button
@@ -800,11 +975,11 @@ fn TopicsPage(
                             class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition hover:bg-muted"
                             on:click=move |_| on_reset.run(())
                         >
-                            "New topic"
+                            {new_topic_label.clone()}
                         </button>
                     </div>
                     <Suspense fallback=move || view! { <div class="mt-6 h-72 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || topics.get().map(|result| render_topic_feed(result, editing_id.get(), busy_key.get(), on_edit, on_delete))}
+                        {move || topics.get().map(|result| render_topic_feed(result, editing_id.get(), busy_key.get(), on_edit, on_delete, topic_feed_locale.clone()))}
                     </Suspense>
                 </section>
             </div>
@@ -814,21 +989,21 @@ fn TopicsPage(
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                                "Inspector"
+                                {inspector_label.clone()}
                             </p>
                             <h2 class="mt-2 text-xl font-semibold text-card-foreground">
-                                {move || if editing_id.get().is_some() { "Edit topic" } else { "Compose topic" }}
+                                {move || if editing_id.get().is_some() { edit_topic_title.clone() } else { compose_topic_title.clone() }}
                             </h2>
                         </div>
                         {move || editing_id.get().map(|_| view! {
                             <span class="rounded-full bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">
-                                "Thread open"
+                                {thread_open_label.clone()}
                             </span>
                         })}
                     </div>
 
                     <form class="mt-6 space-y-4" on:submit=on_submit>
-                        <FieldShell label="Locale" hint="Thread locale for publishing and reads.">
+                        <FieldShell label=locale_label hint=locale_hint>
                             <input
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                 prop:value=move || locale.get()
@@ -836,7 +1011,7 @@ fn TopicsPage(
                                 placeholder="en"
                             />
                         </FieldShell>
-                        <FieldShell label="Category" hint="Choose where the topic should live.">
+                        <FieldShell label=category_label hint=category_hint>
                             <Suspense fallback=move || view! { <div class="h-14 animate-pulse rounded-2xl bg-muted"></div> }>
                                 {move || categories.get().map(|result| match result {
                                     Ok(items) => view! {
@@ -845,7 +1020,7 @@ fn TopicsPage(
                                             prop:value=move || category_id.get()
                                             on:change=move |ev| set_category_id.set(event_target_value(&ev))
                                         >
-                                            <option value="">"Choose category"</option>
+                                            <option value="">{choose_category_label.clone()}</option>
                                             {items.into_iter().map(|item| view! { <option value=item.id>{item.name}</option> }).collect_view()}
                                         </select>
                                     }.into_any(),
@@ -857,7 +1032,7 @@ fn TopicsPage(
                                 })}
                             </Suspense>
                         </FieldShell>
-                        <FieldShell label="Title" hint="Headline shown in the feed.">
+                        <FieldShell label=title_label hint=title_hint>
                             <input
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                 prop:value=move || title.get()
@@ -865,7 +1040,7 @@ fn TopicsPage(
                                 placeholder="How should we structure weekly updates?"
                             />
                         </FieldShell>
-                        <FieldShell label="Slug" hint="Stable thread identifier.">
+                        <FieldShell label=slug_label hint=slug_hint>
                             <input
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                 prop:value=move || slug.get()
@@ -874,7 +1049,7 @@ fn TopicsPage(
                             />
                         </FieldShell>
                         <div class="grid gap-4 sm:grid-cols-2">
-                            <FieldShell label="Body format" hint="Usually `markdown`.">
+                            <FieldShell label=body_format_label hint=body_format_hint>
                                 <input
                                     class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                     prop:value=move || body_format.get()
@@ -882,7 +1057,7 @@ fn TopicsPage(
                                     placeholder="markdown"
                                 />
                             </FieldShell>
-                            <FieldShell label="Tags" hint="Comma-separated labels for discovery.">
+                            <FieldShell label=tags_label hint=tags_hint>
                                 <input
                                     class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                     prop:value=move || tags.get()
@@ -907,7 +1082,7 @@ fn TopicsPage(
                             })
                         }}
 
-                        <FieldShell label="Body" hint="Main message shown in the topic detail.">
+                        <FieldShell label=body_label hint=body_hint>
                             <textarea
                                 class="min-h-72 w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                 prop:value=move || body.get()
@@ -922,14 +1097,14 @@ fn TopicsPage(
                                 class="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-95"
                                 disabled=move || busy_key.get().is_some()
                             >
-                                {move || if editing_id.get().is_some() { "Save topic" } else { "Publish topic" }}
+                                {move || if editing_id.get().is_some() { save_topic_label.clone() } else { publish_topic_label.clone() }}
                             </button>
                             <button
                                 type="button"
                                 class="rounded-full border border-border px-5 py-2.5 text-sm font-medium transition hover:bg-muted"
                                 on:click=move |_| on_reset.run(())
                             >
-                                "Reset"
+                                {reset_label.clone()}
                             </button>
                         </div>
                     </form>
@@ -939,16 +1114,16 @@ fn TopicsPage(
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                                "Thread preview"
+                                {preview_label.clone()}
                             </p>
-                            <h2 class="mt-2 text-xl font-semibold text-card-foreground">"Replies"</h2>
+                            <h2 class="mt-2 text-xl font-semibold text-card-foreground">{preview_title.clone()}</h2>
                         </div>
                         <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                            {move || format!("{} shown", reply_count_label(replies.get()))}
+                            {move || shown_template.replace("{count}", reply_count_label(replies.get()).to_string().as_str())}
                         </span>
                     </div>
                     <Suspense fallback=move || view! { <div class="mt-6 h-40 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || replies.get().map(render_reply_stack)}
+                        {move || replies.get().map(|result| render_reply_stack(result, replies_locale.clone()))}
                     </Suspense>
                 </section>
             </div>
@@ -962,9 +1137,18 @@ fn render_category_grid(
     busy_key: Option<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    locale: Option<String>,
 ) -> AnyView {
+    let no_categories_label = t(locale.as_deref(), "forum.render.noCategories", "No categories yet.");
+    let no_description_label = t(locale.as_deref(), "forum.render.noDescription", "No description yet.");
+    let topics_count_label = t(locale.as_deref(), "forum.render.topicsCount", "topics: {count}");
+    let replies_count_label = t(locale.as_deref(), "forum.render.repliesCount", "replies: {count}");
+    let icon_label = t(locale.as_deref(), "forum.render.icon", "icon: {value}");
+    let editing_label = t(locale.as_deref(), "forum.render.editing", "Editing");
+    let edit_label = t(locale.as_deref(), "forum.render.edit", "Edit");
+    let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
     match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">"No categories yet."</div> }.into_any(),
+        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
         Ok(items) => view! {
             <div class="mt-6 grid gap-4 md:grid-cols-2">
                 {items.into_iter().map(|item| {
@@ -991,20 +1175,20 @@ fn render_category_grid(
                                     </span>
                                 </div>
                                 <p class="mt-3 text-sm leading-6 text-muted-foreground">
-                                    {item.description.clone().unwrap_or_else(|| "No description yet.".to_string())}
+                                    {item.description.clone().unwrap_or_else(|| no_description_label.clone())}
                                 </p>
                                 <div class="mt-4 flex flex-wrap gap-2">
-                                    <CountChip label="topics" value=item.topic_count />
-                                    <CountChip label="replies" value=item.reply_count />
+                                    <CountChip label=topics_count_label.clone() value=item.topic_count />
+                                    <CountChip label=replies_count_label.clone() value=item.reply_count />
                                     {item.icon.clone().filter(|value| !value.trim().is_empty()).map(|value| view! {
                                         <span class="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                                            {format!("icon: {value}")}
+                                            {icon_label.replace("{value}", value.as_str())}
                                         </span>
                                     })}
                                 </div>
                                 <div class="mt-5 flex flex-wrap gap-2">
-                                    <button type="button" class="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted" on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) } disabled=is_busy>{if is_editing { "Editing" } else { "Edit" }}</button>
-                                    <button type="button" class="rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15" on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) } disabled=is_busy>"Delete"</button>
+                                    <button type="button" class="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted" on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) } disabled=is_busy>{if is_editing { editing_label.clone() } else { edit_label.clone() }}</button>
+                                    <button type="button" class="rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15" on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) } disabled=is_busy>{delete_label.clone()}</button>
                                 </div>
                             </div>
                         </article>
@@ -1020,13 +1204,16 @@ fn render_category_sidebar(
     result: Result<Vec<CategoryListItem>, String>,
     active_category_id: String,
     set_filter_category_id: WriteSignal<String>,
+    locale: Option<String>,
 ) -> AnyView {
+    let no_categories_label = t(locale.as_deref(), "forum.render.noCategories", "No categories yet.");
+    let all_categories_label = t(locale.as_deref(), "forum.topics.allCategories", "All categories");
     match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-4 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">"No categories yet."</div> }.into_any(),
+        Ok(items) if items.is_empty() => view! { <div class="mt-4 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
         Ok(items) => view! {
             <div class="mt-4 space-y-2">
                 <button type="button" class=sidebar_category_class(active_category_id.is_empty()) on:click=move |_| set_filter_category_id.set(String::new())>
-                    <span class="truncate">"All categories"</span>
+                    <span class="truncate">{all_categories_label}</span>
                     <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{items.len()}</span>
                 </button>
                 {items.into_iter().map(|item| {
@@ -1054,9 +1241,18 @@ fn render_topic_feed(
     busy_key: Option<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    locale: Option<String>,
 ) -> AnyView {
+    let no_topics_label = t(locale.as_deref(), "forum.render.noTopics", "No topics yet.");
+    let pinned_label = t(locale.as_deref(), "forum.render.pinned", "Pinned");
+    let locked_label = t(locale.as_deref(), "forum.render.locked", "Locked");
+    let thread_path_label = t(locale.as_deref(), "forum.render.threadPath", "thread/{category}/{slug}");
+    let replies_label = t(locale.as_deref(), "forum.render.replies", "Replies");
+    let opened_label = t(locale.as_deref(), "forum.render.opened", "Opened");
+    let open_thread_label = t(locale.as_deref(), "forum.render.openThread", "Open thread");
+    let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
     match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">"No topics yet."</div> }.into_any(),
+        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_topics_label}</div> }.into_any(),
         Ok(items) => view! {
             <div class="mt-6 space-y-3">
                 {items.into_iter().map(|item| {
@@ -1071,22 +1267,22 @@ fn render_topic_feed(
                                     <div class="flex flex-wrap items-center gap-2">
                                         <span class=status_badge_class(status_class)>{item.status.clone()}</span>
                                         <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">{item.effective_locale.clone()}</span>
-                                        {item.is_pinned.then(|| view! { <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">"Pinned"</span> })}
-                                        {item.is_locked.then(|| view! { <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">"Locked"</span> })}
+                                        {item.is_pinned.then(|| view! { <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{pinned_label.clone()}</span> })}
+                                        {item.is_locked.then(|| view! { <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">{locked_label.clone()}</span> })}
                                     </div>
                                     <div>
                                         <h3 class="text-lg font-semibold text-foreground">{item.title.clone()}</h3>
-                                        <p class="mt-1 text-sm text-muted-foreground">{format!("thread/{}/{}", item.category_id, item.slug)}</p>
+                                        <p class="mt-1 text-sm text-muted-foreground">{thread_path_label.replace("{category}", item.category_id.as_str()).replace("{slug}", item.slug.as_str())}</p>
                                     </div>
                                 </div>
                                 <div class="text-right">
-                                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">"Replies"</p>
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{replies_label.clone()}</p>
                                     <p class="mt-1 text-2xl font-semibold text-foreground">{item.reply_count}</p>
                                 </div>
                             </div>
                             <div class="mt-5 flex flex-wrap gap-2">
-                                <button type="button" class="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted" on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) } disabled=is_busy>{if is_editing { "Opened" } else { "Open thread" }}</button>
-                                <button type="button" class="rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15" on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) } disabled=is_busy>"Delete"</button>
+                                <button type="button" class="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted" on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) } disabled=is_busy>{if is_editing { opened_label.clone() } else { open_thread_label.clone() }}</button>
+                                <button type="button" class="rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15" on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) } disabled=is_busy>{delete_label.clone()}</button>
                             </div>
                         </article>
                     }
@@ -1097,9 +1293,10 @@ fn render_topic_feed(
     }
 }
 
-fn render_reply_stack(result: Result<Vec<ReplyListItem>, String>) -> AnyView {
+fn render_reply_stack(result: Result<Vec<ReplyListItem>, String>, locale: Option<String>) -> AnyView {
+    let empty_label = t(locale.as_deref(), "forum.render.openTopicForReplies", "Open a topic card to preview replies.");
     match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-6 text-sm text-muted-foreground">"Open a topic card to preview replies."</div> }.into_any(),
+        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-6 text-sm text-muted-foreground">{empty_label}</div> }.into_any(),
         Ok(items) => view! {
             <div class="mt-6 space-y-3">
                 {items.into_iter().map(|item| {

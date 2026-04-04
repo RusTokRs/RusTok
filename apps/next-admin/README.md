@@ -79,7 +79,7 @@
 Текущий capability-пример этого паттерна:
 
 - `apps/next-admin/packages/rustok-ai/` → `@rustok/ai-admin`
-- host route `/dashboard/ai` только монтирует пакет и не забирает AI business UI в `src/app`
+- host routes `/dashboard/ai` и `/dashboard/ai/diagnostics` только монтируют пакет и не забирают AI business UI в `src/app`
 
 ## Документация
 

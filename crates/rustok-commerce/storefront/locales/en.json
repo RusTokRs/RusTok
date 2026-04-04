@@ -1,0 +1,22 @@
+{
+  "commerce.badge": "commerce",
+  "commerce.title": "Published catalog from the module package",
+  "commerce.subtitle": "The storefront now reads published products through the module-owned GraphQL contract with no commerce-specific host wiring.",
+  "commerce.error.load": "Failed to load commerce storefront data",
+  "commerce.selected.emptyTitle": "No published product selected",
+  "commerce.selected.emptyBody": "Publish a product from the commerce admin package or open one with `?handle=`.",
+  "commerce.selected.untitled": "Untitled product",
+  "commerce.selected.noDescription": "No localized merchandising copy yet.",
+  "commerce.selected.compareAt": "compare-at {value}",
+  "commerce.selected.noPrice": "No pricing yet",
+  "commerce.selected.catalog": "catalog",
+  "commerce.selected.vendorFallback": "independent label",
+  "commerce.selected.unscheduled": "scheduled later",
+  "commerce.selected.price": "Price",
+  "commerce.selected.inventory": "Inventory",
+  "commerce.list.empty": "No published products are available yet.",
+  "commerce.list.title": "Published products",
+  "commerce.list.total": "{count} total",
+  "commerce.list.vendorFallback": "Independent label",
+  "commerce.list.open": "Open"
+}

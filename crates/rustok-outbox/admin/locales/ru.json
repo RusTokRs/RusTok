@@ -1,0 +1,10 @@
+{
+  "outbox.badge": "outbox",
+  "outbox.title": "Outbox relay",
+  "outbox.subtitle": "Модульный обзор транзакционного сохранения событий, давления повторов и состояния relay.",
+  "outbox.health": "Состояние",
+  "outbox.tenantContext": "Контекст тенанта",
+  "outbox.global": "global",
+  "outbox.notes.title": "Заметки relay",
+  "outbox.error.loadBootstrap": "Не удалось загрузить outbox bootstrap"
+}

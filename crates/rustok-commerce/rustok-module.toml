@@ -26,8 +26,18 @@ leptos_crate = "rustok-commerce-admin"
 route_segment = "commerce"
 nav_label = "Commerce"
 
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-commerce-storefront"
 slot = "home_after_catalog"
 route_segment = "commerce"
 page_title = "Commerce"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

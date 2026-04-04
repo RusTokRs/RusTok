@@ -37,9 +37,19 @@ route_segment = "blog"
 nav_label = "Blog"
 next_package = "@rustok/blog-admin"
 
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-blog-storefront"
 slot = "home_after_catalog"
 route_segment = "blog"
 page_title = "Blog"
 next_package = "@rustok/blog-frontend"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

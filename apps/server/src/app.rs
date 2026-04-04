@@ -651,16 +651,19 @@ mod tests {
             .get("etag")
             .and_then(|value| value.to_str().ok())
             .expect("conditional v1 catalog response should keep etag");
+        let second_etag = second_etag.to_string();
         let second_total_count = second_response
             .headers()
             .get("x-total-count")
             .and_then(|value| value.to_str().ok())
             .expect("conditional v1 catalog response should keep x-total-count");
+        let second_total_count = second_total_count.to_string();
         let second_cache_control = second_response
             .headers()
             .get("cache-control")
             .and_then(|value| value.to_str().ok())
             .expect("conditional v1 catalog response should keep cache-control");
+        let second_cache_control = second_cache_control.to_string();
         let second_body = to_bytes(second_response.into_body(), usize::MAX)
             .await
             .expect("conditional v1 catalog body should read");
@@ -814,6 +817,68 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_owner_transfer_endpoint_accepts_dry_run_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry owner transfer smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/owner-transfer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "slug": "blog",
+                            "new_owner_actor": "publisher:forum",
+                            "reason": "Ownership moved to a new maintained publisher identity"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("v2 owner transfer request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v2 owner transfer body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v2/catalog/owner-transfer response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v2 owner transfer response should be valid json");
+        assert_eq!(
+            payload.get("action").and_then(Value::as_str),
+            Some("owner_transfer")
+        );
+        assert_eq!(payload.get("dry_run").and_then(Value::as_bool), Some(true));
+        assert_eq!(payload.get("accepted").and_then(Value::as_bool), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
@@ -905,6 +970,52 @@ mod tests {
             .await
             .expect("registry-only publish request should complete");
         assert_eq!(publish_response.status(), StatusCode::NOT_FOUND);
+
+        let owner_transfer_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/owner-transfer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "slug": "blog",
+                            "new_owner_actor": "publisher:forum",
+                            "reason": "Registry-only host must stay read-only"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only owner transfer request should complete");
+        assert_eq!(owner_transfer_response.status(), StatusCode::NOT_FOUND);
+
+        let yank_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/yank")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "slug": "blog",
+                            "version": "0.1.0",
+                            "reason": "Registry-only host must stay read-only"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only yank request should complete");
+        assert_eq!(yank_response.status(), StatusCode::NOT_FOUND);
 
         let graphql_response = app
             .clone()

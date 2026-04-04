@@ -1,0 +1,22 @@
+{
+  "commerce.badge": "commerce",
+  "commerce.title": "Опубликованный каталог из пакета модуля",
+  "commerce.subtitle": "Storefront теперь читает опубликованные товары через module-owned GraphQL-контракт без commerce-специфичной логики в host-приложении.",
+  "commerce.error.load": "Не удалось загрузить storefront-данные commerce",
+  "commerce.selected.emptyTitle": "Пока не выбран опубликованный товар",
+  "commerce.selected.emptyBody": "Опубликуйте товар из admin-пакета commerce или откройте его через `?handle=`.",
+  "commerce.selected.untitled": "Товар без названия",
+  "commerce.selected.noDescription": "Локализованное описание мерчандайзинга пока отсутствует.",
+  "commerce.selected.compareAt": "сравнить с {value}",
+  "commerce.selected.noPrice": "Цена пока не задана",
+  "commerce.selected.catalog": "каталог",
+  "commerce.selected.vendorFallback": "независимый бренд",
+  "commerce.selected.unscheduled": "запланировано позже",
+  "commerce.selected.price": "Цена",
+  "commerce.selected.inventory": "Остаток",
+  "commerce.list.empty": "Опубликованных товаров пока нет.",
+  "commerce.list.title": "Опубликованные товары",
+  "commerce.list.total": "всего {count}",
+  "commerce.list.vendorFallback": "Независимый бренд",
+  "commerce.list.open": "Открыть"
+}

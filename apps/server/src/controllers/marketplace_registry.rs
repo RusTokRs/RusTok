@@ -22,12 +22,12 @@ use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
 use crate::services::marketplace_catalog::{
     legacy_registry_catalog_module_path, legacy_registry_catalog_path,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
-    registry_publish_approve_path, registry_publish_artifact_path, registry_publish_path,
-    registry_publish_reject_path, registry_publish_status_path, registry_publish_validate_path,
-    registry_yank_path, validate_registry_mutation_schema_version, RegistryCatalogModule,
-    RegistryCatalogResponse, RegistryMutationResponse, RegistryPublishDecisionRequest,
-    RegistryPublishRequest, RegistryPublishStatusResponse, RegistryPublishValidationRequest,
-    RegistryYankRequest,
+    registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
+    registry_publish_path, registry_publish_reject_path, registry_publish_status_path,
+    registry_publish_validate_path, registry_yank_path, validate_registry_mutation_schema_version,
+    RegistryCatalogModule, RegistryCatalogResponse, RegistryMutationResponse,
+    RegistryOwnerTransferRequest, RegistryPublishDecisionRequest, RegistryPublishRequest,
+    RegistryPublishStatusResponse, RegistryPublishValidationRequest, RegistryYankRequest,
 };
 use crate::services::registry_governance::{
     release_status_label, request_status_label, RegistryArtifactUpload, RegistryGovernanceService,
@@ -744,6 +744,95 @@ async fn yank(
     ))
 }
 
+/// POST /v2/catalog/owner-transfer - Registry owner transfer governance contract
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/owner-transfer",
+    tag = "marketplace",
+    request_body = RegistryOwnerTransferRequest,
+    responses(
+        (
+            status = 200,
+            description = "Registry owner transfer request accepted and normalized",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Owner transfer request failed local contract or governance validation"
+        ),
+        (
+            status = 404,
+            description = "Registry owner binding was not found"
+        )
+    )
+)]
+async fn transfer_owner(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryOwnerTransferRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let warnings = validate_owner_transfer_request(&request)?;
+
+    if !request.dry_run {
+        let reason = request
+            .reason
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    "Live registry owner transfer requires a non-empty reason for the governance audit trail"
+                        .to_string(),
+                )
+            })?;
+        let actor = request_actor_from_headers(&headers);
+        let binding = RegistryGovernanceService::new(ctx.db.clone())
+            .transfer_registry_slug_owner(&request.slug, &request.new_owner_actor, reason, &actor)
+            .await
+            .map_err(map_registry_governance_error)?;
+
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "owner_transfer".to_string(),
+                dry_run: false,
+                accepted: true,
+                request_id: None,
+                status: Some("owner_transferred".to_string()),
+                slug: binding.slug,
+                version: String::new(),
+                warnings,
+                errors: Vec::new(),
+                next_step: None,
+            }),
+        ));
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "owner_transfer".to_string(),
+            dry_run: true,
+            accepted: true,
+            request_id: None,
+            status: Some("dry_run".to_string()),
+            slug: request.slug.clone(),
+            version: String::new(),
+            warnings,
+            errors: Vec::new(),
+            next_step: Some(
+                "Dry-run preview only. Re-run with dry_run=false and a non-empty reason to transfer the persisted owner binding."
+                    .to_string(),
+            ),
+        }),
+    ))
+}
+
 pub fn routes() -> Routes {
     read_only_routes()
         .add(registry_publish_path(), post(publish))
@@ -761,6 +850,7 @@ pub fn routes() -> Routes {
             post(approve_publish_request),
         )
         .add(registry_publish_reject_path(), post(reject_publish_request))
+        .add(registry_owner_transfer_path(), post(transfer_owner))
         .add(registry_yank_path(), post(yank))
 }
 
@@ -1038,6 +1128,34 @@ fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, E
     Ok(warnings)
 }
 
+fn validate_owner_transfer_request(
+    request: &RegistryOwnerTransferRequest,
+) -> Result<Vec<String>, Error> {
+    validate_registry_slug(&request.slug)?;
+
+    let new_owner_actor = request.new_owner_actor.trim();
+    if new_owner_actor.is_empty() {
+        return Err(Error::BadRequest(
+            "Registry owner transfer must include a non-empty new_owner_actor".to_string(),
+        ));
+    }
+
+    let mut warnings = Vec::new();
+    if request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|reason| reason.is_empty())
+    {
+        warnings.push(
+            "No transfer reason supplied; live owner transfer requires a non-empty reason for the governance audit trail."
+                .to_string(),
+        );
+    }
+
+    Ok(warnings)
+}
+
 fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
     value
         .as_array()
@@ -1103,7 +1221,10 @@ fn publish_request_next_step(
             ))
         }
         crate::models::registry_publish_request::RegistryPublishRequestStatus::Rejected => {
-            Some("Fix validation errors and create a new publish request.".to_string())
+            Some(format!(
+                "If the request was rejected by automated validation, fix the artifact and retry via POST {}; otherwise create a new publish request after governance review resolves the rejection.",
+                registry_publish_validate_path().replace("{request_id}", request_id)
+            ))
         }
         crate::models::registry_publish_request::RegistryPublishRequestStatus::Published => None,
     }

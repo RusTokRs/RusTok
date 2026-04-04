@@ -14,3 +14,8 @@ entry_type = "OutboxModule"
 leptos_crate = "rustok-outbox-admin"
 route_segment = "outbox"
 nav_label = "Outbox"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

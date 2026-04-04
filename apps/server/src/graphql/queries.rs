@@ -484,6 +484,18 @@ fn registry_module_lifecycle_from_snapshot(
                 },
             )
             .collect(),
+        follow_up_gates: snapshot
+            .follow_up_gates
+            .into_iter()
+            .map(
+                |gate| crate::graphql::types::RegistryFollowUpGateLifecycle {
+                    key: gate.key,
+                    status: gate.status,
+                    detail: gate.detail,
+                    updated_at: gate.updated_at,
+                },
+            )
+            .collect(),
     }
 }
 
@@ -1344,6 +1356,9 @@ mod tests {
             name: None,
             category: None,
             tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
             version: Some("1.2.0".to_string()),
             description: None,
             git: None,

@@ -4,6 +4,8 @@ use leptos::prelude::*;
 use leptos_router::params::ParamsMap;
 use rustok_api::UiRouteContext;
 
+use crate::{use_i18n, Locale};
+
 #[component]
 pub fn ModuleRequestProvider(
     route_segment: Option<String>,
@@ -15,9 +17,13 @@ pub fn ModuleRequestProvider(
         .latest_values()
         .map(|(key, value)| (key.to_string(), value.to_string()))
         .collect::<BTreeMap<_, _>>();
+    let locale = match use_i18n().get_locale() {
+        Locale::en => Some("en".to_string()),
+        Locale::ru => Some("ru".to_string()),
+    };
 
     provide_context(UiRouteContext {
-        locale: None,
+        locale,
         route_segment,
         subpath,
         query,

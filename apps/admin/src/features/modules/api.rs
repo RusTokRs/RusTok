@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    RegistryGovernanceEventLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
-    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
+    RegistryFollowUpGateLifecycle, RegistryGovernanceEventLifecycle, RegistryModuleLifecycle,
+    RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
@@ -22,7 +22,7 @@ pub const TENANT_MODULES_QUERY: &str =
 pub const MARKETPLACE_QUERY: &str =
     "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } followUpGates { key status detail updatedAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const ACTIVE_BUILD_QUERY: &str =
     "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ACTIVE_RELEASE_QUERY: &str =
@@ -43,6 +43,8 @@ pub const UPGRADE_MODULE_MUTATION: &str =
     "mutation UpgradeModule($slug: String!, $version: String!) { upgradeModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ROLLBACK_BUILD_MUTATION: &str =
     "mutation RollbackBuild($buildId: String!) { rollbackBuild(buildId: $buildId) { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+#[cfg(feature = "ssr")]
+const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EnabledModulesResponse {
@@ -144,6 +146,67 @@ pub struct UpgradeModuleResponse {
 pub struct RollbackBuildResponse {
     #[serde(rename = "rollbackBuild")]
     pub rollback_build: BuildJob,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryMutationResult {
+    pub schema_version: u32,
+    pub action: String,
+    pub dry_run: bool,
+    pub accepted: bool,
+    pub request_id: Option<String>,
+    pub status: Option<String>,
+    pub slug: String,
+    pub version: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    pub next_step: Option<String>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Debug, Serialize)]
+struct RegistryValidationRequestPayload {
+    #[serde(rename = "schema_version")]
+    schema_version: u32,
+    #[serde(rename = "dry_run")]
+    dry_run: bool,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Debug, Serialize)]
+struct RegistryDecisionRequestPayload {
+    #[serde(rename = "schema_version")]
+    schema_version: u32,
+    #[serde(rename = "dry_run")]
+    dry_run: bool,
+    reason: Option<String>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Debug, Serialize)]
+struct RegistryOwnerTransferPayload {
+    #[serde(rename = "schema_version")]
+    schema_version: u32,
+    #[serde(rename = "dry_run")]
+    dry_run: bool,
+    slug: String,
+    #[serde(rename = "new_owner_actor")]
+    new_owner_actor: String,
+    reason: Option<String>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Debug, Serialize)]
+struct RegistryYankPayload {
+    #[serde(rename = "schema_version")]
+    schema_version: u32,
+    #[serde(rename = "dry_run")]
+    dry_run: bool,
+    slug: String,
+    version: String,
+    reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1755,6 +1818,81 @@ fn map_registry_governance_event_row(
 }
 
 #[cfg(feature = "ssr")]
+fn registry_follow_up_gate_detail(key: &str) -> &'static str {
+    match key {
+        "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
+        "targeted_tests" => {
+            "Targeted module tests still run outside the current registry validator."
+        }
+        "security_policy_review" => {
+            "Security and policy review still require an external gate before production approval."
+        }
+        _ => "External follow-up gate is still pending.",
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn derive_registry_follow_up_gates(
+    latest_request: Option<&RegistryPublishRequestLifecycle>,
+    recent_events: &[RegistryGovernanceEventLifecycle],
+) -> Vec<RegistryFollowUpGateLifecycle> {
+    let gate_keys = ["compile_smoke", "targeted_tests", "security_policy_review"];
+    let mut gates = Vec::new();
+
+    for gate_key in gate_keys {
+        let latest_event = recent_events.iter().find(|event| {
+            matches!(
+                event.event_type.as_str(),
+                "follow_up_gate_queued" | "follow_up_gate_passed" | "follow_up_gate_failed"
+            ) && event
+                .details
+                .get("gate")
+                .and_then(serde_json::Value::as_str)
+                == Some(gate_key)
+        });
+
+        if let Some(event) = latest_event {
+            gates.push(RegistryFollowUpGateLifecycle {
+                key: gate_key.to_string(),
+                status: event
+                    .details
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| match event.event_type.as_str() {
+                        "follow_up_gate_passed" => "passed",
+                        "follow_up_gate_failed" => "failed",
+                        _ => "pending",
+                    })
+                    .to_string(),
+                detail: event
+                    .details
+                    .get("detail")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| registry_follow_up_gate_detail(gate_key))
+                    .to_string(),
+                updated_at: event.created_at.clone(),
+            });
+            continue;
+        }
+
+        if latest_request
+            .is_some_and(|request| matches!(request.status.as_str(), "approved" | "published"))
+        {
+            gates.push(RegistryFollowUpGateLifecycle {
+                key: gate_key.to_string(),
+                status: "pending".to_string(),
+                detail: registry_follow_up_gate_detail(gate_key).to_string(),
+                updated_at: latest_request
+                    .map(|request| request.updated_at.clone())
+                    .unwrap_or_default(),
+            });
+        }
+    }
+
+    gates
+}
+
+#[cfg(feature = "ssr")]
 async fn load_registry_module_lifecycle(
     app_ctx: &loco_rs::app::AppContext,
     slug: &str,
@@ -1955,11 +2093,14 @@ async fn load_registry_module_lifecycle(
         return Ok(None);
     }
 
+    let follow_up_gates = derive_registry_follow_up_gates(latest_request.as_ref(), &recent_events);
+
     Ok(Some(RegistryModuleLifecycle {
         owner_binding,
         latest_request,
         latest_release,
         recent_events,
+        follow_up_gates,
     }))
 }
 
@@ -3562,6 +3703,249 @@ async fn upgrade_module_native(slug: String, version: String) -> Result<BuildJob
     }
 }
 
+#[cfg(feature = "ssr")]
+async fn registry_governance_request_native<TReq, TResp>(
+    method: reqwest::Method,
+    path: String,
+    token: String,
+    tenant: String,
+    actor: String,
+    publisher: Option<String>,
+    body: &TReq,
+) -> Result<TResp, ServerFnError>
+where
+    TReq: Serialize + ?Sized,
+    TResp: for<'de> Deserialize<'de>,
+{
+    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+
+    let actor = actor.trim();
+    if actor.is_empty() {
+        return Err(server_error(
+            "Registry governance actions require a non-empty actor",
+        ));
+    }
+
+    let client = reqwest::Client::new();
+    let mut request = client
+        .request(
+            method,
+            format!("{}{}", crate::shared::api::api_base_url(), path),
+        )
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(CONTENT_TYPE, "application/json")
+        .header("X-Tenant-ID", tenant)
+        .header("x-rustok-actor", actor)
+        .json(body);
+
+    if let Some(publisher) = publisher
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        request = request.header("x-rustok-publisher", publisher);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|err| server_error(err.to_string()))?;
+    if !response.status().is_success() {
+        return Err(server_error(
+            crate::shared::api::extract_http_error(response).await,
+        ));
+    }
+
+    response
+        .json::<TResp>()
+        .await
+        .map_err(|err| server_error(err.to_string()))
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "admin/registry-validate-publish-request"
+)]
+async fn validate_registry_publish_request_native(
+    token: String,
+    tenant: String,
+    request_id: String,
+    actor: String,
+    dry_run: bool,
+) -> Result<RegistryMutationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        registry_governance_request_native(
+            reqwest::Method::POST,
+            format!("/v2/catalog/publish/{request_id}/validate"),
+            token,
+            tenant,
+            actor,
+            None,
+            &RegistryValidationRequestPayload {
+                schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+                dry_run,
+            },
+        )
+        .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, request_id, actor, dry_run);
+        Err(ServerFnError::new(
+            "admin/registry-validate-publish-request requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "admin/registry-approve-publish-request"
+)]
+async fn approve_registry_publish_request_native(
+    token: String,
+    tenant: String,
+    request_id: String,
+    actor: String,
+    publisher: Option<String>,
+    dry_run: bool,
+) -> Result<RegistryMutationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        registry_governance_request_native(
+            reqwest::Method::POST,
+            format!("/v2/catalog/publish/{request_id}/approve"),
+            token,
+            tenant,
+            actor,
+            publisher,
+            &RegistryDecisionRequestPayload {
+                schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+                dry_run,
+                reason: None,
+            },
+        )
+        .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, request_id, actor, publisher, dry_run);
+        Err(ServerFnError::new(
+            "admin/registry-approve-publish-request requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/registry-reject-publish-request")]
+async fn reject_registry_publish_request_native(
+    token: String,
+    tenant: String,
+    request_id: String,
+    actor: String,
+    reason: String,
+    dry_run: bool,
+) -> Result<RegistryMutationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        registry_governance_request_native(
+            reqwest::Method::POST,
+            format!("/v2/catalog/publish/{request_id}/reject"),
+            token,
+            tenant,
+            actor,
+            None,
+            &RegistryDecisionRequestPayload {
+                schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+                dry_run,
+                reason: Some(reason),
+            },
+        )
+        .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, request_id, actor, reason, dry_run);
+        Err(ServerFnError::new(
+            "admin/registry-reject-publish-request requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/registry-transfer-owner")]
+async fn transfer_registry_owner_native(
+    token: String,
+    tenant: String,
+    slug: String,
+    actor: String,
+    new_owner_actor: String,
+    reason: String,
+    dry_run: bool,
+) -> Result<RegistryMutationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        registry_governance_request_native(
+            reqwest::Method::POST,
+            "/v2/catalog/owner-transfer".to_string(),
+            token,
+            tenant,
+            actor,
+            None,
+            &RegistryOwnerTransferPayload {
+                schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+                dry_run,
+                slug,
+                new_owner_actor,
+                reason: Some(reason),
+            },
+        )
+        .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, slug, actor, new_owner_actor, reason, dry_run);
+        Err(ServerFnError::new(
+            "admin/registry-transfer-owner requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/registry-yank-release")]
+async fn yank_registry_release_native(
+    token: String,
+    tenant: String,
+    slug: String,
+    version: String,
+    actor: String,
+    reason: String,
+    dry_run: bool,
+) -> Result<RegistryMutationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        registry_governance_request_native(
+            reqwest::Method::POST,
+            "/v2/catalog/yank".to_string(),
+            token,
+            tenant,
+            actor,
+            None,
+            &RegistryYankPayload {
+                schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+                dry_run,
+                slug,
+                version,
+                reason: Some(reason),
+            },
+        )
+        .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, slug, version, actor, reason, dry_run);
+        Err(ServerFnError::new(
+            "admin/registry-yank-release requires the `ssr` feature",
+        ))
+    }
+}
+
 pub async fn toggle_module(
     module_slug: String,
     enabled: bool,
@@ -3696,4 +4080,111 @@ pub async fn rollback_build(
             Ok(response.rollback_build)
         }
     }
+}
+
+pub async fn validate_registry_publish_request(
+    request_id: String,
+    actor: String,
+    dry_run: bool,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<RegistryMutationResult, ApiError> {
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    validate_registry_publish_request_native(
+        token,
+        tenant_slug.unwrap_or_default(),
+        request_id,
+        actor,
+        dry_run,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))
+}
+
+pub async fn approve_registry_publish_request(
+    request_id: String,
+    actor: String,
+    publisher: Option<String>,
+    dry_run: bool,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<RegistryMutationResult, ApiError> {
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    approve_registry_publish_request_native(
+        token,
+        tenant_slug.unwrap_or_default(),
+        request_id,
+        actor,
+        publisher,
+        dry_run,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))
+}
+
+pub async fn reject_registry_publish_request(
+    request_id: String,
+    actor: String,
+    reason: String,
+    dry_run: bool,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<RegistryMutationResult, ApiError> {
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    reject_registry_publish_request_native(
+        token,
+        tenant_slug.unwrap_or_default(),
+        request_id,
+        actor,
+        reason,
+        dry_run,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))
+}
+
+pub async fn transfer_registry_owner(
+    slug: String,
+    actor: String,
+    new_owner_actor: String,
+    reason: String,
+    dry_run: bool,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<RegistryMutationResult, ApiError> {
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    transfer_registry_owner_native(
+        token,
+        tenant_slug.unwrap_or_default(),
+        slug,
+        actor,
+        new_owner_actor,
+        reason,
+        dry_run,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))
+}
+
+pub async fn yank_registry_release(
+    slug: String,
+    version: String,
+    actor: String,
+    reason: String,
+    dry_run: bool,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<RegistryMutationResult, ApiError> {
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    yank_registry_release_native(
+        token,
+        tenant_slug.unwrap_or_default(),
+        slug,
+        version,
+        actor,
+        reason,
+        dry_run,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))
 }

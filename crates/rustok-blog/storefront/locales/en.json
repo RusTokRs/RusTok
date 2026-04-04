@@ -1,0 +1,22 @@
+{
+  "blog.badge": "blog",
+  "blog.title": "Stories published from the module package",
+  "blog.subtitle": "This storefront surface reads blog data through GraphQL with no host-specific blog wiring.",
+  "blog.error.load": "Failed to load blog storefront data",
+  "blog.selected.emptyTitle": "Pick a published post",
+  "blog.selected.emptyBody": "Open a post from the list below with `?slug=` or publish one from the blog admin package.",
+  "blog.selected.missingSlug": "missing-slug",
+  "blog.selected.noExcerpt": "No excerpt yet.",
+  "blog.selected.unscheduled": "Unscheduled",
+  "blog.selected.noBody": "No body content yet.",
+  "blog.selected.slugLabel": "slug",
+  "blog.selected.localeLabel": "locale",
+  "blog.selected.publishedLabel": "published",
+  "blog.list.empty": "No published blog posts are available for storefront rendering yet.",
+  "blog.list.title": "Published posts",
+  "blog.list.total": "total",
+  "blog.list.open": "Open",
+  "blog.list.localeLabel": "locale",
+  "blog.list.noExcerpt": "No excerpt yet.",
+  "blog.body.rawFormat": "Stored in `{format}` format. Raw body length: {count} characters."
+}

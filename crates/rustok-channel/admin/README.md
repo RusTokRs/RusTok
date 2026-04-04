@@ -8,6 +8,7 @@ Leptos admin UI package for the `rustok-channel` module.
 - Stays module-owned: channel-specific admin UI does not live in `apps/admin`.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Owns the experimental channel-management operator flow: bootstrap, create channel, attach targets, bind modules, bind OAuth apps.
+- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
 
 ## Entry Points
 
@@ -21,6 +22,7 @@ Leptos admin UI package for the `rustok-channel` module.
 - Uses native-first Leptos `#[server]` functions for bootstrap, channel CRUD, target CRUD, module bindings, and OAuth app bindings.
 - Keeps the thin REST surface exposed by `apps/server/src/controllers/channel.rs` as a parallel fallback path; native server functions do not replace `/api/channels/*`.
 - Must keep API assumptions aligned with the `rustok-channel` module and server wiring.
+- Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
 
 ## Documentation
 

@@ -18,7 +18,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
 - Uses native `#[server] -> PostService -> DB` on the SSR path and falls back to the `rustok-blog` GraphQL contract when native transport is unavailable.
-- Should remain compatible with the host storefront slot and generic module page contract.
+- Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 
 ## Documentation
 

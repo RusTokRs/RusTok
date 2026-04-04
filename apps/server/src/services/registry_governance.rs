@@ -32,6 +32,9 @@ use crate::services::marketplace_catalog::{
 };
 
 const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
+const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
+    &["compile_smoke", "targeted_tests", "security_policy_review"];
+const REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
 
 #[derive(Debug, Clone)]
 pub struct RegistryArtifactUpload {
@@ -91,17 +94,33 @@ pub struct RegistryGovernanceEventSnapshot {
 }
 
 #[derive(Debug, Clone)]
+pub struct RegistryFollowUpGateSnapshot {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct RegistryModuleLifecycleSnapshot {
     pub owner_binding: Option<RegistryModuleOwnerSnapshot>,
     pub latest_request: Option<RegistryPublishRequestSnapshot>,
     pub latest_release: Option<RegistryModuleReleaseSnapshot>,
     pub recent_events: Vec<RegistryGovernanceEventSnapshot>,
+    pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
 }
 
 #[derive(Debug, Default)]
 struct RegistryArtifactValidation {
     warnings: Vec<String>,
     errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct RegistryValidationCheckDetail {
+    key: String,
+    status: String,
+    detail: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -377,6 +396,24 @@ impl RegistryGovernanceService {
         self.ensure_actor_can_manage_publish_request(actor, &request, "validate")
             .await?;
 
+        let was_requeued = match request.status {
+            RegistryPublishRequestStatus::Rejected => {
+                let latest_event_type = self.latest_request_event_type(&request.id).await?;
+                if rejected_publish_request_can_retry(
+                    latest_event_type.as_deref(),
+                    request.rejection_reason.as_deref(),
+                ) {
+                    true
+                } else {
+                    anyhow::bail!(
+                        "Registry publish request '{}' was manually rejected by governance review and cannot be revalidated; create a new publish request instead",
+                        request_id
+                    );
+                }
+            }
+            _ => false,
+        };
+
         match request.status {
             RegistryPublishRequestStatus::Draft => {
                 anyhow::bail!(
@@ -384,29 +421,40 @@ impl RegistryGovernanceService {
                     request_id
                 );
             }
-            RegistryPublishRequestStatus::Approved
-            | RegistryPublishRequestStatus::Rejected
-            | RegistryPublishRequestStatus::Published => return Ok((request, false)),
+            RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published => {
+                return Ok((request, false))
+            }
             RegistryPublishRequestStatus::Validating => return Ok((request, false)),
-            RegistryPublishRequestStatus::ArtifactUploaded
+            RegistryPublishRequestStatus::Rejected
+            | RegistryPublishRequestStatus::ArtifactUploaded
             | RegistryPublishRequestStatus::Submitted => {}
         }
 
         let validating_at = Utc::now();
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::Validating);
+        request_active.validation_errors = Set(serde_json::json!([]));
+        request_active.rejected_by = Set(None);
+        request_active.rejection_reason = Set(None);
+        request_active.validated_at = Set(None);
         request_active.updated_at = Set(validating_at);
         let request = request_active.update(&self.db).await?;
         self.record_governance_event(
             &request.slug,
             Some(&request.id),
             None,
-            "validation_queued",
+            if was_requeued {
+                "validation_requeued"
+            } else {
+                "validation_queued"
+            },
             actor,
             None,
             serde_json::json!({
                 "version": request.version.clone(),
                 "status": request_status_label(request.status.clone()),
+                "requeued": was_requeued,
+                "follow_up_gates": follow_up_validation_gate_details(),
             }),
         )
         .await?;
@@ -440,31 +488,99 @@ impl RegistryGovernanceService {
             }
         }
 
-        let artifact = match load_registry_artifact(&request).await {
-            Ok(artifact) => artifact,
-            Err(error) => {
-                let existing_warnings = deserialize_message_list(&request.validation_warnings);
-                let errors = vec![format!(
-                    "Validation job failed before bundle checks: {error}"
-                )];
-                return self
-                    .store_validation_rejection(request, actor, &existing_warnings, &errors)
-                    .await;
+        let mut artifact_load_attempt = 1usize;
+        let artifact = loop {
+            match load_registry_artifact(&request).await {
+                Ok(artifact) => break artifact,
+                Err(error) => {
+                    let existing_warnings = deserialize_message_list(&request.validation_warnings);
+                    if let Some(retry_after_seconds) =
+                        validation_retry_delay_seconds(artifact_load_attempt)
+                    {
+                        self.record_governance_event(
+                            &request.slug,
+                            Some(&request.id),
+                            None,
+                            "validation_retry_scheduled",
+                            actor,
+                            None,
+                            serde_json::json!({
+                                "version": request.version.clone(),
+                                "status": request_status_label(request.status.clone()),
+                                "attempt": artifact_load_attempt,
+                                "next_attempt": artifact_load_attempt + 1,
+                                "retry_after_seconds": retry_after_seconds,
+                                "error": error.to_string(),
+                            }),
+                        )
+                        .await?;
+                        tokio::time::sleep(std::time::Duration::from_secs(retry_after_seconds))
+                            .await;
+                        artifact_load_attempt += 1;
+                        continue;
+                    }
+
+                    self.record_governance_event(
+                        &request.slug,
+                        Some(&request.id),
+                        None,
+                        "validation_retry_exhausted",
+                        actor,
+                        None,
+                        serde_json::json!({
+                            "version": request.version.clone(),
+                            "status": request_status_label(request.status.clone()),
+                            "attempt": artifact_load_attempt,
+                            "max_attempts": artifact_load_attempt,
+                            "error": error.to_string(),
+                        }),
+                    )
+                    .await?;
+                    let errors = vec![format!(
+                        "Validation job exhausted artifact-load retries before bundle checks: {error}"
+                    )];
+                    return self
+                        .store_validation_rejection(
+                            request,
+                            actor,
+                            &existing_warnings,
+                            &errors,
+                            validation_failed_check_details(&errors),
+                        )
+                        .await;
+                }
             }
         };
 
         let validation = validate_registry_artifact_bundle(&request, &artifact);
         let mut warnings = deserialize_message_list(&request.validation_warnings);
+        if artifact_load_attempt > 1 {
+            warnings.push(format!(
+                "Validation artifact load succeeded after retry attempt {}.",
+                artifact_load_attempt
+            ));
+        }
         warnings.extend(validation.warnings);
         let warnings = dedupe_message_list(warnings);
 
         if !validation.errors.is_empty() {
             let errors = dedupe_message_list(validation.errors);
             return self
-                .store_validation_rejection(request, actor, &warnings, &errors)
+                .store_validation_rejection(
+                    request,
+                    actor,
+                    &warnings,
+                    &errors,
+                    validation_failed_check_details(&errors),
+                )
                 .await;
         }
 
+        let mut warnings = warnings;
+        warnings.push(follow_up_validation_warning().to_string());
+        let warnings = dedupe_message_list(warnings);
+        let automated_checks = validation_passed_check_details();
+        let follow_up_gates = follow_up_validation_gate_details();
         let approved_at = Utc::now();
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::Approved);
@@ -488,9 +604,27 @@ impl RegistryGovernanceService {
                 "version": request.version.clone(),
                 "status": request_status_label(request.status.clone()),
                 "warnings": warnings.clone(),
+                "automated_checks": automated_checks,
+                "follow_up_gates": follow_up_gates,
             }),
         )
         .await?;
+        for gate in REGISTRY_VALIDATION_FOLLOW_UP_GATES {
+            self.record_governance_event(
+                &request.slug,
+                Some(&request.id),
+                None,
+                "follow_up_gate_queued",
+                actor,
+                None,
+                serde_json::json!({
+                    "gate": gate,
+                    "status": "pending",
+                    "detail": follow_up_gate_detail(gate),
+                }),
+            )
+            .await?;
+        }
         Ok(request)
     }
 
@@ -671,6 +805,62 @@ impl RegistryGovernanceService {
         Ok(release)
     }
 
+    pub async fn transfer_registry_slug_owner(
+        &self,
+        slug: &str,
+        new_owner_actor: &str,
+        reason: &str,
+        actor: &str,
+    ) -> anyhow::Result<registry_module_owner::Model> {
+        let existing = self
+            .registry_slug_owner(slug)
+            .await?
+            .ok_or_else(|| anyhow!("Registry owner binding for slug '{slug}' was not found"))?;
+        self.ensure_actor_can_transfer_registry_owner(actor, &existing, "transfer ownership")
+            .await?;
+
+        let next_owner = normalize_actor(new_owner_actor);
+        if next_owner == "anonymous" {
+            anyhow::bail!(
+                "Registry owner transfer for slug '{}' requires a non-empty new_owner_actor",
+                slug
+            );
+        }
+        if existing.owner_actor == next_owner {
+            anyhow::bail!(
+                "Registry owner for slug '{}' is already bound to '{}'",
+                slug,
+                next_owner
+            );
+        }
+
+        let previous_owner = existing.owner_actor.clone();
+        let normalized_actor = normalize_actor(actor);
+        let now = Utc::now();
+        let mut active: RegistryModuleOwnerActiveModel = existing.into();
+        active.owner_actor = Set(next_owner.clone());
+        active.bound_by = Set(normalized_actor.clone());
+        active.bound_at = Set(now);
+        active.updated_at = Set(now);
+        let binding = active.update(&self.db).await?;
+        self.record_governance_event(
+            slug,
+            None,
+            None,
+            "owner_transferred",
+            &normalized_actor,
+            Some(&binding.owner_actor),
+            serde_json::json!({
+                "previous_owner_actor": previous_owner,
+                "new_owner_actor": binding.owner_actor.clone(),
+                "bound_by": binding.bound_by.clone(),
+                "reason": reason.trim(),
+            }),
+        )
+        .await?;
+        Ok(binding)
+    }
+
     pub async fn apply_catalog_projection(
         &self,
         modules: Vec<CatalogManifestModule>,
@@ -763,6 +953,9 @@ impl RegistryGovernanceService {
             return Ok(None);
         }
 
+        let follow_up_gates =
+            derive_follow_up_gate_snapshots(latest_request.as_ref(), &recent_events);
+
         Ok(Some(RegistryModuleLifecycleSnapshot {
             owner_binding: owner_binding.map(|binding| RegistryModuleOwnerSnapshot {
                 owner_actor: binding.owner_actor,
@@ -805,6 +998,7 @@ impl RegistryGovernanceService {
                     created_at: event.created_at.to_rfc3339(),
                 })
                 .collect(),
+            follow_up_gates,
         }))
     }
 
@@ -929,22 +1123,28 @@ impl RegistryGovernanceService {
     ) -> anyhow::Result<()> {
         let actor = normalize_actor(actor);
         let owner = self.registry_slug_owner(&request.slug).await?;
-        if actor_is_registry_governance(&actor)
-            || actor == request.requested_by
+        let actor_matches_request = actor == request.requested_by
             || request
                 .publisher_identity
                 .as_ref()
-                .is_some_and(|publisher| actor == publisher.as_str())
-            || owner
-                .as_ref()
-                .is_some_and(|owner| actor == owner.owner_actor)
-            || (owner.is_none() && legacy_actor_can_manage_registry_slug(&actor, &request.slug))
+                .is_some_and(|publisher| actor == publisher.as_str());
+        let actor_matches_owner = owner
+            .as_ref()
+            .is_some_and(|owner| actor == owner.owner_actor);
+
+        if actor_is_registry_governance(&actor) || actor_matches_owner {
+            return Ok(());
+        }
+
+        if owner.is_none()
+            && (actor_matches_request
+                || legacy_actor_can_manage_registry_slug(&actor, &request.slug))
         {
             return Ok(());
         }
 
         anyhow::bail!(
-            "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'",
+            "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'; management actions require either a governance actor, the current persisted owner binding, or (before owner binding exists) the original requester/publisher identity",
             actor,
             action,
             request.id,
@@ -961,22 +1161,15 @@ impl RegistryGovernanceService {
         let actor = normalize_actor(actor);
         let owner = self.registry_slug_owner(&request.slug).await?;
         if actor_is_registry_governance(&actor)
-            || request
-                .publisher_identity
-                .as_ref()
-                .is_some_and(|publisher| actor == publisher.as_str())
             || owner
                 .as_ref()
                 .is_some_and(|owner| actor == owner.owner_actor)
-            || (owner.is_none()
-                && request.publisher_identity.is_none()
-                && legacy_actor_can_manage_registry_slug(&actor, &request.slug))
         {
             return Ok(());
         }
 
         anyhow::bail!(
-            "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'",
+            "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'; review actions require either a governance actor or the current persisted owner binding",
             actor,
             action,
             request.id,
@@ -1008,6 +1201,25 @@ impl RegistryGovernanceService {
             action,
             release.slug,
             release.version
+        )
+    }
+
+    async fn ensure_actor_can_transfer_registry_owner(
+        &self,
+        actor: &str,
+        binding: &registry_module_owner::Model,
+        action: &str,
+    ) -> anyhow::Result<()> {
+        let actor = normalize_actor(actor);
+        if actor_is_registry_governance(&actor) || actor == binding.owner_actor {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Actor '{}' is not allowed to {} for slug '{}'",
+            actor,
+            action,
+            binding.slug
         )
     }
 
@@ -1123,12 +1335,22 @@ impl RegistryGovernanceService {
             .await?)
     }
 
+    async fn latest_request_event_type(&self, request_id: &str) -> anyhow::Result<Option<String>> {
+        Ok(RegistryGovernanceEventEntity::find()
+            .filter(registry_governance_event::Column::RequestId.eq(request_id))
+            .order_by_desc(registry_governance_event::Column::CreatedAt)
+            .one(&self.db)
+            .await?
+            .map(|event| event.event_type))
+    }
+
     async fn store_validation_rejection(
         &self,
         request: registry_publish_request::Model,
         actor: &str,
         warnings: &[String],
         errors: &[String],
+        failed_checks: Vec<RegistryValidationCheckDetail>,
     ) -> anyhow::Result<registry_publish_request::Model> {
         let rejected_at = Utc::now();
         let errors = dedupe_message_list(errors.to_vec());
@@ -1158,6 +1380,7 @@ impl RegistryGovernanceService {
                 "reason": request.rejection_reason.clone(),
                 "warnings": warnings,
                 "errors": errors,
+                "automated_checks": failed_checks,
             }),
         )
         .await?;
@@ -1253,6 +1476,142 @@ async fn store_registry_artifact(
         artifact_url: artifact_path.display().to_string(),
         artifact_size: artifact.bytes.len() as i64,
     })
+}
+
+fn follow_up_validation_warning() -> &'static str {
+    "Automated artifact and manifest contract checks passed, but compile smoke, targeted test smoke, and security/policy review still remain external follow-up gates before production approval."
+}
+
+fn follow_up_gate_detail(gate: &str) -> &'static str {
+    match gate {
+        "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
+        "targeted_tests" => {
+            "Targeted module tests still run outside the current registry validator."
+        }
+        "security_policy_review" => {
+            "Security and policy review still require an external gate before production approval."
+        }
+        _ => "External follow-up gate is still pending.",
+    }
+}
+
+fn follow_up_validation_gate_details() -> Vec<RegistryValidationCheckDetail> {
+    REGISTRY_VALIDATION_FOLLOW_UP_GATES
+        .iter()
+        .map(|gate| RegistryValidationCheckDetail {
+            key: (*gate).to_string(),
+            status: "pending_follow_up".to_string(),
+            detail: follow_up_gate_detail(gate).to_string(),
+        })
+        .collect()
+}
+
+fn validation_passed_check_details() -> Vec<RegistryValidationCheckDetail> {
+    vec![RegistryValidationCheckDetail {
+        key: "artifact_bundle_contract".to_string(),
+        status: "passed".to_string(),
+        detail:
+            "Artifact bundle JSON, rustok-module.toml parity, and crate/UI manifest contract checks passed."
+                .to_string(),
+    }]
+}
+
+fn validation_failed_check_details(errors: &[String]) -> Vec<RegistryValidationCheckDetail> {
+    vec![RegistryValidationCheckDetail {
+        key: "artifact_bundle_contract".to_string(),
+        status: "failed".to_string(),
+        detail: errors
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "Artifact bundle contract validation failed.".to_string()),
+    }]
+}
+
+fn validation_retry_delay_seconds(failed_attempt: usize) -> Option<u64> {
+    REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS
+        .get(failed_attempt.saturating_sub(1))
+        .copied()
+}
+
+fn derive_follow_up_gate_snapshots(
+    latest_request: Option<&registry_publish_request::Model>,
+    recent_events: &[registry_governance_event::Model],
+) -> Vec<RegistryFollowUpGateSnapshot> {
+    let mut snapshots = Vec::new();
+
+    for gate in REGISTRY_VALIDATION_FOLLOW_UP_GATES {
+        let latest_event = recent_events.iter().find(|event| {
+            matches!(
+                event.event_type.as_str(),
+                "follow_up_gate_queued" | "follow_up_gate_passed" | "follow_up_gate_failed"
+            ) && event
+                .details
+                .get("gate")
+                .and_then(serde_json::Value::as_str)
+                == Some(*gate)
+        });
+
+        if let Some(event) = latest_event {
+            let status = event
+                .details
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| match event.event_type.as_str() {
+                    "follow_up_gate_passed" => "passed",
+                    "follow_up_gate_failed" => "failed",
+                    _ => "pending",
+                });
+            let detail = event
+                .details
+                .get("detail")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| follow_up_gate_detail(gate));
+
+            snapshots.push(RegistryFollowUpGateSnapshot {
+                key: (*gate).to_string(),
+                status: status.to_string(),
+                detail: detail.to_string(),
+                updated_at: event.created_at.to_rfc3339(),
+            });
+            continue;
+        }
+
+        if latest_request.is_some_and(|request| {
+            matches!(
+                request.status,
+                RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
+            )
+        }) {
+            snapshots.push(RegistryFollowUpGateSnapshot {
+                key: (*gate).to_string(),
+                status: "pending".to_string(),
+                detail: follow_up_gate_detail(gate).to_string(),
+                updated_at: latest_request
+                    .and_then(|request| {
+                        request
+                            .validated_at
+                            .as_ref()
+                            .or(request.approved_at.as_ref())
+                    })
+                    .map(|ts| ts.to_rfc3339())
+                    .unwrap_or_default(),
+            });
+        }
+    }
+
+    snapshots
+}
+
+fn rejected_publish_request_can_retry(
+    latest_event_type: Option<&str>,
+    rejection_reason: Option<&str>,
+) -> bool {
+    if matches!(latest_event_type, Some("validation_failed")) {
+        return true;
+    }
+
+    rejection_reason
+        .is_some_and(|reason| !reason.trim().starts_with("Governance rejection reason:"))
 }
 
 fn normalize_actor(value: &str) -> String {
@@ -1957,6 +2316,99 @@ mod tests {
                 .any(|error| error.contains("admin/Cargo.toml")),
             "{:?}",
             validation.errors
+        );
+    }
+
+    #[test]
+    fn rejected_publish_request_can_retry_after_validation_failure() {
+        assert!(rejected_publish_request_can_retry(
+            Some("validation_failed"),
+            Some("Validation job failed before bundle checks: missing artifact"),
+        ));
+        assert!(rejected_publish_request_can_retry(
+            None,
+            Some("Validation job failed before bundle checks: missing artifact"),
+        ));
+    }
+
+    #[test]
+    fn rejected_publish_request_cannot_retry_after_manual_governance_reject() {
+        assert!(!rejected_publish_request_can_retry(
+            Some("request_rejected"),
+            Some("Governance rejection reason: owner mismatch"),
+        ));
+    }
+
+    #[test]
+    fn validation_retry_delay_schedule_uses_backoff() {
+        assert_eq!(validation_retry_delay_seconds(1), Some(1));
+        assert_eq!(validation_retry_delay_seconds(2), Some(3));
+        assert_eq!(validation_retry_delay_seconds(3), Some(5));
+        assert_eq!(validation_retry_delay_seconds(4), None);
+    }
+
+    #[test]
+    fn derive_follow_up_gate_snapshots_reads_latest_gate_events() {
+        let now = Utc::now();
+        let mut request = sample_publish_request_model();
+        request.status = RegistryPublishRequestStatus::Approved;
+        request.validated_at = Some(now);
+        let events = vec![
+            registry_governance_event::Model {
+                id: "rge_compile".to_string(),
+                slug: "blog".to_string(),
+                request_id: Some(request.id.clone()),
+                release_id: None,
+                event_type: "follow_up_gate_queued".to_string(),
+                actor: "xtask:module-publish".to_string(),
+                publisher: None,
+                details: serde_json::json!({
+                    "gate": "compile_smoke",
+                    "status": "pending",
+                    "detail": "Compile smoke still runs outside the current registry validator."
+                }),
+                created_at: now,
+            },
+            registry_governance_event::Model {
+                id: "rge_tests".to_string(),
+                slug: "blog".to_string(),
+                request_id: Some(request.id.clone()),
+                release_id: None,
+                event_type: "follow_up_gate_failed".to_string(),
+                actor: "governance:moderator".to_string(),
+                publisher: None,
+                details: serde_json::json!({
+                    "gate": "targeted_tests",
+                    "status": "failed",
+                    "detail": "Targeted tests failed in CI."
+                }),
+                created_at: now,
+            },
+        ];
+
+        let snapshots = derive_follow_up_gate_snapshots(Some(&request), &events);
+
+        assert_eq!(snapshots.len(), 3);
+        assert_eq!(
+            snapshots
+                .iter()
+                .find(|gate| gate.key == "compile_smoke")
+                .map(|gate| gate.status.as_str()),
+            Some("pending")
+        );
+        assert_eq!(
+            snapshots
+                .iter()
+                .find(|gate| gate.key == "targeted_tests")
+                .map(|gate| gate.status.as_str()),
+            Some("failed")
+        );
+        assert_eq!(
+            snapshots
+                .iter()
+                .find(|gate| gate.key == "security_policy_review")
+                .map(|gate| gate.status.as_str()),
+            Some("pending")
         );
     }
 

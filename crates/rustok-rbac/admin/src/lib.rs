@@ -1,13 +1,18 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::UiRouteContext;
+
+use crate::i18n::t;
 
 #[component]
 pub fn RbacAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -19,11 +24,13 @@ pub fn RbacAdmin() -> impl IntoView {
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-2">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        "rbac"
+                        {t(locale.as_deref(), "rbac.badge", "rbac")}
                     </span>
-                    <h1 class="text-2xl font-semibold text-card-foreground">"RBAC Runtime"</h1>
+                    <h1 class="text-2xl font-semibold text-card-foreground">
+                        {t(locale.as_deref(), "rbac.title", "RBAC Runtime")}
+                    </h1>
                     <p class="max-w-3xl text-sm text-muted-foreground">
-                        "Module-owned overview for the live permission snapshot and module-declared access vocabulary."
+                        {t(locale.as_deref(), "rbac.subtitle", "Module-owned overview for the live permission snapshot and module-declared access vocabulary.")}
                     </p>
                 </div>
             </header>
@@ -33,21 +40,23 @@ pub fn RbacAdmin() -> impl IntoView {
                     bootstrap.get().map(|result| match result {
                         Ok(bootstrap) => view! {
                             <section class="grid gap-4 lg:grid-cols-3">
-                                <InfoCard label="Tenant" value=bootstrap.tenant_slug.clone() />
-                                <InfoCard label="Role" value=bootstrap.inferred_role.clone() />
-                                <InfoCard label="User ID" value=bootstrap.current_user_id.clone() />
+                                <InfoCard label=t(locale.as_deref(), "rbac.info.tenant", "Tenant") value=bootstrap.tenant_slug.clone() />
+                                <InfoCard label=t(locale.as_deref(), "rbac.info.role", "Role") value=bootstrap.inferred_role.clone() />
+                                <InfoCard label=t(locale.as_deref(), "rbac.info.userId", "User ID") value=bootstrap.current_user_id.clone() />
                             </section>
 
                             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                                 <div class="flex items-center justify-between gap-4">
                                     <div>
-                                        <h2 class="text-lg font-semibold text-card-foreground">"Granted Permissions"</h2>
+                                        <h2 class="text-lg font-semibold text-card-foreground">
+                                            {t(locale.as_deref(), "rbac.permissions.title", "Granted Permissions")}
+                                        </h2>
                                         <p class="text-sm text-muted-foreground">
-                                            "Live snapshot derived from the current security context."
+                                            {t(locale.as_deref(), "rbac.permissions.subtitle", "Live snapshot derived from the current security context.")}
                                         </p>
                                     </div>
                                     <div class="text-sm text-muted-foreground">
-                                        {format!("{} permissions", bootstrap.granted_permissions.len())}
+                                        {format!("{} {}", bootstrap.granted_permissions.len(), t(locale.as_deref(), "rbac.permissions.count", "permissions"))}
                                     </div>
                                 </div>
                                 <div class="mt-4 flex flex-wrap gap-2">
@@ -64,7 +73,9 @@ pub fn RbacAdmin() -> impl IntoView {
                             </section>
 
                             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                                <h2 class="text-lg font-semibold text-card-foreground">"Host Surfaces"</h2>
+                                <h2 class="text-lg font-semibold text-card-foreground">
+                                    {t(locale.as_deref(), "rbac.surfaces.title", "Host Surfaces")}
+                                </h2>
                                 <div class="mt-4 flex flex-wrap gap-3">
                                     {bootstrap
                                         .host_surfaces
@@ -82,7 +93,9 @@ pub fn RbacAdmin() -> impl IntoView {
                             </section>
 
                             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                                <h2 class="text-lg font-semibold text-card-foreground">"Module Permission Catalog"</h2>
+                                <h2 class="text-lg font-semibold text-card-foreground">
+                                    {t(locale.as_deref(), "rbac.catalog.title", "Module Permission Catalog")}
+                                </h2>
                                 <div class="mt-4 grid gap-3">
                                     {bootstrap
                                         .module_permissions
@@ -110,7 +123,7 @@ pub fn RbacAdmin() -> impl IntoView {
                         .into_any(),
                         Err(err) => view! {
                             <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">
-                                {format!("Failed to load RBAC bootstrap: {err}")}
+                                {format!("{}: {err}", t(locale.as_deref(), "rbac.error.loadBootstrap", "Failed to load RBAC bootstrap"))}
                             </div>
                         }
                         .into_any(),
@@ -122,7 +135,7 @@ pub fn RbacAdmin() -> impl IntoView {
 }
 
 #[component]
-fn InfoCard(label: &'static str, value: String) -> impl IntoView {
+fn InfoCard(label: String, value: String) -> impl IntoView {
     view! {
         <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div class="text-sm text-muted-foreground">{label}</div>

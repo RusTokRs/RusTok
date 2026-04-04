@@ -26,12 +26,14 @@ use crate::auth::{
     encode_email_verification_token, encode_password_reset_token, hash_refresh_token,
 };
 use crate::common::settings::RustokSettings;
+use crate::common::RequestContext;
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
     users::{self, Entity as Users},
 };
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 const DEFAULT_VERIFY_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
@@ -352,6 +354,7 @@ async fn accept_invite(
 async fn request_reset(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
+    request_context: RequestContext,
     Json(params): Json<RequestResetParams>,
 ) -> Result<Response> {
     let config = auth_config_from_ctx(&ctx)?;
@@ -374,6 +377,26 @@ async fn request_reset(
     } else {
         None
     };
+
+    if let Some(reset_token_value) = reset_token.as_ref() {
+        let email_service = email_service_from_ctx(&ctx, request_context.locale.as_str())
+            .map_err(|_| Error::InternalServerError)?;
+        let reset_url =
+            password_reset_url(&ctx, reset_token_value).map_err(|_| Error::InternalServerError)?;
+        let recipient = params.email.clone();
+
+        tokio::spawn(async move {
+            if let Err(error) = email_service
+                .send_password_reset(PasswordResetEmail {
+                    to: recipient,
+                    reset_url,
+                })
+                .await
+            {
+                tracing::warn!(error = %error, "Failed to send password reset email");
+            }
+        });
+    }
 
     format::json(ResetRequestResponse {
         status: "ok",

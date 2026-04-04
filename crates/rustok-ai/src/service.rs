@@ -31,28 +31,30 @@ use schemars::schema_for;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait,
     DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    Statement, TransactionTrait,
+    QuerySelect, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
-use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::mcp::{McpClientAdapter, ToolExecutionResult};
+use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{
     AiProviderConfig, AiRunDecisionTrace, ChatMessage, ChatMessageRole, ExecutionMode,
-    ExecutionOverride, PendingApproval, ProviderCapability, ProviderKind, ProviderTestResult,
-    ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition,
-    ToolTrace,
+    ExecutionOverride, PendingApproval, ProviderCapability, ProviderKind, ProviderStreamEmitter,
+    ProviderStreamEvent, ProviderTestResult, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest,
+    TaskProfile, ToolCall, ToolDefinition, ToolTrace,
 };
 use crate::policy::ToolExecutionPolicy;
 use crate::provider::{provider_for_kind, ModelProvider};
 use crate::router::{AiRouter, RouterProviderProfile};
 use crate::runtime::AiRuntime;
+use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
 use crate::{AiError, AiResult};
 
 static STAGED_SCAFFOLDS: Lazy<Arc<Mutex<HashMap<Uuid, StagedModuleScaffold>>>> =
@@ -281,6 +283,30 @@ pub struct AiChatRunRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiRecentRunRecord {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub session_title: String,
+    pub provider_profile_id: Uuid,
+    pub provider_display_name: String,
+    pub provider_kind: ProviderKind,
+    pub task_profile_id: Option<Uuid>,
+    pub task_profile_slug: Option<String>,
+    pub status: String,
+    pub model: String,
+    pub execution_mode: ExecutionMode,
+    pub execution_path: ExecutionMode,
+    pub execution_target: Option<String>,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
+    pub error_message: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub duration_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiApprovalRequestRecord {
     pub id: Uuid,
     pub session_id: Uuid,
@@ -335,6 +361,77 @@ pub struct AiSendMessageResult {
 pub struct AiManagementService;
 
 impl AiManagementService {
+    pub fn metrics_snapshot() -> AiRuntimeMetricsSnapshot {
+        ai_metrics::metrics_snapshot()
+    }
+
+    pub fn recent_stream_events(session_id: Option<Uuid>, limit: usize) -> Vec<AiRunStreamEvent> {
+        ai_run_stream_hub().recent_events(session_id, limit)
+    }
+
+    pub async fn list_recent_runs(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        limit: usize,
+    ) -> AiResult<Vec<AiRecentRunRecord>> {
+        let limit = limit.max(1) as u64;
+        let runs = ai_chat_runs::Entity::find()
+            .filter(ai_chat_runs::Column::TenantId.eq(tenant_id))
+            .order_by_desc(ai_chat_runs::Column::CreatedAt)
+            .limit(limit)
+            .all(db)
+            .await
+            .map_err(db_err)?;
+
+        if runs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let session_ids: Vec<Uuid> = runs.iter().map(|run| run.session_id).collect();
+        let provider_ids: Vec<Uuid> = runs.iter().map(|run| run.provider_profile_id).collect();
+        let task_ids: Vec<Uuid> = runs.iter().filter_map(|run| run.task_profile_id).collect();
+
+        let session_map: HashMap<Uuid, ai_chat_sessions::Model> = ai_chat_sessions::Entity::find()
+            .filter(ai_chat_sessions::Column::TenantId.eq(tenant_id))
+            .filter(ai_chat_sessions::Column::Id.is_in(session_ids))
+            .all(db)
+            .await
+            .map_err(db_err)?
+            .into_iter()
+            .map(|session| (session.id, session))
+            .collect();
+
+        let provider_map: HashMap<Uuid, ai_provider_profiles::Model> =
+            ai_provider_profiles::Entity::find()
+                .filter(ai_provider_profiles::Column::TenantId.eq(tenant_id))
+                .filter(ai_provider_profiles::Column::Id.is_in(provider_ids))
+                .all(db)
+                .await
+                .map_err(db_err)?
+                .into_iter()
+                .map(|provider| (provider.id, provider))
+                .collect();
+
+        let task_map: HashMap<Uuid, ai_task_profiles::Model> = if task_ids.is_empty() {
+            HashMap::new()
+        } else {
+            ai_task_profiles::Entity::find()
+                .filter(ai_task_profiles::Column::TenantId.eq(tenant_id))
+                .filter(ai_task_profiles::Column::Id.is_in(task_ids))
+                .all(db)
+                .await
+                .map_err(db_err)?
+                .into_iter()
+                .map(|task| (task.id, task))
+                .collect()
+        };
+
+        Ok(runs
+            .into_iter()
+            .map(|run| map_recent_run_record(run, &session_map, &provider_map, &task_map))
+            .collect())
+    }
+
     pub async fn list_provider_profiles(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -668,6 +765,8 @@ impl AiManagementService {
             input.locale.clone(),
             resolved_locale.clone(),
         );
+        ai_metrics::observe_locale_resolution(input.locale.as_deref(), resolved_locale.as_str());
+        ai_metrics::observe_router_resolution("start_chat_session", &decision_trace);
 
         let txn = db.begin().await.map_err(db_err)?;
         let session = ai_chat_sessions::ActiveModel {
@@ -758,7 +857,8 @@ impl AiManagementService {
         input: RunAiTaskJobInput,
     ) -> AiResult<AiSendMessageResult> {
         let db = &app_ctx.db;
-        let task_profile = require_task_profile(db, operator.tenant_id, input.task_profile_id).await?;
+        let task_profile =
+            require_task_profile(db, operator.tenant_id, input.task_profile_id).await?;
         if !task_profile.is_active {
             return Err(AiError::Validation("task profile is inactive".to_string()));
         }
@@ -795,6 +895,8 @@ impl AiManagementService {
             input.locale.clone(),
             resolved_locale.clone(),
         );
+        ai_metrics::observe_locale_resolution(input.locale.as_deref(), resolved_locale.as_str());
+        ai_metrics::observe_router_resolution("run_task_job", &decision_trace);
 
         let txn = db.begin().await.map_err(db_err)?;
         let session = ai_chat_sessions::ActiveModel {
@@ -1327,13 +1429,11 @@ impl AiManagementService {
             max_tokens: Set(provider.max_tokens),
             error_message: Set(None),
             pending_approval_id: Set(None),
-            decision_trace: Set(
-                session
-                    .metadata
-                    .get("decision_trace")
-                    .cloned()
-                    .unwrap_or_else(|| json!({})),
-            ),
+            decision_trace: Set(session
+                .metadata
+                .get("decision_trace")
+                .cloned()
+                .unwrap_or_else(|| json!({}))),
             metadata: Set(json!({ "task_input": task_input_json })),
             created_at: sea_orm::ActiveValue::NotSet,
             started_at: Set(Utc::now().into()),
@@ -1374,6 +1474,16 @@ impl AiManagementService {
         task_input_json: Option<serde_json::Value>,
     ) -> AiResult<AiSendMessageResult> {
         let db = &app_ctx.db;
+        let run_started = std::time::Instant::now();
+        let provider_kind = provider_kind_from_slug(&provider_profile.provider_kind);
+        publish_ai_run_stream_event(
+            session_id,
+            run_id,
+            AiRunStreamEventKind::Started,
+            None,
+            None,
+            None,
+        );
         let messages = ai_chat_messages::Entity::find()
             .filter(
                 Condition::all()
@@ -1396,6 +1506,25 @@ impl AiManagementService {
                     .as_ref()
                     .and_then(|profile| direct_registry.handler(&profile.slug)),
             ) {
+                let stream_buffer = Arc::new(Mutex::new(String::new()));
+                let stream_emitter = ProviderStreamEmitter::new({
+                    let stream_buffer = Arc::clone(&stream_buffer);
+                    move |event| {
+                        let ProviderStreamEvent::TextDelta(delta) = event;
+                        let mut accumulated = stream_buffer
+                            .lock()
+                            .expect("AI stream buffer mutex poisoned");
+                        accumulated.push_str(&delta);
+                        publish_ai_run_stream_event(
+                            session_id,
+                            run_id,
+                            AiRunStreamEventKind::Delta,
+                            Some(delta),
+                            Some(accumulated.clone()),
+                            None,
+                        );
+                    }
+                });
                 let task_input_json = match task_input_json {
                     Some(task_input_json) => task_input_json,
                     None => session_task_input(db, operator.tenant_id, session_id)
@@ -1406,10 +1535,8 @@ impl AiManagementService {
                             )
                         })?,
                 };
-                let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(
-                    provider_kind_from_slug(&provider_profile.provider_kind),
-                ));
-                let direct_result = handler
+                let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind));
+                let direct_result = match handler
                     .execute(
                         app_ctx,
                         operator,
@@ -1421,9 +1548,34 @@ impl AiManagementService {
                             system_prompt: task_profile.system_prompt.clone(),
                             provider_config: provider_config(&provider_profile)?,
                             provider,
+                            stream_emitter: Some(stream_emitter),
                         },
                     )
-                    .await?;
+                    .await
+                {
+                    Ok(result) => result,
+                    Err(error) => {
+                        mark_run_failed(db, operator.tenant_id, run_id, error.to_string()).await?;
+                        publish_ai_run_stream_event(
+                            session_id,
+                            run_id,
+                            AiRunStreamEventKind::Failed,
+                            None,
+                            Some(read_stream_buffer(&stream_buffer)),
+                            Some(error.to_string()),
+                        );
+                        ai_metrics::observe_run_outcome(
+                            ExecutionMode::Direct,
+                            Some("direct"),
+                            provider_kind,
+                            Some(task_profile.slug.as_str()),
+                            Some(resolved_locale.as_str()),
+                            "failed",
+                            run_started.elapsed().as_millis() as u64,
+                        );
+                        return Err(error);
+                    }
+                };
                 let mut run = require_run(db, operator.tenant_id, run_id).await?;
                 persist_runtime_outputs(
                     db,
@@ -1442,8 +1594,8 @@ impl AiManagementService {
                     requested_locale.clone(),
                     resolved_locale.clone(),
                 );
-                decision_trace.execution_target =
-                    Some(format!("direct:{}", direct_result.execution_target.slug()));
+                let execution_target = format!("direct:{}", direct_result.execution_target.slug());
+                decision_trace.execution_target = Some(execution_target.clone());
                 let run_metadata = run.metadata.clone();
                 let mut active: ai_chat_runs::ActiveModel = run.into();
                 active.execution_path = Set(ExecutionMode::Direct.slug().to_string());
@@ -1456,7 +1608,26 @@ impl AiManagementService {
                 run = active.update(db).await.map_err(db_err)?;
                 let detail = Self::chat_session_detail(db, operator.tenant_id, session_id)
                     .await?
-                    .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
+                    .ok_or_else(|| {
+                        AiError::Runtime("failed to reload AI chat session".to_string())
+                    })?;
+                ai_metrics::observe_run_outcome(
+                    ExecutionMode::Direct,
+                    Some(execution_target.as_str()),
+                    provider_kind,
+                    Some(task_profile.slug.as_str()),
+                    Some(resolved_locale.as_str()),
+                    "completed",
+                    run_started.elapsed().as_millis() as u64,
+                );
+                publish_ai_run_stream_event(
+                    session_id,
+                    run_id,
+                    AiRunStreamEventKind::Completed,
+                    None,
+                    Some(read_stream_buffer(&stream_buffer)),
+                    None,
+                );
                 return Ok(AiSendMessageResult {
                     session: detail,
                     run: map_run_record(run),
@@ -1464,14 +1635,31 @@ impl AiManagementService {
             }
         }
 
-        let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind_from_slug(
-            &provider_profile.provider_kind,
-        )));
+        let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind));
         let access_context = access_context_for_operator(operator);
         let adapter = Arc::new(InProcessMcpAdapter::new(app_ctx, access_context)?);
         let policy = policy_from_model(tool_profile.as_ref());
         let runtime = AiRuntime::new(provider, adapter, policy);
-        let outcome = runtime
+        let stream_buffer = Arc::new(Mutex::new(String::new()));
+        let stream_emitter = ProviderStreamEmitter::new({
+            let stream_buffer = Arc::clone(&stream_buffer);
+            move |event| {
+                let ProviderStreamEvent::TextDelta(delta) = event;
+                let mut accumulated = stream_buffer
+                    .lock()
+                    .expect("AI stream buffer mutex poisoned");
+                accumulated.push_str(&delta);
+                publish_ai_run_stream_event(
+                    session_id,
+                    run_id,
+                    AiRunStreamEventKind::Delta,
+                    Some(delta),
+                    Some(accumulated.clone()),
+                    None,
+                );
+            }
+        });
+        let outcome = match runtime
             .run(
                 &provider_config(&provider_profile)?,
                 RuntimeRequest {
@@ -1486,8 +1674,33 @@ impl AiManagementService {
                         .and_then(|value| value.system_prompt.clone()),
                     locale: Some(resolved_locale.clone()),
                 },
+                Some(stream_emitter),
             )
-            .await?;
+            .await
+        {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                mark_run_failed(db, operator.tenant_id, run_id, error.to_string()).await?;
+                publish_ai_run_stream_event(
+                    session_id,
+                    run_id,
+                    AiRunStreamEventKind::Failed,
+                    None,
+                    Some(read_stream_buffer(&stream_buffer)),
+                    Some(error.to_string()),
+                );
+                ai_metrics::observe_run_outcome(
+                    execution_mode,
+                    Some(runtime_execution_target(execution_mode)),
+                    provider_kind,
+                    task_profile.as_ref().map(|value| value.slug.as_str()),
+                    Some(resolved_locale.as_str()),
+                    "failed",
+                    run_started.elapsed().as_millis() as u64,
+                );
+                return Err(error);
+            }
+        };
 
         let mut run = require_run(db, operator.tenant_id, run_id).await?;
 
@@ -1510,6 +1723,23 @@ impl AiManagementService {
                 active.completed_at = Set(Some(Utc::now().into()));
                 active.updated_at = Set(Utc::now().into());
                 run = active.update(db).await.map_err(db_err)?;
+                ai_metrics::observe_run_outcome(
+                    execution_mode,
+                    Some(runtime_execution_target(execution_mode)),
+                    provider_kind,
+                    task_profile.as_ref().map(|value| value.slug.as_str()),
+                    Some(resolved_locale.as_str()),
+                    "completed",
+                    run_started.elapsed().as_millis() as u64,
+                );
+                publish_ai_run_stream_event(
+                    session_id,
+                    run_id,
+                    AiRunStreamEventKind::Completed,
+                    None,
+                    Some(read_stream_buffer(&stream_buffer)),
+                    None,
+                );
             }
             RuntimeOutcome::Failed {
                 appended_messages,
@@ -1531,6 +1761,23 @@ impl AiManagementService {
                 active.completed_at = Set(Some(Utc::now().into()));
                 active.updated_at = Set(Utc::now().into());
                 run = active.update(db).await.map_err(db_err)?;
+                ai_metrics::observe_run_outcome(
+                    execution_mode,
+                    Some(runtime_execution_target(execution_mode)),
+                    provider_kind,
+                    task_profile.as_ref().map(|value| value.slug.as_str()),
+                    Some(resolved_locale.as_str()),
+                    "failed",
+                    run_started.elapsed().as_millis() as u64,
+                );
+                publish_ai_run_stream_event(
+                    session_id,
+                    run_id,
+                    AiRunStreamEventKind::Failed,
+                    None,
+                    Some(read_stream_buffer(&stream_buffer)),
+                    run.error_message.clone(),
+                );
             }
             RuntimeOutcome::WaitingApproval {
                 appended_messages,
@@ -1554,6 +1801,23 @@ impl AiManagementService {
                 active.pending_approval_id = Set(Some(approval.id));
                 active.updated_at = Set(Utc::now().into());
                 run = active.update(db).await.map_err(db_err)?;
+                ai_metrics::observe_run_outcome(
+                    execution_mode,
+                    Some(runtime_execution_target(execution_mode)),
+                    provider_kind,
+                    task_profile.as_ref().map(|value| value.slug.as_str()),
+                    Some(resolved_locale.as_str()),
+                    "waiting_approval",
+                    run_started.elapsed().as_millis() as u64,
+                );
+                publish_ai_run_stream_event(
+                    session_id,
+                    run_id,
+                    AiRunStreamEventKind::WaitingApproval,
+                    None,
+                    Some(read_stream_buffer(&stream_buffer)),
+                    None,
+                );
             }
         }
 
@@ -2156,6 +2420,59 @@ fn map_run_record(model: ai_chat_runs::Model) -> AiChatRunRecord {
     }
 }
 
+fn map_recent_run_record(
+    model: ai_chat_runs::Model,
+    sessions: &HashMap<Uuid, ai_chat_sessions::Model>,
+    providers: &HashMap<Uuid, ai_provider_profiles::Model>,
+    tasks: &HashMap<Uuid, ai_task_profiles::Model>,
+) -> AiRecentRunRecord {
+    let session_title = sessions
+        .get(&model.session_id)
+        .map(|session| session.title.clone())
+        .unwrap_or_else(|| model.session_id.to_string());
+    let provider = providers.get(&model.provider_profile_id);
+    let task = model
+        .task_profile_id
+        .and_then(|task_id| tasks.get(&task_id));
+    let completed_at = model.completed_at.map(to_utc);
+    let started_at = to_utc(model.started_at);
+    let updated_at = to_utc(model.updated_at);
+    let duration_ms = completed_at
+        .unwrap_or(updated_at)
+        .signed_duration_since(started_at)
+        .num_milliseconds()
+        .max(0);
+    let decision_trace: AiRunDecisionTrace =
+        serde_json::from_value(model.decision_trace).unwrap_or_default();
+
+    AiRecentRunRecord {
+        id: model.id,
+        session_id: model.session_id,
+        session_title,
+        provider_profile_id: model.provider_profile_id,
+        provider_display_name: provider
+            .map(|value| value.display_name.clone())
+            .unwrap_or_else(|| model.provider_profile_id.to_string()),
+        provider_kind: provider
+            .map(|value| provider_kind_from_slug(&value.provider_kind))
+            .unwrap_or(ProviderKind::OpenAiCompatible),
+        task_profile_id: model.task_profile_id,
+        task_profile_slug: task.map(|value| value.slug.clone()),
+        status: model.status,
+        model: model.model,
+        execution_mode: execution_mode_from_slug(&model.execution_mode),
+        execution_path: execution_mode_from_slug(&model.execution_path),
+        execution_target: decision_trace.execution_target,
+        requested_locale: model.requested_locale,
+        resolved_locale: model.resolved_locale,
+        error_message: model.error_message,
+        started_at,
+        completed_at,
+        updated_at,
+        duration_ms,
+    }
+}
+
 fn map_approval_record(model: ai_approval_requests::Model) -> AiApprovalRequestRecord {
     AiApprovalRequestRecord {
         id: model.id,
@@ -2567,18 +2884,21 @@ async fn resolve_task_locale(
 ) -> AiResult<String> {
     let requested = normalize_locale_tag_opt(requested_locale)?;
     let preferred = normalize_locale_tag_opt(preferred_locale)?;
-    let (tenant_default_locale, tenant_enabled_locales) = load_tenant_locale_policy(db, tenant_id).await?;
+    let (tenant_default_locale, tenant_enabled_locales) =
+        load_tenant_locale_policy(db, tenant_id).await?;
     let tenant_default_locale = tenant_default_locale.unwrap_or_else(|| "en".to_string());
 
     if task_slug.is_some_and(task_allows_free_locale) {
-        return Ok(requested
-            .or(preferred)
-            .unwrap_or(tenant_default_locale));
+        return Ok(requested.or(preferred).unwrap_or(tenant_default_locale));
     }
 
-    for candidate in [requested.clone(), preferred, Some(tenant_default_locale.clone())]
-        .into_iter()
-        .flatten()
+    for candidate in [
+        requested.clone(),
+        preferred,
+        Some(tenant_default_locale.clone()),
+    ]
+    .into_iter()
+    .flatten()
     {
         if tenant_enabled_locales.contains(&candidate) {
             return Ok(candidate);
@@ -2661,7 +2981,11 @@ async fn load_tenant_locale_policy(
     let default_locale = row
         .try_get::<String>("", "default_locale")
         .ok()
-        .and_then(|value| normalize_locale_tag_opt(Some(value.as_str())).ok().flatten());
+        .and_then(|value| {
+            normalize_locale_tag_opt(Some(value.as_str()))
+                .ok()
+                .flatten()
+        });
     let settings = row
         .try_get::<serde_json::Value>("", "settings")
         .unwrap_or_else(|_| json!({}));
@@ -2703,6 +3027,14 @@ fn task_allows_free_locale(task_slug: &str) -> bool {
     )
 }
 
+fn runtime_execution_target(execution_mode: ExecutionMode) -> &'static str {
+    match execution_mode {
+        ExecutionMode::Auto => "runtime:auto",
+        ExecutionMode::Direct => "direct:runtime",
+        ExecutionMode::McpTooling => "mcp:rustok-mcp",
+    }
+}
+
 fn enrich_decision_trace(
     mut trace: AiRunDecisionTrace,
     execution_mode: ExecutionMode,
@@ -2738,8 +3070,8 @@ fn build_task_job_user_message(
         metadata["requested_locale"] = json!(requested_locale);
     }
 
-    let pretty_input = serde_json::to_string_pretty(task_input)
-        .unwrap_or_else(|_| task_input.to_string());
+    let pretty_input =
+        serde_json::to_string_pretty(task_input).unwrap_or_else(|_| task_input.to_string());
     ChatMessage {
         role: ChatMessageRole::User,
         content: Some(format!(
@@ -2752,6 +3084,29 @@ fn build_task_job_user_message(
     }
 }
 
+fn publish_ai_run_stream_event(
+    session_id: Uuid,
+    run_id: Uuid,
+    event_kind: AiRunStreamEventKind,
+    content_delta: Option<String>,
+    accumulated_content: Option<String>,
+    error_message: Option<String>,
+) {
+    ai_run_stream_hub().publish(AiRunStreamEvent {
+        session_id,
+        run_id,
+        event_kind,
+        content_delta,
+        accumulated_content,
+        error_message,
+        created_at: Utc::now(),
+    });
+}
+
+fn read_stream_buffer(buffer: &Arc<Mutex<String>>) -> String {
+    buffer.lock().map(|value| value.clone()).unwrap_or_default()
+}
+
 async fn session_task_input(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -2759,6 +3114,22 @@ async fn session_task_input(
 ) -> AiResult<Option<serde_json::Value>> {
     let session = require_session(db, tenant_id, session_id).await?;
     Ok(session.metadata.get("task_input").cloned())
+}
+
+async fn mark_run_failed(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    run_id: Uuid,
+    error_message: String,
+) -> AiResult<()> {
+    let run = require_run(db, tenant_id, run_id).await?;
+    let mut active: ai_chat_runs::ActiveModel = run.into();
+    active.status = Set("failed".to_string());
+    active.error_message = Set(Some(error_message));
+    active.completed_at = Set(Some(Utc::now().into()));
+    active.updated_at = Set(Utc::now().into());
+    active.update(db).await.map_err(db_err)?;
+    Ok(())
 }
 
 async fn list_router_provider_profiles(
@@ -2824,4 +3195,66 @@ fn db_err(error: impl std::fmt::Display) -> AiError {
 
 fn to_utc(value: sea_orm::prelude::DateTimeWithTimeZone) -> DateTime<Utc> {
     value.with_timezone(&Utc)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_task_job_user_message, enrich_decision_trace, normalize_locale_tag,
+        runtime_execution_target, task_allows_free_locale,
+    };
+    use crate::model::{AiRunDecisionTrace, ExecutionMode};
+
+    #[test]
+    fn normalize_locale_tag_normalizes_common_bcp47_forms() {
+        assert_eq!(normalize_locale_tag("pt_br").unwrap(), "pt-BR");
+        assert_eq!(normalize_locale_tag("zh-hant").unwrap(), "zh-Hant");
+        assert_eq!(normalize_locale_tag("es-419").unwrap(), "es-419");
+    }
+
+    #[test]
+    fn normalize_locale_tag_rejects_invalid_values() {
+        assert!(normalize_locale_tag("").is_err());
+        assert!(normalize_locale_tag("en-*").is_err());
+    }
+
+    #[test]
+    fn build_task_job_user_message_embeds_locale_metadata() {
+        let message = build_task_job_user_message(
+            "blog_draft",
+            Some("de"),
+            "de",
+            &serde_json::json!({ "title": "Hallo" }),
+        );
+        assert!(message
+            .content
+            .as_deref()
+            .is_some_and(|content| content.contains("blog_draft")));
+        assert_eq!(message.metadata["requested_locale"], "de");
+        assert_eq!(message.metadata["resolved_locale"], "de");
+    }
+
+    #[test]
+    fn enrich_decision_trace_sets_execution_target_from_mode() {
+        let trace = enrich_decision_trace(
+            AiRunDecisionTrace::default(),
+            ExecutionMode::McpTooling,
+            Some("fr".to_string()),
+            "fr".to_string(),
+        );
+        assert_eq!(trace.execution_target.as_deref(), Some("mcp:rustok-mcp"));
+        assert_eq!(trace.requested_locale.as_deref(), Some("fr"));
+        assert_eq!(trace.resolved_locale.as_deref(), Some("fr"));
+    }
+
+    #[test]
+    fn free_locale_tasks_stay_whitelisted() {
+        assert!(task_allows_free_locale("alloy_code"));
+        assert!(task_allows_free_locale("translation"));
+        assert!(!task_allows_free_locale("product_copy"));
+        assert_eq!(
+            runtime_execution_target(ExecutionMode::Direct),
+            "direct:runtime"
+        );
+    }
 }

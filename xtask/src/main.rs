@@ -196,6 +196,15 @@ struct RegistryYankHttpRequest {
     reason: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct RegistryOwnerTransferHttpRequest {
+    schema_version: u32,
+    dry_run: bool,
+    slug: String,
+    new_owner_actor: String,
+    reason: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct RegistryMutationHttpResponse {
     accepted: bool,
@@ -248,6 +257,17 @@ struct ModuleYankDryRunPreview {
     current_local_version: String,
     matches_local_version: bool,
     package_manifest_path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ModuleOwnerTransferDryRunPreview {
+    action: String,
+    slug: String,
+    crate_name: String,
+    current_local_version: String,
+    package_manifest_path: String,
+    new_owner_actor: String,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -305,7 +325,8 @@ fn print_usage() {
     println!("  list-modules        List all configured modules");
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");
-    println!("  module publish      Emit a dry-run publish payload preview");
+    println!("  module publish      Create/preview a publish request and stop at review-ready unless --auto-approve is set");
+    println!("  module owner-transfer Emit a dry-run owner transfer payload preview");
     println!("  module yank         Emit a dry-run yank payload preview");
 }
 
@@ -522,6 +543,7 @@ fn module_command(args: &[String]) -> Result<()> {
         "validate" => module_validate_command(&args[1..]),
         "test" => module_test_command(&args[1..]),
         "publish" => module_publish_command(&args[1..]),
+        "owner-transfer" => module_owner_transfer_command(&args[1..]),
         "yank" => module_yank_command(&args[1..]),
         other => {
             print_module_usage();
@@ -534,7 +556,12 @@ fn print_module_usage() {
     println!("Usage:");
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
-    println!("  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>]");
+    println!(
+        "  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>] [--auto-approve]"
+    );
+    println!(
+        "  cargo xtask module owner-transfer <slug> <new-owner-actor> [--dry-run] [--reason <text>] [--registry-url <url>]"
+    );
     println!(
         "  cargo xtask module yank <slug> <version> [--dry-run] [--reason <text>] [--registry-url <url>]"
     );
@@ -587,6 +614,7 @@ fn module_publish_command(args: &[String]) -> Result<()> {
 
     let slug = args[0].as_str();
     let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
+    let auto_approve = auto_approve_argument(&args[1..]);
 
     let manifest_path = manifest_path();
     let manifest = load_manifest_from(&manifest_path)?;
@@ -609,7 +637,7 @@ fn module_publish_command(args: &[String]) -> Result<()> {
         let registry_url = registry_url.with_context(|| {
             "Live module publish requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
         })?;
-        let payload = publish_via_registry_live(&registry_url, &preview)?;
+        let payload = publish_via_registry_live(&registry_url, &preview, auto_approve)?;
         println!("{payload}");
     }
 
@@ -702,6 +730,60 @@ fn module_yank_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn module_owner_transfer_command(args: &[String]) -> Result<()> {
+    if args.len() < 2 {
+        print_module_usage();
+        anyhow::bail!("module owner-transfer requires a module slug and new owner actor");
+    }
+
+    let slug = args[0].as_str();
+    let new_owner_actor = args[1].trim();
+    if new_owner_actor.is_empty() {
+        anyhow::bail!("module owner-transfer requires a non-empty new owner actor");
+    }
+
+    let dry_run = args.iter().skip(2).any(|arg| arg == "--dry-run");
+    let manifest_path = manifest_path();
+    let manifest = load_manifest_from(&manifest_path)?;
+    let workspace_manifest = load_workspace_manifest()?;
+    let spec = manifest
+        .modules
+        .get(slug)
+        .with_context(|| format!("Unknown module slug '{slug}'"))?;
+    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
+    let reason = reason_argument(&args[2..]);
+    let payload = ModuleOwnerTransferDryRunPreview {
+        action: "owner_transfer".to_string(),
+        slug: slug.to_string(),
+        crate_name: preview.crate_name.clone(),
+        current_local_version: preview.version.clone(),
+        package_manifest_path: preview.package_manifest_path,
+        new_owner_actor: new_owner_actor.to_string(),
+        reason: reason.clone(),
+    };
+    let registry_url = registry_url_argument(&args[2..]);
+
+    if dry_run {
+        if let Some(registry_url) = registry_url {
+            let remote_payload =
+                owner_transfer_via_registry_dry_run(&registry_url, &payload, reason)?;
+            println!("{remote_payload}");
+        } else {
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+    } else {
+        let registry_url = registry_url.with_context(|| {
+            "Live module owner-transfer requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
+        })?;
+        let reason =
+            reason.with_context(|| "Live module owner-transfer requires --reason <text>")?;
+        let remote_payload = owner_transfer_via_registry_live(&registry_url, &payload, reason)?;
+        println!("{remote_payload}");
+    }
+
+    Ok(())
+}
+
 fn selected_modules<'a>(
     manifest: &'a Manifest,
     slug: Option<&'a str>,
@@ -738,6 +820,10 @@ fn registry_url_argument(args: &[String]) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn auto_approve_argument(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--auto-approve")
+}
+
 fn reason_argument(args: &[String]) -> Option<String> {
     if let Some(index) = args.iter().position(|arg| arg == "--reason") {
         return args
@@ -762,6 +848,7 @@ fn publish_via_registry_dry_run(
 fn publish_via_registry_live(
     registry_url: &str,
     preview: &ModulePublishDryRunPreview,
+    auto_approve: bool,
 ) -> Result<String> {
     let publisher = format!("publisher:{}", preview.slug);
     let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
@@ -850,6 +937,9 @@ fn publish_via_registry_live(
             readiness.status
         );
     }
+    if !auto_approve {
+        return pretty_json(&readiness);
+    }
 
     let approve_endpoint = format!(
         "{}/v2/catalog/publish/{request_id}/approve",
@@ -914,6 +1004,46 @@ fn yank_via_registry_live(
     if !response.accepted {
         anyhow::bail!(
             "Registry yank request was not accepted: {}",
+            join_registry_errors(&response.errors)
+        );
+    }
+
+    pretty_json(&response)
+}
+
+fn owner_transfer_via_registry_dry_run(
+    registry_url: &str,
+    preview: &ModuleOwnerTransferDryRunPreview,
+    reason: Option<String>,
+) -> Result<String> {
+    let endpoint = format!(
+        "{}/v2/catalog/owner-transfer",
+        registry_url.trim_end_matches('/')
+    );
+    let request = build_owner_transfer_registry_request(preview, reason);
+
+    post_registry_json(&endpoint, &request)
+}
+
+fn owner_transfer_via_registry_live(
+    registry_url: &str,
+    preview: &ModuleOwnerTransferDryRunPreview,
+    reason: String,
+) -> Result<String> {
+    let endpoint = format!(
+        "{}/v2/catalog/owner-transfer",
+        registry_url.trim_end_matches('/')
+    );
+    let request = build_live_owner_transfer_registry_request(preview, Some(reason));
+    let response: RegistryMutationHttpResponse = post_registry_json_parsed(
+        &endpoint,
+        &request,
+        Some("xtask:module-owner-transfer"),
+        None,
+    )?;
+    if !response.accepted {
+        anyhow::bail!(
+            "Registry owner transfer request was not accepted: {}",
             join_registry_errors(&response.errors)
         );
     }
@@ -994,6 +1124,34 @@ fn build_yank_registry_request_with_dry_run(
         dry_run,
         slug: preview.slug.clone(),
         version: preview.version.clone(),
+        reason,
+    }
+}
+
+fn build_owner_transfer_registry_request(
+    preview: &ModuleOwnerTransferDryRunPreview,
+    reason: Option<String>,
+) -> RegistryOwnerTransferHttpRequest {
+    build_owner_transfer_registry_request_with_dry_run(preview, reason, true)
+}
+
+fn build_live_owner_transfer_registry_request(
+    preview: &ModuleOwnerTransferDryRunPreview,
+    reason: Option<String>,
+) -> RegistryOwnerTransferHttpRequest {
+    build_owner_transfer_registry_request_with_dry_run(preview, reason, false)
+}
+
+fn build_owner_transfer_registry_request_with_dry_run(
+    preview: &ModuleOwnerTransferDryRunPreview,
+    reason: Option<String>,
+    dry_run: bool,
+) -> RegistryOwnerTransferHttpRequest {
+    RegistryOwnerTransferHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run,
+        slug: preview.slug.clone(),
+        new_owner_actor: preview.new_owner_actor.clone(),
         reason,
     }
 }
@@ -1723,12 +1881,13 @@ fn to_pascal_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_module_test_plan, build_publish_registry_request, build_yank_registry_request,
+        auto_approve_argument, build_module_test_plan, build_owner_transfer_registry_request,
+        build_publish_registry_request, build_yank_registry_request,
         registry_endpoint_uses_loopback, resolve_workspace_inherited_string,
         validate_module_publish_contract, validate_module_ui_surface_contract,
-        ModuleMarketplacePreview, ModulePackageManifest, ModulePublishDryRunPreview,
-        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleYankDryRunPreview,
-        REGISTRY_MUTATION_SCHEMA_VERSION,
+        ModuleMarketplacePreview, ModuleOwnerTransferDryRunPreview, ModulePackageManifest,
+        ModulePublishDryRunPreview, ModuleUiPackagePreview, ModuleUiPackagesPreview,
+        ModuleYankDryRunPreview, REGISTRY_MUTATION_SCHEMA_VERSION,
     };
     use std::path::Path;
 
@@ -1944,6 +2103,36 @@ mod tests {
     }
 
     #[test]
+    fn build_owner_transfer_registry_request_serializes_v2_contract() {
+        let preview = ModuleOwnerTransferDryRunPreview {
+            action: "owner_transfer".to_string(),
+            slug: "blog".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            current_local_version: "1.2.3".to_string(),
+            package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+            new_owner_actor: "publisher:forum".to_string(),
+            reason: Some("Ownership transferred to the forum publisher".to_string()),
+        };
+
+        let request_body = serde_json::to_value(build_owner_transfer_registry_request(
+            &preview,
+            preview.reason.clone(),
+        ))
+        .expect("request should serialize");
+        assert_eq!(
+            request_body["schema_version"],
+            REGISTRY_MUTATION_SCHEMA_VERSION
+        );
+        assert_eq!(request_body["dry_run"], true);
+        assert_eq!(request_body["slug"], "blog");
+        assert_eq!(request_body["new_owner_actor"], "publisher:forum");
+        assert_eq!(
+            request_body["reason"],
+            "Ownership transferred to the forum publisher"
+        );
+    }
+
+    #[test]
     fn registry_endpoint_uses_loopback_for_local_urls() {
         assert!(registry_endpoint_uses_loopback(
             "http://127.0.0.1:5150/v2/catalog/publish"
@@ -1954,5 +2143,18 @@ mod tests {
         assert!(!registry_endpoint_uses_loopback(
             "https://modules.rustok.dev/v2/catalog/publish"
         ));
+    }
+
+    #[test]
+    fn auto_approve_argument_detects_flag() {
+        assert!(auto_approve_argument(&[
+            "--registry-url".to_string(),
+            "http://127.0.0.1:5150".to_string(),
+            "--auto-approve".to_string(),
+        ]));
+        assert!(!auto_approve_argument(&[
+            "--registry-url".to_string(),
+            "http://127.0.0.1:5150".to_string(),
+        ]));
     }
 }

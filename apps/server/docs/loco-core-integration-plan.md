@@ -48,7 +48,7 @@ RusToK использует Loco RS как server/runtime framework, а плат
 ### 2.3 Что остаётся неполным
 
 - admin UI покрывает не все platform settings / system observability сценарии;
-- модульные translation bundles как формализованный trait-контракт ещё не стали общим live contract;
+- волна package-owned UI migration на native i18n contract закрыта; открытым остаётся только дальнейшее outbound locale propagation вне уже покрытых UI/reset-email путей;
 - compile-time feature gating уже есть, но полностью runtime-dynamic schema registration как отдельная цель больше не является приоритетным current path;
 - advanced scheduler/channels/graceful shutdown остаются отдельным future scope.
 
@@ -66,11 +66,12 @@ RusToK использует Loco RS как server/runtime framework, а плат
 - `RequestContext.locale` как effective locale;
 - locale fallback на read paths и GraphQL.
 - locale-prefixed storefront routing (`/{locale}` и `/{locale}/modules/{route_segment}`) с backward-compatible fallback на legacy `?lang=`.
+- password reset outbound email locale propagation для REST и GraphQL; `smtp` и `loco` теперь используют один и тот же localized auth template path.
 
 Осталось:
 
-- более полный outbound locale propagation;
-- trait-based module translation bundles, если этот контракт будет закреплён.
+- более полный outbound locale propagation за пределами password reset;
+- расширение locale coverage для остальных outbound template flows и future work по новым локалям/форматерам.
 
 ### Фаза 1 — Settings API
 

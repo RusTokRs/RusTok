@@ -1,5 +1,6 @@
 pub mod mutation;
 pub mod query;
+pub mod subscription;
 pub mod types;
 
 use async_graphql::{FieldError, Result};
@@ -96,3 +97,4 @@ pub(super) fn ensure_ai_overview_read(auth: &AuthContext) -> Result<()> {
 
 pub use mutation::AiMutation;
 pub use query::AiQuery;
+pub use subscription::AiSubscription;

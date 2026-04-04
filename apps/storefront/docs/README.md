@@ -5,7 +5,7 @@
 ## Текущий runtime contract
 
 - Инвариант: GraphQL transport не удаляется; native `#[server]` functions добавляются как параллельный internal path и должны сосуществовать с GraphQL.
-- Host storefront рендерит shell, домашнюю страницу и generic module pages по маршруту `/modules/{route_segment}`.
+- Host storefront рендерит shell, домашнюю страницу и generic module pages по семейству маршрутов `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
 - Shared data access поддерживает оба пути: Leptos `#[server]` boundary и direct GraphQL HTTP.
 - Для storefront сейчас заведены прямые server functions:
   - `/api/fn/storefront/list-enabled-modules`
@@ -32,13 +32,16 @@
   записанный для `en`, корректно резолвится и для запросов вроде `en-us`, если более точного locale нет.
 - Enabled modules резолвятся отдельно и фильтруют storefront registry до рендера.
 - Host прокидывает `UiRouteContext` (`locale`, `route_segment`, `query params`) в module-owned storefront packages.
+- Module-owned storefront packages обязаны строить внутренние ссылки на свои generic pages через `UiRouteContext::module_route_base()`, а не через hardcoded `/modules/{route_segment}`.
+- Module-owned storefront packages не должны вводить собственную locale negotiation policy: path/query/header/cookie resolution остаётся host/runtime contract, а пакет использует уже переданный `UiRouteContext.locale`.
 - SSR идёт через in-order HTML streaming, чтобы async module-owned surfaces могли честно получать данные на сервере.
 
 ## Generated module UI wiring
 
 - `apps/storefront/build.rs` читает `modules.toml` и модульные `rustok-module.toml`, затем генерирует registry wiring в `OUT_DIR`.
 - Publishable storefront UI по-прежнему подключается через `[provides.storefront_ui].leptos_crate`.
-- Live generic route `/modules/{route_segment}` остаётся точкой входа для `blog`, `commerce`, `forum`, `pages`, `search` и других publishable storefront packages.
+- Live generic route family `/modules/{route_segment}` + `/{locale}/modules/{route_segment}` остаётся точкой входа для `blog`, `commerce`, `forum`, `pages`, `search` и других publishable storefront packages.
+- Лёгкая верификация этого contract теперь выполняется через `npm run verify:storefront:routes`.
 
 ## Canonical routing
 

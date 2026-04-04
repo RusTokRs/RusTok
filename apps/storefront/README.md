@@ -62,3 +62,5 @@
 - The standalone Leptos storefront keeps the same module contract as the Next storefront: core widgets use `module_slug = None`, optional module widgets must declare their owning slug.
 - Для host-кода и module-owned storefront UI packages действует один transport rule: native `#[server]` first, GraphQL fallback second.
 - Добавление native пути не отменяет `/api/graphql`; оба транспорта должны сосуществовать.
+- Module-owned storefront packages обязаны строить внутренние module links через `UiRouteContext::module_route_base()`, чтобы locale-prefixed host routes и legacy `/modules/{route_segment}` оставались совместимыми одновременно.
+- Быстрая проверка этого route contract выполняется через `npm run verify:storefront:routes`.

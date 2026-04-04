@@ -1,0 +1,10 @@
+{
+  "outbox.badge": "outbox",
+  "outbox.title": "Outbox Relay",
+  "outbox.subtitle": "Module-owned overview for transactional event persistence, retry pressure, and relay health.",
+  "outbox.health": "Health",
+  "outbox.tenantContext": "Tenant context",
+  "outbox.global": "global",
+  "outbox.notes.title": "Relay Notes",
+  "outbox.error.loadBootstrap": "Failed to load outbox bootstrap"
+}

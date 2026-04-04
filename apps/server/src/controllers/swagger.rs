@@ -118,6 +118,7 @@ use utoipa::OpenApi;
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
+        crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
         // Swagger
         crate::controllers::swagger::openapi_json,
@@ -411,7 +412,7 @@ mod tests {
         );
         assert!(
             openapi.paths.paths.contains_key("/v1/catalog/{slug}"),
-            "OpenAPI spec must include /v1/catalog/{slug}"
+            "OpenAPI spec must include /v1/catalog/{{slug}}"
         );
         assert!(
             openapi.paths.paths.contains_key("/v2/catalog/publish"),
@@ -422,28 +423,35 @@ mod tests {
                 .paths
                 .paths
                 .contains_key("/v2/catalog/publish/{request_id}"),
-            "OpenAPI spec must include /v2/catalog/publish/{request_id}"
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}"
         );
         assert!(
             openapi
                 .paths
                 .paths
                 .contains_key("/v2/catalog/publish/{request_id}/artifact"),
-            "OpenAPI spec must include /v2/catalog/publish/{request_id}/artifact"
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/artifact"
         );
         assert!(
             openapi
                 .paths
                 .paths
                 .contains_key("/v2/catalog/publish/{request_id}/approve"),
-            "OpenAPI spec must include /v2/catalog/publish/{request_id}/approve"
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/approve"
         );
         assert!(
             openapi
                 .paths
                 .paths
                 .contains_key("/v2/catalog/publish/{request_id}/reject"),
-            "OpenAPI spec must include /v2/catalog/publish/{request_id}/reject"
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/reject"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/owner-transfer"),
+            "OpenAPI spec must include /v2/catalog/owner-transfer"
         );
         assert!(
             openapi.paths.paths.contains_key("/v2/catalog/yank"),
@@ -478,6 +486,11 @@ mod tests {
             .paths
             .paths
             .contains_key("/v2/catalog/publish/{request_id}/reject"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/owner-transfer"));
+        assert!(!openapi.paths.paths.contains_key("/v2/catalog/yank"));
         assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
         assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));
     }

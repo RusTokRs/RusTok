@@ -194,13 +194,13 @@ grep -rn "FieldError::new(\"" apps/server/src/graphql/ --include="*.rs" | head -
 
 **Ожидаемый результат:** Новые transport-ошибки не должны зашивать пользовательские строки напрямую, если для них уже существует i18n path/translation key.
 
-### 6.3 Module-owned translation bundles не должны описываться как завершённый контракт без кода
+### 6.3 Module-owned translation bundles фиксируются через manifest-level contract
 
 ```bash
-grep -rn "fn translations" crates/rustok-*/src/ --include="*.rs"
+grep -rn "leptos_locales_path\|next_messages_path\|supported_locales\|default_locale" crates/rustok-*/rustok-module.toml
 ```
 
-**Ожидаемый результат:** Если trait-based translation bundles будут введены, они должны появиться в коде и docs одновременно. Отсутствие `fn translations` сегодня само по себе не баг, но live docs не должны описывать этот слой как уже работающий platform contract.
+**Ожидаемый результат:** Если модуль заявляет `[provides.*_ui.i18n]`, manifest должен описывать `supported_locales`, `default_locale` и bundle paths. `ManifestManager` валидирует existence/shape этого контракта, а docs не должны снова описывать слой как неопределённый trait/WIP.
 
 ### 6.4 UI locale bundles parity проверяется машинно
 
@@ -208,7 +208,15 @@ grep -rn "fn translations" crates/rustok-*/src/ --include="*.rs"
 npm run verify:i18n:ui
 ```
 
-**Ожидаемый результат:** `locales/*.json` и `messages/*.json` в host apps и module-owned UI packages проходят проверку на parity ключей; отсутствие такого артефакта считается незакрытым verification gap для native i18n.
+**Ожидаемый результат:** `locales/*.json` и `messages/*.json` в host apps и module-owned UI packages проходят проверку на parity ключей. Manifest-level existence contract и parity contract должны жить вместе: первый ловится `ManifestManager`, второй — verifier-скриптом.
+
+### 6.5 Password reset email использует effective locale независимо от transport/provider
+
+```bash
+grep -rn "email_service_from_ctx\|request_context.locale\|locale_from_ctx" apps/server/src/controllers apps/server/src/graphql apps/server/src/services/email.rs --include="*.rs"
+```
+
+**Ожидаемый результат:** GraphQL и REST password-reset paths прокидывают effective locale в `email_service_from_ctx(...)`, а `smtp` и `loco` providers рендерят один и тот же localized built-in template path вместо hardcoded English-only SMTP body.
 
 ---
 

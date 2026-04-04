@@ -1097,6 +1097,21 @@ pub fn ModulesList(
     let on_close_detail = Callback::new(move |_| {
         navigate_for_close("/modules", Default::default());
     });
+    let on_refresh_detail = Callback::new(move |_| {
+        let Some(slug) = selected_module_slug.get() else {
+            return;
+        };
+        let token_value = token.get();
+        let tenant_value = tenant.get();
+        set_module_detail_loading.set(true);
+        spawn_local(async move {
+            match api::fetch_marketplace_module(slug, token_value, tenant_value).await {
+                Ok(module) => set_selected_module_detail.set(module),
+                Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),
+            }
+            set_module_detail_loading.set(false);
+        });
+    });
     let on_apply_filters = Callback::new(move |_| {
         set_form_state.set(FormState::idle());
         let token_value = token.get();
@@ -1488,9 +1503,12 @@ pub fn ModulesList(
                                 settings_editable=settings_editable
                                 settings_saving=settings_saving
                                 loading=Signal::derive(move || module_detail_loading.get())
+                                access_token=Signal::derive(move || token.get())
+                                tenant_slug=Signal::derive(move || tenant.get())
                                 on_settings_field_input=on_settings_field_input
                                 on_settings_input=on_settings_input
                                 on_save_settings=on_save_settings
+                                on_refresh_detail=on_refresh_detail
                                 on_close=on_close_detail
                             />
                         }

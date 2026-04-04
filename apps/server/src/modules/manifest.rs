@@ -1,6 +1,6 @@
 use crate::models::build::DeploymentProfile;
 use crate::services::build_service::ModuleSpec as BuildModuleSpec;
-use rustok_core::ModuleRegistry;
+use rustok_core::{is_valid_locale_key, ModuleRegistry};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -468,6 +468,42 @@ struct ModulePackageHttpProvides {
 struct ModulePackageUiProvides {
     #[serde(default)]
     leptos_crate: Option<String>,
+    #[serde(default)]
+    next_package: Option<String>,
+    #[serde(default)]
+    route_segment: Option<String>,
+    #[serde(default)]
+    nav_label: Option<String>,
+    #[serde(default)]
+    slot: Option<String>,
+    #[serde(default)]
+    page_title: Option<String>,
+    #[serde(default)]
+    pages: Vec<ModulePackageUiPage>,
+    #[serde(default)]
+    i18n: Option<ModulePackageUiI18nContract>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct ModulePackageUiPage {
+    #[serde(default)]
+    subpath: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    nav_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct ModulePackageUiI18nContract {
+    #[serde(default)]
+    default_locale: Option<String>,
+    #[serde(default)]
+    supported_locales: Vec<String>,
+    #[serde(default)]
+    leptos_locales_path: Option<String>,
+    #[serde(default)]
+    next_messages_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -674,6 +710,224 @@ fn module_root_path(spec: &ManifestModuleSpec) -> Option<PathBuf> {
             .unwrap_or_else(|| Path::new("."))
             .join(module_path),
     )
+}
+
+fn workspace_root_path() -> PathBuf {
+    default_manifest_path()
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf()
+}
+
+fn resolve_module_contract_path(
+    module_root: &Path,
+    raw_path: &str,
+) -> std::result::Result<PathBuf, String> {
+    let raw_path = raw_path.trim();
+    if raw_path.is_empty() {
+        return Err("path must not be empty".to_string());
+    }
+
+    let candidate = PathBuf::from(raw_path);
+    let resolved = if candidate.is_absolute() {
+        candidate
+    } else {
+        module_root.join(candidate)
+    };
+
+    let canonical = std::fs::canonicalize(&resolved)
+        .map_err(|_| format!("{} is missing", resolved.display()))?;
+    let workspace_root = std::fs::canonicalize(workspace_root_path())
+        .map_err(|error| format!("failed to resolve workspace root: {error}"))?;
+
+    if !canonical.starts_with(&workspace_root) {
+        return Err(format!(
+            "{} resolves outside workspace root {}",
+            resolved.display(),
+            workspace_root.display()
+        ));
+    }
+
+    Ok(canonical)
+}
+
+fn validate_ui_i18n_bundle_dir(
+    slug: &str,
+    surface: &str,
+    field: &str,
+    dir: &Path,
+    supported_locales: &[String],
+) -> Result<(), ManifestError> {
+    if !dir.is_dir() {
+        return Err(ManifestError::InvalidModuleUiWiring {
+            slug: slug.to_string(),
+            surface: surface.to_string(),
+            reason: format!("{field} must point to a directory, got {}", dir.display()),
+        });
+    }
+
+    for locale in supported_locales {
+        let locale_file = dir.join(format!("{locale}.json"));
+        if !locale_file.is_file() {
+            return Err(ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!("{field} is missing locale bundle {}", locale_file.display()),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_module_ui_i18n_contract(
+    slug: &str,
+    surface: &str,
+    module_root: &Path,
+    ui: &ModulePackageUiProvides,
+) -> Result<(), ManifestError> {
+    let Some(i18n) = ui.i18n.as_ref() else {
+        return Ok(());
+    };
+
+    let supported_locales = i18n
+        .supported_locales
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    if supported_locales.is_empty() {
+        return Err(ManifestError::InvalidModuleUiWiring {
+            slug: slug.to_string(),
+            surface: surface.to_string(),
+            reason: "i18n.supported_locales must list at least one locale".to_string(),
+        });
+    }
+
+    for locale in &supported_locales {
+        if !is_valid_locale_key(locale) {
+            return Err(ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!("i18n.supported_locales contains invalid locale '{locale}'"),
+            });
+        }
+    }
+
+    if let Some(default_locale) = i18n
+        .default_locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !is_valid_locale_key(default_locale) {
+            return Err(ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!("i18n.default_locale '{default_locale}' is invalid"),
+            });
+        }
+        if !supported_locales
+            .iter()
+            .any(|locale| locale == default_locale)
+        {
+            return Err(ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!(
+                    "i18n.default_locale '{default_locale}' must be present in i18n.supported_locales"
+                ),
+            });
+        }
+    }
+
+    let leptos_locales_path = i18n
+        .leptos_locales_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let next_messages_path = i18n
+        .next_messages_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if leptos_locales_path.is_none() && next_messages_path.is_none() {
+        return Err(ManifestError::InvalidModuleUiWiring {
+            slug: slug.to_string(),
+            surface: surface.to_string(),
+            reason: "i18n contract must declare leptos_locales_path and/or next_messages_path"
+                .to_string(),
+        });
+    }
+
+    if leptos_locales_path.is_some()
+        && ui
+            .leptos_crate
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err(ManifestError::InvalidModuleUiWiring {
+            slug: slug.to_string(),
+            surface: surface.to_string(),
+            reason: "i18n.leptos_locales_path requires [provides.*_ui].leptos_crate".to_string(),
+        });
+    }
+
+    if next_messages_path.is_some()
+        && ui
+            .next_package
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err(ManifestError::InvalidModuleUiWiring {
+            slug: slug.to_string(),
+            surface: surface.to_string(),
+            reason: "i18n.next_messages_path requires [provides.*_ui].next_package".to_string(),
+        });
+    }
+
+    if let Some(path) = leptos_locales_path {
+        let resolved = resolve_module_contract_path(module_root, path).map_err(|reason| {
+            ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!("i18n.leptos_locales_path {reason}"),
+            }
+        })?;
+        validate_ui_i18n_bundle_dir(
+            slug,
+            surface,
+            "i18n.leptos_locales_path",
+            &resolved,
+            &supported_locales,
+        )?;
+    }
+
+    if let Some(path) = next_messages_path {
+        let resolved = resolve_module_contract_path(module_root, path).map_err(|reason| {
+            ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!("i18n.next_messages_path {reason}"),
+            }
+        })?;
+        validate_ui_i18n_bundle_dir(
+            slug,
+            surface,
+            "i18n.next_messages_path",
+            &resolved,
+            &supported_locales,
+        )?;
+    }
+
+    Ok(())
 }
 
 fn merge_module_package_manifest(
@@ -1577,6 +1831,14 @@ fn validate_module_ui_wiring(
                 ),
             });
         }
+    }
+
+    if let Some(admin_ui) = package_manifest.provides.admin_ui.as_ref() {
+        validate_module_ui_i18n_contract(slug, "admin", module_root, admin_ui)?;
+    }
+
+    if let Some(storefront_ui) = package_manifest.provides.storefront_ui.as_ref() {
+        validate_module_ui_i18n_contract(slug, "storefront", module_root, storefront_ui)?;
     }
 
     Ok(())
@@ -2843,6 +3105,15 @@ mod tests {
             format!(
                 "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
             ),
+        )
+        .unwrap();
+    }
+
+    fn write_locale_bundle(dir: &std::path::Path, locale: &str, value: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(
+            dir.join(format!("{locale}.json")),
+            format!("{{\"title\":\"{value}\"}}"),
         )
         .unwrap();
     }
@@ -4235,6 +4506,183 @@ leptos_crate = "rustok-pages-storefront"
                 if slug == "pages"
                     && surface == "storefront"
                     && reason.contains("declares [provides.storefront_ui].leptos_crate")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_accepts_manifest_declared_admin_i18n_bundles() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let next_messages_dir = temp
+            .path()
+            .join("apps")
+            .join("next-admin")
+            .join("packages")
+            .join("blog")
+            .join("messages");
+
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[provides.admin_ui]
+leptos_crate = "rustok-blog-admin"
+next_package = "@rustok/blog-admin"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+next_messages_path = "../../apps/next-admin/packages/blog/messages"
+"#,
+        );
+        write_surface_manifest(&blog_dir, "admin", "rustok-blog-admin");
+        write_locale_bundle(&blog_dir.join("admin").join("locales"), "en", "Blog");
+        write_locale_bundle(&blog_dir.join("admin").join("locales"), "ru", "Блог");
+        write_locale_bundle(&next_messages_dir, "en", "Blog");
+        write_locale_bundle(&next_messages_dir, "ru", "Блог");
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", temp.path().join("modules.toml"));
+        }
+
+        let result = ManifestManager::validate(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(result.is_ok(), "expected i18n UI wiring to validate");
+    }
+
+    #[test]
+    #[serial]
+    fn validate_rejects_ui_i18n_default_locale_outside_supported_locales() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[provides.admin_ui]
+leptos_crate = "rustok-blog-admin"
+
+[provides.admin_ui.i18n]
+default_locale = "ru"
+supported_locales = ["en"]
+leptos_locales_path = "admin/locales"
+"#,
+        );
+        write_surface_manifest(&blog_dir, "admin", "rustok-blog-admin");
+        write_locale_bundle(&blog_dir.join("admin").join("locales"), "en", "Blog");
+
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", temp.path().join("modules.toml"));
+        }
+
+        let result = ManifestManager::validate(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleUiWiring { slug, surface, reason })
+                if slug == "blog"
+                    && surface == "admin"
+                    && reason.contains("default_locale 'ru'")
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_rejects_manifest_declared_i18n_bundle_missing_locale_file() {
+        let temp = tempdir().unwrap();
+        let forum_dir = temp.path().join("crates").join("rustok-forum");
+
+        write_module_manifest(
+            &forum_dir,
+            r#"[module]
+slug = "forum"
+name = "Forum"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-forum-storefront"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
+"#,
+        );
+        write_surface_manifest(&forum_dir, "storefront", "rustok-forum-storefront");
+        write_locale_bundle(&forum_dir.join("storefront").join("locales"), "en", "Forum");
+
+        let mut manifest =
+            manifest_with_modules(&["index", "outbox", "forum", "content", "tenant", "rbac"]);
+        manifest.modules.get_mut("forum").unwrap().path = Some("crates/rustok-forum".to_string());
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", temp.path().join("modules.toml"));
+        }
+
+        let result = ManifestManager::validate(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleUiWiring { slug, surface, reason })
+                if slug == "forum"
+                    && surface == "storefront"
+                    && reason.contains("missing locale bundle")
+                    && reason.contains("ru.json")
         ));
     }
 }

@@ -142,6 +142,7 @@ mod contract_tests {
         assert!(customer
             .permissions()
             .contains(&Permission::CUSTOMERS_MANAGE));
+        assert!(product.permissions().contains(&Permission::PRODUCTS_MANAGE));
         assert!(profiles
             .permissions()
             .contains(&Permission::PROFILES_MANAGE));
@@ -169,6 +170,7 @@ mod contract_tests {
         let cart = registry.get("cart").expect("cart module");
         let channel = registry.get("channel").expect("channel module");
         let customer = registry.get("customer").expect("customer module");
+        let product = registry.get("product").expect("product module");
         let profiles = registry.get("profiles").expect("profiles module");
         let region = registry.get("region").expect("region module");
         let payment = registry.get("payment").expect("payment module");

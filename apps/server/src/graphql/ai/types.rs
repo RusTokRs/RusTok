@@ -4,9 +4,10 @@ use uuid::Uuid;
 
 use rustok_ai::{
     AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
-    AiChatSessionSummary, AiProviderProfileRecord, AiTaskProfileRecord, AiToolProfileRecord,
-    ChatMessageRole, ExecutionMode, ProviderCapability, ProviderKind, ProviderUsagePolicy,
-    ToolCall, ToolTrace,
+    AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord, AiRecentRunRecord,
+    AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot, AiTaskProfileRecord,
+    AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability, ProviderKind,
+    ProviderUsagePolicy, ToolCall, ToolTrace,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -63,11 +64,181 @@ pub enum AiExecutionModeGql {
     McpTooling,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiRunStreamEventKindGql {
+    Started,
+    Delta,
+    Completed,
+    Failed,
+    WaitingApproval,
+}
+
+impl From<AiRunStreamEventKind> for AiRunStreamEventKindGql {
+    fn from(value: AiRunStreamEventKind) -> Self {
+        match value {
+            AiRunStreamEventKind::Started => Self::Started,
+            AiRunStreamEventKind::Delta => Self::Delta,
+            AiRunStreamEventKind::Completed => Self::Completed,
+            AiRunStreamEventKind::Failed => Self::Failed,
+            AiRunStreamEventKind::WaitingApproval => Self::WaitingApproval,
+        }
+    }
+}
+
 #[derive(Debug, Clone, SimpleObject)]
 pub struct AiProviderUsagePolicyGql {
     pub allowed_task_profiles: Vec<String>,
     pub denied_task_profiles: Vec<String>,
     pub restricted_role_slugs: Vec<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiMetricBucketGql {
+    pub label: String,
+    pub total: i64,
+}
+
+impl From<AiMetricBucket> for AiMetricBucketGql {
+    fn from(value: AiMetricBucket) -> Self {
+        Self {
+            label: value.label,
+            total: value.total.min(i64::MAX as u64) as i64,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiRuntimeMetricsGql {
+    pub router_resolutions_total: i64,
+    pub router_overrides_total: i64,
+    pub selected_auto_total: i64,
+    pub selected_direct_total: i64,
+    pub selected_mcp_total: i64,
+    pub completed_runs_total: i64,
+    pub failed_runs_total: i64,
+    pub waiting_approval_runs_total: i64,
+    pub locale_fallback_total: i64,
+    pub run_latency_ms_total: i64,
+    pub run_latency_samples: i64,
+    pub provider_kind_totals: Vec<AiMetricBucketGql>,
+    pub execution_target_totals: Vec<AiMetricBucketGql>,
+    pub task_profile_totals: Vec<AiMetricBucketGql>,
+    pub resolved_locale_totals: Vec<AiMetricBucketGql>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiRunStreamEventGql {
+    pub session_id: Uuid,
+    pub run_id: Uuid,
+    pub event_kind: AiRunStreamEventKindGql,
+    pub content_delta: Option<String>,
+    pub accumulated_content: Option<String>,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiRecentRunGql {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub session_title: String,
+    pub provider_profile_id: Uuid,
+    pub provider_display_name: String,
+    pub provider_kind: AiProviderKindGql,
+    pub task_profile_id: Option<Uuid>,
+    pub task_profile_slug: Option<String>,
+    pub status: String,
+    pub model: String,
+    pub execution_mode: AiExecutionModeGql,
+    pub execution_path: AiExecutionModeGql,
+    pub execution_target: Option<String>,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
+    pub error_message: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub duration_ms: i64,
+}
+
+impl From<AiRecentRunRecord> for AiRecentRunGql {
+    fn from(value: AiRecentRunRecord) -> Self {
+        Self {
+            id: value.id,
+            session_id: value.session_id,
+            session_title: value.session_title,
+            provider_profile_id: value.provider_profile_id,
+            provider_display_name: value.provider_display_name,
+            provider_kind: value.provider_kind.into(),
+            task_profile_id: value.task_profile_id,
+            task_profile_slug: value.task_profile_slug,
+            status: value.status,
+            model: value.model,
+            execution_mode: value.execution_mode.into(),
+            execution_path: value.execution_path.into(),
+            execution_target: value.execution_target,
+            requested_locale: value.requested_locale,
+            resolved_locale: value.resolved_locale,
+            error_message: value.error_message,
+            started_at: value.started_at,
+            completed_at: value.completed_at,
+            updated_at: value.updated_at,
+            duration_ms: value.duration_ms,
+        }
+    }
+}
+
+impl From<AiRunStreamEvent> for AiRunStreamEventGql {
+    fn from(value: AiRunStreamEvent) -> Self {
+        Self {
+            session_id: value.session_id,
+            run_id: value.run_id,
+            event_kind: value.event_kind.into(),
+            content_delta: value.content_delta,
+            accumulated_content: value.accumulated_content,
+            error_message: value.error_message,
+            created_at: value.created_at,
+        }
+    }
+}
+
+impl From<AiRuntimeMetricsSnapshot> for AiRuntimeMetricsGql {
+    fn from(value: AiRuntimeMetricsSnapshot) -> Self {
+        Self {
+            router_resolutions_total: value.router_resolutions_total.min(i64::MAX as u64) as i64,
+            router_overrides_total: value.router_overrides_total.min(i64::MAX as u64) as i64,
+            selected_auto_total: value.selected_auto_total.min(i64::MAX as u64) as i64,
+            selected_direct_total: value.selected_direct_total.min(i64::MAX as u64) as i64,
+            selected_mcp_total: value.selected_mcp_total.min(i64::MAX as u64) as i64,
+            completed_runs_total: value.completed_runs_total.min(i64::MAX as u64) as i64,
+            failed_runs_total: value.failed_runs_total.min(i64::MAX as u64) as i64,
+            waiting_approval_runs_total: value.waiting_approval_runs_total.min(i64::MAX as u64)
+                as i64,
+            locale_fallback_total: value.locale_fallback_total.min(i64::MAX as u64) as i64,
+            run_latency_ms_total: value.run_latency_ms_total.min(i64::MAX as u64) as i64,
+            run_latency_samples: value.run_latency_samples.min(i64::MAX as u64) as i64,
+            provider_kind_totals: value
+                .provider_kind_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            execution_target_totals: value
+                .execution_target_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            task_profile_totals: value
+                .task_profile_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            resolved_locale_totals: value
+                .resolved_locale_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
 }
 
 impl From<ProviderUsagePolicy> for AiProviderUsagePolicyGql {

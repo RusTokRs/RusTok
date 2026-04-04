@@ -30,6 +30,7 @@ const REGISTRY_PUBLISH_ARTIFACT_PATH: &str = "/v2/catalog/publish/{request_id}/a
 const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/validate";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
 const REGISTRY_PUBLISH_REJECT_PATH: &str = "/v2/catalog/publish/{request_id}/reject";
+const REGISTRY_OWNER_TRANSFER_PATH: &str = "/v2/catalog/owner-transfer";
 const REGISTRY_YANK_PATH: &str = "/v2/catalog/yank";
 
 #[derive(Debug, Clone, Default)]
@@ -555,6 +556,17 @@ pub struct RegistryPublishDecisionRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryOwnerTransferRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    pub slug: String,
+    pub new_owner_actor: String,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegistryPublishRequest {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
@@ -793,6 +805,10 @@ pub fn registry_publish_approve_path() -> &'static str {
 
 pub fn registry_publish_reject_path() -> &'static str {
     REGISTRY_PUBLISH_REJECT_PATH
+}
+
+pub fn registry_owner_transfer_path() -> &'static str {
+    REGISTRY_OWNER_TRANSFER_PATH
 }
 
 pub fn registry_yank_path() -> &'static str {

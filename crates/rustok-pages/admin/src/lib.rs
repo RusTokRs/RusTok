@@ -1,17 +1,85 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::UiRouteContext;
 
+use crate::i18n::t;
 use crate::model::{CreatePageDraft, PageListItem};
 
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let token = use_token();
     let tenant = use_tenant();
+    let default_locale = route_context
+        .locale
+        .clone()
+        .unwrap_or_else(|| "en".to_string());
+    let badge_text = t(route_context.locale.as_deref(), "pages.badge", "pages");
+    let title_text = t(
+        route_context.locale.as_deref(),
+        "pages.title",
+        "Pages Builder",
+    );
+    let subtitle_text = t(
+        route_context.locale.as_deref(),
+        "pages.subtitle",
+        "Canonical module-owned admin slice: list, create, edit, publish and delete pages through the pages module GraphQL contract.",
+    );
+    let list_title_text = t(route_context.locale.as_deref(), "pages.list.title", "Pages");
+    let list_subtitle_text = t(
+        route_context.locale.as_deref(),
+        "pages.list.subtitle",
+        "This list is loaded from the module package itself, not from apps/admin.",
+    );
+    let load_error_text = t(
+        route_context.locale.as_deref(),
+        "pages.error.load",
+        "Failed to load pages",
+    );
+    let form_subtitle_text = t(
+        route_context.locale.as_deref(),
+        "pages.form.subtitle",
+        "A standard module-owned CRUD form that lives entirely inside the package.",
+    );
+    let create_new_instead_text = t(
+        route_context.locale.as_deref(),
+        "pages.form.createNewInstead",
+        "Create new instead",
+    );
+    let title_label = t(route_context.locale.as_deref(), "pages.form.title", "Title");
+    let slug_label = t(route_context.locale.as_deref(), "pages.form.slug", "Slug");
+    let locale_label = t(
+        route_context.locale.as_deref(),
+        "pages.form.locale",
+        "Locale",
+    );
+    let channel_slugs_label = t(
+        route_context.locale.as_deref(),
+        "pages.form.channelSlugs",
+        "Channel slugs",
+    );
+    let channel_slugs_placeholder = t(
+        route_context.locale.as_deref(),
+        "pages.form.channelSlugsPlaceholder",
+        "web, mobile-app",
+    );
+    let channel_slugs_help = t(
+        route_context.locale.as_deref(),
+        "pages.form.channelSlugsHelp",
+        "Comma-separated allowlist. Leave empty to publish on all channels.",
+    );
+    let body_label = t(route_context.locale.as_deref(), "pages.form.body", "Body");
+    let publish_now_label = t(
+        route_context.locale.as_deref(),
+        "pages.form.publishNow",
+        "Publish immediately",
+    );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_page_id, set_editing_page_id) = signal(Option::<String>::None);
@@ -19,10 +87,25 @@ pub fn PagesAdmin() -> impl IntoView {
     let (slug, set_slug) = signal(String::new());
     let (body, set_body) = signal(String::new());
     let (channel_slugs_text, set_channel_slugs_text) = signal(String::new());
-    let (locale, set_locale) = signal("en".to_string());
+    let (locale, set_locale) = signal(default_locale.clone());
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<String>::None);
+    let reset_form_action = Callback::new({
+        let default_locale = default_locale.clone();
+        move |_| {
+            reset_page_form(
+                set_editing_page_id,
+                set_title,
+                set_slug,
+                set_body,
+                set_channel_slugs_text,
+                set_locale,
+                set_publish_now,
+                default_locale.as_str(),
+            )
+        }
+    });
 
     let pages_resource = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -30,16 +113,6 @@ pub fn PagesAdmin() -> impl IntoView {
             api::fetch_pages(token_value, tenant_value).await
         },
     );
-
-    let reset_form = move || {
-        set_editing_page_id.set(None);
-        set_title.set(String::new());
-        set_slug.set(String::new());
-        set_body.set(String::new());
-        set_channel_slugs_text.set(String::new());
-        set_locale.set("en".to_string());
-        set_publish_now.set(false);
-    };
 
     let edit_page = Callback::new(move |page_id: String| {
         let token_value = token.get_untracked();
@@ -184,7 +257,7 @@ pub fn PagesAdmin() -> impl IntoView {
             match api::delete_page(token_value, tenant_value, page_id.clone()).await {
                 Ok(true) => {
                     if editing_page_id.get_untracked().as_deref() == Some(page_id.as_str()) {
-                        reset_form();
+                        reset_form_action.run(());
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -204,11 +277,13 @@ pub fn PagesAdmin() -> impl IntoView {
             <header class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
                 <div class="space-y-2">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        "pages"
+                        {badge_text.clone()}
                     </span>
-                    <h1 class="text-2xl font-semibold text-card-foreground">"Pages Builder"</h1>
+                    <h1 class="text-2xl font-semibold text-card-foreground">
+                        {title_text.clone()}
+                    </h1>
                     <p class="max-w-2xl text-sm text-muted-foreground">
-                        "Canonical module-owned admin slice: list, create, edit, publish and delete pages through the pages module GraphQL contract."
+                        {subtitle_text.clone()}
                     </p>
                 </div>
             </header>
@@ -217,9 +292,11 @@ pub fn PagesAdmin() -> impl IntoView {
                 <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-start justify-between gap-4">
                         <div>
-                            <h2 class="text-lg font-semibold text-card-foreground">"Pages"</h2>
+                            <h2 class="text-lg font-semibold text-card-foreground">
+                                {list_title_text.clone()}
+                            </h2>
                             <p class="text-sm text-muted-foreground">
-                                "This list is loaded from the module package itself, not from apps/admin."
+                                {list_subtitle_text.clone()}
                             </p>
                         </div>
                     </div>
@@ -249,7 +326,10 @@ pub fn PagesAdmin() -> impl IntoView {
                                     }.into_any(),
                                     Err(err) => view! {
                                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                            {format!("Failed to load pages: {err}")}
+                                            {format!(
+                                                "{}: {err}",
+                                                load_error_text.clone()
+                                            )}
                                         </div>
                                     }.into_any(),
                                 }
@@ -263,14 +343,18 @@ pub fn PagesAdmin() -> impl IntoView {
                         <h2 class="text-lg font-semibold text-card-foreground">
                             {move || {
                                 if editing_page_id.get().is_some() {
-                                    "Edit page"
+                                    t(locale.get().as_str().into(), "pages.form.editTitle", "Edit page")
                                 } else {
-                                    "Create page"
+                                    t(
+                                        locale.get().as_str().into(),
+                                        "pages.form.createTitle",
+                                        "Create page",
+                                    )
                                 }
                             }}
                         </h2>
                         <p class="text-sm text-muted-foreground">
-                            "A standard module-owned CRUD form that lives entirely inside the package."
+                            {form_subtitle_text.clone()}
                         </p>
                     </div>
 
@@ -280,23 +364,32 @@ pub fn PagesAdmin() -> impl IntoView {
                                 {move || {
                                     editing_page_id
                                         .get()
-                                        .map(|page_id| format!("Editing page {page_id}"))
+                                        .map(|page_id| {
+                                            t(
+                                                locale.get().as_str().into(),
+                                                "pages.form.editingBanner",
+                                                "Editing page {id}",
+                                            )
+                                            .replace("{id}", page_id.as_str())
+                                        })
                                         .unwrap_or_default()
                                 }}
                             </div>
                             <button
                                 type="button"
                                 class="text-xs font-medium text-primary hover:underline"
-                                on:click=move |_| reset_form()
+                                on:click=move |_| reset_form_action.run(())
                             >
-                                "Create new instead"
+                                {create_new_instead_text.clone()}
                             </button>
                         </div>
                     </Show>
 
                     <form class="mt-5 space-y-4" on:submit=submit_page>
                         <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">"Title"</span>
+                            <span class="text-sm font-medium text-card-foreground">
+                                {title_label.clone()}
+                            </span>
                             <input
                                 type="text"
                                 class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -312,7 +405,9 @@ pub fn PagesAdmin() -> impl IntoView {
                         </label>
 
                         <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">"Slug"</span>
+                            <span class="text-sm font-medium text-card-foreground">
+                                {slug_label.clone()}
+                            </span>
                             <input
                                 type="text"
                                 class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -322,7 +417,9 @@ pub fn PagesAdmin() -> impl IntoView {
                         </label>
 
                         <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">"Locale"</span>
+                            <span class="text-sm font-medium text-card-foreground">
+                                {locale_label.clone()}
+                            </span>
                             <input
                                 type="text"
                                 class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -332,21 +429,25 @@ pub fn PagesAdmin() -> impl IntoView {
                         </label>
 
                         <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">"Channel slugs"</span>
+                            <span class="text-sm font-medium text-card-foreground">
+                                {channel_slugs_label.clone()}
+                            </span>
                             <input
                                 type="text"
                                 class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                placeholder="web, mobile-app"
+                                placeholder=channel_slugs_placeholder.clone()
                                 prop:value=channel_slugs_text
                                 on:input=move |ev| set_channel_slugs_text.set(event_target_value(&ev))
                             />
                             <span class="block text-xs text-muted-foreground">
-                                "Comma-separated allowlist. Leave empty to publish on all channels."
+                                {channel_slugs_help.clone()}
                             </span>
                         </label>
 
                         <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">"Body"</span>
+                            <span class="text-sm font-medium text-card-foreground">
+                                {body_label.clone()}
+                            </span>
                             <textarea
                                 class="min-h-40 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                 prop:value=body
@@ -360,7 +461,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                 prop:checked=publish_now
                                 on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
                             />
-                            "Publish immediately"
+                            {publish_now_label.clone()}
                         </label>
 
                         <Show when=move || submit_error.get().is_some()>
@@ -389,11 +490,11 @@ pub fn PagesAdmin() -> impl IntoView {
                                         .map(|key| key.starts_with("save:"))
                                         .unwrap_or(false)
                                 {
-                                    "Saving..."
+                                    t(locale.get().as_str().into(), "pages.form.saving", "Saving...")
                                 } else if editing_page_id.get().is_some() {
-                                    "Update page"
+                                    t(locale.get().as_str().into(), "pages.form.update", "Update page")
                                 } else {
-                                    "Create page"
+                                    t(locale.get().as_str().into(), "pages.form.create", "Create page")
                                 }
                             }}
                         </button>
@@ -414,11 +515,16 @@ fn PagesTable(
     on_toggle_publish: Callback<(String, bool)>,
     on_delete: Callback<String>,
 ) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     if items.is_empty() {
         return view! {
             <div class="rounded-xl border border-dashed border-border p-12 text-center">
                 <p class="text-sm text-muted-foreground">
-                    "No pages yet. Create the first one from the module package form."
+                    {t(
+                        locale.as_deref(),
+                        "pages.table.empty",
+                        "No pages yet. Create the first one from the module package form.",
+                    )}
                 </p>
             </div>
         }
@@ -427,15 +533,18 @@ fn PagesTable(
 
     view! {
         <div class="space-y-4">
-            <div class="text-sm text-muted-foreground">{format!("{total} page(s)")}</div>
+            <div class="text-sm text-muted-foreground">
+                {t(locale.as_deref(), "pages.table.total", "{count} page(s)")
+                    .replace("{count}", &total.to_string())}
+            </div>
             <div class="overflow-hidden rounded-xl border border-border">
                 <table class="w-full text-sm">
                     <thead class="border-b border-border bg-muted/50">
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Title"</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Slug"</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Status"</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">"Updated"</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale.as_deref(), "pages.table.title", "Title")}</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale.as_deref(), "pages.table.slug", "Slug")}</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale.as_deref(), "pages.table.status", "Status")}</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale.as_deref(), "pages.table.updated", "Updated")}</th>
                             <th class="px-4 py-3"></th>
                         </tr>
                     </thead>
@@ -456,7 +565,9 @@ fn PagesTable(
                                     <tr class=("bg-primary/5", is_editing)>
                                         <td class="px-4 py-3">
                                             <div class="font-medium text-foreground">
-                                                {page.title.unwrap_or_else(|| "Untitled page".to_string())}
+                                                {page.title.unwrap_or_else(|| {
+                                                    t(locale.as_deref(), "pages.table.untitled", "Untitled page")
+                                                })}
                                             </div>
                                             <div class="text-xs text-muted-foreground">{page.template}</div>
                                         </td>
@@ -484,9 +595,9 @@ fn PagesTable(
                                                     {
                                                         "...".to_string()
                                                     } else if is_editing {
-                                                        "Editing".to_string()
+                                                        t(locale.as_deref(), "pages.table.editing", "Editing")
                                                     } else {
-                                                        "Edit".to_string()
+                                                        t(locale.as_deref(), "pages.table.edit", "Edit")
                                                     }}
                                                 </button>
                                                 <button
@@ -504,9 +615,9 @@ fn PagesTable(
                                                     {
                                                         "...".to_string()
                                                     } else if is_published {
-                                                        "Unpublish".to_string()
+                                                        t(locale.as_deref(), "pages.table.unpublish", "Unpublish")
                                                     } else {
-                                                        "Publish".to_string()
+                                                        t(locale.as_deref(), "pages.table.publish", "Publish")
                                                     }}
                                                 </button>
                                                 <button
@@ -524,7 +635,7 @@ fn PagesTable(
                                                     {
                                                         "...".to_string()
                                                     } else {
-                                                        "Delete".to_string()
+                                                        t(locale.as_deref(), "pages.table.delete", "Delete")
                                                     }}
                                                 </button>
                                             </div>
@@ -585,4 +696,23 @@ fn parse_channel_slugs(value: &str) -> Vec<String> {
     items.sort();
     items.dedup();
     items
+}
+
+fn reset_page_form(
+    set_editing_page_id: WriteSignal<Option<String>>,
+    set_title: WriteSignal<String>,
+    set_slug: WriteSignal<String>,
+    set_body: WriteSignal<String>,
+    set_channel_slugs_text: WriteSignal<String>,
+    set_locale: WriteSignal<String>,
+    set_publish_now: WriteSignal<bool>,
+    default_locale: &str,
+) {
+    set_editing_page_id.set(None);
+    set_title.set(String::new());
+    set_slug.set(String::new());
+    set_body.set(String::new());
+    set_channel_slugs_text.set(String::new());
+    set_locale.set(default_locale.to_string());
+    set_publish_now.set(false);
 }

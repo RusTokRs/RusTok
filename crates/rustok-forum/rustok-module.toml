@@ -30,11 +30,21 @@ leptos_crate = "rustok-forum-admin"
 route_segment = "forum"
 nav_label = "Forum"
 
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-forum-storefront"
 slot = "home_after_catalog"
 route_segment = "forum"
 page_title = "Forum"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
 
 [[provides.admin_ui.pages]]
 subpath = "categories"

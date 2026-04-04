@@ -1,0 +1,22 @@
+{
+  "blog.badge": "blog",
+  "blog.title": "Истории из модульного пакета",
+  "blog.subtitle": "Эта storefront-поверхность читает blog-данные через GraphQL без blog-specific wiring в host.",
+  "blog.error.load": "Не удалось загрузить storefront-данные блога",
+  "blog.selected.emptyTitle": "Выберите опубликованный пост",
+  "blog.selected.emptyBody": "Откройте пост из списка ниже через `?slug=` или опубликуйте его из blog admin package.",
+  "blog.selected.missingSlug": "missing-slug",
+  "blog.selected.noExcerpt": "Анонс пока не задан.",
+  "blog.selected.unscheduled": "Без расписания",
+  "blog.selected.noBody": "Тело поста пока не заполнено.",
+  "blog.selected.slugLabel": "slug",
+  "blog.selected.localeLabel": "locale",
+  "blog.selected.publishedLabel": "published",
+  "blog.list.empty": "Для storefront пока нет опубликованных постов блога.",
+  "blog.list.title": "Опубликованные посты",
+  "blog.list.total": "всего",
+  "blog.list.open": "Открыть",
+  "blog.list.localeLabel": "locale",
+  "blog.list.noExcerpt": "Анонс пока не задан.",
+  "blog.body.rawFormat": "Материал хранится в формате `{format}`. Длина исходного тела: {count} символов."
+}

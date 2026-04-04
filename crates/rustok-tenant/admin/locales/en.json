@@ -1,0 +1,18 @@
+{
+  "tenant.badge": "tenant",
+  "tenant.title": "Tenant Runtime",
+  "tenant.subtitle": "Module-owned overview for active tenant state and effective module enablement.",
+  "tenant.info.tenant": "Tenant",
+  "tenant.info.name": "Name",
+  "tenant.info.domain": "Domain",
+  "tenant.info.status": "Status",
+  "tenant.value.notAvailable": "n/a",
+  "tenant.value.active": "active",
+  "tenant.value.inactive": "inactive",
+  "tenant.modules.title": "Registered Modules",
+  "tenant.modules.subtitle": "Core modules stay enabled by contract; optional modules reflect tenant-side state.",
+  "tenant.modules.updated": "Updated",
+  "tenant.modules.enabled": "enabled",
+  "tenant.modules.disabled": "disabled",
+  "tenant.error.loadBootstrap": "Failed to load tenant bootstrap"
+}

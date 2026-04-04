@@ -21,6 +21,11 @@ route_segment = "search"
 nav_label = "Search"
 next_package = "@rustok/search-admin"
 
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
 [[provides.admin_ui.pages]]
 subpath = "playground"
 title = "Search Playground"
@@ -47,3 +52,8 @@ slot = "home_after_hero"
 route_segment = "search"
 page_title = "Search"
 next_package = "@rustok/search-frontend"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

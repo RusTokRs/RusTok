@@ -8,6 +8,7 @@ type AiAdminPageProps = {
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
+  section?: 'overview' | 'diagnostics';
 };
 
 type Provider = {
@@ -102,10 +103,84 @@ type SessionDetail = {
     reason?: string | null;
     status: string;
   }>;
+  recentStreamEvents: RunStreamEvent[];
+};
+
+type MetricBucket = {
+  label: string;
+  total: number;
+};
+
+type RuntimeMetrics = {
+  routerResolutionsTotal: number;
+  routerOverridesTotal: number;
+  selectedAutoTotal: number;
+  selectedDirectTotal: number;
+  selectedMcpTotal: number;
+  completedRunsTotal: number;
+  failedRunsTotal: number;
+  waitingApprovalRunsTotal: number;
+  localeFallbackTotal: number;
+  runLatencyMsTotal: number;
+  runLatencySamples: number;
+  providerKindTotals: MetricBucket[];
+  executionTargetTotals: MetricBucket[];
+  taskProfileTotals: MetricBucket[];
+  resolvedLocaleTotals: MetricBucket[];
+};
+
+type RecentRun = {
+  id: string;
+  sessionId: string;
+  sessionTitle: string;
+  providerProfileId: string;
+  providerDisplayName: string;
+  providerKind: string;
+  taskProfileId?: string | null;
+  taskProfileSlug?: string | null;
+  status: string;
+  model: string;
+  executionMode: string;
+  executionPath: string;
+  executionTarget?: string | null;
+  requestedLocale?: string | null;
+  resolvedLocale: string;
+  errorMessage?: string | null;
+  startedAt: string;
+  completedAt?: string | null;
+  updatedAt: string;
+  durationMs: number;
+};
+
+type RunStreamEvent = {
+  sessionId: string;
+  runId: string;
+  eventKind: 'STARTED' | 'DELTA' | 'COMPLETED' | 'FAILED' | 'WAITING_APPROVAL';
+  contentDelta?: string | null;
+  accumulatedContent?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
 };
 
 const BOOTSTRAP_QUERY = `
   query AiBootstrap {
+    aiRuntimeMetrics {
+      routerResolutionsTotal
+      routerOverridesTotal
+      selectedAutoTotal
+      selectedDirectTotal
+      selectedMcpTotal
+      completedRunsTotal
+      failedRunsTotal
+      waitingApprovalRunsTotal
+      localeFallbackTotal
+      runLatencyMsTotal
+      runLatencySamples
+      providerKindTotals { label total }
+      executionTargetTotals { label total }
+      taskProfileTotals { label total }
+      resolvedLocaleTotals { label total }
+    }
     aiProviderProfiles {
       id
       slug
@@ -123,6 +198,37 @@ const BOOTSTRAP_QUERY = `
     aiTaskProfiles { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }
     aiToolProfiles { id slug displayName description allowedTools deniedTools sensitiveTools isActive }
     aiChatSessions { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
+    aiRecentRuns(limit: 20) {
+      id
+      sessionId
+      sessionTitle
+      providerProfileId
+      providerDisplayName
+      providerKind
+      taskProfileId
+      taskProfileSlug
+      status
+      model
+      executionMode
+      executionPath
+      executionTarget
+      requestedLocale
+      resolvedLocale
+      errorMessage
+      startedAt
+      completedAt
+      updatedAt
+      durationMs
+    }
+    aiRecentRunStreamEvents(limit: 20) {
+      sessionId
+      runId
+      eventKind
+      contentDelta
+      accumulatedContent
+      errorMessage
+      createdAt
+    }
   }
 `;
 
@@ -140,6 +246,29 @@ const SESSION_QUERY = `
       runs { id taskProfileId status model executionMode executionPath requestedLocale resolvedLocale errorMessage decisionTrace }
       toolTraces { toolName status durationMs }
       approvals { id toolName reason status }
+    }
+    aiRecentRunStreamEvents(sessionId: $id, limit: 20) {
+      sessionId
+      runId
+      eventKind
+      contentDelta
+      accumulatedContent
+      errorMessage
+      createdAt
+    }
+  }
+`;
+
+const AI_SESSION_EVENTS_SUBSCRIPTION = `
+  subscription AiSessionEvents($sessionId: UUID!) {
+    aiSessionEvents(sessionId: $sessionId) {
+      sessionId
+      runId
+      eventKind
+      contentDelta
+      accumulatedContent
+      errorMessage
+      createdAt
     }
   }
 `;
@@ -257,13 +386,45 @@ async function gql<TData, TVars = Record<string, never>>(
   );
 }
 
+function resolveGraphqlWsUrl(explicit?: string): string {
+  const graphqlUrl =
+    explicit ??
+    (process.env.NEXT_PUBLIC_API_URL
+      ? `${process.env.NEXT_PUBLIC_API_URL}/api/graphql`
+      : 'http://localhost:5150/api/graphql');
+  if (graphqlUrl.startsWith('https://')) {
+    return `${graphqlUrl.replace('https://', 'wss://')}/ws`;
+  }
+  if (graphqlUrl.startsWith('http://')) {
+    return `${graphqlUrl.replace('http://', 'ws://')}/ws`;
+  }
+  return `${graphqlUrl}/ws`;
+}
+
+function getClientLocale(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(/rustok-admin-locale=([^;]+)/);
+  return match?.[1];
+}
+
 export function AiAdminPage(props: AiAdminPageProps) {
+  const diagnosticsOnly = props.section === 'diagnostics';
+  const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetrics | null>(null);
   const [providers, setProviders] = React.useState<Provider[]>([]);
   const [taskProfiles, setTaskProfiles] = React.useState<TaskProfile[]>([]);
   const [toolProfiles, setToolProfiles] = React.useState<ToolProfile[]>([]);
   const [sessions, setSessions] = React.useState<SessionSummary[]>([]);
+  const [recentRuns, setRecentRuns] = React.useState<RecentRun[]>([]);
+  const [recentStreamEvents, setRecentStreamEvents] = React.useState<RunStreamEvent[]>([]);
   const [selectedSession, setSelectedSession] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<SessionDetail | null>(null);
+  const [liveStream, setLiveStream] = React.useState<{
+    runId: string;
+    status: string;
+    content: string;
+    errorMessage?: string | null;
+    connected: boolean;
+  } | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<string | null>(null);
@@ -316,13 +477,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
     providerProfileId: '',
     taskProfileId: '',
     toolProfileId: '',
-    locale: 'en',
+    locale: '',
     initialMessage: ''
   });
 
   const [alloyForm, setAlloyForm] = React.useState({
     title: 'Alloy Assist',
-    locale: 'en',
+    locale: '',
     operation: 'list_scripts',
     scriptId: '',
     scriptName: '',
@@ -333,7 +494,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
 
   const [imageForm, setImageForm] = React.useState({
     title: 'Media Image',
-    locale: 'en',
+    locale: '',
     prompt: '',
     negativePrompt: '',
     fileName: '',
@@ -345,7 +506,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
   });
   const [productForm, setProductForm] = React.useState({
     title: 'Product Copy',
-    locale: 'en',
+    locale: '',
     productId: '',
     sourceLocale: '',
     sourceTitle: '',
@@ -357,7 +518,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
   });
   const [blogForm, setBlogForm] = React.useState({
     title: 'Blog Draft',
-    locale: 'en',
+    locale: '',
     postId: '',
     sourceLocale: '',
     sourceTitle: '',
@@ -379,15 +540,21 @@ export function AiAdminPage(props: AiAdminPageProps) {
     setError(null);
     try {
       const data = await gql<{
+        aiRuntimeMetrics: RuntimeMetrics;
         aiProviderProfiles: Provider[];
         aiTaskProfiles: TaskProfile[];
         aiToolProfiles: ToolProfile[];
         aiChatSessions: SessionSummary[];
+        aiRecentRuns: RecentRun[];
+        aiRecentRunStreamEvents: RunStreamEvent[];
       }>(BOOTSTRAP_QUERY, {} as Record<string, never>, props);
+      setRuntimeMetrics(data.aiRuntimeMetrics);
       setProviders(data.aiProviderProfiles);
       setTaskProfiles(data.aiTaskProfiles);
       setToolProfiles(data.aiToolProfiles);
       setSessions(data.aiChatSessions);
+      setRecentRuns(data.aiRecentRuns);
+      setRecentStreamEvents(data.aiRecentRunStreamEvents);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load AI bootstrap');
     } finally {
@@ -447,12 +614,22 @@ export function AiAdminPage(props: AiAdminPageProps) {
     async (sessionId: string) => {
       setSelectedSession(sessionId);
       try {
-        const data = await gql<{ aiChatSession: SessionDetail | null }, { id: string }>(
+        const data = await gql<
+          { aiChatSession: Omit<SessionDetail, 'recentStreamEvents'> | null; aiRecentRunStreamEvents: RunStreamEvent[] },
+          { id: string }
+        >(
           SESSION_QUERY,
           { id: sessionId },
           props
         );
-        setDetail(data.aiChatSession);
+        setDetail(
+          data.aiChatSession
+            ? {
+                ...data.aiChatSession,
+                recentStreamEvents: data.aiRecentRunStreamEvents
+              }
+            : null
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load session');
       }
@@ -463,6 +640,101 @@ export function AiAdminPage(props: AiAdminPageProps) {
   React.useEffect(() => {
     void loadBootstrap();
   }, [loadBootstrap]);
+
+  React.useEffect(() => {
+    if (!selectedSession || typeof WebSocket === 'undefined') {
+      setLiveStream(null);
+      return;
+    }
+
+    const ws = new WebSocket(resolveGraphqlWsUrl(props.graphqlUrl), 'graphql-transport-ws');
+    const subscriptionId = `ai-session-${selectedSession}`;
+    let subscribed = false;
+
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          type: 'connection_init',
+          payload: {
+            token: props.token ?? undefined,
+            tenantSlug: props.tenantSlug ?? undefined,
+            locale: getClientLocale()
+          }
+        })
+      );
+    };
+
+    ws.onmessage = (event) => {
+      const payload = JSON.parse(String(event.data)) as {
+        type: string;
+        payload?: {
+          data?: { aiSessionEvents?: RunStreamEvent };
+          errors?: Array<{ message: string }>;
+        };
+      };
+
+      if (payload.type === 'connection_ack' && !subscribed) {
+        subscribed = true;
+        ws.send(
+          JSON.stringify({
+            id: subscriptionId,
+            type: 'subscribe',
+            payload: {
+              query: AI_SESSION_EVENTS_SUBSCRIPTION,
+              variables: { sessionId: selectedSession }
+            }
+          })
+        );
+        return;
+      }
+
+      const streamEvent = payload.payload?.data?.aiSessionEvents;
+      if (payload.type === 'next' && streamEvent) {
+        setLiveStream((current) => ({
+          runId: streamEvent.runId,
+          status: streamEvent.eventKind.toLowerCase(),
+          content: streamEvent.accumulatedContent ?? current?.content ?? '',
+          errorMessage: streamEvent.errorMessage,
+          connected: true
+        }));
+        if (
+          streamEvent.eventKind === 'COMPLETED' ||
+          streamEvent.eventKind === 'FAILED' ||
+          streamEvent.eventKind === 'WAITING_APPROVAL'
+        ) {
+          void loadSession(selectedSession);
+        }
+        return;
+      }
+
+      if (payload.type === 'error' || payload.payload?.errors?.length) {
+        setLiveStream((current) =>
+          current
+            ? {
+                ...current,
+                connected: false,
+                status: 'failed',
+                errorMessage:
+                  payload.payload?.errors?.[0]?.message ?? 'AI stream subscription failed'
+              }
+            : current
+        );
+      }
+    };
+
+    ws.onerror = () => {
+      setLiveStream((current) => (current ? { ...current, connected: false } : current));
+    };
+
+    ws.onclose = () => {
+      setLiveStream((current) => (current ? { ...current, connected: false } : current));
+    };
+
+    return () => {
+      ws.close();
+      setLiveStream(null);
+    };
+  }, [loadSession, props.graphqlUrl, props.tenantSlug, props.token, selectedSession]);
 
   return (
     <div className='space-y-6'>
@@ -475,6 +747,28 @@ export function AiAdminPage(props: AiAdminPageProps) {
           <p className='max-w-3xl text-sm text-muted-foreground'>
             Provider profiles, tool profiles, operator chat sessions, tool traces and approval gates.
           </p>
+        </div>
+        <div className='mt-4 flex flex-wrap gap-2 text-sm'>
+          <a
+            className={
+              diagnosticsOnly
+                ? 'rounded-full border border-border px-3 py-1.5 text-muted-foreground'
+                : 'rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary'
+            }
+            href='/dashboard/ai'
+          >
+            Overview
+          </a>
+          <a
+            className={
+              diagnosticsOnly
+                ? 'rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary'
+                : 'rounded-full border border-border px-3 py-1.5 text-muted-foreground'
+            }
+            href='/dashboard/ai/diagnostics'
+          >
+            Diagnostics
+          </a>
         </div>
       </header>
 
@@ -492,8 +786,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
       {loading ? (
         <div className='h-32 animate-pulse rounded-2xl bg-muted' />
       ) : (
-        <div className='grid gap-6 xl:grid-cols-[1.1fr_1fr_1.5fr]'>
-          <div className='space-y-6'>
+        <div className={diagnosticsOnly ? 'grid gap-6 xl:grid-cols-[1fr_1.5fr]' : 'grid gap-6 xl:grid-cols-[1.1fr_1fr_1.5fr]'}>
+          {!diagnosticsOnly ? <div className='space-y-6'>
             <Card title='Providers'>
               <form
                 className='space-y-3'
@@ -994,10 +1288,76 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 ))}
               </div>
             </Card>
-          </div>
+          </div> : null}
 
           <div className='space-y-6'>
-            <Card title='Blog Draft'>
+            <Card title='Diagnostics'>
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <InfoItem label='Router resolutions' value={String(runtimeMetrics?.routerResolutionsTotal ?? 0)} />
+                <InfoItem label='Overrides' value={String(runtimeMetrics?.routerOverridesTotal ?? 0)} />
+                <InfoItem label='Completed runs' value={String(runtimeMetrics?.completedRunsTotal ?? 0)} />
+                <InfoItem label='Failed runs' value={String(runtimeMetrics?.failedRunsTotal ?? 0)} />
+                <InfoItem label='Waiting approval' value={String(runtimeMetrics?.waitingApprovalRunsTotal ?? 0)} />
+                <InfoItem label='Locale fallbacks' value={String(runtimeMetrics?.localeFallbackTotal ?? 0)} />
+                <InfoItem label='Direct selected' value={String(runtimeMetrics?.selectedDirectTotal ?? 0)} />
+                <InfoItem label='MCP selected' value={String(runtimeMetrics?.selectedMcpTotal ?? 0)} />
+              </div>
+              <div className='mt-4 space-y-3 text-sm text-muted-foreground'>
+                <div>
+                  Average run latency:{' '}
+                  {runtimeMetrics && runtimeMetrics.runLatencySamples > 0
+                    ? Math.floor(runtimeMetrics.runLatencyMsTotal / runtimeMetrics.runLatencySamples)
+                    : 0}{' '}
+                  ms
+                </div>
+                <div>
+                  <div className='font-medium text-foreground'>Provider buckets</div>
+                  <div>{bucketSummary(runtimeMetrics?.providerKindTotals ?? [])}</div>
+                </div>
+                <div>
+                  <div className='font-medium text-foreground'>Execution targets</div>
+                  <div>{bucketSummary(runtimeMetrics?.executionTargetTotals ?? [])}</div>
+                </div>
+                <div>
+                  <div className='font-medium text-foreground'>Task profiles</div>
+                  <div>{bucketSummary(runtimeMetrics?.taskProfileTotals ?? [])}</div>
+                </div>
+                <div>
+                  <div className='font-medium text-foreground'>Resolved locales</div>
+                  <div>{bucketSummary(runtimeMetrics?.resolvedLocaleTotals ?? [])}</div>
+                </div>
+                <div>
+                  <div className='font-medium text-foreground'>Recent runs</div>
+                  <div>{formatRecentRunSummary(recentRuns)}</div>
+                </div>
+                <div className='space-y-2'>
+                  {recentRuns.slice(0, 8).map((run) => (
+                    <div key={run.id} className='rounded-lg border border-border px-3 py-2'>
+                      <div className='font-medium text-foreground'>
+                        {run.sessionTitle} В· {run.status} В· {run.durationMs} ms
+                      </div>
+                      <div>
+                        {run.providerDisplayName} В· {run.executionTarget ?? run.executionPath} В·{' '}
+                        {run.requestedLocale ?? 'auto'} -&gt; {run.resolvedLocale}
+                      </div>
+                      <div className='text-xs text-muted-foreground'>
+                        {new Date(run.startedAt).toLocaleString()}
+                        {run.taskProfileSlug ? ` В· task ${run.taskProfileSlug}` : ''}
+                      </div>
+                      {run.errorMessage ? (
+                        <div className='mt-1 text-rose-600'>{run.errorMessage}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className='font-medium text-foreground'>Recent stream events</div>
+                  <div>{recentStreamEvents.length === 0 ? 'No recent events yet.' : `${recentStreamEvents.length} cached event(s)`}</div>
+                </div>
+              </div>
+            </Card>
+
+            {!diagnosticsOnly ? <Card title='Blog Draft'>
               <form
                 className='space-y-3'
                 onSubmit={async (event) => {
@@ -1049,7 +1409,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 }}
               >
                 <Input label='Job title' value={blogForm.title} onChange={(title) => setBlogForm((current) => ({ ...current, title }))} />
-                <Input label='Locale' value={blogForm.locale} onChange={(locale) => setBlogForm((current) => ({ ...current, locale }))} />
+                <Input
+                  label='Locale'
+                  placeholder='auto (request locale -> tenant default -> en)'
+                  value={blogForm.locale}
+                  onChange={(locale) => setBlogForm((current) => ({ ...current, locale }))}
+                />
                 <Input label='Existing post id' value={blogForm.postId} onChange={(postId) => setBlogForm((current) => ({ ...current, postId }))} />
                 <Input label='Source locale' value={blogForm.sourceLocale} onChange={(sourceLocale) => setBlogForm((current) => ({ ...current, sourceLocale }))} />
                 <Input label='Source title override' value={blogForm.sourceTitle} onChange={(sourceTitle) => setBlogForm((current) => ({ ...current, sourceTitle }))} />
@@ -1073,9 +1438,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   Generate blog draft
                 </button>
               </form>
-            </Card>
+            </Card> : null}
 
-            <Card title='Product Copy'>
+            {!diagnosticsOnly ? <Card title='Product Copy'>
               <form
                 className='space-y-3'
                 onSubmit={async (event) => {
@@ -1133,7 +1498,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 }}
               >
                 <Input label='Job title' value={productForm.title} onChange={(title) => setProductForm((current) => ({ ...current, title }))} />
-                <Input label='Locale' value={productForm.locale} onChange={(locale) => setProductForm((current) => ({ ...current, locale }))} />
+                <Input
+                  label='Locale'
+                  placeholder='auto (request locale -> tenant default -> en)'
+                  value={productForm.locale}
+                  onChange={(locale) => setProductForm((current) => ({ ...current, locale }))}
+                />
                 <Input label='Product id' value={productForm.productId} onChange={(productId) => setProductForm((current) => ({ ...current, productId }))} />
                 <Input label='Source locale' value={productForm.sourceLocale} onChange={(sourceLocale) => setProductForm((current) => ({ ...current, sourceLocale }))} />
                 <Input label='Source title override' value={productForm.sourceTitle} onChange={(sourceTitle) => setProductForm((current) => ({ ...current, sourceTitle }))} />
@@ -1153,9 +1523,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   Generate product copy
                 </button>
               </form>
-            </Card>
+            </Card> : null}
 
-            <Card title='Media Image'>
+            {!diagnosticsOnly ? <Card title='Media Image'>
               <form
                 className='space-y-3'
                 onSubmit={async (event) => {
@@ -1203,7 +1573,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 }}
               >
                 <Input label='Job title' value={imageForm.title} onChange={(title) => setImageForm((current) => ({ ...current, title }))} />
-                <Input label='Locale' value={imageForm.locale} onChange={(locale) => setImageForm((current) => ({ ...current, locale }))} />
+                <Input
+                  label='Locale'
+                  placeholder='auto (request locale -> tenant default -> en)'
+                  value={imageForm.locale}
+                  onChange={(locale) => setImageForm((current) => ({ ...current, locale }))}
+                />
                 <Input label='Prompt' value={imageForm.prompt} onChange={(prompt) => setImageForm((current) => ({ ...current, prompt }))} />
                 <Input label='Negative prompt' value={imageForm.negativePrompt} onChange={(negativePrompt) => setImageForm((current) => ({ ...current, negativePrompt }))} />
                 <Input label='File name' value={imageForm.fileName} onChange={(fileName) => setImageForm((current) => ({ ...current, fileName }))} />
@@ -1223,9 +1598,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   Generate media image
                 </button>
               </form>
-            </Card>
+            </Card> : null}
 
-            <Card title='Alloy Assist'>
+            {!diagnosticsOnly ? <Card title='Alloy Assist'>
               <form
                 className='space-y-3'
                 onSubmit={async (event) => {
@@ -1271,7 +1646,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 }}
               >
                 <Input label='Job title' value={alloyForm.title} onChange={(title) => setAlloyForm((current) => ({ ...current, title }))} />
-                <Input label='Locale' value={alloyForm.locale} onChange={(locale) => setAlloyForm((current) => ({ ...current, locale }))} />
+                <Input
+                  label='Locale'
+                  placeholder='auto (request locale -> tenant default -> en)'
+                  value={alloyForm.locale}
+                  onChange={(locale) => setAlloyForm((current) => ({ ...current, locale }))}
+                />
                 <Input label='Operation' value={alloyForm.operation} onChange={(operation) => setAlloyForm((current) => ({ ...current, operation }))} />
                 <Input label='Script id' value={alloyForm.scriptId} onChange={(scriptId) => setAlloyForm((current) => ({ ...current, scriptId }))} />
                 <Input label='Script name' value={alloyForm.scriptName} onChange={(scriptName) => setAlloyForm((current) => ({ ...current, scriptName }))} />
@@ -1289,9 +1669,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   Run Alloy job
                 </button>
               </form>
-            </Card>
+            </Card> : null}
 
-            <Card title='New Session'>
+            {!diagnosticsOnly ? <Card title='New Session'>
               <form
                 className='space-y-3'
                 onSubmit={async (event) => {
@@ -1325,7 +1705,12 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 }}
               >
                 <Input label='Title' value={sessionForm.title} onChange={(title) => setSessionForm((current) => ({ ...current, title }))} />
-                <Input label='Locale' value={sessionForm.locale} onChange={(locale) => setSessionForm((current) => ({ ...current, locale }))} />
+                <Input
+                  label='Locale'
+                  placeholder='auto (request locale -> tenant default -> en)'
+                  value={sessionForm.locale}
+                  onChange={(locale) => setSessionForm((current) => ({ ...current, locale }))}
+                />
                 <Input label='Initial message' value={sessionForm.initialMessage} onChange={(initialMessage) => setSessionForm((current) => ({ ...current, initialMessage }))} />
                 <div className='rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground'>
                   Provider: {sessionForm.providerProfileId || 'not selected'}
@@ -1338,7 +1723,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   Start session
                 </button>
               </form>
-            </Card>
+            </Card> : null}
 
             <Card title='Sessions'>
               <div className='space-y-2'>
@@ -1382,6 +1767,46 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     </div>
                   ))}
                 </div>
+
+                {liveStream ? (
+                  <div className='rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm'>
+                    <div className='flex items-center justify-between gap-3'>
+                      <div className='font-medium text-foreground'>Live stream</div>
+                      <div className='text-xs text-muted-foreground'>
+                        {liveStream.connected ? 'connected' : 'disconnected'} · {liveStream.status}
+                      </div>
+                    </div>
+                    <div className='mt-3 whitespace-pre-wrap text-foreground'>
+                      {liveStream.content || 'Waiting for assistant output…'}
+                    </div>
+                    {liveStream.errorMessage ? (
+                      <div className='mt-2 text-rose-600'>{liveStream.errorMessage}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {detail?.recentStreamEvents?.length ? (
+                  <Card title='Recent Stream Events'>
+                    <div className='space-y-2 text-sm'>
+                      {detail.recentStreamEvents.slice(0, 10).map((event) => (
+                        <div key={`${event.runId}-${event.createdAt}`} className='rounded-lg border border-border px-3 py-2'>
+                          <div className='font-medium'>
+                            {event.eventKind} · {event.runId}
+                          </div>
+                          <div className='text-muted-foreground'>{new Date(event.createdAt).toLocaleString()}</div>
+                          {event.accumulatedContent || event.contentDelta ? (
+                            <div className='mt-1 whitespace-pre-wrap'>
+                              {event.accumulatedContent ?? event.contentDelta}
+                            </div>
+                          ) : null}
+                          {event.errorMessage ? (
+                            <div className='mt-1 text-rose-600'>{event.errorMessage}</div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ) : null}
 
                 <form
                   className='space-y-3'
@@ -1512,6 +1937,7 @@ function Input(props: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  placeholder?: string;
 }) {
   return (
     <label className='block space-y-1'>
@@ -1519,10 +1945,39 @@ function Input(props: {
       <input
         className='w-full rounded-lg border border-input bg-background px-3 py-2 text-sm'
         onChange={(event) => props.onChange(event.target.value)}
+        placeholder={props.placeholder}
         value={props.value}
       />
     </label>
   );
+}
+
+function InfoItem(props: { label: string; value: string }) {
+  return (
+    <div className='rounded-lg border border-border px-3 py-3'>
+      <div className='text-xs uppercase tracking-wide text-muted-foreground'>{props.label}</div>
+      <div className='mt-1 text-lg font-semibold text-card-foreground'>{props.value}</div>
+    </div>
+  );
+}
+
+function bucketSummary(buckets: MetricBucket[]): string {
+  if (buckets.length === 0) {
+    return 'no data';
+  }
+  return buckets.map((bucket) => `${bucket.label}=${bucket.total}`).join(', ');
+}
+
+function formatRecentRunSummary(runs: RecentRun[]): string {
+  if (runs.length === 0) {
+    return 'No recent runs yet.';
+  }
+  const failed = runs.filter((run) => run.status === 'failed').length;
+  const waiting = runs.filter((run) => run.status === 'waiting_approval').length;
+  const avgLatency = Math.round(
+    runs.reduce((total, run) => total + Math.max(run.durationMs, 0), 0) / runs.length
+  );
+  return `${runs.length} run(s), ${failed} failed, ${waiting} waiting approval, avg ${avgLatency} ms`;
 }
 
 function splitCsv(value: string): string[] {

@@ -1,14 +1,39 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_router::hooks::use_location;
+use rustok_api::UiRouteContext;
+#[cfg(not(target_arch = "wasm32"))]
+use model::AiLiveStreamStatePayload;
+use model::AiMetricBucketPayload;
+#[cfg(target_arch = "wasm32")]
+use model::{AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope};
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::{closure::Closure, JsCast};
+#[cfg(target_arch = "wasm32")]
+use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
+
+use crate::i18n::t;
 
 #[component]
 pub fn AiAdmin() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let ui_locale = route_context.locale.clone();
+    let location = use_location();
+    let token = use_token();
+    let tenant = use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (selected_session, set_selected_session) = signal(Option::<String>::None);
+    let (live_stream, set_live_stream) = signal(Option::<AiLiveStreamStatePayload>::None);
     let (feedback, set_feedback) = signal(Option::<String>::None);
     let (error, set_error) = signal(Option::<String>::None);
 
@@ -20,10 +45,9 @@ pub fn AiAdmin() -> impl IntoView {
     let provider_api_key = RwSignal::new(String::new());
     let provider_temperature = RwSignal::new("0.2".to_string());
     let provider_max_tokens = RwSignal::new("1024".to_string());
-    let provider_capabilities =
-        RwSignal::new(
-            "text_generation,structured_generation,image_generation,code_generation".to_string(),
-        );
+    let provider_capabilities = RwSignal::new(
+        "text_generation,structured_generation,image_generation,code_generation".to_string(),
+    );
     let provider_allowed_tasks = RwSignal::new(String::new());
     let provider_denied_tasks = RwSignal::new(String::new());
     let provider_restricted_roles = RwSignal::new(String::new());
@@ -54,20 +78,28 @@ pub fn AiAdmin() -> impl IntoView {
 
     let session_title = RwSignal::new(String::new());
     let session_message = RwSignal::new(String::new());
-    let session_locale = RwSignal::new("en".to_string());
+    let session_locale = RwSignal::new(String::new());
     let selected_provider = RwSignal::new(String::new());
     let selected_task_profile = RwSignal::new(String::new());
     let selected_tool_profile = RwSignal::new(String::new());
-    let alloy_title = RwSignal::new("Alloy Assist".to_string());
-    let alloy_locale = RwSignal::new("en".to_string());
+    let alloy_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.alloyTitle",
+        "Alloy Assist",
+    ));
+    let alloy_locale = RwSignal::new(String::new());
     let alloy_operation = RwSignal::new("list_scripts".to_string());
     let alloy_script_id = RwSignal::new(String::new());
     let alloy_script_name = RwSignal::new(String::new());
     let alloy_script_source = RwSignal::new(String::new());
     let alloy_runtime_payload = RwSignal::new(String::new());
     let alloy_prompt = RwSignal::new(String::new());
-    let image_title = RwSignal::new("Media Image".to_string());
-    let image_locale = RwSignal::new("en".to_string());
+    let image_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.imageTitle",
+        "Media Image",
+    ));
+    let image_locale = RwSignal::new(String::new());
     let image_prompt = RwSignal::new(String::new());
     let image_negative_prompt = RwSignal::new(String::new());
     let image_file_name = RwSignal::new(String::new());
@@ -76,8 +108,12 @@ pub fn AiAdmin() -> impl IntoView {
     let image_caption = RwSignal::new(String::new());
     let image_size = RwSignal::new("1024x1024".to_string());
     let image_assistant_prompt = RwSignal::new(String::new());
-    let product_title = RwSignal::new("Product Copy".to_string());
-    let product_locale = RwSignal::new("en".to_string());
+    let product_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.productTitle",
+        "Product Copy",
+    ));
+    let product_locale = RwSignal::new(String::new());
     let product_id = RwSignal::new(String::new());
     let product_source_locale = RwSignal::new(String::new());
     let product_source_title = RwSignal::new(String::new());
@@ -86,8 +122,12 @@ pub fn AiAdmin() -> impl IntoView {
     let product_source_meta_description = RwSignal::new(String::new());
     let product_copy_instructions = RwSignal::new(String::new());
     let product_assistant_prompt = RwSignal::new(String::new());
-    let blog_title = RwSignal::new("Blog Draft".to_string());
-    let blog_locale = RwSignal::new("en".to_string());
+    let blog_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.blogTitle",
+        "Blog Draft",
+    ));
+    let blog_locale = RwSignal::new(String::new());
     let blog_post_id = RwSignal::new(String::new());
     let blog_source_locale = RwSignal::new(String::new());
     let blog_source_title = RwSignal::new(String::new());
@@ -117,11 +157,377 @@ pub fn AiAdmin() -> impl IntoView {
             }
         },
     );
+    let diagnostics_only = location.pathname.get_untracked().ends_with("/diagnostics");
+    let badge_label = t(ui_locale.as_deref(), "ai.badge", "capability");
+    let page_title_label = t(ui_locale.as_deref(), "ai.title", "AI Control Plane");
+    let page_subtitle_label = t(
+        ui_locale.as_deref(),
+        "ai.subtitle",
+        "Provider profiles, tool policies, operator chat sessions, tool traces, and approval gates for rustok-ai.",
+    );
+    let overview_label = t(ui_locale.as_deref(), "ai.tab.overview", "Overview");
+    let diagnostics_label = t(ui_locale.as_deref(), "ai.tab.diagnostics", "Diagnostics");
+    let provider_created_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.providerCreated",
+        "Provider `{slug}` created.",
+    );
+    let provider_updated_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.providerUpdated",
+        "Provider `{slug}` updated.",
+    );
+    let provider_deactivated_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.providerDeactivated",
+        "Provider `{slug}` deactivated.",
+    );
+    let tool_created_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.toolProfileCreated",
+        "Tool profile `{slug}` created.",
+    );
+    let tool_updated_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.toolProfileUpdated",
+        "Tool profile `{slug}` updated.",
+    );
+    let task_created_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.taskProfileCreated",
+        "Task profile `{slug}` created.",
+    );
+    let task_updated_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.taskProfileUpdated",
+        "Task profile `{slug}` updated.",
+    );
+    let session_started_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.sessionStarted",
+        "Session `{title}` started.",
+    );
+    let alloy_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.alloyCompleted",
+        "Alloy job `{title}` completed.",
+    );
+    let image_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.imageCompleted",
+        "Image job `{title}` completed.",
+    );
+    let product_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.productCompleted",
+        "Product copy job `{title}` completed.",
+    );
+    let blog_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.blogCompleted",
+        "Blog draft job `{title}` completed.",
+    );
+    let err_select_provider_update = t(
+        ui_locale.as_deref(),
+        "ai.error.selectProviderBeforeUpdate",
+        "Select a provider before updating it.",
+    );
+    let err_select_provider_test = t(
+        ui_locale.as_deref(),
+        "ai.error.selectProviderBeforeTest",
+        "Select a provider before testing it.",
+    );
+    let err_select_provider_deactivate = t(
+        ui_locale.as_deref(),
+        "ai.error.selectProviderBeforeDeactivate",
+        "Select a provider before deactivating it.",
+    );
+    let err_select_tool_update = t(
+        ui_locale.as_deref(),
+        "ai.error.selectToolProfileBeforeUpdate",
+        "Select a tool profile before updating it.",
+    );
+    let err_select_task_update = t(
+        ui_locale.as_deref(),
+        "ai.error.selectTaskProfileBeforeUpdate",
+        "Select a task profile before updating it.",
+    );
+    let err_select_session = t(
+        ui_locale.as_deref(),
+        "ai.error.selectSessionFirst",
+        "Select a session first.",
+    );
+    let err_select_alloy_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectAlloyTaskProfile",
+        "Select the `alloy_code` task profile before running Alloy Assist.",
+    );
+    let err_select_image_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectImageTaskProfile",
+        "Select the `image_asset` task profile before generating a media image.",
+    );
+    let err_select_product_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectProductTaskProfile",
+        "Select the `product_copy` task profile before generating localized product copy.",
+    );
+    let err_select_blog_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectBlogTaskProfile",
+        "Select the `blog_draft` task profile before generating blog draft content.",
+    );
+    let err_alloy_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleAlloyPayload",
+        "Failed to assemble Alloy task payload. Check the runtime payload JSON.",
+    );
+    let err_image_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleImagePayload",
+        "Failed to assemble image task payload. Check prompt and size fields.",
+    );
+    let err_product_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleProductPayload",
+        "Failed to assemble product copy payload. Check the product id.",
+    );
+    let err_blog_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleBlogPayload",
+        "Failed to assemble blog draft payload. Check post/category ids.",
+    );
+
+    Effect::new(move |_| {
+        let session_id = selected_session.get();
+        let token_value = token.get();
+        let tenant_value = tenant.get();
+        if session_id.is_none() {
+            set_live_stream.set(None);
+            #[cfg(target_arch = "wasm32")]
+            replace_live_subscription(None);
+            return;
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = (token_value, tenant_value);
+            set_live_stream.set(None);
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let Some(session_id) = session_id else {
+                set_live_stream.set(None);
+                replace_live_subscription(None);
+                return;
+            };
+            let Some(token_value) = token_value else {
+                set_live_stream.set(None);
+                replace_live_subscription(None);
+                return;
+            };
+            let Some(tenant_value) = tenant_value else {
+                set_live_stream.set(None);
+                replace_live_subscription(None);
+                return;
+            };
+
+            let generation = next_live_subscription_generation();
+
+            set_live_stream.set(Some(AiLiveStreamStatePayload {
+                run_id: String::new(),
+                status: "CONNECTING".to_string(),
+                content: String::new(),
+                error_message: None,
+                connected: false,
+            }));
+
+            let ws = match WebSocket::new_with_str(&graphql_ws_url(), "graphql-transport-ws") {
+                Ok(ws) => ws,
+                Err(_) => {
+                    set_live_stream.set(None);
+                    replace_live_subscription(None);
+                    return;
+                }
+            };
+
+            let init_message = serde_json::json!({
+                "type": "connection_init",
+                "payload": {
+                    "token": token_value,
+                    "tenantSlug": tenant_value,
+                    "locale": browser_admin_locale(ui_locale_value.as_deref()),
+                }
+            })
+            .to_string();
+            let subscribe_message = serde_json::json!({
+                "id": "ai-session-events",
+                "type": "subscribe",
+                "payload": {
+                    "query": AI_SESSION_EVENTS_SUBSCRIPTION,
+                    "variables": {
+                        "sessionId": session_id,
+                    }
+                }
+            })
+            .to_string();
+
+            let ws_for_open = ws.clone();
+            let on_open = Closure::<dyn FnMut(Event)>::new(move |_| {
+                let _ = ws_for_open.send_with_str(&init_message);
+            });
+
+            let ws_for_message = ws.clone();
+            let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+                let Some(text) = event.data().as_string() else {
+                    return;
+                };
+
+                let Ok(message) = serde_json::from_str::<AiSessionSubscriptionEnvelope>(&text)
+                else {
+                    return;
+                };
+
+                match message {
+                    AiSessionSubscriptionEnvelope::ConnectionAck => {
+                        let _ = ws_for_message.send_with_str(&subscribe_message);
+                        set_live_stream.update(|state| {
+                            if let Some(state) = state.as_mut() {
+                                state.connected = true;
+                            }
+                        });
+                    }
+                    AiSessionSubscriptionEnvelope::Next { payload } => {
+                        if payload
+                            .errors
+                            .as_ref()
+                            .is_some_and(|errors| !errors.is_empty())
+                        {
+                            set_live_stream.update(|state| {
+                                if let Some(state) = state.as_mut() {
+                                    state.connected = false;
+                                    state.status = "ERROR".to_string();
+                                }
+                            });
+                            return;
+                        }
+
+                        if let Some(event) = payload.data.and_then(|data| data.ai_session_events) {
+                            let status = match event.event_kind {
+                                AiRunStreamEventKindPayload::Started => "STARTED",
+                                AiRunStreamEventKindPayload::Delta => "STREAMING",
+                                AiRunStreamEventKindPayload::Completed => "COMPLETED",
+                                AiRunStreamEventKindPayload::Failed => "FAILED",
+                                AiRunStreamEventKindPayload::WaitingApproval => "WAITING_APPROVAL",
+                            }
+                            .to_string();
+                            let content = event
+                                .accumulated_content
+                                .or(event.content_delta)
+                                .unwrap_or_default();
+                            let is_terminal = matches!(
+                                event.event_kind,
+                                AiRunStreamEventKindPayload::Completed
+                                    | AiRunStreamEventKindPayload::Failed
+                                    | AiRunStreamEventKindPayload::WaitingApproval
+                            );
+
+                            set_live_stream.set(Some(AiLiveStreamStatePayload {
+                                run_id: event.run_id,
+                                status,
+                                content,
+                                error_message: event.error_message,
+                                connected: true,
+                            }));
+
+                            if is_terminal {
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                        }
+                    }
+                    AiSessionSubscriptionEnvelope::Error { payload } => {
+                        let message = payload
+                            .into_iter()
+                            .find(|item| !item.message.trim().is_empty())
+                            .map(|item| item.message);
+                        set_live_stream.update(|state| {
+                            if let Some(state) = state.as_mut() {
+                                state.connected = false;
+                                state.status = "ERROR".to_string();
+                                state.error_message = message.clone();
+                            } else {
+                                *state = Some(AiLiveStreamStatePayload {
+                                    run_id: String::new(),
+                                    status: "ERROR".to_string(),
+                                    content: String::new(),
+                                    error_message: message.clone(),
+                                    connected: false,
+                                });
+                            }
+                        });
+                    }
+                    AiSessionSubscriptionEnvelope::Ping { payload } => {
+                        let pong = serde_json::json!({
+                            "type": "pong",
+                            "payload": payload,
+                        })
+                        .to_string();
+                        let _ = ws_for_message.send_with_str(&pong);
+                    }
+                    AiSessionSubscriptionEnvelope::Complete => {
+                        set_live_stream.update(|state| {
+                            if let Some(state) = state.as_mut() {
+                                state.connected = false;
+                            }
+                        });
+                    }
+                    AiSessionSubscriptionEnvelope::Pong => {}
+                }
+            });
+
+            let on_error = Closure::<dyn FnMut(ErrorEvent)>::new(move |_| {
+                set_live_stream.update(|state| {
+                    if let Some(state) = state.as_mut() {
+                        state.connected = false;
+                        state.status = "ERROR".to_string();
+                    }
+                });
+            });
+
+            let on_close = Closure::<dyn FnMut(CloseEvent)>::new(move |_| {
+                set_live_stream.update(|state| {
+                    if let Some(state) = state.as_mut() {
+                        state.connected = false;
+                    }
+                });
+            });
+
+            ws.set_onopen(Some(on_open.as_ref().unchecked_ref()));
+            ws.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+            ws.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+            ws.set_onclose(Some(on_close.as_ref().unchecked_ref()));
+
+            replace_live_subscription(Some(AiLiveSubscriptionHandle {
+                generation,
+                ws: ws.clone(),
+                on_open,
+                on_message,
+                on_error,
+                on_close,
+            }));
+
+            on_cleanup(move || {
+                clear_live_subscription_generation(generation);
+            });
+        }
+    });
 
     let on_create_provider = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
+        let provider_created_template = provider_created_template.clone();
         spawn_local(async move {
             let result = api::create_provider(
                 provider_slug.get_untracked(),
@@ -148,7 +554,9 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(profile) => {
-                    set_feedback.set(Some(format!("Provider `{}` created.", profile.slug)));
+                    set_feedback.set(Some(
+                        provider_created_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     selected_provider.set(profile.id.clone());
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -166,8 +574,9 @@ pub fn AiAdmin() -> impl IntoView {
         provider_api_key.set(String::new());
         provider_temperature.set("0.2".to_string());
         provider_max_tokens.set("1024".to_string());
-        provider_capabilities
-            .set("text_generation,structured_generation,image_generation,code_generation".to_string());
+        provider_capabilities.set(
+            "text_generation,structured_generation,image_generation,code_generation".to_string(),
+        );
         provider_allowed_tasks.set(String::new());
         provider_denied_tasks.set(String::new());
         provider_restricted_roles.set(String::new());
@@ -178,11 +587,12 @@ pub fn AiAdmin() -> impl IntoView {
     let on_update_provider = move |_| {
         let provider_id = selected_provider.get_untracked();
         if provider_id.trim().is_empty() {
-            set_error.set(Some("Select a provider before updating it.".to_string()));
+            set_error.set(Some(err_select_provider_update.clone()));
             return;
         }
         set_feedback.set(None);
         set_error.set(None);
+        let provider_updated_template = provider_updated_template.clone();
         spawn_local(async move {
             let result = api::update_provider(
                 provider_id,
@@ -208,7 +618,9 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(profile) => {
-                    set_feedback.set(Some(format!("Provider `{}` updated.", profile.slug)));
+                    set_feedback.set(Some(
+                        provider_updated_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -219,7 +631,7 @@ pub fn AiAdmin() -> impl IntoView {
     let on_test_provider = move |_| {
         let provider_id = selected_provider.get_untracked();
         if provider_id.trim().is_empty() {
-            set_error.set(Some("Select a provider before testing it.".to_string()));
+            set_error.set(Some(err_select_provider_test.clone()));
             return;
         }
         set_feedback.set(None);
@@ -235,18 +647,19 @@ pub fn AiAdmin() -> impl IntoView {
     let on_deactivate_provider = move |_| {
         let provider_id = selected_provider.get_untracked();
         if provider_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select a provider before deactivating it.".to_string(),
-            ));
+            set_error.set(Some(err_select_provider_deactivate.clone()));
             return;
         }
         set_feedback.set(None);
         set_error.set(None);
+        let provider_deactivated_template = provider_deactivated_template.clone();
         spawn_local(async move {
             match api::deactivate_provider(provider_id).await {
                 Ok(profile) => {
                     provider_active.set(false);
-                    set_feedback.set(Some(format!("Provider `{}` deactivated.", profile.slug)));
+                    set_feedback.set(Some(
+                        provider_deactivated_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -258,6 +671,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
+        let tool_created_template = tool_created_template.clone();
         spawn_local(async move {
             let result = api::create_tool_profile(
                 tool_slug.get_untracked(),
@@ -270,7 +684,9 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(profile) => {
-                    set_feedback.set(Some(format!("Tool profile `{}` created.", profile.slug)));
+                    set_feedback.set(Some(
+                        tool_created_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     selected_tool_profile.set(profile.id.clone());
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -297,13 +713,12 @@ pub fn AiAdmin() -> impl IntoView {
     let on_update_tool_profile = move |_| {
         let tool_profile_id = selected_tool_profile.get_untracked();
         if tool_profile_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select a tool profile before updating it.".to_string(),
-            ));
+            set_error.set(Some(err_select_tool_update.clone()));
             return;
         }
         set_feedback.set(None);
         set_error.set(None);
+        let tool_updated_template = tool_updated_template.clone();
         spawn_local(async move {
             let result = api::update_tool_profile(
                 tool_profile_id,
@@ -317,7 +732,9 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(profile) => {
-                    set_feedback.set(Some(format!("Tool profile `{}` updated.", profile.slug)));
+                    set_feedback.set(Some(
+                        tool_updated_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -329,6 +746,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
+        let session_started_template = session_started_template.clone();
         spawn_local(async move {
             let result = api::start_session(
                 session_title.get_untracked(),
@@ -342,10 +760,10 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(result) => {
                     set_selected_session.set(Some(result.session.session.id.clone()));
-                    set_feedback.set(Some(format!(
-                        "Session `{}` started.",
-                        result.session.session.title
-                    )));
+                    set_feedback.set(Some(
+                        session_started_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -357,9 +775,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         let task_profile_id = selected_task_profile.get_untracked();
         if task_profile_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select the `alloy_code` task profile before running Alloy Assist.".to_string(),
-            ));
+            set_error.set(Some(err_select_alloy_task.clone()));
             return;
         }
 
@@ -372,15 +788,13 @@ pub fn AiAdmin() -> impl IntoView {
             optional_text(alloy_prompt.get_untracked()),
         );
         let Ok(payload) = payload else {
-            set_error.set(Some(
-                "Failed to assemble Alloy task payload. Check the runtime payload JSON."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_alloy_payload.clone()));
             return;
         };
 
         set_feedback.set(None);
         set_error.set(None);
+        let alloy_completed_template = alloy_completed_template.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 alloy_title.get_untracked(),
@@ -394,10 +808,10 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(result) => {
                     set_selected_session.set(Some(result.session.session.id.clone()));
-                    set_feedback.set(Some(format!(
-                        "Alloy job `{}` completed.",
-                        result.session.session.title
-                    )));
+                    set_feedback.set(Some(
+                        alloy_completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -409,10 +823,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         let task_profile_id = selected_task_profile.get_untracked();
         if task_profile_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select the `image_asset` task profile before generating a media image."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_select_image_task.clone()));
             return;
         }
 
@@ -427,15 +838,13 @@ pub fn AiAdmin() -> impl IntoView {
             optional_text(image_assistant_prompt.get_untracked()),
         );
         let Ok(payload) = payload else {
-            set_error.set(Some(
-                "Failed to assemble image task payload. Check prompt and size fields."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_image_payload.clone()));
             return;
         };
 
         set_feedback.set(None);
         set_error.set(None);
+        let image_completed_template = image_completed_template.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 image_title.get_untracked(),
@@ -449,10 +858,10 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(result) => {
                     set_selected_session.set(Some(result.session.session.id.clone()));
-                    set_feedback.set(Some(format!(
-                        "Image job `{}` completed.",
-                        result.session.session.title
-                    )));
+                    set_feedback.set(Some(
+                        image_completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -464,10 +873,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         let task_profile_id = selected_task_profile.get_untracked();
         if task_profile_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select the `product_copy` task profile before generating localized product copy."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_select_product_task.clone()));
             return;
         }
 
@@ -482,15 +888,13 @@ pub fn AiAdmin() -> impl IntoView {
             optional_text(product_assistant_prompt.get_untracked()),
         );
         let Ok(payload) = payload else {
-            set_error.set(Some(
-                "Failed to assemble product copy payload. Check the product id."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_product_payload.clone()));
             return;
         };
 
         set_feedback.set(None);
         set_error.set(None);
+        let product_completed_template = product_completed_template.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 product_title.get_untracked(),
@@ -504,10 +908,10 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(result) => {
                     set_selected_session.set(Some(result.session.session.id.clone()));
-                    set_feedback.set(Some(format!(
-                        "Product copy job `{}` completed.",
-                        result.session.session.title
-                    )));
+                    set_feedback.set(Some(
+                        product_completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -519,10 +923,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         let task_profile_id = selected_task_profile.get_untracked();
         if task_profile_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select the `blog_draft` task profile before generating blog draft content."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_select_blog_task.clone()));
             return;
         }
 
@@ -541,15 +942,13 @@ pub fn AiAdmin() -> impl IntoView {
             optional_text(blog_assistant_prompt.get_untracked()),
         );
         let Ok(payload) = payload else {
-            set_error.set(Some(
-                "Failed to assemble blog draft payload. Check post/category ids."
-                    .to_string(),
-            ));
+            set_error.set(Some(err_blog_payload.clone()));
             return;
         };
 
         set_feedback.set(None);
         set_error.set(None);
+        let blog_completed_template = blog_completed_template.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 blog_title.get_untracked(),
@@ -563,10 +962,10 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(result) => {
                     set_selected_session.set(Some(result.session.session.id.clone()));
-                    set_feedback.set(Some(format!(
-                        "Blog draft job `{}` completed.",
-                        result.session.session.title
-                    )));
+                    set_feedback.set(Some(
+                        blog_completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -591,6 +990,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
+        let task_created_template = task_created_template.clone();
         spawn_local(async move {
             let result = api::create_task_profile(
                 task_slug.get_untracked(),
@@ -606,7 +1006,9 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(profile) => {
-                    set_feedback.set(Some(format!("Task profile `{}` created.", profile.slug)));
+                    set_feedback.set(Some(
+                        task_created_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     selected_task_profile.set(profile.id.clone());
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -618,13 +1020,12 @@ pub fn AiAdmin() -> impl IntoView {
     let on_update_task_profile = move |_| {
         let task_profile_id = selected_task_profile.get_untracked();
         if task_profile_id.trim().is_empty() {
-            set_error.set(Some(
-                "Select a task profile before updating it.".to_string(),
-            ));
+            set_error.set(Some(err_select_task_update.clone()));
             return;
         }
         set_feedback.set(None);
         set_error.set(None);
+        let task_updated_template = task_updated_template.clone();
         spawn_local(async move {
             let result = api::update_task_profile(
                 task_profile_id,
@@ -641,7 +1042,9 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(profile) => {
-                    set_feedback.set(Some(format!("Task profile `{}` updated.", profile.slug)));
+                    set_feedback.set(Some(
+                        task_updated_template.replace("{slug}", profile.slug.as_str()),
+                    ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -652,7 +1055,7 @@ pub fn AiAdmin() -> impl IntoView {
     let on_send_message = move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(session_id) = selected_session.get_untracked() else {
-            set_error.set(Some("Select a session first.".to_string()));
+            set_error.set(Some(err_select_session.clone()));
             return;
         };
         let content = reply_message.get_untracked();
@@ -678,12 +1081,34 @@ pub fn AiAdmin() -> impl IntoView {
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-2">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        "capability"
+                        {badge_label.clone()}
                     </span>
-                    <h1 class="text-2xl font-semibold text-card-foreground">"AI Control Plane"</h1>
+                    <h1 class="text-2xl font-semibold text-card-foreground">{page_title_label.clone()}</h1>
                     <p class="max-w-3xl text-sm text-muted-foreground">
-                        "Provider profiles, tool policies, operator chat sessions, tool traces, and approval gates for rustok-ai."
+                        {page_subtitle_label.clone()}
                     </p>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2 text-sm">
+                    <a
+                        class=if diagnostics_only {
+                            "rounded-full border border-border px-3 py-1.5 text-muted-foreground"
+                        } else {
+                            "rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary"
+                        }
+                        href="/ai"
+                    >
+                        {overview_label.clone()}
+                    </a>
+                    <a
+                        class=if diagnostics_only {
+                            "rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary"
+                        } else {
+                            "rounded-full border border-border px-3 py-1.5 text-muted-foreground"
+                        }
+                        href="/ai/diagnostics"
+                    >
+                        {diagnostics_label.clone()}
+                    </a>
                 </div>
             </header>
 
@@ -699,38 +1124,78 @@ pub fn AiAdmin() -> impl IntoView {
             </Show>
 
             <Suspense fallback=move || view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }>
-                {move || bootstrap.get().map(|result| match result {
+                {move || {
+                    let ui_locale = ui_locale.clone();
+                    let ui_locale_providers = ui_locale.clone();
+                    let ui_locale_tools = ui_locale.clone();
+                    let ui_locale_tasks = ui_locale.clone();
+                    let ui_locale_diagnostics = ui_locale.clone();
+                    let ui_locale_blog = ui_locale.clone();
+                    let ui_locale_product = ui_locale.clone();
+                    let ui_locale_image = ui_locale.clone();
+                    let ui_locale_alloy = ui_locale.clone();
+                    let ui_locale_new_session = ui_locale.clone();
+                    let ui_locale_sessions = ui_locale.clone();
+                    let ui_locale_operator = ui_locale.clone();
+                    let on_create_provider = on_create_provider.clone();
+                    let on_update_provider = on_update_provider.clone();
+                    let on_test_provider = on_test_provider.clone();
+                    let on_deactivate_provider = on_deactivate_provider.clone();
+                    let reset_provider_form = reset_provider_form.clone();
+                    let on_create_tool_profile = on_create_tool_profile.clone();
+                    let on_update_tool_profile = on_update_tool_profile.clone();
+                    let reset_tool_form = reset_tool_form.clone();
+                    let on_create_task_profile = on_create_task_profile.clone();
+                    let on_update_task_profile = on_update_task_profile.clone();
+                    let reset_task_form = reset_task_form.clone();
+                    let on_run_blog_job = on_run_blog_job.clone();
+                    let on_run_product_job = on_run_product_job.clone();
+                    let on_run_image_job = on_run_image_job.clone();
+                    let on_run_alloy_job = on_run_alloy_job.clone();
+                    let on_start_session = on_start_session.clone();
+                    let on_send_message = on_send_message.clone();
+                    let blog_transport_locale = ui_locale.clone();
+                    let product_transport_locale = ui_locale.clone();
+                    let image_transport_locale = ui_locale.clone();
+                    let alloy_transport_locale = ui_locale.clone();
+                    let session_transport_locale = ui_locale.clone();
+                    bootstrap.get().map(|result| match result {
                     Ok(bootstrap) => view! {
-                        <div class="grid gap-6 xl:grid-cols-[1.2fr_1fr_1.6fr]">
+                        <div class=if diagnostics_only {
+                            "grid gap-6 xl:grid-cols-[1fr_1.6fr]".to_string()
+                        } else {
+                            "grid gap-6 xl:grid-cols-[1.2fr_1fr_1.6fr]".to_string()
+                        }>
+                            {if !diagnostics_only { view! {
                             <section class="space-y-6">
-                                <Card title="Providers">
-                                    <form class="space-y-3" on:submit=on_create_provider>
-                                        <TextField label="Slug" value=provider_slug />
-                                        <TextField label="Display name" value=provider_name />
-                                        <TextField label="Provider kind" value=provider_kind />
-                                        <TextField label="Base URL" value=provider_base_url />
-                                        <TextField label="Model" value=provider_model />
-                                        <TextField label="API key" value=provider_api_key />
-                                        <TextField label="Temperature" value=provider_temperature />
-                                        <TextField label="Max tokens" value=provider_max_tokens />
-                                        <TextField label="Capabilities (csv)" value=provider_capabilities />
-                                        <TextField label="Allowed tasks (csv)" value=provider_allowed_tasks />
-                                        <TextField label="Denied tasks (csv)" value=provider_denied_tasks />
-                                        <TextField label="Restricted roles (csv)" value=provider_restricted_roles />
+                                <Card title=t(ui_locale_providers.as_deref(), "ai.card.providers", "Providers")>
+                                    <form class="space-y-3" on:submit=on_create_provider.clone()>
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.slug", "Slug") value=provider_slug />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.displayName", "Display name") value=provider_name />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.providerKind", "Provider kind") value=provider_kind />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.baseUrl", "Base URL") value=provider_base_url />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.model", "Model") value=provider_model />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.apiKey", "API key") value=provider_api_key />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.temperature", "Temperature") value=provider_temperature />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.maxTokens", "Max tokens") value=provider_max_tokens />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.capabilitiesCsv", "Capabilities (csv)") value=provider_capabilities />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.allowedTasksCsv", "Allowed tasks (csv)") value=provider_allowed_tasks />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.deniedTasksCsv", "Denied tasks (csv)") value=provider_denied_tasks />
+                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.restrictedRolesCsv", "Restricted roles (csv)") value=provider_restricted_roles />
                                         <label class="flex items-center gap-2 text-sm text-muted-foreground">
                                             <input
                                                 type="checkbox"
                                                 prop:checked=provider_active
                                                 on:change=move |ev| provider_active.set(event_target_checked(&ev))
                                             />
-                                            "Active"
+                                            {t(ui_locale_providers.as_deref(), "ai.field.active", "Active")}
                                         </label>
                                         <div class="flex flex-wrap gap-2">
-                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Create provider"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_provider>"Update selected"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_test_provider>"Test selected"</button>
-                                            <button type="button" class="rounded-lg border border-destructive/40 px-4 py-2 text-sm font-medium text-destructive" on:click=on_deactivate_provider>"Deactivate"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_provider_form()>"Reset"</button>
+                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_providers.as_deref(), "ai.action.createProvider", "Create provider")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_provider.clone()>{t(ui_locale_providers.as_deref(), "ai.action.updateSelected", "Update selected")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_test_provider.clone()>{t(ui_locale_providers.as_deref(), "ai.action.testSelected", "Test selected")}</button>
+                                            <button type="button" class="rounded-lg border border-destructive/40 px-4 py-2 text-sm font-medium text-destructive" on:click=on_deactivate_provider.clone()>{t(ui_locale_providers.as_deref(), "ai.action.deactivate", "Deactivate")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_provider_form()>{t(ui_locale_providers.as_deref(), "ai.action.reset", "Reset")}</button>
                                         </div>
                                     </form>
                                     <div class="mt-4 space-y-2">
@@ -770,12 +1235,12 @@ pub fn AiAdmin() -> impl IntoView {
                                                 >
                                                     <div class="font-medium">{provider.display_name}</div>
                                                     <div class="text-muted-foreground">
-                                                        {format!(
-                                                            "{} · {} · {} capabilities · {}",
-                                                            provider.provider_kind,
-                                                            provider.model,
+                                                        {provider_profile_summary(
+                                                            ui_locale_providers.as_deref(),
+                                                            provider.provider_kind.as_str(),
+                                                            provider.model.as_str(),
                                                             provider.capabilities.len(),
-                                                            if provider.is_active { "active" } else { "inactive" }
+                                                            provider.is_active,
                                                         )}
                                                     </div>
                                                 </button>
@@ -784,26 +1249,26 @@ pub fn AiAdmin() -> impl IntoView {
                                     </div>
                                 </Card>
 
-                                <Card title="Tool Profiles">
-                                    <form class="space-y-3" on:submit=on_create_tool_profile>
-                                        <TextField label="Slug" value=tool_slug />
-                                        <TextField label="Display name" value=tool_name />
-                                        <TextField label="Description" value=tool_description />
-                                        <TextField label="Allowed tools (csv)" value=tool_allowed />
-                                        <TextField label="Denied tools (csv)" value=tool_denied />
-                                        <TextField label="Sensitive tools (csv)" value=tool_sensitive />
+                                <Card title=t(ui_locale_tools.as_deref(), "ai.card.toolProfiles", "Tool Profiles")>
+                                    <form class="space-y-3" on:submit=on_create_tool_profile.clone()>
+                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.slug", "Slug") value=tool_slug />
+                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.displayName", "Display name") value=tool_name />
+                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.description", "Description") value=tool_description />
+                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.allowedToolsCsv", "Allowed tools (csv)") value=tool_allowed />
+                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.deniedToolsCsv", "Denied tools (csv)") value=tool_denied />
+                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.sensitiveToolsCsv", "Sensitive tools (csv)") value=tool_sensitive />
                                         <label class="flex items-center gap-2 text-sm text-muted-foreground">
                                             <input
                                                 type="checkbox"
                                                 prop:checked=tool_active
                                                 on:change=move |ev| tool_active.set(event_target_checked(&ev))
                                             />
-                                            "Active"
+                                            {t(ui_locale_tools.as_deref(), "ai.field.active", "Active")}
                                         </label>
                                         <div class="flex flex-wrap gap-2">
-                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Create tool profile"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_tool_profile>"Update selected"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_tool_form()>"Reset"</button>
+                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_tools.as_deref(), "ai.action.createToolProfile", "Create tool profile")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_tool_profile.clone()>{t(ui_locale_tools.as_deref(), "ai.action.updateSelected", "Update selected")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_tool_form()>{t(ui_locale_tools.as_deref(), "ai.action.reset", "Reset")}</button>
                                         </div>
                                     </form>
                                     <div class="mt-4 space-y-2">
@@ -832,7 +1297,12 @@ pub fn AiAdmin() -> impl IntoView {
                                                 >
                                                     <div class="font-medium">{profile.display_name}</div>
                                                     <div class="text-muted-foreground">
-                                                        {format!("allowed: {} · sensitive: {} · {}", profile.allowed_tools.len(), profile.sensitive_tools.len(), if profile.is_active { "active" } else { "inactive" })}
+                                                        {tool_profile_summary(
+                                                            ui_locale_tools.as_deref(),
+                                                            profile.allowed_tools.len(),
+                                                            profile.sensitive_tools.len(),
+                                                            profile.is_active,
+                                                        )}
                                                     </div>
                                                 </button>
                                             }
@@ -840,28 +1310,28 @@ pub fn AiAdmin() -> impl IntoView {
                                     </div>
                                 </Card>
 
-                                <Card title="Task Profiles">
-                                    <form class="space-y-3" on:submit=on_create_task_profile>
-                                        <TextField label="Slug" value=task_slug />
-                                        <TextField label="Display name" value=task_name />
-                                        <TextField label="Description" value=task_description />
-                                        <TextField label="Target capability" value=task_capability />
-                                        <TextField label="System prompt" value=task_system_prompt />
-                                        <TextField label="Allowed provider ids (csv)" value=task_allowed_providers />
-                                        <TextField label="Preferred provider ids (csv)" value=task_preferred_providers />
-                                        <TextField label="Execution mode" value=task_execution_mode />
+                                <Card title=t(ui_locale_tasks.as_deref(), "ai.card.taskProfiles", "Task Profiles")>
+                                    <form class="space-y-3" on:submit=on_create_task_profile.clone()>
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.slug", "Slug") value=task_slug />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.displayName", "Display name") value=task_name />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.description", "Description") value=task_description />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.targetCapability", "Target capability") value=task_capability />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.systemPrompt", "System prompt") value=task_system_prompt />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.allowedProviderIdsCsv", "Allowed provider ids (csv)") value=task_allowed_providers />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.preferredProviderIdsCsv", "Preferred provider ids (csv)") value=task_preferred_providers />
+                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.executionMode", "Execution mode") value=task_execution_mode />
                                         <label class="flex items-center gap-2 text-sm text-muted-foreground">
                                             <input
                                                 type="checkbox"
                                                 prop:checked=task_active
                                                 on:change=move |ev| task_active.set(event_target_checked(&ev))
                                             />
-                                            "Active"
+                                            {t(ui_locale_tasks.as_deref(), "ai.field.active", "Active")}
                                         </label>
                                         <div class="flex flex-wrap gap-2">
-                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Create task profile"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_task_profile>"Update selected"</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_task_form()>"Reset"</button>
+                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_tasks.as_deref(), "ai.action.createTaskProfile", "Create task profile")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_task_profile.clone()>{t(ui_locale_tasks.as_deref(), "ai.action.updateSelected", "Update selected")}</button>
+                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_task_form()>{t(ui_locale_tasks.as_deref(), "ai.action.reset", "Reset")}</button>
                                         </div>
                                     </form>
                                     <div class="mt-4 space-y-2">
@@ -898,7 +1368,12 @@ pub fn AiAdmin() -> impl IntoView {
                                                 >
                                                     <div class="font-medium">{profile.display_name}</div>
                                                     <div class="text-muted-foreground">
-                                                        {format!("{} В· {} В· {}", profile.target_capability, profile.default_execution_mode, if profile.is_active { "active" } else { "inactive" })}
+                                                        {task_profile_summary(
+                                                            ui_locale_tasks.as_deref(),
+                                                            profile.target_capability.as_str(),
+                                                            profile.default_execution_mode.as_str(),
+                                                            profile.is_active,
+                                                        )}
                                                     </div>
                                                 </button>
                                             }
@@ -906,74 +1381,251 @@ pub fn AiAdmin() -> impl IntoView {
                                     </div>
                                 </Card>
                             </section>
+                            }.into_any() } else { ().into_any() }}
 
                             <section class="space-y-6">
-                                <Card title="Blog Draft">
-                                    <form class="space-y-3" on:submit=on_run_blog_job>
-                                        <TextField label="Job title" value=blog_title />
-                                        <TextField label="Locale" value=blog_locale />
-                                        <TextField label="Existing post id" value=blog_post_id />
-                                        <TextField label="Source locale" value=blog_source_locale />
-                                        <TextField label="Source title override" value=blog_source_title />
+                                <Card title=t(ui_locale_diagnostics.as_deref(), "ai.card.diagnostics", "Diagnostics")>
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.routerResolutions", "Router resolutions")
+                                            value=bootstrap.metrics.router_resolutions_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.overrides", "Overrides")
+                                            value=bootstrap.metrics.router_overrides_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.completedRuns", "Completed runs")
+                                            value=bootstrap.metrics.completed_runs_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.failedRuns", "Failed runs")
+                                            value=bootstrap.metrics.failed_runs_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.waitingApproval", "Waiting approval")
+                                            value=bootstrap.metrics.waiting_approval_runs_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.localeFallbacks", "Locale fallbacks")
+                                            value=bootstrap.metrics.locale_fallback_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.directSelected", "Direct selected")
+                                            value=bootstrap.metrics.selected_direct_total.to_string()
+                                        />
+                                        <InfoItem
+                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.mcpSelected", "MCP selected")
+                                            value=bootstrap.metrics.selected_mcp_total.to_string()
+                                        />
+                                    </div>
+                                    <div class="mt-4 space-y-3 text-sm text-muted-foreground">
+                                        <div>
+                                            {average_run_latency_summary(
+                                                ui_locale_diagnostics.as_deref(),
+                                                if bootstrap.metrics.run_latency_samples == 0 {
+                                                    0
+                                                } else {
+                                                    bootstrap.metrics.run_latency_ms_total / bootstrap.metrics.run_latency_samples
+                                                }
+                                            )}
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.providerBuckets", "Provider buckets")}</div>
+                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.provider_kind_totals)}</div>
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.executionTargets", "Execution targets")}</div>
+                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.execution_target_totals)}</div>
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.taskProfiles", "Task profiles")}</div>
+                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.task_profile_totals)}</div>
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.resolvedLocales", "Resolved locales")}</div>
+                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.resolved_locale_totals)}</div>
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.recentRuns", "Recent runs")}</div>
+                                            <div>{recent_run_summary(ui_locale_diagnostics.as_deref(), &bootstrap.recent_runs)}</div>
+                                        </div>
+                                        <div class="space-y-2">
+                                            {bootstrap
+                                                .recent_runs
+                                                .iter()
+                                                .take(8)
+                                                .cloned()
+                                                .map(|run| {
+                                                    let error_message = run.error_message.clone().unwrap_or_default();
+                                                    let has_error = !error_message.trim().is_empty();
+                                                    view! {
+                                                        <div class="rounded-lg border border-border px-3 py-3">
+                                                            <div class="font-medium text-foreground">
+                                                                {format!(
+                                                                    "{} В· {} В· {} ms",
+                                                                    run.session_title,
+                                                                    run.status,
+                                                                    run.duration_ms,
+                                                                )}
+                                                            </div>
+                                                            <div class="text-xs text-muted-foreground">
+                                                                {format!(
+                                                                    "{} В· {} В· {} -> {}",
+                                                                    run.provider_display_name,
+                                                                    run
+                                                                        .execution_target
+                                                                        .clone()
+                                                                        .unwrap_or_else(|| run.execution_path.clone()),
+                                                                    run.requested_locale.clone().unwrap_or_else(|| "auto".to_string()),
+                                                                    run.resolved_locale,
+                                                                )}
+                                                            </div>
+                                                            <div class="mt-1 text-xs text-muted-foreground">
+                                                                {format!(
+                                                                    "{}{}",
+                                                                    run.started_at,
+                                                                    run.task_profile_slug
+                                                                        .as_ref()
+                                                                        .map(|slug| format!(" В· task {slug}"))
+                                                                        .unwrap_or_default(),
+                                                                )}
+                                                            </div>
+                                                            <Show when=move || has_error>
+                                                                <div class="mt-1 text-sm text-destructive">
+                                                                    {error_message.clone()}
+                                                                </div>
+                                                            </Show>
+                                                        </div>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                        <div>
+                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.recentStreamEvents", "Recent stream events")}</div>
+                                            <div>
+                                                {if bootstrap.recent_stream_events.is_empty() {
+                                                    t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.noRecentEvents", "No recent events yet.")
+                                                } else {
+                                                    t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.cachedEventsCount", "{count} cached event(s)")
+                                                        .replace("{count}", bootstrap.recent_stream_events.len().to_string().as_str())
+                                                }}
+                                            </div>
+                                        </div>
+                                        <div class="space-y-2">
+                                            {bootstrap
+                                                .recent_stream_events
+                                                .iter()
+                                                .take(6)
+                                                .cloned()
+                                                .map(|event| {
+                                                    let status = stream_event_kind_label(
+                                                        ui_locale_diagnostics.as_deref(),
+                                                        &event.event_kind,
+                                                    );
+                                                    let error_message = event.error_message.clone().unwrap_or_default();
+                                                    let has_error = !error_message.trim().is_empty();
+                                                    view! {
+                                                        <div class="rounded-lg border border-border px-3 py-3">
+                                                            <div class="font-medium text-foreground">
+                                                                {format!("{status} · {}", event.run_id)}
+                                                            </div>
+                                                            <div class="text-xs text-muted-foreground">{event.created_at.clone()}</div>
+                                                            <div class="mt-1 whitespace-pre-wrap text-foreground">
+                                                                {event
+                                                                    .accumulated_content
+                                                                    .clone()
+                                                                    .or(event.content_delta.clone())
+                                                                    .unwrap_or_else(|| t(ui_locale_diagnostics.as_deref(), "ai.common.noTextualDelta", "(no textual delta)"))}
+                                                            </div>
+                                                            <Show when=move || has_error>
+                                                                <div class="mt-1 text-sm text-destructive">
+                                                                    {error_message.clone()}
+                                                                </div>
+                                                            </Show>
+                                                        </div>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                    </div>
+                                </Card>
+
+                                {if !diagnostics_only { view! {
+                                <Card title=t(ui_locale_blog.as_deref(), "ai.card.blogDraft", "Blog Draft")>
+                                    <form class="space-y-3" on:submit=on_run_blog_job.clone()>
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.jobTitle", "Job title") value=blog_title />
+                                        <TextField
+                                            label=t(ui_locale_blog.as_deref(), "ai.field.locale", "Locale")
+                                            value=blog_locale
+                                            placeholder=t(ui_locale_blog.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.existingPostId", "Existing post id") value=blog_post_id />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceLocale", "Source locale") value=blog_source_locale />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceTitleOverride", "Source title override") value=blog_source_title />
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Source body override"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_blog.as_deref(), "ai.field.sourceBodyOverride", "Source body override")}</span>
                                             <textarea
                                                 class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=blog_source_body
                                                 on:input=move |ev| blog_source_body.set(event_target_value(&ev))
                                             />
                                         </label>
-                                        <TextField label="Source excerpt override" value=blog_source_excerpt />
-                                        <TextField label="Source SEO title override" value=blog_source_seo_title />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceExcerptOverride", "Source excerpt override") value=blog_source_excerpt />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceSeoTitleOverride", "Source SEO title override") value=blog_source_seo_title />
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Source SEO description override"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_blog.as_deref(), "ai.field.sourceSeoDescriptionOverride", "Source SEO description override")}</span>
                                             <textarea
                                                 class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=blog_source_seo_description
                                                 on:input=move |ev| blog_source_seo_description.set(event_target_value(&ev))
                                             />
                                         </label>
-                                        <TextField label="Tags (csv)" value=blog_tags />
-                                        <TextField label="Category id" value=blog_category_id />
-                                        <TextField label="Featured image URL" value=blog_featured_image_url />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.tagsCsv", "Tags (csv)") value=blog_tags />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.categoryId", "Category id") value=blog_category_id />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.featuredImageUrl", "Featured image URL") value=blog_featured_image_url />
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Copy instructions"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_blog.as_deref(), "ai.field.copyInstructions", "Copy instructions")}</span>
                                             <textarea
                                                 class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=blog_copy_instructions
                                                 on:input=move |ev| blog_copy_instructions.set(event_target_value(&ev))
                                             />
                                         </label>
-                                        <TextField label="Assistant prompt" value=blog_assistant_prompt />
+                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=blog_assistant_prompt />
                                         <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || format!(
-                                                "Provider: {} | Task profile: {} | Mode: direct",
-                                                selected_provider.get(),
-                                                selected_task_profile.get(),
+                                            {move || direct_transport_summary(
+                                                blog_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
                                             )}
                                         </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Generate blog draft"</button>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_blog.as_deref(), "ai.action.generateBlogDraft", "Generate blog draft")}</button>
                                     </form>
                                 </Card>
 
-                                <Card title="Product Copy">
-                                    <form class="space-y-3" on:submit=on_run_product_job>
-                                        <TextField label="Job title" value=product_title />
-                                        <TextField label="Locale" value=product_locale />
-                                        <TextField label="Product id" value=product_id />
-                                        <TextField label="Source locale" value=product_source_locale />
-                                        <TextField label="Source title override" value=product_source_title />
+                                <Card title=t(ui_locale_product.as_deref(), "ai.card.productCopy", "Product Copy")>
+                                    <form class="space-y-3" on:submit=on_run_product_job.clone()>
+                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.jobTitle", "Job title") value=product_title />
+                                        <TextField
+                                            label=t(ui_locale_product.as_deref(), "ai.field.locale", "Locale")
+                                            value=product_locale
+                                            placeholder=t(ui_locale_product.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.productId", "Product id") value=product_id />
+                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.sourceLocale", "Source locale") value=product_source_locale />
+                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.sourceTitleOverride", "Source title override") value=product_source_title />
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Source description override"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product.as_deref(), "ai.field.sourceDescriptionOverride", "Source description override")}</span>
                                             <textarea
                                                 class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=product_source_description
                                                 on:input=move |ev| product_source_description.set(event_target_value(&ev))
                                             />
                                         </label>
-                                        <TextField label="Source meta title override" value=product_source_meta_title />
+                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.sourceMetaTitleOverride", "Source meta title override") value=product_source_meta_title />
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Source meta description override"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product.as_deref(), "ai.field.sourceMetaDescriptionOverride", "Source meta description override")}</span>
                                             <textarea
                                                 class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=product_source_meta_description
@@ -981,58 +1633,66 @@ pub fn AiAdmin() -> impl IntoView {
                                             />
                                         </label>
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Copy instructions"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product.as_deref(), "ai.field.copyInstructions", "Copy instructions")}</span>
                                             <textarea
                                                 class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=product_copy_instructions
                                                 on:input=move |ev| product_copy_instructions.set(event_target_value(&ev))
                                             />
                                         </label>
-                                        <TextField label="Assistant prompt" value=product_assistant_prompt />
+                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=product_assistant_prompt />
                                         <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || format!(
-                                                "Provider: {} | Task profile: {} | Mode: direct",
-                                                selected_provider.get(),
-                                                selected_task_profile.get(),
+                                            {move || direct_transport_summary(
+                                                product_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
                                             )}
                                         </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Generate product copy"</button>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_product.as_deref(), "ai.action.generateProductCopy", "Generate product copy")}</button>
                                     </form>
                                 </Card>
 
-                                <Card title="Media Image">
-                                    <form class="space-y-3" on:submit=on_run_image_job>
-                                        <TextField label="Job title" value=image_title />
-                                        <TextField label="Locale" value=image_locale />
-                                        <TextField label="Prompt" value=image_prompt />
-                                        <TextField label="Negative prompt" value=image_negative_prompt />
-                                        <TextField label="File name" value=image_file_name />
-                                        <TextField label="Media title" value=image_asset_title />
-                                        <TextField label="Alt text" value=image_alt_text />
-                                        <TextField label="Caption" value=image_caption />
-                                        <TextField label="Size" value=image_size />
-                                        <TextField label="Assistant prompt" value=image_assistant_prompt />
+                                <Card title=t(ui_locale_image.as_deref(), "ai.card.mediaImage", "Media Image")>
+                                    <form class="space-y-3" on:submit=on_run_image_job.clone()>
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.jobTitle", "Job title") value=image_title />
+                                        <TextField
+                                            label=t(ui_locale_image.as_deref(), "ai.field.locale", "Locale")
+                                            value=image_locale
+                                            placeholder=t(ui_locale_image.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.prompt", "Prompt") value=image_prompt />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.negativePrompt", "Negative prompt") value=image_negative_prompt />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.fileName", "File name") value=image_file_name />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.mediaTitle", "Media title") value=image_asset_title />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.altText", "Alt text") value=image_alt_text />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.caption", "Caption") value=image_caption />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.size", "Size") value=image_size />
+                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=image_assistant_prompt />
                                         <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || format!(
-                                                "Provider: {} | Task profile: {} | Mode: direct",
-                                                selected_provider.get(),
-                                                selected_task_profile.get(),
+                                            {move || direct_transport_summary(
+                                                image_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
                                             )}
                                         </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Generate media image"</button>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_image.as_deref(), "ai.action.generateMediaImage", "Generate media image")}</button>
                                     </form>
                                 </Card>
 
-                                <Card title="Alloy Assist">
-                                    <form class="space-y-3" on:submit=on_run_alloy_job>
-                                        <TextField label="Job title" value=alloy_title />
-                                        <TextField label="Locale" value=alloy_locale />
-                                        <TextField label="Operation" value=alloy_operation />
-                                        <TextField label="Script id" value=alloy_script_id />
-                                        <TextField label="Script name" value=alloy_script_name />
-                                        <TextField label="Assistant prompt" value=alloy_prompt />
+                                <Card title=t(ui_locale_alloy.as_deref(), "ai.card.alloyAssist", "Alloy Assist")>
+                                    <form class="space-y-3" on:submit=on_run_alloy_job.clone()>
+                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.jobTitle", "Job title") value=alloy_title />
+                                        <TextField
+                                            label=t(ui_locale_alloy.as_deref(), "ai.field.locale", "Locale")
+                                            value=alloy_locale
+                                            placeholder=t(ui_locale_alloy.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.operation", "Operation") value=alloy_operation />
+                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.scriptId", "Script id") value=alloy_script_id />
+                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.scriptName", "Script name") value=alloy_script_name />
+                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=alloy_prompt />
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Script source"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_alloy.as_deref(), "ai.field.scriptSource", "Script source")}</span>
                                             <textarea
                                                 class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=alloy_script_source
@@ -1040,7 +1700,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             />
                                         </label>
                                         <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">"Runtime payload JSON"</span>
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_alloy.as_deref(), "ai.field.runtimePayloadJson", "Runtime payload JSON")}</span>
                                             <textarea
                                                 class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                 prop:value=alloy_runtime_payload
@@ -1048,34 +1708,39 @@ pub fn AiAdmin() -> impl IntoView {
                                             />
                                         </label>
                                         <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || format!(
-                                                "Provider: {} | Task profile: {} | Mode: direct",
-                                                selected_provider.get(),
-                                                selected_task_profile.get(),
+                                            {move || direct_transport_summary(
+                                                alloy_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
                                             )}
                                         </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Run Alloy job"</button>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_alloy.as_deref(), "ai.action.runAlloyJob", "Run Alloy job")}</button>
                                     </form>
                                 </Card>
 
-                                <Card title="New Session">
-                                    <form class="space-y-3" on:submit=on_start_session>
-                                        <TextField label="Title" value=session_title />
-                                        <TextField label="Locale" value=session_locale />
-                                        <TextField label="Initial message" value=session_message />
+                                <Card title=t(ui_locale_new_session.as_deref(), "ai.card.newSession", "New Session")>
+                                    <form class="space-y-3" on:submit=on_start_session.clone()>
+                                        <TextField label=t(ui_locale_new_session.as_deref(), "ai.field.title", "Title") value=session_title />
+                                        <TextField
+                                            label=t(ui_locale_new_session.as_deref(), "ai.field.locale", "Locale")
+                                            value=session_locale
+                                            placeholder=t(ui_locale_new_session.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_new_session.as_deref(), "ai.field.initialMessage", "Initial message") value=session_message />
                                         <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || format!(
-                                                "Provider: {} | Task profile: {} | Tool profile: {}",
-                                                selected_provider.get(),
-                                                selected_task_profile.get(),
-                                                selected_tool_profile.get()
+                                            {move || session_transport_summary(
+                                                session_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
+                                                selected_tool_profile.get().as_str(),
                                             )}
                                         </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Start session"</button>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_new_session.as_deref(), "ai.action.startSession", "Start session")}</button>
                                     </form>
                                 </Card>
+                                }.into_any() } else { ().into_any() }}
 
-                                <Card title="Sessions">
+                                <Card title=t(ui_locale_sessions.as_deref(), "ai.card.sessions", "Sessions")>
                                     <div class="space-y-2">
                                         {bootstrap.sessions.into_iter().map(|session| {
                                             let session_id = session.id.clone();
@@ -1086,12 +1751,12 @@ pub fn AiAdmin() -> impl IntoView {
                                                 >
                                                     <div class="font-medium">{session.title}</div>
                                                     <div class="text-muted-foreground">
-                                                        {format!(
-                                                            "status: {} · mode: {} · latest: {} · approvals: {}",
-                                                            session.status,
-                                                            session.execution_mode,
-                                                            session.latest_run_status.unwrap_or_else(|| "idle".to_string()),
-                                                            session.pending_approvals
+                                                        {session_list_summary(
+                                                            ui_locale_sessions.as_deref(),
+                                                            session.status.as_str(),
+                                                            session.execution_mode.as_str(),
+                                                            session.latest_run_status.as_deref(),
+                                                            session.pending_approvals,
                                                         )}
                                                     </div>
                                                 </button>
@@ -1102,10 +1767,16 @@ pub fn AiAdmin() -> impl IntoView {
                             </section>
 
                             <section>
-                                <Card title="Operator Chat">
+                                <Card title=t(ui_locale_operator.as_deref(), "ai.card.operatorChat", "Operator Chat")>
                                     <Suspense fallback=move || view! { <div class="h-64 animate-pulse rounded-xl bg-muted"></div> }>
-                                        {move || session_detail.get().map(|result| match result {
+                                        {move || {
+                                            let ui_locale = ui_locale_operator.clone();
+                                            let on_send_message = on_send_message.clone();
+                                            session_detail.get().map(|result| match result {
                                             Ok(Some(detail)) => {
+                                                let ui_locale_form = ui_locale.clone();
+                                                let ui_locale_approvals = ui_locale.clone();
+                                                let ui_locale_runs = ui_locale.clone();
                                                 let pending_approvals = detail
                                                     .approvals
                                                     .clone()
@@ -1117,18 +1788,18 @@ pub fn AiAdmin() -> impl IntoView {
                                                         <div class="rounded-lg border border-border px-3 py-3 text-sm">
                                                             <div class="font-medium">{detail.session.title.clone()}</div>
                                                             <div class="text-muted-foreground">
-                                                                {format!(
-                                                                    "provider: {} · model: {} · mode: {}",
-                                                                    detail.provider_profile.display_name,
-                                                                    detail.provider_profile.model,
-                                                                    detail.session.execution_mode
+                                                                {session_profile_summary(
+                                                                    ui_locale.as_deref(),
+                                                                    detail.provider_profile.display_name.as_str(),
+                                                                    detail.provider_profile.model.as_str(),
+                                                                    detail.session.execution_mode.as_str(),
                                                                 )}
                                                             </div>
                                                             <div class="text-muted-foreground">
-                                                                {format!(
-                                                                    "locale: {} -> {}",
-                                                                    detail.session.requested_locale.clone().unwrap_or_else(|| "auto".to_string()),
-                                                                    detail.session.resolved_locale.clone(),
+                                                                {locale_flow_summary(
+                                                                    ui_locale.as_deref(),
+                                                                    detail.session.requested_locale.as_deref(),
+                                                                    detail.session.resolved_locale.as_str(),
                                                                 )}
                                                             </div>
                                                         </div>
@@ -1139,18 +1810,46 @@ pub fn AiAdmin() -> impl IntoView {
                                                                     <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                                                         {message.role.clone()}
                                                                     </div>
-                                                                    <div>{message.content.unwrap_or_else(|| "(no textual content)".to_string())}</div>
+                                                                    <div>{message.content.unwrap_or_else(|| t(ui_locale.as_deref(), "ai.common.noTextualContent", "(no textual content)"))}</div>
                                                                 </div>
                                                             }).collect_view()}
                                                         </div>
 
-                                                        <form class="space-y-3" on:submit=on_send_message>
+                                                        {move || live_stream.get().map(|stream| {
+                                                            let content = if stream.content.trim().is_empty() {
+                                                                t(ui_locale.as_deref(), "ai.session.waitingForAssistant", "Waiting for assistant output...")
+                                                            } else {
+                                                                stream.content.clone()
+                                                            };
+                                                            let error_message = stream.error_message.clone().unwrap_or_default();
+                                                            let has_error = !error_message.trim().is_empty();
+                                                            view! {
+                                                                <div class="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+                                                                    <div class="flex items-center justify-between gap-3">
+                                                                        <div class="font-medium">{t(ui_locale.as_deref(), "ai.session.liveStream", "Live stream")}</div>
+                                                                        <div class="text-xs uppercase tracking-wide text-sky-800">
+                                                                            {stream_status_summary(
+                                                                                ui_locale.as_deref(),
+                                                                                stream.connected,
+                                                                                stream.status.as_str(),
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="mt-2 whitespace-pre-wrap text-sky-950">{content}</div>
+                                                                    <Show when=move || has_error>
+                                                                        <div class="mt-2 text-sm text-destructive">{error_message.clone()}</div>
+                                                                    </Show>
+                                                                </div>
+                                                            }
+                                                        })}
+
+                                                        <form class="space-y-3" on:submit=on_send_message.clone()>
                                                             <textarea
                                                                 class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                                                 prop:value=reply_message
                                                                 on:input=move |ev| reply_message.set(event_target_value(&ev))
                                                             />
-                                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Send"</button>
+                                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_form.as_deref(), "ai.action.send", "Send")}</button>
                                                         </form>
 
                                                         {if pending_approvals.is_empty() {
@@ -1158,14 +1857,18 @@ pub fn AiAdmin() -> impl IntoView {
                                                         } else {
                                                             view! {
                                                                 <div class="space-y-3">
-                                                                    <div class="text-sm font-semibold">"Pending approvals"</div>
+                                                                    <div class="text-sm font-semibold">{t(ui_locale_approvals.as_deref(), "ai.session.pendingApprovals", "Pending approvals")}</div>
                                                                     {pending_approvals.into_iter().map(|approval| {
                                                                     let approve_id = approval.id.clone();
                                                                     let reject_id = approval.id.clone();
+                                                                    let approval_reason = approval.reason.unwrap_or_else(|| t(ui_locale_approvals.as_deref(), "ai.session.operatorApprovalRequired", "Operator approval required"));
+                                                                    let approve_label = t(ui_locale_approvals.as_deref(), "ai.action.approve", "Approve");
+                                                                    let reject_label = t(ui_locale_approvals.as_deref(), "ai.action.reject", "Reject");
+                                                                    let reject_reason = t(ui_locale_approvals.as_deref(), "ai.session.rejectedInAdminUi", "Rejected in admin UI");
                                                                     view! {
                                                                         <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                                                                             <div class="font-medium">{approval.tool_name.clone()}</div>
-                                                                            <div class="mt-1 text-amber-800">{approval.reason.unwrap_or_else(|| "Operator approval required".to_string())}</div>
+                                                                            <div class="mt-1 text-amber-800">{approval_reason}</div>
                                                                             <div class="mt-3 flex gap-2">
                                                                                 <button
                                                                                     class="rounded-md bg-amber-900 px-3 py-2 text-xs font-semibold text-white"
@@ -1177,19 +1880,20 @@ pub fn AiAdmin() -> impl IntoView {
                                                                                         });
                                                                                     }
                                                                                 >
-                                                                                    "Approve"
+                                                                                    {approve_label}
                                                                                 </button>
                                                                                 <button
                                                                                     class="rounded-md border border-amber-900 px-3 py-2 text-xs font-semibold text-amber-900"
                                                                                     on:click=move |_| {
                                                                                         let approval_id = reject_id.clone();
+                                                                                        let reject_reason = reject_reason.clone();
                                                                                         spawn_local(async move {
-                                                                                            let _ = api::resume_approval(approval_id, false, Some("Rejected in admin UI".to_string())).await;
+                                                                                            let _ = api::resume_approval(approval_id, false, Some(reject_reason)).await;
                                                                                             set_refresh_nonce.update(|value| *value += 1);
                                                                                         });
                                                                                     }
                                                                                 >
-                                                                                    "Reject"
+                                                                                    {reject_label}
                                                                                 </button>
                                                                             </div>
                                                                         </div>
@@ -1200,7 +1904,7 @@ pub fn AiAdmin() -> impl IntoView {
                                                         }}
 
                                                         <div class="space-y-3">
-                                                            <div class="text-sm font-semibold">"Runs"</div>
+                                                            <div class="text-sm font-semibold">{t(ui_locale_runs.as_deref(), "ai.session.runs", "Runs")}</div>
                                                             {detail.runs.into_iter().map(|run| {
                                                                 let error_message = run.error_message.clone().unwrap_or_default();
                                                                 let has_error = !error_message.is_empty();
@@ -1208,18 +1912,18 @@ pub fn AiAdmin() -> impl IntoView {
                                                                     <div class="rounded-lg border border-border px-3 py-3 text-sm">
                                                                         <div class="font-medium">{run.model.clone()}</div>
                                                                         <div class="text-muted-foreground">
-                                                                            {format!(
-                                                                                "{} · {} · path {}",
-                                                                                run.status,
-                                                                                run.execution_mode,
-                                                                                run.execution_path
+                                                                            {run_path_summary(
+                                                                                ui_locale_runs.as_deref(),
+                                                                                run.status.as_str(),
+                                                                                run.execution_mode.as_str(),
+                                                                                run.execution_path.as_str(),
                                                                             )}
                                                                         </div>
                                                                         <div class="text-muted-foreground">
-                                                                            {format!(
-                                                                                "locale: {} -> {}",
-                                                                                run.requested_locale.clone().unwrap_or_else(|| "auto".to_string()),
-                                                                                run.resolved_locale.clone(),
+                                                                            {locale_flow_summary(
+                                                                                ui_locale_runs.as_deref(),
+                                                                                run.requested_locale.as_deref(),
+                                                                                run.resolved_locale.as_str(),
                                                                             )}
                                                                         </div>
                                                                         <Show when=move || has_error>
@@ -1231,28 +1935,67 @@ pub fn AiAdmin() -> impl IntoView {
                                                         </div>
 
                                                         <div class="space-y-3">
-                                                            <div class="text-sm font-semibold">"Tool trace"</div>
+                                                            <div class="text-sm font-semibold">{t(ui_locale_runs.as_deref(), "ai.session.toolTrace", "Tool trace")}</div>
                                                             {detail.tool_traces.into_iter().map(|trace| view! {
                                                                 <div class="rounded-lg border border-border px-3 py-3 text-sm">
                                                                     <div class="font-medium">{trace.tool_name}</div>
-                                                                    <div class="text-muted-foreground">{format!("{} · {} ms", trace.status, trace.duration_ms)}</div>
+                                                                    <div class="text-muted-foreground">{tool_trace_summary(ui_locale_runs.as_deref(), trace.status.as_str(), trace.duration_ms)}</div>
                                                                 </div>
                                                             }).collect_view()}
+                                                        </div>
+
+                                                        <div class="space-y-3">
+                                                            <div class="text-sm font-semibold">{t(ui_locale_runs.as_deref(), "ai.diagnostics.recentStreamEvents", "Recent stream events")}</div>
+                                                            {if detail.recent_stream_events.is_empty() {
+                                                                view! {
+                                                                    <div class="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                                                                        {t(ui_locale_runs.as_deref(), "ai.session.noCachedStreamEvents", "No cached stream events for this session yet.")}
+                                                                    </div>
+                                                                }.into_any()
+                                                            } else {
+                                                                view! {
+                                                                    {detail.recent_stream_events.into_iter().take(10).map(|event| {
+                                                                        let status = stream_event_kind_label(
+                                                                            ui_locale_runs.as_deref(),
+                                                                            &event.event_kind,
+                                                                        );
+                                                                        let error_message = event.error_message.clone().unwrap_or_default();
+                                                                        let has_error = !error_message.trim().is_empty();
+                                                                        view! {
+                                                                            <div class="rounded-lg border border-border px-3 py-3 text-sm">
+                                                                                <div class="font-medium">{format!("{status} · {}", event.run_id)}</div>
+                                                                                <div class="text-xs text-muted-foreground">{event.created_at}</div>
+                                                                                <div class="mt-1 whitespace-pre-wrap">
+                                                                                    {event
+                                                                                        .accumulated_content
+                                                                                        .or(event.content_delta)
+                                                                                        .unwrap_or_else(|| t(ui_locale_runs.as_deref(), "ai.common.noTextualDelta", "(no textual delta)"))}
+                                                                                </div>
+                                                                                <Show when=move || has_error>
+                                                                                    <div class="mt-1 text-destructive">{error_message.clone()}</div>
+                                                                                </Show>
+                                                                            </div>
+                                                                        }
+                                                                    }).collect_view()}
+                                                                }.into_any()
+                                                            }}
                                                         </div>
                                                     </div>
                                                 }.into_any()
                                             }
                                             Ok(None) => view! {
                                                 <div class="rounded-lg border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
-                                                    "Select a session to inspect chat history, traces, and approvals."
+                                                    {t(ui_locale.as_deref(), "ai.session.selectPrompt", "Select a session to inspect chat history, traces, and approvals.")}
                                                 </div>
                                             }.into_any(),
                                             Err(err) => view! {
                                                 <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                                    {format!("Failed to load session: {err}")}
+                                                    {t(ui_locale.as_deref(), "ai.session.loadSession", "Failed to load session: {error}")
+                                                        .replace("{error}", err.to_string().as_str())}
                                                 </div>
                                             }.into_any(),
-                                        })}
+                                            })
+                                        }}
                                     </Suspense>
                                 </Card>
                             </section>
@@ -1260,17 +2003,19 @@ pub fn AiAdmin() -> impl IntoView {
                     }.into_any(),
                     Err(err) => view! {
                         <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                            {format!("Failed to load AI bootstrap: {err}")}
+                            {t(ui_locale_operator.as_deref(), "ai.session.loadBootstrap", "Failed to load AI bootstrap: {error}")
+                                .replace("{error}", err.to_string().as_str())}
                         </div>
                     }.into_any(),
-                })}
+                    })
+                }}
             </Suspense>
         </div>
     }
 }
 
 #[component]
-fn Card(title: &'static str, children: Children) -> impl IntoView {
+fn Card(#[prop(into)] title: String, children: Children) -> impl IntoView {
     view! {
         <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h2 class="mb-4 text-lg font-semibold text-card-foreground">{title}</h2>
@@ -1280,7 +2025,11 @@ fn Card(title: &'static str, children: Children) -> impl IntoView {
 }
 
 #[component]
-fn TextField(label: &'static str, value: RwSignal<String>) -> impl IntoView {
+fn TextField(
+    #[prop(into)] label: String,
+    value: RwSignal<String>,
+    #[prop(optional, into)] placeholder: Option<String>,
+) -> impl IntoView {
     view! {
         <label class="block space-y-1">
             <span class="text-sm text-muted-foreground">{label}</span>
@@ -1288,9 +2037,20 @@ fn TextField(label: &'static str, value: RwSignal<String>) -> impl IntoView {
                 type="text"
                 class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 prop:value=value
+                placeholder=placeholder.clone().unwrap_or_default()
                 on:input=move |ev| value.set(event_target_value(&ev))
             />
         </label>
+    }
+}
+
+#[component]
+fn InfoItem(#[prop(into)] label: String, value: String) -> impl IntoView {
+    view! {
+        <div class="rounded-lg border border-border px-3 py-3">
+            <div class="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+            <div class="mt-1 text-lg font-semibold text-card-foreground">{value}</div>
+        </div>
     }
 }
 
@@ -1309,6 +2069,333 @@ fn optional_text(value: String) -> Option<String> {
     } else {
         Some(value)
     }
+}
+
+fn bucket_summary(locale: Option<&str>, buckets: &[AiMetricBucketPayload]) -> String {
+    if buckets.is_empty() {
+        t(locale, "ai.summary.bucketNoData", "no data")
+    } else {
+        buckets
+            .iter()
+            .map(|bucket| format!("{}={}", bucket.label, bucket.total))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) -> String {
+    if runs.is_empty() {
+        return t(locale, "ai.diagnostics.noRecentEvents", "No recent events yet.");
+    }
+
+    let failed = runs.iter().filter(|run| run.status == "failed").count();
+    let waiting = runs
+        .iter()
+        .filter(|run| run.status == "waiting_approval")
+        .count();
+    let avg_latency = runs
+        .iter()
+        .map(|run| run.duration_ms.max(0) as u64)
+        .sum::<u64>()
+        / runs.len() as u64;
+
+    t(
+        locale,
+        "ai.summary.recentRuns",
+        "{count} run(s), {failed} failed, {waiting} waiting approval, avg {latency} ms",
+    )
+    .replace("{count}", runs.len().to_string().as_str())
+    .replace("{failed}", failed.to_string().as_str())
+    .replace("{waiting}", waiting.to_string().as_str())
+    .replace("{latency}", avg_latency.to_string().as_str())
+}
+
+fn stream_event_kind_label(
+    locale: Option<&str>,
+    value: &model::AiRunStreamEventKindPayload,
+) -> String {
+    match value {
+        model::AiRunStreamEventKindPayload::Started => {
+            t(locale, "ai.status.started", "STARTED")
+        }
+        model::AiRunStreamEventKindPayload::Delta => t(locale, "ai.status.delta", "DELTA"),
+        model::AiRunStreamEventKindPayload::Completed => {
+            t(locale, "ai.status.completed", "COMPLETED")
+        }
+        model::AiRunStreamEventKindPayload::Failed => t(locale, "ai.status.failed", "FAILED"),
+        model::AiRunStreamEventKindPayload::WaitingApproval => {
+            t(locale, "ai.status.waitingApproval", "WAITING_APPROVAL")
+        }
+    }
+}
+
+fn average_run_latency_summary(locale: Option<&str>, latency_ms: u64) -> String {
+    t(
+        locale,
+        "ai.diagnostics.averageRunLatency",
+        "Average run latency: {value} ms",
+    )
+    .replace("{value}", latency_ms.to_string().as_str())
+}
+
+fn provider_profile_summary(
+    locale: Option<&str>,
+    kind: &str,
+    model: &str,
+    capabilities: usize,
+    active: bool,
+) -> String {
+    t(
+        locale,
+        "ai.summary.providerList",
+        "{kind} · {model} · {count} capabilities · {state}",
+    )
+    .replace("{kind}", kind)
+    .replace("{model}", model)
+    .replace("{count}", capabilities.to_string().as_str())
+    .replace("{state}", active_state_label(locale, active).as_str())
+}
+
+fn tool_profile_summary(
+    locale: Option<&str>,
+    allowed_count: usize,
+    sensitive_count: usize,
+    active: bool,
+) -> String {
+    t(
+        locale,
+        "ai.summary.toolProfileList",
+        "allowed: {allowed} · sensitive: {sensitive} · {state}",
+    )
+    .replace("{allowed}", allowed_count.to_string().as_str())
+    .replace("{sensitive}", sensitive_count.to_string().as_str())
+    .replace("{state}", active_state_label(locale, active).as_str())
+}
+
+fn task_profile_summary(locale: Option<&str>, capability: &str, mode: &str, active: bool) -> String {
+    t(
+        locale,
+        "ai.summary.taskProfileList",
+        "{capability} · {mode} · {state}",
+    )
+    .replace("{capability}", capability)
+    .replace("{mode}", mode)
+    .replace("{state}", active_state_label(locale, active).as_str())
+}
+
+fn direct_transport_summary(locale: Option<&str>, provider: &str, task_profile: &str) -> String {
+    t(
+        locale,
+        "ai.summary.transportDirect",
+        "Provider: {provider} | Task profile: {task_profile} | Mode: {mode}",
+    )
+    .replace("{provider}", provider)
+    .replace("{task_profile}", task_profile)
+    .replace("{mode}", t(locale, "ai.common.direct", "direct").as_str())
+}
+
+fn session_transport_summary(
+    locale: Option<&str>,
+    provider: &str,
+    task_profile: &str,
+    tool_profile: &str,
+) -> String {
+    t(
+        locale,
+        "ai.summary.transportSession",
+        "Provider: {provider} | Task profile: {task_profile} | Tool profile: {tool_profile}",
+    )
+    .replace("{provider}", provider)
+    .replace("{task_profile}", task_profile)
+    .replace("{tool_profile}", tool_profile)
+}
+
+fn session_list_summary(
+    locale: Option<&str>,
+    status: &str,
+    mode: &str,
+    latest: Option<&str>,
+    approvals: i32,
+) -> String {
+    let latest_value = latest
+        .map(ToString::to_string)
+        .unwrap_or_else(|| t(locale, "ai.common.idle", "idle"));
+    t(
+        locale,
+        "ai.summary.sessionList",
+        "status: {status} · mode: {mode} · latest: {latest} · approvals: {approvals}",
+    )
+    .replace("{status}", status)
+    .replace("{mode}", mode)
+    .replace("{latest}", latest_value.as_str())
+    .replace("{approvals}", approvals.to_string().as_str())
+}
+
+fn session_profile_summary(locale: Option<&str>, provider: &str, model: &str, mode: &str) -> String {
+    t(
+        locale,
+        "ai.summary.sessionProfile",
+        "provider: {provider} · model: {model} · mode: {mode}",
+    )
+    .replace("{provider}", provider)
+    .replace("{model}", model)
+    .replace("{mode}", mode)
+}
+
+fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>, resolved: &str) -> String {
+    let requested_value = requested
+        .map(ToString::to_string)
+        .unwrap_or_else(|| t(locale, "ai.common.auto", "auto"));
+    t(locale, "ai.summary.localeFlow", "locale: {requested} -> {resolved}")
+        .replace("{requested}", requested_value.as_str())
+        .replace("{resolved}", resolved)
+}
+
+fn run_path_summary(locale: Option<&str>, status: &str, mode: &str, path: &str) -> String {
+    t(locale, "ai.summary.runPath", "{status} · {mode} · path {path}")
+        .replace("{status}", status)
+        .replace("{mode}", mode)
+        .replace("{path}", path)
+}
+
+fn tool_trace_summary(locale: Option<&str>, status: &str, duration_ms: i64) -> String {
+    t(locale, "ai.summary.toolTrace", "{status} · {duration} ms")
+        .replace("{status}", status)
+        .replace("{duration}", duration_ms.to_string().as_str())
+}
+
+fn stream_status_summary(locale: Option<&str>, connected: bool, status: &str) -> String {
+    let connection_label = if connected {
+        t(locale, "ai.common.connected", "connected")
+    } else {
+        t(locale, "ai.common.disconnected", "disconnected")
+    };
+    t(locale, "ai.summary.streamStatus", "{connection} · {status}")
+        .replace("{connection}", connection_label.as_str())
+        .replace("{status}", status)
+}
+
+fn active_state_label(locale: Option<&str>, active: bool) -> String {
+    if active {
+        t(locale, "ai.common.active", "active")
+    } else {
+        t(locale, "ai.common.inactive", "inactive")
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+const AI_SESSION_EVENTS_SUBSCRIPTION: &str = r#"
+subscription AiSessionEvents($sessionId: UUID!) {
+  aiSessionEvents(sessionId: $sessionId) {
+    sessionId
+    runId
+    eventKind
+    contentDelta
+    accumulatedContent
+    errorMessage
+    createdAt
+  }
+}
+"#;
+
+#[cfg(target_arch = "wasm32")]
+struct AiLiveSubscriptionHandle {
+    generation: u64,
+    ws: WebSocket,
+    on_open: Closure<dyn FnMut(Event)>,
+    on_message: Closure<dyn FnMut(MessageEvent)>,
+    on_error: Closure<dyn FnMut(ErrorEvent)>,
+    on_close: Closure<dyn FnMut(CloseEvent)>,
+}
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static AI_LIVE_SUBSCRIPTION_HANDLE: RefCell<Option<AiLiveSubscriptionHandle>> = const { RefCell::new(None) };
+}
+
+#[cfg(target_arch = "wasm32")]
+static AI_LIVE_SUBSCRIPTION_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(target_arch = "wasm32")]
+fn next_live_subscription_generation() -> u64 {
+    AI_LIVE_SUBSCRIPTION_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn close_live_subscription_handle(handle: AiLiveSubscriptionHandle) {
+    handle.ws.set_onopen(None);
+    handle.ws.set_onmessage(None);
+    handle.ws.set_onerror(None);
+    handle.ws.set_onclose(None);
+    let _ = handle.ws.close();
+    drop(handle.on_open);
+    drop(handle.on_message);
+    drop(handle.on_error);
+    drop(handle.on_close);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn replace_live_subscription(handle: Option<AiLiveSubscriptionHandle>) {
+    AI_LIVE_SUBSCRIPTION_HANDLE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if let Some(previous) = slot.take() {
+            close_live_subscription_handle(previous);
+        }
+        *slot = handle;
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn clear_live_subscription_generation(generation: u64) {
+    AI_LIVE_SUBSCRIPTION_HANDLE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let should_clear = slot
+            .as_ref()
+            .map(|handle| handle.generation == generation)
+            .unwrap_or(false);
+        if should_clear {
+            if let Some(handle) = slot.take() {
+                close_live_subscription_handle(handle);
+            }
+        }
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn graphql_ws_url() -> String {
+    let window = web_sys::window().expect("window should exist in browser");
+    let location = window.location();
+    let protocol = location
+        .protocol()
+        .ok()
+        .unwrap_or_else(|| "http:".to_string());
+    let host = location
+        .host()
+        .ok()
+        .unwrap_or_else(|| "localhost:5150".to_string());
+    let ws_scheme = if protocol.eq_ignore_ascii_case("https:") {
+        "wss"
+    } else {
+        "ws"
+    };
+    format!("{ws_scheme}://{host}/api/graphql/ws")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_admin_locale(preferred: Option<&str>) -> Option<String> {
+    if let Some(preferred) = preferred
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(preferred.to_string());
+    }
+    let window = web_sys::window()?;
+    let storage = window.local_storage().ok().flatten()?;
+    storage
+        .get_item("rustok-admin-locale")
+        .ok()
+        .flatten()
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn alloy_task_payload(
@@ -1363,8 +2450,9 @@ fn product_task_payload(
     copy_instructions: Option<String>,
     assistant_prompt: Option<String>,
 ) -> Result<String, serde_json::Error> {
-    let product_id = uuid::Uuid::parse_str(product_id.trim())
-        .map_err(|error| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error)))?;
+    let product_id = uuid::Uuid::parse_str(product_id.trim()).map_err(|error| {
+        serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+    })?;
     let payload = serde_json::json!({
         "product_id": product_id,
         "source_locale": source_locale,

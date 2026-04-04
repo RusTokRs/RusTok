@@ -245,11 +245,20 @@ pub struct RegistryGovernanceEventLifecycle {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct RegistryFollowUpGateLifecycle {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct RegistryModuleLifecycle {
     pub owner_binding: Option<RegistryOwnerLifecycle>,
     pub latest_request: Option<RegistryPublishRequestLifecycle>,
     pub latest_release: Option<RegistryReleaseLifecycle>,
     pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
+    pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
 }
 
 #[derive(SimpleObject, Clone)]

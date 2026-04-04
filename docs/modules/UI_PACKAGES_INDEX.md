@@ -26,6 +26,19 @@
 2. **Admin UI пакет** (`leptos-*-admin`) — компоненты админки
 3. **Storefront UI пакет** (`leptos-*-storefront`) — компоненты витрины
 
+Для native i18n модуль теперь может дополнительно декларировать bundle contract прямо в
+`rustok-module.toml` через `[provides.admin_ui.i18n]` и `[provides.storefront_ui.i18n]`.
+Это не заменяет host-level locale contract, а фиксирует, где лежат package-owned `locales/*.json`
+и `messages/*.json`, если модуль действительно поставляет собственные переводы.
+Модульные UI-пакеты не должны придумывать свою locale-цепочку: effective locale выбирается
+сервером и host-приложением, а пакет только потребляет уже переданный язык.
+На текущем этапе этот contract уже используется admin-пакетами `workflow`, `rbac`, `tenant`,
+`index`, `outbox`, `pages`, `comments`, `channel`, `forum`, `search`, `commerce` и storefront-пакетами `blog`, `pages`,
+`commerce`, `forum`, `search`.
+Отдельно от manifest-driven модулей тот же runtime locale contract теперь соблюдает capability-owned пакет
+`rustok-ai-admin`: он тоже хранит package-owned `admin/locales/*.json`, но не публикуется через
+`rustok-module.toml`, потому что относится к capability crate, а не к модульному registry surface.
+
 ### Пример структуры
 
 ```

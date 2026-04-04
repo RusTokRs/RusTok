@@ -78,6 +78,18 @@ run_cmd \
     --no-default-features --features redis-cache
 
 run_cmd \
+  "registry v1 detail smoke" \
+  cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
+    app::tests::registry_catalog_detail_endpoint_serves_module_contract --lib \
+    --no-default-features --features redis-cache
+
+run_cmd \
+  "registry v1 cache smoke" \
+  cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
+    app::tests::registry_catalog_endpoint_honors_if_none_match --lib \
+    --no-default-features --features redis-cache
+
+run_cmd \
   "registry-only openapi smoke" \
   cargo test --manifest-path "$ROOT_DIR/Cargo.toml" -p rustok-server \
     controllers::swagger::tests::registry_only_openapi_filters_non_registry_surface --lib \

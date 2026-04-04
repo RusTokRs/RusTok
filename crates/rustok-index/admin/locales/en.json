@@ -1,0 +1,13 @@
+{
+  "index.badge": "index",
+  "index.title": "Index Runtime",
+  "index.subtitle": "Module-owned overview for tenant-scoped read-model tables and index substrate coverage.",
+  "index.info.tenant": "Tenant",
+  "index.info.locale": "Locale",
+  "index.info.backend": "FTS backend",
+  "index.info.documentTypes": "Document types",
+  "index.value.postgres": "postgres",
+  "index.value.generic": "generic",
+  "index.contract.title": "Module Contract",
+  "index.error.loadBootstrap": "Failed to load index bootstrap"
+}

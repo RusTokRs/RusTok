@@ -12,5 +12,6 @@ crate-type = ["rlib"]
 leptos = { workspace = true, features = ["csr"] }
 leptos-auth.workspace = true
 leptos-graphql.workspace = true
+rustok-api.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

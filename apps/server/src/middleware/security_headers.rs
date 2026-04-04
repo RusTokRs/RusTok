@@ -81,24 +81,24 @@ fn select_csp(path: &str) -> &'static str {
     } else {
         UI_CSP
     }
+}
 
-    #[cfg(test)]
-    mod tests {
-        use super::{select_csp, API_CSP, UI_CSP};
+#[cfg(test)]
+mod tests {
+    use super::{select_csp, API_CSP, UI_CSP};
 
-        #[test]
-        fn api_and_operator_paths_use_strict_csp() {
-            assert_eq!(select_csp("/api/graphql"), API_CSP);
-            assert_eq!(select_csp("/metrics"), API_CSP);
-            assert_eq!(select_csp("/health/ready"), API_CSP);
-            assert_eq!(select_csp("/swagger/index.html"), API_CSP);
-        }
+    #[test]
+    fn api_and_operator_paths_use_strict_csp() {
+        assert_eq!(select_csp("/api/graphql"), API_CSP);
+        assert_eq!(select_csp("/metrics"), API_CSP);
+        assert_eq!(select_csp("/health/ready"), API_CSP);
+        assert_eq!(select_csp("/swagger/index.html"), API_CSP);
+    }
 
-        #[test]
-        fn ui_paths_use_ui_csp() {
-            assert_eq!(select_csp("/admin"), UI_CSP);
-            assert_eq!(select_csp("/"), UI_CSP);
-            assert_eq!(select_csp("/assets/app.js"), UI_CSP);
-        }
+    #[test]
+    fn ui_paths_use_ui_csp() {
+        assert_eq!(select_csp("/admin"), UI_CSP);
+        assert_eq!(select_csp("/"), UI_CSP);
+        assert_eq!(select_csp("/assets/app.js"), UI_CSP);
     }
 }

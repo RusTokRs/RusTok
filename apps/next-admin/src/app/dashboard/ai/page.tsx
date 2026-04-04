@@ -21,7 +21,7 @@ export default async function Page() {
       pageDescription='Manage providers, tool policies, operator chat sessions and approval gates'
     >
       <Suspense fallback={<div>Loading AI control plane...</div>}>
-        <AiAdminPage token={token} tenantSlug={tenantSlug} />
+        <AiAdminPage token={token} tenantSlug={tenantSlug} section='overview' />
       </Suspense>
     </PageContainer>
   );

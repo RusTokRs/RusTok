@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use alloy::ScriptRegistry;
 use alloy::utils::{dynamic_to_json, json_to_dynamic};
+use alloy::ScriptRegistry;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
@@ -22,8 +22,8 @@ use uuid::Uuid;
 
 use crate::model::{
     AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput,
-    AiProductCopyTaskInput, AiProviderConfig, ChatMessage, ChatMessageRole,
-    DirectExecutionTarget, ProviderChatRequest, ProviderImageRequest, ToolTrace,
+    AiProductCopyTaskInput, AiProviderConfig, ChatMessage, ChatMessageRole, DirectExecutionTarget,
+    ProviderChatRequest, ProviderImageRequest, ProviderStreamEmitter, ToolTrace,
 };
 use crate::provider::ModelProvider;
 use crate::service::AiOperatorContext;
@@ -38,6 +38,7 @@ pub struct DirectExecutionRequest {
     pub system_prompt: Option<String>,
     pub provider_config: AiProviderConfig,
     pub provider: Arc<dyn ModelProvider>,
+    pub stream_emitter: Option<ProviderStreamEmitter>,
 }
 
 pub struct DirectExecutionResult {
@@ -133,8 +134,8 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                 )
             }
             AiAlloyOperation::GetScript => {
-                let script = resolve_script(&scoped.storage, input.script_id, input.script_name)
-                    .await?;
+                let script =
+                    resolve_script(&scoped.storage, input.script_id, input.script_name).await?;
                 (
                     "direct.alloy.get_script".to_string(),
                     json!({
@@ -157,7 +158,9 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                     .script_source
                     .filter(|value| !value.trim().is_empty())
                     .ok_or_else(|| {
-                        AiError::Validation("script_source is required for validate_script".to_string())
+                        AiError::Validation(
+                            "script_source is required for validate_script".to_string(),
+                        )
                     })?;
                 let validation = serde_json::to_value(alloy_validate_script(
                     &AlloyMcpState::new(
@@ -188,8 +191,8 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                 )
             }
             AiAlloyOperation::RunScript => {
-                let script = resolve_script(&scoped.storage, input.script_id, input.script_name)
-                    .await?;
+                let script =
+                    resolve_script(&scoped.storage, input.script_id, input.script_name).await?;
                 let params = parse_runtime_payload(input.runtime_payload_json)?;
                 let result = scoped
                     .orchestrator
@@ -289,6 +292,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
             input.assistant_prompt.as_deref(),
             &summary,
             &operation_payload,
+            request.stream_emitter.clone(),
         )
         .await;
 
@@ -430,6 +434,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
             input.assistant_prompt.as_deref(),
             &summary,
             &operation_payload,
+            request.stream_emitter.clone(),
         )
         .await;
 
@@ -514,19 +519,25 @@ impl DirectTaskHandler for ProductCopyHandler {
 
         let title = normalize_optional_text(generated_copy.title)
             .or_else(|| source_translation.title.clone())
-            .ok_or_else(|| AiError::Validation("product copy generation returned empty title".to_string()))?;
-        let description =
-            normalize_optional_text(generated_copy.description).or(source_translation.description.clone());
+            .ok_or_else(|| {
+                AiError::Validation("product copy generation returned empty title".to_string())
+            })?;
+        let description = normalize_optional_text(generated_copy.description)
+            .or(source_translation.description.clone());
         let meta_title = normalize_optional_text(generated_copy.meta_title)
-            .or_else(|| current_target_translation.and_then(|translation| translation.meta_title.clone()))
+            .or_else(|| {
+                current_target_translation.and_then(|translation| translation.meta_title.clone())
+            })
             .or_else(|| Some(title.clone()));
         let meta_description = normalize_optional_text(generated_copy.meta_description)
-            .or_else(|| current_target_translation.and_then(|translation| translation.meta_description.clone()))
+            .or_else(|| {
+                current_target_translation
+                    .and_then(|translation| translation.meta_description.clone())
+            })
             .or_else(|| description.clone());
-        let target_handle =
-            current_target_translation.map(|translation| translation.handle.clone()).or_else(|| {
-                normalize_optional_text(generated_copy.handle)
-            });
+        let target_handle = current_target_translation
+            .map(|translation| translation.handle.clone())
+            .or_else(|| normalize_optional_text(generated_copy.handle));
 
         let mut translations = product
             .translations
@@ -625,6 +636,7 @@ impl DirectTaskHandler for ProductCopyHandler {
             input.assistant_prompt.as_deref(),
             &summary,
             &operation_payload,
+            request.stream_emitter.clone(),
         )
         .await;
 
@@ -693,7 +705,8 @@ impl DirectTaskHandler for BlogDraftHandler {
             ),
             None => None,
         };
-        let source = resolve_blog_source_content(existing_post.as_ref(), &input, &request.resolved_locale)?;
+        let source =
+            resolve_blog_source_content(existing_post.as_ref(), &input, &request.resolved_locale)?;
         let generated = generate_blog_draft(
             &request.provider,
             &request.provider_config,
@@ -707,10 +720,14 @@ impl DirectTaskHandler for BlogDraftHandler {
 
         let title = normalize_optional_text(generated.title)
             .or_else(|| source.title.clone())
-            .ok_or_else(|| AiError::Validation("blog_draft generation returned empty title".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("blog_draft generation returned empty title".to_string())
+            })?;
         let body = normalize_optional_text(generated.body)
             .or_else(|| source.body.clone())
-            .ok_or_else(|| AiError::Validation("blog_draft generation returned empty body".to_string()))?;
+            .ok_or_else(|| {
+                AiError::Validation("blog_draft generation returned empty body".to_string())
+            })?;
         let excerpt = normalize_optional_text(generated.excerpt).or(source.excerpt.clone());
         let seo_title = normalize_optional_text(generated.seo_title)
             .or_else(|| source.seo_title.clone())
@@ -735,7 +752,11 @@ impl DirectTaskHandler for BlogDraftHandler {
                         content_json: None,
                         excerpt: excerpt.clone(),
                         slug: slug.clone(),
-                        tags: if tags.is_empty() { None } else { Some(tags.clone()) },
+                        tags: if tags.is_empty() {
+                            None
+                        } else {
+                            Some(tags.clone())
+                        },
                         category_id: input.category_id,
                         featured_image_url: input.featured_image_url.clone(),
                         seo_title: seo_title.clone(),
@@ -841,6 +862,7 @@ impl DirectTaskHandler for BlogDraftHandler {
             input.assistant_prompt.as_deref(),
             &summary,
             &operation_payload,
+            request.stream_emitter.clone(),
         )
         .await;
 
@@ -917,7 +939,8 @@ fn resolve_product_source_translation(
         && candidate.meta_description.is_none()
     {
         return Err(AiError::Validation(
-            "product_copy requires an existing source translation or source_* overrides".to_string(),
+            "product_copy requires an existing source translation or source_* overrides"
+                .to_string(),
         ));
     }
 
@@ -1045,10 +1068,9 @@ async fn generate_blog_draft(
         )
         .await?;
 
-    let content = response
-        .assistant_message
-        .content
-        .ok_or_else(|| AiError::Provider("provider returned empty content for blog_draft".to_string()))?;
+    let content = response.assistant_message.content.ok_or_else(|| {
+        AiError::Provider("provider returned empty content for blog_draft".to_string())
+    })?;
     let parsed = parse_json_object_from_text(&content)?;
     serde_json::from_value(parsed).map_err(AiError::Json)
 }
@@ -1126,10 +1148,9 @@ async fn generate_product_copy(
         )
         .await?;
 
-    let content = response
-        .assistant_message
-        .content
-        .ok_or_else(|| AiError::Provider("provider returned empty content for product_copy".to_string()))?;
+    let content = response.assistant_message.content.ok_or_else(|| {
+        AiError::Provider("provider returned empty content for product_copy".to_string())
+    })?;
     parse_generated_product_copy(&content)
 }
 
@@ -1191,19 +1212,21 @@ fn normalize_tag_list(tags: &[String]) -> Vec<String> {
 }
 
 fn storage_from_app_ctx(app_ctx: &AppContext) -> AiResult<StorageService> {
-    app_ctx
-        .shared_store
-        .get::<StorageService>()
-        .ok_or_else(|| AiError::Runtime("StorageService is not registered in AppContext".to_string()))
+    app_ctx.shared_store.get::<StorageService>().ok_or_else(|| {
+        AiError::Runtime("StorageService is not registered in AppContext".to_string())
+    })
 }
 
 fn normalize_image_size(size: Option<String>) -> AiResult<Option<String>> {
-    let Some(size) = size.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) else {
+    let Some(size) = size
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(None);
     };
-    let (width, height) = size
-        .split_once('x')
-        .ok_or_else(|| AiError::Validation("image size must be formatted as WIDTHxHEIGHT".to_string()))?;
+    let (width, height) = size.split_once('x').ok_or_else(|| {
+        AiError::Validation("image size must be formatted as WIDTHxHEIGHT".to_string())
+    })?;
     let width = width
         .trim()
         .parse::<u32>()
@@ -1272,7 +1295,8 @@ fn mime_extension(mime_type: &str) -> &'static str {
 }
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
-    value.map(|text| text.trim().to_string())
+    value
+        .map(|text| text.trim().to_string())
         .filter(|text| !text.is_empty())
 }
 
@@ -1285,7 +1309,10 @@ async fn resolve_script(
     script_id: Option<Uuid>,
     script_name: Option<String>,
 ) -> AiResult<alloy::Script> {
-    match (script_id, script_name.filter(|value| !value.trim().is_empty())) {
+    match (
+        script_id,
+        script_name.filter(|value| !value.trim().is_empty()),
+    ) {
         (Some(id), _) => registry
             .get(id)
             .await
@@ -1319,10 +1346,10 @@ async fn explain_result(
     assistant_prompt: Option<&str>,
     summary: &str,
     payload: &Value,
+    stream_emitter: Option<ProviderStreamEmitter>,
 ) -> ChatMessage {
-    let locale_instruction = format!(
-        "Respond in locale `{locale}`. Keep the answer concise and operator-facing."
-    );
+    let locale_instruction =
+        format!("Respond in locale `{locale}`. Keep the answer concise and operator-facing.");
     let system = match system_prompt {
         Some(system_prompt) if !system_prompt.trim().is_empty() => {
             format!("{system_prompt}\n\n{locale_instruction}")
@@ -1337,7 +1364,7 @@ async fn explain_result(
     .to_string();
 
     match provider
-        .complete(
+        .complete_stream(
             provider_config,
             ProviderChatRequest {
                 model: provider_config.model.clone(),
@@ -1364,6 +1391,7 @@ async fn explain_result(
                 max_tokens: provider_config.max_tokens,
                 locale: Some(locale.to_string()),
             },
+            stream_emitter.clone(),
         )
         .await
     {
@@ -1379,7 +1407,13 @@ async fn explain_result(
         },
         Err(error) => ChatMessage {
             role: ChatMessageRole::Assistant,
-            content: Some(format!("[{locale}] {summary}")),
+            content: {
+                let content = format!("[{locale}] {summary}");
+                if let Some(emitter) = stream_emitter {
+                    emitter.emit_text_delta(content.clone());
+                }
+                Some(content)
+            },
             name: None,
             tool_call_id: None,
             tool_calls: Vec::new(),
@@ -1412,7 +1446,8 @@ fn merge_message_metadata(base: Value, extension: Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_generated_file_name, locale_matches, normalize_image_size, parse_generated_product_copy,
+        build_generated_file_name, locale_matches, normalize_image_size, normalize_tag_list,
+        parse_generated_product_copy, parse_json_object_from_text,
     };
 
     #[test]
@@ -1451,5 +1486,23 @@ mod tests {
             build_generated_file_name(Some("hero banner"), None, "image/webp"),
             "hero-banner.webp"
         );
+    }
+
+    #[test]
+    fn parse_json_object_from_text_accepts_embedded_payload() {
+        let parsed =
+            parse_json_object_from_text("result:\n```json\n{\"title\":\"Hallo\"}\n```").unwrap();
+        assert_eq!(parsed["title"], "Hallo");
+    }
+
+    #[test]
+    fn normalize_tag_list_trims_and_filters_empty_values() {
+        let normalized = normalize_tag_list(&[
+            " alpha ".to_string(),
+            "".to_string(),
+            "beta".to_string(),
+            "   ".to_string(),
+        ]);
+        assert_eq!(normalized, vec!["alpha".to_string(), "beta".to_string()]);
     }
 }

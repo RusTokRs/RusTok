@@ -1,13 +1,18 @@
 mod api;
+mod i18n;
 mod model;
 
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::UiRouteContext;
+
+use crate::i18n::t;
 
 #[component]
 pub fn TenantAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -19,11 +24,13 @@ pub fn TenantAdmin() -> impl IntoView {
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-2">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        "tenant"
+                        {t(locale.as_deref(), "tenant.badge", "tenant")}
                     </span>
-                    <h1 class="text-2xl font-semibold text-card-foreground">"Tenant Runtime"</h1>
+                    <h1 class="text-2xl font-semibold text-card-foreground">
+                        {t(locale.as_deref(), "tenant.title", "Tenant Runtime")}
+                    </h1>
                     <p class="max-w-3xl text-sm text-muted-foreground">
-                        "Module-owned overview for active tenant state and effective module enablement."
+                        {t(locale.as_deref(), "tenant.subtitle", "Module-owned overview for active tenant state and effective module enablement.")}
                     </p>
                 </div>
             </header>
@@ -33,18 +40,18 @@ pub fn TenantAdmin() -> impl IntoView {
                     bootstrap.get().map(|result| match result {
                         Ok(bootstrap) => view! {
                             <section class="grid gap-4 lg:grid-cols-4">
-                                <InfoCard label="Tenant" value=bootstrap.tenant.slug.clone() />
-                                <InfoCard label="Name" value=bootstrap.tenant.name.clone() />
+                                <InfoCard label=t(locale.as_deref(), "tenant.info.tenant", "Tenant") value=bootstrap.tenant.slug.clone() />
+                                <InfoCard label=t(locale.as_deref(), "tenant.info.name", "Name") value=bootstrap.tenant.name.clone() />
                                 <InfoCard
-                                    label="Domain"
-                                    value=bootstrap.tenant.domain.clone().unwrap_or_else(|| "n/a".to_string())
+                                    label=t(locale.as_deref(), "tenant.info.domain", "Domain")
+                                    value=bootstrap.tenant.domain.clone().unwrap_or_else(|| t(locale.as_deref(), "tenant.value.notAvailable", "n/a"))
                                 />
                                 <InfoCard
-                                    label="Status"
+                                    label=t(locale.as_deref(), "tenant.info.status", "Status")
                                     value=if bootstrap.tenant.is_active {
-                                        "active".to_string()
+                                        t(locale.as_deref(), "tenant.value.active", "active")
                                     } else {
-                                        "inactive".to_string()
+                                        t(locale.as_deref(), "tenant.value.inactive", "inactive")
                                     }
                                 />
                             </section>
@@ -52,13 +59,15 @@ pub fn TenantAdmin() -> impl IntoView {
                             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                                 <div class="flex items-center justify-between gap-4">
                                     <div>
-                                        <h2 class="text-lg font-semibold text-card-foreground">"Registered Modules"</h2>
+                                        <h2 class="text-lg font-semibold text-card-foreground">
+                                            {t(locale.as_deref(), "tenant.modules.title", "Registered Modules")}
+                                        </h2>
                                         <p class="text-sm text-muted-foreground">
-                                            "Core modules stay enabled by contract; optional modules reflect tenant-side state."
+                                            {t(locale.as_deref(), "tenant.modules.subtitle", "Core modules stay enabled by contract; optional modules reflect tenant-side state.")}
                                         </p>
                                     </div>
                                     <div class="text-sm text-muted-foreground">
-                                        {format!("Updated {}", bootstrap.tenant.updated_at)}
+                                        {format!("{} {}", t(locale.as_deref(), "tenant.modules.updated", "Updated"), bootstrap.tenant.updated_at)}
                                     </div>
                                 </div>
                                 <div class="mt-4 grid gap-3">
@@ -78,7 +87,11 @@ pub fn TenantAdmin() -> impl IntoView {
                                                             <span class="rounded-full border border-border px-3 py-1">{module.kind}</span>
                                                             <span class="rounded-full border border-border px-3 py-1">{module.source}</span>
                                                             <span class="rounded-full border border-border px-3 py-1">
-                                                                {if module.enabled { "enabled" } else { "disabled" }}
+                                                                {if module.enabled {
+                                                                    t(locale.as_deref(), "tenant.modules.enabled", "enabled")
+                                                                } else {
+                                                                    t(locale.as_deref(), "tenant.modules.disabled", "disabled")
+                                                                }}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -92,7 +105,7 @@ pub fn TenantAdmin() -> impl IntoView {
                         .into_any(),
                         Err(err) => view! {
                             <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">
-                                {format!("Failed to load tenant bootstrap: {err}")}
+                                {format!("{}: {err}", t(locale.as_deref(), "tenant.error.loadBootstrap", "Failed to load tenant bootstrap"))}
                             </div>
                         }
                         .into_any(),
@@ -104,7 +117,7 @@ pub fn TenantAdmin() -> impl IntoView {
 }
 
 #[component]
-fn InfoCard(label: &'static str, value: String) -> impl IntoView {
+fn InfoCard(label: String, value: String) -> impl IntoView {
     view! {
         <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div class="text-sm text-muted-foreground">{label}</div>

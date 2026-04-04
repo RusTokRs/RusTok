@@ -1,0 +1,14 @@
+{
+  "rbac.badge": "rbac",
+  "rbac.title": "RBAC runtime",
+  "rbac.subtitle": "Модульный обзор live-снимка прав и словаря доступа, объявленного модулями.",
+  "rbac.info.tenant": "Тенант",
+  "rbac.info.role": "Роль",
+  "rbac.info.userId": "ID пользователя",
+  "rbac.permissions.title": "Выданные права",
+  "rbac.permissions.subtitle": "Live-снимок, вычисленный из текущего security context.",
+  "rbac.permissions.count": "прав",
+  "rbac.surfaces.title": "Host-поверхности",
+  "rbac.catalog.title": "Каталог прав модулей",
+  "rbac.error.loadBootstrap": "Не удалось загрузить RBAC bootstrap"
+}

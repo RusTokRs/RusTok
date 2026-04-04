@@ -16,7 +16,7 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
-use super::ai::{AiMutation, AiQuery};
+use super::ai::{AiMutation, AiQuery, AiSubscription};
 use super::auth::{AuthMutation, AuthQuery};
 use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
@@ -75,7 +75,7 @@ pub struct Mutation(
 );
 
 #[derive(MergedSubscription, Default)]
-pub struct Subscription(BuildSubscription);
+pub struct Subscription(BuildSubscription, AiSubscription);
 
 pub type AppSchema = Schema<Query, Mutation, Subscription>;
 

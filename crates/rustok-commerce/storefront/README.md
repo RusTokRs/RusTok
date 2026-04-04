@@ -18,7 +18,7 @@ Leptos storefront UI package for the `rustok-commerce` module.
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
 - Uses native-first `#[server]` calls with GraphQL fallback and stays compatible with the `rustok-commerce` storefront contract.
-- Should remain compatible with the host storefront slot and generic module page contract.
+- Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 
 ## Documentation
 
