@@ -1,4 +1,4 @@
-// Integration test for Product creation → Event → Index update flow
+// Integration test for Product creation РІвЂ вЂ™ Event РІвЂ вЂ™ Index update flow
 // This test verifies the complete workflow from product creation to indexing
 
 use rust_decimal::Decimal;
@@ -38,6 +38,7 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
         variants: vec![CreateVariantInput {
             sku: Some(sku.to_string()),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,
@@ -220,6 +221,7 @@ async fn test_variant_creation_triggers_event() {
     input.variants.push(CreateVariantInput {
         sku: Some("VARIANT-SKU-002".to_string()),
         barcode: None,
+        shipping_profile_slug: None,
         option1: Some("Large".to_string()),
         option2: None,
         option3: None,

@@ -1,11 +1,11 @@
 use rust_decimal::Decimal;
 use rustok_commerce::dto::{
-    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateProductInput,
-    CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+    AddCartLineItemInput, CartShippingSelectionInput, CompleteCheckoutInput, CreateCartInput,
+    CreateProductInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
+    ProductTranslationInput, UpdateCartContextInput,
 };
 use rustok_commerce::services::{
-    CartService, CatalogService, CheckoutError, CheckoutService, FulfillmentService, OrderService,
-    PaymentService,
+    CartService, CatalogService, CheckoutError, CheckoutService, FulfillmentService, PaymentService,
 };
 use rustok_region::dto::CreateRegionInput;
 use rustok_region::services::RegionService;
@@ -57,6 +57,7 @@ fn create_product_input() -> CreateProductInput {
         variants: vec![CreateVariantInput {
             sku: Some("CHK-INVENTORY-SKU-1".to_string()),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,
@@ -199,8 +200,9 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-1".to_string()),
                 title: "Checkout Product".to_string(),
                 quantity: 2,
@@ -218,6 +220,7 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -232,6 +235,8 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
     assert_eq!(completed.order.status, "paid");
     assert_eq!(completed.payment_collection.status, "captured");
     assert!(completed.fulfillment.is_some());
+    assert_eq!(completed.fulfillments.len(), 1);
+    assert_eq!(completed.cart.delivery_groups.len(), 1);
     assert_eq!(completed.context.locale, "de");
     assert_eq!(completed.context.currency_code.as_deref(), Some("USD"));
     assert_eq!(completed.cart.region_id, Some(region.id));
@@ -251,6 +256,10 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
             .as_ref()
             .and_then(|value| value.shipping_option_id),
         Some(shipping_option.id)
+    );
+    assert_eq!(
+        completed.fulfillments[0].metadata["delivery_group"]["shipping_profile_slug"],
+        serde_json::json!("default")
     );
 }
 
@@ -285,6 +294,7 @@ async fn complete_checkout_rejects_empty_cart() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -352,8 +362,9 @@ async fn complete_checkout_rejects_shipping_option_hidden_for_cart_channel() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-HIDDEN-1".to_string()),
                 title: "Checkout Hidden Shipping Product".to_string(),
                 quantity: 1,
@@ -371,6 +382,7 @@ async fn complete_checkout_rejects_shipping_option_hidden_for_cart_channel() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -461,6 +473,7 @@ async fn complete_checkout_rejects_line_item_hidden_for_cart_channel() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,
@@ -478,6 +491,7 @@ async fn complete_checkout_rejects_line_item_hidden_for_cart_channel() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -563,6 +577,7 @@ async fn complete_checkout_rejects_line_item_without_channel_visible_inventory()
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,
@@ -580,6 +595,7 @@ async fn complete_checkout_rejects_line_item_without_channel_visible_inventory()
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -670,6 +686,7 @@ async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shippi
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                shipping_profile_slug: Some("bulky".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,
@@ -687,6 +704,7 @@ async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shippi
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -700,7 +718,7 @@ async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shippi
     match error {
         CheckoutError::Validation(message) => {
             assert!(
-                message.contains("not compatible with the cart shipping profiles"),
+                message.contains("not compatible with delivery group bulky"),
                 "unexpected validation message: {message}"
             );
         }
@@ -764,8 +782,9 @@ async fn repeated_complete_checkout_recovers_existing_result() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-RETRY-1".to_string()),
                 title: "Checkout Retry Product".to_string(),
                 quantity: 1,
@@ -783,6 +802,7 @@ async fn repeated_complete_checkout_recovers_existing_result() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -800,6 +820,7 @@ async fn repeated_complete_checkout_recovers_existing_result() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -875,8 +896,9 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-EXISTING-1".to_string()),
                 title: "Checkout Product".to_string(),
                 quantity: 2,
@@ -908,6 +930,7 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1013,8 +1036,9 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-CONTEXT-1".to_string()),
                 title: "Checkout Context Product".to_string(),
                 quantity: 1,
@@ -1032,6 +1056,7 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: Some(shipping_option_fr.id),
+                shipping_selections: None,
                 region_id: Some(region_fr.id),
                 country_code: Some("fr".to_string()),
                 locale: Some("fr".to_string()),
@@ -1047,7 +1072,7 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
     assert_eq!(completed.cart.locale_code.as_deref(), Some("de"));
     assert_eq!(
         completed.cart.selected_shipping_option_id,
-        Some(shipping_option_de.id)
+        Some(shipping_option_fr.id)
     );
     assert_eq!(
         completed.context.region.as_ref().map(|region| region.id),
@@ -1059,7 +1084,7 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
             .fulfillment
             .as_ref()
             .and_then(|value| value.shipping_option_id),
-        Some(shipping_option_de.id)
+        Some(shipping_option_fr.id)
     );
 }
 
@@ -1119,8 +1144,9 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-RECOVER-1".to_string()),
                 title: "Checkout Recovery Product".to_string(),
                 quantity: 1,
@@ -1138,6 +1164,7 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1163,6 +1190,7 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1226,8 +1254,9 @@ async fn checkout_failure_releases_cart_back_to_active() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-LOCK-1".to_string()),
                 title: "Checkout Lock Product".to_string(),
                 quantity: 1,
@@ -1245,6 +1274,7 @@ async fn checkout_failure_releases_cart_back_to_active() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: Some(Uuid::new_v4()),
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1257,7 +1287,7 @@ async fn checkout_failure_releases_cart_back_to_active() {
 
     match error {
         CheckoutError::StageFailure { stage, .. } => {
-            assert_eq!(stage, "create_fulfillment");
+            assert_eq!(stage, "load_shipping_option");
         }
         other => panic!("expected stage failure, got {other:?}"),
     }
@@ -1268,7 +1298,7 @@ async fn checkout_failure_releases_cart_back_to_active() {
 }
 
 #[tokio::test]
-async fn checkout_failure_cancels_payment_and_order_artifacts() {
+async fn checkout_preflight_failure_does_not_create_payment_or_order_artifacts() {
     let (db, cart_service, checkout, _) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -1309,8 +1339,9 @@ async fn checkout_failure_cancels_payment_and_order_artifacts() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-COMP-1".to_string()),
                 title: "Checkout Compensation Product".to_string(),
                 quantity: 1,
@@ -1328,6 +1359,7 @@ async fn checkout_failure_cancels_payment_and_order_artifacts() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: Some(Uuid::new_v4()),
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1339,39 +1371,22 @@ async fn checkout_failure_cancels_payment_and_order_artifacts() {
         .expect_err("invalid shipping option must trigger compensation");
 
     match error {
-        CheckoutError::StageFailure { stage, .. } => assert_eq!(stage, "create_fulfillment"),
+        CheckoutError::StageFailure { stage, .. } => assert_eq!(stage, "load_shipping_option"),
         other => panic!("expected stage failure, got {other:?}"),
     }
 
-    let payment_service = PaymentService::new(db.clone());
-    let order_service = OrderService::new(db, mock_transactional_event_bus());
-
-    let payment_collection = payment_service
+    let payment_collection = PaymentService::new(db)
         .find_latest_collection_by_cart(tenant_id, cart.id)
         .await
-        .unwrap()
-        .expect("failed checkout should leave a payment collection to compensate");
-    assert_eq!(payment_collection.status, "cancelled");
-    assert!(payment_collection.cancelled_at.is_some());
-    assert_eq!(payment_collection.payments.len(), 1);
-    assert_eq!(payment_collection.payments[0].status, "cancelled");
-    assert!(payment_collection.payments[0].cancelled_at.is_some());
-
-    let order = order_service
-        .get_order(
-            tenant_id,
-            payment_collection
-                .order_id
-                .expect("payment collection must stay linked to created order"),
-        )
-        .await
         .unwrap();
-    assert_eq!(order.status, "cancelled");
-    assert!(order.cancelled_at.is_some());
+    assert!(
+        payment_collection.is_none(),
+        "preflight checkout failure should not create payment artifacts"
+    );
 }
 
 #[tokio::test]
-async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
+async fn retry_after_preflight_failure_creates_checkout_artifacts() {
     let (db, cart_service, checkout, fulfillment) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -1426,8 +1441,9 @@ async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-RETRY-AFTER-FAIL-1".to_string()),
                 title: "Checkout Retry After Failure Product".to_string(),
                 quantity: 1,
@@ -1445,6 +1461,7 @@ async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: Some(Uuid::new_v4()),
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1456,19 +1473,18 @@ async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
         .expect_err("first checkout must fail on invalid shipping option");
 
     match first_error {
-        CheckoutError::StageFailure { stage, .. } => assert_eq!(stage, "create_fulfillment"),
+        CheckoutError::StageFailure { stage, .. } => assert_eq!(stage, "load_shipping_option"),
         other => panic!("expected stage failure, got {other:?}"),
     }
 
-    let payment_service = PaymentService::new(db.clone());
-    let failed_collection = payment_service
+    let failed_collection = PaymentService::new(db.clone())
         .find_latest_collection_by_cart(tenant_id, cart.id)
         .await
-        .unwrap()
-        .expect("failed checkout should create cancellable collection");
-    let failed_order_id = failed_collection
-        .order_id
-        .expect("failed collection should keep order linkage");
+        .unwrap();
+    assert!(
+        failed_collection.is_none(),
+        "preflight checkout failure should not create payment artifacts"
+    );
 
     let retried = checkout
         .complete_checkout(
@@ -1477,6 +1493,7 @@ async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: Some(shipping_option.id),
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1490,8 +1507,6 @@ async fn retry_after_compensated_failure_creates_fresh_checkout_artifacts() {
     assert_eq!(retried.cart.status, "completed");
     assert_eq!(retried.order.status, "paid");
     assert_eq!(retried.payment_collection.status, "captured");
-    assert_ne!(retried.payment_collection.id, failed_collection.id);
-    assert_ne!(retried.order.id, failed_order_id);
 }
 
 #[tokio::test]
@@ -1550,8 +1565,9 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
                 sku: Some("CHK-NO-FULFILL-1".to_string()),
                 title: "Checkout Without Fulfillment Product".to_string(),
                 quantity: 1,
@@ -1569,6 +1585,7 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -1583,6 +1600,558 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
     assert_eq!(completed.order.status, "paid");
     assert_eq!(completed.payment_collection.status, "captured");
     assert!(completed.fulfillment.is_none());
+}
+
+#[tokio::test]
+async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections() {
+    let (db, cart_service, _, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "United States".to_string(),
+                currency_code: "usd".to_string(),
+                tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
+                tax_included: false,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "delivery-groups-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cold_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Cold Chain".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("12.50").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["cold".to_string()]),
+                metadata: serde_json::json!({ "source": "delivery-groups-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let bulky_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Bulky Freight".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("34.00").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["bulky".to_string()]),
+                metadata: serde_json::json!({ "source": "delivery-groups-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("split@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "delivery-groups-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: Some("cold".to_string()),
+                sku: Some("COLD-1".to_string()),
+                title: "Cold Shipment".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("15.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: Some("bulky".to_string()),
+                sku: Some("BULKY-1".to_string()),
+                title: "Bulky Shipment".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("40.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 2 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.delivery_groups.len(), 2);
+    assert_eq!(cart.selected_shipping_option_id, None);
+    let delivery_group_slugs = cart
+        .delivery_groups
+        .iter()
+        .map(|group| group.shipping_profile_slug.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(delivery_group_slugs, vec!["bulky", "cold"]);
+
+    let cart = cart_service
+        .update_context(
+            tenant_id,
+            cart.id,
+            UpdateCartContextInput {
+                email: cart.email.clone(),
+                region_id: cart.region_id,
+                country_code: cart.country_code.clone(),
+                locale_code: cart.locale_code.clone(),
+                selected_shipping_option_id: None,
+                shipping_selections: Some(vec![
+                    CartShippingSelectionInput {
+                        shipping_profile_slug: "cold".to_string(),
+                        selected_shipping_option_id: Some(cold_option.id),
+                    },
+                    CartShippingSelectionInput {
+                        shipping_profile_slug: "bulky".to_string(),
+                        selected_shipping_option_id: Some(bulky_option.id),
+                    },
+                ]),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.selected_shipping_option_id, None);
+    assert_eq!(cart.delivery_groups.len(), 2);
+    let delivery_groups = cart
+        .delivery_groups
+        .iter()
+        .map(|group| {
+            (
+                group.shipping_profile_slug.clone(),
+                group.selected_shipping_option_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(delivery_groups.contains(&(String::from("cold"), Some(cold_option.id))));
+    assert!(delivery_groups.contains(&(String::from("bulky"), Some(bulky_option.id))));
+}
+
+#[tokio::test]
+async fn complete_checkout_rejects_missing_shipping_selection_for_delivery_group() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "United States".to_string(),
+                currency_code: "usd".to_string(),
+                tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
+                tax_included: false,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "missing-selection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cold_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Cold Chain".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("12.50").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["cold".to_string()]),
+                metadata: serde_json::json!({ "source": "missing-selection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("split@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "missing-selection-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: Some("cold".to_string()),
+                sku: Some("COLD-1".to_string()),
+                title: "Cold Shipment".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("15.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: Some("bulky".to_string()),
+                sku: Some("BULKY-1".to_string()),
+                title: "Bulky Shipment".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("40.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 2 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: Some(vec![CartShippingSelectionInput {
+                    shipping_profile_slug: "cold".to_string(),
+                    selected_shipping_option_id: Some(cold_option.id),
+                }]),
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "missing-selection-test" }),
+            },
+        )
+        .await
+        .expect_err("checkout must reject a delivery group without shipping selection");
+
+    match error {
+        CheckoutError::Validation(message) => {
+            assert!(
+                message.contains("Delivery group bulky does not have a selected shipping option"),
+                "unexpected validation message: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "United States".to_string(),
+                currency_code: "usd".to_string(),
+                tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
+                tax_included: false,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "multi-fulfillment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cold_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Cold Chain".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("12.50").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["cold".to_string()]),
+                metadata: serde_json::json!({ "source": "multi-fulfillment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let bulky_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Bulky Freight".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("34.00").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["bulky".to_string()]),
+                metadata: serde_json::json!({ "source": "multi-fulfillment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("split@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "multi-fulfillment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: Some("cold".to_string()),
+                sku: Some("COLD-1".to_string()),
+                title: "Cold Shipment".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("15.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: Some("bulky".to_string()),
+                sku: Some("BULKY-1".to_string()),
+                title: "Bulky Shipment".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("40.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 2 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: Some(vec![
+                    CartShippingSelectionInput {
+                        shipping_profile_slug: "cold".to_string(),
+                        selected_shipping_option_id: Some(cold_option.id),
+                    },
+                    CartShippingSelectionInput {
+                        shipping_profile_slug: "bulky".to_string(),
+                        selected_shipping_option_id: Some(bulky_option.id),
+                    },
+                ]),
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "multi-fulfillment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(completed.cart.status, "completed");
+    assert_eq!(completed.order.status, "paid");
+    assert_eq!(completed.fulfillments.len(), 2);
+    assert!(completed.fulfillment.is_none());
+    assert_eq!(completed.cart.selected_shipping_option_id, None);
+    assert_eq!(completed.cart.delivery_groups.len(), 2);
+
+    let delivery_group_options = completed
+        .cart
+        .delivery_groups
+        .iter()
+        .map(|group| {
+            (
+                group.shipping_profile_slug.clone(),
+                group.selected_shipping_option_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(delivery_group_options.contains(&(String::from("cold"), Some(cold_option.id))));
+    assert!(delivery_group_options.contains(&(String::from("bulky"), Some(bulky_option.id))));
+
+    let fulfillment_profiles = completed
+        .fulfillments
+        .iter()
+        .map(|item| {
+            (
+                item.metadata["delivery_group"]["shipping_profile_slug"]
+                    .as_str()
+                    .expect("delivery group profile slug should be present")
+                    .to_string(),
+                item.shipping_option_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(fulfillment_profiles.contains(&(String::from("cold"), Some(cold_option.id))));
+    assert!(fulfillment_profiles.contains(&(String::from("bulky"), Some(bulky_option.id))));
+}
+
+#[tokio::test]
+async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant_binding_change() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "Europe".to_string(),
+                currency_code: "usd".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "stale-shipping-profile-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Cold Chain".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: Some(vec!["cold".to_string()]),
+                metadata: serde_json::json!({ "source": "stale-shipping-profile-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let mut product_input = create_product_input();
+    product_input.publish = true;
+    product_input.shipping_profile_slug = Some("cold".to_string());
+    let product = catalog
+        .create_product(tenant_id, actor_id, product_input)
+        .await
+        .unwrap();
+    let variant = product
+        .variants
+        .first()
+        .expect("product must have a variant")
+        .clone();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("stale@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "stale-shipping-profile-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(product.id),
+                variant_id: Some(variant.id),
+                shipping_profile_slug: Some("cold".to_string()),
+                sku: variant.sku.clone(),
+                title: variant.title,
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "UPDATE product_variants SET shipping_profile_slug = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        vec!["frozen".into(), variant.id.into()],
+    ))
+    .await
+    .expect("variant shipping profile should be updated");
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "stale-shipping-profile-test" }),
+            },
+        )
+        .await
+        .expect_err("checkout must reject stale shipping profile snapshots");
+
+    match error {
+        CheckoutError::Validation(message) => {
+            assert!(
+                message.contains("stale shipping profile snapshot cold (current: frozen)"),
+                "unexpected validation message: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
 }
 
 async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {

@@ -2,14 +2,13 @@ use axum::{
     extract::FromRequestParts,
     http::{header, request::Parts, HeaderMap, StatusCode},
 };
-use rustok_core::extract_locale_tag_from_header;
+use rustok_core::{extract_locale_tag_from_header, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use uuid::Uuid;
 
 use crate::context::{ChannelContextExtension, ChannelResolutionSource, TenantContextExtension};
 
 const ADMIN_LOCALE_COOKIE: &str = "rustok-admin-locale";
 const MEDUSA_LOCALE_HEADER: &str = "x-medusa-locale";
-const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
 #[derive(Debug, Clone)]
 pub struct RequestContext {
@@ -155,42 +154,6 @@ fn extract_locale_from_accept_language(headers: &HeaderMap) -> Option<String> {
         .get(header::ACCEPT_LANGUAGE)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| extract_locale_tag_from_header(Some(value)))
-}
-
-fn normalize_locale_tag(raw: &str) -> Option<String> {
-    let candidate = raw.trim().replace('_', "-");
-    if candidate.is_empty() || candidate.len() > 16 {
-        return None;
-    }
-
-    if !candidate
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-    {
-        return None;
-    }
-
-    let mut parts = candidate.split('-');
-    let language = parts.next()?.trim();
-    if language.len() < 2 || language.len() > 8 {
-        return None;
-    }
-
-    let mut normalized = language.to_ascii_lowercase();
-    for part in parts {
-        if part.is_empty() || part.len() > 8 {
-            return None;
-        }
-
-        normalized.push('-');
-        if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
-            normalized.push_str(&part.to_ascii_uppercase());
-        } else {
-            normalized.push_str(&part.to_ascii_lowercase());
-        }
-    }
-
-    Some(normalized)
 }
 
 #[cfg(test)]

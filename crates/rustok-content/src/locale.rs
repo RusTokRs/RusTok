@@ -1,4 +1,4 @@
-pub const PLATFORM_FALLBACK_LOCALE: &str = "en";
+use rustok_core::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 
 pub struct ResolvedLocale<'a, T> {
     pub item: Option<&'a T>,
@@ -25,19 +25,27 @@ pub fn resolve_by_locale_with_fallback<'a, T, F>(
 where
     F: Fn(&T) -> &str,
 {
-    if let Some(item) = items.iter().find(|item| locale_of(item) == requested) {
+    if let Some(item) = items
+        .iter()
+        .find(|item| locale_tags_match(locale_of(item), requested))
+    {
         return ResolvedLocale {
             item: Some(item),
-            effective_locale: requested.to_string(),
+            effective_locale: normalize_locale_tag(requested)
+                .unwrap_or_else(|| requested.to_string()),
         };
     }
 
     if let Some(fallback_locale) = fallback_locale {
         if fallback_locale != requested {
-            if let Some(item) = items.iter().find(|item| locale_of(item) == fallback_locale) {
+            if let Some(item) = items
+                .iter()
+                .find(|item| locale_tags_match(locale_of(item), fallback_locale))
+            {
                 return ResolvedLocale {
                     item: Some(item),
-                    effective_locale: fallback_locale.to_string(),
+                    effective_locale: normalize_locale_tag(fallback_locale)
+                        .unwrap_or_else(|| fallback_locale.to_string()),
                 };
             }
         }
@@ -45,7 +53,7 @@ where
 
     if let Some(item) = items
         .iter()
-        .find(|item| locale_of(item) == PLATFORM_FALLBACK_LOCALE)
+        .find(|item| locale_tags_match(locale_of(item), PLATFORM_FALLBACK_LOCALE))
     {
         return ResolvedLocale {
             item: Some(item),
@@ -56,13 +64,14 @@ where
     if let Some(item) = items.first() {
         return ResolvedLocale {
             item: Some(item),
-            effective_locale: locale_of(item).to_string(),
+            effective_locale: normalize_locale_tag(locale_of(item))
+                .unwrap_or_else(|| locale_of(item).to_string()),
         };
     }
 
     ResolvedLocale {
         item: None,
-        effective_locale: requested.to_string(),
+        effective_locale: normalize_locale_tag(requested).unwrap_or_else(|| requested.to_string()),
     }
 }
 
@@ -70,18 +79,19 @@ pub fn available_locales_from<T, F>(items: &[T], locale_of: F) -> Vec<String>
 where
     F: Fn(&T) -> &str,
 {
-    items
-        .iter()
-        .map(|item| locale_of(item).to_string())
-        .collect()
+    let mut locales = Vec::new();
+    for item in items {
+        let locale =
+            normalize_locale_tag(locale_of(item)).unwrap_or_else(|| locale_of(item).to_string());
+        if !locales.iter().any(|value| value == &locale) {
+            locales.push(locale);
+        }
+    }
+    locales
 }
 
 pub fn normalize_locale_code(locale: &str) -> Option<String> {
-    let normalized = locale.trim().replace('_', "-").to_ascii_lowercase();
-    if normalized.is_empty() || normalized.len() > 16 {
-        return None;
-    }
-    Some(normalized)
+    normalize_locale_tag(locale)
 }
 
 #[cfg(test)]
@@ -148,7 +158,7 @@ mod tests {
 
     #[test]
     fn normalizes_locale_code() {
-        assert_eq!(normalize_locale_code(" EN_us "), Some("en-us".to_string()));
+        assert_eq!(normalize_locale_code(" EN_us "), Some("en-US".to_string()));
         assert_eq!(normalize_locale_code(""), None);
     }
 }

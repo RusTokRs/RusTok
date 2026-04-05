@@ -284,6 +284,21 @@ impl FulfillmentService {
         Ok(fulfillment.map(map_fulfillment))
     }
 
+    pub async fn list_by_order(
+        &self,
+        tenant_id: Uuid,
+        order_id: Uuid,
+    ) -> FulfillmentResult<Vec<FulfillmentResponse>> {
+        let rows = entities::fulfillment::Entity::find()
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(entities::fulfillment::Column::OrderId.eq(order_id))
+            .order_by_asc(entities::fulfillment::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        Ok(rows.into_iter().map(map_fulfillment).collect())
+    }
+
     pub async fn list_fulfillments(
         &self,
         tenant_id: Uuid,

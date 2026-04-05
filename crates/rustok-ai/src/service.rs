@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
 use once_cell::sync::Lazy;
+use rustok_core::normalize_locale_tag as normalize_core_locale_tag;
 use rustok_core::permissions::{Action, Permission};
 use rustok_core::registry::ModuleRegistry;
 use rustok_mcp::alloy_tools::{
@@ -2913,47 +2914,8 @@ fn normalize_locale_tag_opt(locale: Option<&str>) -> AiResult<Option<String>> {
 }
 
 fn normalize_locale_tag(locale: &str) -> AiResult<String> {
-    let normalized = locale.trim().replace('_', "-");
-    if normalized.is_empty() || normalized.len() > 32 {
-        return Err(AiError::Validation(format!("invalid locale `{locale}`")));
-    }
-
-    let parts = normalized
-        .split('-')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
-    if parts.is_empty()
-        || !parts
-            .iter()
-            .all(|part| part.chars().all(|ch| ch.is_ascii_alphanumeric()))
-    {
-        return Err(AiError::Validation(format!("invalid locale `{locale}`")));
-    }
-
-    let mut rebuilt = Vec::with_capacity(parts.len());
-    for (index, part) in parts.into_iter().enumerate() {
-        let rebuilt_part = if index == 0 {
-            part.to_ascii_lowercase()
-        } else if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
-            part.to_ascii_uppercase()
-        } else if part.len() == 4 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
-            let mut chars = part.chars();
-            let head = chars
-                .next()
-                .map(|ch| ch.to_ascii_uppercase().to_string())
-                .unwrap_or_default();
-            let tail = chars.as_str().to_ascii_lowercase();
-            format!("{head}{tail}")
-        } else if part.len() == 3 && part.chars().all(|ch| ch.is_ascii_digit()) {
-            part.to_string()
-        } else {
-            part.to_ascii_lowercase()
-        };
-        rebuilt.push(rebuilt_part);
-    }
-
-    Ok(rebuilt.join("-"))
+    normalize_core_locale_tag(locale)
+        .ok_or_else(|| AiError::Validation(format!("invalid locale `{locale}`")))
 }
 
 async fn load_tenant_locale_policy(

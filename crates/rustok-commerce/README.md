@@ -15,9 +15,11 @@
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
 - Own store-context resolution across region, currency, and tenant locale policy.
 - Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
-- Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, while the underlying storage still uses metadata-backed profile rules.
-- Expose first-class `shipping_profile_slug` on product create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts, with normalization into the metadata-backed shipping profile shape.
+- Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, with typed product/variant bindings, typed line-item snapshots, and metadata normalization kept only as a backward-compatibility layer.
+- Expose first-class `shipping_profile_slug` on product and variant create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts.
+- Expose deliverability-aware cart and checkout contracts with `delivery_groups[]`, typed `shipping_selections[]`, and `fulfillments[]`, while keeping the old singular shipping/fulfillment fields only as single-group compatibility shims.
 - Own the typed `shipping_profiles` registry and validate product/shipping-option references against active shipping profiles before write-path mutations are accepted.
+- Resolve the effective shipping profile as `variant -> product -> default`, persist it into cart/order line-item snapshots, and use those snapshots instead of live product metadata for checkout deliverability decisions.
 - Expose admin shipping-option management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `FulfillmentService`, so delivery compatibility and lifecycle are configurable without dropping to direct service calls.
 - Expose admin shipping-profile management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `ShippingProfileService`.
 - Re-export the shared DTO/entity/error surface from `rustok-commerce-foundation`.
@@ -48,6 +50,7 @@
 - Transport adapters validate permissions against `AuthContext.permissions`, then invoke
   commerce services or direct tenant-scoped SeaORM reads where the module still owns the
   read-model assembly.
+- Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
 
 ## Entry points
 

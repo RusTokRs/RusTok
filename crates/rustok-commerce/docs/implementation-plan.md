@@ -38,7 +38,8 @@
 ## Что ещё явно отсутствует
 
 - полноценные channel-aware publication и availability semantics для admin write-path, pricing/inventory/fulfillment и остальных commerce entities beyond storefront baseline;
-- полноценно типизированные shipping profiles и явная связь product/variant availability с fulfillment boundary;
+- seller-aware deliverability model поверх уже введённых typed shipping profiles: сейчас delivery groups группируются по effective `shipping_profile_slug`, но ещё не учитывают будущий seller/vendor domain;
+- channel-aware price resolution всё ещё не реализован и переносится в `Phase 8`, несмотря на уже закрытый channel-aware catalog/inventory baseline;
 - полноценный promotion/discount domain поверх price rules, а не только `compare_at_amount` и service-level `apply_discount`;
 - отдельный tax domain: сейчас tax фактически живёт в `region` как `tax_rate` / `tax_included`;
 - post-order слой уровня Medusa: returns, exchanges, claims, order changes, draft/edit flows, refund transport;
@@ -59,7 +60,7 @@
 | `BL-09` | region tax flags vs отдельный tax domain | вынести tax calculation/rules/providers из плоской `region`-модели в отдельный bounded context |
 | `BL-10` | линейный order lifecycle vs post-order reality | добавить returns, refunds, exchanges, claims, order changes и draft/edit semantics |
 | `BL-11` | manual/default providers vs extensibility | стабилизировать payment/fulfillment provider SPI вместо смешивания базовой модели с внешними интеграциями |
-| `BL-12` | metadata-backed shipping profile baseline и first-class product/shipping-option fields уже есть, но смешанный cart policy и дальнейшая deliverability model всё ещё не оформлены полностью | довести catalog/fulfillment boundary от typed shipping profile registry до полноценного deliverability domain и mixed-cart policy |
+| `BL-12` | typed shipping profile registry, typed product/variant bindings, line-item snapshots, cart delivery groups и multi-fulfillment checkout уже есть, но deliverability model ещё не закрыта до seller-aware уровня | довести deliverability domain от profile-based split fulfillment до seller-aware grouping, fulfillment-item model и post-order delivery changes |
 
 ## Фазы
 
@@ -157,14 +158,14 @@
 Фокус:
 
 - использовать существующий `rustok-channel` как platform-level delivery context;
-- сделать catalog, cart, order, pricing, inventory и fulfillment channel-aware без создания второго sales-channel домена;
+- сделать catalog, cart, order, inventory и fulfillment channel-aware без создания второго sales-channel домена;
 - связать publication/availability semantics commerce с channel bindings и `ChannelContext`.
 
 Deliverables:
 
 - channel-aware product publication и catalog visibility;
 - `channel_id` как часть cart/order snapshot и read-model filtering там, где это нужно по домену;
-- channel-aware selection для shipping options, price resolution и stock availability;
+- channel-aware selection для shipping options и stock availability;
 - явные правила precedence между `channel`, `region`, `currency` и tenant locale policy.
 
 Что уже закрыто в текущем срезе:
@@ -175,6 +176,7 @@ Deliverables:
 - cart line-item mutations больше не принимают товары, скрытые для текущего storefront channel;
 - storefront product detail и cart line-item quantity checks теперь считают доступный inventory только по stock locations, видимым для текущего storefront channel;
 - checkout service теперь повторно валидирует cart line items против текущей product visibility и channel-visible inventory, чтобы stale cart не завершался в заказ с hidden product или уже недоступным остатком;
+- channel-aware price resolution сознательно не считается закрытым в этой фазе и переносится в `Phase 8`, чтобы не смешивать storefront availability с pricing 2.0;
 - transport и service tests уже покрывают disabled channel module, hidden products, hidden shipping options и checkout reject path для channel-hidden shipping option.
 
 Обязательные проверки:
@@ -184,39 +186,43 @@ Deliverables:
 - regression tests на отсутствие второго локального sales-channel layer;
 - docs sync с `rustok-channel`, если меняются contracts между модулями.
 
-### Phase 7. Merchandising availability и shipping profiles
+### Phase 7. Deliverability domain и split fulfillment
 
 Статус: `in progress`
 
 Фокус:
 
-- закрыть gap между catalog и fulfillment boundary;
-- ввести shipping profiles и channel-aware deliverability;
-- отделить publication/availability semantics от чисто transport-level выдачи shipping options.
+- закрыть gap между catalog и fulfillment boundary уже не только на уровне compatibility rules, но и на уровне cart/order/fulfillment model;
+- закрепить effective shipping profile как typed domain concept: `variant -> product -> default`;
+- отделить deliverability domain от старой single-option cart semantics.
 
 Deliverables:
 
-- shipping profile model для product/variant;
-- правила совместимости товара, shipping option, региона и канала;
-- подготовка read paths для multi-profile catalog и mixed-cart validation.
+- typed `shipping_profile_slug` для product и variant + effective-profile resolution;
+- typed line-item snapshot `shipping_profile_slug` в cart/order;
+- typed cart `shipping_selections`, `delivery_groups[]` и multi-fulfillment checkout;
+- compatibility shims для single-group carts через legacy `selected_shipping_option_id`, `shipping_option_id` и `fulfillment`.
 
 Что уже закрыто в текущем срезе:
 
 - metadata-backed baseline больше не единственный source of truth: введены schema/migration `shipping_profiles`, typed `ShippingProfileService` и admin-facing registry для shipping profiles;
-- product create/update/read contracts уже экспонируют first-class `shipping_profile_slug`, а shipping option read/create contracts экспонируют first-class `allowed_shipping_profile_slugs`;
+- product create/update/read contracts уже экспонируют first-class `shipping_profile_slug`, shipping option read/create contracts экспонируют first-class `allowed_shipping_profile_slugs`, а `products.shipping_profile_slug` и `product_variants.shipping_profile_slug` теперь существуют как typed persistence;
 - admin REST/GraphQL surface уже умеет `list/show/create/update/deactivate/reactivate` shipping options с typed `allowed_shipping_profile_slugs`, так что shipping profile compatibility и lifecycle больше не живут только в service/tests;
 - admin REST/GraphQL surface теперь так же умеет `list/show/create/update/deactivate/reactivate` shipping profiles, а product/shipping-option write-path валидирует ссылки против active registry;
 - module-owned `rustok-commerce/admin` UI уже потребляет этот control plane напрямую и может показывать inactive shipping options вместе с explicit lifecycle actions;
-- `CatalogService` и `FulfillmentService` нормализуют эти поля в metadata-backed storage shape; при этом omission `shipping_profile_slug` на product write-path не затирает уже существующий metadata-backed shipping profile;
-- `/store/shipping-options` и `storefrontShippingOptions` теперь фильтруют delivery options по shipping profiles уже лежащих в cart catalog items;
-- `POST /store/carts/{id}`, `updateStorefrontCartContext` и `CheckoutService` теперь режут selected shipping option, если он несовместим с cart shipping profiles;
-- regression tests уже покрывают REST/GraphQL discovery path, cart context patch и checkout reject path для несовместимого shipping profile.
+- `CatalogService` и `FulfillmentService` по-прежнему нормализуют эти поля в metadata-backed storage shape для backward compatibility, но source of truth для deliverability decisions уже живёт в typed product/variant fields, typed registry и line-item snapshots;
+- cart line items теперь хранят effective `shipping_profile_slug`, cart response отдаёт `delivery_groups[]`, а store/GraphQL checkout input принимает typed `shipping_selections[]`;
+- `CheckoutService` теперь валидирует stale shipping-profile snapshots, режет несовместимые selections по delivery groups и создаёт отдельный fulfillment на каждую delivery group;
+- `CompleteCheckoutResponse` и storefront GraphQL checkout surface теперь возвращают `fulfillments[]`, а singular `fulfillment` остаётся только compatibility shim для single-group carts;
+- прежний strict single-option mixed-cart invariant больше не является целевой архитектурой: он сохранён только как compatibility shortcut для cart'ов с одной delivery group;
+- regression tests уже покрывают effective-profile resolution, mixed-cart delivery groups, missing per-group selection, multi-fulfillment checkout, stale snapshot reject path и GraphQL checkout parity для новых полей.
 
 Обязательные проверки:
 
 - contract tests на несовместимые товары и shipping options;
-- migration tests для shipping-profile schema;
-- integration tests на mixed cart с разной fulfillment policy.
+- migration tests для product/variant/cart/order shipping-profile schema;
+- integration tests на mixed cart с разной fulfillment policy;
+- regression tests на preflight checkout failures, которые должны отпускать `checking_out` lock и не создавать payment/order artifacts до side effects.
 
 ### Phase 8. Pricing 2.0 и promotions
 

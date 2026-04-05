@@ -236,10 +236,10 @@ Governance first cut:
 - ✅ `registryLifecycle` теперь отдаёт не только compatibility summary `followUpGates`, но и canonical `validationStages`, так что `/modules` показывает per-stage state отдельно от базовой validator summary.
 - ✅ Для ручной фиксации stage results появился live write-path `POST /v2/catalog/publish/{request_id}/stages` и matching operator command `cargo xtask module stage <request-id> <stage> <status> ...`.
 - ⚠️ Реальный local/remote runner для compile/test/security stages в этот шаг не встроен; orchestration и operator recording уже persisted, но исполнение команд всё ещё внешнее/manual.
-- ⚠️ Базовая persistence-модель для ownership и audit trail уже есть (`registry_module_owners`, `registry_governance_events`), и явный owner transfer уже поднят, но richer moderation decisions всё ещё не доведены до полного production policy.
-- ⬜ Нужен более строгий policy layer для:
-  - moderator/admin approve-reject capabilities
-  - unpublish/yank governance rules
+- ⚠️ Базовая persistence-модель для ownership и audit trail уже есть (`registry_module_owners`, `registry_governance_events`), и role split для review vs release-management уже начал ужесточаться: approve/reject/stage-review доступны owner + review actors (`registry:*`, `governance:moderator`, `moderator:*`), а owner-transfer/yank уже больше не приравниваются ко всем generic moderators.
+- ⚠️ В stricter policy layer осталось добить:
+  - richer moderation decisions beyond approve/reject/owner-transfer/yank
+  - более формальный policy contract для exceptional unpublish/yank scenarios
 
 ### Блок B. Отдельный deployment для `modules.rustok.dev`
 
@@ -254,13 +254,14 @@ Governance first cut:
 - ✅ `/modules` уже умеет не только показывать lifecycle, но и запускать интерактивные governance-действия, показывать policy hints, copyable `xtask`/HTTP/curl snippets, headers/body hints и operator commands.
 - ✅ `/modules` уже различает automatic validation failure и manual governance reject в `Validation summary`, а также показывает отдельный `Ready for review` сигнал для validated request, который ещё не опубликован.
 - ✅ `/modules` теперь также показывает отдельный `Follow-up gates` summary для `compile_smoke` / `targeted_tests` / `security_policy_review`, чтобы внешние async/manual gates были видны отдельно от базовой artifact/manifest validation.
-- ⬜ В operator UX осталось добить:
-  - более богатый per-check вывод async validation feedback и moderation decisions вне текущего summary/callout уровня
-  - финальный polish вокруг owner-transfer/review authority и richer moderation history
+- ✅ `/modules` уже показывает явные authority-линии для review / owner-transfer / yank и выравнивает live API hints под фактическую server-policy, а не под legacy generic `governance`.
+- ✅ `/modules` уже показывает отдельный moderation history layer поверх audit trail: ключевые review/yank/owner-transfer/stage-report решения вынесены в более быстрый operator-facing timeline.
+- ✅ `/modules` теперь показывает richer per-check async validation feedback: automated checks и validation job trace выводятся отдельно от high-level summary и общего audit trail.
 
 ### Блок D. Тесты
 
 - ⚠️ Точечные `cargo check` по релевантным пакетам уже проходят для большинства последних шагов.
+- ✅ `xtask` уже получил targeted unit coverage для V2 operator paths: stage write-path dry-run/live serialization, `requeue=true` contract, explicit `detail = null` stability, CLI-side validation для unsupported status / invalid `--requeue`, `--reason`/`--detail` trimming, empty owner-transfer actor guard, owner-transfer live payload и loopback/no-proxy guardrails (включая IPv6 `::1`).
 - ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах.
 - ⬜ Нужны более устойчивые targeted tests для:
   - V2 lifecycle transitions, включая requeue/retry semantics

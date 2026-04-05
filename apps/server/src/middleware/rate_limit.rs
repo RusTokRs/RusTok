@@ -474,6 +474,18 @@ pub struct PathRateLimitPolicy {
     pub prefixes: Arc<Vec<&'static str>>,
 }
 
+fn matching_path_policy<'a>(
+    policies: &'a [PathRateLimitPolicy],
+    path: &str,
+) -> Option<&'a PathRateLimitPolicy> {
+    policies.iter().find(|policy| {
+        policy
+            .prefixes
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+    })
+}
+
 #[derive(Debug, Clone)]
 pub struct RateLimitStats {
     pub active_clients: usize,
@@ -712,12 +724,7 @@ pub async fn rate_limit_for_paths(
     next: Next,
 ) -> Result<Response, impl IntoResponse> {
     let path = request.uri().path().to_owned();
-    let Some(policy) = state.policies.iter().find(|policy| {
-        policy
-            .prefixes
-            .iter()
-            .any(|prefix| path.starts_with(prefix))
-    }) else {
+    let Some(policy) = matching_path_policy(&state.policies, &path) else {
         return Ok(next.run(request).await);
     };
 
@@ -1063,5 +1070,49 @@ mod tests {
         assert_eq!(response.headers()["x-ratelimit-limit"], "20");
         assert_eq!(response.headers()["x-ratelimit-remaining"], "0");
         assert_eq!(response.headers()["x-ratelimit-reset"], "42");
+    }
+
+    #[test]
+    fn matching_path_policy_uses_first_matching_policy_order() {
+        let oauth = PathRateLimitPolicy {
+            limiter: Arc::new(RateLimiter::new_with_namespace(
+                RateLimitConfig::new(1, 60),
+                "oauth",
+            )),
+            prefixes: Arc::new(vec!["/api/oauth", "/api/auth"]),
+        };
+        let auth = PathRateLimitPolicy {
+            limiter: Arc::new(RateLimiter::new_with_namespace(
+                RateLimitConfig::new(1, 60),
+                "auth",
+            )),
+            prefixes: Arc::new(vec!["/api/auth"]),
+        };
+        let api = PathRateLimitPolicy {
+            limiter: Arc::new(RateLimiter::new_with_namespace(
+                RateLimitConfig::new(1, 60),
+                "api",
+            )),
+            prefixes: Arc::new(vec!["/api"]),
+        };
+
+        let policies = vec![oauth, auth, api];
+
+        let selected = matching_path_policy(&policies, "/api/auth/login").expect("policy");
+
+        assert_eq!(selected.limiter.namespace(), "oauth");
+    }
+
+    #[test]
+    fn matching_path_policy_returns_none_for_unmatched_path() {
+        let policies = vec![PathRateLimitPolicy {
+            limiter: Arc::new(RateLimiter::new_with_namespace(
+                RateLimitConfig::new(1, 60),
+                "api",
+            )),
+            prefixes: Arc::new(vec!["/api"]),
+        }];
+
+        assert!(matching_path_policy(&policies, "/health/ready").is_none());
     }
 }

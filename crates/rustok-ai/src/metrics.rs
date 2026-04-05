@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
+use rustok_core::{locale_tags_match, normalize_locale_tag};
 use rustok_telemetry::metrics as telemetry_metrics;
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +110,9 @@ pub fn observe_run_outcome(
         increment_bucket(&AI_TASK_PROFILE_TOTALS, task_profile_slug);
     }
     if let Some(resolved_locale) = resolved_locale.filter(|value| !value.trim().is_empty()) {
-        increment_bucket(&AI_RESOLVED_LOCALE_TOTALS, resolved_locale);
+        let normalized_locale =
+            normalize_locale_tag(resolved_locale).unwrap_or_else(|| resolved_locale.to_string());
+        increment_bucket(&AI_RESOLVED_LOCALE_TOTALS, normalized_locale.as_str());
     }
 
     let operation = match execution_mode {
@@ -211,14 +214,6 @@ fn snapshot_buckets(store: &Lazy<Mutex<BTreeMap<String, u64>>>) -> Vec<AiMetricB
             total: *total,
         })
         .collect()
-}
-
-fn locale_tags_match(left: &str, right: &str) -> bool {
-    normalize_locale_tag(left).eq_ignore_ascii_case(&normalize_locale_tag(right))
-}
-
-fn normalize_locale_tag(value: &str) -> String {
-    value.trim().replace('_', "-")
 }
 
 #[cfg(test)]

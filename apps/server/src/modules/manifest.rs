@@ -1,6 +1,6 @@
 use crate::models::build::DeploymentProfile;
 use crate::services::build_service::ModuleSpec as BuildModuleSpec;
-use rustok_core::{is_valid_locale_key, ModuleRegistry};
+use rustok_core::{normalize_locale_tag, ModuleRegistry};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -795,7 +795,15 @@ fn validate_module_ui_i18n_contract(
         .iter()
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
+        .map(|locale| {
+            normalize_locale_tag(locale).ok_or_else(|| ManifestError::InvalidModuleUiWiring {
+                slug: slug.to_string(),
+                surface: surface.to_string(),
+                reason: format!("i18n.supported_locales contains invalid locale '{locale}'"),
+            })
+        })
+        .collect::<Result<std::collections::BTreeSet<_>, _>>()?
+        .into_iter()
         .collect::<Vec<_>>();
 
     if supported_locales.is_empty() {
@@ -806,32 +814,22 @@ fn validate_module_ui_i18n_contract(
         });
     }
 
-    for locale in &supported_locales {
-        if !is_valid_locale_key(locale) {
-            return Err(ManifestError::InvalidModuleUiWiring {
-                slug: slug.to_string(),
-                surface: surface.to_string(),
-                reason: format!("i18n.supported_locales contains invalid locale '{locale}'"),
-            });
-        }
-    }
-
     if let Some(default_locale) = i18n
         .default_locale
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        if !is_valid_locale_key(default_locale) {
-            return Err(ManifestError::InvalidModuleUiWiring {
+        let default_locale = normalize_locale_tag(default_locale).ok_or_else(|| {
+            ManifestError::InvalidModuleUiWiring {
                 slug: slug.to_string(),
                 surface: surface.to_string(),
                 reason: format!("i18n.default_locale '{default_locale}' is invalid"),
-            });
-        }
+            }
+        })?;
         if !supported_locales
             .iter()
-            .any(|locale| locale == default_locale)
+            .any(|locale| locale == &default_locale)
         {
             return Err(ManifestError::InvalidModuleUiWiring {
                 slug: slug.to_string(),
@@ -4627,6 +4625,68 @@ leptos_locales_path = "admin/locales"
                     && surface == "admin"
                     && reason.contains("default_locale 'ru'")
         ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_accepts_manifest_declared_i18n_with_script_and_numeric_region_locales() {
+        let temp = tempdir().unwrap();
+        let pages_dir = temp.path().join("crates").join("rustok-pages");
+
+        write_module_manifest(
+            &pages_dir,
+            r#"[module]
+slug = "pages"
+name = "Pages"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-pages-storefront"
+
+[provides.storefront_ui.i18n]
+default_locale = "zh-hant"
+supported_locales = ["zh_hant", "es-419"]
+leptos_locales_path = "storefront/locales"
+"#,
+        );
+        write_surface_manifest(&pages_dir, "storefront", "rustok-pages-storefront");
+        write_locale_bundle(
+            &pages_dir.join("storefront").join("locales"),
+            "zh-Hant",
+            "Pages",
+        );
+        write_locale_bundle(
+            &pages_dir.join("storefront").join("locales"),
+            "es-419",
+            "Pages",
+        );
+
+        let mut manifest =
+            manifest_with_modules(&["index", "outbox", "pages", "content", "tenant", "rbac"]);
+        manifest.modules.get_mut("pages").unwrap().path = Some("crates/rustok-pages".to_string());
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", temp.path().join("modules.toml"));
+        }
+
+        let result = ManifestManager::validate(&manifest);
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(
+            result.is_ok(),
+            "expected script/numeric locale UI wiring to validate"
+        );
     }
 
     #[test]

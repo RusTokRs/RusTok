@@ -87,7 +87,7 @@
 |---|---|---|---|
 | `ctx.config.auth` / JWT middleware | `rustok-auth` (`crates/rustok-auth`) | Использовать `auth_config_from_ctx(ctx)` → `encode_access_token` / `decode_access_token` из `apps/server/src/auth.rs` | Не использовать `loco_rs::prelude::auth::JWT` напрямую; не реализовывать собственный JWT вне `rustok-auth` |
 | `ctx.config.cache` / Loco cache config | `rustok-cache` (`crates/rustok-cache`) | Получать `CacheService` из `ctx.shared_store.get::<CacheService>()` — он инициализируется в `bootstrap_app_runtime` | Не читать `REDIS_URL` вручную в модулях; не создавать `redis::Client` напрямую; не игнорировать `ctx.config.cache` ради самостоятельного подключения |
-| Loco Mailer (`ctx.mailer`) / SMTP | `rustok-email` + `apps/server/src/services/email.rs` | Использовать `email_service_from_ctx(ctx, locale)` — возвращает `Box<dyn PasswordResetEmailSender>`; провайдер выбирается через `settings.rustok.email.provider` | Не вызывать `ctx.mailer` напрямую в обработчиках; не создавать `AsyncSmtpTransport` вне email-сервиса; не выносить email в отдельный platform module |
+| Loco Mailer (`ctx.mailer`) / SMTP | `rustok-email` + `apps/server/src/services/email.rs` | Использовать `email_service_from_ctx(ctx, locale)` — возвращает локализованный `BuiltInAuthEmailSender` для built-in auth mailers; провайдер выбирается через `settings.rustok.email.provider` | Не вызывать `ctx.mailer` напрямую в обработчиках; не создавать `AsyncSmtpTransport` вне email-сервиса; не выносить email в отдельный platform module |
 | Loco Storage abstraction | `rustok-storage` (`crates/rustok-storage`) | Получать `StorageService` из `ctx.shared_store.get::<StorageService>()`; загружать файлы через него | Не создавать adhoc upload backends в контроллерах; не добавлять параллельные storage paths мимо `rustok-storage` |
 | Loco Queue / Workers | `rustok-outbox` — не прямая замена, а самостоятельный слой для transactional event delivery. Loco Queue (Sidekiq) и Outbox решают разные задачи. | Для доменных событий с гарантией атомарности: `publish_in_tx` через `TransactionalEventBus`. Для фоновых/maintenance задач: loco Tasks. | Не дублировать event delivery-path через Loco Queue; не создавать `rustok-jobs` поверх outbox — они решают разные задачи. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md` |
 | Loco Channels (WebSocket) | Кастомный Axum WebSocket в `apps/server` | Использовать существующие WS-handlers | Не использовать `loco_rs::controller::channels` — несовместимо с кастомным auth-handshake |
@@ -143,7 +143,7 @@ Redis URL задаётся через (в порядке приоритета):
 `Core` module email-рассылок: SMTP через lettre, Tera-шаблоны. **Заменяет** Loco Mailer как primary transport. Фабрика `email_service_from_ctx(ctx, locale)` в `apps/server/src/services/email.rs` выбирает провайдер (`smtp | loco | none`). SMTP-транспорт кэшируется в `shared_store` через `SharedSmtpEmailService`.
 
 Два публичных trait:
-- `PasswordResetEmailSender` — узкий контракт для password reset
+- `BuiltInAuthEmailSender` в `apps/server/src/services/email.rs` — локализованный runtime-контракт для built-in auth email flows (password reset + email verification)
 - `TransactionalEmailSender` — общий контракт для любых transactional email по template ID (`"{module}/{action}"`, напр. `"commerce/order_confirmed"`). Модули регистрируют шаблоны через `EmailTemplateProvider`; `SmtpEmailSender::with_provider()` подключает провайдер.
 
 ### `crates/rustok-storage`

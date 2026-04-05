@@ -16,7 +16,7 @@
 | Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | 🔄 Частично готово, есть расхождения между docs, migrator wiring и donor write-path |
 | Phase 4.5 | Вынос в `crates/flex` | 🔄 Почти завершён, остаются verification/docs долги |
 | Phase 4.6 | Ghost-module manifest integration | ⬜ Не начат |
-| Phase 5 | Standalone mode | 🔄 Начат (контракты и adapter-layer есть, live API surface ещё не опубликован) |
+| Phase 5 | Standalone mode | 🔄 Начат (контракты и adapter-layer есть; multilingual storage split для schema-level copy начат, live API surface ещё не опубликован) |
 | Phase 6 | Advanced features | ⬜ Не начат |
 
 ---
@@ -144,14 +144,22 @@ CREATE TABLE flex_schemas (
     id            UUID PRIMARY KEY,
     tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     slug          VARCHAR(64) NOT NULL,
-    name          VARCHAR(255) NOT NULL,
-    description   TEXT,
     fields_config JSONB NOT NULL,
     settings      JSONB NOT NULL DEFAULT '{}',
     is_active     BOOLEAN NOT NULL DEFAULT true,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (tenant_id, slug)
+);
+
+CREATE TABLE flex_schema_translations (
+    schema_id     UUID NOT NULL REFERENCES flex_schemas(id) ON DELETE CASCADE,
+    locale        VARCHAR(32) NOT NULL,
+    name          VARCHAR(255) NOT NULL,
+    description   TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (schema_id, locale)
 );
 
 CREATE TABLE flex_entries (
@@ -175,10 +183,15 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 
 - [~] Миграции для `flex_schemas`, `flex_entries`
   - Файл migration добавлен: `m20260317_000001_create_flex_standalone_tables`
-  - Migration ещё не подключена в `apps/server/migration/src/lib.rs`, значит schema не считается live через canonical server migrator
+  - Миграция подключена в canonical server migrator
+  - Отдельным follow-up migration slice schema-level localized copy вынесен из `flex_schemas` в `flex_schema_translations`
 - [x] SeaORM entities *(добавлены `flex_schemas` и `flex_entries` в `apps/server/src/models/_entities` + re-export в `models/`)*
 - [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
+- [~] Multilingual storage contract для standalone mode
+  - schema-level localized copy (`name`, `description`) больше не считается base-row данными
+  - entry payload `data` пока остаётся JSONB без split на localized/non-localized values
+  - следующий обязательный шаг: явная semantics `localized/non-localized` для field definitions и parallel localized records для entry values
 - [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
 - [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{slug}/entries`
 - [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations

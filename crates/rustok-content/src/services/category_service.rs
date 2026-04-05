@@ -6,7 +6,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_core::SecurityContext;
+use rustok_core::{SecurityContext, PLATFORM_FALLBACK_LOCALE};
 
 use crate::dto::category::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
@@ -14,8 +14,6 @@ use crate::dto::category::{
 };
 use crate::entities::{category, category_translation};
 use crate::error::{ContentError, ContentResult};
-use crate::locale::PLATFORM_FALLBACK_LOCALE;
-
 pub struct CategoryService {
     db: DatabaseConnection,
 }

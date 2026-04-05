@@ -491,10 +491,17 @@ CREATE TABLE flex_schemas (
     id          UUID PRIMARY KEY,
     tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     slug        VARCHAR(64) NOT NULL,       -- 'landing-page', 'feedback-form'
-    name        VARCHAR(255) NOT NULL,
     fields_config JSONB NOT NULL,
     is_active   BOOLEAN NOT NULL DEFAULT true,
     UNIQUE (tenant_id, slug)
+);
+
+CREATE TABLE flex_schema_translations (
+    schema_id    UUID NOT NULL REFERENCES flex_schemas(id) ON DELETE CASCADE,
+    locale       VARCHAR(32) NOT NULL,
+    name         VARCHAR(255) NOT NULL,
+    description  TEXT,
+    PRIMARY KEY (schema_id, locale)
 );
 
 -- Записи данных

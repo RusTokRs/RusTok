@@ -17,8 +17,8 @@ use crate::{
         load_available_inventory_for_variant_in_public_channel, normalize_public_channel_slug,
     },
     storefront_shipping::{
-        is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
-        normalize_shipping_profile_slug,
+        effective_shipping_profile_slug, enrich_cart_delivery_groups,
+        is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
     CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
     OrderService, PaymentService, ShippingProfileService, StoreContextService,
@@ -88,6 +88,7 @@ impl CommerceMutation {
                 request_context.channel_slug.clone(),
             )
             .await?;
+        let cart = enrich_storefront_cart(db, tenant_id, request_context, cart).await?;
 
         Ok(GqlStoreCart {
             cart: cart.into(),
@@ -130,7 +131,11 @@ impl CommerceMutation {
         let updated = cart_service
             .add_line_item(tenant_id, cart_id, resolved_input)
             .await?;
-        Ok(updated.into())
+        Ok(
+            enrich_storefront_cart(db, tenant_id, request_context, updated)
+                .await?
+                .into(),
+        )
     }
 
     async fn update_storefront_cart_context(
@@ -169,6 +174,19 @@ impl CommerceMutation {
             input.selected_shipping_option_id,
             cart.selected_shipping_option_id,
         );
+        let requested_shipping_selections = match input.shipping_selections {
+            async_graphql::MaybeUndefined::Value(items) => Some(
+                items
+                    .into_iter()
+                    .map(|item| crate::dto::CartShippingSelectionInput {
+                        shipping_profile_slug: item.shipping_profile_slug,
+                        selected_shipping_option_id: item.selected_shipping_option_id,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            async_graphql::MaybeUndefined::Null => Some(Vec::new()),
+            async_graphql::MaybeUndefined::Undefined => None,
+        };
 
         let context = StoreContextService::new(db.clone())
             .resolve_context(
@@ -186,6 +204,7 @@ impl CommerceMutation {
             tenant_id,
             &cart,
             requested_shipping_option_id,
+            requested_shipping_selections.as_deref(),
             &cart.currency_code,
             storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
         )
@@ -201,9 +220,14 @@ impl CommerceMutation {
                     country_code: requested_country_code,
                     locale_code: Some(context.locale.clone()),
                     selected_shipping_option_id: requested_shipping_option_id,
+                    shipping_selections: Some(
+                        requested_shipping_selections
+                            .unwrap_or_else(|| current_shipping_selections(&cart)),
+                    ),
                 },
             )
             .await?;
+        let updated = enrich_storefront_cart(db, tenant_id, request_context, updated).await?;
 
         Ok(GqlStoreCart {
             cart: updated.into(),
@@ -246,7 +270,11 @@ impl CommerceMutation {
         let updated = cart_service
             .update_line_item_quantity(tenant_id, cart_id, line_id, input.quantity)
             .await?;
-        Ok(updated.into())
+        Ok(
+            enrich_storefront_cart(db, tenant_id, ctx.data::<RequestContext>()?, updated)
+                .await?
+                .into(),
+        )
     }
 
     async fn remove_storefront_cart_line_item(
@@ -271,7 +299,11 @@ impl CommerceMutation {
         let updated = cart_service
             .remove_line_item(tenant_id, cart_id, line_id)
             .await?;
-        Ok(updated.into())
+        Ok(
+            enrich_storefront_cart(db, tenant_id, ctx.data::<RequestContext>()?, updated)
+                .await?
+                .into(),
+        )
     }
 
     async fn create_storefront_payment_collection(
@@ -367,6 +399,15 @@ impl CommerceMutation {
                 crate::dto::CompleteCheckoutInput {
                     cart_id: input.cart_id,
                     shipping_option_id: input.shipping_option_id,
+                    shipping_selections: input.shipping_selections.map(|items| {
+                        items
+                            .into_iter()
+                            .map(|item| crate::dto::CartShippingSelectionInput {
+                                shipping_profile_slug: item.shipping_profile_slug,
+                                selected_shipping_option_id: item.selected_shipping_option_id,
+                            })
+                            .collect()
+                    }),
                     region_id: input.region_id,
                     country_code: input.country_code,
                     locale: input.locale,
@@ -1071,6 +1112,7 @@ fn convert_create_product_input(
             Ok(crate::dto::CreateVariantInput {
                 sku: variant.sku,
                 barcode: variant.barcode,
+                shipping_profile_slug: variant.shipping_profile_slug,
                 option1: variant.option1,
                 option2: variant.option2,
                 option3: variant.option3,
@@ -1174,10 +1216,24 @@ fn cart_context_metadata(
             "locale": context.locale.clone(),
             "currency_code": cart.currency_code.clone(),
             "selected_shipping_option_id": cart.selected_shipping_option_id,
+            "shipping_selections": current_shipping_selections(cart),
             "customer_id": cart.customer_id,
             "email": cart.email.clone(),
         }
     })
+}
+
+async fn enrich_storefront_cart(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart: crate::dto::CartResponse,
+) -> Result<crate::dto::CartResponse> {
+    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
+    enrich_cart_delivery_groups(db, tenant_id, cart, public_channel_slug.as_deref())
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))
 }
 
 fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {
@@ -1200,37 +1256,76 @@ async fn validate_selected_shipping_option(
     tenant_id: Uuid,
     cart: &crate::dto::CartResponse,
     selected_shipping_option_id: Option<Uuid>,
+    shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
     currency_code: &str,
     public_channel_slug: Option<&str>,
 ) -> Result<()> {
-    let Some(selected_shipping_option_id) = selected_shipping_option_id else {
-        return Ok(());
+    let selections = if let Some(shipping_selections) = shipping_selections {
+        shipping_selections.to_vec()
+    } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
+        if cart.delivery_groups.len() > 1 {
+            return Err(async_graphql::Error::new(
+                "selectedShippingOptionId can only be used for carts with a single delivery group",
+            ));
+        }
+        cart.delivery_groups
+            .first()
+            .map(|group| {
+                vec![crate::dto::CartShippingSelectionInput {
+                    shipping_profile_slug: group.shipping_profile_slug.clone(),
+                    selected_shipping_option_id: Some(selected_shipping_option_id),
+                }]
+            })
+            .unwrap_or_default()
+    } else {
+        current_shipping_selections(cart)
     };
 
-    let option = FulfillmentService::new(db.clone())
-        .get_shipping_option(tenant_id, selected_shipping_option_id)
-        .await?;
-    if !option.currency_code.eq_ignore_ascii_case(currency_code) {
-        return Err(async_graphql::Error::new(format!(
-            "Shipping option {} uses currency {}, expected {}",
-            option.id, option.currency_code, currency_code
-        )));
-    }
-    if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
-        return Err(async_graphql::Error::new(format!(
-            "Shipping option {} is not available for the current channel",
-            option.id
-        )));
-    }
-    let required_shipping_profiles = load_cart_shipping_profile_slugs(db, tenant_id, cart).await?;
-    if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
-        return Err(async_graphql::Error::new(format!(
-            "Shipping option {} is not compatible with the cart shipping profiles",
-            option.id
-        )));
+    for selection in selections {
+        let Some(selected_shipping_option_id) = selection.selected_shipping_option_id else {
+            continue;
+        };
+        let option = FulfillmentService::new(db.clone())
+            .get_shipping_option(tenant_id, selected_shipping_option_id)
+            .await?;
+        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+            return Err(async_graphql::Error::new(format!(
+                "Shipping option {} uses currency {}, expected {}",
+                option.id, option.currency_code, currency_code
+            )));
+        }
+        if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
+            return Err(async_graphql::Error::new(format!(
+                "Shipping option {} is not available for the current channel",
+                option.id
+            )));
+        }
+        let required_shipping_profiles =
+            std::collections::BTreeSet::from([normalize_shipping_profile_slug(
+                selection.shipping_profile_slug.as_str(),
+            )
+            .unwrap_or_else(|| "default".to_string())]);
+        if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
+            return Err(async_graphql::Error::new(format!(
+                "Shipping option {} is not compatible with shipping profile {}",
+                option.id, selection.shipping_profile_slug
+            )));
+        }
     }
 
     Ok(())
+}
+
+fn current_shipping_selections(
+    cart: &crate::dto::CartResponse,
+) -> Vec<crate::dto::CartShippingSelectionInput> {
+    cart.delivery_groups
+        .iter()
+        .map(|group| crate::dto::CartShippingSelectionInput {
+            shipping_profile_slug: group.shipping_profile_slug.clone(),
+            selected_shipping_option_id: group.selected_shipping_option_id,
+        })
+        .collect()
 }
 
 async fn validate_product_shipping_profile_input(
@@ -1366,6 +1461,11 @@ async fn resolve_storefront_line_item_input(
     Ok(crate::dto::AddCartLineItemInput {
         product_id: Some(product_model.id),
         variant_id: Some(variant.id),
+        shipping_profile_slug: Some(effective_shipping_profile_slug(
+            product_model.shipping_profile_slug.as_deref(),
+            &product_model.metadata,
+            variant.shipping_profile_slug.as_deref(),
+        )),
         sku: variant.sku.clone(),
         title,
         quantity: input.quantity,

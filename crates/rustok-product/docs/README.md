@@ -17,11 +17,15 @@
 - canonical vocabulary и attach semantics для product tags живут в
   `rustok-taxonomy` + `product_tags`, а public contract использует first-class
   поле `tags` вместо legacy `metadata.tags`.
-- shipping profile для товара теперь тоже имеет first-class surface в product
-  DTO (`shipping_profile_slug`), хотя на этапе Phase 7 физически всё ещё
-  хранится через metadata-backed contract `shipping_profile.slug`; omission
-  first-class поля на write-path не должен затирать уже существующий metadata-backed
-  shipping profile.
+- shipping profile для товара и варианта теперь имеет first-class typed surface в
+  product DTO (`shipping_profile_slug`) и typed persistence в
+  `products.shipping_profile_slug` / `product_variants.shipping_profile_slug`; metadata-backed
+  `shipping_profile.slug` остаётся только backward-compatible формой нормализации для старых
+  read/write-path consumer'ов.
+- effective shipping profile для deliverability теперь разрешается как
+  `variant.shipping_profile_slug -> product.shipping_profile_slug -> default`, а omission
+  first-class поля на write-path не должен затирать уже существующую typed binding/compatibility
+  normalization.
 - transport-level validation для `shipping_profile_slug` теперь живёт в фасаде
   `rustok-commerce` и проверяет ссылку против active shipping profiles из typed
   registry `shipping_profiles`, чтобы product write-path не принимал произвольные slug'и.

@@ -1,7 +1,7 @@
 # План полной интеграции Loco RS + Core с управлением из админки
 
 **Дата:** 2026-03-12
-**Актуализировано:** 2026-03-19
+**Актуализировано:** 2026-04-05
 **Статус:** Частично реализован; документ отражает текущее состояние и остаточный scope
 
 ## 1. Контекст и цель
@@ -58,7 +58,7 @@ RusToK использует Loco RS как server/runtime framework, а плат
 
 ### Фаза 0 — i18n по умолчанию
 
-**Статус:** Частично реализована.
+**Статус:** Live contract для server/runtime закрыт; residual scope вынесен в future work.
 
 Уже есть:
 
@@ -68,7 +68,7 @@ RusToK использует Loco RS как server/runtime framework, а плат
 - locale-prefixed storefront routing (`/{locale}` и `/{locale}/modules/{route_segment}`) с backward-compatible fallback на legacy `?lang=`.
 - built-in auth outbound email locale propagation: password reset для REST/GraphQL и email verification для REST; `smtp` и `loco` теперь используют один и тот же localized auth template path.
 
-Осталось:
+Residual future scope:
 
 - более полный outbound locale propagation за пределами built-in auth email flows;
 - расширение locale coverage для остальных outbound template flows и future work по новым локалям/форматерам.

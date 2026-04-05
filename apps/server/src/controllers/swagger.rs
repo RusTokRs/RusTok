@@ -436,6 +436,13 @@ mod tests {
             openapi
                 .paths
                 .paths
+                .contains_key("/v2/catalog/publish/{request_id}/validate"),
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/validate"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
                 .contains_key("/v2/catalog/publish/{request_id}/approve"),
             "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/approve"
         );
@@ -445,6 +452,13 @@ mod tests {
                 .paths
                 .contains_key("/v2/catalog/publish/{request_id}/reject"),
             "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/reject"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/stages"),
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/stages"
         );
         assert!(
             openapi
@@ -481,11 +495,19 @@ mod tests {
         assert!(!openapi
             .paths
             .paths
+            .contains_key("/v2/catalog/publish/{request_id}/validate"));
+        assert!(!openapi
+            .paths
+            .paths
             .contains_key("/v2/catalog/publish/{request_id}/approve"));
         assert!(!openapi
             .paths
             .paths
             .contains_key("/v2/catalog/publish/{request_id}/reject"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/stages"));
         assert!(!openapi
             .paths
             .paths

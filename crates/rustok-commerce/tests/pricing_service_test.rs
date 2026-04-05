@@ -40,6 +40,7 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
                 Uuid::new_v4().to_string().split('-').next().unwrap()
             )),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,
@@ -416,6 +417,7 @@ async fn test_get_variant_prices_empty() {
                 Uuid::new_v4().to_string().split('-').next().unwrap()
             )),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,

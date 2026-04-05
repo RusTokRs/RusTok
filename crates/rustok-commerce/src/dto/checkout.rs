@@ -5,14 +5,15 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    CartResponse, FulfillmentResponse, OrderResponse, PaymentCollectionResponse,
-    StoreContextResponse,
+    CartResponse, CartShippingSelectionInput, FulfillmentResponse, OrderResponse,
+    PaymentCollectionResponse, StoreContextResponse,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CompleteCheckoutInput {
     pub cart_id: Uuid,
     pub shipping_option_id: Option<Uuid>,
+    pub shipping_selections: Option<Vec<CartShippingSelectionInput>>,
     pub region_id: Option<Uuid>,
     pub country_code: Option<String>,
     pub locale: Option<String>,
@@ -27,6 +28,7 @@ pub struct CompleteCheckoutResponse {
     pub order: OrderResponse,
     pub payment_collection: PaymentCollectionResponse,
     pub fulfillment: Option<FulfillmentResponse>,
+    pub fulfillments: Vec<FulfillmentResponse>,
     pub context: StoreContextResponse,
 }
 

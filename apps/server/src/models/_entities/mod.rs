@@ -1,4 +1,5 @@
 pub mod flex_entries;
+pub mod flex_schema_translations;
 pub mod flex_schemas;
 pub mod mcp_audit_logs;
 pub mod mcp_clients;
@@ -24,6 +25,7 @@ pub mod user_roles;
 pub mod users;
 
 pub use flex_entries::Entity as FlexEntries;
+pub use flex_schema_translations::Entity as FlexSchemaTranslations;
 pub use flex_schemas::Entity as FlexSchemas;
 pub use mcp_audit_logs::Entity as McpAuditLogs;
 pub use mcp_clients::Entity as McpClients;

@@ -16,7 +16,7 @@
 //! | Max fields per entity type per tenant | 50 | `CustomFieldDefinitionService::create()` |
 //! | Max JSON nesting depth (`FieldType::Json`) | [`MAX_JSON_NESTING_DEPTH`] = 2 | `validate_field_value()` |
 //! | `field_key` format | `^[a-z][a-z0-9_]{0,127}$` | [`is_valid_field_key`] |
-//! | Locale key format | BCP 47 short form | [`is_valid_locale_key`] |
+//! | Locale key format | Normalized BCP 47 style tag | [`is_valid_locale_key`] |
 //!
 //! ### JSON depth counting — Variant A (arrays transparent)
 //!
@@ -66,9 +66,6 @@ use std::collections::HashMap;
 
 static FIELD_KEY_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[a-z][a-z0-9_]{0,127}$").expect("valid regex"));
-
-static LOCALE_KEY_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-z]{2}(-[A-Z]{2})?$").expect("valid regex"));
 
 static COLOR_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^#[0-9A-Fa-f]{6}$").expect("valid regex"));
@@ -868,10 +865,9 @@ pub fn is_valid_field_key(key: &str) -> bool {
     FIELD_KEY_REGEX.is_match(key)
 }
 
-/// Returns `true` if `key` is a valid BCP 47 short locale key:
-/// `^[a-z]{2}(-[A-Z]{2})?$`
+/// Returns `true` if `key` is a valid normalized BCP 47-style locale tag.
 pub fn is_valid_locale_key(key: &str) -> bool {
-    LOCALE_KEY_REGEX.is_match(key)
+    crate::locale::is_valid_locale_tag(key)
 }
 
 // ---------------------------------------------------------------------------
@@ -1853,15 +1849,16 @@ mod tests {
         assert!(is_valid_locale_key("zh"));
         assert!(is_valid_locale_key("en-US"));
         assert!(is_valid_locale_key("pt-BR"));
+        assert!(is_valid_locale_key("zh-Hant"));
+        assert!(is_valid_locale_key("es-419"));
     }
 
     #[test]
     fn locale_key_guardrail_invalid() {
         assert!(!is_valid_locale_key("EN")); // uppercase lang
-        assert!(!is_valid_locale_key("en-us")); // lowercase country
         assert!(!is_valid_locale_key("english")); // too long
         assert!(!is_valid_locale_key("e")); // too short
-        assert!(!is_valid_locale_key("en_US")); // underscore separator
+        assert!(is_valid_locale_key("en_US")); // normalized before validation
     }
 
     #[test]

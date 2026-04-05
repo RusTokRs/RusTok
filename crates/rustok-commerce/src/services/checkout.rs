@@ -9,6 +9,7 @@ use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use std::collections::BTreeSet;
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
@@ -21,9 +22,12 @@ use crate::storefront_channel::{
     normalize_public_channel_slug,
 };
 use crate::storefront_shipping::{
-    is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
+    is_shipping_option_compatible_with_profiles, load_current_shipping_profile_slug_for_line_item,
 };
-use crate::{CartService, FulfillmentService, OrderService, PaymentService, StoreContextService};
+use crate::{
+    CartService, FulfillmentService, OrderService, PaymentService, StoreContextService,
+    UpdateCartContextInput,
+};
 
 const MANUAL_PROVIDER_ID: &str = "manual";
 
@@ -79,11 +83,29 @@ impl CheckoutService {
             .validate()
             .map_err(|error| CheckoutError::Validation(error.to_string()))?;
 
-        let cart = self
+        let mut cart = self
             .cart_service
             .get_cart(tenant_id, input.cart_id)
             .await
             .map_err(stage_error("load_cart"))?;
+        if input.shipping_selections.is_some() || input.shipping_option_id.is_some() {
+            cart = self
+                .cart_service
+                .update_context(
+                    tenant_id,
+                    cart.id,
+                    UpdateCartContextInput {
+                        email: cart.email.clone(),
+                        region_id: cart.region_id,
+                        country_code: cart.country_code.clone(),
+                        locale_code: cart.locale_code.clone(),
+                        selected_shipping_option_id: input.shipping_option_id,
+                        shipping_selections: input.shipping_selections.clone(),
+                    },
+                )
+                .await
+                .map_err(stage_error("update_cart_shipping"))?;
+        }
         if cart.status == "completed" {
             if let Some(response) = self
                 .recover_existing_checkout(tenant_id, cart.clone())
@@ -113,46 +135,15 @@ impl CheckoutService {
             .begin_checkout(tenant_id, cart.id)
             .await
             .map_err(stage_error("begin_checkout"))?;
-        let shipping_option_id = cart
-            .selected_shipping_option_id
-            .or(input.shipping_option_id);
-        self.validate_cart_inventory(tenant_id, &cart).await?;
-        if let Some(shipping_option_id) = shipping_option_id {
-            let required_shipping_profiles =
-                load_cart_shipping_profile_slugs(&self.db, tenant_id, &cart)
-                    .await
-                    .map_err(stage_error("load_shipping_profiles"))?;
-            let option = self
-                .fulfillment_service
-                .get_shipping_option(tenant_id, shipping_option_id)
-                .await
-                .map_err(stage_error("load_shipping_option"))?;
-            if !option
-                .currency_code
-                .eq_ignore_ascii_case(&cart.currency_code)
-            {
-                return Err(CheckoutError::Validation(format!(
-                    "Shipping option {} uses currency {}, expected {}",
-                    option.id, option.currency_code, cart.currency_code
-                )));
-            }
-            if !is_metadata_visible_for_public_channel(
-                &option.metadata,
-                normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref(),
-            ) {
-                return Err(CheckoutError::Validation(format!(
-                    "Shipping option {} is not available for the cart channel",
-                    option.id
-                )));
-            }
-            if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
-                return Err(CheckoutError::Validation(format!(
-                    "Shipping option {} is not compatible with the cart shipping profiles",
-                    option.id
-                )));
-            }
+        if let Err(error) = self.validate_cart_inventory(tenant_id, &cart).await {
+            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+            return Err(error);
         }
-        let context = self
+        if let Err(error) = self.validate_delivery_groups(tenant_id, &cart).await {
+            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+            return Err(error);
+        }
+        let context = match self
             .context_service
             .resolve_context(
                 tenant_id,
@@ -164,7 +155,13 @@ impl CheckoutService {
                 },
             )
             .await
-            .map_err(stage_error("resolve_context"))?;
+        {
+            Ok(context) => context,
+            Err(error) => {
+                let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+                return Err(stage_error("resolve_context")(error));
+            }
+        };
         let checkout_result: CheckoutResult<CompleteCheckoutResponse> = async {
             let mut order = self
                 .order_service
@@ -180,6 +177,7 @@ impl CheckoutService {
                             .map(|item| CreateOrderLineItemInput {
                                 product_id: item.product_id,
                                 variant_id: item.variant_id,
+                                shipping_profile_slug: item.shipping_profile_slug.clone(),
                                 sku: item.sku.clone(),
                                 title: item.title.clone(),
                                 quantity: item.quantity,
@@ -324,23 +322,18 @@ impl CheckoutService {
                 }
             };
 
-            let fulfillment = if input.create_fulfillment {
+            let fulfillments = if input.create_fulfillment {
                 match self
-                    .fulfillment_service
-                    .create_fulfillment(
+                    .create_fulfillments_for_delivery_groups(
                         tenant_id,
-                        CreateFulfillmentInput {
-                            order_id: order.id,
-                            shipping_option_id,
-                            customer_id: cart.customer_id,
-                            carrier: None,
-                            tracking_number: None,
-                            metadata: input.metadata.clone(),
-                        },
+                        order.id,
+                        cart.customer_id,
+                        &cart,
+                        input.metadata.clone(),
                     )
                     .await
                 {
-                    Ok(fulfillment) => Some(fulfillment),
+                    Ok(fulfillments) => fulfillments,
                     Err(error) => {
                         self.compensate_payment_and_order(
                             tenant_id,
@@ -350,11 +343,11 @@ impl CheckoutService {
                             "fulfillment_creation_failed",
                         )
                         .await;
-                        return Err(stage_error("create_fulfillment")(error));
+                        return Err(error);
                     }
                 }
             } else {
-                None
+                Vec::new()
             };
 
             let captured_payment = match authorized_payment.status.as_str() {
@@ -433,7 +426,8 @@ impl CheckoutService {
                 cart,
                 order,
                 payment_collection: captured_payment,
-                fulfillment,
+                fulfillment: fulfillment_shim(&fulfillments),
+                fulfillments,
                 context,
             })
         }
@@ -492,6 +486,20 @@ impl CheckoutService {
                 return Err(CheckoutError::Validation(format!(
                     "Product {} is not available for the cart channel",
                     product.id
+                )));
+            }
+            let current_shipping_profile_slug = load_current_shipping_profile_slug_for_line_item(
+                &self.db,
+                tenant_id,
+                Some(product.id),
+                Some(variant.id),
+            )
+            .await
+            .map_err(stage_error("load_shipping_profile"))?;
+            if current_shipping_profile_slug != line_item.shipping_profile_slug {
+                return Err(CheckoutError::Validation(format!(
+                    "Line item {} uses stale shipping profile snapshot {} (current: {})",
+                    line_item.id, line_item.shipping_profile_slug, current_shipping_profile_slug
                 )));
             }
 
@@ -554,11 +562,11 @@ impl CheckoutService {
         } else {
             cart
         };
-        let fulfillment = self
+        let fulfillments = self
             .fulfillment_service
-            .find_by_order(tenant_id, order.id)
+            .list_by_order(tenant_id, order.id)
             .await
-            .map_err(stage_error("load_fulfillment"))?;
+            .map_err(stage_error("load_fulfillments"))?;
         let context = self
             .context_service
             .resolve_context(
@@ -577,9 +585,103 @@ impl CheckoutService {
             cart,
             order,
             payment_collection,
-            fulfillment,
+            fulfillment: fulfillment_shim(&fulfillments),
+            fulfillments,
             context,
         }))
+    }
+
+    async fn validate_delivery_groups(
+        &self,
+        tenant_id: Uuid,
+        cart: &rustok_cart::dto::CartResponse,
+    ) -> CheckoutResult<()> {
+        let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
+
+        for delivery_group in &cart.delivery_groups {
+            let Some(selected_shipping_option_id) = delivery_group.selected_shipping_option_id
+            else {
+                return Err(CheckoutError::Validation(format!(
+                    "Delivery group {} does not have a selected shipping option",
+                    delivery_group.shipping_profile_slug
+                )));
+            };
+            let option = self
+                .fulfillment_service
+                .get_shipping_option(tenant_id, selected_shipping_option_id)
+                .await
+                .map_err(stage_error("load_shipping_option"))?;
+            if !option
+                .currency_code
+                .eq_ignore_ascii_case(&cart.currency_code)
+            {
+                return Err(CheckoutError::Validation(format!(
+                    "Shipping option {} uses currency {}, expected {}",
+                    option.id, option.currency_code, cart.currency_code
+                )));
+            }
+            if !is_metadata_visible_for_public_channel(
+                &option.metadata,
+                public_channel_slug.as_deref(),
+            ) {
+                return Err(CheckoutError::Validation(format!(
+                    "Shipping option {} is not available for the cart channel",
+                    option.id
+                )));
+            }
+            let required_shipping_profiles =
+                BTreeSet::from([delivery_group.shipping_profile_slug.clone()]);
+            if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
+                return Err(CheckoutError::Validation(format!(
+                    "Shipping option {} is not compatible with delivery group {}",
+                    option.id, delivery_group.shipping_profile_slug
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn create_fulfillments_for_delivery_groups(
+        &self,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        customer_id: Option<Uuid>,
+        cart: &rustok_cart::dto::CartResponse,
+        metadata: serde_json::Value,
+    ) -> CheckoutResult<Vec<rustok_fulfillment::dto::FulfillmentResponse>> {
+        let mut fulfillments = Vec::with_capacity(cart.delivery_groups.len());
+
+        for delivery_group in &cart.delivery_groups {
+            let selected_shipping_option_id = delivery_group.selected_shipping_option_id;
+            let group_metadata = merge_checkout_metadata(
+                metadata.clone(),
+                serde_json::json!({
+                    "delivery_group": {
+                        "shipping_profile_slug": delivery_group.shipping_profile_slug,
+                        "line_item_ids": delivery_group.line_item_ids,
+                    }
+                }),
+            );
+            let fulfillment = self
+                .fulfillment_service
+                .create_fulfillment(
+                    tenant_id,
+                    CreateFulfillmentInput {
+                        order_id,
+                        shipping_option_id: selected_shipping_option_id,
+                        customer_id,
+                        carrier: None,
+                        tracking_number: None,
+                        metadata: group_metadata,
+                    },
+                )
+                .await
+                .map_err(stage_error("create_fulfillment"))?;
+            fulfillments.push(fulfillment);
+        }
+
+        Ok(fulfillments)
     }
 
     async fn compensate_order(
@@ -638,6 +740,28 @@ fn should_release_checkout_lock(result: &CheckoutResult<CompleteCheckoutResponse
         }
         Err(_) => true,
         Ok(_) => false,
+    }
+}
+
+fn merge_checkout_metadata(base: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
+    match (base, patch) {
+        (serde_json::Value::Object(mut base), serde_json::Value::Object(patch)) => {
+            for (key, value) in patch {
+                base.insert(key, value);
+            }
+            serde_json::Value::Object(base)
+        }
+        (_, patch) => patch,
+    }
+}
+
+fn fulfillment_shim(
+    fulfillments: &[rustok_fulfillment::dto::FulfillmentResponse],
+) -> Option<rustok_fulfillment::dto::FulfillmentResponse> {
+    if fulfillments.len() == 1 {
+        fulfillments.first().cloned()
+    } else {
+        None
     }
 }
 

@@ -1,7 +1,7 @@
 # RusToK Database Schema
 
 > Current-state schema map for the main platform tables and major module-owned schemas.  
-> Updated: 2026-03-19
+> Updated: 2026-04-05
 
 This document is a high-level guide, not the canonical migration source. Source of truth remains:
 
@@ -12,6 +12,20 @@ This document is a high-level guide, not the canonical migration source. Source 
 ---
 
 ## Foundation Tables
+
+## Multilingual Storage Contract
+
+RusToK now treats multilingual storage as an explicit architecture contract, not a module-by-module convention.
+
+The target pattern is:
+
+- base business tables store only language-agnostic state;
+- localized short text lives in parallel `*_translations` records;
+- heavy localized content may live in dedicated `*_bodies` records keyed by owner + locale;
+- tenant locale policy (`tenants.default_locale`, `tenant_locales`) controls effective locale selection and fallback, not physical ownership of localized fields;
+- locale storage follows the same normalized BCP47-like contract as runtime and should use `VARCHAR(32)` as the platform-safe width.
+
+This is already the live direction for platform foundation and content-family storage. Some older module slices still contain legacy mixed patterns and should be treated as migration targets, not as the desired end-state.
 
 ### `tenants`
 
@@ -24,7 +38,7 @@ Platform tenant registry.
 | `slug` | VARCHAR | Stable tenant slug |
 | `domain` | VARCHAR nullable | Optional host/domain binding |
 | `settings` | JSONB | Tenant-scoped opaque settings |
-| `default_locale` | VARCHAR | Default locale used by request fallback chain |
+| `default_locale` | VARCHAR(32) | Default locale used by request fallback chain and tenant locale policy |
 | `is_active` | BOOL | Tenant activity flag |
 | `created_at` | TIMESTAMPTZ | Creation timestamp |
 | `updated_at` | TIMESTAMPTZ | Last update timestamp |
@@ -94,6 +108,22 @@ Per-tenant module toggle and module-scoped settings.
 | `created_at` | TIMESTAMPTZ | Creation timestamp |
 | `updated_at` | TIMESTAMPTZ | Last update timestamp |
 
+### `tenant_locales`
+
+Tenant-scoped locale availability and fallback policy.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | FK to tenant |
+| `locale` | VARCHAR(32) | Canonical locale supported by the tenant |
+| `name` | VARCHAR | Human-readable locale name |
+| `native_name` | VARCHAR | Native language name |
+| `is_default` | BOOL | Whether this locale is the tenant default |
+| `is_enabled` | BOOL | Whether the locale can be selected at runtime |
+| `fallback_locale` | VARCHAR(32) nullable | Optional tenant-local fallback |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+
 ### `oauth_apps`
 
 Tenant-scoped OAuth application registry for provider/client management.
@@ -137,7 +167,11 @@ Core content schema remains centered around:
 - `node_translations`
 - `bodies`
 
-This supports locale-aware content storage with explicit fallback behavior at the service/request layer.
+This is the current canonical storage direction for multilingual content:
+
+- `nodes` owns language-agnostic state;
+- `node_translations` owns localized short text and metadata;
+- `bodies` owns localized heavy content keyed by `(node_id, locale)`.
 
 ### Commerce
 
@@ -150,6 +184,26 @@ Core commerce schema remains centered around:
 - `prices`
 - `product_images`
 - `product_options`
+
+Commerce is still mid-migration in parts of the repo, but the platform target is the same: base entities stay language-agnostic, localized short text lives in `*_translations`, and rich localized content should not be privileged in base rows.
+
+### Flex
+
+`flex` is a capability / ghost-module slice, but it is not exempt from the multilingual storage contract.
+
+Current live server-owned standalone storage is centered around:
+
+- `flex_schemas`
+- `flex_schema_translations`
+- `flex_entries`
+
+Current direction:
+
+- `flex_schemas` owns language-agnostic schema state such as `slug`, `fields_config`, `settings`, and activation flags;
+- `flex_schema_translations` owns localized schema copy such as `name` and `description`;
+- `flex_entries` still stores flexible JSON payloads for entry values, but localized entry-value semantics are considered an explicit follow-up migration area rather than a final canonical multilingual shape.
+
+Attached-mode `flex` field-definition localization currently still uses JSON locale maps in field-definition rows; this remains transitional and should converge toward parallel localized records in later slices.
 
 ---
 
@@ -229,6 +283,7 @@ Storage backend configuration is not modeled as per-file SQL schema; it is runti
 
 - `tenant_id` remains the primary isolation boundary for platform and module data.
 - JSONB is used intentionally for module/platform settings, workflow configuration, and flexible metadata.
+- JSONB is not the canonical long-term owner for multilingual business text when a module is under the parallel-localized-record migration path.
 - Read-model tables are denormalized on purpose and should not be treated as authoritative write-side state.
 - For exact column/index/constraint details, prefer module migrations and generated entities over this summary doc.
 

@@ -12,6 +12,8 @@
 /// 3. For Phase 2+ and pluralization support, migrate to Fluent `.ftl` files.
 ///
 /// Supported locales
+use crate::locale::normalize_locale_tag;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Locale {
     #[default]
@@ -307,42 +309,6 @@ pub fn translate(locale: Locale, key: &str) -> String {
         .or_else(|| translate_inner(Locale::En, key))
         .unwrap_or(key)
         .to_string()
-}
-
-fn normalize_locale_tag(raw: &str) -> Option<String> {
-    let candidate = raw.trim().replace('_', "-");
-    if candidate.is_empty() || candidate.len() > 16 {
-        return None;
-    }
-
-    if !candidate
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-    {
-        return None;
-    }
-
-    let mut parts = candidate.split('-');
-    let language = parts.next()?.trim();
-    if language.len() < 2 || language.len() > 8 {
-        return None;
-    }
-
-    let mut normalized = language.to_ascii_lowercase();
-    for part in parts {
-        if part.is_empty() || part.len() > 8 {
-            return None;
-        }
-
-        normalized.push('-');
-        if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
-            normalized.push_str(&part.to_ascii_uppercase());
-        } else {
-            normalized.push_str(&part.to_ascii_lowercase());
-        }
-    }
-
-    Some(normalized)
 }
 
 pub fn extract_locale_tag_from_header(accept_language: Option<&str>) -> Option<String> {

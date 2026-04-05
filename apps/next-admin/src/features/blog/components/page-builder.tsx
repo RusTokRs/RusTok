@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Editor } from 'grapesjs';
 import { Loader2, TriangleAlert } from 'lucide-react';
+import { useLocale } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { GqlOpts } from '../api/posts';
@@ -26,18 +27,23 @@ export function PageBuilder({
   pageTitle?: string | null;
   gqlOpts?: GqlOpts;
 }) {
+  const hostLocale = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialBody?.updatedAt ?? null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(
+    initialBody?.updatedAt ?? null
+  );
 
-  const locale = initialBody?.locale ?? initialLocale ?? 'en';
+  const locale = initialBody?.locale ?? initialLocale ?? hostLocale;
   const hasLegacyBlocks = initialBlocks.length > 0;
   const isExistingGrapesProject = initialBody?.format === GRAPESJS_FORMAT;
   const initialProjectData =
-    isExistingGrapesProject && initialBody?.contentJson ? initialBody.contentJson : null;
+    isExistingGrapesProject && initialBody?.contentJson
+      ? initialBody.contentJson
+      : null;
 
   useEffect(() => {
     let disposed = false;
@@ -49,10 +55,11 @@ export function PageBuilder({
       }
 
       try {
-        const [{ default: grapesjs }, { default: presetWebpage }] = await Promise.all([
-          import('grapesjs'),
-          import('grapesjs-preset-webpage')
-        ]);
+        const [{ default: grapesjs }, { default: presetWebpage }] =
+          await Promise.all([
+            import('grapesjs'),
+            import('grapesjs-preset-webpage')
+          ]);
 
         if (disposed || !containerRef.current) {
           return;
@@ -92,7 +99,9 @@ export function PageBuilder({
       } catch (error) {
         if (!disposed) {
           setLoadError(
-            error instanceof Error ? error.message : 'Failed to initialize GrapesJS editor'
+            error instanceof Error
+              ? error.message
+              : 'Failed to initialize GrapesJS editor'
           );
         }
       }
@@ -123,7 +132,10 @@ export function PageBuilder({
           locale,
           format: GRAPESJS_FORMAT,
           content: '',
-          contentJson: editorRef.current.getProjectData() as Record<string, unknown>
+          contentJson: editorRef.current.getProjectData() as Record<
+            string,
+            unknown
+          >
         },
         gqlOpts
       );
@@ -131,7 +143,9 @@ export function PageBuilder({
       setLastSavedAt(updatedBody.updatedAt);
       toast.success('Page project saved');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save page project');
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save page project'
+      );
     } finally {
       setIsSaving(false);
     }
@@ -153,29 +167,36 @@ export function PageBuilder({
                 Last saved: {new Date(lastSavedAt).toLocaleString()}
               </span>
             ) : null}
-            <Button type='button' disabled={!isReady || isSaving} onClick={() => void handleSave()}>
-              {isSaving ? <Loader2 className='mr-2 size-4 animate-spin' /> : null}
+            <Button
+              type='button'
+              disabled={!isReady || isSaving}
+              onClick={() => void handleSave()}
+            >
+              {isSaving ? (
+                <Loader2 className='mr-2 size-4 animate-spin' />
+              ) : null}
               Save project
             </Button>
           </div>
         </div>
 
         {!isExistingGrapesProject || hasLegacyBlocks ? (
-          <div className='bg-amber-50 text-amber-950 border-amber-200 rounded-md border px-4 py-3 text-sm dark:bg-amber-950/40 dark:text-amber-100 dark:border-amber-900'>
+          <div className='rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100'>
             <div className='flex items-start gap-2'>
               <TriangleAlert className='mt-0.5 size-4 shrink-0' />
               <div className='space-y-1'>
                 {!isExistingGrapesProject ? (
                   <p>
-                    This page does not have a saved GrapesJS project yet. The first save will
-                    switch its body format to `grapesjs_v1`.
+                    This page does not have a saved GrapesJS project yet. The
+                    first save will switch its body format to `grapesjs_v1`.
                   </p>
                 ) : null}
                 {hasLegacyBlocks ? (
                   <p>
-                    Legacy block payload is still attached to this page ({initialBlocks.length}{' '}
-                    blocks). It is left untouched for now, so storefront migration can happen
-                    safely and explicitly.
+                    Legacy block payload is still attached to this page (
+                    {initialBlocks.length} blocks). It is left untouched for
+                    now, so storefront migration can happen safely and
+                    explicitly.
                   </p>
                 ) : null}
               </div>
@@ -186,7 +207,7 @@ export function PageBuilder({
 
       <CardContent className='space-y-4'>
         {loadError ? (
-          <div className='rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive'>
+          <div className='border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-4 py-3 text-sm'>
             {loadError}
           </div>
         ) : null}

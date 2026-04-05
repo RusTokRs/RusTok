@@ -32,6 +32,13 @@ struct RegistryLiveApiActionHint {
     write_path: bool,
 }
 
+#[derive(Clone)]
+struct RegistryAutomatedCheckItem {
+    key: String,
+    status: String,
+    detail: String,
+}
+
 fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
         Locale::ru => ru,
@@ -101,6 +108,19 @@ fn registry_request_status_badge_classes(status: &str) -> &'static str {
     if status_eq(status, "published") || status_eq(status, "active") {
         "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
     } else if status_eq(status, "rejected") || status_eq(status, "yanked") {
+        "inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700"
+    } else {
+        "inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+    }
+}
+
+fn validation_feedback_badge_classes(status: &str) -> &'static str {
+    if status_eq(status, "passed") || status_eq(status, "succeeded") {
+        "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
+    } else if status_eq(status, "failed")
+        || status_eq(status, "blocked")
+        || status_eq(status, "rejected")
+    {
         "inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700"
     } else {
         "inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
@@ -281,6 +301,95 @@ fn latest_validation_event(
         .find(|event| is_validation_event_type(&event.event_type))
 }
 
+fn is_validation_job_event_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "validation_job_queued"
+            | "validation_job_started"
+            | "validation_job_succeeded"
+            | "validation_job_failed"
+    )
+}
+
+fn latest_validation_job_event(
+    events: &[RegistryGovernanceEventLifecycle],
+) -> Option<&RegistryGovernanceEventLifecycle> {
+    events
+        .iter()
+        .find(|event| is_validation_job_event_type(&event.event_type))
+}
+
+fn governance_detail_automated_checks(
+    details: &serde_json::Value,
+) -> Vec<RegistryAutomatedCheckItem> {
+    details
+        .get("automated_checks")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let key = item.get("key")?.as_str()?.trim();
+            let status = item.get("status")?.as_str()?.trim();
+            let detail = item.get("detail")?.as_str()?.trim();
+            if key.is_empty() || status.is_empty() || detail.is_empty() {
+                return None;
+            }
+            Some(RegistryAutomatedCheckItem {
+                key: key.to_string(),
+                status: status.to_string(),
+                detail: detail.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn automated_check_label(key: &str, locale: Locale) -> String {
+    match key {
+        "artifact_bundle_contract" => tr(
+            locale,
+            "Artifact bundle contract",
+            "Artifact bundle contract",
+        )
+        .to_string(),
+        _ => humanize_token(key),
+    }
+}
+
+fn validation_job_event_context_lines(
+    event: &RegistryGovernanceEventLifecycle,
+    locale: Locale,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(job_id) = governance_detail_string(&event.details, "job_id") {
+        lines.push(format!("{}: {}", tr(locale, "Job", "Job"), job_id));
+    }
+    if let Some(attempt_number) = governance_detail_i64(&event.details, "attempt_number") {
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Attempt", "Attempt"),
+            attempt_number
+        ));
+    }
+    if let Some(queue_reason) = governance_detail_string(&event.details, "queue_reason") {
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Queue reason", "Queue reason"),
+            humanize_token(&queue_reason)
+        ));
+    }
+    if let Some(request_status) = governance_detail_string(&event.details, "request_status") {
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Request status", "Request status"),
+            humanize_token(&request_status)
+        ));
+    }
+    if let Some(error) = governance_detail_string(&event.details, "error") {
+        lines.push(format!("{}: {}", tr(locale, "Error", "Error"), error));
+    }
+    lines
+}
+
 fn latest_governance_event_of_types<'a>(
     events: &'a [RegistryGovernanceEventLifecycle],
     event_types: &[&str],
@@ -379,7 +488,7 @@ fn registry_review_authority_label(
         .map(|owner| {
             format!(
                 "{} / {} / {}",
-                registry_review_authority_label(owner_binding, locale),
+                owner.owner_actor,
                 tr(locale, "registry admin", "registry admin"),
                 tr(locale, "moderator", "moderator")
             )
@@ -391,6 +500,31 @@ fn registry_review_authority_label(
                 tr(locale, "moderator", "moderator")
             )
         })
+}
+
+fn registry_manage_publish_authority_label(
+    request: &RegistryPublishRequestLifecycle,
+    owner_binding: Option<&RegistryOwnerLifecycle>,
+    locale: Locale,
+) -> String {
+    if let Some(owner) = owner_binding {
+        return format!(
+            "{} / {} / {}",
+            owner.owner_actor,
+            tr(locale, "registry admin", "registry admin"),
+            tr(locale, "moderator", "moderator")
+        );
+    }
+
+    let mut actors = vec![request.requested_by.clone()];
+    if let Some(publisher) = request.publisher_identity.as_ref() {
+        if !actors.iter().any(|actor| actor == publisher) {
+            actors.push(publisher.clone());
+        }
+    }
+    actors.push(tr(locale, "registry admin", "registry admin").to_string());
+    actors.push(tr(locale, "moderator", "moderator").to_string());
+    actors.join(" / ")
 }
 
 fn registry_owner_transfer_authority_label(
@@ -537,28 +671,21 @@ fn registry_review_policy_lines(
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    match owner_binding {
-        Some(_) => lines.push(format!(
-            "{}: {}",
-            tr(locale, "Review authority", "Кто ревьюит"),
-            format!(
-                "{} / {}",
-                owner.owner_actor,
-                tr(
-                    locale,
-                    "governance actor may override",
-                    "governance actor может переопределить"
-                )
-            )
-        )),
-        None => lines.push(
+    lines.push(format!(
+        "{}: {}",
+        tr(locale, "Review authority", "Кто ревьюит"),
+        registry_review_authority_label(owner_binding, locale)
+    ));
+
+    if owner_binding.is_none() {
+        lines.push(
             tr(
                 locale,
                 "No persisted owner binding yet; first publish still needs governance/bootstrap handling before review becomes owner-driven.",
                 "Сохранённой привязки владельца пока нет; первый publish всё ещё требует governance/bootstrap-обработки, прежде чем review станет owner-driven.",
             )
             .to_string(),
-        ),
+        );
     }
 
     lines.push(format!(
@@ -847,6 +974,8 @@ fn registry_live_api_action_lines(
     let owner_actor = owner_binding.map(|owner| owner.owner_actor.as_str());
     let request_actor = request.requested_by.as_str();
     let publisher_identity = request.publisher_identity.as_deref();
+    let manage_publish_authority =
+        registry_manage_publish_authority_label(request, owner_binding, locale);
     let actor_header_hint = |prefer_owner: bool| {
         if prefer_owner {
             owner_actor
@@ -884,18 +1013,7 @@ fn registry_live_api_action_lines(
     if status_eq(&request.status, "artifact_uploaded") || status_eq(&request.status, "submitted") {
         lines.push(RegistryLiveApiActionHint {
             endpoint: format!("POST /v2/catalog/publish/{}/validate", request.id),
-            authority: owner_actor
-                .map(|owner| format!("{} / governance", owner))
-                .unwrap_or_else(|| {
-                    format!(
-                        "{}{}{}",
-                        request_actor,
-                        publisher_identity
-                            .map(|publisher| format!(" / {}", publisher))
-                            .unwrap_or_default(),
-                        " / governance"
-                    )
-                }),
+            authority: manage_publish_authority.clone(),
             note: Some(
                 tr(
                     locale,
@@ -1056,18 +1174,7 @@ fn registry_live_api_action_lines(
     } else if status_eq(&request.status, "rejected") {
         lines.push(RegistryLiveApiActionHint {
             endpoint: "POST /v2/catalog/publish".to_string(),
-            authority: owner_actor
-                .map(|owner| format!("{} / governance", owner))
-                .unwrap_or_else(|| {
-                    format!(
-                        "{}{}{}",
-                        request_actor,
-                        publisher_identity
-                            .map(|publisher| format!(" / {}", publisher))
-                            .unwrap_or_default(),
-                        " / governance"
-                    )
-                }),
+            authority: manage_publish_authority.clone(),
             note: Some(
                 tr(
                     locale,
@@ -1136,18 +1243,7 @@ fn registry_live_api_action_lines(
     if release.is_some_and(|release| status_eq(&release.status, "yanked")) {
         lines.push(RegistryLiveApiActionHint {
             endpoint: "POST /v2/catalog/publish".to_string(),
-            authority: owner_actor
-                .map(|owner| format!("{} / governance", owner))
-                .unwrap_or_else(|| {
-                    format!(
-                        "{}{}{}",
-                        request_actor,
-                        publisher_identity
-                            .map(|publisher| format!(" / {}", publisher))
-                            .unwrap_or_default(),
-                        " / governance"
-                    )
-                }),
+            authority: manage_publish_authority,
             note: Some(
                 tr(
                     locale,
@@ -1244,6 +1340,124 @@ fn validation_stage_recent_history(
         .collect()
 }
 
+fn is_moderation_history_event_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "release_published"
+            | "request_rejected"
+            | "owner_transferred"
+            | "release_yanked"
+            | "validation_stage_running"
+            | "validation_stage_started"
+            | "validation_stage_passed"
+            | "validation_stage_failed"
+            | "validation_stage_blocked"
+    )
+}
+
+fn moderation_history_events(
+    events: &[RegistryGovernanceEventLifecycle],
+    limit: usize,
+) -> Vec<RegistryGovernanceEventLifecycle> {
+    events
+        .iter()
+        .filter(|event| is_moderation_history_event_type(&event.event_type))
+        .take(limit)
+        .cloned()
+        .collect()
+}
+
+fn moderation_history_badge_label(event_type: &str, locale: Locale) -> String {
+    let event_type = match event_type {
+        "validation_stage_started" => "validation_stage_running",
+        other => other,
+    };
+    match event_type {
+        "release_published" => tr(locale, "Approved", "Approved"),
+        "request_rejected" => tr(locale, "Rejected", "Rejected"),
+        "owner_transferred" => tr(locale, "Owner transfer", "Owner transfer"),
+        "release_yanked" => tr(locale, "Yanked", "Yanked"),
+        "validation_stage_running" => tr(locale, "Stage running", "Stage running"),
+        "validation_stage_passed" => tr(locale, "Stage passed", "Stage passed"),
+        "validation_stage_failed" => tr(locale, "Stage failed", "Stage failed"),
+        "validation_stage_blocked" => tr(locale, "Stage blocked", "Stage blocked"),
+        _ => tr(locale, "Decision", "Decision"),
+    }
+    .to_string()
+}
+
+fn moderation_history_badge_status(event_type: &str) -> &'static str {
+    match event_type {
+        "release_published" => "published",
+        "request_rejected" => "rejected",
+        "release_yanked" => "yanked",
+        "validation_stage_failed" => "failed",
+        "validation_stage_blocked" => "blocked",
+        "validation_stage_running" | "validation_stage_started" => "running",
+        _ => "info",
+    }
+}
+
+fn moderation_history_context_lines(
+    event: &RegistryGovernanceEventLifecycle,
+    locale: Locale,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let reason = governance_detail_string(&event.details, "reason");
+    let detail = governance_detail_string(&event.details, "detail");
+    let version = governance_detail_string(&event.details, "version");
+    let stage_key = governance_event_stage_key(event);
+    let attempt_number = governance_detail_i64(&event.details, "attempt_number");
+    let previous_owner = governance_detail_string(&event.details, "previous_owner_actor");
+    let new_owner = governance_detail_string(&event.details, "new_owner_actor")
+        .or_else(|| governance_detail_string(&event.details, "owner_actor"));
+
+    if let Some(version) = version {
+        lines.push(format!(
+            "{}: v{}",
+            tr(locale, "Version", "Version"),
+            version
+        ));
+    }
+
+    if let Some(stage_key) = stage_key {
+        let mut line = format!(
+            "{}: {}",
+            tr(locale, "Stage", "Stage"),
+            follow_up_gate_label(&stage_key, locale)
+        );
+        if let Some(attempt_number) = attempt_number {
+            line.push_str(&format!(
+                " · {} {}",
+                tr(locale, "attempt", "attempt"),
+                attempt_number
+            ));
+        }
+        lines.push(line);
+    }
+
+    if let (Some(previous_owner), Some(new_owner)) = (previous_owner, new_owner) {
+        lines.push(format!(
+            "{}: {} -> {}",
+            tr(locale, "Ownership", "Ownership"),
+            previous_owner,
+            new_owner
+        ));
+    }
+
+    if let Some(reason) = reason {
+        lines.push(format!("{}: {}", tr(locale, "Reason", "Reason"), reason));
+    }
+
+    if let Some(detail) = detail {
+        if !lines.iter().any(|line| line.ends_with(&detail)) {
+            lines.push(format!("{}: {}", tr(locale, "Detail", "Detail"), detail));
+        }
+    }
+
+    lines
+}
+
 fn governance_event_title(event_type: &str, locale: Locale) -> String {
     let event_type = match event_type {
         "validation_stage_started" => "validation_stage_running",
@@ -1300,6 +1514,14 @@ fn governance_event_title(event_type: &str, locale: Locale) -> String {
         ),
         "follow_up_gate_passed" => tr(locale, "Follow-up gate passed", "Внешний gate пройден"),
         "follow_up_gate_failed" => tr(locale, "Follow-up gate failed", "Внешний gate провален"),
+        "validation_job_queued" => tr(locale, "Validation job queued", "Validation job queued"),
+        "validation_job_started" => tr(locale, "Validation job running", "Validation job running"),
+        "validation_job_succeeded" => tr(
+            locale,
+            "Validation job succeeded",
+            "Validation job succeeded",
+        ),
+        "validation_job_failed" => tr(locale, "Validation job failed", "Validation job failed"),
         _ => return humanize_token(event_type),
     }
     .to_string()
@@ -1464,6 +1686,37 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
                 )
                 .to_string()
             }),
+        "validation_job_queued"
+        | "validation_job_started"
+        | "validation_job_succeeded"
+        | "validation_job_failed" => {
+            let status = match event_type {
+                "validation_job_queued" => tr(locale, "queued", "queued"),
+                "validation_job_started" => tr(locale, "is running", "is running"),
+                "validation_job_succeeded" => tr(locale, "succeeded", "succeeded"),
+                "validation_job_failed" => tr(locale, "failed", "failed"),
+                _ => unreachable!(),
+            };
+
+            let mut parts = vec![format!(
+                "{} {status}",
+                tr(locale, "Validation job", "Validation job")
+            )];
+            if let Some(attempt) = governance_detail_i64(&event.details, "attempt_number") {
+                parts.push(format!("{} {}", tr(locale, "attempt", "attempt"), attempt));
+            }
+            if let Some(queue_reason) = governance_detail_string(&event.details, "queue_reason") {
+                parts.push(format!(
+                    "{}: {}",
+                    tr(locale, "reason", "reason"),
+                    humanize_token(&queue_reason)
+                ));
+            }
+            if let Some(error) = governance_detail_string(&event.details, "error") {
+                parts.push(error);
+            }
+            parts.join(" · ")
+        }
         "release_published" => {
             let version_part = version
                 .map(|value| format!("v{value}"))
@@ -4082,6 +4335,8 @@ pub fn ModuleDetailPanel(
                             .as_ref()
                             .map(|lifecycle| lifecycle.recent_events.clone())
                             .unwrap_or_default();
+                        let recent_moderation_history =
+                            moderation_history_events(&recent_governance_events, 6);
                         let validation_stages = module
                             .registry_lifecycle
                             .as_ref()
@@ -4097,6 +4352,8 @@ pub fn ModuleDetailPanel(
                         let follow_up_gates_for_show = StoredValue::new(follow_up_gates.clone());
                         let recent_governance_events_for_show =
                             StoredValue::new(recent_governance_events.clone());
+                        let recent_moderation_history_for_show =
+                            StoredValue::new(recent_moderation_history.clone());
                         let validation_warning_items = latest_registry_request
                             .as_ref()
                             .map(|request| request.warnings.clone())
@@ -4130,6 +4387,23 @@ pub fn ModuleDetailPanel(
                                     event.actor.clone(),
                                 )
                             });
+                        let automated_check_items = latest_validation_event(&recent_governance_events)
+                            .map(|event| governance_detail_automated_checks(&event.details))
+                            .unwrap_or_default();
+                        let automated_check_items_for_show =
+                            StoredValue::new(automated_check_items.clone());
+                        let latest_validation_job_summary = latest_validation_job_event(
+                            &recent_governance_events,
+                        )
+                        .map(|event| {
+                            (
+                                governance_event_title(&event.event_type, locale),
+                                governance_event_summary(event, locale),
+                                event.created_at.clone(),
+                                event.actor.clone(),
+                                validation_job_event_context_lines(event, locale),
+                            )
+                        });
                         let follow_up_gate_summary =
                             follow_up_gate_status_summary(&follow_up_gates, locale);
                         let validation_stage_summary =
@@ -4140,12 +4414,15 @@ pub fn ModuleDetailPanel(
                             StoredValue::new(validation_error_items.clone());
                         let has_validation_warnings = !validation_warning_items.is_empty();
                         let has_validation_errors = !validation_error_items.is_empty();
+                        let has_automated_check_items = !automated_check_items.is_empty();
                         let show_validation_summary = has_validation_warnings
                             || has_validation_errors
                             || validation_rejection_reason.is_some()
                             || validation_outcome_summary.is_some()
                             || review_ready
-                            || latest_validation_event_summary.is_some();
+                            || latest_validation_event_summary.is_some()
+                            || latest_validation_job_summary.is_some()
+                            || has_automated_check_items;
                         let show_follow_up_gates = !follow_up_gates.is_empty();
                         let show_validation_stages = !validation_stages.is_empty();
                         let governance_hint = registry_governance_hint(&module, locale);
@@ -4901,6 +5178,70 @@ pub fn ModuleDetailPanel(
                                                     </div>
                                                 }
                                             })}
+                                            {latest_validation_job_summary.as_ref().map(|(title, summary, created_at, actor, context_lines)| {
+                                                let has_context_lines = !context_lines.is_empty();
+                                                let context_lines_for_show = StoredValue::new(context_lines.clone());
+                                                view! {
+                                                    <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                                                        <div class="flex flex-wrap items-start justify-between gap-2">
+                                                            <div class="space-y-1">
+                                                                <span class=validation_feedback_badge_classes(
+                                                                    if title.contains("failed") || title.contains("Failed") {
+                                                                        "failed"
+                                                                    } else if title.contains("succeeded") || title.contains("Succeeded") {
+                                                                        "succeeded"
+                                                                    } else {
+                                                                        "running"
+                                                                    }
+                                                                )>
+                                                                    {tr(locale, "Validation job trace", "Validation job trace")}
+                                                                </span>
+                                                                <p class="font-medium text-card-foreground">{title.clone()}</p>
+                                                            </div>
+                                                            <span class="text-[11px] text-muted-foreground">{created_at.clone()}</span>
+                                                        </div>
+                                                        <p class="mt-1">{summary.clone()}</p>
+                                                        <Show when=move || has_context_lines>
+                                                            <div class="mt-2 flex flex-wrap gap-2">
+                                                                {context_lines_for_show.get_value().into_iter().map(|line| {
+                                                                    view! {
+                                                                        <span class="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+                                                                            {line}
+                                                                        </span>
+                                                                    }
+                                                                }).collect_view()}
+                                                            </div>
+                                                        </Show>
+                                                        <p class="mt-2 text-[11px] text-muted-foreground">
+                                                            {format!("{}: {}", tr(locale, "Actor", "Actor"), actor)}
+                                                        </p>
+                                                    </div>
+                                                }
+                                            })}
+                                            <Show when=move || has_automated_check_items>
+                                                <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                                                    <p class="font-medium text-card-foreground">
+                                                        {tr(locale, "Automated checks", "Automated checks")}
+                                                    </p>
+                                                    <div class="mt-2 space-y-2">
+                                                        {automated_check_items_for_show.get_value().into_iter().map(|check| {
+                                                            view! {
+                                                                <div class="rounded border border-border/70 bg-background/80 px-2 py-2">
+                                                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                                                        <span class="font-medium text-card-foreground">
+                                                                            {automated_check_label(&check.key, locale)}
+                                                                        </span>
+                                                                        <span class=validation_feedback_badge_classes(&check.status)>
+                                                                            {humanize_token(&check.status)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p class="mt-1">{check.detail}</p>
+                                                                </div>
+                                                            }
+                                                        }).collect_view()}
+                                                    </div>
+                                                </div>
+                                            </Show>
                                             <Show when=move || has_validation_warnings>
                                                 <div class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                                                     <p class="font-medium">{tr(locale, "Warnings", "Предупреждения")}</p>
@@ -5460,6 +5801,54 @@ pub fn ModuleDetailPanel(
                                         </div>
                                     </Show>
                                     <Show when=move || !recent_governance_events_for_show.get_value().is_empty()>
+                                        <Show when=move || !recent_moderation_history_for_show.get_value().is_empty()>
+                                            <div class="mt-4 space-y-2">
+                                                <p class="text-xs uppercase tracking-wide text-muted-foreground">
+                                                    {tr(locale, "Moderation history", "Moderation history")}
+                                                </p>
+                                                {recent_moderation_history_for_show.get_value().into_iter().map(|event| {
+                                                    let title = governance_event_title(&event.event_type, locale);
+                                                    let summary = governance_event_summary(&event, locale);
+                                                    let actor = event.actor.clone();
+                                                    let created_at = event.created_at.clone();
+                                                    let context_lines =
+                                                        moderation_history_context_lines(&event, locale);
+                                                    let has_context_lines = !context_lines.is_empty();
+                                                    let context_lines_for_show =
+                                                        StoredValue::new(context_lines.clone());
+                                                    view! {
+                                                        <div class="rounded-lg border border-border bg-background px-3 py-3 text-sm">
+                                                            <div class="flex flex-wrap items-start justify-between gap-2">
+                                                                <div class="space-y-1">
+                                                                    <span class=registry_request_status_badge_classes(
+                                                                        moderation_history_badge_status(&event.event_type)
+                                                                    )>
+                                                                        {moderation_history_badge_label(&event.event_type, locale)}
+                                                                    </span>
+                                                                    <p class="font-medium text-card-foreground">{title}</p>
+                                                                </div>
+                                                                <span class="text-xs text-muted-foreground">{created_at}</span>
+                                                            </div>
+                                                            <p class="mt-2 text-sm text-muted-foreground">{summary}</p>
+                                                            <Show when=move || has_context_lines>
+                                                                <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                                                    {context_lines_for_show.get_value().into_iter().map(|line| {
+                                                                        view! {
+                                                                            <span class="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-2 py-1">
+                                                                                {line}
+                                                                            </span>
+                                                                        }
+                                                                    }).collect_view()}
+                                                                </div>
+                                                            </Show>
+                                                            <p class="mt-2 text-xs text-muted-foreground">
+                                                                {format!("{}: {}", tr(locale, "Actor", "Actor"), actor)}
+                                                            </p>
+                                                        </div>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        </Show>
                                         <div class="mt-4 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
                                                 {tr(locale, "Audit trail", "Аудит-след")}
@@ -5947,5 +6336,97 @@ pub fn ModuleDetailPanel(
                 }}
             </Show>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn sample_owner(owner_actor: &str) -> RegistryOwnerLifecycle {
+        RegistryOwnerLifecycle {
+            owner_actor: owner_actor.to_string(),
+            bound_by: "registry:admin".to_string(),
+            bound_at: "2026-04-05T10:00:00Z".to_string(),
+            updated_at: "2026-04-05T10:00:00Z".to_string(),
+        }
+    }
+
+    fn sample_event(
+        event_type: &str,
+        details: serde_json::Value,
+    ) -> RegistryGovernanceEventLifecycle {
+        RegistryGovernanceEventLifecycle {
+            id: "evt_1".to_string(),
+            event_type: event_type.to_string(),
+            actor: "registry:admin".to_string(),
+            publisher: None,
+            details,
+            created_at: "2026-04-05T10:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn governance_detail_automated_checks_parses_only_valid_items() {
+        let checks = governance_detail_automated_checks(&json!({
+            "automated_checks": [
+                {
+                    "key": "artifact_bundle_contract",
+                    "status": "passed",
+                    "detail": "Bundle contract passed."
+                },
+                {
+                    "key": "artifact_bundle_contract",
+                    "status": "",
+                    "detail": "Should be ignored."
+                }
+            ]
+        }));
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].key, "artifact_bundle_contract");
+        assert_eq!(checks[0].status, "passed");
+        assert_eq!(checks[0].detail, "Bundle contract passed.");
+    }
+
+    #[test]
+    fn validation_job_event_context_lines_include_trace_fields() {
+        let event = sample_event(
+            "validation_job_failed",
+            json!({
+                "job_id": "rvj_123",
+                "attempt_number": 2,
+                "queue_reason": "validation_resumed",
+                "request_status": "rejected",
+                "error": "checksum mismatch"
+            }),
+        );
+
+        let lines = validation_job_event_context_lines(&event, Locale::En);
+
+        assert!(lines.iter().any(|line| line == "Job: rvj_123"));
+        assert!(lines.iter().any(|line| line == "Attempt: 2"));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Queue reason:") && line.contains("Validation Resumed")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Request status:") && line.contains("Rejected")));
+        assert!(lines.iter().any(|line| line == "Error: checksum mismatch"));
+    }
+
+    #[test]
+    fn registry_review_policy_lines_drop_legacy_override_copy() {
+        let owner = sample_owner("owner:module");
+        let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::En);
+
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some("Review authority: owner:module / registry admin / moderator")
+        );
+        assert!(!lines
+            .iter()
+            .any(|line| line.contains("governance actor may override")));
     }
 }

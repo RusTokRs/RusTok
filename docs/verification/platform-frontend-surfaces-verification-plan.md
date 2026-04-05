@@ -117,7 +117,7 @@
 ## Фаза 13: Native i18n contract
 
 > [!NOTE]
-> Эта фаза закрыта как migration wave. Остаточный remediation scope после неё ведётся в `docs/concepts/platform-remediation-execution-plan.md` и не должен переоткрывать package-owned UI migration как pending работу.
+> Эта фаза закрыта как migration wave. Остаточный future scope описывается в live docs, прежде всего в `docs/architecture/i18n.md` и `apps/server/docs/loco-core-integration-plan.md`, и не должен переоткрывать package-owned UI migration как pending работу.
 
 - [x] Server runtime locale chain отражён одинаково в host-приложениях и module-owned UI packages: `query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`.
 - [x] `Content-Language` и effective locale описаны как platform contract для SSR/GraphQL/server-function ответов.

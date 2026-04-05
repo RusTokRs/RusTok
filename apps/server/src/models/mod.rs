@@ -3,6 +3,7 @@
 pub mod _entities;
 pub mod build;
 pub mod flex_entries;
+pub mod flex_schema_translations;
 pub mod flex_schemas;
 pub mod mcp_audit_logs;
 pub mod mcp_clients;

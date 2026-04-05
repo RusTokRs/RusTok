@@ -1552,6 +1552,7 @@ fn registry_endpoint_uses_loopback(endpoint: &str) -> bool {
         .is_some_and(|host| {
             host.eq_ignore_ascii_case("localhost")
                 || host
+                    .trim_matches(|ch| ch == '[' || ch == ']')
                     .parse::<IpAddr>()
                     .map(|address| address.is_loopback())
                     .unwrap_or(false)
@@ -2041,14 +2042,17 @@ fn to_pascal_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        auto_approve_argument, build_module_test_plan, build_owner_transfer_registry_request,
-        build_publish_registry_request, build_validation_stage_registry_request,
-        build_yank_registry_request, registry_endpoint_uses_loopback,
-        resolve_workspace_inherited_string, validate_module_publish_contract,
-        validate_module_ui_surface_contract, ModuleMarketplacePreview,
-        ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePublishDryRunPreview,
-        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleValidationStageDryRunPreview,
-        ModuleYankDryRunPreview, REGISTRY_MUTATION_SCHEMA_VERSION,
+        auto_approve_argument, build_live_owner_transfer_registry_request,
+        build_live_validation_stage_registry_request, build_module_test_plan,
+        build_owner_transfer_registry_request, build_publish_registry_request,
+        build_validation_stage_registry_request, build_yank_registry_request, detail_argument,
+        module_owner_transfer_command, module_stage_command, reason_argument,
+        registry_endpoint_uses_loopback, resolve_workspace_inherited_string,
+        validate_module_publish_contract, validate_module_ui_surface_contract,
+        ModuleMarketplacePreview, ModuleOwnerTransferDryRunPreview, ModulePackageManifest,
+        ModulePublishDryRunPreview, ModuleUiPackagePreview, ModuleUiPackagesPreview,
+        ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview,
+        REGISTRY_MUTATION_SCHEMA_VERSION,
     };
     use std::path::Path;
 
@@ -2283,6 +2287,175 @@ mod tests {
     }
 
     #[test]
+    fn build_validation_stage_registry_request_serializes_requeue_contract() {
+        let preview = ModuleValidationStageDryRunPreview {
+            action: "validation_stage".to_string(),
+            request_id: "rpr_retry".to_string(),
+            stage: "targeted_tests".to_string(),
+            status: "queued".to_string(),
+            detail: Some("Waiting for external rerun.".to_string()),
+            requeue: true,
+        };
+
+        let request_body = serde_json::to_value(build_validation_stage_registry_request(&preview))
+            .expect("stage request should serialize");
+
+        assert_eq!(
+            request_body
+                .get("stage")
+                .and_then(serde_json::Value::as_str),
+            Some("targeted_tests")
+        );
+        assert_eq!(
+            request_body
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("queued")
+        );
+        assert_eq!(
+            request_body
+                .get("requeue")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            request_body
+                .get("detail")
+                .and_then(serde_json::Value::as_str),
+            Some("Waiting for external rerun.")
+        );
+        assert_eq!(
+            request_body
+                .get("dry_run")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn build_live_validation_stage_registry_request_turns_off_dry_run() {
+        let preview = ModuleValidationStageDryRunPreview {
+            action: "validation_stage".to_string(),
+            request_id: "rpr_live".to_string(),
+            stage: "security_policy_review".to_string(),
+            status: "blocked".to_string(),
+            detail: Some("Waiting for manual policy sign-off.".to_string()),
+            requeue: false,
+        };
+
+        let request_body =
+            serde_json::to_value(build_live_validation_stage_registry_request(&preview))
+                .expect("live stage request should serialize");
+
+        assert_eq!(
+            request_body
+                .get("dry_run")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            request_body
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("blocked")
+        );
+    }
+
+    #[test]
+    fn build_validation_stage_registry_request_preserves_null_detail() {
+        let preview = ModuleValidationStageDryRunPreview {
+            action: "validation_stage".to_string(),
+            request_id: "rpr_null".to_string(),
+            stage: "compile_smoke".to_string(),
+            status: "running".to_string(),
+            detail: None,
+            requeue: false,
+        };
+
+        let request_body = serde_json::to_value(build_validation_stage_registry_request(&preview))
+            .expect("stage request should serialize");
+
+        assert!(
+            request_body.get("detail").is_some(),
+            "stage request keeps explicit detail field for API contract stability"
+        );
+        assert!(
+            request_body
+                .get("detail")
+                .is_some_and(serde_json::Value::is_null),
+            "detail should serialize as null when operator omitted it"
+        );
+    }
+
+    #[test]
+    fn module_stage_command_rejects_unknown_status() {
+        let args = vec![
+            "rpr_test".to_string(),
+            "compile_smoke".to_string(),
+            "skipped".to_string(),
+        ];
+
+        let error = module_stage_command(&args).expect_err("unsupported stage status must fail");
+
+        assert!(error
+            .to_string()
+            .contains("module stage status 'skipped' is not supported"));
+    }
+
+    #[test]
+    fn module_stage_command_rejects_requeue_without_queued_status() {
+        let args = vec![
+            "rpr_test".to_string(),
+            "compile_smoke".to_string(),
+            "passed".to_string(),
+            "--requeue".to_string(),
+        ];
+
+        let error = module_stage_command(&args)
+            .expect_err("requeue should only be accepted for queued status");
+
+        assert!(error
+            .to_string()
+            .contains("module stage --requeue requires status 'queued'"));
+    }
+
+    #[test]
+    fn reason_argument_trims_and_ignores_blank_values() {
+        assert_eq!(
+            reason_argument(&["--reason".to_string(), "  ownership move  ".to_string()]),
+            Some("ownership move".to_string())
+        );
+        assert_eq!(
+            reason_argument(&["--reason".to_string(), "   ".to_string()]),
+            None
+        );
+    }
+
+    #[test]
+    fn detail_argument_trims_and_ignores_blank_values() {
+        assert_eq!(
+            detail_argument(&["--detail".to_string(), "  external runner  ".to_string()]),
+            Some("external runner".to_string())
+        );
+        assert_eq!(
+            detail_argument(&["--detail".to_string(), "   ".to_string()]),
+            None
+        );
+    }
+
+    #[test]
+    fn module_owner_transfer_command_rejects_empty_new_owner_actor() {
+        let args = vec!["blog".to_string(), "   ".to_string()];
+
+        let error = module_owner_transfer_command(&args)
+            .expect_err("empty new owner actor must fail before manifest lookup");
+
+        assert!(error
+            .to_string()
+            .contains("module owner-transfer requires a non-empty new owner actor"));
+    }
+
+    #[test]
     fn build_yank_registry_request_serializes_v2_contract() {
         let preview = ModuleYankDryRunPreview {
             action: "yank".to_string(),
@@ -2340,6 +2513,28 @@ mod tests {
     }
 
     #[test]
+    fn build_live_owner_transfer_registry_request_turns_off_dry_run() {
+        let preview = ModuleOwnerTransferDryRunPreview {
+            action: "owner_transfer".to_string(),
+            slug: "blog".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            current_local_version: "1.2.3".to_string(),
+            package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+            new_owner_actor: "publisher:comments".to_string(),
+            reason: Some("Transfer to the comments publisher".to_string()),
+        };
+
+        let request_body = serde_json::to_value(build_live_owner_transfer_registry_request(
+            &preview,
+            preview.reason.clone(),
+        ))
+        .expect("live owner transfer request should serialize");
+
+        assert_eq!(request_body["dry_run"], false);
+        assert_eq!(request_body["new_owner_actor"], "publisher:comments");
+    }
+
+    #[test]
     fn registry_endpoint_uses_loopback_for_local_urls() {
         assert!(registry_endpoint_uses_loopback(
             "http://127.0.0.1:5150/v2/catalog/publish"
@@ -2349,6 +2544,12 @@ mod tests {
         ));
         assert!(!registry_endpoint_uses_loopback(
             "https://modules.rustok.dev/v2/catalog/publish"
+        ));
+        assert!(registry_endpoint_uses_loopback(
+            "http://[::1]:5150/v2/catalog/publish"
+        ));
+        assert!(!registry_endpoint_uses_loopback(
+            "http://0.0.0.0:5150/v2/catalog/publish"
         ));
     }
 

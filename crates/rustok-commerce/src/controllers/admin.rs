@@ -1626,6 +1626,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-ORDER-1".to_string()),
                         title: "Admin Order".to_string(),
                         quantity: 2,
@@ -1740,6 +1741,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-ORDER-LIST-1".to_string()),
                         title: "Admin List Order 1".to_string(),
                         quantity: 1,
@@ -1761,6 +1763,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-ORDER-LIST-2".to_string()),
                         title: "Admin List Order 2".to_string(),
                         quantity: 1,
@@ -1859,6 +1862,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-PAYMENT-LIST-1".to_string()),
                         title: "Admin Payment List 1".to_string(),
                         quantity: 1,
@@ -1880,6 +1884,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-PAYMENT-LIST-2".to_string()),
                         title: "Admin Payment List 2".to_string(),
                         quantity: 1,
@@ -2465,6 +2470,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-FULFILLMENT-LIST-1".to_string()),
                         title: "Admin Fulfillment List 1".to_string(),
                         quantity: 1,
@@ -2486,6 +2492,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-FULFILLMENT-LIST-2".to_string()),
                         title: "Admin Fulfillment List 2".to_string(),
                         quantity: 1,
@@ -2651,6 +2658,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-ORDER-LIFECYCLE-1".to_string()),
                         title: "Admin Lifecycle Order".to_string(),
                         quantity: 1,
@@ -2803,6 +2811,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-ORDER-CANCEL-1".to_string()),
                         title: "Admin Cancel Order".to_string(),
                         quantity: 1,
@@ -2929,6 +2938,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-PAYMENT-1".to_string()),
                         title: "Admin Payment Order".to_string(),
                         quantity: 1,
@@ -3102,6 +3112,7 @@ mod tests {
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
                         sku: Some("ADMIN-FULLFILLMENT-1".to_string()),
                         title: "Admin Fulfillment Order".to_string(),
                         quantity: 1,

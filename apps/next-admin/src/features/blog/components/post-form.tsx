@@ -1,10 +1,16 @@
 'use client';
 
-import { FormInput, FormTextarea, FormSwitch, FormSelect } from '@/shared/ui/forms';
+import {
+  FormInput,
+  FormTextarea,
+  FormSwitch,
+  FormSelect
+} from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
@@ -25,7 +31,7 @@ const formSchema = z
   .object({
     title: z.string().min(2, 'Title must be at least 2 characters.'),
     slug: z.string().optional(),
-    locale: z.string().min(2).default('en'),
+    locale: z.string().min(2),
     bodyFormat: z.enum(['markdown', 'rt_json_v1']).default('markdown'),
     body: z.string().default(''),
     contentJson: z.string().optional(),
@@ -66,7 +72,10 @@ const formSchema = z
 
 type FormValues = z.infer<typeof formSchema>;
 
-function resolveInitialDoc(initialData: PostResponse | null, locale: string): RtDoc {
+function resolveInitialDoc(
+  initialData: PostResponse | null,
+  locale: string
+): RtDoc {
   if (initialData?.contentJson) {
     try {
       return extractRtDoc(initialData.contentJson, locale);
@@ -92,15 +101,18 @@ export default function PostForm({
   gqlOpts?: GqlOpts;
 }) {
   const router = useRouter();
-  const defaultLocale = 'en';
+  const hostLocale = useLocale();
+  const defaultLocale = initialData?.locale?.trim() || hostLocale;
   const initialDoc = useMemo(
     () => resolveInitialDoc(initialData, defaultLocale),
-    [initialData]
+    [defaultLocale, initialData]
   );
   const [rtDoc, setRtDoc] = useState<RtDoc>(initialDoc);
   const [migrationWarnings, setMigrationWarnings] = useState<string[]>(
     initialData?.body?.trim() && !initialData?.contentJson
-      ? ['Legacy markdown detected. Convert it to rt_json_v1 for rich editor features.']
+      ? [
+          'Legacy markdown detected. Convert it to rt_json_v1 for rich editor features.'
+        ]
       : []
   );
 
@@ -110,7 +122,9 @@ export default function PostForm({
     locale: defaultLocale,
     bodyFormat: initialData?.contentJson ? 'rt_json_v1' : 'markdown',
     body: initialData?.body ?? '',
-    contentJson: initialData?.contentJson ? stringifyRtDoc(initialDoc, defaultLocale) : '',
+    contentJson: initialData?.contentJson
+      ? stringifyRtDoc(initialDoc, defaultLocale)
+      : '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
     featuredImageUrl: initialData?.featuredImageUrl ?? '',
@@ -161,7 +175,10 @@ export default function PostForm({
 
   async function onSubmit(values: FormValues) {
     const tags = values.tags
-      ? values.tags.split(',').map((t) => t.trim()).filter(Boolean)
+      ? values.tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
       : [];
 
     const contentJson =
@@ -174,35 +191,42 @@ export default function PostForm({
 
     try {
       if (initialData) {
-        await updatePost(initialData.id, {
-          title: values.title,
-          slug: values.slug || undefined,
-          locale: values.locale,
-          body: values.body,
-          bodyFormat: values.bodyFormat,
-          contentJson,
-          excerpt: values.excerpt || undefined,
-          tags,
-          featuredImageUrl: values.featuredImageUrl || undefined,
-          seoTitle: values.seoTitle || undefined,
-          seoDescription: values.seoDescription || undefined
-        }, gqlOpts);
+        await updatePost(
+          initialData.id,
+          {
+            title: values.title,
+            slug: values.slug || undefined,
+            locale: values.locale,
+            body: values.body,
+            bodyFormat: values.bodyFormat,
+            contentJson,
+            excerpt: values.excerpt || undefined,
+            tags,
+            featuredImageUrl: values.featuredImageUrl || undefined,
+            seoTitle: values.seoTitle || undefined,
+            seoDescription: values.seoDescription || undefined
+          },
+          gqlOpts
+        );
         toast.success('Post updated');
       } else {
-        await createPost({
-          title: values.title,
-          slug: values.slug || undefined,
-          locale: values.locale,
-          body: values.body,
-          bodyFormat: values.bodyFormat,
-          contentJson,
-          excerpt: values.excerpt || undefined,
-          publish: values.publish,
-          tags,
-          featuredImageUrl: values.featuredImageUrl || undefined,
-          seoTitle: values.seoTitle || undefined,
-          seoDescription: values.seoDescription || undefined
-        }, gqlOpts);
+        await createPost(
+          {
+            title: values.title,
+            slug: values.slug || undefined,
+            locale: values.locale,
+            body: values.body,
+            bodyFormat: values.bodyFormat,
+            contentJson,
+            excerpt: values.excerpt || undefined,
+            publish: values.publish,
+            tags,
+            featuredImageUrl: values.featuredImageUrl || undefined,
+            seoTitle: values.seoTitle || undefined,
+            seoDescription: values.seoDescription || undefined
+          },
+          gqlOpts
+        );
         toast.success('Post created');
       }
       router.push('/dashboard/blog');
@@ -222,13 +246,35 @@ export default function PostForm({
       <CardContent>
         <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
-            <FormInput control={form.control} name='title' label='Title' placeholder='Enter post title' required />
-            <FormInput control={form.control} name='slug' label='Slug' placeholder='auto-generated-if-empty' />
+            <FormInput
+              control={form.control}
+              name='title'
+              label='Title'
+              placeholder='Enter post title'
+              required
+            />
+            <FormInput
+              control={form.control}
+              name='slug'
+              label='Slug'
+              placeholder='auto-generated-if-empty'
+            />
           </div>
 
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
-            <FormInput control={form.control} name='locale' label='Locale' placeholder='en' required />
-            <FormInput control={form.control} name='tags' label='Tags' placeholder='rust, blog, news' />
+            <FormInput
+              control={form.control}
+              name='locale'
+              label='Locale'
+              placeholder='Host locale'
+              required
+            />
+            <FormInput
+              control={form.control}
+              name='tags'
+              label='Tags'
+              placeholder='rust, blog, news'
+            />
           </div>
 
           <FormSelect
@@ -243,8 +289,19 @@ export default function PostForm({
 
           {watchedBodyFormat === 'markdown' ? (
             <>
-              <FormTextarea control={form.control} name='body' label='Body' placeholder='Write your post content...' required config={{ rows: 12 }} />
-              <Button type='button' variant='outline' onClick={convertMarkdownToRtJson}>
+              <FormTextarea
+                control={form.control}
+                name='body'
+                label='Body'
+                placeholder='Write your post content...'
+                required
+                config={{ rows: 12 }}
+              />
+              <Button
+                type='button'
+                variant='outline'
+                onClick={convertMarkdownToRtJson}
+              >
                 Convert markdown to rt_json_v1
               </Button>
             </>
@@ -253,7 +310,8 @@ export default function PostForm({
               label='Body (rt_json_v1)'
               value={rtDoc}
               onChange={(doc) => {
-                const locale = form.getValues('locale')?.trim() || defaultLocale;
+                const locale =
+                  form.getValues('locale')?.trim() || defaultLocale;
                 setRtDoc(doc);
                 form.setValue('contentJson', stringifyRtDoc(doc, locale), {
                   shouldValidate: true
@@ -276,7 +334,7 @@ export default function PostForm({
           )}
 
           {watchedBodyFormat === 'rt_json_v1' && (
-            <pre className='max-h-52 overflow-auto rounded-md border bg-muted p-3 text-xs'>
+            <pre className='bg-muted max-h-52 overflow-auto rounded-md border p-3 text-xs'>
               {form.watch('contentJson')}
             </pre>
           )}
@@ -289,14 +347,35 @@ export default function PostForm({
             config={{ rows: 3, maxLength: 1000, showCharCount: true }}
           />
 
-          <FormInput control={form.control} name='featuredImageUrl' label='Featured Image URL' placeholder='https://...' />
+          <FormInput
+            control={form.control}
+            name='featuredImageUrl'
+            label='Featured Image URL'
+            placeholder='https://...'
+          />
 
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
-            <FormInput control={form.control} name='seoTitle' label='SEO Title' placeholder='SEO title override' />
-            <FormInput control={form.control} name='seoDescription' label='SEO Description' placeholder='SEO meta description' />
+            <FormInput
+              control={form.control}
+              name='seoTitle'
+              label='SEO Title'
+              placeholder='SEO title override'
+            />
+            <FormInput
+              control={form.control}
+              name='seoDescription'
+              label='SEO Description'
+              placeholder='SEO meta description'
+            />
           </div>
 
-          {!initialData && <FormSwitch control={form.control} name='publish' label='Publish immediately' />}
+          {!initialData && (
+            <FormSwitch
+              control={form.control}
+              name='publish'
+              label='Publish immediately'
+            />
+          )}
 
           <Button type='submit'>
             {initialData ? 'Update Post' : 'Create Post'}

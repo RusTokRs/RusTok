@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use rustok_core::{build_locale_candidates, normalize_locale_tag};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -47,10 +48,9 @@ pub fn build_ui_message_catalog(bundles: &[(&str, &str)]) -> UiMessageCatalog {
     let mut catalog = UiMessageCatalog::new();
 
     for (locale, bundle) in bundles {
-        let locale = locale.trim().to_ascii_lowercase();
-        if locale.is_empty() {
+        let Some(locale) = normalize_locale_tag(locale) else {
             continue;
-        }
+        };
 
         let value = serde_json::from_str::<Value>(bundle).unwrap_or(Value::Null);
         let mut messages = BTreeMap::new();
@@ -91,32 +91,7 @@ pub fn resolve_ui_message_or_fallback(
 }
 
 fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<String> {
-    let mut candidates = Vec::new();
-    push_locale_candidate(&mut candidates, locale);
-    push_locale_candidate(&mut candidates, Some(default_locale));
-    push_locale_candidate(&mut candidates, Some("en"));
-    candidates
-}
-
-fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>) {
-    let Some(locale) = locale else {
-        return;
-    };
-
-    let normalized = locale.trim().replace('_', "-").to_ascii_lowercase();
-    if normalized.is_empty() {
-        return;
-    }
-
-    if !candidates.iter().any(|value| value == &normalized) {
-        candidates.push(normalized.clone());
-    }
-
-    if let Some((language, _)) = normalized.split_once('-') {
-        if !language.is_empty() && !candidates.iter().any(|value| value == language) {
-            candidates.push(language.to_string());
-        }
-    }
+    build_locale_candidates([locale, Some(default_locale), Some("en")], true)
 }
 
 fn flatten_ui_messages(value: &Value, prefix: &str, target: &mut BTreeMap<String, String>) {

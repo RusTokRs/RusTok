@@ -8,8 +8,6 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
     pub fields_config: Json,
     pub settings: Json,
     pub is_active: bool,
@@ -27,6 +25,8 @@ pub enum Relation {
     Tenant,
     #[sea_orm(has_many = "super::flex_entries::Entity")]
     FlexEntries,
+    #[sea_orm(has_many = "super::flex_schema_translations::Entity")]
+    FlexSchemaTranslations,
 }
 
 impl Related<super::tenants::Entity> for Entity {
@@ -38,6 +38,12 @@ impl Related<super::tenants::Entity> for Entity {
 impl Related<super::flex_entries::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::FlexEntries.def()
+    }
+}
+
+impl Related<super::flex_schema_translations::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::FlexSchemaTranslations.def()
     }
 }
 

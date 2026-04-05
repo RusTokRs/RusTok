@@ -1,12 +1,12 @@
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use crate::{
-    dto::{CartResponse, ShippingOptionResponse},
+    dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
     entities::{product, product_variant},
-    CommerceResult,
+    CommerceResult, FulfillmentService,
 };
 
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
@@ -33,6 +33,27 @@ pub fn shipping_profile_slug_from_product_metadata(metadata: &Value) -> String {
                 .and_then(normalize_shipping_profile_slug)
         })
         .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string())
+}
+
+pub fn product_shipping_profile_slug(
+    product_shipping_profile_slug: Option<&str>,
+    product_metadata: &Value,
+) -> String {
+    product_shipping_profile_slug
+        .and_then(normalize_shipping_profile_slug)
+        .unwrap_or_else(|| shipping_profile_slug_from_product_metadata(product_metadata))
+}
+
+pub fn effective_shipping_profile_slug(
+    product_default_shipping_profile_slug: Option<&str>,
+    product_metadata: &Value,
+    variant_shipping_profile_slug: Option<&str>,
+) -> String {
+    variant_shipping_profile_slug
+        .and_then(normalize_shipping_profile_slug)
+        .unwrap_or_else(|| {
+            product_shipping_profile_slug(product_default_shipping_profile_slug, product_metadata)
+        })
 }
 
 pub fn is_shipping_option_compatible_with_profiles(
@@ -68,51 +89,116 @@ fn allowed_shipping_profile_slugs_from_option(
 }
 
 pub async fn load_cart_shipping_profile_slugs(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
+    _db: &DatabaseConnection,
+    _tenant_id: Uuid,
     cart: &CartResponse,
 ) -> CommerceResult<BTreeSet<String>> {
-    let variant_ids: Vec<Uuid> = cart
+    Ok(cart
         .line_items
         .iter()
-        .filter_map(|item| item.variant_id)
-        .collect();
-    let variant_to_product = if variant_ids.is_empty() {
-        HashMap::new()
-    } else {
-        product_variant::Entity::find()
-            .filter(product_variant::Column::TenantId.eq(tenant_id))
-            .filter(product_variant::Column::Id.is_in(variant_ids))
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|variant| (variant.id, variant.product_id))
-            .collect::<HashMap<_, _>>()
+        .filter_map(|item| normalize_shipping_profile_slug(item.shipping_profile_slug.as_str()))
+        .collect())
+}
+
+pub async fn load_current_shipping_profile_slug_for_line_item(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    product_id: Option<Uuid>,
+    variant_id: Option<Uuid>,
+) -> CommerceResult<String> {
+    let Some(variant_id) = variant_id else {
+        if let Some(product_id) = product_id {
+            let product = product::Entity::find_by_id(product_id)
+                .filter(product::Column::TenantId.eq(tenant_id))
+                .one(db)
+                .await?;
+            return Ok(product
+                .map(|product| {
+                    product_shipping_profile_slug(
+                        product.shipping_profile_slug.as_deref(),
+                        &product.metadata,
+                    )
+                })
+                .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string()));
+        }
+        return Ok(DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
     };
 
-    let product_ids = cart
-        .line_items
-        .iter()
-        .filter_map(|item| {
-            item.variant_id
-                .and_then(|variant_id| variant_to_product.get(&variant_id).copied())
-                .or(item.product_id)
-        })
-        .collect::<BTreeSet<_>>();
-    if product_ids.is_empty() {
-        return Ok(BTreeSet::new());
-    }
-
-    let products = product::Entity::find()
+    let Some(variant) = product_variant::Entity::find_by_id(variant_id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+    else {
+        return Ok(DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
+    };
+    let product_id = product_id.unwrap_or(variant.product_id);
+    let product = product::Entity::find_by_id(product_id)
         .filter(product::Column::TenantId.eq(tenant_id))
-        .filter(product::Column::Id.is_in(product_ids))
-        .all(db)
+        .one(db)
         .await?;
 
-    Ok(products
-        .into_iter()
-        .map(|product| shipping_profile_slug_from_product_metadata(&product.metadata))
-        .collect())
+    Ok(product
+        .map(|product| {
+            effective_shipping_profile_slug(
+                product.shipping_profile_slug.as_deref(),
+                &product.metadata,
+                variant.shipping_profile_slug.as_deref(),
+            )
+        })
+        .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string()))
+}
+
+pub fn map_shipping_option_summary(option: &ShippingOptionResponse) -> CartShippingOptionSummary {
+    CartShippingOptionSummary {
+        id: option.id,
+        name: option.name.clone(),
+        currency_code: option.currency_code.clone(),
+        amount: option.amount,
+        provider_id: option.provider_id.clone(),
+        active: option.active,
+        metadata: option.metadata.clone(),
+    }
+}
+
+pub async fn enrich_cart_delivery_groups(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    mut cart: CartResponse,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<CartResponse> {
+    let mut options = FulfillmentService::new(db.clone())
+        .list_shipping_options(tenant_id)
+        .await
+        .map_err(|err| crate::CommerceError::Validation(err.to_string()))?;
+    options.retain(|option| {
+        option
+            .currency_code
+            .eq_ignore_ascii_case(&cart.currency_code)
+    });
+    options.retain(|option| {
+        crate::storefront_channel::is_metadata_visible_for_public_channel(
+            &option.metadata,
+            public_channel_slug,
+        )
+    });
+
+    for delivery_group in &mut cart.delivery_groups {
+        let required_profiles = BTreeSet::from([delivery_group.shipping_profile_slug.clone()]);
+        delivery_group.available_shipping_options = options
+            .iter()
+            .filter(|option| {
+                is_shipping_option_compatible_with_profiles(option, &required_profiles)
+            })
+            .map(map_shipping_option_summary)
+            .collect();
+    }
+    cart.selected_shipping_option_id = if cart.delivery_groups.len() == 1 {
+        cart.delivery_groups[0].selected_shipping_option_id
+    } else {
+        None
+    };
+
+    Ok(cart)
 }
 
 fn extract_allowed_shipping_profile_slugs_from_metadata(
@@ -133,7 +219,7 @@ fn extract_allowed_shipping_profile_slugs_from_metadata(
 
 #[cfg(test)]
 mod tests {
-    use super::is_shipping_option_compatible_with_profiles;
+    use super::{effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles};
     use crate::dto::ShippingOptionResponse;
     use chrono::Utc;
     use rust_decimal::Decimal;
@@ -161,5 +247,29 @@ mod tests {
             &option,
             &required_profiles,
         ));
+    }
+
+    #[test]
+    fn effective_shipping_profile_prefers_variant_then_product_then_default() {
+        let product_metadata = serde_json::json!({
+            "shipping_profile": { "slug": "bulky" }
+        });
+
+        assert_eq!(
+            effective_shipping_profile_slug(Some("cold-chain"), &product_metadata, Some("frozen")),
+            "frozen"
+        );
+        assert_eq!(
+            effective_shipping_profile_slug(Some("cold-chain"), &product_metadata, None),
+            "cold-chain"
+        );
+        assert_eq!(
+            effective_shipping_profile_slug(None, &product_metadata, None),
+            "bulky"
+        );
+        assert_eq!(
+            effective_shipping_profile_slug(None, &serde_json::json!({}), None),
+            "default"
+        );
     }
 }

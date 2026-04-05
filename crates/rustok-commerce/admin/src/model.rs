@@ -96,6 +96,8 @@ pub struct ProductVariant {
     pub id: String,
     pub sku: Option<String>,
     pub barcode: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    pub shipping_profile_slug: Option<String>,
     pub title: String,
     pub option1: Option<String>,
     pub option2: Option<String>,
@@ -176,7 +178,7 @@ pub struct ShippingOptionDraft {
     pub currency_code: String,
     pub amount: String,
     pub provider_id: String,
-    pub allowed_shipping_profile_slugs: String,
+    pub allowed_shipping_profile_slugs: Vec<String>,
     pub metadata_json: String,
 }
 

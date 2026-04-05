@@ -9,8 +9,9 @@
 1. Сначала откройте обзор платформы и нужный архитектурный раздел.
 2. Для изменений в модульной системе переходите в `docs/modules/*`.
 3. Для UI-срезов используйте `docs/UI/*` и локальные docs приложений.
-4. Для проверок, rollout и quality-gates используйте `docs/verification/*` и `docs/guides/*`.
-5. Для изменений конкретного модуля сверяйтесь с `docs/modules/registry.md` и локальными docs соответствующего crate.
+4. Для periodic verification и quality-gates используйте `docs/verification/*` и `docs/guides/*`.
+5. Для residual/future scope по platform contracts сверяйтесь с профильными live docs в `docs/architecture/*`, `docs/UI/*` и `apps/*/docs/*`, не смешивая это с periodic verification.
+6. Для изменений конкретного модуля сверяйтесь с `docs/modules/registry.md` и локальными docs соответствующего crate.
 
 ## Обязательные стартовые документы
 
@@ -38,12 +39,12 @@
 - [Storefront](./UI/storefront.md)
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
 - [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
-- [Архитектура i18n](./architecture/i18n.md) — request locale chain, storefront locale-prefixed routes, outbound reset-email locale contract, manifest-level module UI bundle contract
+- [Архитектура i18n](./architecture/i18n.md) — request locale chain, shared locale normalization/validation contract, `verify:i18n:ui` + `verify:i18n:contract` gates, storefront locale-prefixed routes, outbound built-in auth email locale contract, manifest-level module UI bundle contract, временно без ecommerce locale alignment
 
 ## Архитектура и foundation
 
 - [Диаграмма платформы](./architecture/diagram.md)
-- [Database](./architecture/database.md)
+- [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations
 - [Channels](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
 - [Event flow contract](./architecture/event-flow-contract.md)
@@ -64,10 +65,6 @@
 - [Security](./standards/security.md)
 - [Coding](./standards/coding.md)
 - [RT JSON v1](./standards/rt-json-v1.md)
-
-## Активные планы исполнения
-
-- [Активный remediation-план платформы](./concepts/platform-remediation-execution-plan.md) — текущий исполняемый план; не относится к weekly verification-прогонам
 
 ## Проверка платформы
 

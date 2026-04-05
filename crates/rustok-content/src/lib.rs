@@ -21,8 +21,9 @@ pub use entities::{
 pub use error::{ContentError, ContentResult};
 pub use locale::{
     available_locales_from, normalize_locale_code, resolve_by_locale,
-    resolve_by_locale_with_fallback, ResolvedLocale, PLATFORM_FALLBACK_LOCALE,
+    resolve_by_locale_with_fallback, ResolvedLocale,
 };
+pub use rustok_core::PLATFORM_FALLBACK_LOCALE;
 pub use services::{
     CanonicalUrlMutation, CanonicalUrlService, CategoryService, ContentOrchestrationBridge,
     ContentOrchestrationService, DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput,

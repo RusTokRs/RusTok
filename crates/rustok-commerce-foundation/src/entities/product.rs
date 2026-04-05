@@ -39,6 +39,7 @@ pub struct Model {
     pub status: ProductStatus,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

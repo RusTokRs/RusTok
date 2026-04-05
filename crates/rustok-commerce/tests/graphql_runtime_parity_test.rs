@@ -91,6 +91,7 @@ fn create_product_input() -> CreateProductInput {
         variants: vec![CreateVariantInput {
             sku: Some("PARITY-SKU-1".to_string()),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,
@@ -99,7 +100,7 @@ fn create_product_input() -> CreateProductInput {
                 amount: Decimal::from_str("19.99").expect("valid decimal"),
                 compare_at_amount: None,
             }],
-            inventory_quantity: 0,
+            inventory_quantity: 5,
             inventory_policy: "deny".to_string(),
             weight: None,
             weight_unit: None,
@@ -555,10 +556,20 @@ fn storefront_checkout_mutation(tenant_id: Uuid, cart_id: Uuid) -> String {
               metadata: "{{\"source\":\"storefront-graphql-checkout\",\"step\":\"complete\"}}"
             }}
           ) {{
-            cart {{ id status }}
+            cart {{
+              id
+              status
+              selectedShippingOptionId
+              deliveryGroups {{
+                shippingProfileSlug
+                selectedShippingOptionId
+                lineItemIds
+              }}
+            }}
             order {{ id status }}
             paymentCollection {{ id status cartId orderId }}
             fulfillment {{ id status }}
+            fulfillments {{ id status shippingOptionId }}
             context {{ locale currencyCode }}
           }}
         }}
@@ -1913,6 +1924,7 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
                 quantity: 1,
@@ -1930,6 +1942,7 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -2053,6 +2066,7 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
                 quantity: 1,
@@ -2070,6 +2084,7 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -2180,6 +2195,7 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
                 quantity: 1,
@@ -2197,6 +2213,7 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
             CompleteCheckoutInput {
                 cart_id: cart.id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -2247,6 +2264,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
                     sku: Some("GRAPHQL-ADMIN-ORDER-1".to_string()),
                     title: "GraphQL Admin Order".to_string(),
                     quantity: 1,
@@ -2435,6 +2453,7 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
                     sku: Some("STOREFRONT-ORDER-1".to_string()),
                     title: "Storefront Order".to_string(),
                     quantity: 2,
@@ -2544,6 +2563,7 @@ async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
                     sku: Some("FOREIGN-ORDER-1".to_string()),
                     title: "Foreign Guard".to_string(),
                     quantity: 1,
@@ -2653,6 +2673,7 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
                 quantity: 1,
@@ -2707,6 +2728,22 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
     assert_eq!(
         json["completeStorefrontCheckout"]["fulfillment"]["status"],
         Value::from("pending")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["fulfillments"][0]["status"],
+        Value::from("pending")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["cart"]["selectedShippingOptionId"],
+        Value::from(shipping_option.id.to_string())
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["cart"]["deliveryGroups"][0]["shippingProfileSlug"],
+        Value::from("default")
+    );
+    assert_eq!(
+        json["completeStorefrontCheckout"]["cart"]["deliveryGroups"][0]["selectedShippingOptionId"],
+        Value::from(shipping_option.id.to_string())
     );
     assert_eq!(
         json["completeStorefrontCheckout"]["context"]["currencyCode"],
@@ -3310,6 +3347,7 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,
@@ -3431,6 +3469,7 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,

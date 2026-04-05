@@ -88,6 +88,10 @@ impl CatalogService {
             }),
             vendor: Set(input.vendor.clone()),
             product_type: Set(input.product_type.clone()),
+            shipping_profile_slug: Set(input
+                .shipping_profile_slug
+                .as_deref()
+                .and_then(Self::normalize_shipping_profile_slug)),
             metadata: Set(normalized_metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -221,6 +225,10 @@ impl CatalogService {
                 tenant_id: Set(tenant_id),
                 sku: Set(var_input.sku.clone()),
                 barcode: Set(var_input.barcode.clone()),
+                shipping_profile_slug: Set(var_input
+                    .shipping_profile_slug
+                    .as_deref()
+                    .and_then(Self::normalize_shipping_profile_slug)),
                 ean: Set(None),
                 upc: Set(None),
                 inventory_policy: Set(var_input.inventory_policy.clone()),
@@ -487,6 +495,7 @@ impl CatalogService {
                     product_id: variant.product_id,
                     sku: variant.sku,
                     barcode: variant.barcode,
+                    shipping_profile_slug: variant.shipping_profile_slug.clone(),
                     title,
                     translations: variant_translations_by_variant
                         .remove(&variant.id)
@@ -557,7 +566,10 @@ impl CatalogService {
             status: product.status,
             vendor: product.vendor,
             product_type: product.product_type,
-            shipping_profile_slug: Self::extract_shipping_profile_slug(&product.metadata),
+            shipping_profile_slug: product
+                .shipping_profile_slug
+                .clone()
+                .or_else(|| Self::extract_shipping_profile_slug(&product.metadata)),
             tags: product_tags.tags,
             metadata: Self::strip_metadata_tags(product.metadata.clone()),
             created_at: product.created_at.into(),
@@ -663,12 +675,18 @@ impl CatalogService {
             input.metadata.clone(),
             existing_product.metadata.clone(),
         );
+        let shipping_profile_input = input.shipping_profile_slug.clone();
 
         if let Some(vendor) = input.vendor {
             product_active.vendor = Set(Some(vendor));
         }
         if let Some(product_type) = input.product_type {
             product_active.product_type = Set(Some(product_type));
+        }
+        if shipping_profile_input.is_some() {
+            product_active.shipping_profile_slug = Set(shipping_profile_input
+                .as_deref()
+                .and_then(Self::normalize_shipping_profile_slug));
         }
         if let Some((metadata, _)) = metadata_update.as_ref() {
             product_active.metadata = Set(metadata.clone());

@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_core::normalize_locale_tag;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
@@ -72,15 +73,10 @@ impl ProfileService {
             return Ok(None);
         };
 
-        let normalized = locale.trim().replace('_', "-").to_ascii_lowercase();
-        if normalized.is_empty() || normalized.len() > MAX_LOCALE_LENGTH {
+        let Some(normalized) = normalize_locale_tag(locale) else {
             return Err(ProfileError::InvalidLocale(locale.to_string()));
-        }
-
-        if !normalized
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
-        {
+        };
+        if normalized.len() > MAX_LOCALE_LENGTH {
             return Err(ProfileError::InvalidLocale(locale.to_string()));
         }
 

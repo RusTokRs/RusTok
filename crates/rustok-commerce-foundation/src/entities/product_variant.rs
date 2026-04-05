@@ -11,6 +11,7 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub sku: Option<String>,
     pub barcode: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub ean: Option<String>,
     pub upc: Option<String>,
     pub inventory_policy: String,

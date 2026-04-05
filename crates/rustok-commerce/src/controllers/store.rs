@@ -12,6 +12,7 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -31,8 +32,9 @@ use crate::{
         public_channel_slug_from_request,
     },
     storefront_shipping::{
+        effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
-        shipping_profile_slug_from_product_metadata,
+        normalize_shipping_profile_slug, shipping_profile_slug_from_product_metadata,
     },
     CartService, CatalogService, CustomerService, FulfillmentService, OrderService, PaymentService,
     ProductResponse, RegionService, StoreContextService,
@@ -409,6 +411,7 @@ pub async fn create_cart(
         )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
+    let cart = enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -444,7 +447,9 @@ pub async fn get_cart(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     ensure_store_cart_access(&cart, customer_id)?;
-    Ok(Json(cart))
+    Ok(Json(
+        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+    ))
 }
 
 /// Update storefront cart context
@@ -489,6 +494,12 @@ pub async fn update_cart_context(
             country_code: input.country_code,
             locale: input.locale,
             selected_shipping_option_id: input.selected_shipping_option_id,
+            shipping_selections: input.shipping_selections.map(|items| {
+                items
+                    .into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<crate::dto::CartShippingSelectionInput>>()
+            }),
         },
     )
     .await?;
@@ -543,7 +554,9 @@ pub async fn add_cart_line_item(
         .add_line_item(tenant.id, id, resolved_input)
         .await
         .map_err(map_cart_error)?;
-    Ok(Json(cart))
+    Ok(Json(
+        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+    ))
 }
 
 /// Update storefront cart line item quantity
@@ -596,7 +609,9 @@ pub async fn update_cart_line_item(
         .update_line_item_quantity(tenant.id, id, line_id, input.quantity)
         .await
         .map_err(map_cart_error)?;
-    Ok(Json(cart))
+    Ok(Json(
+        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+    ))
 }
 
 /// Remove storefront cart line item
@@ -635,7 +650,9 @@ pub async fn remove_cart_line_item(
         .remove_line_item(tenant.id, id, line_id)
         .await
         .map_err(map_cart_error)?;
-    Ok(Json(cart))
+    Ok(Json(
+        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+    ))
 }
 
 /// Create payment collection from storefront cart
@@ -727,6 +744,7 @@ pub async fn complete_cart_checkout(
     let actor_id = checkout_actor_id(auth.0.as_ref());
 
     if input.shipping_option_id.is_some()
+        || input.shipping_selections.is_some()
         || input.region_id.is_some()
         || input.country_code.is_some()
         || input.locale.is_some()
@@ -742,6 +760,12 @@ pub async fn complete_cart_checkout(
                 country_code: input.country_code.clone().map(Some),
                 locale: input.locale.clone().map(Some),
                 selected_shipping_option_id: input.shipping_option_id.map(Some),
+                shipping_selections: input.shipping_selections.clone().map(|items| {
+                    items
+                        .into_iter()
+                        .map(Into::into)
+                        .collect::<Vec<crate::dto::CartShippingSelectionInput>>()
+                }),
             },
         )
         .await?;
@@ -756,6 +780,7 @@ pub async fn complete_cart_checkout(
             CompleteCheckoutInput {
                 cart_id,
                 shipping_option_id: None,
+                shipping_selections: None,
                 region_id: None,
                 country_code: None,
                 locale: None,
@@ -960,6 +985,7 @@ async fn apply_cart_context_patch(
         tenant_id,
         cart,
         requested.selected_shipping_option_id,
+        Some(requested.shipping_selections.as_slice()),
         &cart.currency_code,
         storefront_public_channel_slug_for_cart(cart, request_context).as_deref(),
     )
@@ -976,15 +1002,30 @@ async fn apply_cart_context_patch(
                 country_code: requested.country_code,
                 locale_code: Some(context.locale.clone()),
                 selected_shipping_option_id: requested.selected_shipping_option_id,
+                shipping_selections: Some(requested.shipping_selections.clone()),
             },
         )
         .await
         .map_err(map_cart_error)?;
+    let updated_cart =
+        enrich_storefront_cart(ctx, tenant_id, request_context, updated_cart).await?;
 
     Ok(StoreCartResponse {
         cart: updated_cart,
         context,
     })
+}
+
+async fn enrich_storefront_cart(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart: CartResponse,
+) -> Result<CartResponse> {
+    let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, request_context);
+    enrich_cart_delivery_groups(&ctx.db, tenant_id, cart, public_channel_slug.as_deref())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))
 }
 
 fn requested_cart_context(
@@ -1009,6 +1050,9 @@ fn requested_cart_context(
         selected_shipping_option_id: patch
             .selected_shipping_option_id
             .unwrap_or(cart.selected_shipping_option_id),
+        shipping_selections: patch
+            .shipping_selections
+            .unwrap_or_else(|| current_shipping_selections(cart)),
     }
 }
 
@@ -1017,41 +1061,76 @@ async fn validate_selected_shipping_option(
     tenant_id: Uuid,
     cart: &CartResponse,
     selected_shipping_option_id: Option<Uuid>,
+    shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
     currency_code: &str,
     public_channel_slug: Option<&str>,
 ) -> Result<()> {
-    let Some(selected_shipping_option_id) = selected_shipping_option_id else {
-        return Ok(());
+    let service = FulfillmentService::new(ctx.db.clone());
+    let selections = if let Some(shipping_selections) = shipping_selections {
+        shipping_selections.to_vec()
+    } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
+        if cart.delivery_groups.len() > 1 {
+            return Err(Error::BadRequest(
+                "selected_shipping_option_id can only be used for carts with a single delivery group"
+                    .to_string(),
+            ));
+        }
+        cart.delivery_groups
+            .first()
+            .map(|group| {
+                vec![crate::dto::CartShippingSelectionInput {
+                    shipping_profile_slug: group.shipping_profile_slug.clone(),
+                    selected_shipping_option_id: Some(selected_shipping_option_id),
+                }]
+            })
+            .unwrap_or_default()
+    } else {
+        current_shipping_selections(cart)
     };
 
-    let service = FulfillmentService::new(ctx.db.clone());
-    let option = service
-        .get_shipping_option(tenant_id, selected_shipping_option_id)
-        .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
-    if !option.currency_code.eq_ignore_ascii_case(currency_code) {
-        return Err(Error::BadRequest(format!(
-            "Shipping option {} uses currency {}, expected {}",
-            option.id, option.currency_code, currency_code
-        )));
-    }
-    if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
-        return Err(Error::BadRequest(format!(
-            "Shipping option {} is not available for the current channel",
-            option.id
-        )));
-    }
-    let required_shipping_profiles = load_cart_shipping_profile_slugs(&ctx.db, tenant_id, cart)
-        .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
-    if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
-        return Err(Error::BadRequest(format!(
-            "Shipping option {} is not compatible with the cart shipping profiles",
-            option.id
-        )));
+    for selection in selections {
+        let Some(selected_shipping_option_id) = selection.selected_shipping_option_id else {
+            continue;
+        };
+        let required_shipping_profiles = BTreeSet::from([normalize_shipping_profile_slug(
+            selection.shipping_profile_slug.as_str(),
+        )
+        .unwrap_or_else(|| "default".to_string())]);
+        let option = service
+            .get_shipping_option(tenant_id, selected_shipping_option_id)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+            return Err(Error::BadRequest(format!(
+                "Shipping option {} uses currency {}, expected {}",
+                option.id, option.currency_code, currency_code
+            )));
+        }
+        if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
+            return Err(Error::BadRequest(format!(
+                "Shipping option {} is not available for the current channel",
+                option.id
+            )));
+        }
+        if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
+            return Err(Error::BadRequest(format!(
+                "Shipping option {} is not compatible with shipping profile {}",
+                option.id, selection.shipping_profile_slug
+            )));
+        }
     }
 
     Ok(())
+}
+
+fn current_shipping_selections(cart: &CartResponse) -> Vec<crate::dto::CartShippingSelectionInput> {
+    cart.delivery_groups
+        .iter()
+        .map(|group| crate::dto::CartShippingSelectionInput {
+            shipping_profile_slug: group.shipping_profile_slug.clone(),
+            selected_shipping_option_id: group.selected_shipping_option_id,
+        })
+        .collect()
 }
 
 async fn resolve_store_line_item_input(
@@ -1142,6 +1221,11 @@ async fn resolve_store_line_item_input(
     Ok(AddCartLineItemInput {
         product_id: Some(product_model.id),
         variant_id: Some(variant.id),
+        shipping_profile_slug: Some(effective_shipping_profile_slug(
+            product_model.shipping_profile_slug.as_deref(),
+            &product_model.metadata,
+            variant.shipping_profile_slug.as_deref(),
+        )),
         sku: variant.sku.clone(),
         title,
         quantity: input.quantity,
@@ -1246,6 +1330,7 @@ fn cart_context_metadata(cart: &CartResponse, context: &StoreContextResponse) ->
             "locale": context.locale.clone(),
             "currency_code": cart.currency_code.clone(),
             "selected_shipping_option_id": cart.selected_shipping_option_id,
+            "shipping_selections": current_shipping_selections(cart),
             "customer_id": cart.customer_id,
             "email": cart.email.clone(),
         }
@@ -1300,6 +1385,8 @@ pub struct StoreUpdateCartInput {
     pub locale: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_patch_field")]
     pub selected_shipping_option_id: Option<Option<Uuid>>,
+    #[serde(default)]
+    pub shipping_selections: Option<Vec<StoreCartShippingSelectionInput>>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -1312,6 +1399,7 @@ pub struct StoreCreatePaymentCollectionInput {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct StoreCompleteCartInput {
     pub shipping_option_id: Option<Uuid>,
+    pub shipping_selections: Option<Vec<StoreCartShippingSelectionInput>>,
     pub region_id: Option<Uuid>,
     pub country_code: Option<String>,
     pub locale: Option<String>,
@@ -1345,6 +1433,7 @@ struct StoreCartContextPatch {
     country_code: Option<Option<String>>,
     locale: Option<Option<String>>,
     selected_shipping_option_id: Option<Option<Uuid>>,
+    shipping_selections: Option<Vec<crate::dto::CartShippingSelectionInput>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1354,6 +1443,22 @@ struct RequestedCartContext {
     country_code: Option<String>,
     locale: Option<String>,
     selected_shipping_option_id: Option<Uuid>,
+    shipping_selections: Vec<crate::dto::CartShippingSelectionInput>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct StoreCartShippingSelectionInput {
+    pub shipping_profile_slug: String,
+    pub selected_shipping_option_id: Option<Uuid>,
+}
+
+impl From<StoreCartShippingSelectionInput> for crate::dto::CartShippingSelectionInput {
+    fn from(value: StoreCartShippingSelectionInput) -> Self {
+        Self {
+            shipping_profile_slug: value.shipping_profile_slug,
+            selected_shipping_option_id: value.selected_shipping_option_id,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1425,6 +1530,7 @@ mod tests {
             updated_at: chrono::Utc::now(),
             completed_at: None,
             line_items: Vec::new(),
+            delivery_groups: Vec::new(),
         }
     }
 
@@ -1586,6 +1692,7 @@ mod tests {
                 country_code: None,
                 locale: None,
                 selected_shipping_option_id: None,
+                shipping_selections: None,
             },
         );
 
@@ -1597,6 +1704,7 @@ mod tests {
                 country_code: Some("DE".to_string()),
                 locale: Some("de".to_string()),
                 selected_shipping_option_id: Some(shipping_option_id),
+                shipping_selections: Vec::new(),
             }
         );
     }
@@ -1616,6 +1724,7 @@ mod tests {
                 country_code: Some(Some("fr".to_string())),
                 locale: Some(Some("fr".to_string())),
                 selected_shipping_option_id: Some(Some(shipping_option_id)),
+                shipping_selections: None,
             },
         );
 
@@ -1627,6 +1736,7 @@ mod tests {
                 country_code: Some("fr".to_string()),
                 locale: Some("fr".to_string()),
                 selected_shipping_option_id: Some(shipping_option_id),
+                shipping_selections: Vec::new(),
             }
         );
     }
@@ -1647,6 +1757,7 @@ mod tests {
                 country_code: None,
                 locale: None,
                 selected_shipping_option_id: None,
+                shipping_selections: None,
             },
         );
 
@@ -1658,6 +1769,7 @@ mod tests {
                 country_code: None,
                 locale: Some("de".to_string()),
                 selected_shipping_option_id: None,
+                shipping_selections: Vec::new(),
             }
         );
     }
@@ -1681,6 +1793,7 @@ mod tests {
                 country_code: Some(None),
                 locale: Some(None),
                 selected_shipping_option_id: Some(None),
+                shipping_selections: None,
             },
         );
 
@@ -1692,6 +1805,7 @@ mod tests {
                 country_code: None,
                 locale: Some("en".to_string()),
                 selected_shipping_option_id: None,
+                shipping_selections: Vec::new(),
             }
         );
     }
@@ -2149,6 +2263,7 @@ mod tests {
                 AddCartLineItemInput {
                     product_id: Some(published.id),
                     variant_id: Some(variant.id),
+                    shipping_profile_slug: None,
                     sku: variant.sku.clone(),
                     title: variant.title.clone(),
                     quantity: 1,
@@ -2286,6 +2401,7 @@ mod tests {
                 AddCartLineItemInput {
                     product_id: Some(published.id),
                     variant_id: Some(variant.id),
+                    shipping_profile_slug: None,
                     sku: variant.sku.clone(),
                     title: variant.title.clone(),
                     quantity: 1,
@@ -2471,6 +2587,7 @@ mod tests {
             variants: vec![CreateVariantInput {
                 sku: Some("STOREFRONT-SKU-1".to_string()),
                 barcode: None,
+                shipping_profile_slug: None,
                 option1: Some("Default".to_string()),
                 option2: None,
                 option3: None,

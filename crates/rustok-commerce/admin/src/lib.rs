@@ -49,7 +49,7 @@ pub fn CommerceAdmin() -> impl IntoView {
     let (shipping_currency_code, set_shipping_currency_code) = signal("USD".to_string());
     let (shipping_amount, set_shipping_amount) = signal("0.00".to_string());
     let (shipping_provider_id, set_shipping_provider_id) = signal("manual".to_string());
-    let (shipping_allowed_profiles, set_shipping_allowed_profiles) = signal(String::new());
+    let (shipping_allowed_profiles, set_shipping_allowed_profiles) = signal(Vec::<String>::new());
     let (shipping_metadata_json, set_shipping_metadata_json) = signal(String::new());
     let (shipping_search, set_shipping_search) = signal(String::new());
     let (shipping_currency_filter, set_shipping_currency_filter) = signal(String::new());
@@ -548,7 +548,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         set_shipping_currency_code.set("USD".to_string());
         set_shipping_amount.set("0.00".to_string());
         set_shipping_provider_id.set("manual".to_string());
-        set_shipping_allowed_profiles.set(String::new());
+        set_shipping_allowed_profiles.set(Vec::new());
         set_shipping_metadata_json.set(String::new());
     };
 
@@ -820,10 +820,7 @@ pub fn CommerceAdmin() -> impl IntoView {
             currency_code: shipping_currency_code.get_untracked().trim().to_string(),
             amount: shipping_amount.get_untracked().trim().to_string(),
             provider_id: shipping_provider_id.get_untracked().trim().to_string(),
-            allowed_shipping_profile_slugs: shipping_allowed_profiles
-                .get_untracked()
-                .trim()
-                .to_string(),
+            allowed_shipping_profile_slugs: shipping_allowed_profiles.get_untracked(),
             metadata_json: shipping_metadata_json.get_untracked().trim().to_string(),
         };
         if draft.name.is_empty() {
@@ -1430,7 +1427,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                             <div class="rounded-2xl border border-border bg-background p-4">
                                 <div class="flex items-center justify-between gap-3">
                                     <p class="text-sm font-medium text-card-foreground">{allowed_profiles_label.clone()}</p>
-                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| set_shipping_allowed_profiles.set(String::new())>{allow_all_label.clone()}</button>
+                                    <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || shipping_busy.get() on:click=move |_| set_shipping_allowed_profiles.set(Vec::new())>{allow_all_label.clone()}</button>
                                 </div>
                                 <div class="mt-3 flex flex-wrap gap-2">
                                     {move || match shipping_profiles.get() {
@@ -1446,13 +1443,13 @@ pub fn CommerceAdmin() -> impl IntoView {
                                                     <button
                                                         type="button"
                                                         class=move || shipping_profile_chip_class(
-                                                            csv_contains(shipping_allowed_profiles.get().as_str(), slug.as_str()),
+                                                            slug_selected(&shipping_allowed_profiles.get(), slug.as_str()),
                                                             is_inactive,
                                                         )
-                                                        disabled=move || shipping_busy.get() || (is_inactive && !csv_contains(shipping_allowed_profiles.get().as_str(), inactive_disabled_slug.as_str()))
+                                                        disabled=move || shipping_busy.get() || (is_inactive && !slug_selected(&shipping_allowed_profiles.get(), inactive_disabled_slug.as_str()))
                                                         on:click=move |_| {
                                                             set_shipping_allowed_profiles.update(|value| {
-                                                                *value = toggle_csv_slug(value.as_str(), toggle_slug.as_str());
+                                                                toggle_slug_selection(value, toggle_slug.as_str());
                                                             });
                                                         }
                                                     >
@@ -1468,7 +1465,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                                     }}
                                 </div>
                             </div>
-                            <p class="text-xs text-muted-foreground">{move || selected_profiles_template.replace("{profiles}", format_selected_shipping_profiles(ui_locale_for_selected_profiles.as_deref(), shipping_allowed_profiles.get().as_str()).as_str())}</p>
+                            <p class="text-xs text-muted-foreground">{move || selected_profiles_template.replace("{profiles}", format_selected_shipping_profiles(ui_locale_for_selected_profiles.as_deref(), &shipping_allowed_profiles.get()).as_str())}</p>
                         </div>
                         <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=metadata_patch_placeholder_label.clone() prop:value=move || shipping_metadata_json.get() on:input=move |ev| set_shipping_metadata_json.set(event_target_value(&ev)) />
                         <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || shipping_busy.get()>{move || if shipping_editing_id.get().is_some() { save_shipping_option_label.clone() } else { create_shipping_option_action_label.clone() }}</button>
@@ -1647,7 +1644,7 @@ fn apply_shipping_option(
     set_currency_code: WriteSignal<String>,
     set_amount: WriteSignal<String>,
     set_provider_id: WriteSignal<String>,
-    set_allowed_profiles: WriteSignal<String>,
+    set_allowed_profiles: WriteSignal<Vec<String>>,
     set_metadata_json: WriteSignal<String>,
 ) {
     set_editing_id.set(Some(option.id.clone()));
@@ -1660,8 +1657,7 @@ fn apply_shipping_option(
         option
             .allowed_shipping_profile_slugs
             .clone()
-            .unwrap_or_default()
-            .join(", "),
+            .unwrap_or_default(),
     );
     set_metadata_json.set(option.metadata.clone());
 }
@@ -1809,8 +1805,8 @@ fn format_known_shipping_profiles(locale: Option<&str>, profiles: &[ShippingProf
     }
 }
 
-fn format_selected_shipping_profiles(locale: Option<&str>, value: &str) -> String {
-    let slugs = csv_values(value);
+fn format_selected_shipping_profiles(locale: Option<&str>, values: &[String]) -> String {
+    let slugs = normalize_slug_list(values);
     if slugs.is_empty() {
         t(locale, "commerce.common.allCarts", "all carts")
     } else {
@@ -1874,12 +1870,12 @@ fn shipping_profile_chip_class(selected: bool, inactive: bool) -> &'static str {
     }
 }
 
-fn toggle_csv_slug(current: &str, slug: &str) -> String {
+fn toggle_slug_selection(current: &mut Vec<String>, slug: &str) {
     let slug = slug.trim();
     if slug.is_empty() {
-        return current.trim().to_string();
+        return;
     }
-    let mut values = csv_values(current);
+    let mut values = normalize_slug_list(current);
     if let Some(position) = values.iter().position(|value| value == slug) {
         values.remove(position);
     } else {
@@ -1887,17 +1883,19 @@ fn toggle_csv_slug(current: &str, slug: &str) -> String {
         values.sort();
         values.dedup();
     }
-    values.join(", ")
+    *current = values;
 }
 
-fn csv_contains(current: &str, slug: &str) -> bool {
-    csv_values(current).iter().any(|value| value == slug)
+fn slug_selected(current: &[String], slug: &str) -> bool {
+    normalize_slug_list(current)
+        .iter()
+        .any(|value| value == slug)
 }
 
-fn csv_values(current: &str) -> Vec<String> {
+fn normalize_slug_list(current: &[String]) -> Vec<String> {
     current
-        .split(',')
-        .map(str::trim)
+        .iter()
+        .map(|value| value.trim())
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .collect()

@@ -26,6 +26,8 @@ pub struct CreateCartInput {
 pub struct AddCartLineItemInput {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    #[validate(length(min = 1, max = 100))]
+    pub shipping_profile_slug: Option<String>,
     #[validate(length(max = 100))]
     pub sku: Option<String>,
     #[validate(length(min = 1, max = 255))]
@@ -46,6 +48,7 @@ pub struct UpdateCartContextInput {
     #[validate(length(min = 2, max = 10))]
     pub locale_code: Option<String>,
     pub selected_shipping_option_id: Option<Uuid>,
+    pub shipping_selections: Option<Vec<CartShippingSelectionInput>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -68,6 +71,7 @@ pub struct CartResponse {
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
     pub line_items: Vec<CartLineItemResponse>,
+    pub delivery_groups: Vec<CartDeliveryGroupResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -76,6 +80,7 @@ pub struct CartLineItemResponse {
     pub cart_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    pub shipping_profile_slug: String,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -85,4 +90,30 @@ pub struct CartLineItemResponse {
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CartShippingSelectionInput {
+    #[validate(length(min = 1, max = 100))]
+    pub shipping_profile_slug: String,
+    pub selected_shipping_option_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CartShippingOptionSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub provider_id: String,
+    pub active: bool,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CartDeliveryGroupResponse {
+    pub shipping_profile_slug: String,
+    pub line_item_ids: Vec<Uuid>,
+    pub selected_shipping_option_id: Option<Uuid>,
+    pub available_shipping_options: Vec<CartShippingOptionSummary>,
 }

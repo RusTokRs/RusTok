@@ -11,6 +11,7 @@ pub mod grapesjs;
 pub mod health;
 pub mod i18n;
 pub mod id;
+pub mod locale;
 pub mod metrics;
 pub mod migrations;
 pub mod module;
@@ -73,6 +74,10 @@ pub use health::{
 };
 pub use i18n::{extract_locale_from_header, extract_locale_tag_from_header, translate, Locale};
 pub use id::generate_id;
+pub use locale::{
+    build_locale_candidates, is_valid_locale_tag, locale_primary_language, locale_tags_match,
+    normalize_locale_tag, push_locale_candidate, PLATFORM_FALLBACK_LOCALE,
+};
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
 pub use migrations::ModuleMigration;
 pub use module::{EventListener, MigrationSource};

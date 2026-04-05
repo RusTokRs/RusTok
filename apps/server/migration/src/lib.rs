@@ -17,6 +17,7 @@ mod m20250212_000001_create_builds_and_releases;
 mod m20260211_000001_add_event_versioning;
 mod m20260211_000002_create_sys_events;
 mod m20260315_000001_create_user_field_definitions;
+mod m20260317_000001_create_flex_standalone_tables;
 mod m20260316_000001_create_platform_settings;
 mod m20260319_000001_create_mcp_management_tables;
 mod m20260320_000001_create_mcp_scaffold_drafts;
@@ -30,6 +31,8 @@ mod m20260403_000007_create_registry_governance_events;
 mod m20260403_000008_add_registry_publish_request_publisher_identity;
 mod m20260404_000001_create_registry_validation_jobs;
 mod m20260404_000002_create_registry_validation_stages;
+mod m20260405_000001_expand_locale_storage_columns;
+mod m20260405_000002_split_flex_schema_localized_fields;
 
 pub struct Migrator;
 
@@ -52,6 +55,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260211_000002_create_sys_events::Migration),
             Box::new(m20260315_000001_create_user_field_definitions::Migration),
             Box::new(m20260316_000001_create_platform_settings::Migration),
+            Box::new(m20260317_000001_create_flex_standalone_tables::Migration),
             Box::new(m20260319_000001_create_mcp_management_tables::Migration),
             Box::new(m20260320_000001_create_mcp_scaffold_drafts::Migration),
             Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
@@ -64,6 +68,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260403_000008_add_registry_publish_request_publisher_identity::Migration),
             Box::new(m20260404_000001_create_registry_validation_jobs::Migration),
             Box::new(m20260404_000002_create_registry_validation_stages::Migration),
+            Box::new(m20260405_000001_expand_locale_storage_columns::Migration),
+            Box::new(m20260405_000002_split_flex_schema_localized_fields::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into
@@ -116,6 +122,27 @@ mod tests {
         assert_eq!(
             names, sorted,
             "server migrator must remain globally sorted by migration name"
+        );
+    }
+
+    #[test]
+    fn migrator_includes_foundation_locale_and_flex_multilingual_migrations() {
+        let names: Vec<String> = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect();
+
+        assert!(
+            names.contains(&"m20260317_000001_create_flex_standalone_tables".to_string()),
+            "server migrator must include flex standalone tables migration"
+        );
+        assert!(
+            names.contains(&"m20260405_000001_expand_locale_storage_columns".to_string()),
+            "server migrator must include locale storage widening migration"
+        );
+        assert!(
+            names.contains(&"m20260405_000002_split_flex_schema_localized_fields".to_string()),
+            "server migrator must include flex schema translation split migration"
         );
     }
 }

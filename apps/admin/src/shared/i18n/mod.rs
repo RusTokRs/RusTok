@@ -13,7 +13,8 @@ impl Locale {
     pub fn from_code(code: &str) -> Self {
         match code.to_lowercase().as_str() {
             "en" => Locale::En,
-            _ => Locale::Ru,
+            "ru" => Locale::Ru,
+            _ => Locale::En,
         }
     }
 
@@ -56,7 +57,7 @@ pub struct LocaleContext {
 }
 
 pub fn provide_locale_context() -> LocaleContext {
-    let initial_locale = load_locale_from_storage().unwrap_or(Locale::Ru);
+    let initial_locale = load_locale_from_storage().unwrap_or(Locale::En);
     let (locale, set_locale) = signal(initial_locale);
 
     Effect::new(move |_| {

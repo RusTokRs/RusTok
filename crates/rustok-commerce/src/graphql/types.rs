@@ -69,6 +69,7 @@ pub struct GqlVariant {
     pub id: Uuid,
     pub sku: Option<String>,
     pub barcode: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub title: String,
     pub option1: Option<String>,
     pub option2: Option<String>,
@@ -221,6 +222,7 @@ pub struct GqlCart {
     pub updated_at: String,
     pub completed_at: Option<String>,
     pub line_items: Vec<GqlCartLineItem>,
+    pub delivery_groups: Vec<GqlCartDeliveryGroup>,
 }
 
 #[derive(SimpleObject)]
@@ -229,6 +231,7 @@ pub struct GqlCartLineItem {
     pub cart_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    pub shipping_profile_slug: String,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -241,11 +244,31 @@ pub struct GqlCartLineItem {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlCartDeliveryGroup {
+    pub shipping_profile_slug: String,
+    pub line_item_ids: Vec<Uuid>,
+    pub selected_shipping_option_id: Option<Uuid>,
+    pub available_shipping_options: Vec<GqlCartShippingOptionSummary>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCartShippingOptionSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub provider_id: String,
+    pub active: bool,
+    pub metadata: String,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlCompleteCheckout {
     pub cart: GqlCart,
     pub order: GqlOrder,
     pub payment_collection: GqlPaymentCollection,
     pub fulfillment: Option<GqlFulfillment>,
+    pub fulfillments: Vec<GqlFulfillment>,
     pub context: GqlStoreContext,
 }
 
@@ -288,6 +311,7 @@ pub struct GqlOrderLineItem {
     pub order_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    pub shipping_profile_slug: String,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -419,6 +443,7 @@ pub struct ProductOptionInput {
 pub struct CreateVariantInput {
     pub sku: Option<String>,
     pub barcode: Option<String>,
+    pub shipping_profile_slug: Option<String>,
     pub option1: Option<String>,
     pub option2: Option<String>,
     pub option3: Option<String>,
@@ -568,6 +593,7 @@ pub struct CreateStorefrontPaymentCollectionInput {
 pub struct CompleteStorefrontCheckoutInput {
     pub cart_id: Uuid,
     pub shipping_option_id: Option<Uuid>,
+    pub shipping_selections: Option<Vec<StorefrontShippingSelectionInput>>,
     pub region_id: Option<Uuid>,
     pub country_code: Option<String>,
     pub locale: Option<String>,
@@ -604,6 +630,13 @@ pub struct UpdateStorefrontCartContextInput {
     pub country_code: MaybeUndefined<String>,
     pub locale: MaybeUndefined<String>,
     pub selected_shipping_option_id: MaybeUndefined<Uuid>,
+    pub shipping_selections: MaybeUndefined<Vec<StorefrontShippingSelectionInput>>,
+}
+
+#[derive(InputObject)]
+pub struct StorefrontShippingSelectionInput {
+    pub shipping_profile_slug: String,
+    pub selected_shipping_option_id: Option<Uuid>,
 }
 
 #[derive(InputObject)]
@@ -725,6 +758,7 @@ impl From<dto::VariantResponse> for GqlVariant {
             id: variant.id,
             sku: variant.sku,
             barcode: variant.barcode,
+            shipping_profile_slug: variant.shipping_profile_slug,
             title: variant.title,
             option1: variant.option1,
             option2: variant.option2,
@@ -860,6 +894,7 @@ impl From<dto::CartResponse> for GqlCart {
             updated_at: value.updated_at.to_rfc3339(),
             completed_at: value.completed_at.map(|value| value.to_rfc3339()),
             line_items: value.line_items.into_iter().map(Into::into).collect(),
+            delivery_groups: value.delivery_groups.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -871,6 +906,7 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             cart_id: value.cart_id,
             product_id: value.product_id,
             variant_id: value.variant_id,
+            shipping_profile_slug: value.shipping_profile_slug,
             sku: value.sku,
             title: value.title,
             quantity: value.quantity,
@@ -884,6 +920,35 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
     }
 }
 
+impl From<dto::CartDeliveryGroupResponse> for GqlCartDeliveryGroup {
+    fn from(value: dto::CartDeliveryGroupResponse) -> Self {
+        Self {
+            shipping_profile_slug: value.shipping_profile_slug,
+            line_item_ids: value.line_item_ids,
+            selected_shipping_option_id: value.selected_shipping_option_id,
+            available_shipping_options: value
+                .available_shipping_options
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<dto::CartShippingOptionSummary> for GqlCartShippingOptionSummary {
+    fn from(value: dto::CartShippingOptionSummary) -> Self {
+        Self {
+            id: value.id,
+            name: value.name,
+            currency_code: value.currency_code,
+            amount: value.amount.to_string(),
+            provider_id: value.provider_id,
+            active: value.active,
+            metadata: value.metadata.to_string(),
+        }
+    }
+}
+
 impl From<dto::CompleteCheckoutResponse> for GqlCompleteCheckout {
     fn from(value: dto::CompleteCheckoutResponse) -> Self {
         Self {
@@ -891,6 +956,7 @@ impl From<dto::CompleteCheckoutResponse> for GqlCompleteCheckout {
             order: value.order.into(),
             payment_collection: value.payment_collection.into(),
             fulfillment: value.fulfillment.map(Into::into),
+            fulfillments: value.fulfillments.into_iter().map(Into::into).collect(),
             context: value.context.into(),
         }
     }
@@ -942,6 +1008,7 @@ impl From<dto::OrderLineItemResponse> for GqlOrderLineItem {
             order_id: item.order_id,
             product_id: item.product_id,
             variant_id: item.variant_id,
+            shipping_profile_slug: item.shipping_profile_slug,
             sku: item.sku,
             title: item.title,
             quantity: item.quantity,

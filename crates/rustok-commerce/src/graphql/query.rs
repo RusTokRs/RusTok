@@ -21,8 +21,8 @@ use crate::{
         normalize_public_channel_slug, public_channel_slug_from_request,
     },
     storefront_shipping::{
-        is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
-        shipping_profile_slug_from_product_metadata,
+        enrich_cart_delivery_groups, is_shipping_option_compatible_with_profiles,
+        load_cart_shipping_profile_slugs, product_shipping_profile_slug,
     },
     CatalogService, CommerceError, CustomerService, FulfillmentService, OrderService,
     PaymentService, RegionService, ShippingProfileService, StoreContextService,
@@ -223,6 +223,11 @@ impl CommerceQuery {
         };
 
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let request_context = ctx.data::<RequestContext>()?;
+        let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx)
+            .or_else(|| public_channel_slug_from_request(request_context));
+        let cart = enrich_cart_delivery_groups(db, tenant_id, cart, public_channel_slug.as_deref())
+            .await?;
         Ok(Some(cart.into()))
     }
 
@@ -971,7 +976,8 @@ async fn load_product_list_items(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
-                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                shipping_profile_slug: Some(product_shipping_profile_slug(
+                    product.shipping_profile_slug.as_deref(),
                     &product.metadata,
                 )),
                 tags: product_tags.get(&product.id).cloned().unwrap_or_default(),

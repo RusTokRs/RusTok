@@ -43,6 +43,7 @@ fn create_test_product_input() -> CreateProductInput {
                 Uuid::new_v4().to_string().split('-').next().unwrap()
             )),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,
@@ -276,8 +277,8 @@ async fn test_create_product_with_multiple_translations() {
     let mut input = create_test_product_input();
     input.translations.push(ProductTranslationInput {
         locale: "ru".to_string(),
-        title: "Тестовый продукт".to_string(),
-        description: Some("Отличный тестовый продукт".to_string()),
+        title: "Р СћР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р Т‘РЎС“Р С”РЎвЂљ".to_string(),
+        description: Some("Р С›РЎвЂљР В»Р С‘РЎвЂЎР Р…РЎвЂ№Р в„– РЎвЂљР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р Т‘РЎС“Р С”РЎвЂљ".to_string()),
         handle: Some(unique_slug("test-product-ru")),
         meta_title: None,
         meta_description: None,
@@ -285,7 +286,7 @@ async fn test_create_product_with_multiple_translations() {
     input.translations.push(ProductTranslationInput {
         locale: "de".to_string(),
         title: "Testprodukt".to_string(),
-        description: Some("Ein großartiges Testprodukt".to_string()),
+        description: Some("Ein groР“Сџartiges Testprodukt".to_string()),
         handle: Some(unique_slug("test-product-de")),
         meta_title: None,
         meta_description: None,
@@ -305,7 +306,10 @@ async fn test_create_product_with_multiple_translations() {
     assert!(ru_trans.is_some());
     assert!(de_trans.is_some());
     assert_eq!(en_trans.unwrap().title, "Test Product");
-    assert_eq!(ru_trans.unwrap().title, "Тестовый продукт");
+    assert_eq!(
+        ru_trans.unwrap().title,
+        "Р СћР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р Т‘РЎС“Р С”РЎвЂљ"
+    );
     assert_eq!(de_trans.unwrap().title, "Testprodukt");
 }
 
@@ -322,8 +326,11 @@ async fn test_create_product_populates_option_and_variant_translation_groups() {
     let mut input = create_test_product_input();
     input.translations.push(ProductTranslationInput {
         locale: "ru".to_string(),
-        title: "Тестовый продукт".to_string(),
-        description: Some("Русская локализация".to_string()),
+        title: "Р СћР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р Т‘РЎС“Р С”РЎвЂљ".to_string(),
+        description: Some(
+            "Р В РЎС“РЎРѓРЎРѓР С”Р В°РЎРЏ Р В»Р С•Р С”Р В°Р В»Р С‘Р В·Р В°РЎвЂ Р С‘РЎРЏ"
+                .to_string(),
+        ),
         handle: Some(unique_slug("test-product-ru")),
         meta_title: None,
         meta_description: None,
@@ -399,7 +406,10 @@ async fn test_get_product_reads_image_translation_groups() {
         id: sea_orm::Set(Uuid::new_v4()),
         image_id: sea_orm::Set(image_id),
         locale: sea_orm::Set("ru".to_string()),
-        alt_text: sea_orm::Set(Some("Основное изображение".to_string())),
+        alt_text: sea_orm::Set(Some(
+            "Р С›РЎРѓР Р…Р С•Р Р†Р Р…Р С•Р Вµ Р С‘Р В·Р С•Р В±РЎР‚Р В°Р В¶Р ВµР Р…Р С‘Р Вµ"
+                .to_string(),
+        )),
     }
     .insert(&db)
     .await
@@ -416,9 +426,14 @@ async fn test_get_product_reads_image_translation_groups() {
         .translations
         .iter()
         .any(|item| item.locale == "en" && item.alt_text.as_deref() == Some("Front image")));
-    assert!(fetched.images[0].translations.iter().any(
-        |item| item.locale == "ru" && item.alt_text.as_deref() == Some("Основное изображение")
-    ));
+    assert!(fetched.images[0]
+        .translations
+        .iter()
+        .any(|item| item.locale == "ru"
+            && item.alt_text.as_deref()
+                == Some(
+                    "Р С›РЎРѓР Р…Р С•Р Р†Р Р…Р С•Р Вµ Р С‘Р В·Р С•Р В±РЎР‚Р В°Р В¶Р ВµР Р…Р С‘Р Вµ"
+                )));
 }
 
 #[tokio::test]
@@ -434,6 +449,7 @@ async fn test_create_product_with_multiple_variants() {
             Uuid::new_v4().to_string().split('-').next().unwrap()
         )),
         barcode: None,
+        shipping_profile_slug: None,
         option1: Some("Small".to_string()),
         option2: None,
         option3: None,
@@ -453,6 +469,7 @@ async fn test_create_product_with_multiple_variants() {
             Uuid::new_v4().to_string().split('-').next().unwrap()
         )),
         barcode: None,
+        shipping_profile_slug: None,
         option1: Some("Large".to_string()),
         option2: None,
         option3: None,
@@ -943,6 +960,7 @@ async fn test_multiple_variants_different_prices() {
             Uuid::new_v4().to_string().split('-').next().unwrap()
         )),
         barcode: None,
+        shipping_profile_slug: None,
         option1: Some("Premium".to_string()),
         option2: None,
         option3: None,

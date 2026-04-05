@@ -20,7 +20,7 @@ use crate::{
     dto::ProductResponse,
     entities::{product, product_translation},
     search::product_translation_title_search_condition,
-    storefront_shipping::shipping_profile_slug_from_product_metadata,
+    storefront_shipping::product_shipping_profile_slug,
     CatalogService,
 };
 
@@ -148,7 +148,8 @@ pub async fn list_products(
                     .unwrap_or_default(),
                 vendor: product.vendor,
                 product_type: product.product_type,
-                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                shipping_profile_slug: Some(product_shipping_profile_slug(
+                    product.shipping_profile_slug.as_deref(),
                     &product.metadata,
                 )),
                 tags: product_tags.get(&product.id).cloned().unwrap_or_default(),

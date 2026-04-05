@@ -62,6 +62,31 @@ impl CachedTenantMiss {
     }
 }
 
+fn tenant_context_from_model(
+    tenant: Option<tenants::Model>,
+) -> Result<TenantContext, CachedTenantMiss> {
+    match tenant {
+        Some(tenant) if tenant.is_active => Ok(TenantContext {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            domain: tenant.domain,
+            settings: tenant.settings,
+            default_locale: tenant.default_locale,
+            is_active: tenant.is_active,
+        }),
+        Some(tenant) => {
+            tracing::warn!(
+                tenant_id = %tenant.id,
+                slug = %tenant.slug,
+                "Rejecting request for disabled tenant"
+            );
+            Err(CachedTenantMiss::Disabled)
+        }
+        None => Err(CachedTenantMiss::NotFound),
+    }
+}
+
 #[derive(Clone)]
 pub struct TenantCacheInfrastructure {
     tenant_cache: Arc<dyn CacheBackend>,
@@ -684,28 +709,15 @@ pub async fn resolve(
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
             };
 
-            match tenant {
-                Some(tenant) if tenant.is_active => Ok(Some(TenantContext {
-                    id: tenant.id,
-                    name: tenant.name,
-                    slug: tenant.slug,
-                    domain: tenant.domain,
-                    settings: tenant.settings,
-                    default_locale: tenant.default_locale,
-                    is_active: tenant.is_active,
-                })),
-                Some(tenant) => {
-                    tracing::warn!(
-                        tenant_id = %tenant.id,
-                        slug = %tenant.slug,
-                        "Rejecting request for disabled tenant"
-                    );
+            match tenant_context_from_model(tenant) {
+                Ok(context) => Ok(Some(context)),
+                Err(CachedTenantMiss::Disabled) => {
                     infra_clone
                         .set_negative(negative_key_clone, CachedTenantMiss::Disabled)
                         .await?;
                     Err(StatusCode::FORBIDDEN)
                 }
-                None => {
+                Err(CachedTenantMiss::NotFound) => {
                     infra_clone
                         .set_negative(negative_key_clone, CachedTenantMiss::NotFound)
                         .await?;
@@ -991,10 +1003,28 @@ async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, val
 mod invalidation_tests {
     use super::{
         parse_invalidation_payload, resolve_identifier, should_bypass_tenant_resolution,
-        subdomain_identifier, TenantInvalidationListenerState, TenantInvalidationListenerStatus,
+        subdomain_identifier, tenant_context_from_model, CachedTenantMiss,
+        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
     };
     use crate::common::{RustokSettings, TenantFallbackMode};
+    use crate::models::tenants;
     use axum::{body::Body, http::Request};
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn sample_tenant(is_active: bool) -> tenants::Model {
+        tenants::Model {
+            id: Uuid::new_v4(),
+            name: "Demo tenant".to_string(),
+            slug: "demo".to_string(),
+            domain: Some("demo.example.test".to_string()),
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active,
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+        }
+    }
 
     #[test]
     fn parse_invalidation_payload_returns_both_keys() {
@@ -1069,6 +1099,40 @@ mod invalidation_tests {
         let result = resolve_identifier(&request, &settings).expect("identifier");
         assert_eq!(result.kind.as_str(), "uuid");
         assert_eq!(result.uuid, settings.tenant.default_id);
+    }
+
+    #[test]
+    fn tenant_context_from_model_maps_active_tenant() {
+        let tenant = sample_tenant(true);
+
+        let context = tenant_context_from_model(Some(tenant.clone())).expect("active tenant");
+
+        assert_eq!(context.id, tenant.id);
+        assert_eq!(context.slug, tenant.slug);
+        assert_eq!(context.default_locale, tenant.default_locale);
+        assert!(context.is_active);
+    }
+
+    #[test]
+    fn tenant_context_from_model_rejects_disabled_tenant_as_forbidden() {
+        let result = tenant_context_from_model(Some(sample_tenant(false)));
+
+        assert!(matches!(result, Err(CachedTenantMiss::Disabled)));
+        assert_eq!(
+            CachedTenantMiss::Disabled.status_code(),
+            axum::http::StatusCode::FORBIDDEN
+        );
+    }
+
+    #[test]
+    fn tenant_context_from_model_maps_missing_tenant_to_not_found() {
+        let result = tenant_context_from_model(None);
+
+        assert!(matches!(result, Err(CachedTenantMiss::NotFound)));
+        assert_eq!(
+            CachedTenantMiss::NotFound.status_code(),
+            axum::http::StatusCode::NOT_FOUND
+        );
     }
 
     #[test]

@@ -10,6 +10,7 @@ use validator::Validate;
 
 use rustok_core::{
     prepare_content_payload, Action, DomainEvent, PermissionScope, Resource, SecurityContext,
+    PLATFORM_FALLBACK_LOCALE,
 };
 use rustok_outbox::TransactionalEventBus;
 
@@ -22,7 +23,7 @@ use rustok_telemetry::metrics;
 
 use crate::entities::{body, node, node_translation};
 use crate::error::{ContentError, ContentResult};
-use crate::locale::{resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE};
+use crate::locale::resolve_by_locale_with_fallback;
 use crate::state_machine::validate_status_transition;
 
 /// Maximum allowed JSON nesting depth for the `metadata` field.

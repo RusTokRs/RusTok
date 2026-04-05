@@ -225,15 +225,25 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_service_token_permissions;
-    use crate::models::oauth_apps;
-    use crate::models::tenants;
+    use super::{resolve_current_user_from_access_token, resolve_service_token_permissions};
+    use crate::auth::{auth_config_from_ctx, encode_access_token};
+    use crate::models::{oauth_apps, sessions, tenants, users};
+    use crate::services::rbac_service::RbacService;
+    use chrono::{Duration, Utc};
+    use loco_rs::{
+        app::{AppContext, SharedStore},
+        cache,
+        config::{Auth, JWT},
+        environment::Environment,
+        storage::{self, Storage},
+        tests_cfg::config::test_config,
+    };
     use migration::Migrator;
-    use rustok_core::Permission;
+    use rustok_core::{Permission, UserRole, UserStatus};
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Schema, Set};
     use sea_orm_migration::SchemaManager;
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::Arc};
     use uuid::Uuid;
 
     async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
@@ -254,6 +264,56 @@ mod tests {
         db.execute(builder.build(&statement))
             .await
             .expect("create oauth_apps table for auth extractor tests");
+    }
+
+    fn test_app_context(db: DatabaseConnection) -> AppContext {
+        let mut config = test_config();
+        config.auth = Some(Auth {
+            jwt: Some(JWT {
+                location: None,
+                secret: "test-secret-key-for-auth-extractor-32b".to_string(),
+                expiration: 900,
+            }),
+        });
+
+        AppContext {
+            environment: Environment::Test,
+            db,
+            queue_provider: None,
+            config,
+            mailer: None,
+            storage: Storage::single(storage::drivers::mem::new()).into(),
+            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
+            shared_store: Arc::new(SharedStore::default()),
+        }
+    }
+
+    async fn insert_user_with_session(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        status: UserStatus,
+    ) -> (users::Model, Uuid) {
+        let mut user = users::ActiveModel::new(
+            tenant_id,
+            &format!("{}@example.com", Uuid::new_v4()),
+            "hash",
+        );
+        user.status = Set(status);
+        let user = user.insert(db).await.expect("insert auth test user");
+
+        let session_id = Uuid::new_v4();
+        let mut session = sessions::ActiveModel::new(
+            tenant_id,
+            user.id,
+            "refresh-token-hash".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        session.id = Set(session_id);
+        session.insert(db).await.expect("insert auth test session");
+
+        (user, session_id)
     }
 
     #[tokio::test]
@@ -310,6 +370,79 @@ mod tests {
         assert_eq!(
             inferred_role,
             crate::context::infer_user_role_from_permissions(&permissions)
+        );
+    }
+
+    #[tokio::test]
+    async fn access_token_resolver_returns_forbidden_for_inactive_user() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let ctx = test_app_context(db.clone());
+        let tenant = tenants::ActiveModel::new(
+            "Inactive user tenant",
+            &format!("tenant-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("create tenant");
+        let (user, session_id) =
+            insert_user_with_session(&db, tenant.id, UserStatus::Inactive).await;
+        let auth_config = auth_config_from_ctx(&ctx).expect("auth config");
+        let token = encode_access_token(
+            &auth_config,
+            user.id,
+            tenant.id,
+            UserRole::Customer,
+            session_id,
+        )
+        .expect("encode access token");
+
+        let error = resolve_current_user_from_access_token(&ctx, tenant.id, &token)
+            .await
+            .expect_err("inactive user should be rejected");
+
+        assert_eq!(
+            error,
+            (axum::http::StatusCode::FORBIDDEN, "User is inactive")
+        );
+    }
+
+    #[tokio::test]
+    async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_failure() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let ctx = test_app_context(db.clone());
+        let tenant =
+            tenants::ActiveModel::new("RBAC failure tenant", &format!("tenant-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("create tenant");
+        let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+        let auth_config = auth_config_from_ctx(&ctx).expect("auth config");
+        let token = encode_access_token(
+            &auth_config,
+            user.id,
+            tenant.id,
+            UserRole::Customer,
+            session_id,
+        )
+        .expect("encode access token");
+        RbacService::invalidate_user_rbac_caches(&tenant.id, &user.id).await;
+        db.execute(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "DROP TABLE user_roles".to_string(),
+        ))
+        .await
+        .expect("drop user_roles to simulate RBAC storage failure");
+
+        let error = resolve_current_user_from_access_token(&ctx, tenant.id, &token)
+            .await
+            .expect_err("RBAC storage failure should surface as 500");
+
+        assert_eq!(
+            error,
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
         );
     }
 }

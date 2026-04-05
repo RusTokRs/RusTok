@@ -45,6 +45,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
                 Uuid::new_v4().to_string().split('-').next().unwrap()
             )),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,

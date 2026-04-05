@@ -7,7 +7,7 @@
 - Хранить все verification-планы в одном месте.
 - Обеспечить weekly-проход агентами по фиксированному чеклисту.
 - Упростить контроль статуса: что проверено, что в работе, где есть блокеры.
-- Не хранить здесь активный remediation backlog: execution-планы ведутся отдельно от periodic verification.
+- Не хранить здесь активный remediation backlog: execution/remediation хвосты фиксируются в профильных live docs (`docs/architecture/*`, `docs/UI/*`, `apps/*/docs/*`), отдельно от periodic verification.
 
 ## Список планов
 

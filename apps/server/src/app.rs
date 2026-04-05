@@ -1261,6 +1261,50 @@ mod tests {
             .expect("registry-only publish request should complete");
         assert_eq!(publish_response.status(), StatusCode::NOT_FOUND);
 
+        let validate_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/validate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only validate request should complete");
+        assert_eq!(validate_response.status(), StatusCode::NOT_FOUND);
+
+        let stage_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/stages")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "stage": "compile_smoke",
+                            "status": "passed",
+                            "detail": "Registry-only host must stay read-only",
+                            "requeue": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only stage request should complete");
+        assert_eq!(stage_response.status(), StatusCode::NOT_FOUND);
+
         let owner_transfer_response = app
             .clone()
             .oneshot(

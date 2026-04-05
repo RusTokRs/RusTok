@@ -3,6 +3,7 @@
     "format:next-admin": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --write packages/search/src/index.tsx",
     "format:next-admin:check": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --check packages/search/src/index.tsx",
     "verify:i18n:ui": "node scripts/verify/verify-ui-i18n-parity.mjs",
+    "verify:i18n:contract": "node scripts/verify/verify-i18n-contract.mjs",
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs"
   },
   "dependencies": {
