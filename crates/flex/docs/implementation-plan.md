@@ -8,7 +8,7 @@
 ## Текущий статус
 
 > **Важная пометка для следующих change set'ов:** старые планы, где multilingual copy живёт inline в base rows или в canonical JSON blobs, больше не актуальны.
-> Текущий live contract для `flex`: `FieldDefinition.is_localized` уже проведён через core/runtime/DB, registered attached consumers сейчас `user`/`product`/`order`/`topic`, standalone schema copy уже вынесен в `flex_schema_translations`, а attached-mode generic localized-value storage вынесен в shared `crates/flex` и пишет в `flex_attached_localized_values`. Live donor read/write path уже закрыт для `user`, `product`, `order` и `topic`. Следующий обязательный шаг — закрыть standalone entry values и cleanup/backfill legacy locale-aware JSON payload-ов, которые ещё могут встречаться как переходное состояние.
+> Текущий live contract для `flex`: `FieldDefinition.is_localized` уже проведён через core/runtime/DB, registered attached consumers сейчас `user`/`product`/`order`/`topic`, standalone schema copy вынесен в `flex_schema_translations`, standalone entry values теперь разделены на `flex_entries.data` + `flex_entry_localized_values`, а attached-mode generic localized-value storage вынесен в shared `crates/flex` и пишет в `flex_attached_localized_values`. Live donor read/write path уже закрыт для `user`, `product`, `order` и `topic`. Следующий обязательный шаг — cleanup/backfill residual legacy locale-aware JSON payload-ов и доведение standalone surface/API до публичного контракта.
 
 | Фаза | Описание | Статус |
 |------|----------|--------|
@@ -19,7 +19,7 @@
 | Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | ✅ Закрыто: docs/migrator/is_localized выровнены, generic localized-value storage есть, live donor read/write path закрыт для `user`, `product`, `order` и `topic` |
 | Phase 4.5 | Вынос в `crates/flex` | 🔄 Почти завершён, остаются verification/docs долги |
 | Phase 4.6 | Ghost-module manifest integration | ⬜ Не начат |
-| Phase 5 | Standalone mode | 🔄 Начат (контракты и adapter-layer есть; multilingual storage split для schema-level copy начат, live API surface ещё не опубликован) |
+| Phase 5 | Standalone mode | 🔄 В активной реализации: schema-level copy и standalone entry-value split уже live в storage/service layer, публичный API surface и cleanup ещё не закрыты |
 | Phase 6 | Advanced features | ⬜ Не начат |
 
 ---
@@ -59,7 +59,7 @@ Flex в attached-mode уже умеет хранить field definitions и ма
   - `is_localized = true` не должен в финальном состоянии означать хранение multilingual business value внутри donor `metadata`.
   - Generic table `flex_attached_localized_values` уже введена, а shared entity/helpers теперь живут в `crates/flex`.
   - `user` и `product` уже используют этот path в live read/write flow.
-  - Следующий срез: провести тот же parallel localized record contract через standalone entry values и убрать residual legacy JSON fallback там, где attached donors уже переведены.
+  - Следующий срез: убрать residual legacy JSON fallback и довести standalone public surface до того же locale-aware контракта.
 
 ### Тесты (integration pending)
 
@@ -189,6 +189,18 @@ CREATE TABLE flex_entries (
 );
 CREATE INDEX idx_flex_entries_data   ON flex_entries USING GIN (data);
 CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
+
+CREATE TABLE flex_entry_localized_values (
+    entry_id     UUID NOT NULL REFERENCES flex_entries(id) ON DELETE CASCADE,
+    locale       VARCHAR(32) NOT NULL,
+    tenant_id    UUID NOT NULL,
+    data         JSONB NOT NULL DEFAULT '{}',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (entry_id, locale)
+);
+CREATE INDEX idx_flex_entry_localized_values_owner
+    ON flex_entry_localized_values (tenant_id, entry_id);
 ```
 
 ### Checklist
@@ -197,14 +209,16 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
   - Файл migration добавлен: `m20260317_000001_create_flex_standalone_tables`
   - Миграция подключена в canonical server migrator
   - Отдельным follow-up migration slice schema-level localized copy вынесен из `flex_schemas` в `flex_schema_translations`
-- [x] SeaORM entities *(добавлены `flex_schemas` и `flex_entries` в `apps/server/src/models/_entities` + re-export в `models/`)*
+  - Отдельным follow-up migration slice standalone localized entry payload вынесен из inline `flex_entries.data` в `flex_entry_localized_values`
+- [x] SeaORM entities *(добавлены `flex_schemas`, `flex_entries`, `flex_schema_translations` и `flex_entry_localized_values` в `apps/server/src/models/_entities` + re-export в `models/`)*
 - [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
 - [~] Multilingual storage contract для standalone mode
   - schema-level localized copy (`name`, `description`) больше не считается base-row данными
   - `flex_schema_translations` уже является live storage path для schema-level copy
-  - entry payload `data` пока остаётся JSONB без split на localized/non-localized values
-  - следующий обязательный шаг: явная semantics `localized/non-localized` для field definitions и parallel localized records для entry values
+  - entry payload теперь split на `flex_entries.data` (shared) и `flex_entry_localized_values` (locale-aware values)
+  - read/write service path уже мерджит parallel localized rows обратно в effective entry payload
+  - residual inline localized keys в `flex_entries.data` считаются только transitional fallback до полного cleanup/backfill
 - [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
 - [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{slug}/entries`
 - [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations

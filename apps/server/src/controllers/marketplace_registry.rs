@@ -26,13 +26,15 @@ use crate::services::marketplace_catalog::{
     registry_publish_path, registry_publish_reject_path, registry_publish_stage_report_path,
     registry_publish_status_path, registry_publish_validate_path, registry_yank_path,
     validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
-    RegistryMutationResponse, RegistryOwnerTransferRequest, RegistryPublishDecisionRequest,
-    RegistryPublishRequest, RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
+    RegistryGovernanceAction, RegistryModerationPolicy, RegistryMutationResponse,
+    RegistryOwnerTransferRequest, RegistryPublishDecisionRequest, RegistryPublishRequest,
+    RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
     RegistryPublishStatusValidationStage, RegistryPublishValidationRequest,
     RegistryValidationStageReportRequest, RegistryYankRequest,
 };
 use crate::services::registry_governance::{
-    release_status_label, request_status_label, validation_stage_status_label,
+    moderation_policy_snapshot, release_status_label, request_status_label,
+    validation_stage_allowed_terminal_reason_codes, validation_stage_status_label,
     RegistryArtifactUpload, RegistryFollowUpGateSnapshot, RegistryGovernanceService,
     RegistryValidationStageSnapshot, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
@@ -174,12 +176,12 @@ async fn publish(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
 
     let warnings = validate_publish_request_payload(&request)?;
+    let moderation_policy = registry_moderation_policy_response(&request.module.ownership);
 
     if !request.dry_run {
-        if !request.module.ownership.eq_ignore_ascii_case("first_party") {
+        if !moderation_policy.live_publish_supported {
             return Err(Error::BadRequest(
-                "Live registry publish currently supports only first_party module ownership"
-                    .to_string(),
+                moderation_policy.restriction_reason.clone(),
             ));
         }
 
@@ -212,6 +214,7 @@ async fn publish(
                     "Upload the module artifact via PUT {}",
                     registry_publish_artifact_path().replace("{request_id}", &created.id)
                 )),
+                moderation_policy: Some(moderation_policy.clone()),
             }),
         ));
     }
@@ -233,6 +236,7 @@ async fn publish(
                 "Dry-run preview only. Re-run with dry_run=false to create a publish request."
                     .to_string(),
             ),
+            moderation_policy: Some(moderation_policy),
         }),
     ))
 }
@@ -277,6 +281,14 @@ async fn publish_status(
                 "Failed to load registry publish request follow-up stages: {error}"
             ))
         })?;
+    let lifecycle = governance
+        .lifecycle_snapshot(&request.slug, &request.ownership)
+        .await
+        .map_err(|error| {
+            Error::Message(format!(
+                "Failed to load registry publish request lifecycle actions: {error}"
+            ))
+        })?;
     let mut warnings = deserialize_message_list(&request.validation_warnings);
     let next_step =
         publish_request_status_next_step(&request, &request_id, &follow_up.validation_stages);
@@ -310,7 +322,17 @@ async fn publish_status(
             .iter()
             .map(|value| (*value).to_string())
             .collect(),
+        governance_actions: lifecycle
+            .map(|snapshot| {
+                snapshot
+                    .governance_actions
+                    .into_iter()
+                    .map(registry_governance_action_response)
+                    .collect()
+            })
+            .unwrap_or_default(),
         next_step,
+        moderation_policy: registry_moderation_policy_response(&request.ownership),
     }))
 }
 
@@ -390,6 +412,7 @@ async fn upload_publish_artifact(
             warnings: deserialize_message_list(&request.validation_warnings),
             errors: deserialize_message_list(&request.validation_errors),
             next_step: publish_request_next_step(&request.status, &request_id),
+            moderation_policy: None,
         }),
     ))
 }
@@ -457,6 +480,7 @@ async fn validate_publish_request_step(
                 warnings: vec!["Dry-run preview only. Re-run with dry_run=false to execute publish validation outside the upload path.".to_string()],
                 errors: Vec::new(),
                 next_step: Some("Use the same endpoint with dry_run=false after artifact upload completes.".to_string()),
+                moderation_policy: None,
             }),
         ));
     }
@@ -514,6 +538,7 @@ async fn validate_publish_request_step(
             warnings: deserialize_message_list(&validated.validation_warnings),
             errors: deserialize_message_list(&validated.validation_errors),
             next_step: publish_request_next_step(&validated.status, &validated.id),
+            moderation_policy: None,
         }),
     ))
 }
@@ -595,6 +620,7 @@ async fn report_validation_stage(
                     "Dry-run preview only. Re-run with dry_run=false to persist the validation stage update."
                         .to_string(),
                 ),
+                moderation_policy: None,
             }),
         ));
     }
@@ -629,6 +655,7 @@ async fn report_validation_stage(
                 "Inspect {} for the updated publish lifecycle and follow-up validation stages.",
                 registry_publish_status_path().replace("{request_id}", &request_id)
             )),
+            moderation_policy: None,
         }),
     ))
 }
@@ -718,6 +745,7 @@ async fn approve_publish_request(
                 warnings,
                 errors: Vec::new(),
                 next_step,
+                moderation_policy: None,
             }),
         ));
     }
@@ -748,6 +776,7 @@ async fn approve_publish_request(
             warnings: deserialize_message_list(&approved.validation_warnings),
             errors: deserialize_message_list(&approved.validation_errors),
             next_step: publish_request_next_step(&approved.status, &approved.id),
+            moderation_policy: None,
         }),
     ))
 }
@@ -820,6 +849,7 @@ async fn reject_publish_request(
                     "Use the same endpoint with dry_run=false, a non-empty reason, and a supported reason_code ({}) to reject the publish request.",
                     REGISTRY_REJECT_REASON_CODES.join(", ")
                 )),
+                moderation_policy: None,
             }),
         ));
     }
@@ -865,6 +895,7 @@ async fn reject_publish_request(
             warnings,
             errors: deserialize_message_list(&rejected.validation_errors),
             next_step: publish_request_next_step(&rejected.status, &rejected.id),
+            moderation_policy: None,
         }),
     ))
 }
@@ -944,6 +975,7 @@ async fn yank(
                 warnings,
                 errors: Vec::new(),
                 next_step: None,
+                moderation_policy: None,
             }),
         ));
     }
@@ -959,12 +991,13 @@ async fn yank(
             status: Some("dry_run".to_string()),
             slug: request.slug.clone(),
             version: request.version.clone(),
-                warnings,
-                errors: Vec::new(),
-                next_step: Some(
+            warnings,
+            errors: Vec::new(),
+            next_step: Some(
                 "Dry-run preview only. Re-run with dry_run=false, a non-empty reason, and a supported reason_code to yank the published release."
                     .to_string(),
             ),
+            moderation_policy: None,
         }),
     ))
 }
@@ -1050,6 +1083,7 @@ async fn transfer_owner(
                 warnings,
                 errors: Vec::new(),
                 next_step: None,
+                moderation_policy: None,
             }),
         ));
     }
@@ -1073,6 +1107,7 @@ async fn transfer_owner(
                     REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
                 ),
             ),
+            moderation_policy: None,
         }),
     ))
 }
@@ -1346,11 +1381,17 @@ fn validate_publish_request_payload(
                 .to_string(),
         );
     }
-    if !request.module.ownership.eq_ignore_ascii_case("first_party") {
-        warnings.push(
-            "Third-party moderation/governance flow is not implemented yet; request is accepted only as a dry-run contract preview."
-                .to_string(),
-        );
+    let moderation_policy = moderation_policy_snapshot(&request.module.ownership);
+    if moderation_policy.manual_review_required {
+        warnings.push(format!(
+            "{}{}",
+            moderation_policy.restriction_reason,
+            moderation_policy
+                .restriction_reason_code
+                .as_deref()
+                .map(|code| format!(" ({code})"))
+                .unwrap_or_default()
+        ));
     }
 
     Ok(warnings)
@@ -1495,7 +1536,7 @@ fn validate_validation_stage_report_request(
         return Err(Error::BadRequest(format!(
             "Live registry validation stage status '{}' requires reason_code; expected one of {}",
             status,
-            REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+            validation_stage_allowed_terminal_reason_codes(stage).join(", ")
         )));
     }
     if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
@@ -1508,6 +1549,19 @@ fn validate_validation_stage_report_request(
                 "Registry validation stage reason_code '{}' is not supported; expected one of {}",
                 reason_code,
                 REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+            )));
+        }
+        if matches!(status.as_str(), "passed" | "failed" | "blocked")
+            && !validation_stage_allowed_terminal_reason_codes(stage)
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry validation stage '{}' reason_code '{}' is not supported for terminal status '{}'; expected one of {}",
+                stage,
+                reason_code,
+                status,
+                validation_stage_allowed_terminal_reason_codes(stage).join(", ")
             )));
         }
     }
@@ -1710,6 +1764,36 @@ fn publish_status_validation_stage(
         updated_at: stage.updated_at.clone(),
         started_at: stage.started_at.clone(),
         finished_at: stage.finished_at.clone(),
+        execution_mode: stage.execution_mode.clone(),
+        runnable: stage.runnable,
+        requires_manual_confirmation: stage.requires_manual_confirmation,
+        allowed_terminal_reason_codes: stage.allowed_terminal_reason_codes.clone(),
+        suggested_pass_reason_code: stage.suggested_pass_reason_code.clone(),
+        suggested_failure_reason_code: stage.suggested_failure_reason_code.clone(),
+        suggested_blocked_reason_code: stage.suggested_blocked_reason_code.clone(),
+    }
+}
+
+fn registry_moderation_policy_response(ownership: &str) -> RegistryModerationPolicy {
+    let snapshot = moderation_policy_snapshot(ownership);
+    RegistryModerationPolicy {
+        mode: snapshot.mode,
+        live_publish_supported: snapshot.live_publish_supported,
+        live_governance_supported: snapshot.live_governance_supported,
+        manual_review_required: snapshot.manual_review_required,
+        restriction_reason_code: snapshot.restriction_reason_code,
+        restriction_reason: snapshot.restriction_reason,
+    }
+}
+
+fn registry_governance_action_response(
+    action: crate::services::registry_governance::RegistryGovernanceActionSnapshot,
+) -> RegistryGovernanceAction {
+    RegistryGovernanceAction {
+        key: action.key,
+        enabled: action.enabled,
+        reason: action.reason,
+        supported_reason_codes: action.supported_reason_codes,
     }
 }
 

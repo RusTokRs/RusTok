@@ -74,6 +74,8 @@ pub const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
     "governance_override",
     "other",
 ];
+pub const REGISTRY_MODERATION_POLICY_REASON_CODE_THIRD_PARTY_FLOW_PENDING: &str =
+    "third_party_flow_pending";
 pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
     "local_runner_passed",
     "manual_review_complete",
@@ -110,6 +112,12 @@ struct RegistryValidationJobClaim {
     job: registry_validation_job::Model,
     request: registry_publish_request::Model,
     should_run: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryValidationStageClaim {
+    pub request: registry_publish_request::Model,
+    pub stage: registry_validation_stage::Model,
 }
 
 #[derive(Debug, Clone)]
@@ -181,16 +189,43 @@ pub struct RegistryValidationStageSnapshot {
     pub updated_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    pub execution_mode: String,
+    pub runnable: bool,
+    pub requires_manual_confirmation: bool,
+    pub allowed_terminal_reason_codes: Vec<String>,
+    pub suggested_pass_reason_code: Option<String>,
+    pub suggested_failure_reason_code: Option<String>,
+    pub suggested_blocked_reason_code: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryModerationPolicySnapshot {
+    pub mode: String,
+    pub live_publish_supported: bool,
+    pub live_governance_supported: bool,
+    pub manual_review_required: bool,
+    pub restriction_reason_code: Option<String>,
+    pub restriction_reason: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryGovernanceActionSnapshot {
+    pub key: String,
+    pub enabled: bool,
+    pub reason: Option<String>,
+    pub supported_reason_codes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RegistryModuleLifecycleSnapshot {
+    pub moderation_policy: RegistryModerationPolicySnapshot,
     pub owner_binding: Option<RegistryModuleOwnerSnapshot>,
     pub latest_request: Option<RegistryPublishRequestSnapshot>,
     pub latest_release: Option<RegistryModuleReleaseSnapshot>,
     pub recent_events: Vec<RegistryGovernanceEventSnapshot>,
     pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
     pub validation_stages: Vec<RegistryValidationStageSnapshot>,
+    pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
 }
 
 #[derive(Debug, Clone)]
@@ -820,6 +855,23 @@ impl RegistryGovernanceService {
                     REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
                 );
             }
+            if matches!(
+                requested_status,
+                RegistryValidationStageStatus::Passed
+                    | RegistryValidationStageStatus::Failed
+                    | RegistryValidationStageStatus::Blocked
+            ) && !validation_stage_allowed_terminal_reason_codes(stage_key)
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+            {
+                anyhow::bail!(
+                    "Validation stage '{}' reason_code '{}' is not supported for terminal status '{}'; expected one of {}",
+                    stage_key,
+                    reason_code,
+                    validation_stage_status_label(requested_status.clone()),
+                    validation_stage_allowed_terminal_reason_codes(stage_key).join(", ")
+                );
+            }
         }
         if requeue && requested_status != RegistryValidationStageStatus::Queued {
             anyhow::bail!(
@@ -889,6 +941,101 @@ impl RegistryGovernanceService {
         };
 
         Ok(RegistryValidationStageMutationResult { request, stage })
+    }
+
+    pub async fn claim_next_queued_validation_stage(
+        &self,
+        actor: &str,
+        supported_stages: &[&str],
+    ) -> anyhow::Result<Option<RegistryValidationStageClaim>> {
+        if supported_stages.is_empty() {
+            return Ok(None);
+        }
+
+        let queued_stages = RegistryValidationStageEntity::find()
+            .filter(
+                registry_validation_stage::Column::Status.eq(RegistryValidationStageStatus::Queued),
+            )
+            .order_by_asc(registry_validation_stage::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        for queued_stage in queued_stages {
+            if !supported_stages
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(&queued_stage.stage_key))
+            {
+                continue;
+            }
+
+            let Some(request) = self.get_publish_request(&queued_stage.request_id).await? else {
+                continue;
+            };
+            if !matches!(
+                request.status,
+                RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
+            ) {
+                continue;
+            }
+
+            let Some(latest_stage) = self
+                .latest_validation_stage(&request.id, &queued_stage.stage_key)
+                .await?
+            else {
+                continue;
+            };
+            if latest_stage.id != queued_stage.id {
+                continue;
+            }
+
+            let stage = self
+                .update_validation_stage_status(
+                    queued_stage,
+                    &request,
+                    actor,
+                    RegistryValidationStageStatus::Running,
+                    &default_validation_stage_detail(
+                        latest_stage.stage_key.as_str(),
+                        &RegistryValidationStageStatus::Running,
+                    ),
+                    None,
+                )
+                .await?;
+            return Ok(Some(RegistryValidationStageClaim { request, stage }));
+        }
+
+        Ok(None)
+    }
+
+    pub async fn complete_claimed_validation_stage(
+        &self,
+        claim: RegistryValidationStageClaim,
+        actor: &str,
+        status: RegistryValidationStageStatus,
+        detail: &str,
+        reason_code: Option<&str>,
+    ) -> anyhow::Result<Option<registry_validation_stage::Model>> {
+        let Some(latest_stage) = self
+            .latest_validation_stage(&claim.request.id, &claim.stage.stage_key)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if latest_stage.id != claim.stage.id {
+            return Ok(None);
+        }
+
+        let stage = self
+            .update_validation_stage_status(
+                latest_stage,
+                &claim.request,
+                actor,
+                status,
+                detail,
+                reason_code,
+            )
+            .await?;
+        Ok(Some(stage))
     }
 
     pub async fn approve_publish_request(
@@ -1251,6 +1398,7 @@ impl RegistryGovernanceService {
     pub async fn lifecycle_snapshot(
         &self,
         slug: &str,
+        ownership: &str,
     ) -> anyhow::Result<Option<RegistryModuleLifecycleSnapshot>> {
         let owner_binding = RegistryModuleOwnerEntity::find_by_id(slug)
             .one(&self.db)
@@ -1277,15 +1425,7 @@ impl RegistryGovernanceService {
             Vec::new()
         };
 
-        if owner_binding.is_none()
-            && latest_request.is_none()
-            && latest_release.is_none()
-            && recent_events.is_empty()
-            && validation_stage_rows.is_empty()
-        {
-            return Ok(None);
-        }
-
+        let moderation_policy = moderation_policy_snapshot(ownership);
         let validation_stages = derive_validation_stage_snapshots(
             latest_request.as_ref(),
             &recent_events,
@@ -1296,8 +1436,17 @@ impl RegistryGovernanceService {
             &recent_events,
             &validation_stages,
         );
+        let governance_actions = derive_registry_governance_actions(
+            &moderation_policy,
+            latest_request.as_ref(),
+            latest_release.as_ref(),
+            owner_binding.as_ref(),
+            &recent_events,
+            &validation_stages,
+        );
 
         Ok(Some(RegistryModuleLifecycleSnapshot {
+            moderation_policy,
             owner_binding: owner_binding.map(|binding| RegistryModuleOwnerSnapshot {
                 owner_actor: binding.owner_actor,
                 bound_by: binding.bound_by,
@@ -1341,6 +1490,7 @@ impl RegistryGovernanceService {
                 .collect(),
             follow_up_gates,
             validation_stages,
+            governance_actions,
         }))
     }
 
@@ -2254,6 +2404,331 @@ impl RegistryGovernanceService {
     }
 }
 
+pub(crate) fn moderation_policy_snapshot(ownership: &str) -> RegistryModerationPolicySnapshot {
+    if ownership.eq_ignore_ascii_case("first_party") {
+        RegistryModerationPolicySnapshot {
+            mode: "first_party_live".to_string(),
+            live_publish_supported: true,
+            live_governance_supported: true,
+            manual_review_required: false,
+            restriction_reason_code: None,
+            restriction_reason:
+                "Live registry publish/governance flow is enabled for first-party modules."
+                    .to_string(),
+        }
+    } else {
+        RegistryModerationPolicySnapshot {
+            mode: "third_party_manual_only".to_string(),
+            live_publish_supported: false,
+            live_governance_supported: false,
+            manual_review_required: true,
+            restriction_reason_code: Some(
+                REGISTRY_MODERATION_POLICY_REASON_CODE_THIRD_PARTY_FLOW_PENDING.to_string(),
+            ),
+            restriction_reason: "Third-party moderation/governance flow is not implemented yet; keep this module on manual review and dry-run registry preview paths until the broader moderation flow is finished."
+                .to_string(),
+        }
+    }
+}
+
+fn derive_registry_governance_actions(
+    moderation_policy: &RegistryModerationPolicySnapshot,
+    latest_request: Option<&registry_publish_request::Model>,
+    latest_release: Option<&registry_module_release::Model>,
+    owner_binding: Option<&registry_module_owner::Model>,
+    recent_events: &[registry_governance_event::Model],
+    validation_stages: &[RegistryValidationStageSnapshot],
+) -> Vec<RegistryGovernanceActionSnapshot> {
+    let restriction_reason = || Some(moderation_policy.restriction_reason.clone());
+    let action =
+        |key: &str, enabled: bool, reason: Option<String>, supported_reason_codes: &[&str]| {
+            RegistryGovernanceActionSnapshot {
+                key: key.to_string(),
+                enabled,
+                reason,
+                supported_reason_codes: supported_reason_codes
+                    .iter()
+                    .map(|code| (*code).to_string())
+                    .collect(),
+            }
+        };
+
+    if !moderation_policy.live_governance_supported {
+        return vec![
+            action("validate", false, restriction_reason(), &[]),
+            action(
+                "approve",
+                false,
+                restriction_reason(),
+                REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+            ),
+            action(
+                "reject",
+                false,
+                restriction_reason(),
+                REGISTRY_REJECT_REASON_CODES,
+            ),
+            action("stage_report", false, restriction_reason(), &[]),
+            action(
+                "owner_transfer",
+                false,
+                restriction_reason(),
+                REGISTRY_OWNER_TRANSFER_REASON_CODES,
+            ),
+            action(
+                "yank",
+                false,
+                restriction_reason(),
+                REGISTRY_YANK_REASON_CODES,
+            ),
+        ];
+    }
+
+    let validate_action = match latest_request {
+        Some(request)
+            if matches!(
+                request.status,
+                RegistryPublishRequestStatus::ArtifactUploaded
+                    | RegistryPublishRequestStatus::Submitted
+            ) =>
+        {
+            action("validate", true, None, &[])
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::Rejected => {
+            let latest_event_type = recent_events
+                .iter()
+                .find(|event| event.request_id.as_deref() == Some(request.id.as_str()))
+                .map(|event| event.event_type.as_str());
+            if rejected_publish_request_can_retry(
+                latest_event_type,
+                request.rejection_reason.as_deref(),
+            ) {
+                action("validate", true, None, &[])
+            } else {
+                action(
+                    "validate",
+                    false,
+                    Some(
+                        "Manual governance rejects must be recreated as new publish requests."
+                            .to_string(),
+                    ),
+                    &[],
+                )
+            }
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::Draft => action(
+            "validate",
+            false,
+            Some("Artifact upload must complete before validation can start.".to_string()),
+            &[],
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::Validating => action(
+            "validate",
+            false,
+            Some("Validation is already running for this publish request.".to_string()),
+            &[],
+        ),
+        Some(request)
+            if matches!(
+                request.status,
+                RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
+            ) =>
+        {
+            action(
+                "validate",
+                false,
+                Some(
+                    "Artifact/manifest validation is already complete for this publish request."
+                        .to_string(),
+                ),
+                &[],
+            )
+        }
+        Some(_) => action("validate", false, None, &[]),
+        None => action(
+            "validate",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            &[],
+        ),
+    };
+
+    let approve_action = match latest_request {
+        Some(request) if request.status == RegistryPublishRequestStatus::Approved => {
+            let reason = validation_stages
+                .iter()
+                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+                .then_some(
+                    "Approval is available, but non-passed follow-up stages still require an explicit override reason and reason_code."
+                        .to_string(),
+                );
+            action(
+                "approve",
+                true,
+                reason,
+                REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+            )
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::Validating => action(
+            "approve",
+            false,
+            Some("Wait for validation to finish before approving this request.".to_string()),
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+        ),
+        Some(request)
+            if matches!(
+                request.status,
+                RegistryPublishRequestStatus::Draft
+                    | RegistryPublishRequestStatus::ArtifactUploaded
+                    | RegistryPublishRequestStatus::Submitted
+            ) =>
+        {
+            action(
+                "approve",
+                false,
+                Some(
+                    "Approval is available only after artifact validation reaches review-ready."
+                        .to_string(),
+                ),
+                REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+            )
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::Rejected => action(
+            "approve",
+            false,
+            Some("Rejected publish requests cannot be approved in place.".to_string()),
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::Published => action(
+            "approve",
+            false,
+            Some("This publish request is already published.".to_string()),
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+        ),
+        Some(_) => action(
+            "approve",
+            false,
+            None,
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+        ),
+        None => action(
+            "approve",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+        ),
+    };
+
+    let reject_action = match latest_request {
+        Some(request)
+            if !matches!(
+                request.status,
+                RegistryPublishRequestStatus::Rejected | RegistryPublishRequestStatus::Published
+            ) =>
+        {
+            action("reject", true, None, REGISTRY_REJECT_REASON_CODES)
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::Rejected => action(
+            "reject",
+            false,
+            Some("This publish request is already rejected.".to_string()),
+            REGISTRY_REJECT_REASON_CODES,
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::Published => action(
+            "reject",
+            false,
+            Some("Published releases must be managed through yank/unpublish actions.".to_string()),
+            REGISTRY_REJECT_REASON_CODES,
+        ),
+        Some(_) => action("reject", false, None, REGISTRY_REJECT_REASON_CODES),
+        None => action(
+            "reject",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            REGISTRY_REJECT_REASON_CODES,
+        ),
+    };
+
+    let stage_report_action = match latest_request {
+        Some(request)
+            if matches!(
+                request.status,
+                RegistryPublishRequestStatus::Approved | RegistryPublishRequestStatus::Published
+            ) =>
+        {
+            action("stage_report", true, None, &[])
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::Rejected => action(
+            "stage_report",
+            false,
+            Some("Rejected publish requests cannot accept follow-up stage updates.".to_string()),
+            &[],
+        ),
+        Some(_) => action(
+            "stage_report",
+            false,
+            Some(
+                "Follow-up stages are available only after artifact validation reaches review-ready."
+                    .to_string(),
+            ),
+            &[],
+        ),
+        None => action(
+            "stage_report",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            &[],
+        ),
+    };
+
+    let owner_transfer_action = if owner_binding.is_some() {
+        action(
+            "owner_transfer",
+            true,
+            None,
+            REGISTRY_OWNER_TRANSFER_REASON_CODES,
+        )
+    } else {
+        action(
+            "owner_transfer",
+            false,
+            Some("Owner transfer requires a persisted owner binding.".to_string()),
+            REGISTRY_OWNER_TRANSFER_REASON_CODES,
+        )
+    };
+
+    let yank_action = match latest_release {
+        Some(release) if release.status == RegistryModuleReleaseStatus::Active => {
+            action("yank", true, None, REGISTRY_YANK_REASON_CODES)
+        }
+        Some(release) if release.status == RegistryModuleReleaseStatus::Yanked => action(
+            "yank",
+            false,
+            Some(format!(
+                "Release '{}@{}' is already yanked.",
+                release.slug, release.version
+            )),
+            REGISTRY_YANK_REASON_CODES,
+        ),
+        None => action(
+            "yank",
+            false,
+            Some("No published release exists yet.".to_string()),
+            REGISTRY_YANK_REASON_CODES,
+        ),
+        Some(_) => action("yank", false, None, REGISTRY_YANK_REASON_CODES),
+    };
+
+    vec![
+        validate_action,
+        approve_action,
+        reject_action,
+        stage_report_action,
+        owner_transfer_action,
+        yank_action,
+    ]
+}
+
 #[derive(Debug, Clone)]
 struct StoredRegistryArtifact {
     artifact_path: String,
@@ -2382,6 +2857,78 @@ pub fn validation_stage_status_label(status: RegistryValidationStageStatus) -> &
         RegistryValidationStageStatus::Passed => "passed",
         RegistryValidationStageStatus::Failed => "failed",
         RegistryValidationStageStatus::Blocked => "blocked",
+    }
+}
+
+fn validation_stage_execution_mode(stage_key: &str) -> &'static str {
+    match stage_key {
+        "compile_smoke" | "targeted_tests" => "local_runner",
+        "security_policy_review" => "operator_assisted",
+        _ => "manual",
+    }
+}
+
+fn validation_stage_is_runnable(stage_key: &str) -> bool {
+    matches!(
+        stage_key,
+        "compile_smoke" | "targeted_tests" | "security_policy_review"
+    )
+}
+
+fn validation_stage_requires_manual_confirmation(stage_key: &str) -> bool {
+    stage_key.eq_ignore_ascii_case("security_policy_review")
+}
+
+pub(crate) fn validation_stage_allowed_terminal_reason_codes(
+    stage_key: &str,
+) -> &'static [&'static str] {
+    match stage_key {
+        "compile_smoke" => &[
+            "local_runner_passed",
+            "build_failure",
+            "manual_override",
+            "other",
+        ],
+        "targeted_tests" => &[
+            "local_runner_passed",
+            "test_failure",
+            "manual_override",
+            "other",
+        ],
+        "security_policy_review" => &[
+            "manual_review_complete",
+            "policy_preflight_failed",
+            "security_findings",
+            "policy_exception",
+            "license_issue",
+            "manual_override",
+            "other",
+        ],
+        _ => &["manual_override", "other"],
+    }
+}
+
+fn validation_stage_suggested_pass_reason_code(stage_key: &str) -> Option<&'static str> {
+    match stage_key {
+        "compile_smoke" | "targeted_tests" => Some("local_runner_passed"),
+        "security_policy_review" => Some("manual_review_complete"),
+        _ => None,
+    }
+}
+
+fn validation_stage_suggested_failure_reason_code(stage_key: &str) -> Option<&'static str> {
+    match stage_key {
+        "compile_smoke" => Some("build_failure"),
+        "targeted_tests" => Some("test_failure"),
+        "security_policy_review" => Some("policy_preflight_failed"),
+        _ => None,
+    }
+}
+
+fn validation_stage_suggested_blocked_reason_code(stage_key: &str) -> Option<&'static str> {
+    match stage_key {
+        "compile_smoke" | "targeted_tests" | "security_policy_review" => Some("manual_override"),
+        _ => None,
     }
 }
 
@@ -2544,6 +3091,27 @@ fn derive_validation_stage_snapshots(
                 updated_at: stage.updated_at.to_rfc3339(),
                 started_at: stage.started_at.as_ref().map(|value| value.to_rfc3339()),
                 finished_at: stage.finished_at.as_ref().map(|value| value.to_rfc3339()),
+                execution_mode: validation_stage_execution_mode(stage_key).to_string(),
+                runnable: validation_stage_is_runnable(stage_key),
+                requires_manual_confirmation: validation_stage_requires_manual_confirmation(
+                    stage_key,
+                ),
+                allowed_terminal_reason_codes: validation_stage_allowed_terminal_reason_codes(
+                    stage_key,
+                )
+                .iter()
+                .map(|code| (*code).to_string())
+                .collect(),
+                suggested_pass_reason_code: validation_stage_suggested_pass_reason_code(stage_key)
+                    .map(ToString::to_string),
+                suggested_failure_reason_code: validation_stage_suggested_failure_reason_code(
+                    stage_key,
+                )
+                .map(ToString::to_string),
+                suggested_blocked_reason_code: validation_stage_suggested_blocked_reason_code(
+                    stage_key,
+                )
+                .map(ToString::to_string),
             });
             continue;
         }
@@ -2587,6 +3155,27 @@ fn derive_validation_stage_snapshots(
                 updated_at: event.created_at.to_rfc3339(),
                 started_at: None,
                 finished_at: None,
+                execution_mode: validation_stage_execution_mode(stage_key).to_string(),
+                runnable: validation_stage_is_runnable(stage_key),
+                requires_manual_confirmation: validation_stage_requires_manual_confirmation(
+                    stage_key,
+                ),
+                allowed_terminal_reason_codes: validation_stage_allowed_terminal_reason_codes(
+                    stage_key,
+                )
+                .iter()
+                .map(|code| (*code).to_string())
+                .collect(),
+                suggested_pass_reason_code: validation_stage_suggested_pass_reason_code(stage_key)
+                    .map(ToString::to_string),
+                suggested_failure_reason_code: validation_stage_suggested_failure_reason_code(
+                    stage_key,
+                )
+                .map(ToString::to_string),
+                suggested_blocked_reason_code: validation_stage_suggested_blocked_reason_code(
+                    stage_key,
+                )
+                .map(ToString::to_string),
             });
             continue;
         }
@@ -2613,6 +3202,27 @@ fn derive_validation_stage_snapshots(
                     .unwrap_or_default(),
                 started_at: None,
                 finished_at: None,
+                execution_mode: validation_stage_execution_mode(stage_key).to_string(),
+                runnable: validation_stage_is_runnable(stage_key),
+                requires_manual_confirmation: validation_stage_requires_manual_confirmation(
+                    stage_key,
+                ),
+                allowed_terminal_reason_codes: validation_stage_allowed_terminal_reason_codes(
+                    stage_key,
+                )
+                .iter()
+                .map(|code| (*code).to_string())
+                .collect(),
+                suggested_pass_reason_code: validation_stage_suggested_pass_reason_code(stage_key)
+                    .map(ToString::to_string),
+                suggested_failure_reason_code: validation_stage_suggested_failure_reason_code(
+                    stage_key,
+                )
+                .map(ToString::to_string),
+                suggested_blocked_reason_code: validation_stage_suggested_blocked_reason_code(
+                    stage_key,
+                )
+                .map(ToString::to_string),
             });
         }
     }
@@ -3742,7 +4352,7 @@ mod tests {
         let service = RegistryGovernanceService::new(db.clone());
 
         let snapshot = service
-            .lifecycle_snapshot(&request.slug)
+            .lifecycle_snapshot(&request.slug, &request.ownership)
             .await
             .unwrap()
             .expect("lifecycle snapshot");

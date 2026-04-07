@@ -30,6 +30,8 @@ pub enum Relation {
         to = "super::flex_schemas::Column::Id"
     )]
     FlexSchema,
+    #[sea_orm(has_many = "super::flex_entry_localized_values::Entity")]
+    FlexEntryLocalizedValues,
 }
 
 impl Related<super::tenants::Entity> for Entity {
@@ -41,6 +43,12 @@ impl Related<super::tenants::Entity> for Entity {
 impl Related<super::flex_schemas::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::FlexSchema.def()
+    }
+}
+
+impl Related<super::flex_entry_localized_values::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::FlexEntryLocalizedValues.def()
     }
 }
 

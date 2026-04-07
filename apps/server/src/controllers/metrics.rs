@@ -161,6 +161,12 @@ rustok_runtime_guardrail_observed_status {observed_status}\n\
 rustok_runtime_guardrail_status {overall_status}\n\
 rustok_runtime_guardrail_runtime_dependencies_enabled {runtime_dependencies_enabled}\n\
 rustok_runtime_guardrail_host_mode{{mode=\"{host_mode}\"}} 1\n\
+rustok_runtime_guardrail_validation_runner_state {validation_runner_state}\n\
+rustok_runtime_guardrail_validation_runner_config{{setting=\"configured_enabled\"}} {validation_runner_configured_enabled}\n\
+rustok_runtime_guardrail_validation_runner_config{{setting=\"active\"}} {validation_runner_active}\n\
+rustok_runtime_guardrail_validation_runner_config{{setting=\"worker_attached\"}} {validation_runner_worker_attached}\n\
+rustok_runtime_guardrail_validation_runner_config{{setting=\"auto_confirm_manual_review\"}} {validation_runner_auto_confirm_manual_review}\n\
+rustok_runtime_guardrail_validation_runner_config{{setting=\"poll_interval_ms\"}} {validation_runner_poll_interval_ms}\n\
 rustok_runtime_guardrail_event_transport_fallback_active {relay_fallback_active}\n\
 rustok_runtime_guardrail_event_backpressure_enabled {backpressure_enabled}\n\
 rustok_runtime_guardrail_event_backpressure_state {backpressure_state}\n\
@@ -178,6 +184,27 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
             0
         },
         host_mode = snapshot.host_mode,
+        validation_runner_state = snapshot.validation_runner.state.metric_value(),
+        validation_runner_configured_enabled = if snapshot.validation_runner.configured_enabled {
+            1
+        } else {
+            0
+        },
+        validation_runner_active = if snapshot.validation_runner.active { 1 } else { 0 },
+        validation_runner_worker_attached = if snapshot.validation_runner.worker_attached {
+            1
+        } else {
+            0
+        },
+        validation_runner_auto_confirm_manual_review = if snapshot
+            .validation_runner
+            .auto_confirm_manual_review
+        {
+            1
+        } else {
+            0
+        },
+        validation_runner_poll_interval_ms = snapshot.validation_runner.poll_interval_ms,
         relay_fallback_active = if snapshot.event_transport.relay_fallback_active {
             1
         } else {
@@ -195,6 +222,11 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
         warning_count = snapshot.event_bus.warning_count,
         critical_count = snapshot.event_bus.critical_count,
     );
+    for stage in &snapshot.validation_runner.supported_stages {
+        payload.push_str(&format!(
+            "rustok_runtime_guardrail_validation_runner_supported_stage{{stage=\"{stage}\"}} 1\n"
+        ));
+    }
     payload.push_str(&rate_limit_lines);
     payload
 }
@@ -465,7 +497,7 @@ mod tests {
     use crate::services::runtime_guardrails::{
         EventBusGuardrailSnapshot, EventTransportGuardrailSnapshot, RateLimitGuardrailSnapshot,
         RateLimitPolicySnapshot, RuntimeGuardrailRollout, RuntimeGuardrailSnapshot,
-        RuntimeGuardrailStatus,
+        RuntimeGuardrailStatus, ValidationRunnerGuardrailSnapshot,
     };
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
@@ -593,6 +625,17 @@ mod tests {
                 relay_fallback_active: false,
                 channel_capacity: 128,
             },
+            validation_runner: ValidationRunnerGuardrailSnapshot {
+                configured_enabled: true,
+                active: true,
+                worker_attached: true,
+                instance_id: Some(1),
+                auto_confirm_manual_review: false,
+                poll_interval_ms: 5000,
+                actor: "system:registry-stage-runner".to_string(),
+                supported_stages: vec!["compile_smoke".to_string(), "targeted_tests".to_string()],
+                state: RuntimeGuardrailStatus::Ok,
+            },
         });
 
         assert_metric_labeled_line(
@@ -617,5 +660,16 @@ mod tests {
         );
         assert!(payload.contains("rustok_runtime_guardrail_runtime_dependencies_enabled 1"));
         assert!(payload.contains("rustok_runtime_guardrail_host_mode{mode=\"full\"} 1"));
+        assert!(payload.contains("rustok_runtime_guardrail_validation_runner_state 0"));
+        assert_metric_labeled_line(
+            &payload,
+            "rustok_runtime_guardrail_validation_runner_config",
+            "{setting=\"configured_enabled\"}",
+        );
+        assert_metric_labeled_line(
+            &payload,
+            "rustok_runtime_guardrail_validation_runner_supported_stage",
+            "{stage=\"compile_smoke\"}",
+        );
     }
 }

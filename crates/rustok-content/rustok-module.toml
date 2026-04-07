@@ -5,6 +5,7 @@ version = "0.1.0"
 description = "Shared content helpers and orchestration module"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "capability_only"
 
 [crate]
 entry_type = "ContentModule"

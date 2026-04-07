@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::modules::{
-    CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
-    ModulesManifest,
+    catalog_module_ui_classification, CatalogManifestModule, CatalogModuleVersion, ManifestManager,
+    ModuleSettingSpec, ModulesManifest,
 };
 
 pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
@@ -322,6 +322,12 @@ pub struct RegistryCatalogModule {
     #[serde(default)]
     pub versions: Vec<RegistryCatalogVersion>,
     #[serde(default)]
+    pub has_admin_ui: bool,
+    #[serde(default)]
+    pub has_storefront_ui: bool,
+    #[serde(default)]
+    pub ui_classification: String,
+    #[serde(default)]
     pub recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     pub showcase_admin_surfaces: Vec<String>,
@@ -365,6 +371,14 @@ impl RegistryCatalogModule {
             checksum_sha256,
             signature: self.signature,
             versions,
+            has_admin_ui: self.has_admin_ui,
+            has_storefront_ui: self.has_storefront_ui,
+            ui_classification: if self.ui_classification.trim().is_empty() {
+                catalog_module_ui_classification(self.has_admin_ui, self.has_storefront_ui)
+                    .to_string()
+            } else {
+                self.ui_classification
+            },
             recommended_admin_surfaces: self.recommended_admin_surfaces,
             showcase_admin_surfaces: self.showcase_admin_surfaces,
             settings_schema: self.settings_schema,
@@ -397,6 +411,9 @@ impl RegistryCatalogModule {
             checksum_sha256,
             signature,
             versions,
+            has_admin_ui,
+            has_storefront_ui,
+            ui_classification,
             recommended_admin_surfaces,
             showcase_admin_surfaces,
             settings_schema,
@@ -457,6 +474,13 @@ impl RegistryCatalogModule {
             checksum_sha256: normalize_optional_registry_checksum(checksum_sha256),
             signature,
             versions,
+            has_admin_ui,
+            has_storefront_ui,
+            ui_classification: if ui_classification.trim().is_empty() {
+                catalog_module_ui_classification(has_admin_ui, has_storefront_ui).to_string()
+            } else {
+                ui_classification
+            },
             recommended_admin_surfaces,
             showcase_admin_surfaces,
             settings_schema,
@@ -521,6 +545,8 @@ pub struct RegistryMutationResponse {
     #[serde(default)]
     pub errors: Vec<String>,
     pub next_step: Option<String>,
+    #[serde(default, rename = "moderationPolicy")]
+    pub moderation_policy: Option<RegistryModerationPolicy>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -544,7 +570,36 @@ pub struct RegistryPublishStatusResponse {
     pub approval_override_required: bool,
     #[serde(default, rename = "approvalOverrideReasonCodes")]
     pub approval_override_reason_codes: Vec<String>,
+    #[serde(default, rename = "governanceActions")]
+    pub governance_actions: Vec<RegistryGovernanceAction>,
     pub next_step: Option<String>,
+    #[serde(rename = "moderationPolicy")]
+    pub moderation_policy: RegistryModerationPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryGovernanceAction {
+    pub key: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default, rename = "supportedReasonCodes")]
+    pub supported_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryModerationPolicy {
+    pub mode: String,
+    #[serde(rename = "livePublishSupported")]
+    pub live_publish_supported: bool,
+    #[serde(rename = "liveGovernanceSupported")]
+    pub live_governance_supported: bool,
+    #[serde(rename = "manualReviewRequired")]
+    pub manual_review_required: bool,
+    #[serde(rename = "restrictionReasonCode")]
+    pub restriction_reason_code: Option<String>,
+    #[serde(rename = "restrictionReason")]
+    pub restriction_reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -569,6 +624,20 @@ pub struct RegistryPublishStatusValidationStage {
     pub started_at: Option<String>,
     #[serde(rename = "finishedAt")]
     pub finished_at: Option<String>,
+    #[serde(default, rename = "executionMode")]
+    pub execution_mode: String,
+    #[serde(default)]
+    pub runnable: bool,
+    #[serde(default, rename = "requiresManualConfirmation")]
+    pub requires_manual_confirmation: bool,
+    #[serde(default, rename = "allowedTerminalReasonCodes")]
+    pub allowed_terminal_reason_codes: Vec<String>,
+    #[serde(default, rename = "suggestedPassReasonCode")]
+    pub suggested_pass_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedFailureReasonCode")]
+    pub suggested_failure_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedBlockedReasonCode")]
+    pub suggested_blocked_reason_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

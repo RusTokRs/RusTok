@@ -5,6 +5,10 @@ version = "0.1.0"
 description = "Scope-aware taxonomy dictionary for shared and module-local terms"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "capability_only"
+
+[dependencies]
+content = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "TaxonomyModule"

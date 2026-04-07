@@ -10,6 +10,7 @@ use crate::services::build_executor::BuildExecutionService;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
+use crate::services::registry_validation_runner::RegistryValidationRunnerService;
 use crate::services::release_backend::ReleaseDeploymentService;
 
 // ── Graceful-shutdown handle ──────────────────────────────────────────────────
@@ -35,6 +36,7 @@ impl StopHandle {
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static BUILD_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+static REGISTRY_VALIDATION_STAGE_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
 
@@ -55,6 +57,17 @@ pub struct BuildWorkerHandle {
 }
 
 impl BuildWorkerHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+}
+
+pub struct RegistryValidationStageWorkerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+impl RegistryValidationStageWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
@@ -102,8 +115,22 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     }
 
     if settings.build.enabled && !ctx.shared_store.contains::<BuildWorkerHandle>() {
+        ctx.shared_store.insert(spawn_build_worker_handle(
+            ctx.clone(),
+            settings.build.clone(),
+        ));
+    }
+
+    if settings.registry.validation_runner.enabled
+        && !ctx
+            .shared_store
+            .contains::<RegistryValidationStageWorkerHandle>()
+    {
         ctx.shared_store
-            .insert(spawn_build_worker_handle(ctx.clone(), settings.build));
+            .insert(spawn_registry_validation_stage_worker_handle(
+                ctx.clone(),
+                settings.registry.validation_runner.clone(),
+            ));
     }
 
     Ok(())
@@ -123,6 +150,16 @@ fn spawn_build_worker_handle(
     BuildWorkerHandle {
         instance_id: BUILD_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
         _handle: tokio::spawn(build_worker_loop(ctx, config)),
+    }
+}
+
+fn spawn_registry_validation_stage_worker_handle(
+    ctx: AppContext,
+    config: crate::common::settings::RegistryValidationRunnerSettings,
+) -> RegistryValidationStageWorkerHandle {
+    RegistryValidationStageWorkerHandle {
+        instance_id: REGISTRY_VALIDATION_STAGE_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        _handle: tokio::spawn(registry_validation_stage_worker_loop(ctx, config)),
     }
 }
 
@@ -176,6 +213,34 @@ async fn build_worker_loop(ctx: AppContext, config: crate::common::settings::Bui
             Err(error) => {
                 tracing::error!(error = %error, "Background build worker failed to execute queued build");
             }
+        }
+
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
+async fn registry_validation_stage_worker_loop(
+    ctx: AppContext,
+    config: crate::common::settings::RegistryValidationRunnerSettings,
+) {
+    let runner = RegistryValidationRunnerService::new(ctx.db.clone(), config.clone());
+    let poll_interval = Duration::from_millis(config.poll_interval_ms);
+
+    loop {
+        match runner.execute_next_queued_stage().await {
+            Ok(Some(report)) => tracing::info!(
+                request_id = %report.request_id,
+                slug = %report.slug,
+                stage_key = %report.stage_key,
+                status = %report.status,
+                "Executed queued registry validation stage"
+            ),
+            Ok(None) => {}
+            Err(error) => tracing::error!(
+                error = %error,
+                actor = %config.actor,
+                "Background registry validation stage runner failed"
+            ),
         }
 
         tokio::time::sleep(poll_interval).await;

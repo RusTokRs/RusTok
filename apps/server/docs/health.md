@@ -58,12 +58,22 @@ surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-ap
 - `host_mode` (`full|registry_only`);
 - `runtime_dependencies_enabled` — поднят ли полный runtime dependency layer;
 - `reasons` с человекочитаемыми причинами деградации;
-- `rate_limits`, `event_bus`, `event_transport`.
+- `rate_limits`, `event_bus`, `event_transport`, `validation_runner`.
 
 Prometheus surface теперь также публикует:
 
 - `rustok_runtime_guardrail_runtime_dependencies_enabled`
 - `rustok_runtime_guardrail_host_mode{mode="full|registry_only"}`
+- `rustok_runtime_guardrail_validation_runner_state`
+- `rustok_runtime_guardrail_validation_runner_config{setting="configured_enabled|active|worker_attached|auto_confirm_manual_review|poll_interval_ms"}`
+- `rustok_runtime_guardrail_validation_runner_supported_stage{stage="..."}`
+
+`validation_runner` в snapshot нужен для operator-visible статуса optional background runner над
+`registry_validation_stages`. Он показывает не только config (`configured_enabled`,
+`auto_confirm_manual_review`, `poll_interval_ms`, `supported_stages`), но и реальное attachment
+worker'а к текущему процессу (`worker_attached`, `instance_id`). Если runner должен быть активен на
+full-host (`active=true`), но worker не attached, runtime guardrails деградируют и readiness получает
+matching reason через `runtime_guardrails`.
 
 Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
 
@@ -96,6 +106,7 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 
 - `GET /health/ready` и `GET /health/modules` возвращают `200`, несмотря на reduced surface;
 - `GET /health/runtime` явно возвращает `host_mode="registry_only"` и `runtime_dependencies_enabled=false`;
+- `validation_runner.active=false`, даже если config включает runner, потому что reduced host не поднимает background workers;
 - `GET /v1/catalog` возвращает read-only catalog contract с `ETag`, `Cache-Control` и `X-Total-Count`;
 - `GET /v1/catalog/{slug}` остаётся доступным как canonical detail contract для внешнего discovery;
 - `GET /api/openapi.json` рекламирует только registry/health/metrics/swagger surface;

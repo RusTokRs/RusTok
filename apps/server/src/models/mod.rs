@@ -4,6 +4,7 @@ pub mod _entities;
 pub mod build;
 pub mod flex_attached_localized_values;
 pub mod flex_entries;
+pub mod flex_entry_localized_values;
 pub mod flex_schema_translations;
 pub mod flex_schemas;
 pub mod mcp_audit_logs;
@@ -34,6 +35,7 @@ pub mod users;
 
 pub use build::Entity as Build;
 pub use flex_attached_localized_values::Entity as FlexAttachedLocalizedValues;
+pub use flex_entry_localized_values::Entity as FlexEntryLocalizedValues;
 pub use registry_governance_event::Entity as RegistryGovernanceEvent;
 pub use registry_module_owner::Entity as RegistryModuleOwner;
 pub use registry_module_release::Entity as RegistryModuleRelease;

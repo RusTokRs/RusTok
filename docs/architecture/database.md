@@ -196,18 +196,21 @@ Current live server-owned standalone storage is centered around:
 - `flex_schemas`
 - `flex_schema_translations`
 - `flex_entries`
+- `flex_entry_localized_values`
 - `flex_attached_localized_values`
 
 Current direction:
 
 - `flex_schemas` owns language-agnostic schema state such as `slug`, `fields_config`, `settings`, and activation flags;
 - `flex_schema_translations` owns localized schema copy such as `name` and `description`;
+- `flex_entries` now owns only language-agnostic standalone entry state plus shared/non-localized entry payload fields;
+- `flex_entry_localized_values` owns standalone locale-aware entry payloads by `(entry_id, locale)` and is backfilled from older inline `flex_entries.data` rows;
 - `flex_attached_localized_values` owns attached-mode locale-aware field values by `(tenant_id, entity_type, entity_id, field_key, locale)` and its shared entity/helpers now live in `crates/flex`;
-- `flex_entries` still stores flexible JSON payloads for entry values, but localized entry-value semantics are considered an explicit follow-up migration area rather than a final canonical multilingual shape.
+- read/write paths now resolve standalone entry payloads by merging `flex_entries.data` with the selected row from `flex_entry_localized_values`, while any residual inline localized keys in `flex_entries.data` are treated only as transitional fallback during cleanup/backfill.
 
 Attached-mode `flex` field-definition localization currently still uses JSON locale maps in field-definition rows; this remains transitional and should converge toward parallel localized records in later slices.
 Field-definition rows now also carry explicit `is_localized` semantics, so attached-mode custom fields no longer depend on an implicit convention when deciding whether future values belong to locale-aware parallel storage.
-Live attached-value read/write paths now use `flex_attached_localized_values` for `user`, `product`, `order`, and `topic` locale-aware custom values. `topic` now uses `forum_topics.metadata` as the donor payload surface, so it follows the same attached multilingual contract instead of remaining a schema-only consumer. Legacy localized keys that still live inline in donor `metadata` are treated as transitional fallback data during read/update until dedicated backfill slices finish the migration and cleanup for already-live attached consumers.
+Live attached-value read/write paths now use `flex_attached_localized_values` for `user`, `product`, `order`, and `topic` locale-aware custom values. `topic` now uses `forum_topics.metadata` as the donor payload surface, so it follows the same attached multilingual contract instead of remaining a schema-only consumer. Legacy localized keys that still live inline in donor `metadata` or pre-split standalone `flex_entries.data` rows are treated as transitional fallback data during read/update until cleanup slices finish the migration.
 
 ---
 

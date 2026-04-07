@@ -7,6 +7,7 @@ use crate::common::settings::{GuardrailRolloutMode, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
+use crate::services::app_lifecycle::RegistryValidationStageWorkerHandle;
 use crate::services::event_bus::SharedEventBus;
 use crate::services::event_transport_factory::EventRuntime;
 
@@ -55,6 +56,7 @@ pub struct RuntimeGuardrailSnapshot {
     pub rate_limits: Vec<RateLimitGuardrailSnapshot>,
     pub event_bus: EventBusGuardrailSnapshot,
     pub event_transport: EventTransportGuardrailSnapshot,
+    pub validation_runner: ValidationRunnerGuardrailSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -94,6 +96,19 @@ pub struct EventBusGuardrailSnapshot {
 pub struct EventTransportGuardrailSnapshot {
     pub relay_fallback_active: bool,
     pub channel_capacity: usize,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ValidationRunnerGuardrailSnapshot {
+    pub configured_enabled: bool,
+    pub active: bool,
+    pub worker_attached: bool,
+    pub instance_id: Option<u64>,
+    pub auto_confirm_manual_review: bool,
+    pub poll_interval_ms: u64,
+    pub actor: String,
+    pub supported_stages: Vec<String>,
+    pub state: RuntimeGuardrailStatus,
 }
 
 pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuardrailSnapshot {
@@ -235,6 +250,26 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         );
     }
 
+    let validation_runner = collect_validation_runner_snapshot(ctx, &settings);
+    if validation_runner.state == RuntimeGuardrailStatus::Degraded {
+        if validation_runner.configured_enabled && !validation_runner.worker_attached {
+            escalate(
+                &mut observed_status,
+                RuntimeGuardrailStatus::Degraded,
+                &mut reasons,
+                "registry validation runner is enabled but no worker is attached".to_string(),
+            );
+        } else if !validation_runner.configured_enabled && validation_runner.worker_attached {
+            escalate(
+                &mut observed_status,
+                RuntimeGuardrailStatus::Degraded,
+                &mut reasons,
+                "registry validation runner worker is attached while config is disabled"
+                    .to_string(),
+            );
+        }
+    }
+
     let event_bus = ctx
         .shared_store
         .get::<SharedEventBus>()
@@ -313,7 +348,57 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         rate_limits,
         event_bus,
         event_transport,
+        validation_runner,
     }
+}
+
+fn collect_validation_runner_snapshot(
+    ctx: &AppContext,
+    settings: &RustokSettings,
+) -> ValidationRunnerGuardrailSnapshot {
+    let configured_enabled = settings.registry.validation_runner.enabled;
+    let active = configured_enabled && !settings.runtime.is_registry_only();
+    let worker_handle = ctx
+        .shared_store
+        .get_ref::<RegistryValidationStageWorkerHandle>();
+    let worker_attached = worker_handle.is_some();
+    let instance_id = worker_handle.map(|handle| handle.instance_id());
+    let supported_stages = supported_validation_runner_stages(
+        settings
+            .registry
+            .validation_runner
+            .auto_confirm_manual_review,
+    );
+    let state = if active && !worker_attached {
+        RuntimeGuardrailStatus::Degraded
+    } else if !configured_enabled && worker_attached {
+        RuntimeGuardrailStatus::Degraded
+    } else {
+        RuntimeGuardrailStatus::Ok
+    };
+
+    ValidationRunnerGuardrailSnapshot {
+        configured_enabled,
+        active,
+        worker_attached,
+        instance_id,
+        auto_confirm_manual_review: settings
+            .registry
+            .validation_runner
+            .auto_confirm_manual_review,
+        poll_interval_ms: settings.registry.validation_runner.poll_interval_ms,
+        actor: settings.registry.validation_runner.actor.clone(),
+        supported_stages,
+        state,
+    }
+}
+
+fn supported_validation_runner_stages(auto_confirm_manual_review: bool) -> Vec<String> {
+    let mut stages = vec!["compile_smoke".to_string(), "targeted_tests".to_string()];
+    if auto_confirm_manual_review {
+        stages.push("security_policy_review".to_string());
+    }
+    stages
 }
 
 async fn collect_rate_limit_snapshot(

@@ -13,6 +13,7 @@ pub use dto::{
     CommentListItem, CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus,
     CommentThreadSummary, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
 };
+pub use entities::*;
 pub use error::{CommentsError, CommentsResult};
 pub use services::CommentsService;
 

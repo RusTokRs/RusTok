@@ -162,6 +162,7 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::IncompatibleRustokVersion { .. }
         | ManifestError::InvalidModuleOwnership { .. }
         | ManifestError::InvalidModuleTrustLevel { .. }
+        | ManifestError::InvalidModuleUiClassification { .. }
         | ManifestError::InvalidModuleAdminSurface { .. }
         | ManifestError::ConflictingModuleAdminSurface { .. }
         | ManifestError::InvalidModuleSettingKey { .. }

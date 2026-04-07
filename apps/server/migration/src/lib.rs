@@ -36,6 +36,7 @@ mod m20260405_000001_expand_locale_storage_columns;
 mod m20260405_000002_split_flex_schema_localized_fields;
 mod m20260405_000003_add_is_localized_to_server_field_definitions;
 mod m20260405_000004_create_flex_attached_localized_values;
+mod m20260407_000001_split_flex_entry_localized_values;
 
 pub struct Migrator;
 
@@ -76,6 +77,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260405_000002_split_flex_schema_localized_fields::Migration),
             Box::new(m20260405_000003_add_is_localized_to_server_field_definitions::Migration),
             Box::new(m20260405_000004_create_flex_attached_localized_values::Migration),
+            Box::new(m20260407_000001_split_flex_entry_localized_values::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into
@@ -161,6 +163,10 @@ mod tests {
         assert!(
             names.contains(&"m20260405_000004_create_flex_attached_localized_values".to_string()),
             "server migrator must include attached localized value storage migration"
+        );
+        assert!(
+            names.contains(&"m20260407_000001_split_flex_entry_localized_values".to_string()),
+            "server migrator must include standalone entry localized value split migration"
         );
     }
 }

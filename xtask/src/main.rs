@@ -59,6 +59,8 @@ struct ModulePackageManifest {
     module: ModulePackageMetadata,
     #[serde(default)]
     marketplace: ModulePackageMarketplaceMetadata,
+    #[serde(default)]
+    dependencies: HashMap<String, ModulePackageDependencyConstraint>,
     #[serde(rename = "crate", default)]
     crate_contract: ModulePackageCrateContract,
     #[serde(default)]
@@ -80,9 +82,17 @@ struct ModulePackageMetadata {
     #[serde(default)]
     trust_level: String,
     #[serde(default)]
+    ui_classification: String,
+    #[serde(default)]
     recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     showcase_admin_surfaces: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModulePackageDependencyConstraint {
+    #[serde(default)]
+    version_req: String,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -232,6 +242,8 @@ struct RegistryMutationHttpResponse {
     #[serde(default)]
     errors: Vec<String>,
     next_step: Option<String>,
+    #[serde(default, rename = "moderationPolicy")]
+    moderation_policy: Option<RegistryModerationPolicyHttpResponse>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -253,7 +265,36 @@ struct RegistryPublishStatusHttpResponse {
     approval_override_required: bool,
     #[serde(default, rename = "approvalOverrideReasonCodes")]
     approval_override_reason_codes: Vec<String>,
+    #[serde(default, rename = "governanceActions")]
+    governance_actions: Vec<RegistryGovernanceActionHttpResponse>,
     next_step: Option<String>,
+    #[serde(default, rename = "moderationPolicy")]
+    moderation_policy: Option<RegistryModerationPolicyHttpResponse>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct RegistryGovernanceActionHttpResponse {
+    key: String,
+    enabled: bool,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default, rename = "supportedReasonCodes")]
+    supported_reason_codes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct RegistryModerationPolicyHttpResponse {
+    mode: String,
+    #[serde(default, rename = "livePublishSupported")]
+    live_publish_supported: bool,
+    #[serde(default, rename = "liveGovernanceSupported")]
+    live_governance_supported: bool,
+    #[serde(default, rename = "manualReviewRequired")]
+    manual_review_required: bool,
+    #[serde(rename = "restrictionReasonCode")]
+    restriction_reason_code: Option<String>,
+    #[serde(default, rename = "restrictionReason")]
+    restriction_reason: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -265,7 +306,7 @@ struct RegistryPublishStatusFollowUpGate {
     updated_at: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct RegistryPublishStatusValidationStage {
     key: String,
     status: String,
@@ -278,6 +319,20 @@ struct RegistryPublishStatusValidationStage {
     started_at: Option<String>,
     #[serde(rename = "finishedAt")]
     finished_at: Option<String>,
+    #[serde(default, rename = "executionMode")]
+    execution_mode: String,
+    #[serde(default)]
+    runnable: bool,
+    #[serde(default, rename = "requiresManualConfirmation")]
+    requires_manual_confirmation: bool,
+    #[serde(default, rename = "allowedTerminalReasonCodes")]
+    allowed_terminal_reason_codes: Vec<String>,
+    #[serde(default, rename = "suggestedPassReasonCode")]
+    suggested_pass_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedFailureReasonCode")]
+    suggested_failure_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedBlockedReasonCode")]
+    suggested_blocked_reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -337,7 +392,9 @@ struct ModuleValidationStageRunPreview {
     requires_manual_confirmation: bool,
     running_detail: String,
     success_detail: String,
+    success_reason_code: String,
     failure_detail_prefix: String,
+    failure_reason_code: String,
     commands: Vec<ModuleCommandPreview>,
 }
 
@@ -689,33 +746,15 @@ fn module_validate_command(args: &[String]) -> Result<()> {
     let workspace_manifest = load_workspace_manifest()?;
     let explicit_slug = args.first().map(String::as_str);
     let targets = selected_modules(&manifest, explicit_slug)?;
-    let mut skipped_without_package_manifest = 0usize;
 
     println!("Validating module publish-readiness contracts...");
 
     for (slug, spec) in targets {
-        if explicit_slug.is_none() {
-            let Some(package_manifest_path) = module_package_manifest_path(&manifest_path, spec)
-            else {
-                continue;
-            };
-            if !package_manifest_path.exists() {
-                skipped_without_package_manifest += 1;
-                continue;
-            }
-        }
-
         let preview =
             build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
         println!(
             "  PASS {slug} -> {} v{}",
             preview.crate_name, preview.version
-        );
-    }
-
-    if skipped_without_package_manifest > 0 {
-        println!(
-            "  Skipped {skipped_without_package_manifest} path modules without rustok-module.toml publish contract"
         );
     }
 
@@ -831,14 +870,25 @@ fn module_stage_run_command(args: &[String]) -> Result<()> {
         .get(slug)
         .with_context(|| format!("Unknown module slug '{slug}'"))?;
     let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
+    let confirm_manual_review = manual_review_confirmation_argument(&args[3..]);
+    let registry_url = registry_url_argument(&args[3..]);
+    let live_stage_metadata = if dry_run {
+        None
+    } else {
+        registry_url
+            .as_deref()
+            .map(|registry_url| {
+                fetch_registry_validation_stage_metadata(registry_url, request_id, &stage)
+            })
+            .transpose()?
+    };
     let plan = build_module_validation_stage_run_preview(
         &preview,
         request_id,
         &stage,
         detail_argument(&args[3..]),
+        live_stage_metadata.as_ref(),
     )?;
-    let confirm_manual_review = manual_review_confirmation_argument(&args[3..]);
-    let registry_url = registry_url_argument(&args[3..]);
 
     if dry_run {
         println!("{}", serde_json::to_string_pretty(&plan)?);
@@ -1010,9 +1060,19 @@ fn module_stage_command(args: &[String]) -> Result<()> {
 
     let dry_run = args.iter().skip(3).any(|arg| arg == "--dry-run");
     let requeue = args.iter().skip(3).any(|arg| arg == "--requeue");
-    let reason_code = validation_stage_reason_code_argument(&args[3..])?;
+    let mut reason_code = validation_stage_reason_code_argument(&args[3..])?;
     if requeue && status != "queued" {
         anyhow::bail!("module stage --requeue requires status 'queued'");
+    }
+
+    let registry_url = registry_url_argument(&args[3..]);
+    if !dry_run && validation_stage_status_requires_reason_code(&status) && reason_code.is_none() {
+        let registry_url = registry_url.as_deref().with_context(|| {
+            "Live module stage update requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
+        })?;
+        reason_code = fetch_registry_validation_stage_metadata(registry_url, request_id, stage)
+            .ok()
+            .and_then(|stage| suggested_reason_code_for_stage_status(&stage, &status));
     }
 
     let preview = ModuleValidationStageDryRunPreview {
@@ -1024,7 +1084,6 @@ fn module_stage_command(args: &[String]) -> Result<()> {
         reason_code,
         requeue,
     };
-    let registry_url = registry_url_argument(&args[3..]);
 
     if dry_run {
         if let Some(registry_url) = registry_url {
@@ -1216,6 +1275,8 @@ fn publish_via_registry_live(
     confirm_manual_review: bool,
 ) -> Result<String> {
     let publisher = format!("publisher:{}", preview.slug);
+    let preflight = publish_via_registry_preflight(registry_url, preview)?;
+    ensure_live_publish_supported(preflight.moderation_policy.as_ref())?;
     let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
     let create_request = build_live_publish_registry_request(preview);
     let create_response: RegistryMutationHttpResponse = post_registry_json_parsed(
@@ -1230,6 +1291,7 @@ fn publish_via_registry_live(
             join_registry_errors(&create_response.errors)
         );
     }
+    ensure_live_publish_supported(create_response.moderation_policy.as_ref())?;
 
     let request_id = create_response
         .request_id
@@ -1259,6 +1321,12 @@ fn publish_via_registry_live(
         upload_response.accepted,
         upload_response.status.as_deref(),
         &upload_response.errors,
+    )?;
+    let upload_status = fetch_registry_publish_status(registry_url, request_id)?;
+    ensure_status_governance_action_enabled(
+        &upload_status,
+        "validate",
+        "Registry publish validation is not enabled for this request.",
     )?;
 
     let validate_endpoint = format!(
@@ -1321,11 +1389,10 @@ fn publish_via_registry_live(
             .filter(|stage| !stage.status.eq_ignore_ascii_case("passed"))
             .map(|stage| format!("{} ({})", stage.key, stage.status))
             .collect::<Vec<_>>();
-        let security_policy_hint = if publish_status_stage_requires_action(
-            &readiness,
-            "security_policy_review",
-        ) {
-            "; rerun with --confirm-manual-review to complete the local security/policy review path, or provide explicit approve override fields"
+        let security_policy_hint = if readiness.validation_stages.iter().any(|stage| {
+            !stage.status.eq_ignore_ascii_case("passed") && stage.requires_manual_confirmation
+        }) {
+            "; rerun with --confirm-manual-review to complete the operator-assisted security/policy review path, or provide explicit approve override fields"
         } else {
             ""
         };
@@ -1341,6 +1408,11 @@ fn publish_via_registry_live(
             security_policy_hint
         );
     }
+    ensure_status_governance_action_enabled(
+        &readiness,
+        "approve",
+        "Registry publish approval is not enabled for this request.",
+    )?;
 
     let approve_endpoint = format!(
         "{}/v2/catalog/publish/{request_id}/approve",
@@ -1476,6 +1548,12 @@ fn validation_stage_via_registry_live(
     registry_url: &str,
     preview: &ModuleValidationStageDryRunPreview,
 ) -> Result<String> {
+    let status = fetch_registry_publish_status(registry_url, &preview.request_id)?;
+    ensure_status_governance_action_enabled(
+        &status,
+        "stage_report",
+        "Registry validation stage reporting is not enabled for this request.",
+    )?;
     let endpoint = format!(
         "{}/v2/catalog/publish/{}/stages",
         registry_url.trim_end_matches('/'),
@@ -1492,6 +1570,15 @@ fn validation_stage_via_registry_live(
     }
 
     pretty_json(&response)
+}
+
+fn publish_via_registry_preflight(
+    registry_url: &str,
+    preview: &ModulePublishDryRunPreview,
+) -> Result<RegistryMutationHttpResponse> {
+    let endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
+    let request = build_publish_registry_request(preview);
+    post_registry_json_parsed(&endpoint, &request, Some("xtask:module-publish"), None)
 }
 
 fn build_publish_registry_request(
@@ -1790,29 +1877,22 @@ fn run_publish_follow_up_stages_if_needed(
     mut status: RegistryPublishStatusHttpResponse,
     confirm_manual_review: bool,
 ) -> Result<RegistryPublishStatusHttpResponse> {
-    let executable_stages = ["compile_smoke", "targeted_tests"];
-    for stage in executable_stages {
-        if publish_status_stage_requires_action(&status, stage) {
-            let plan = build_module_validation_stage_run_preview(
-                preview,
-                &status.request_id,
-                stage,
-                None,
-            )?;
-            run_validation_stage_plan_via_registry(registry_url, &plan)?;
-            status = fetch_registry_publish_status(registry_url, &status.request_id)?;
-            ensure_publish_status_not_rejected(&status)?;
-        }
-    }
+    loop {
+        let next_stage = status
+            .validation_stages
+            .iter()
+            .find(|stage| publish_status_stage_should_auto_run(stage, confirm_manual_review))
+            .cloned();
+        let Some(next_stage) = next_stage else {
+            break;
+        };
 
-    if publish_status_stage_requires_action(&status, "security_policy_review")
-        && confirm_manual_review
-    {
         let plan = build_module_validation_stage_run_preview(
             preview,
             &status.request_id,
-            "security_policy_review",
+            &next_stage.key,
             None,
+            Some(&next_stage),
         )?;
         run_validation_stage_plan_via_registry(registry_url, &plan)?;
         status = fetch_registry_publish_status(registry_url, &status.request_id)?;
@@ -1833,15 +1913,101 @@ fn fetch_registry_publish_status(
     get_registry_json_parsed(&endpoint, Some("xtask:module-publish"))
 }
 
-fn publish_status_stage_requires_action(
+fn ensure_live_publish_supported(
+    moderation_policy: Option<&RegistryModerationPolicyHttpResponse>,
+) -> Result<()> {
+    let Some(moderation_policy) = moderation_policy else {
+        return Ok(());
+    };
+
+    if moderation_policy.live_publish_supported {
+        return Ok(());
+    }
+
+    let reason_code = moderation_policy
+        .restriction_reason_code
+        .as_deref()
+        .map(|code| format!(" ({code})"))
+        .unwrap_or_default();
+    anyhow::bail!(
+        "{}{}",
+        moderation_policy.restriction_reason.trim(),
+        reason_code
+    );
+}
+
+fn status_governance_action<'a>(
+    status: &'a RegistryPublishStatusHttpResponse,
+    key: &str,
+) -> Option<&'a RegistryGovernanceActionHttpResponse> {
+    status
+        .governance_actions
+        .iter()
+        .find(|action| action.key.eq_ignore_ascii_case(key))
+}
+
+fn ensure_status_governance_action_enabled(
     status: &RegistryPublishStatusHttpResponse,
+    key: &str,
+    fallback_message: &str,
+) -> Result<()> {
+    let Some(action) = status_governance_action(status, key) else {
+        return Ok(());
+    };
+
+    if action.enabled {
+        return Ok(());
+    }
+
+    anyhow::bail!("{}", action.reason.as_deref().unwrap_or(fallback_message));
+}
+
+fn fetch_registry_validation_stage_metadata(
+    registry_url: &str,
+    request_id: &str,
     stage_key: &str,
-) -> bool {
+) -> Result<RegistryPublishStatusValidationStage> {
+    let status = fetch_registry_publish_status(registry_url, request_id)?;
     status
         .validation_stages
-        .iter()
+        .into_iter()
         .find(|stage| stage.key.eq_ignore_ascii_case(stage_key))
-        .is_some_and(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+        .with_context(|| {
+            format!(
+                "Registry publish request '{}' does not expose validation stage '{}'",
+                request_id, stage_key
+            )
+        })
+}
+
+fn suggested_reason_code_for_stage_status(
+    stage: &RegistryPublishStatusValidationStage,
+    status: &str,
+) -> Option<String> {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "passed" => stage.suggested_pass_reason_code.clone(),
+        "failed" => stage.suggested_failure_reason_code.clone(),
+        "blocked" => stage.suggested_blocked_reason_code.clone(),
+        _ => None,
+    }
+}
+
+fn publish_status_stage_should_auto_run(
+    stage: &RegistryPublishStatusValidationStage,
+    confirm_manual_review: bool,
+) -> bool {
+    if !stage.runnable || stage.status.eq_ignore_ascii_case("passed") {
+        return false;
+    }
+
+    if stage.requires_manual_confirmation && !confirm_manual_review {
+        return false;
+    }
+
+    matches!(
+        stage.execution_mode.as_str(),
+        "local_runner" | "operator_assisted"
+    )
 }
 
 fn poll_registry_publish_status_until(
@@ -1945,6 +2111,8 @@ fn build_module_test_plan(preview: &ModulePublishDryRunPreview) -> ModuleTestPla
             "run".to_string(),
             "-p".to_string(),
             "xtask".to_string(),
+            "--target-dir".to_string(),
+            "target_xtask_validate".to_string(),
             "--".to_string(),
             "module".to_string(),
             "validate".to_string(),
@@ -1977,17 +2145,27 @@ fn build_module_validation_stage_run_preview(
     request_id: &str,
     stage: &str,
     detail_override: Option<String>,
+    stage_metadata: Option<&RegistryPublishStatusValidationStage>,
 ) -> Result<ModuleValidationStageRunPreview> {
     let normalized_stage = normalize_executable_validation_stage(stage)?;
-    let (commands, requires_manual_confirmation) = match normalized_stage {
+    let (commands, fallback_requires_manual_confirmation) = match normalized_stage {
         "compile_smoke" => (build_compile_smoke_commands(preview), false),
         "targeted_tests" => (build_module_test_plan(preview).commands, false),
         "security_policy_review" => (build_security_policy_review_commands(preview), true),
         _ => unreachable!(),
     };
+    let requires_manual_confirmation = stage_metadata
+        .map(|stage| stage.requires_manual_confirmation)
+        .unwrap_or(fallback_requires_manual_confirmation);
     let running_detail = detail_override.unwrap_or_else(|| {
         executable_validation_stage_running_detail(normalized_stage, &preview.slug)
     });
+    let success_reason_code = stage_metadata
+        .and_then(|stage| suggested_reason_code_for_stage_status(stage, "passed"))
+        .unwrap_or_else(|| validation_stage_success_reason_code(normalized_stage).to_string());
+    let failure_reason_code = stage_metadata
+        .and_then(|stage| suggested_reason_code_for_stage_status(stage, "failed"))
+        .unwrap_or_else(|| validation_stage_failure_reason_code(normalized_stage).to_string());
 
     Ok(ModuleValidationStageRunPreview {
         action: "validation_stage_run".to_string(),
@@ -1997,7 +2175,9 @@ fn build_module_validation_stage_run_preview(
         requires_manual_confirmation,
         running_detail,
         success_detail: executable_validation_stage_success_detail(normalized_stage, &preview.slug),
+        success_reason_code,
         failure_detail_prefix: executable_validation_stage_failure_prefix(normalized_stage),
+        failure_reason_code,
         commands,
     })
 }
@@ -2177,7 +2357,7 @@ fn run_validation_stage_plan_via_registry(
                 stage: plan.stage.clone(),
                 status: "failed".to_string(),
                 detail: Some(format!("{}: {error}", plan.failure_detail_prefix)),
-                reason_code: Some(validation_stage_failure_reason_code(&plan.stage).to_string()),
+                reason_code: Some(plan.failure_reason_code.clone()),
                 requeue: false,
             };
             let report_error = validation_stage_via_registry_live(registry_url, &failed_preview)
@@ -2196,7 +2376,7 @@ fn run_validation_stage_plan_via_registry(
         stage: plan.stage.clone(),
         status: "passed".to_string(),
         detail: Some(plan.success_detail.clone()),
-        reason_code: Some(validation_stage_success_reason_code(&plan.stage).to_string()),
+        reason_code: Some(plan.success_reason_code.clone()),
         requeue: false,
     };
     validation_stage_via_registry_live(registry_url, &passed_preview)?;
@@ -2228,6 +2408,7 @@ fn build_module_publish_preview(
     let package_manifest = load_module_package_manifest(&package_manifest_path)?;
     validate_module_package_metadata(slug, &package_manifest.module)?;
     validate_module_publish_contract(slug, &package_manifest)?;
+    validate_module_dependency_alignment(slug, spec, &package_manifest)?;
 
     let declared_slug = package_manifest.module.slug.trim();
     if declared_slug != slug {
@@ -2292,6 +2473,9 @@ fn build_module_publish_preview(
             .as_ref()
             .and_then(|ui| ui.leptos_crate.as_deref()),
     )?;
+    validate_module_ui_classification(slug, &package_manifest)?;
+    validate_module_documentation_contract(slug, &module_root)?;
+    validate_runtime_dependency_contract(slug, spec, &module_root)?;
 
     let admin_preview = validate_module_ui_package(
         slug,
@@ -2365,6 +2549,282 @@ fn validate_module_publish_contract(slug: &str, manifest: &ModulePackageManifest
     }
 
     Ok(())
+}
+
+fn validate_module_dependency_alignment(
+    slug: &str,
+    spec: &ModuleSpec,
+    manifest: &ModulePackageManifest,
+) -> Result<()> {
+    let expected = spec
+        .depends_on
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let declared = manifest
+        .dependencies
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let missing = expected.difference(&declared).cloned().collect::<Vec<_>>();
+    let extra = declared.difference(&expected).cloned().collect::<Vec<_>>();
+
+    if !missing.is_empty() || !extra.is_empty() {
+        let mut problems = Vec::new();
+        if !missing.is_empty() {
+            problems.push(format!(
+                "missing in rustok-module.toml [dependencies]: {}",
+                missing.join(", ")
+            ));
+        }
+        if !extra.is_empty() {
+            problems.push(format!(
+                "extra in rustok-module.toml [dependencies]: {}",
+                extra.join(", ")
+            ));
+        }
+        anyhow::bail!(
+            "Module '{slug}' dependency drift between modules.toml and rustok-module.toml: {}",
+            problems.join("; ")
+        );
+    }
+
+    for (dependency, constraint) in &manifest.dependencies {
+        if constraint.version_req.trim().is_empty() {
+            anyhow::bail!(
+                "Module '{slug}' dependency '{}' is missing version_req in rustok-module.toml",
+                dependency
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_module_ui_classification(slug: &str, manifest: &ModulePackageManifest) -> Result<()> {
+    let has_admin_ui = manifest.provides.admin_ui.is_some();
+    let has_storefront_ui = manifest.provides.storefront_ui.is_some();
+    let classification = manifest.module.ui_classification.trim();
+
+    if classification.is_empty() {
+        if !has_admin_ui && !has_storefront_ui {
+            anyhow::bail!(
+                "Module '{slug}' has no UI wiring and must declare module.ui_classification in rustok-module.toml"
+            );
+        }
+        return Ok(());
+    }
+
+    match classification {
+        "dual_surface" => {
+            if !has_admin_ui || !has_storefront_ui {
+                anyhow::bail!(
+                    "Module '{slug}' declares ui_classification='dual_surface' but manifest wiring is incomplete"
+                );
+            }
+        }
+        "admin_only" => {
+            if !has_admin_ui || has_storefront_ui {
+                anyhow::bail!(
+                    "Module '{slug}' declares ui_classification='admin_only' but manifest wiring does not match"
+                );
+            }
+        }
+        "storefront_only" => {
+            if has_admin_ui || !has_storefront_ui {
+                anyhow::bail!(
+                    "Module '{slug}' declares ui_classification='storefront_only' but manifest wiring does not match"
+                );
+            }
+        }
+        "no_ui" | "capability_only" | "future_ui" => {
+            if has_admin_ui || has_storefront_ui {
+                anyhow::bail!(
+                    "Module '{slug}' declares ui_classification='{classification}' but also wires UI surfaces"
+                );
+            }
+        }
+        _ => {
+            anyhow::bail!(
+                "Module '{slug}' declares unsupported ui_classification '{}'",
+                classification
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_module_documentation_contract(slug: &str, module_root: &Path) -> Result<()> {
+    let workspace = workspace_root();
+    let module_root = if module_root.is_absolute() {
+        module_root.to_path_buf()
+    } else {
+        workspace.join(module_root)
+    };
+
+    let readme_path = module_root.join("README.md");
+    if !readme_path.exists() {
+        anyhow::bail!(
+            "Module '{slug}' requires README.md at {}",
+            readme_path.display()
+        );
+    }
+    let root_readme = fs::read_to_string(&readme_path)
+        .with_context(|| format!("Failed to read module README at {}", readme_path.display()))?;
+    if !root_readme.contains("## Interactions") {
+        anyhow::bail!("Module '{slug}' README.md must contain an `## Interactions` section");
+    }
+
+    let docs_readme_path = module_root.join("docs").join("README.md");
+    if !docs_readme_path.exists() {
+        anyhow::bail!(
+            "Module '{slug}' requires docs/README.md at {}",
+            docs_readme_path.display()
+        );
+    }
+
+    let implementation_plan_path = module_root.join("docs").join("implementation-plan.md");
+    if !implementation_plan_path.exists() {
+        anyhow::bail!(
+            "Module '{slug}' requires docs/implementation-plan.md at {}",
+            implementation_plan_path.display()
+        );
+    }
+
+    let docs_index_path = workspace.join("docs").join("modules").join("_index.md");
+    let docs_index = fs::read_to_string(&docs_index_path).with_context(|| {
+        format!(
+            "Failed to read module documentation index at {}",
+            docs_index_path.display()
+        )
+    })?;
+    let relative_module_root = module_root
+        .strip_prefix(&workspace)
+        .with_context(|| {
+            format!(
+                "Failed to resolve module root '{}' relative to workspace '{}'",
+                module_root.display(),
+                workspace.display()
+            )
+        })?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let expected_docs_link = format!("../../{relative_module_root}/docs/README.md");
+    if !docs_index.contains(&expected_docs_link) {
+        anyhow::bail!(
+            "Module '{slug}' is missing docs/README.md link in {}",
+            docs_index_path.display()
+        );
+    }
+    let expected_plan_link = format!("../../{relative_module_root}/docs/implementation-plan.md");
+    if !docs_index.contains(&expected_plan_link) {
+        anyhow::bail!(
+            "Module '{slug}' is missing docs/implementation-plan.md link in {}",
+            docs_index_path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_runtime_dependency_contract(
+    slug: &str,
+    spec: &ModuleSpec,
+    module_root: &Path,
+) -> Result<()> {
+    let workspace = workspace_root();
+    let module_root = if module_root.is_absolute() {
+        module_root.to_path_buf()
+    } else {
+        workspace.join(module_root)
+    };
+    let lib_rs_path = module_root.join("src").join("lib.rs");
+    if !lib_rs_path.exists() {
+        return Ok(());
+    }
+
+    let runtime_dependencies =
+        parse_runtime_dependencies_from_lib_rs(&lib_rs_path)?.unwrap_or_default();
+    let manifest_dependencies = spec.depends_on.clone().unwrap_or_default();
+    if runtime_dependencies != manifest_dependencies {
+        anyhow::bail!(
+            "Module '{slug}' dependency drift between modules.toml and RusToKModule::dependencies(): runtime declares {:?}, manifest declares {:?}",
+            runtime_dependencies,
+            manifest_dependencies
+        );
+    }
+
+    Ok(())
+}
+
+fn parse_runtime_dependencies_from_lib_rs(lib_rs_path: &Path) -> Result<Option<Vec<String>>> {
+    let lib_rs = fs::read_to_string(lib_rs_path)
+        .with_context(|| format!("Failed to read {}", lib_rs_path.display()))?;
+    let Some(fn_pos) = lib_rs.find("fn dependencies(&self)") else {
+        return Ok(None);
+    };
+
+    let after_fn = &lib_rs[fn_pos..];
+    let body_start = after_fn.find('{').with_context(|| {
+        format!(
+            "Failed to locate RusToKModule::dependencies() body in {}",
+            lib_rs_path.display()
+        )
+    })?;
+    let body = &after_fn[body_start..];
+    let slice_start = body.find("&[").with_context(|| {
+        format!(
+            "Failed to parse RusToKModule::dependencies() slice in {}",
+            lib_rs_path.display()
+        )
+    })?;
+    let slice_body = &body[slice_start + 2..];
+    let slice_end = slice_body.find(']').with_context(|| {
+        format!(
+            "Failed to locate closing dependency slice in {}",
+            lib_rs_path.display()
+        )
+    })?;
+
+    Ok(Some(parse_quoted_string_literals(&slice_body[..slice_end])))
+}
+
+fn parse_quoted_string_literals(input: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in input.chars() {
+        if !in_string {
+            if ch == '"' {
+                in_string = true;
+                current.clear();
+            }
+            continue;
+        }
+
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escaped = true,
+            '"' => {
+                values.push(current.clone());
+                current.clear();
+                in_string = false;
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    values
 }
 
 fn validate_module_ui_surface_contract(

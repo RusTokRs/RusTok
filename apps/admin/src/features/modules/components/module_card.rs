@@ -19,6 +19,17 @@ fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     }
 }
 
+fn ui_classification_label(classification: &str, locale: Locale) -> &'static str {
+    match classification {
+        "dual_surface" => tr(locale, "Dual surface", "Две UI-поверхности"),
+        "admin_only" => tr(locale, "Admin only", "Только admin"),
+        "storefront_only" => tr(locale, "Storefront only", "Только storefront"),
+        "capability_only" => tr(locale, "Capability only", "Только capability"),
+        "future_ui" => tr(locale, "Future UI", "Будущий UI"),
+        _ => tr(locale, "No UI", "Без UI"),
+    }
+}
+
 #[component]
 pub fn ModuleCard(
     module: ModuleInfo,
@@ -43,6 +54,9 @@ pub fn ModuleCard(
     let module_dependencies = module.dependencies.clone();
     let module_ownership = module.ownership.clone();
     let module_trust_level = module.trust_level.clone();
+    let module_has_admin_ui = module.has_admin_ui;
+    let module_has_storefront_ui = module.has_storefront_ui;
+    let module_ui_classification = module.ui_classification.clone();
     let recommended_admin_surfaces = module.recommended_admin_surfaces.clone();
     let showcase_admin_surfaces = module.showcase_admin_surfaces.clone();
     let catalog_module_value = catalog_module.clone();
@@ -151,6 +165,41 @@ pub fn ModuleCard(
                             </span>
                         }
                     })}
+                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
+                        {format!(
+                            "{}: {}",
+                            tr(locale, "UI", "UI"),
+                            ui_classification_label(
+                                catalog_module_value
+                                    .as_ref()
+                                    .map(|catalog| catalog.ui_classification.as_str())
+                                    .unwrap_or(module_ui_classification.as_str()),
+                                locale
+                            )
+                        )}
+                    </span>
+                    {catalog_module_value
+                        .as_ref()
+                        .map(|catalog| catalog.has_admin_ui)
+                        .unwrap_or(module_has_admin_ui)
+                        .then(|| {
+                            view! {
+                                <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
+                                    {tr(locale, "Admin UI", "Admin UI")}
+                                </span>
+                            }
+                        })}
+                    {catalog_module_value
+                        .as_ref()
+                        .map(|catalog| catalog.has_storefront_ui)
+                        .unwrap_or(module_has_storefront_ui)
+                        .then(|| {
+                            view! {
+                                <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
+                                    {tr(locale, "Storefront UI", "Storefront UI")}
+                                </span>
+                            }
+                        })}
                     {catalog_module_value.as_ref().is_some_and(|catalog| catalog.signature_present).then(|| view! {
                         <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
                             {tr(locale, "Signed", "Подписан")}

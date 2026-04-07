@@ -5,6 +5,7 @@ version = "0.1.0"
 description = "Default order submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "capability_only"
 
 [crate]
 entry_type = "OrderModule"

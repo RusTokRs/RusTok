@@ -16,10 +16,10 @@ use rustok_tenant::TenantModule;
 
 pub(crate) use manifest::module_setting_shape_value;
 pub use manifest::{
-    validate_registry_vs_manifest, BuildExecutionPlan, CatalogManifestModule, CatalogModuleVersion,
-    DeploymentSurfaceContract, FrontendArtifactKind, FrontendBuildPlan, FrontendBuildTool,
-    InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ManifestModuleSpec,
-    ModuleSettingSpec, ModulesManifest,
+    catalog_module_ui_classification, validate_registry_vs_manifest, BuildExecutionPlan,
+    CatalogManifestModule, CatalogModuleVersion, DeploymentSurfaceContract, FrontendArtifactKind,
+    FrontendBuildPlan, FrontendBuildTool, InstalledManifestModule, ManifestDiff, ManifestError,
+    ManifestManager, ManifestModuleSpec, ModuleSettingSpec, ModulesManifest,
 };
 
 pub fn build_registry() -> ModuleRegistry {

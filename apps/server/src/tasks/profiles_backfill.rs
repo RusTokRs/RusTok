@@ -15,7 +15,7 @@ use crate::models::{tenants, users};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[cfg(feature = "mod-customer")]
-use rustok_customer::entities::customer;
+use rustok_customer::customer;
 
 pub struct ProfilesBackfillTask;
 

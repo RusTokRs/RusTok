@@ -3,9 +3,9 @@ use leptos::task::spawn_local;
 use std::collections::HashMap;
 
 use crate::entities::module::model::{
-    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
-    RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryModerationPolicyLifecycle, RegistryOwnerLifecycle,
+    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
 use crate::features::modules::api::{self, RegistryMutationResult};
@@ -54,6 +54,25 @@ fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     }
 }
 
+fn ui_classification_label(classification: &str, locale: Locale) -> &'static str {
+    match classification {
+        "dual_surface" => tr(locale, "Dual surface", "Две UI-поверхности"),
+        "admin_only" => tr(locale, "Admin only", "Только admin"),
+        "storefront_only" => tr(locale, "Storefront only", "Только storefront"),
+        "capability_only" => tr(locale, "Capability only", "Только capability"),
+        "future_ui" => tr(locale, "Future UI", "Будущий UI"),
+        _ => tr(locale, "No UI", "Без UI"),
+    }
+}
+
+fn yes_no_label(value: bool, locale: Locale) -> &'static str {
+    if value {
+        tr(locale, "Yes", "Да")
+    } else {
+        tr(locale, "No", "Нет")
+    }
+}
+
 fn short_checksum(value: Option<&str>) -> Option<String> {
     let value = value?;
     if value.len() > 16 {
@@ -67,7 +86,66 @@ fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&Marketp
     module.versions.iter().find(|version| !version.yanked)
 }
 
+fn registry_moderation_policy(
+    module: &MarketplaceModule,
+) -> Option<&RegistryModerationPolicyLifecycle> {
+    module
+        .registry_lifecycle
+        .as_ref()
+        .map(|lifecycle| &lifecycle.moderation_policy)
+}
+
+fn registry_governance_action<'a>(
+    module: &'a MarketplaceModule,
+    key: &str,
+) -> Option<&'a RegistryGovernanceActionLifecycle> {
+    module.registry_lifecycle.as_ref().and_then(|lifecycle| {
+        lifecycle
+            .governance_actions
+            .iter()
+            .find(|action| action.key.eq_ignore_ascii_case(key))
+    })
+}
+
+fn registry_governance_action_label(key: &str, locale: Locale) -> &'static str {
+    match key {
+        "validate" => tr(locale, "Validate", "Validate"),
+        "approve" => tr(locale, "Approve", "Approve"),
+        "reject" => tr(locale, "Reject", "Reject"),
+        "stage_report" => tr(locale, "Stage report", "Stage report"),
+        "owner_transfer" => tr(locale, "Owner transfer", "Owner transfer"),
+        "yank" => tr(locale, "Yank", "Yank"),
+        _ => tr(locale, "Unknown action", "Неизвестное действие"),
+    }
+}
+
+fn governance_action_badge_classes(enabled: bool) -> &'static str {
+    if enabled {
+        "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
+    } else {
+        "inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+    }
+}
+
+fn registry_live_publish_supported(module: &MarketplaceModule) -> bool {
+    registry_moderation_policy(module)
+        .map(|policy| policy.live_publish_supported)
+        .unwrap_or_else(|| module.ownership.eq_ignore_ascii_case("first_party"))
+}
+
+fn registry_live_governance_supported(module: &MarketplaceModule) -> bool {
+    registry_moderation_policy(module)
+        .map(|policy| policy.live_governance_supported)
+        .unwrap_or_else(|| module.ownership.eq_ignore_ascii_case("first_party"))
+}
+
 fn registry_governance_hint(module: &MarketplaceModule, locale: Locale) -> String {
+    if let Some(policy) = registry_moderation_policy(module) {
+        if !policy.live_publish_supported {
+            return policy.restriction_reason.clone();
+        }
+    }
+
     match (
         module.ownership.as_str(),
         module
@@ -197,29 +275,67 @@ fn approval_override_warning_lines(
     ]
 }
 
-fn validation_stage_has_local_xtask_runner(stage_key: &str) -> bool {
-    matches!(
-        stage_key,
-        "compile_smoke" | "targeted_tests" | "security_policy_review"
-    )
+fn validation_stage_supports_xtask_runner(stage: &RegistryValidationStageLifecycle) -> bool {
+    stage.runnable
+        && matches!(
+            stage.execution_mode.as_str(),
+            "local_runner" | "operator_assisted"
+        )
 }
 
 fn validation_stage_runner_xtask_hint(
     module_slug: &str,
     request_id: &str,
-    stage_key: &str,
+    stage: &RegistryValidationStageLifecycle,
 ) -> String {
-    if stage_key.eq_ignore_ascii_case("security_policy_review") {
+    if stage.requires_manual_confirmation {
         format!(
             "cargo xtask module stage-run {} {} {} --confirm-manual-review --detail \"Manual security/policy review completed.\" --registry-url <registry-url>",
-            module_slug, request_id, stage_key
+            module_slug, request_id, stage.key
         )
     } else {
         format!(
             "cargo xtask module stage-run {} {} {} --registry-url <registry-url>",
-            module_slug, request_id, stage_key
+            module_slug, request_id, stage.key
         )
     }
+}
+
+fn validation_stage_execution_mode_label(
+    stage: &RegistryValidationStageLifecycle,
+    locale: Locale,
+) -> &'static str {
+    match stage.execution_mode.as_str() {
+        "local_runner" => tr(locale, "Local runner", "Локальный runner"),
+        "operator_assisted" => tr(locale, "Operator-assisted", "С подтверждением оператора"),
+        _ => tr(locale, "Manual", "Ручной"),
+    }
+}
+
+fn registry_moderation_policy_mode_label(mode: &str, locale: Locale) -> &'static str {
+    match mode {
+        "first_party_live" => tr(locale, "First-party live", "First-party live"),
+        "third_party_manual_only" => tr(
+            locale,
+            "Third-party manual review",
+            "Third-party manual review",
+        ),
+        _ => tr(locale, "Custom policy", "Custom policy"),
+    }
+}
+
+fn validation_stage_reason_code_summary(stage: &RegistryValidationStageLifecycle) -> String {
+    let mut parts = Vec::new();
+    if let Some(reason_code) = stage.suggested_pass_reason_code.as_ref() {
+        parts.push(format!("passed={reason_code}"));
+    }
+    if let Some(reason_code) = stage.suggested_failure_reason_code.as_ref() {
+        parts.push(format!("failed={reason_code}"));
+    }
+    if let Some(reason_code) = stage.suggested_blocked_reason_code.as_ref() {
+        parts.push(format!("blocked={reason_code}"));
+    }
+    parts.join(", ")
 }
 
 fn registry_mutation_result_summary(result: &RegistryMutationResult, locale: Locale) -> String {
@@ -855,14 +971,18 @@ fn registry_next_action_lines(
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    if module.ownership != "first_party" {
+    if !registry_live_publish_supported(module) {
         lines.push(
-            tr(
-                locale,
-                "Live publish is still first-party-oriented; keep third-party modules on governance/manual review until the broader moderation flow is finished.",
-                "Live publish пока ориентирован на first-party; держите third-party модули на governance/manual review, пока более широкий moderation flow не завершён.",
-            )
-            .to_string(),
+            registry_moderation_policy(module)
+                .map(|policy| policy.restriction_reason.clone())
+                .unwrap_or_else(|| {
+                    tr(
+                        locale,
+                        "Live publish is still first-party-oriented; keep third-party modules on governance/manual review until the broader moderation flow is finished.",
+                        "Live publish пока ориентирован на first-party; держите third-party модули на governance/manual review, пока более широкий moderation flow не завершён.",
+                    )
+                    .to_string()
+                }),
         );
         return lines;
     }
@@ -1011,7 +1131,7 @@ fn registry_operator_command_lines(
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    if module.ownership != "first_party" {
+    if !registry_live_publish_supported(module) {
         return lines;
     }
 
@@ -1058,9 +1178,9 @@ fn registry_operator_command_lines(
             && (status_eq(&request.status, "approved") || status_eq(&request.status, "published"))
         {
             for stage in validation_stages {
-                if validation_stage_has_local_xtask_runner(&stage.key) {
+                if validation_stage_supports_xtask_runner(stage) {
                     let mut command =
-                        validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key);
+                        validation_stage_runner_xtask_hint(&module.slug, &request.id, stage);
                     command.push_str(" --dry-run");
                     lines.push(command);
                 } else {
@@ -1129,7 +1249,39 @@ fn registry_live_api_action_lines(
         write_path: false,
     }];
 
-    if status_eq(&request.status, "artifact_uploaded") || status_eq(&request.status, "submitted") {
+    if !registry_live_governance_supported(module) {
+        return lines;
+    }
+
+    let can_validate = registry_governance_action(module, "validate")
+        .map(|action| action.enabled)
+        .unwrap_or(
+            status_eq(&request.status, "artifact_uploaded")
+                || status_eq(&request.status, "submitted"),
+        );
+    let can_approve = registry_governance_action(module, "approve")
+        .map(|action| action.enabled)
+        .unwrap_or(status_eq(&request.status, "approved"));
+    let can_reject = registry_governance_action(module, "reject")
+        .map(|action| action.enabled)
+        .unwrap_or(
+            !status_eq(&request.status, "rejected") && !status_eq(&request.status, "published"),
+        );
+    let can_stage_report = registry_governance_action(module, "stage_report")
+        .map(|action| action.enabled)
+        .unwrap_or(
+            status_eq(&request.status, "approved") || status_eq(&request.status, "published"),
+        );
+    let can_owner_transfer = registry_governance_action(module, "owner_transfer")
+        .map(|action| action.enabled)
+        .unwrap_or(false);
+    let can_yank = registry_governance_action(module, "yank")
+        .map(|action| action.enabled)
+        .unwrap_or(release.is_some_and(|release| {
+            status_eq(&release.status, "published") || status_eq(&release.status, "active")
+        }));
+
+    if can_validate {
         lines.push(RegistryLiveApiActionHint {
             endpoint: format!("POST /v2/catalog/publish/{}/validate", request.id),
             authority: manage_publish_authority.clone(),
@@ -1158,7 +1310,7 @@ fn registry_live_api_action_lines(
         });
     }
 
-    if status_eq(&request.status, "approved") {
+    if can_approve {
         let review_authority = registry_review_authority_label(owner_binding, locale);
         lines.push(RegistryLiveApiActionHint {
             endpoint: format!("POST /v2/catalog/publish/{}/approve", request.id),
@@ -1191,6 +1343,10 @@ fn registry_live_api_action_lines(
             )),
             write_path: true,
         });
+    }
+
+    if can_reject {
+        let review_authority = registry_review_authority_label(owner_binding, locale);
         lines.push(RegistryLiveApiActionHint {
             endpoint: format!("POST /v2/catalog/publish/{}/reject", request.id),
             authority: review_authority,
@@ -1214,6 +1370,9 @@ fn registry_live_api_action_lines(
             xtask_hint: None,
             write_path: true,
         });
+    }
+
+    if can_stage_report {
         for stage in validation_stages {
             lines.push(RegistryLiveApiActionHint {
                 endpoint: format!("POST /v2/catalog/publish/{}/stages", request.id),
@@ -1229,15 +1388,14 @@ fn registry_live_api_action_lines(
                 body_hint: Some(format!(
                     "{{ \"schema_version\": 1, \"dry_run\": false, \"stage\": \"{}\", \"status\": \"passed\", \"detail\": \"External validation recorded by operator.\", \"reason_code\": \"{}\", \"requeue\": false }}",
                     stage.key,
-                    if stage.key.eq_ignore_ascii_case("security_policy_review") {
-                        "manual_review_complete"
-                    } else {
-                        "local_runner_passed"
-                    }
+                    stage
+                        .suggested_pass_reason_code
+                        .as_deref()
+                        .unwrap_or("manual_override")
                 )),
                 header_hint: Some(actor_header_hint(true)),
-                xtask_hint: Some(if validation_stage_has_local_xtask_runner(&stage.key) {
-                    validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key)
+                xtask_hint: Some(if validation_stage_supports_xtask_runner(stage) {
+                    validation_stage_runner_xtask_hint(&module.slug, &request.id, stage)
                 } else {
                     format!(
                         "cargo xtask module stage {} {} passed --detail \"External validation recorded by operator.\" --registry-url <registry-url>",
@@ -1247,7 +1405,9 @@ fn registry_live_api_action_lines(
                 write_path: true,
             });
         }
-    } else if status_eq(&request.status, "validating") {
+    }
+
+    if status_eq(&request.status, "validating") {
         lines.push(RegistryLiveApiActionHint {
             endpoint: format!("GET /v2/catalog/publish/{}", request.id),
             authority: tr(
@@ -1269,7 +1429,7 @@ fn registry_live_api_action_lines(
             xtask_hint: None,
             write_path: false,
         });
-    } else if status_eq(&request.status, "published") {
+    } else if can_yank {
         lines.push(RegistryLiveApiActionHint {
             endpoint: "POST /v2/catalog/yank".to_string(),
             authority: registry_yank_authority_label(owner_binding, release, Some(request), locale),
@@ -1333,13 +1493,7 @@ fn registry_live_api_action_lines(
         });
     }
 
-    if owner_binding.is_some()
-        && request
-            .publisher_identity
-            .as_ref()
-            .zip(owner_binding.map(|owner| owner.owner_actor.as_str()))
-            .is_some_and(|(publisher, owner)| publisher != owner)
-    {
+    if can_owner_transfer {
         lines.push(RegistryLiveApiActionHint {
             endpoint: "POST /v2/catalog/owner-transfer".to_string(),
             authority: registry_owner_transfer_authority_label(owner_binding, locale),
@@ -4479,28 +4633,62 @@ pub fn ModuleDetailPanel(
                             locale,
                         );
                         let live_api_action_lines_for_show = live_api_action_lines.clone();
-                        let can_validate = latest_registry_request.as_ref().is_some_and(|request| {
-                            status_eq(&request.status, "artifact_uploaded")
-                                || status_eq(&request.status, "submitted")
-                        });
-                        let can_approve = latest_registry_request
+                        let governance_actions = module
+                            .registry_lifecycle
                             .as_ref()
-                            .is_some_and(|request| status_eq(&request.status, "approved"));
-                        let can_reject = latest_registry_request.as_ref().is_some_and(|request| {
-                            !status_eq(&request.status, "rejected")
-                                && !status_eq(&request.status, "published")
-                        });
-                        let can_transfer_owner = latest_registry_request.as_ref().is_some_and(|request| {
-                            request.publisher_identity.as_ref().is_some_and(|publisher| {
-                                registry_owner_binding
-                                    .as_ref()
-                                    .is_none_or(|owner| owner.owner_actor != *publisher)
-                            })
-                        }) || registry_owner_binding.is_some();
-                        let can_yank = latest_registry_release.as_ref().is_some_and(|release| {
-                            status_eq(&release.status, "published")
-                                || status_eq(&release.status, "active")
-                        });
+                            .map(|lifecycle| lifecycle.governance_actions.clone())
+                            .unwrap_or_default();
+                        let governance_actions_for_show =
+                            StoredValue::new(governance_actions.clone());
+                        let live_governance_supported =
+                            registry_live_governance_supported(&module);
+                        let can_validate = registry_governance_action(&module, "validate")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_request.as_ref().is_some_and(|request| {
+                                        status_eq(&request.status, "artifact_uploaded")
+                                            || status_eq(&request.status, "submitted")
+                                    }),
+                            );
+                        let can_approve = registry_governance_action(&module, "approve")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_request
+                                        .as_ref()
+                                        .is_some_and(|request| status_eq(&request.status, "approved")),
+                            );
+                        let can_reject = registry_governance_action(&module, "reject")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_request.as_ref().is_some_and(|request| {
+                                        !status_eq(&request.status, "rejected")
+                                            && !status_eq(&request.status, "published")
+                                    }),
+                            );
+                        let can_transfer_owner = registry_governance_action(&module, "owner_transfer")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && (latest_registry_request.as_ref().is_some_and(|request| {
+                                        request.publisher_identity.as_ref().is_some_and(|publisher| {
+                                            registry_owner_binding
+                                                .as_ref()
+                                                .is_none_or(|owner| owner.owner_actor != *publisher)
+                                        })
+                                    }) || registry_owner_binding.is_some()),
+                            );
+                        let can_yank = registry_governance_action(&module, "yank")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_release.as_ref().is_some_and(|release| {
+                                        status_eq(&release.status, "published")
+                                            || status_eq(&release.status, "active")
+                                    }),
+                            );
                         let recent_governance_events = module
                             .registry_lifecycle
                             .as_ref()
@@ -4606,6 +4794,10 @@ pub fn ModuleDetailPanel(
                         let show_approval_override_warning =
                             !approval_override_warning_items.is_empty();
                         let governance_hint = registry_governance_hint(&module, locale);
+                        let moderation_policy =
+                            module.registry_lifecycle.as_ref().map(|lifecycle| {
+                                lifecycle.moderation_policy.clone()
+                            });
                         let checksum = short_checksum(module.checksum_sha256.as_deref());
                         let request_id = latest_registry_request.as_ref().map(|request| request.id.clone());
                         let release_version = latest_registry_release
@@ -5100,6 +5292,23 @@ pub fn ModuleDetailPanel(
                                         {humanize_token(&module.trust_level)}
                                     </span>
                                     <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
+                                        {format!(
+                                            "{}: {}",
+                                            tr(locale, "UI", "UI"),
+                                            ui_classification_label(&module.ui_classification, locale)
+                                        )}
+                                    </span>
+                                    {module.has_admin_ui.then(|| view! {
+                                        <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
+                                            {tr(locale, "Admin UI", "Admin UI")}
+                                        </span>
+                                    })}
+                                    {module.has_storefront_ui.then(|| view! {
+                                        <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
+                                            {tr(locale, "Storefront UI", "Storefront UI")}
+                                        </span>
+                                    })}
+                                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                         {if primary_here {
                                             tr(locale, "Primary for this admin", "Primary для этой admin-поверхности")
                                         } else if showcase_here {
@@ -5166,6 +5375,18 @@ pub fn ModuleDetailPanel(
                                                         ))
                                                         .unwrap_or_else(|| tr(locale, "No active release", "Нет активного релиза").to_string())}
                                                 </dd>
+                                            </div>
+                                            <div class="flex items-start justify-between gap-3">
+                                                <dt class="text-muted-foreground">{tr(locale, "UI class", "UI-класс")}</dt>
+                                                <dd class="text-right">{ui_classification_label(&module.ui_classification, locale)}</dd>
+                                            </div>
+                                            <div class="flex items-start justify-between gap-3">
+                                                <dt class="text-muted-foreground">{tr(locale, "Admin UI", "Admin UI")}</dt>
+                                                <dd class="text-right">{yes_no_label(module.has_admin_ui, locale)}</dd>
+                                            </div>
+                                            <div class="flex items-start justify-between gap-3">
+                                                <dt class="text-muted-foreground">{tr(locale, "Storefront UI", "Storefront UI")}</dt>
+                                                <dd class="text-right">{yes_no_label(module.has_storefront_ui, locale)}</dd>
                                             </div>
                                         </dl>
                                     </div>
@@ -5351,6 +5572,72 @@ pub fn ModuleDetailPanel(
                                         </div>
                                     </dl>
                                     <p class="mt-3 text-xs text-muted-foreground">{governance_hint}</p>
+                                    {moderation_policy.as_ref().map(|policy| {
+                                        let label = registry_moderation_policy_mode_label(&policy.mode, locale);
+                                        let restriction = policy
+                                            .restriction_reason_code
+                                            .as_ref()
+                                            .map(|code| format!(" ({})", code))
+                                            .unwrap_or_default();
+                                        view! {
+                                            <p class="mt-1 text-xs text-muted-foreground">
+                                                {format!(
+                                                    "{}: {}{}",
+                                                    tr(locale, "Moderation policy", "Moderation policy"),
+                                                    label,
+                                                    restriction
+                                                )}
+                                            </p>
+                                        }
+                                    })}
+                                    <Show when=move || !governance_actions_for_show.get_value().is_empty()>
+                                        <div class="mt-3 space-y-2">
+                                            <p class="text-xs uppercase tracking-wide text-muted-foreground">
+                                                {tr(locale, "Governance actions", "Governance actions")}
+                                            </p>
+                                            <div class="space-y-2">
+                                                {governance_actions_for_show.get_value().into_iter().map(|action| {
+                                                    let reason_codes = if action.supported_reason_codes.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(action.supported_reason_codes.join(", "))
+                                                    };
+                                                    view! {
+                                                        <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                                                            <div class="flex flex-wrap items-center gap-2">
+                                                                <span class=governance_action_badge_classes(action.enabled)>
+                                                                    {if action.enabled {
+                                                                        tr(locale, "Enabled", "Доступно")
+                                                                    } else {
+                                                                        tr(locale, "Disabled", "Недоступно")
+                                                                    }}
+                                                                </span>
+                                                                <span class="font-medium text-card-foreground">
+                                                                    {registry_governance_action_label(&action.key, locale)}
+                                                                </span>
+                                                            </div>
+                                                            {action.reason.as_ref().map(|reason| {
+                                                                view! {
+                                                                    <p class="mt-1">{reason.clone()}</p>
+                                                                }
+                                                            })}
+                                                            {reason_codes.map(|codes| {
+                                                                view! {
+                                                                    <p class="mt-1 text-[11px] text-muted-foreground">
+                                                                        {format!(
+                                                                            "{}: {}",
+                                                                            tr(locale, "Supported reason codes", "Поддерживаемые reason code"),
+                                                                            codes
+                                                                        )}
+                                                                    </p>
+                                                                }
+                                                            })}
+                                                        </div>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        </div>
+                                    </Show>
                                     <Show when=move || show_validation_summary>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
@@ -5511,6 +5798,14 @@ pub fn ModuleDetailPanel(
                                                 let has_stage_history = !stage_history.is_empty();
                                                 let stage_history_for_show =
                                                     StoredValue::new(stage_history.clone());
+                                                let allowed_reason_codes =
+                                                    stage.allowed_terminal_reason_codes.join(", ");
+                                                let show_allowed_reason_codes =
+                                                    !allowed_reason_codes.is_empty();
+                                                let suggested_reason_codes =
+                                                    validation_stage_reason_code_summary(&stage);
+                                                let show_suggested_reason_codes =
+                                                    !suggested_reason_codes.is_empty();
                                                 view! {
                                                     <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
                                                         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -5522,6 +5817,34 @@ pub fn ModuleDetailPanel(
                                                             </span>
                                                         </div>
                                                         <p class="mt-1">{stage.detail.clone()}</p>
+                                                        <p class="mt-1 text-[11px] text-muted-foreground">
+                                                            {format!("{}: {}", tr(locale, "Execution", "Исполнение"), validation_stage_execution_mode_label(&stage, locale))}
+                                                        </p>
+                                                        <p class="mt-1 text-[11px] text-muted-foreground">
+                                                            {format!(
+                                                                "{}: {}",
+                                                                tr(locale, "Manual confirmation", "Ручное подтверждение"),
+                                                                yes_no_label(stage.requires_manual_confirmation, locale)
+                                                            )}
+                                                        </p>
+                                                        <Show when=move || show_allowed_reason_codes>
+                                                            <p class="mt-1 text-[11px] text-muted-foreground">
+                                                                {format!(
+                                                                    "{}: {}",
+                                                                    tr(locale, "Terminal reason codes", "Коды причин для terminal-статусов"),
+                                                                    allowed_reason_codes.clone()
+                                                                )}
+                                                            </p>
+                                                        </Show>
+                                                        <Show when=move || show_suggested_reason_codes>
+                                                            <p class="mt-1 text-[11px] text-muted-foreground">
+                                                                {format!(
+                                                                    "{}: {}",
+                                                                    tr(locale, "Suggested reason codes", "Рекомендуемые reason codes"),
+                                                                    suggested_reason_codes.clone()
+                                                                )}
+                                                            </p>
+                                                        </Show>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
                                                             {format!("{}: {}", tr(locale, "Attempt", "Попытка"), stage.attempt_number)}
                                                         </p>

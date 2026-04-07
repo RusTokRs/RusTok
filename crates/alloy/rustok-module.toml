@@ -5,6 +5,7 @@ version = "0.1.0"
 description = "Alloy scripting capability"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "capability_only"
 
 [provides.graphql]
 query = "graphql::AlloyQuery"

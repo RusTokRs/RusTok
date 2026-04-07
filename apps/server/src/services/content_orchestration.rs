@@ -22,7 +22,7 @@ use async_trait::async_trait;
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_blog::entities::{blog_category, blog_post, blog_post_tag, blog_post_translation};
+use rustok_blog::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -36,7 +36,7 @@ use rustok_comments::dto::{CommentStatus, CommentThreadStatus};
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_comments::entities::{comment, comment_body, comment_thread};
+use rustok_comments::{comment, comment_body, comment_thread};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -63,7 +63,7 @@ use rustok_forum::constants::{reply_status, topic_status};
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_forum::entities::{
+use rustok_forum::{
     forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_tag,
     forum_topic_translation,
 };

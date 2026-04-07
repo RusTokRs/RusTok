@@ -4,7 +4,7 @@
 > **Статус standalone mode:** Phase 5 — начат (добавлены transport-agnostic контракты в `crates/flex/src/standalone.rs`, event envelope helper-ы в `crates/flex/src/events.rs` и orchestration helper-ы `*_with_event()`; persistence/API ещё не реализованы).
 > Нереализованное → [`implementation-plan.md`](./implementation-plan.md)
 
-> **Важно по многоязычности:** для `flex` уже действует общий platform contract. `FieldDefinition.is_localized` является live-частью DB/runtime контракта; standalone schema copy (`name`, `description`) хранится в `flex_schema_translations`; attached-mode locale-aware values теперь имеют canonical storage-path в `flex_attached_localized_values`, а shared entity/helpers для этого path живут в `crates/flex`. Live write/read path уже проведён для `user`, `product`, `order` и `topic`; для `topic` donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values идут в parallel attached rows по тому же контракту.
+> **Важно по многоязычности:** для `flex` уже действует общий platform contract. `FieldDefinition.is_localized` является live-частью DB/runtime контракта; standalone schema copy (`name`, `description`) хранится в `flex_schema_translations`; standalone entry values теперь разделены на `flex_entries.data` (shared/non-localized payload) и `flex_entry_localized_values` (locale-aware payload per `entry_id + locale`); attached-mode locale-aware values имеют canonical storage-path в `flex_attached_localized_values`, а shared entity/helpers для этого path живут в `crates/flex`. Live write/read path уже проведён для `user`, `product`, `order` и `topic`; для `topic` donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values идут в parallel attached rows по тому же контракту.
 
 ---
 
@@ -93,7 +93,8 @@ rustok-content  ←✗→ flex
 ```
 "Дай мне произвольную сущность 'landing-page'"
   → flex_schemas (определение схемы)
-  + flex_entries (записи данных)
+  + flex_entries (shared/non-localized запись)
+  + flex_entry_localized_values (locale-aware payload per entry)
 ```
 
 Оба режима используют одну и ту же библиотеку типов из `rustok-core::field_schema`.
@@ -521,6 +522,16 @@ CREATE TABLE flex_entries (
 );
 CREATE INDEX idx_flex_entries_data   ON flex_entries USING GIN (data);
 CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
+
+CREATE TABLE flex_entry_localized_values (
+    entry_id     UUID NOT NULL REFERENCES flex_entries(id) ON DELETE CASCADE,
+    locale       VARCHAR(32) NOT NULL,
+    tenant_id    UUID NOT NULL,
+    data         JSONB NOT NULL DEFAULT '{}',
+    PRIMARY KEY (entry_id, locale)
+);
+CREATE INDEX idx_flex_entry_localized_values_owner
+    ON flex_entry_localized_values (tenant_id, entry_id);
 ```
 
 ### Guardrails standalone mode

@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    RegistryFollowUpGateLifecycle, RegistryGovernanceEventLifecycle, RegistryModuleLifecycle,
+    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryModerationPolicyLifecycle, RegistryModuleLifecycle,
     RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
     RegistryValidationStageLifecycle,
 };
@@ -15,15 +16,15 @@ use crate::shared::api::{request, ApiError};
 
 pub const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
 pub const MODULE_REGISTRY_QUERY: &str =
-    "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled ownership trustLevel recommendedAdminSurfaces showcaseAdminSurfaces } }";
+    "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled ownership trustLevel hasAdminUi hasStorefrontUi uiClassification recommendedAdminSurfaces showcaseAdminSurfaces } }";
 pub const INSTALLED_MODULES_QUERY: &str =
     "query InstalledModules { installedModules { slug source crateName version required dependencies } }";
 pub const TENANT_MODULES_QUERY: &str =
     "query TenantModules { tenantModules { moduleSlug enabled settings } }";
 pub const MARKETPLACE_QUERY: &str =
-    "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } hasAdminUi hasStorefrontUi uiClassification compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } hasAdminUi hasStorefrontUi uiClassification registryLifecycle { moderationPolicy { mode livePublishSupported liveGovernanceSupported manualReviewRequired restrictionReasonCode restrictionReason } ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt executionMode runnable requiresManualConfirmation allowedTerminalReasonCodes suggestedPassReasonCode suggestedFailureReasonCode suggestedBlockedReasonCode } governanceActions { key enabled reason supportedReasonCodes } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const ACTIVE_BUILD_QUERY: &str =
     "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ACTIVE_RELEASE_QUERY: &str =
@@ -372,6 +373,8 @@ struct RuntimeModulePackageManifest {
     #[serde(default)]
     marketplace: RuntimeModuleMarketplaceMetadata,
     #[serde(default)]
+    provides: RuntimeModulePackageProvides,
+    #[serde(default)]
     dependencies: std::collections::BTreeMap<String, RuntimeModuleDependencySpec>,
     #[serde(default)]
     settings: std::collections::BTreeMap<String, RuntimeModuleSettingSpec>,
@@ -419,6 +422,19 @@ struct RuntimeModuleMarketplaceMetadata {
     #[serde(default)]
     signature: Option<String>,
 }
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Deserialize, Default)]
+struct RuntimeModulePackageProvides {
+    #[serde(default)]
+    admin_ui: Option<RuntimeModuleUiProvides>,
+    #[serde(default)]
+    storefront_ui: Option<RuntimeModuleUiProvides>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Deserialize, Default)]
+struct RuntimeModuleUiProvides {}
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
@@ -725,6 +741,16 @@ fn fallback_module_category(slug: &str) -> &'static str {
         "commerce" | "pricing" | "product" | "inventory" => "commerce",
         "tenant" | "rbac" | "index" | "outbox" => "platform",
         _ => "extensions",
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn runtime_ui_classification(has_admin_ui: bool, has_storefront_ui: bool) -> &'static str {
+    match (has_admin_ui, has_storefront_ui) {
+        (true, true) => "dual_surface",
+        (true, false) => "admin_only",
+        (false, true) => "storefront_only",
+        (false, false) => "no_ui",
     }
 }
 
@@ -1110,6 +1136,8 @@ fn load_runtime_marketplace_modules(
         let installed_version = installed_entry
             .as_ref()
             .and_then(|entry| entry.version.clone());
+        let has_admin_ui = package_manifest.provides.admin_ui.is_some();
+        let has_storefront_ui = package_manifest.provides.storefront_ui.is_some();
         let dependencies = runtime_module
             .map(|module| {
                 module
@@ -1180,6 +1208,10 @@ fn load_runtime_marketplace_modules(
                 checksum_sha256: package_manifest.marketplace.checksum_sha256.clone(),
                 signature_present: package_manifest.marketplace.signature.is_some(),
             }],
+            has_admin_ui,
+            has_storefront_ui,
+            ui_classification: runtime_ui_classification(has_admin_ui, has_storefront_ui)
+                .to_string(),
             registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: package_manifest.module.recommended_admin_surfaces.clone(),
@@ -1255,6 +1287,9 @@ fn load_runtime_marketplace_modules(
                 checksum_sha256: None,
                 signature_present: false,
             }],
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: runtime_ui_classification(false, false).to_string(),
             registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
@@ -1825,10 +1860,12 @@ fn map_registry_governance_event_row(
 fn map_registry_validation_stage_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryValidationStageLifecycle, ServerFnError> {
+    let key = row
+        .try_get::<String>("", "stage_key")
+        .map_err(|err| server_error(err.to_string()))?;
+    let contract = registry_validation_stage_contract(&key);
     Ok(RegistryValidationStageLifecycle {
-        key: row
-            .try_get("", "stage_key")
-            .map_err(|err| server_error(err.to_string()))?,
+        key,
         status: row
             .try_get("", "status")
             .map_err(|err| server_error(err.to_string()))?,
@@ -1850,7 +1887,496 @@ fn map_registry_validation_stage_row(
             .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "finished_at")
             .map(|value| value.map(|value| value.to_rfc3339()))
             .map_err(|err| server_error(err.to_string()))?,
+        execution_mode: contract.execution_mode.to_string(),
+        runnable: contract.runnable,
+        requires_manual_confirmation: contract.requires_manual_confirmation,
+        allowed_terminal_reason_codes: contract
+            .allowed_terminal_reason_codes
+            .iter()
+            .map(|code| (*code).to_string())
+            .collect(),
+        suggested_pass_reason_code: contract.suggested_pass_reason_code.map(ToString::to_string),
+        suggested_failure_reason_code: contract
+            .suggested_failure_reason_code
+            .map(ToString::to_string),
+        suggested_blocked_reason_code: contract
+            .suggested_blocked_reason_code
+            .map(ToString::to_string),
     })
+}
+
+#[cfg(feature = "ssr")]
+struct RegistryValidationStageContract {
+    execution_mode: &'static str,
+    runnable: bool,
+    requires_manual_confirmation: bool,
+    allowed_terminal_reason_codes: &'static [&'static str],
+    suggested_pass_reason_code: Option<&'static str>,
+    suggested_failure_reason_code: Option<&'static str>,
+    suggested_blocked_reason_code: Option<&'static str>,
+}
+
+#[cfg(feature = "ssr")]
+fn registry_validation_stage_contract(stage_key: &str) -> RegistryValidationStageContract {
+    match stage_key {
+        "compile_smoke" => RegistryValidationStageContract {
+            execution_mode: "local_runner",
+            runnable: true,
+            requires_manual_confirmation: false,
+            allowed_terminal_reason_codes: &[
+                "local_runner_passed",
+                "build_failure",
+                "manual_override",
+                "other",
+            ],
+            suggested_pass_reason_code: Some("local_runner_passed"),
+            suggested_failure_reason_code: Some("build_failure"),
+            suggested_blocked_reason_code: Some("manual_override"),
+        },
+        "targeted_tests" => RegistryValidationStageContract {
+            execution_mode: "local_runner",
+            runnable: true,
+            requires_manual_confirmation: false,
+            allowed_terminal_reason_codes: &[
+                "local_runner_passed",
+                "test_failure",
+                "manual_override",
+                "other",
+            ],
+            suggested_pass_reason_code: Some("local_runner_passed"),
+            suggested_failure_reason_code: Some("test_failure"),
+            suggested_blocked_reason_code: Some("manual_override"),
+        },
+        "security_policy_review" => RegistryValidationStageContract {
+            execution_mode: "operator_assisted",
+            runnable: true,
+            requires_manual_confirmation: true,
+            allowed_terminal_reason_codes: &[
+                "manual_review_complete",
+                "policy_preflight_failed",
+                "security_findings",
+                "policy_exception",
+                "license_issue",
+                "manual_override",
+                "other",
+            ],
+            suggested_pass_reason_code: Some("manual_review_complete"),
+            suggested_failure_reason_code: Some("policy_preflight_failed"),
+            suggested_blocked_reason_code: Some("manual_override"),
+        },
+        _ => RegistryValidationStageContract {
+            execution_mode: "manual",
+            runnable: false,
+            requires_manual_confirmation: false,
+            allowed_terminal_reason_codes: &["manual_override", "other"],
+            suggested_pass_reason_code: None,
+            suggested_failure_reason_code: None,
+            suggested_blocked_reason_code: None,
+        },
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn registry_moderation_policy_lifecycle(ownership: &str) -> RegistryModerationPolicyLifecycle {
+    if ownership.eq_ignore_ascii_case("first_party") {
+        RegistryModerationPolicyLifecycle {
+            mode: "first_party_live".to_string(),
+            live_publish_supported: true,
+            live_governance_supported: true,
+            manual_review_required: false,
+            restriction_reason_code: None,
+            restriction_reason:
+                "Live registry publish/governance flow is enabled for first-party modules."
+                    .to_string(),
+        }
+    } else {
+        RegistryModerationPolicyLifecycle {
+            mode: "third_party_manual_only".to_string(),
+            live_publish_supported: false,
+            live_governance_supported: false,
+            manual_review_required: true,
+            restriction_reason_code: Some("third_party_flow_pending".to_string()),
+            restriction_reason: "Third-party moderation/governance flow is not implemented yet; keep this module on manual review and dry-run registry preview paths until the broader moderation flow is finished."
+                .to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn derive_registry_governance_actions(
+    moderation_policy: &RegistryModerationPolicyLifecycle,
+    latest_request: Option<&RegistryPublishRequestLifecycle>,
+    latest_release: Option<&RegistryReleaseLifecycle>,
+    owner_binding: Option<&RegistryOwnerLifecycle>,
+    recent_events: &[RegistryGovernanceEventLifecycle],
+    validation_stages: &[RegistryValidationStageLifecycle],
+) -> Vec<RegistryGovernanceActionLifecycle> {
+    let restriction_reason = || Some(moderation_policy.restriction_reason.clone());
+    let action =
+        |key: &str, enabled: bool, reason: Option<String>, supported_reason_codes: &[&str]| {
+            RegistryGovernanceActionLifecycle {
+                key: key.to_string(),
+                enabled,
+                reason,
+                supported_reason_codes: supported_reason_codes
+                    .iter()
+                    .map(|code| (*code).to_string())
+                    .collect(),
+            }
+        };
+
+    if !moderation_policy.live_governance_supported {
+        return vec![
+            action("validate", false, restriction_reason(), &[]),
+            action(
+                "approve",
+                false,
+                restriction_reason(),
+                &[
+                    "manual_review_complete",
+                    "trusted_first_party",
+                    "expedited_release",
+                    "governance_override",
+                    "other",
+                ],
+            ),
+            action(
+                "reject",
+                false,
+                restriction_reason(),
+                &[
+                    "policy_mismatch",
+                    "quality_gate_failed",
+                    "ownership_mismatch",
+                    "security_risk",
+                    "legal",
+                    "other",
+                ],
+            ),
+            action("stage_report", false, restriction_reason(), &[]),
+            action(
+                "owner_transfer",
+                false,
+                restriction_reason(),
+                &[
+                    "maintenance_handoff",
+                    "team_restructure",
+                    "publisher_rotation",
+                    "security_emergency",
+                    "governance_override",
+                    "other",
+                ],
+            ),
+            action(
+                "yank",
+                false,
+                restriction_reason(),
+                &[
+                    "security",
+                    "legal",
+                    "malware",
+                    "critical_regression",
+                    "rollback",
+                    "other",
+                ],
+            ),
+        ];
+    }
+
+    let latest_event_type = recent_events.first().map(|event| event.event_type.as_str());
+    let validate_action = match latest_request {
+        Some(request) if matches!(request.status.as_str(), "artifact_uploaded" | "submitted") => {
+            action("validate", true, None, &[])
+        }
+        Some(request)
+            if request.status.eq_ignore_ascii_case("rejected")
+                && latest_event_type.is_some_and(|event| {
+                    event.eq_ignore_ascii_case("validation_failed")
+                        || event.eq_ignore_ascii_case("validation_retry_exhausted")
+                }) =>
+        {
+            action("validate", true, None, &[])
+        }
+        Some(request) if request.status.eq_ignore_ascii_case("draft") => action(
+            "validate",
+            false,
+            Some("Artifact upload must complete before validation can start.".to_string()),
+            &[],
+        ),
+        Some(request) if request.status.eq_ignore_ascii_case("validating") => action(
+            "validate",
+            false,
+            Some("Validation is already running for this publish request.".to_string()),
+            &[],
+        ),
+        Some(request) if request.status.eq_ignore_ascii_case("rejected") => action(
+            "validate",
+            false,
+            Some(
+                "Manual governance rejects must be recreated as new publish requests.".to_string(),
+            ),
+            &[],
+        ),
+        Some(request) if matches!(request.status.as_str(), "approved" | "published") => action(
+            "validate",
+            false,
+            Some(
+                "Artifact/manifest validation is already complete for this publish request."
+                    .to_string(),
+            ),
+            &[],
+        ),
+        Some(_) => action("validate", false, None, &[]),
+        None => action(
+            "validate",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            &[],
+        ),
+    };
+
+    let approve_action = match latest_request {
+        Some(request) if request.status.eq_ignore_ascii_case("approved") => action(
+            "approve",
+            true,
+            validation_stages
+                .iter()
+                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+                .then_some(
+                    "Approval is available, but non-passed follow-up stages still require an explicit override reason and reason_code."
+                        .to_string(),
+                ),
+            &[
+                "manual_review_complete",
+                "trusted_first_party",
+                "expedited_release",
+                "governance_override",
+                "other",
+            ],
+        ),
+        Some(request) if request.status.eq_ignore_ascii_case("validating") => action(
+            "approve",
+            false,
+            Some("Wait for validation to finish before approving this request.".to_string()),
+            &[
+                "manual_review_complete",
+                "trusted_first_party",
+                "expedited_release",
+                "governance_override",
+                "other",
+            ],
+        ),
+        Some(request)
+            if matches!(request.status.as_str(), "draft" | "artifact_uploaded" | "submitted") =>
+        {
+            action(
+                "approve",
+                false,
+                Some(
+                    "Approval is available only after artifact validation reaches review-ready."
+                        .to_string(),
+                ),
+                &[
+                    "manual_review_complete",
+                    "trusted_first_party",
+                    "expedited_release",
+                    "governance_override",
+                    "other",
+                ],
+            )
+        }
+        Some(request) if request.status.eq_ignore_ascii_case("rejected") => action(
+            "approve",
+            false,
+            Some("Rejected publish requests cannot be approved in place.".to_string()),
+            &[
+                "manual_review_complete",
+                "trusted_first_party",
+                "expedited_release",
+                "governance_override",
+                "other",
+            ],
+        ),
+        Some(request) if request.status.eq_ignore_ascii_case("published") => action(
+            "approve",
+            false,
+            Some("This publish request is already published.".to_string()),
+            &[
+                "manual_review_complete",
+                "trusted_first_party",
+                "expedited_release",
+                "governance_override",
+                "other",
+            ],
+        ),
+        Some(_) => action("approve", false, None, &[]),
+        None => action(
+            "approve",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            &[],
+        ),
+    };
+
+    let reject_action = match latest_request {
+        Some(request) if !matches!(request.status.as_str(), "rejected" | "published") => action(
+            "reject",
+            true,
+            None,
+            &[
+                "policy_mismatch",
+                "quality_gate_failed",
+                "ownership_mismatch",
+                "security_risk",
+                "legal",
+                "other",
+            ],
+        ),
+        Some(request) if request.status.eq_ignore_ascii_case("rejected") => action(
+            "reject",
+            false,
+            Some("This publish request is already rejected.".to_string()),
+            &[
+                "policy_mismatch",
+                "quality_gate_failed",
+                "ownership_mismatch",
+                "security_risk",
+                "legal",
+                "other",
+            ],
+        ),
+        Some(request) if request.status.eq_ignore_ascii_case("published") => action(
+            "reject",
+            false,
+            Some("Published releases must be managed through yank/unpublish actions.".to_string()),
+            &[
+                "policy_mismatch",
+                "quality_gate_failed",
+                "ownership_mismatch",
+                "security_risk",
+                "legal",
+                "other",
+            ],
+        ),
+        Some(_) => action("reject", false, None, &[]),
+        None => action(
+            "reject",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            &[],
+        ),
+    };
+
+    let stage_report_action = match latest_request {
+        Some(request)
+            if matches!(request.status.as_str(), "approved" | "published") =>
+        {
+            action("stage_report", true, None, &[])
+        }
+        Some(request) if request.status.eq_ignore_ascii_case("rejected") => action(
+            "stage_report",
+            false,
+            Some("Rejected publish requests cannot accept follow-up stage updates.".to_string()),
+            &[],
+        ),
+        Some(_) => action(
+            "stage_report",
+            false,
+            Some(
+                "Follow-up stages are available only after artifact validation reaches review-ready."
+                    .to_string(),
+            ),
+            &[],
+        ),
+        None => action(
+            "stage_report",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            &[],
+        ),
+    };
+
+    let owner_transfer_action = if owner_binding.is_some() {
+        action(
+            "owner_transfer",
+            true,
+            None,
+            &[
+                "maintenance_handoff",
+                "team_restructure",
+                "publisher_rotation",
+                "security_emergency",
+                "governance_override",
+                "other",
+            ],
+        )
+    } else {
+        action(
+            "owner_transfer",
+            false,
+            Some("Owner transfer requires a persisted owner binding.".to_string()),
+            &[
+                "maintenance_handoff",
+                "team_restructure",
+                "publisher_rotation",
+                "security_emergency",
+                "governance_override",
+                "other",
+            ],
+        )
+    };
+
+    let yank_action = match latest_release {
+        Some(release) if matches!(release.status.as_str(), "published" | "active") => action(
+            "yank",
+            true,
+            None,
+            &[
+                "security",
+                "legal",
+                "malware",
+                "critical_regression",
+                "rollback",
+                "other",
+            ],
+        ),
+        Some(release) if release.status.eq_ignore_ascii_case("yanked") => action(
+            "yank",
+            false,
+            Some(format!("Release 'v{}' is already yanked.", release.version)),
+            &[
+                "security",
+                "legal",
+                "malware",
+                "critical_regression",
+                "rollback",
+                "other",
+            ],
+        ),
+        None => action(
+            "yank",
+            false,
+            Some("No published release exists yet.".to_string()),
+            &[
+                "security",
+                "legal",
+                "malware",
+                "critical_regression",
+                "rollback",
+                "other",
+            ],
+        ),
+        Some(_) => action("yank", false, None, &[]),
+    };
+
+    vec![
+        validate_action,
+        approve_action,
+        reject_action,
+        stage_report_action,
+        owner_transfer_action,
+        yank_action,
+    ]
 }
 
 #[cfg(feature = "ssr")]
@@ -1881,6 +2407,7 @@ fn derive_registry_validation_stages(
             stages.push(stage.clone());
             continue;
         }
+        let contract = registry_validation_stage_contract(gate_key);
 
         let latest_event = recent_events.iter().find(|event| {
             matches!(
@@ -1920,6 +2447,23 @@ fn derive_registry_validation_stages(
                 updated_at: event.created_at.clone(),
                 started_at: None,
                 finished_at: None,
+                execution_mode: contract.execution_mode.to_string(),
+                runnable: contract.runnable,
+                requires_manual_confirmation: contract.requires_manual_confirmation,
+                allowed_terminal_reason_codes: contract
+                    .allowed_terminal_reason_codes
+                    .iter()
+                    .map(|code| (*code).to_string())
+                    .collect(),
+                suggested_pass_reason_code: contract
+                    .suggested_pass_reason_code
+                    .map(ToString::to_string),
+                suggested_failure_reason_code: contract
+                    .suggested_failure_reason_code
+                    .map(ToString::to_string),
+                suggested_blocked_reason_code: contract
+                    .suggested_blocked_reason_code
+                    .map(ToString::to_string),
             });
             continue;
         }
@@ -1937,6 +2481,23 @@ fn derive_registry_validation_stages(
                     .unwrap_or_default(),
                 started_at: None,
                 finished_at: None,
+                execution_mode: contract.execution_mode.to_string(),
+                runnable: contract.runnable,
+                requires_manual_confirmation: contract.requires_manual_confirmation,
+                allowed_terminal_reason_codes: contract
+                    .allowed_terminal_reason_codes
+                    .iter()
+                    .map(|code| (*code).to_string())
+                    .collect(),
+                suggested_pass_reason_code: contract
+                    .suggested_pass_reason_code
+                    .map(ToString::to_string),
+                suggested_failure_reason_code: contract
+                    .suggested_failure_reason_code
+                    .map(ToString::to_string),
+                suggested_blocked_reason_code: contract
+                    .suggested_blocked_reason_code
+                    .map(ToString::to_string),
             });
         }
     }
@@ -2025,6 +2586,7 @@ fn derive_registry_follow_up_gates(
 async fn load_registry_module_lifecycle(
     app_ctx: &loco_rs::app::AppContext,
     slug: &str,
+    ownership: &str,
 ) -> Result<Option<RegistryModuleLifecycle>, ServerFnError> {
     use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
@@ -2261,15 +2823,6 @@ async fn load_registry_module_lifecycle(
         Vec::new()
     };
 
-    if owner_binding.is_none()
-        && latest_request.is_none()
-        && latest_release.is_none()
-        && recent_events.is_empty()
-        && validation_stage_rows.is_empty()
-    {
-        return Ok(None);
-    }
-
     let validation_stages = derive_registry_validation_stages(
         latest_request.as_ref(),
         &recent_events,
@@ -2280,14 +2833,25 @@ async fn load_registry_module_lifecycle(
         latest_request.as_ref(),
         &recent_events,
     );
+    let moderation_policy = registry_moderation_policy_lifecycle(ownership);
+    let governance_actions = derive_registry_governance_actions(
+        &moderation_policy,
+        latest_request.as_ref(),
+        latest_release.as_ref(),
+        owner_binding.as_ref(),
+        &recent_events,
+        &validation_stages,
+    );
 
     Ok(Some(RegistryModuleLifecycle {
+        moderation_policy,
         owner_binding,
         latest_request,
         latest_release,
         recent_events,
         follow_up_gates,
         validation_stages,
+        governance_actions,
     }))
 }
 
@@ -2393,13 +2957,16 @@ pub async fn fetch_modules(
 async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use crate::app::modules::module_runtime_metadata;
         use leptos::prelude::expect_context;
         use rustok_core::ModuleRegistry;
         use rustok_tenant::TenantService;
 
         let (app_ctx, _auth, tenant) = modules_server_context().await?;
         let registry = expect_context::<ModuleRegistry>();
+        let marketplace_by_slug = load_runtime_marketplace_modules(&registry)?
+            .into_iter()
+            .map(|module| (module.slug.clone(), module))
+            .collect::<std::collections::HashMap<_, _>>();
         let enabled_modules = TenantService::new(app_ctx.db.clone())
             .list_tenant_modules(tenant.id)
             .await
@@ -2413,7 +2980,7 @@ async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError>
             .list()
             .into_iter()
             .map(|module| {
-                let metadata = module_runtime_metadata(module.slug());
+                let metadata = marketplace_by_slug.get(module.slug());
                 ModuleInfo {
                     module_slug: module.slug().to_string(),
                     name: module.name().to_string(),
@@ -2432,28 +2999,21 @@ async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError>
                     enabled: registry.is_core(module.slug())
                         || enabled_modules.contains(module.slug()),
                     ownership: metadata
-                        .map(|metadata| metadata.ownership.to_string())
+                        .map(|metadata| metadata.ownership.clone())
                         .unwrap_or_else(|| "third_party".to_string()),
                     trust_level: metadata
-                        .map(|metadata| metadata.trust_level.to_string())
+                        .map(|metadata| metadata.trust_level.clone())
                         .unwrap_or_else(|| "unverified".to_string()),
+                    has_admin_ui: metadata.is_some_and(|metadata| metadata.has_admin_ui),
+                    has_storefront_ui: metadata.is_some_and(|metadata| metadata.has_storefront_ui),
+                    ui_classification: metadata
+                        .map(|metadata| metadata.ui_classification.clone())
+                        .unwrap_or_else(|| "no_ui".to_string()),
                     recommended_admin_surfaces: metadata
-                        .map(|metadata| {
-                            metadata
-                                .recommended_admin_surfaces
-                                .iter()
-                                .map(|surface| surface.to_string())
-                                .collect()
-                        })
+                        .map(|metadata| metadata.recommended_admin_surfaces.clone())
                         .unwrap_or_default(),
                     showcase_admin_surfaces: metadata
-                        .map(|metadata| {
-                            metadata
-                                .showcase_admin_surfaces
-                                .iter()
-                                .map(|surface| surface.to_string())
-                                .collect()
-                        })
+                        .map(|metadata| metadata.showcase_admin_surfaces.clone())
                         .unwrap_or_default(),
                 }
             })
@@ -2801,7 +3361,8 @@ async fn marketplace_module_native(
         match module {
             Some(mut module) => {
                 module.registry_lifecycle =
-                    load_registry_module_lifecycle(&app_ctx, &module.slug).await?;
+                    load_registry_module_lifecycle(&app_ctx, &module.slug, &module.ownership)
+                        .await?;
                 Ok(Some(module))
             }
             None => Ok(None),

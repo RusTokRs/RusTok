@@ -16,6 +16,7 @@ pub mod state_machine;
 
 pub use constants::*;
 pub use dto::*;
+pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use services::{

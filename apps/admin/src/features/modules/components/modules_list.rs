@@ -248,6 +248,9 @@ fn catalog_entry_to_module_info(module: &MarketplaceModule) -> ModuleInfo {
         enabled: false,
         ownership: module.ownership.clone(),
         trust_level: module.trust_level.clone(),
+        has_admin_ui: module.has_admin_ui,
+        has_storefront_ui: module.has_storefront_ui,
+        ui_classification: module.ui_classification.clone(),
         recommended_admin_surfaces: module.recommended_admin_surfaces.clone(),
         showcase_admin_surfaces: module.showcase_admin_surfaces.clone(),
     }

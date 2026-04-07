@@ -165,6 +165,8 @@ pub struct ManifestModuleSpec {
     #[serde(default)]
     pub rustok_max_version: Option<String>,
     #[serde(default)]
+    pub ui_classification: Option<String>,
+    #[serde(default)]
     pub entry_type: Option<String>,
     #[serde(default)]
     pub graphql_query_type: Option<String>,
@@ -247,6 +249,9 @@ pub struct CatalogManifestModule {
     pub checksum_sha256: Option<String>,
     pub signature: Option<String>,
     pub versions: Vec<CatalogModuleVersion>,
+    pub has_admin_ui: bool,
+    pub has_storefront_ui: bool,
+    pub ui_classification: String,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,
     pub settings_schema: HashMap<String, ModuleSettingSpec>,
@@ -410,6 +415,8 @@ struct ModulePackageMetadata {
     rustok_min_version: Option<String>,
     #[serde(default)]
     rustok_max_version: Option<String>,
+    #[serde(default)]
+    ui_classification: Option<String>,
     #[serde(default)]
     recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
@@ -598,6 +605,8 @@ pub enum ManifestError {
     InvalidModuleOwnership { slug: String, value: String },
     #[error("Module '{slug}' has invalid trust level '{value}'")]
     InvalidModuleTrustLevel { slug: String, value: String },
+    #[error("Module '{slug}' has invalid ui_classification '{value}'")]
+    InvalidModuleUiClassification { slug: String, value: String },
     #[error("Module package manifest for '{slug}' declares slug '{found}', expected '{slug}'")]
     ModulePackageSlugMismatch { slug: String, found: String },
     #[error("Module '{slug}' has invalid version '{value}'")]
@@ -1020,6 +1029,14 @@ fn merge_module_package_manifest(
     }
     if metadata.rustok_max_version.is_some() {
         spec.rustok_max_version = metadata.rustok_max_version;
+    }
+    if let Some(ui_classification) = metadata
+        .ui_classification
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.ui_classification = Some(ui_classification.to_string());
     }
     if let Some(entry_type) = qualify_module_type_path(
         &crate_name,
@@ -1842,6 +1859,96 @@ fn validate_module_ui_wiring(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct ModuleUiSurfaceFlags {
+    has_admin_ui: bool,
+    has_storefront_ui: bool,
+}
+
+fn module_package_ui_surface_flags(
+    spec: &ManifestModuleSpec,
+) -> Result<ModuleUiSurfaceFlags, ManifestError> {
+    let Some(path) = module_package_manifest_path(spec) else {
+        return Ok(ModuleUiSurfaceFlags::default());
+    };
+
+    if !path.exists() {
+        return Ok(ModuleUiSurfaceFlags::default());
+    }
+
+    let raw = std::fs::read_to_string(&path).map_err(|error| ManifestError::ModulePackageRead {
+        path: path.display().to_string(),
+        error: error.to_string(),
+    })?;
+    let package_manifest: ModulePackageManifest =
+        toml::from_str(&raw).map_err(|error| ManifestError::ModulePackageParse {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        })?;
+
+    Ok(ModuleUiSurfaceFlags {
+        has_admin_ui: package_manifest.provides.admin_ui.is_some(),
+        has_storefront_ui: package_manifest.provides.storefront_ui.is_some(),
+    })
+}
+
+pub fn catalog_module_ui_classification(
+    has_admin_ui: bool,
+    has_storefront_ui: bool,
+) -> &'static str {
+    match (has_admin_ui, has_storefront_ui) {
+        (true, true) => "dual_surface",
+        (true, false) => "admin_only",
+        (false, true) => "storefront_only",
+        (false, false) => "no_ui",
+    }
+}
+
+fn normalize_module_ui_classification(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
+    match normalized.as_str() {
+        "dual_surface" | "admin_only" | "storefront_only" | "no_ui" | "capability_only"
+        | "future_ui" => Some(normalized),
+        _ => None,
+    }
+}
+
+fn resolved_catalog_module_ui_classification(
+    slug: &str,
+    explicit: Option<&str>,
+    has_admin_ui: bool,
+    has_storefront_ui: bool,
+) -> Result<String, ManifestError> {
+    let derived = catalog_module_ui_classification(has_admin_ui, has_storefront_ui);
+    let Some(explicit) = explicit.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(derived.to_string());
+    };
+
+    let normalized = normalize_module_ui_classification(explicit).ok_or_else(|| {
+        ManifestError::InvalidModuleUiClassification {
+            slug: slug.to_string(),
+            value: explicit.to_string(),
+        }
+    })?;
+
+    let matches_surface_contract = match normalized.as_str() {
+        "dual_surface" => has_admin_ui && has_storefront_ui,
+        "admin_only" => has_admin_ui && !has_storefront_ui,
+        "storefront_only" => !has_admin_ui && has_storefront_ui,
+        "no_ui" | "capability_only" | "future_ui" => !has_admin_ui && !has_storefront_ui,
+        _ => false,
+    };
+
+    if !matches_surface_contract {
+        return Err(ManifestError::InvalidModuleUiClassification {
+            slug: slug.to_string(),
+            value: explicit.to_string(),
+        });
+    }
+
+    Ok(normalized)
+}
+
 fn apply_module_package_manifest(
     slug: &str,
     spec: &ManifestModuleSpec,
@@ -2471,8 +2578,15 @@ impl ManifestManager {
                     });
                 }
 
+                let ui_surface_flags = module_package_ui_surface_flags(&spec)?;
                 let spec = apply_module_package_manifest(&slug, &spec)?;
                 validate_catalog_metadata(&slug, &spec)?;
+                let ui_classification = resolved_catalog_module_ui_classification(
+                    &slug,
+                    spec.ui_classification.as_deref(),
+                    ui_surface_flags.has_admin_ui,
+                    ui_surface_flags.has_storefront_ui,
+                )?;
 
                 Ok(CatalogManifestModule {
                     slug: slug.to_string(),
@@ -2499,6 +2613,9 @@ impl ManifestManager {
                     checksum_sha256: None,
                     signature: None,
                     versions: Vec::new(),
+                    has_admin_ui: ui_surface_flags.has_admin_ui,
+                    has_storefront_ui: ui_surface_flags.has_storefront_ui,
+                    ui_classification,
                     recommended_admin_surfaces: spec.recommended_admin_surfaces,
                     showcase_admin_surfaces: spec.showcase_admin_surfaces,
                     settings_schema: spec.settings_schema,

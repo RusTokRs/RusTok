@@ -19,6 +19,8 @@ pub struct RustokSettings {
     #[serde(default)]
     pub build: BuildRuntimeSettings,
     #[serde(default)]
+    pub registry: RegistrySettings,
+    #[serde(default)]
     pub search: SearchSettings,
     #[serde(default)]
     pub features: FeatureSettings,
@@ -35,6 +37,24 @@ pub struct RustokSettings {
     #[cfg(feature = "mod-media")]
     #[serde(default)]
     pub storage: StorageConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct RegistrySettings {
+    #[serde(default)]
+    pub validation_runner: RegistryValidationRunnerSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RegistryValidationRunnerSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_registry_validation_runner_poll_interval_ms")]
+    pub poll_interval_ms: u64,
+    #[serde(default = "default_registry_validation_runner_actor")]
+    pub actor: String,
+    #[serde(default)]
+    pub auto_confirm_manual_review: bool,
 }
 
 /// Cache configuration.
@@ -466,6 +486,17 @@ impl Default for BuildRuntimeSettings {
     }
 }
 
+impl Default for RegistryValidationRunnerSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            poll_interval_ms: default_registry_validation_runner_poll_interval_ms(),
+            actor: default_registry_validation_runner_actor(),
+            auto_confirm_manual_review: false,
+        }
+    }
+}
+
 impl Default for BuildDeploymentSettings {
     fn default() -> Self {
         Self {
@@ -688,6 +719,19 @@ impl RustokSettings {
                 std::io::ErrorKind::InvalidInput,
                 "rustok.build.poll_interval_ms must be > 0",
             )));
+        }
+
+        if parsed.registry.validation_runner.poll_interval_ms == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.registry.validation_runner.poll_interval_ms must be > 0",
+            )));
+        }
+
+        parsed.registry.validation_runner.actor =
+            parsed.registry.validation_runner.actor.trim().to_string();
+        if parsed.registry.validation_runner.actor.is_empty() {
+            parsed.registry.validation_runner.actor = default_registry_validation_runner_actor();
         }
 
         if let Some(environment) = parsed
@@ -942,6 +986,14 @@ fn default_search_reindex_yield_every() -> u64 {
 
 fn default_build_poll_interval_ms() -> u64 {
     5_000
+}
+
+fn default_registry_validation_runner_poll_interval_ms() -> u64 {
+    5_000
+}
+
+fn default_registry_validation_runner_actor() -> String {
+    "system:registry-stage-runner".to_string()
 }
 
 fn default_build_deployment_filesystem_root_dir() -> String {

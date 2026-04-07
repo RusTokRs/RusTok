@@ -13,6 +13,12 @@ pub struct ModuleInfo {
     pub ownership: String,
     #[serde(rename = "trustLevel")]
     pub trust_level: String,
+    #[serde(default, rename = "hasAdminUi")]
+    pub has_admin_ui: bool,
+    #[serde(default, rename = "hasStorefrontUi")]
+    pub has_storefront_ui: bool,
+    #[serde(default, rename = "uiClassification")]
+    pub ui_classification: String,
     #[serde(rename = "recommendedAdminSurfaces")]
     pub recommended_admin_surfaces: Vec<String>,
     #[serde(rename = "showcaseAdminSurfaces")]
@@ -78,6 +84,12 @@ pub struct MarketplaceModule {
     #[serde(rename = "signaturePresent")]
     pub signature_present: bool,
     pub versions: Vec<MarketplaceModuleVersion>,
+    #[serde(default, rename = "hasAdminUi")]
+    pub has_admin_ui: bool,
+    #[serde(default, rename = "hasStorefrontUi")]
+    pub has_storefront_ui: bool,
+    #[serde(default, rename = "uiClassification")]
+    pub ui_classification: String,
     #[serde(default, rename = "registryLifecycle")]
     pub registry_lifecycle: Option<RegistryModuleLifecycle>,
     pub compatible: bool,
@@ -96,6 +108,8 @@ pub struct MarketplaceModule {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryModuleLifecycle {
+    #[serde(rename = "moderationPolicy")]
+    pub moderation_policy: RegistryModerationPolicyLifecycle,
     #[serde(default, rename = "ownerBinding")]
     pub owner_binding: Option<RegistryOwnerLifecycle>,
     #[serde(default, rename = "latestRequest")]
@@ -108,6 +122,33 @@ pub struct RegistryModuleLifecycle {
     pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
     #[serde(default, rename = "validationStages")]
     pub validation_stages: Vec<RegistryValidationStageLifecycle>,
+    #[serde(default, rename = "governanceActions")]
+    pub governance_actions: Vec<RegistryGovernanceActionLifecycle>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryModerationPolicyLifecycle {
+    pub mode: String,
+    #[serde(rename = "livePublishSupported")]
+    pub live_publish_supported: bool,
+    #[serde(rename = "liveGovernanceSupported")]
+    pub live_governance_supported: bool,
+    #[serde(rename = "manualReviewRequired")]
+    pub manual_review_required: bool,
+    #[serde(rename = "restrictionReasonCode")]
+    pub restriction_reason_code: Option<String>,
+    #[serde(rename = "restrictionReason")]
+    pub restriction_reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryGovernanceActionLifecycle {
+    pub key: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default, rename = "supportedReasonCodes")]
+    pub supported_reason_codes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -156,6 +197,20 @@ pub struct RegistryValidationStageLifecycle {
     pub started_at: Option<String>,
     #[serde(rename = "finishedAt")]
     pub finished_at: Option<String>,
+    #[serde(default, rename = "executionMode")]
+    pub execution_mode: String,
+    #[serde(default)]
+    pub runnable: bool,
+    #[serde(default, rename = "requiresManualConfirmation")]
+    pub requires_manual_confirmation: bool,
+    #[serde(default, rename = "allowedTerminalReasonCodes")]
+    pub allowed_terminal_reason_codes: Vec<String>,
+    #[serde(default, rename = "suggestedPassReasonCode")]
+    pub suggested_pass_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedFailureReasonCode")]
+    pub suggested_failure_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedBlockedReasonCode")]
+    pub suggested_blocked_reason_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

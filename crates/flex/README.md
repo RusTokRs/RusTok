@@ -20,6 +20,7 @@ The current Flex multilingual contract is already partially live and must be tre
 - `FieldDefinition` now carries explicit `is_localized` semantics in `rustok-core`, registry DTOs, GraphQL inputs, and attached-mode persistence.
 - Attached-mode registered consumers are `user`, `product`, `order`, and `topic`. `node` is not part of the live attached contract yet.
 - Standalone schema UI copy (`name`, `description`) no longer belongs in `flex_schemas`; it is stored in `flex_schema_translations`.
+- Standalone entry payloads no longer treat inline locale-aware JSON as the canonical path: shared values stay in `flex_entries.data`, while locale-aware values now live in `flex_entry_localized_values`.
 - Generic attached localized value storage now lives in the shared `flex` crate and persists into `flex_attached_localized_values`; live donor read/write paths now exist for `user`, `product`, `order`, and `topic`.
 - `topic` is no longer schema-only: forum topics now use `forum_topics.metadata` as the donor payload, and locale-aware Flex keys are resolved through the same attached multilingual contract as the other live donors. Any locale-aware JSON payloads that still live inline in donor metadata or entry data remain transitional fallback, not the target storage standard.
 
