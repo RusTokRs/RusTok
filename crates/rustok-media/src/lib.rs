@@ -14,6 +14,7 @@ pub use dto::{
     MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput, ALLOWED_MIME_PREFIXES,
     DEFAULT_MAX_SIZE,
 };
+pub use entities::*;
 pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};
 pub use service::MediaService;

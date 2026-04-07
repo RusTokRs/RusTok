@@ -63,6 +63,7 @@ pub use dto::{
     ListTagsFilter, PostListQuery, PostListResponse, PostResponse, PostSummary, TagListItem,
     TagResponse, UpdateCategoryInput, UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
+pub use entities::*;
 pub use error::{BlogError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
 pub use services::{CategoryService, CommentService, PostService, TagService};

@@ -1,44 +1,75 @@
-# Планы верификации
+# Verification: локальный контур платформы
 
-Этот раздел содержит специализированные планы верификации по отдельным контурам платформы.
+Этот раздел фиксирует минимальный reproducible verification path для RusTok. Он разделяет обязательные локальные проверки, Windows-friendly entrypoints и legacy perimeter scripts.
 
-## Назначение
+## Обязательные prerequisites
 
-- Хранить все verification-планы в одном месте.
-- Обеспечить weekly-проход агентами по фиксированному чеклисту.
-- Упростить контроль статуса: что проверено, что в работе, где есть блокеры.
-- Не хранить здесь активный remediation backlog: execution/remediation хвосты фиксируются в профильных live docs (`docs/architecture/*`, `docs/UI/*`, `apps/*/docs/*`), отдельно от periodic verification.
+- `cargo`
+- `node`
+- `python` или `py` для архитектурного guard
 
-## Список планов
+`bash` и Git Bash не являются обязательными для старта работ по module standard. Они нужны только для legacy perimeter scripts, которые ещё не перенесены в Node, PowerShell или `cargo xtask`.
 
-- [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md) — reset-friendly master-checklist для периодических прогонов.
-- [План foundation-верификации](./platform-foundation-verification-plan.md) — сборка, архитектура, ядро, auth, RBAC, tenancy.
-- [План верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md) — события, доменные модули, интеграционные связи.
-- [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — GraphQL и REST контракты.
-- [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md) — Leptos, Next.js, UI libraries и shared packages.
-- [План верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md) — тесты, observability, документация, CI/CD, security, quality и phased rollout quality-tooling пакета.
-- [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md) — прицельный rolling-план по RBAC-контрактам.
-- [Верификация Leptos-библиотек](./leptos-libraries-verification-plan.md) — rolling-план библиотечного UI-контура.
-- [План rolling-верификации целостности ядра платформы](./platform-core-integrity-verification-plan.md) — верификация server + обе admin-панели + core crates как самодостаточного целого.
+## Обязательный модульный verification path
 
-## Регламент обновления
+### 1. Scoped contract audit
 
-При изменении архитектуры, API, UI-контрактов, поведения библиотек или процесса верификации:
+```powershell
+cargo xtask module validate
+```
 
-1. Обновить соответствующий план в этой папке.
-2. Обновить профильные локальные документы в `apps/*` и `crates/*`.
-3. Обновить центральные документы в `docs/` (включая `docs/index.md`).
-4. Если изменение затрагивает Internal UI workspace (`docs/UI/`), синхронизировать и документы из `docs/UI/`.
+Проверка должна fail-fast, если path-модуль:
 
-## Формат статусов
+- не имеет `rustok-module.toml`;
+- не имеет `docs/README.md` или `docs/implementation-plan.md`;
+- имеет drift по зависимостям между `modules.toml` и локальным manifest;
+- имеет broken admin/storefront wiring;
+- не отражён корректными ссылками в `docs/modules/_index.md`.
 
-- `⬜ Не начато`
-- `🟡 В процессе`
-- `✅ Завершено`
-- `❌ Блокировано`
-## Как использовать набор планов
+### 2. Таргетированные module tests
 
-1. Начинать с [главного плана](./PLATFORM_VERIFICATION_PLAN.md) как с orchestration-точки входа.
-2. Проходить укрупнённые блоки через детальные платформенные планы.
-3. Подключать rolling-планы (`RBAC`, `Leptos libraries`) только когда менялся соответствующий контур или нужен targeted-аудит.
-4. Нерешённые блокеры фиксировать прямо в соответствующем verification-плане до их устранения.
+```powershell
+cargo xtask module test <slug>
+```
+
+Эта команда объединяет локальную manifest/documentation validation и compile smoke для owning crate и module-owned UI crates.
+
+### 3. UI/i18n и storefront route gates
+
+```powershell
+npm run verify:i18n:ui
+npm run verify:i18n:contract
+npm run verify:storefront:routes
+```
+
+### 4. Architecture guard
+
+После установки Python:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
+```
+
+PowerShell-wrapper ищет `py` или `python` в `PATH` и запускает `scripts/architecture_dependency_guard.py`.
+
+## Дополнительные smoke-пути
+
+- `powershell -File scripts/verify/verify-deployment-profiles.ps1`
+
+Deployment-profile smoke нужен, когда меняются host wiring, runtime profiles или verification entrypoints, связанные с deployment profile matrix.
+
+## Legacy perimeter scripts
+
+Shell-скрипты в `scripts/verify/*.sh` остаются дополнительным periodic perimeter check. Они не считаются hard prerequisite для локального module audit на Windows-машине без Git Bash.
+
+Используйте их отдельно, если:
+
+- проверяете CI parity;
+- хотите расширенный аудит вне минимального module standard path;
+- на машине уже установлен Git Bash.
+
+## Связанные документы
+
+- [План унификации module-system](../modules/module-system-plan.md)
+- [Контракт `rustok-module.toml`](../modules/manifest.md)
+- [Сводный verification plan](./PLATFORM_VERIFICATION_PLAN.md)

@@ -41,7 +41,7 @@ impl Task for MediaCleanupTask {
 
 #[cfg(feature = "mod-media")]
 async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
-    use rustok_media::entities::media::Entity as MediaEntity;
+    use rustok_media::media::Entity as MediaEntity;
     use rustok_storage::{StorageError, StorageService};
     use sea_orm::EntityTrait;
 

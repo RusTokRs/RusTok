@@ -140,7 +140,7 @@ impl SystemQuery {
     /// Media usage statistics for a tenant (requires mod-media feature).
     #[cfg(feature = "mod-media")]
     async fn media_usage(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<MediaUsageStats> {
-        use rustok_media::entities::media::{Column as MediaCol, Entity as MediaEntity};
+        use rustok_media::media::{Column as MediaCol, Entity as MediaEntity};
 
         let db = ctx.data::<DatabaseConnection>()?;
 
