@@ -58,7 +58,7 @@ mod tests {
                         }
                     }
                     "amount" => {
-                        if let Ok(v) = value.as_float() {
+                        if let Some(v) = value.clone().try_cast::<f64>() {
                             self.amount = v;
                         }
                     }
