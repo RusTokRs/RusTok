@@ -167,6 +167,13 @@ rustok_runtime_guardrail_validation_runner_config{{setting=\"active\"}} {validat
 rustok_runtime_guardrail_validation_runner_config{{setting=\"worker_attached\"}} {validation_runner_worker_attached}\n\
 rustok_runtime_guardrail_validation_runner_config{{setting=\"auto_confirm_manual_review\"}} {validation_runner_auto_confirm_manual_review}\n\
 rustok_runtime_guardrail_validation_runner_config{{setting=\"poll_interval_ms\"}} {validation_runner_poll_interval_ms}\n\
+rustok_runtime_guardrail_remote_executor_state {remote_executor_state}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"configured_enabled\"}} {remote_executor_configured_enabled}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"active\"}} {remote_executor_active}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"token_configured\"}} {remote_executor_token_configured}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"reaper_attached\"}} {remote_executor_reaper_attached}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"lease_ttl_ms\"}} {remote_executor_lease_ttl_ms}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"requeue_scan_interval_ms\"}} {remote_executor_requeue_scan_interval_ms}\n\
 rustok_runtime_guardrail_event_transport_fallback_active {relay_fallback_active}\n\
 rustok_runtime_guardrail_event_backpressure_enabled {backpressure_enabled}\n\
 rustok_runtime_guardrail_event_backpressure_state {backpressure_state}\n\
@@ -205,6 +212,25 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
             0
         },
         validation_runner_poll_interval_ms = snapshot.validation_runner.poll_interval_ms,
+        remote_executor_state = snapshot.remote_executor.state.metric_value(),
+        remote_executor_configured_enabled = if snapshot.remote_executor.configured_enabled {
+            1
+        } else {
+            0
+        },
+        remote_executor_active = if snapshot.remote_executor.active { 1 } else { 0 },
+        remote_executor_token_configured = if snapshot.remote_executor.token_configured {
+            1
+        } else {
+            0
+        },
+        remote_executor_reaper_attached = if snapshot.remote_executor.reaper_attached {
+            1
+        } else {
+            0
+        },
+        remote_executor_lease_ttl_ms = snapshot.remote_executor.lease_ttl_ms,
+        remote_executor_requeue_scan_interval_ms = snapshot.remote_executor.requeue_scan_interval_ms,
         relay_fallback_active = if snapshot.event_transport.relay_fallback_active {
             1
         } else {
@@ -496,8 +522,8 @@ mod tests {
     use crate::services::rbac_service::RbacService;
     use crate::services::runtime_guardrails::{
         EventBusGuardrailSnapshot, EventTransportGuardrailSnapshot, RateLimitGuardrailSnapshot,
-        RateLimitPolicySnapshot, RuntimeGuardrailRollout, RuntimeGuardrailSnapshot,
-        RuntimeGuardrailStatus, ValidationRunnerGuardrailSnapshot,
+        RateLimitPolicySnapshot, RemoteExecutorGuardrailSnapshot, RuntimeGuardrailRollout,
+        RuntimeGuardrailSnapshot, RuntimeGuardrailStatus, ValidationRunnerGuardrailSnapshot,
     };
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
@@ -636,6 +662,16 @@ mod tests {
                 supported_stages: vec!["compile_smoke".to_string(), "targeted_tests".to_string()],
                 state: RuntimeGuardrailStatus::Ok,
             },
+            remote_executor: RemoteExecutorGuardrailSnapshot {
+                configured_enabled: true,
+                active: true,
+                token_configured: true,
+                reaper_attached: true,
+                reaper_instance_id: Some(2),
+                lease_ttl_ms: 30000,
+                requeue_scan_interval_ms: 5000,
+                state: RuntimeGuardrailStatus::Ok,
+            },
         });
 
         assert_metric_labeled_line(
@@ -670,6 +706,17 @@ mod tests {
             &payload,
             "rustok_runtime_guardrail_validation_runner_supported_stage",
             "{stage=\"compile_smoke\"}",
+        );
+        assert!(payload.contains("rustok_runtime_guardrail_remote_executor_state 0"));
+        assert_metric_labeled_line(
+            &payload,
+            "rustok_runtime_guardrail_remote_executor_config",
+            "{setting=\"configured_enabled\"}",
+        );
+        assert_metric_labeled_line(
+            &payload,
+            "rustok_runtime_guardrail_remote_executor_config",
+            "{setting=\"reaper_attached\"}",
         );
     }
 }

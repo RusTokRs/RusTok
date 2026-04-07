@@ -15,6 +15,10 @@ pub enum RegistryPublishRequestStatus {
     Validating,
     #[sea_orm(string_value = "approved")]
     Approved,
+    #[sea_orm(string_value = "changes_requested")]
+    ChangesRequested,
+    #[sea_orm(string_value = "on_hold")]
+    OnHold,
     #[sea_orm(string_value = "rejected")]
     Rejected,
     #[sea_orm(string_value = "published")]
@@ -43,6 +47,15 @@ pub struct Model {
     pub approved_by: Option<String>,
     pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,
+    pub changes_requested_by: Option<String>,
+    pub changes_requested_reason: Option<String>,
+    pub changes_requested_reason_code: Option<String>,
+    pub changes_requested_at: Option<DateTime<Utc>>,
+    pub held_by: Option<String>,
+    pub held_reason: Option<String>,
+    pub held_reason_code: Option<String>,
+    pub held_at: Option<DateTime<Utc>>,
+    pub held_from_status: Option<String>,
     pub validation_warnings: Json,
     pub validation_errors: Json,
     pub artifact_path: Option<String>,

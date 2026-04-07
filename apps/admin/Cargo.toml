@@ -73,7 +73,6 @@ leptos_query = { workspace = true }
 leptos-chartistry = { workspace = true }
 gloo-storage = { workspace = true }
 serde_urlencoded = { workspace = true }
-chrono-humanize = { workspace = true }
 chrono = { workspace = true }
 console_error_panic_hook = "0.1"
 console_log = "1"
@@ -136,7 +135,6 @@ normal = [
   "leptos-chartistry",
   "gloo-storage",
   "serde_urlencoded",
-  "chrono-humanize",
   "chrono",
   "toml",
   "leptos-forms",

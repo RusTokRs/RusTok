@@ -7,7 +7,9 @@ use crate::common::settings::{GuardrailRolloutMode, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
-use crate::services::app_lifecycle::RegistryValidationStageWorkerHandle;
+use crate::services::app_lifecycle::{
+    RegistryRemoteExecutorReaperWorkerHandle, RegistryValidationStageWorkerHandle,
+};
 use crate::services::event_bus::SharedEventBus;
 use crate::services::event_transport_factory::EventRuntime;
 
@@ -57,6 +59,7 @@ pub struct RuntimeGuardrailSnapshot {
     pub event_bus: EventBusGuardrailSnapshot,
     pub event_transport: EventTransportGuardrailSnapshot,
     pub validation_runner: ValidationRunnerGuardrailSnapshot,
+    pub remote_executor: RemoteExecutorGuardrailSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -108,6 +111,18 @@ pub struct ValidationRunnerGuardrailSnapshot {
     pub poll_interval_ms: u64,
     pub actor: String,
     pub supported_stages: Vec<String>,
+    pub state: RuntimeGuardrailStatus,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RemoteExecutorGuardrailSnapshot {
+    pub configured_enabled: bool,
+    pub active: bool,
+    pub token_configured: bool,
+    pub reaper_attached: bool,
+    pub reaper_instance_id: Option<u64>,
+    pub lease_ttl_ms: u64,
+    pub requeue_scan_interval_ms: u64,
     pub state: RuntimeGuardrailStatus,
 }
 
@@ -270,6 +285,34 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         }
     }
 
+    let remote_executor = collect_remote_executor_snapshot(ctx, &settings);
+    if remote_executor.state == RuntimeGuardrailStatus::Degraded {
+        if remote_executor.configured_enabled && !remote_executor.token_configured {
+            escalate(
+                &mut observed_status,
+                RuntimeGuardrailStatus::Degraded,
+                &mut reasons,
+                "registry remote executor is enabled but no shared token is configured".to_string(),
+            );
+        } else if remote_executor.active && !remote_executor.reaper_attached {
+            escalate(
+                &mut observed_status,
+                RuntimeGuardrailStatus::Degraded,
+                &mut reasons,
+                "registry remote executor is enabled but no lease reaper worker is attached"
+                    .to_string(),
+            );
+        } else if !remote_executor.configured_enabled && remote_executor.reaper_attached {
+            escalate(
+                &mut observed_status,
+                RuntimeGuardrailStatus::Degraded,
+                &mut reasons,
+                "registry remote executor reaper worker is attached while config is disabled"
+                    .to_string(),
+            );
+        }
+    }
+
     let event_bus = ctx
         .shared_store
         .get::<SharedEventBus>()
@@ -349,6 +392,7 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         event_bus,
         event_transport,
         validation_runner,
+        remote_executor,
     }
 }
 
@@ -389,6 +433,45 @@ fn collect_validation_runner_snapshot(
         poll_interval_ms: settings.registry.validation_runner.poll_interval_ms,
         actor: settings.registry.validation_runner.actor.clone(),
         supported_stages,
+        state,
+    }
+}
+
+fn collect_remote_executor_snapshot(
+    ctx: &AppContext,
+    settings: &RustokSettings,
+) -> RemoteExecutorGuardrailSnapshot {
+    let configured_enabled = settings.registry.remote_executor.enabled;
+    let token_configured = !settings
+        .registry
+        .remote_executor
+        .shared_token
+        .trim()
+        .is_empty();
+    let active = configured_enabled && token_configured && !settings.runtime.is_registry_only();
+    let reaper_handle = ctx
+        .shared_store
+        .get_ref::<RegistryRemoteExecutorReaperWorkerHandle>();
+    let reaper_attached = reaper_handle.is_some();
+    let reaper_instance_id = reaper_handle.map(|handle| handle.instance_id());
+    let state = if configured_enabled && !token_configured {
+        RuntimeGuardrailStatus::Degraded
+    } else if active && !reaper_attached {
+        RuntimeGuardrailStatus::Degraded
+    } else if !configured_enabled && reaper_attached {
+        RuntimeGuardrailStatus::Degraded
+    } else {
+        RuntimeGuardrailStatus::Ok
+    };
+
+    RemoteExecutorGuardrailSnapshot {
+        configured_enabled,
+        active,
+        token_configured,
+        reaper_attached,
+        reaper_instance_id,
+        lease_ttl_ms: settings.registry.remote_executor.lease_ttl_ms,
+        requeue_scan_interval_ms: settings.registry.remote_executor.requeue_scan_interval_ms,
         state,
     }
 }

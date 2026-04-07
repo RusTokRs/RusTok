@@ -1515,8 +1515,9 @@ mod tests {
     };
     use crate::{FulfillmentService, OrderService, PaymentService, ShippingProfileService};
 
-    #[path = "../../../../tests/support.rs"]
-    mod support;
+    mod support {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
+    }
 
     fn test_app_context(db: sea_orm::DatabaseConnection) -> AppContext {
         let shared_store = Arc::new(SharedStore::default());

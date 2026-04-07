@@ -43,6 +43,8 @@ pub struct RustokSettings {
 pub struct RegistrySettings {
     #[serde(default)]
     pub validation_runner: RegistryValidationRunnerSettings,
+    #[serde(default)]
+    pub remote_executor: RegistryRemoteExecutorSettings,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -55,6 +57,18 @@ pub struct RegistryValidationRunnerSettings {
     pub actor: String,
     #[serde(default)]
     pub auto_confirm_manual_review: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RegistryRemoteExecutorSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub shared_token: String,
+    #[serde(default = "default_registry_remote_executor_lease_ttl_ms")]
+    pub lease_ttl_ms: u64,
+    #[serde(default = "default_registry_remote_executor_requeue_scan_interval_ms")]
+    pub requeue_scan_interval_ms: u64,
 }
 
 /// Cache configuration.
@@ -497,6 +511,17 @@ impl Default for RegistryValidationRunnerSettings {
     }
 }
 
+impl Default for RegistryRemoteExecutorSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            shared_token: String::new(),
+            lease_ttl_ms: default_registry_remote_executor_lease_ttl_ms(),
+            requeue_scan_interval_ms: default_registry_remote_executor_requeue_scan_interval_ms(),
+        }
+    }
+}
+
 impl Default for BuildDeploymentSettings {
     fn default() -> Self {
         Self {
@@ -728,11 +753,32 @@ impl RustokSettings {
             )));
         }
 
+        if parsed.registry.remote_executor.lease_ttl_ms == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.registry.remote_executor.lease_ttl_ms must be > 0",
+            )));
+        }
+
+        if parsed.registry.remote_executor.requeue_scan_interval_ms == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.registry.remote_executor.requeue_scan_interval_ms must be > 0",
+            )));
+        }
+
         parsed.registry.validation_runner.actor =
             parsed.registry.validation_runner.actor.trim().to_string();
         if parsed.registry.validation_runner.actor.is_empty() {
             parsed.registry.validation_runner.actor = default_registry_validation_runner_actor();
         }
+
+        parsed.registry.remote_executor.shared_token = parsed
+            .registry
+            .remote_executor
+            .shared_token
+            .trim()
+            .to_string();
 
         if let Some(environment) = parsed
             .build
@@ -994,6 +1040,14 @@ fn default_registry_validation_runner_poll_interval_ms() -> u64 {
 
 fn default_registry_validation_runner_actor() -> String {
     "system:registry-stage-runner".to_string()
+}
+
+fn default_registry_remote_executor_lease_ttl_ms() -> u64 {
+    60_000
+}
+
+fn default_registry_remote_executor_requeue_scan_interval_ms() -> u64 {
+    10_000
 }
 
 fn default_build_deployment_filesystem_root_dir() -> String {

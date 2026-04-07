@@ -227,6 +227,24 @@ pub struct RegistryPublishRequestLifecycle {
     pub rejected_by: Option<String>,
     #[serde(rename = "rejectionReason")]
     pub rejection_reason: Option<String>,
+    #[serde(rename = "changesRequestedBy")]
+    pub changes_requested_by: Option<String>,
+    #[serde(rename = "changesRequestedReason")]
+    pub changes_requested_reason: Option<String>,
+    #[serde(rename = "changesRequestedReasonCode")]
+    pub changes_requested_reason_code: Option<String>,
+    #[serde(rename = "changesRequestedAt")]
+    pub changes_requested_at: Option<String>,
+    #[serde(rename = "heldBy")]
+    pub held_by: Option<String>,
+    #[serde(rename = "heldReason")]
+    pub held_reason: Option<String>,
+    #[serde(rename = "heldReasonCode")]
+    pub held_reason_code: Option<String>,
+    #[serde(rename = "heldAt")]
+    pub held_at: Option<String>,
+    #[serde(rename = "heldFromStatus")]
+    pub held_from_status: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default)]

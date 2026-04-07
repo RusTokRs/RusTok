@@ -165,6 +165,7 @@ async fn customer_bridge_returns_profile_summary_when_linked_user_has_profile() 
                 handle: "customer-user".to_string(),
                 display_name: "Customer User".to_string(),
                 bio: None,
+                tags: Vec::new(),
                 avatar_media_id: None,
                 banner_media_id: None,
                 preferred_locale: Some("en".to_string()),

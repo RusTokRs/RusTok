@@ -10,6 +10,7 @@ use crate::services::build_executor::BuildExecutionService;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
+use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::registry_validation_runner::RegistryValidationRunnerService;
 use crate::services::release_backend::ReleaseDeploymentService;
 
@@ -37,8 +38,10 @@ impl StopHandle {
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static BUILD_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static REGISTRY_VALIDATION_STAGE_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+static REGISTRY_REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
+const REGISTRY_REMOTE_EXECUTOR_REAPER_ACTOR: &str = "system:registry-remote-executor-reaper";
 
 pub struct OutboxRelayWorkerHandle {
     instance_id: u64,
@@ -68,6 +71,17 @@ pub struct RegistryValidationStageWorkerHandle {
 }
 
 impl RegistryValidationStageWorkerHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+}
+
+pub struct RegistryRemoteExecutorReaperWorkerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+impl RegistryRemoteExecutorReaperWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
@@ -133,6 +147,18 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
             ));
     }
 
+    if settings.registry.remote_executor.enabled
+        && !ctx
+            .shared_store
+            .contains::<RegistryRemoteExecutorReaperWorkerHandle>()
+    {
+        ctx.shared_store
+            .insert(spawn_registry_remote_executor_reaper_worker_handle(
+                ctx.clone(),
+                settings.registry.remote_executor.clone(),
+            ));
+    }
+
     Ok(())
 }
 
@@ -160,6 +186,16 @@ fn spawn_registry_validation_stage_worker_handle(
     RegistryValidationStageWorkerHandle {
         instance_id: REGISTRY_VALIDATION_STAGE_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
         _handle: tokio::spawn(registry_validation_stage_worker_loop(ctx, config)),
+    }
+}
+
+fn spawn_registry_remote_executor_reaper_worker_handle(
+    ctx: AppContext,
+    config: crate::common::settings::RegistryRemoteExecutorSettings,
+) -> RegistryRemoteExecutorReaperWorkerHandle {
+    RegistryRemoteExecutorReaperWorkerHandle {
+        instance_id: REGISTRY_REMOTE_EXECUTOR_REAPER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        _handle: tokio::spawn(registry_remote_executor_reaper_worker_loop(ctx, config)),
     }
 }
 
@@ -247,6 +283,35 @@ async fn registry_validation_stage_worker_loop(
     }
 }
 
+async fn registry_remote_executor_reaper_worker_loop(
+    ctx: AppContext,
+    config: crate::common::settings::RegistryRemoteExecutorSettings,
+) {
+    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let poll_interval = Duration::from_millis(config.requeue_scan_interval_ms);
+
+    loop {
+        match governance
+            .requeue_expired_validation_stage_claims(REGISTRY_REMOTE_EXECUTOR_REAPER_ACTOR)
+            .await
+        {
+            Ok(requeued) if requeued > 0 => tracing::info!(
+                requeued,
+                lease_ttl_ms = config.lease_ttl_ms,
+                "Requeued expired remote validation stage claims"
+            ),
+            Ok(_) => {}
+            Err(error) => tracing::error!(
+                error = %error,
+                lease_ttl_ms = config.lease_ttl_ms,
+                "Background remote executor lease reaper failed"
+            ),
+        }
+
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
 fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &str) -> bool {
     !database_url_present
         && (current_uri.is_empty()
@@ -258,7 +323,7 @@ fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &st
 mod tests {
     use super::{
         connect_runtime_workers, should_use_local_sqlite_fallback, BuildWorkerHandle,
-        OutboxRelayWorkerHandle,
+        OutboxRelayWorkerHandle, RegistryRemoteExecutorReaperWorkerHandle,
     };
     use loco_rs::tests_cfg::app::get_app_context;
     use rustok_core::events::MemoryTransport;
@@ -367,6 +432,50 @@ mod tests {
             .shared_store
             .get_ref::<BuildWorkerHandle>()
             .expect("build worker handle should still be stored")
+            .instance_id();
+
+        assert_eq!(first_instance_id, second_instance_id);
+    }
+
+    #[tokio::test]
+    async fn connect_runtime_workers_is_idempotent_for_remote_executor_reaper_handle() {
+        let mut ctx = get_app_context().await;
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "registry": {
+                    "remote_executor": {
+                        "enabled": true,
+                        "shared_token": "test-runner-token",
+                        "lease_ttl_ms": 30000,
+                        "requeue_scan_interval_ms": 1000
+                    }
+                }
+            }
+        }));
+        let runtime = Arc::new(EventRuntime {
+            transport: Arc::new(OutboxTransport::new(ctx.db.clone())),
+            relay_config: None,
+            channel_capacity: 128,
+            relay_fallback_active: false,
+        });
+        ctx.shared_store.insert(runtime);
+
+        connect_runtime_workers(&ctx)
+            .await
+            .expect("first worker connect should succeed");
+        let first_instance_id = ctx
+            .shared_store
+            .get_ref::<RegistryRemoteExecutorReaperWorkerHandle>()
+            .expect("remote executor reaper handle should be stored")
+            .instance_id();
+
+        connect_runtime_workers(&ctx)
+            .await
+            .expect("second worker connect should be idempotent");
+        let second_instance_id = ctx
+            .shared_store
+            .get_ref::<RegistryRemoteExecutorReaperWorkerHandle>()
+            .expect("remote executor reaper handle should still be stored")
             .instance_id();
 
         assert_eq!(first_instance_id, second_instance_id);

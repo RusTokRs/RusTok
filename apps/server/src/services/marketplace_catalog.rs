@@ -31,8 +31,16 @@ const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/v
 const REGISTRY_PUBLISH_STAGE_REPORT_PATH: &str = "/v2/catalog/publish/{request_id}/stages";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
 const REGISTRY_PUBLISH_REJECT_PATH: &str = "/v2/catalog/publish/{request_id}/reject";
+const REGISTRY_PUBLISH_REQUEST_CHANGES_PATH: &str =
+    "/v2/catalog/publish/{request_id}/request-changes";
+const REGISTRY_PUBLISH_HOLD_PATH: &str = "/v2/catalog/publish/{request_id}/hold";
+const REGISTRY_PUBLISH_RESUME_PATH: &str = "/v2/catalog/publish/{request_id}/resume";
 const REGISTRY_OWNER_TRANSFER_PATH: &str = "/v2/catalog/owner-transfer";
 const REGISTRY_YANK_PATH: &str = "/v2/catalog/yank";
+const REGISTRY_RUNNER_CLAIM_PATH: &str = "/v2/catalog/runner/claim";
+const REGISTRY_RUNNER_HEARTBEAT_PATH: &str = "/v2/catalog/runner/{claim_id}/heartbeat";
+const REGISTRY_RUNNER_COMPLETE_PATH: &str = "/v2/catalog/runner/{claim_id}/complete";
+const REGISTRY_RUNNER_FAIL_PATH: &str = "/v2/catalog/runner/{claim_id}/fail";
 
 #[derive(Debug, Clone, Default)]
 pub struct MarketplaceCatalogQuery {
@@ -673,6 +681,84 @@ pub struct RegistryPublishDecisionRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerClaimRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub runner_id: String,
+    #[serde(default, rename = "supportedStages")]
+    pub supported_stages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerHeartbeatRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub runner_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerCompletionRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub runner_id: String,
+    pub detail: Option<String>,
+    pub reason_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerClaimResponse {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub accepted: bool,
+    pub claim: Option<RegistryRunnerClaim>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerMutationResponse {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub accepted: bool,
+    #[serde(rename = "claimId")]
+    pub claim_id: String,
+    pub status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerClaim {
+    #[serde(rename = "claimId")]
+    pub claim_id: String,
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    #[serde(rename = "stageKey")]
+    pub stage_key: String,
+    #[serde(rename = "executionMode")]
+    pub execution_mode: String,
+    pub runnable: bool,
+    #[serde(rename = "requiresManualConfirmation")]
+    pub requires_manual_confirmation: bool,
+    #[serde(rename = "allowedTerminalReasonCodes")]
+    pub allowed_terminal_reason_codes: Vec<String>,
+    #[serde(rename = "suggestedPassReasonCode")]
+    pub suggested_pass_reason_code: Option<String>,
+    #[serde(rename = "suggestedFailureReasonCode")]
+    pub suggested_failure_reason_code: Option<String>,
+    #[serde(rename = "suggestedBlockedReasonCode")]
+    pub suggested_blocked_reason_code: Option<String>,
+    #[serde(rename = "artifactUrl")]
+    pub artifact_url: String,
+    #[serde(rename = "artifactChecksumSha256")]
+    pub artifact_checksum_sha256: String,
+    #[serde(rename = "crateName")]
+    pub crate_name: String,
+    #[serde(rename = "uiPackages")]
+    pub ui_packages: RegistryPublishUiPackagesRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegistryOwnerTransferRequest {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
@@ -930,12 +1016,40 @@ pub fn registry_publish_reject_path() -> &'static str {
     REGISTRY_PUBLISH_REJECT_PATH
 }
 
+pub fn registry_publish_request_changes_path() -> &'static str {
+    REGISTRY_PUBLISH_REQUEST_CHANGES_PATH
+}
+
+pub fn registry_publish_hold_path() -> &'static str {
+    REGISTRY_PUBLISH_HOLD_PATH
+}
+
+pub fn registry_publish_resume_path() -> &'static str {
+    REGISTRY_PUBLISH_RESUME_PATH
+}
+
 pub fn registry_owner_transfer_path() -> &'static str {
     REGISTRY_OWNER_TRANSFER_PATH
 }
 
 pub fn registry_yank_path() -> &'static str {
     REGISTRY_YANK_PATH
+}
+
+pub fn registry_runner_claim_path() -> &'static str {
+    REGISTRY_RUNNER_CLAIM_PATH
+}
+
+pub fn registry_runner_heartbeat_path() -> &'static str {
+    REGISTRY_RUNNER_HEARTBEAT_PATH
+}
+
+pub fn registry_runner_complete_path() -> &'static str {
+    REGISTRY_RUNNER_COMPLETE_PATH
+}
+
+pub fn registry_runner_fail_path() -> &'static str {
+    REGISTRY_RUNNER_FAIL_PATH
 }
 
 pub fn registry_catalog_from_modules(
@@ -1043,6 +1157,9 @@ mod tests {
             checksum_sha256: None,
             signature: None,
             versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
             settings_schema: HashMap::new(),
@@ -1153,6 +1270,9 @@ mod tests {
                     checksum_sha256: None,
                     signature: None,
                     versions: Vec::new(),
+                    has_admin_ui: false,
+                    has_storefront_ui: false,
+                    ui_classification: "no_ui".to_string(),
                     recommended_admin_surfaces: Vec::new(),
                     showcase_admin_surfaces: Vec::new(),
                     settings_schema: HashMap::new(),
@@ -1182,6 +1302,9 @@ mod tests {
                     checksum_sha256: None,
                     signature: None,
                     versions: Vec::new(),
+                    has_admin_ui: false,
+                    has_storefront_ui: false,
+                    ui_classification: "no_ui".to_string(),
                     recommended_admin_surfaces: Vec::new(),
                     showcase_admin_surfaces: Vec::new(),
                     settings_schema: HashMap::new(),
@@ -1247,6 +1370,9 @@ mod tests {
                 ),
                 signature: Some("sig-1".to_string()),
             }],
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             recommended_admin_surfaces: vec!["leptos-admin".to_string()],
             showcase_admin_surfaces: vec!["next-admin".to_string()],
             settings_schema: HashMap::new(),
@@ -1311,6 +1437,9 @@ mod tests {
             ),
             signature: Some("sig123".to_string()),
             versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             recommended_admin_surfaces: vec!["leptos-admin".to_string()],
             showcase_admin_surfaces: vec!["next-admin".to_string()],
             settings_schema: HashMap::new(),
@@ -1453,6 +1582,9 @@ mod tests {
                 checksum_sha256: Some("still-not-a-checksum".to_string()),
                 signature: Some("sig-1".to_string()),
             }],
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
             settings_schema: HashMap::new(),
@@ -1517,6 +1649,9 @@ mod tests {
                     signature: None,
                 },
             ],
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
             settings_schema: HashMap::new(),

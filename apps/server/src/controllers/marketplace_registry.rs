@@ -17,19 +17,25 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
+use crate::common::settings::RustokSettings;
 use crate::error::Error;
 use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
 use crate::services::marketplace_catalog::{
     legacy_registry_catalog_module_path, legacy_registry_catalog_path,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
-    registry_publish_path, registry_publish_reject_path, registry_publish_stage_report_path,
-    registry_publish_status_path, registry_publish_validate_path, registry_yank_path,
+    registry_publish_hold_path, registry_publish_path, registry_publish_reject_path,
+    registry_publish_request_changes_path, registry_publish_resume_path,
+    registry_publish_stage_report_path, registry_publish_status_path,
+    registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
+    registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
     validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
     RegistryGovernanceAction, RegistryModerationPolicy, RegistryMutationResponse,
     RegistryOwnerTransferRequest, RegistryPublishDecisionRequest, RegistryPublishRequest,
     RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
-    RegistryPublishStatusValidationStage, RegistryPublishValidationRequest,
+    RegistryPublishStatusValidationStage, RegistryPublishValidationRequest, RegistryRunnerClaim,
+    RegistryRunnerClaimRequest, RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest,
+    RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse,
     RegistryValidationStageReportRequest, RegistryYankRequest,
 };
 use crate::services::registry_governance::{
@@ -37,7 +43,8 @@ use crate::services::registry_governance::{
     validation_stage_allowed_terminal_reason_codes, validation_stage_status_label,
     RegistryArtifactUpload, RegistryFollowUpGateSnapshot, RegistryGovernanceService,
     RegistryValidationStageSnapshot, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
-    REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
+    REGISTRY_HOLD_REASON_CODES, REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
+    REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
 
@@ -900,6 +907,559 @@ async fn reject_publish_request(
     ))
 }
 
+/// POST /v2/catalog/publish/{request_id}/request-changes - Ask for a new artifact revision
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/request-changes",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryPublishDecisionRequest,
+    responses(
+        (
+            status = 200,
+            description = "Publish request moved into changes_requested",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Request-changes failed governance validation"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        )
+    )
+)]
+async fn request_publish_changes(
+    State(ctx): State<AppContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryPublishDecisionRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let warnings = validate_publish_decision_request(
+        &request,
+        "request-changes",
+        REGISTRY_REQUEST_CHANGES_REASON_CODES,
+    )?;
+    let existing = RegistryGovernanceService::new(ctx.db.clone())
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    let actor = request_actor_from_headers(&headers);
+
+    if request.dry_run {
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "request_changes".to_string(),
+                dry_run: true,
+                accepted: true,
+                request_id: Some(request_id),
+                status: Some("dry_run".to_string()),
+                slug: existing.slug,
+                version: existing.version,
+                warnings: warnings
+                    .into_iter()
+                    .chain(std::iter::once(
+                        "Dry-run preview only. Re-run with dry_run=false to request a new artifact revision."
+                            .to_string(),
+                    ))
+                    .collect(),
+                errors: Vec::new(),
+                next_step: Some(format!(
+                    "Use the same endpoint with dry_run=false, a non-empty reason, and a supported reason_code ({}) to move the request into changes_requested.",
+                    REGISTRY_REQUEST_CHANGES_REASON_CODES.join(", ")
+                )),
+                moderation_policy: None,
+            }),
+        ));
+    }
+
+    let reason = required_reason(
+        &request.reason,
+        "Live registry request-changes requires a non-empty reason for the governance audit trail",
+    )?;
+    let reason_code = required_reason_code(
+        &request.reason_code,
+        "Live registry request-changes requires a non-empty reason_code for the policy audit trail",
+    )?;
+    let changed = RegistryGovernanceService::new(ctx.db.clone())
+        .request_publish_changes(&request_id, &actor, reason, reason_code)
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "request_changes".to_string(),
+            dry_run: false,
+            accepted: publish_request_accepted(&changed.status),
+            request_id: Some(changed.id.clone()),
+            status: Some(request_status_label(changed.status.clone()).to_string()),
+            slug: changed.slug,
+            version: changed.version,
+            warnings,
+            errors: deserialize_message_list(&changed.validation_errors),
+            next_step: publish_request_next_step(&changed.status, &changed.id),
+            moderation_policy: None,
+        }),
+    ))
+}
+
+/// POST /v2/catalog/publish/{request_id}/hold - Freeze a publish request
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/hold",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryPublishDecisionRequest,
+    responses(
+        (
+            status = 200,
+            description = "Publish request moved into on_hold",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Hold request failed governance validation"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        )
+    )
+)]
+async fn hold_publish_request(
+    State(ctx): State<AppContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryPublishDecisionRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let warnings = validate_publish_decision_request(&request, "hold", REGISTRY_HOLD_REASON_CODES)?;
+    let existing = RegistryGovernanceService::new(ctx.db.clone())
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    let actor = request_actor_from_headers(&headers);
+
+    if request.dry_run {
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "hold".to_string(),
+                dry_run: true,
+                accepted: true,
+                request_id: Some(request_id),
+                status: Some("dry_run".to_string()),
+                slug: existing.slug,
+                version: existing.version,
+                warnings: warnings
+                    .into_iter()
+                    .chain(std::iter::once(
+                        "Dry-run preview only. Re-run with dry_run=false to put the request on hold."
+                            .to_string(),
+                    ))
+                    .collect(),
+                errors: Vec::new(),
+                next_step: Some(format!(
+                    "Use the same endpoint with dry_run=false, a non-empty reason, and a supported reason_code ({}) to freeze the request.",
+                    REGISTRY_HOLD_REASON_CODES.join(", ")
+                )),
+                moderation_policy: None,
+            }),
+        ));
+    }
+
+    let reason = required_reason(
+        &request.reason,
+        "Live registry hold requires a non-empty reason for the governance audit trail",
+    )?;
+    let reason_code = required_reason_code(
+        &request.reason_code,
+        "Live registry hold requires a non-empty reason_code for the policy audit trail",
+    )?;
+    let held = RegistryGovernanceService::new(ctx.db.clone())
+        .hold_publish_request(&request_id, &actor, reason, reason_code)
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "hold".to_string(),
+            dry_run: false,
+            accepted: publish_request_accepted(&held.status),
+            request_id: Some(held.id.clone()),
+            status: Some(request_status_label(held.status.clone()).to_string()),
+            slug: held.slug,
+            version: held.version,
+            warnings,
+            errors: deserialize_message_list(&held.validation_errors),
+            next_step: publish_request_next_step(&held.status, &held.id),
+            moderation_policy: None,
+        }),
+    ))
+}
+
+/// POST /v2/catalog/publish/{request_id}/resume - Resume a held publish request
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/resume",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryPublishDecisionRequest,
+    responses(
+        (
+            status = 200,
+            description = "Publish request resumed from on_hold",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Resume request failed governance validation"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        )
+    )
+)]
+async fn resume_publish_request(
+    State(ctx): State<AppContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryPublishDecisionRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let warnings =
+        validate_publish_decision_request(&request, "resume", REGISTRY_RESUME_REASON_CODES)?;
+    let existing = RegistryGovernanceService::new(ctx.db.clone())
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    let actor = request_actor_from_headers(&headers);
+
+    if request.dry_run {
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "resume".to_string(),
+                dry_run: true,
+                accepted: true,
+                request_id: Some(request_id),
+                status: Some("dry_run".to_string()),
+                slug: existing.slug,
+                version: existing.version,
+                warnings: warnings
+                    .into_iter()
+                    .chain(std::iter::once(
+                        "Dry-run preview only. Re-run with dry_run=false to resume the held request."
+                            .to_string(),
+                    ))
+                    .collect(),
+                errors: Vec::new(),
+                next_step: Some(format!(
+                    "Use the same endpoint with dry_run=false, a non-empty reason, and a supported reason_code ({}) to return the request to its previous state.",
+                    REGISTRY_RESUME_REASON_CODES.join(", ")
+                )),
+                moderation_policy: None,
+            }),
+        ));
+    }
+
+    let reason = required_reason(
+        &request.reason,
+        "Live registry resume requires a non-empty reason for the governance audit trail",
+    )?;
+    let reason_code = required_reason_code(
+        &request.reason_code,
+        "Live registry resume requires a non-empty reason_code for the policy audit trail",
+    )?;
+    let resumed = RegistryGovernanceService::new(ctx.db.clone())
+        .resume_publish_request(&request_id, &actor, reason, reason_code)
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "resume".to_string(),
+            dry_run: false,
+            accepted: publish_request_accepted(&resumed.status),
+            request_id: Some(resumed.id.clone()),
+            status: Some(request_status_label(resumed.status.clone()).to_string()),
+            slug: resumed.slug,
+            version: resumed.version,
+            warnings,
+            errors: deserialize_message_list(&resumed.validation_errors),
+            next_step: publish_request_next_step(&resumed.status, &resumed.id),
+            moderation_policy: None,
+        }),
+    ))
+}
+
+/// POST /v2/catalog/runner/claim - Claim the next queued remote validation stage
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/runner/claim",
+    tag = "marketplace",
+    request_body = RegistryRunnerClaimRequest,
+    responses(
+        (
+            status = 200,
+            description = "Remote runner polled successfully; claim may be empty when no stage is available",
+            body = RegistryRunnerClaimResponse
+        ),
+        (
+            status = 400,
+            description = "Runner claim request failed validation"
+        ),
+        (
+            status = 401,
+            description = "Runner token was missing or invalid"
+        )
+    )
+)]
+async fn claim_remote_validation_stage(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryRunnerClaimRequest>,
+) -> Result<Json<RegistryRunnerClaimResponse>, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    validate_runner_claim_request(&request)?;
+    let settings = require_remote_executor_access(&ctx, &headers)?;
+    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let claim = governance
+        .claim_next_remote_validation_stage(
+            request.runner_id.trim(),
+            &request.supported_stages,
+            chrono::Duration::milliseconds(settings.registry.remote_executor.lease_ttl_ms as i64),
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+    let claim = if let Some(claim) = claim {
+        let follow_up = governance
+            .publish_request_follow_up_snapshot(&claim.request)
+            .await
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Failed to load publish follow-up snapshot for remote runner claim: {error}"
+                ))
+            })?;
+        Some(registry_runner_claim_response(
+            &claim,
+            &follow_up.validation_stages,
+        ))
+    } else {
+        None
+    };
+
+    Ok(Json(RegistryRunnerClaimResponse {
+        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        accepted: true,
+        claim,
+    }))
+}
+
+/// POST /v2/catalog/runner/{claim_id}/heartbeat - Renew a remote validation stage lease
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/runner/{claim_id}/heartbeat",
+    tag = "marketplace",
+    params(
+        ("claim_id" = String, Path, description = "Registry validation stage claim identifier")
+    ),
+    request_body = RegistryRunnerHeartbeatRequest,
+    responses(
+        (
+            status = 200,
+            description = "Claim lease renewed",
+            body = RegistryRunnerMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Runner heartbeat request failed validation"
+        ),
+        (
+            status = 401,
+            description = "Runner token was missing or invalid"
+        )
+    )
+)]
+async fn heartbeat_remote_validation_stage(
+    State(ctx): State<AppContext>,
+    Path(claim_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryRunnerHeartbeatRequest>,
+) -> Result<Json<RegistryRunnerMutationResponse>, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    validate_runner_heartbeat_request(&request)?;
+    let settings = require_remote_executor_access(&ctx, &headers)?;
+    let stage = RegistryGovernanceService::new(ctx.db.clone())
+        .heartbeat_remote_validation_stage_claim(
+            &claim_id,
+            request.runner_id.trim(),
+            chrono::Duration::milliseconds(settings.registry.remote_executor.lease_ttl_ms as i64),
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok(Json(RegistryRunnerMutationResponse {
+        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        accepted: true,
+        claim_id,
+        status: validation_stage_status_label(stage.status).to_string(),
+        warnings: Vec::new(),
+    }))
+}
+
+/// POST /v2/catalog/runner/{claim_id}/complete - Mark a remote validation stage as passed
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/runner/{claim_id}/complete",
+    tag = "marketplace",
+    params(
+        ("claim_id" = String, Path, description = "Registry validation stage claim identifier")
+    ),
+    request_body = RegistryRunnerCompletionRequest,
+    responses(
+        (
+            status = 200,
+            description = "Claim completed as passed",
+            body = RegistryRunnerMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Runner completion request failed validation"
+        ),
+        (
+            status = 401,
+            description = "Runner token was missing or invalid"
+        )
+    )
+)]
+async fn complete_remote_validation_stage(
+    State(ctx): State<AppContext>,
+    Path(claim_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryRunnerCompletionRequest>,
+) -> Result<Json<RegistryRunnerMutationResponse>, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    validate_runner_completion_request(&request, "complete")?;
+    require_remote_executor_access(&ctx, &headers)?;
+    let detail = required_reason(
+        &request.detail,
+        "Remote runner completion requires a non-empty detail message",
+    )?;
+    let stage = RegistryGovernanceService::new(ctx.db.clone())
+        .complete_remote_validation_stage_claim(
+            &claim_id,
+            request.runner_id.trim(),
+            detail,
+            request.reason_code.as_deref().map(str::trim),
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok(Json(RegistryRunnerMutationResponse {
+        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        accepted: true,
+        claim_id,
+        status: validation_stage_status_label(stage.status).to_string(),
+        warnings: Vec::new(),
+    }))
+}
+
+/// POST /v2/catalog/runner/{claim_id}/fail - Mark a remote validation stage as failed
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/runner/{claim_id}/fail",
+    tag = "marketplace",
+    params(
+        ("claim_id" = String, Path, description = "Registry validation stage claim identifier")
+    ),
+    request_body = RegistryRunnerCompletionRequest,
+    responses(
+        (
+            status = 200,
+            description = "Claim completed as failed",
+            body = RegistryRunnerMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Runner failure report failed validation"
+        ),
+        (
+            status = 401,
+            description = "Runner token was missing or invalid"
+        )
+    )
+)]
+async fn fail_remote_validation_stage(
+    State(ctx): State<AppContext>,
+    Path(claim_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryRunnerCompletionRequest>,
+) -> Result<Json<RegistryRunnerMutationResponse>, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    validate_runner_completion_request(&request, "fail")?;
+    require_remote_executor_access(&ctx, &headers)?;
+    let detail = required_reason(
+        &request.detail,
+        "Remote runner failure report requires a non-empty detail message",
+    )?;
+    let stage = RegistryGovernanceService::new(ctx.db.clone())
+        .fail_remote_validation_stage_claim(
+            &claim_id,
+            request.runner_id.trim(),
+            detail,
+            request.reason_code.as_deref().map(str::trim),
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+
+    Ok(Json(RegistryRunnerMutationResponse {
+        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        accepted: true,
+        claim_id,
+        status: validation_stage_status_label(stage.status).to_string(),
+        warnings: Vec::new(),
+    }))
+}
+
 /// POST /v2/catalog/yank - Registry release lifecycle yank contract
 #[utoipa::path(
     post,
@@ -1133,8 +1693,30 @@ pub fn routes() -> Routes {
             post(approve_publish_request),
         )
         .add(registry_publish_reject_path(), post(reject_publish_request))
+        .add(
+            registry_publish_request_changes_path(),
+            post(request_publish_changes),
+        )
+        .add(registry_publish_hold_path(), post(hold_publish_request))
+        .add(registry_publish_resume_path(), post(resume_publish_request))
         .add(registry_owner_transfer_path(), post(transfer_owner))
         .add(registry_yank_path(), post(yank))
+        .add(
+            registry_runner_claim_path(),
+            post(claim_remote_validation_stage),
+        )
+        .add(
+            registry_runner_heartbeat_path(),
+            post(heartbeat_remote_validation_stage),
+        )
+        .add(
+            registry_runner_complete_path(),
+            post(complete_remote_validation_stage),
+        )
+        .add(
+            registry_runner_fail_path(),
+            post(fail_remote_validation_stage),
+        )
 }
 
 pub fn read_only_routes() -> Routes {
@@ -1444,42 +2026,7 @@ fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, E
 fn validate_publish_reject_request(
     request: &RegistryPublishDecisionRequest,
 ) -> Result<Vec<String>, Error> {
-    let mut warnings = Vec::new();
-    if request
-        .reason
-        .as_deref()
-        .map(str::trim)
-        .is_none_or(|reason| reason.is_empty())
-    {
-        warnings.push(
-            "No reject reason supplied; live reject requires a non-empty reason for the governance audit trail."
-                .to_string(),
-        );
-    }
-    if request
-        .reason_code
-        .as_deref()
-        .map(str::trim)
-        .is_none_or(|value| value.is_empty())
-    {
-        warnings.push(format!(
-            "No reject reason_code supplied; live reject requires one of {} for the policy audit trail.",
-            REGISTRY_REJECT_REASON_CODES.join(", ")
-        ));
-    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !REGISTRY_REJECT_REASON_CODES
-            .iter()
-            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry publish reject reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                REGISTRY_REJECT_REASON_CODES.join(", ")
-            )));
-        }
-    }
-
-    Ok(warnings)
+    validate_publish_decision_request(request, "reject", REGISTRY_REJECT_REASON_CODES)
 }
 
 fn validate_publish_approve_request(request: &RegistryPublishDecisionRequest) -> Result<(), Error> {
@@ -1498,6 +2045,48 @@ fn validate_publish_approve_request(request: &RegistryPublishDecisionRequest) ->
     }
 
     Ok(())
+}
+
+fn validate_publish_decision_request(
+    request: &RegistryPublishDecisionRequest,
+    action: &str,
+    supported_reason_codes: &[&str],
+) -> Result<Vec<String>, Error> {
+    let mut warnings = Vec::new();
+    if request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|reason| reason.is_empty())
+    {
+        warnings.push(format!(
+            "No {action} reason supplied; live {action} requires a non-empty reason for the governance audit trail."
+        ));
+    }
+    if request
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|value| value.is_empty())
+    {
+        warnings.push(format!(
+            "No {action} reason_code supplied; live {action} requires one of {} for the policy audit trail.",
+            supported_reason_codes.join(", ")
+        ));
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
+        if !supported_reason_codes
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry {action} reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                supported_reason_codes.join(", ")
+            )));
+        }
+    }
+
+    Ok(warnings)
 }
 
 fn validate_validation_stage_report_request(
@@ -1619,6 +2208,57 @@ fn validate_owner_transfer_request(
     Ok(warnings)
 }
 
+fn validate_runner_claim_request(request: &RegistryRunnerClaimRequest) -> Result<(), Error> {
+    if request.runner_id.trim().is_empty() {
+        return Err(Error::BadRequest(
+            "Registry runner claim must include a non-empty runner_id".to_string(),
+        ));
+    }
+    if request
+        .supported_stages
+        .iter()
+        .any(|stage| stage.trim().is_empty())
+    {
+        return Err(Error::BadRequest(
+            "Registry runner claim supportedStages must not contain empty values".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_runner_heartbeat_request(
+    request: &RegistryRunnerHeartbeatRequest,
+) -> Result<(), Error> {
+    if request.runner_id.trim().is_empty() {
+        return Err(Error::BadRequest(
+            "Registry runner heartbeat must include a non-empty runner_id".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_runner_completion_request(
+    request: &RegistryRunnerCompletionRequest,
+    action: &str,
+) -> Result<(), Error> {
+    if request.runner_id.trim().is_empty() {
+        return Err(Error::BadRequest(format!(
+            "Registry runner {action} must include a non-empty runner_id"
+        )));
+    }
+    if request
+        .detail
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|detail| detail.is_empty())
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry runner {action} must include a non-empty detail"
+        )));
+    }
+    Ok(())
+}
+
 fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
     value
         .as_array()
@@ -1645,6 +2285,56 @@ fn request_publisher_from_headers(headers: &HeaderMap) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+fn required_reason<'a>(reason: &'a Option<String>, error_message: &str) -> Result<&'a str, Error> {
+    reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Error::BadRequest(error_message.to_string()))
+}
+
+fn required_reason_code<'a>(
+    reason_code: &'a Option<String>,
+    error_message: &str,
+) -> Result<&'a str, Error> {
+    reason_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Error::BadRequest(error_message.to_string()))
+}
+
+fn require_remote_executor_access(
+    ctx: &AppContext,
+    headers: &HeaderMap,
+) -> Result<RustokSettings, Error> {
+    let settings = RustokSettings::from_settings(&ctx.config.settings)
+        .map_err(|error| Error::Message(format!("Invalid rustok settings: {error}")))?;
+    if !settings.registry.remote_executor.enabled {
+        return Err(Error::BadRequest(
+            "Registry remote executor is disabled on this host".to_string(),
+        ));
+    }
+    let expected = settings.registry.remote_executor.shared_token.trim();
+    if expected.is_empty() {
+        return Err(Error::Message(
+            "Registry remote executor shared token is not configured".to_string(),
+        ));
+    }
+    let provided = headers
+        .get("x-rustok-runner-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Error::Unauthorized("missing x-rustok-runner-token".to_string()))?;
+    if provided != expected {
+        return Err(Error::Unauthorized(
+            "invalid x-rustok-runner-token".to_string(),
+        ));
+    }
+    Ok(settings)
 }
 
 fn publish_request_accepted(
@@ -1681,6 +2371,18 @@ fn publish_request_next_step(
             Some(format!(
                 "Finalize the validated publish request via POST {}",
                 registry_publish_approve_path().replace("{request_id}", request_id)
+            ))
+        }
+        crate::models::registry_publish_request::RegistryPublishRequestStatus::ChangesRequested => {
+            Some(format!(
+                "Upload a fresh artifact revision via PUT {} and then re-run validation.",
+                registry_publish_artifact_path().replace("{request_id}", request_id)
+            ))
+        }
+        crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold => {
+            Some(format!(
+                "Resume the held publish request via POST {} once the blocking condition is resolved.",
+                registry_publish_resume_path().replace("{request_id}", request_id)
             ))
         }
         crate::models::registry_publish_request::RegistryPublishRequestStatus::Rejected => {
@@ -1720,6 +2422,68 @@ fn approval_override_next_step(
         REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", "),
         approval_override_stage_labels(validation_stages).join(", ")
     )
+}
+
+fn registry_runner_claim_response(
+    claim: &crate::services::registry_governance::RegistryRemoteValidationStageClaim,
+    validation_stages: &[RegistryValidationStageSnapshot],
+) -> RegistryRunnerClaim {
+    let stage = validation_stages
+        .iter()
+        .find(|stage| stage.key == claim.stage.stage_key)
+        .cloned()
+        .unwrap_or_else(|| RegistryValidationStageSnapshot {
+            key: claim.stage.stage_key.clone(),
+            status: validation_stage_status_label(claim.stage.status.clone()).to_string(),
+            detail: claim.stage.detail.clone(),
+            attempt_number: claim.stage.attempt_number,
+            updated_at: claim.stage.updated_at.to_rfc3339(),
+            started_at: claim
+                .stage
+                .started_at
+                .as_ref()
+                .map(|value| value.to_rfc3339()),
+            finished_at: claim
+                .stage
+                .finished_at
+                .as_ref()
+                .map(|value| value.to_rfc3339()),
+            execution_mode: "manual".to_string(),
+            runnable: false,
+            requires_manual_confirmation: false,
+            allowed_terminal_reason_codes: validation_stage_allowed_terminal_reason_codes(
+                &claim.stage.stage_key,
+            )
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+            suggested_pass_reason_code: None,
+            suggested_failure_reason_code: None,
+            suggested_blocked_reason_code: None,
+        });
+
+    RegistryRunnerClaim {
+        claim_id: claim.claim_id.clone(),
+        request_id: claim.request.id.clone(),
+        slug: claim.request.slug.clone(),
+        version: claim.request.version.clone(),
+        stage_key: claim.stage.stage_key.clone(),
+        execution_mode: stage.execution_mode,
+        runnable: stage.runnable,
+        requires_manual_confirmation: stage.requires_manual_confirmation,
+        allowed_terminal_reason_codes: stage.allowed_terminal_reason_codes,
+        suggested_pass_reason_code: stage.suggested_pass_reason_code,
+        suggested_failure_reason_code: stage.suggested_failure_reason_code,
+        suggested_blocked_reason_code: stage.suggested_blocked_reason_code,
+        artifact_url: claim.request.artifact_url.clone().unwrap_or_default(),
+        artifact_checksum_sha256: claim
+            .request
+            .artifact_checksum_sha256
+            .clone()
+            .unwrap_or_default(),
+        crate_name: claim.request.crate_name.clone(),
+        ui_packages: serde_json::from_value(claim.request.ui_packages.clone()).unwrap_or_default(),
+    }
 }
 
 fn approval_override_warning_message(

@@ -112,6 +112,9 @@ fn registry_governance_action_label(key: &str, locale: Locale) -> &'static str {
         "validate" => tr(locale, "Validate", "Validate"),
         "approve" => tr(locale, "Approve", "Approve"),
         "reject" => tr(locale, "Reject", "Reject"),
+        "request_changes" => tr(locale, "Request changes", "Request changes"),
+        "hold" => tr(locale, "Hold", "Hold"),
+        "resume" => tr(locale, "Resume", "Resume"),
         "stage_report" => tr(locale, "Stage report", "Stage report"),
         "owner_transfer" => tr(locale, "Owner transfer", "Owner transfer"),
         "yank" => tr(locale, "Yank", "Yank"),
@@ -193,6 +196,8 @@ fn registry_governance_hint(module: &MarketplaceModule, locale: Locale) -> Strin
 fn registry_request_status_badge_classes(status: &str) -> &'static str {
     if status_eq(status, "published") || status_eq(status, "active") {
         "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
+    } else if status_eq(status, "on_hold") {
+        "inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800"
     } else if status_eq(status, "rejected") || status_eq(status, "yanked") {
         "inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700"
     } else {
@@ -1025,6 +1030,22 @@ fn registry_next_action_lines(
             )
             .to_string(),
         ),
+        Some(status) if status_eq(status, "changes_requested") => lines.push(
+            tr(
+                locale,
+                "Upload a fresh artifact revision next; the request needs a new bundle before review can continue.",
+                "Загрузите новую ревизию артефакта; запросу нужен новый bundle, прежде чем review сможет продолжиться.",
+            )
+            .to_string(),
+        ),
+        Some(status) if status_eq(status, "on_hold") => lines.push(
+            tr(
+                locale,
+                "This request is on hold; resume it explicitly once the blocking condition is cleared.",
+                "Этот запрос находится на hold; явно возобновите его после снятия блокирующего условия.",
+            )
+            .to_string(),
+        ),
         Some(status) if status_eq(status, "approved") => {
             if approval_override_required(validation_stages) {
                 lines.push(format!(
@@ -1144,6 +1165,26 @@ fn registry_operator_command_lines(
     match request.map(|request| request.status.as_str()) {
         None => lines.push(publish_dry_run.clone()),
         Some(status) if status_eq(status, "draft") => lines.push(publish_live),
+        Some(status) if status_eq(status, "changes_requested") => {
+            lines.push(format!(
+                "cargo xtask module publish {} --registry-url <registry-url>",
+                module.slug
+            ));
+            if let Some(request) = request {
+                lines.push(format!(
+                    "cargo xtask module request-changes {} --dry-run --reason \"<reason>\" --reason-code artifact_mismatch",
+                    request.id
+                ));
+            }
+        }
+        Some(status) if status_eq(status, "on_hold") => {
+            if let Some(request) = request {
+                lines.push(format!(
+                    "cargo xtask module resume {} --dry-run --reason \"<reason>\" --reason-code review_complete",
+                    request.id
+                ));
+            }
+        }
         Some(status) if status_eq(status, "rejected") => lines.push(publish_dry_run.clone()),
         Some(status) if status_eq(status, "published") => {
             let version = release
@@ -1267,6 +1308,19 @@ fn registry_live_api_action_lines(
         .unwrap_or(
             !status_eq(&request.status, "rejected") && !status_eq(&request.status, "published"),
         );
+    let can_request_changes = registry_governance_action(module, "request_changes")
+        .map(|action| action.enabled)
+        .unwrap_or(status_eq(&request.status, "approved"));
+    let can_hold = registry_governance_action(module, "hold")
+        .map(|action| action.enabled)
+        .unwrap_or(
+            status_eq(&request.status, "submitted")
+                || status_eq(&request.status, "approved")
+                || status_eq(&request.status, "changes_requested"),
+        );
+    let can_resume = registry_governance_action(module, "resume")
+        .map(|action| action.enabled)
+        .unwrap_or(status_eq(&request.status, "on_hold"));
     let can_stage_report = registry_governance_action(module, "stage_report")
         .map(|action| action.enabled)
         .unwrap_or(
@@ -1368,6 +1422,84 @@ fn registry_live_api_action_lines(
             ),
             header_hint: Some(actor_header_hint(true)),
             xtask_hint: None,
+            write_path: true,
+        });
+    }
+
+    if can_request_changes {
+        let review_authority = registry_review_authority_label(owner_binding, locale);
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/request-changes", request.id),
+            authority: review_authority,
+            note: Some(
+                tr(
+                    locale,
+                    "Request a fresh artifact upload while keeping the publish request alive.",
+                    "Запросить новую загрузку артефакта, не закрывая publish-запрос.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<review-feedback>\", \"reason_code\": \"artifact_mismatch\" }"
+                    .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: Some(format!(
+                "cargo xtask module request-changes {} --registry-url <registry-url> --reason \"<review-feedback>\" --reason-code artifact_mismatch",
+                request.id
+            )),
+            write_path: true,
+        });
+    }
+
+    if can_hold {
+        let review_authority = registry_review_authority_label(owner_binding, locale);
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
+            authority: review_authority,
+            note: Some(
+                tr(
+                    locale,
+                    "Temporarily freeze the request without rejecting it.",
+                    "Временно заморозить запрос без его отклонения.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }"
+                    .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: Some(format!(
+                "cargo xtask module hold {} --registry-url <registry-url> --reason \"<hold-reason>\" --reason-code release_window",
+                request.id
+            )),
+            write_path: true,
+        });
+    }
+
+    if can_resume {
+        let review_authority = registry_review_authority_label(owner_binding, locale);
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/resume", request.id),
+            authority: review_authority,
+            note: Some(
+                tr(
+                    locale,
+                    "Return an on-hold request back to its previous lifecycle state.",
+                    "Вернуть запрос с on_hold в его предыдущее lifecycle-состояние.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<resume-reason>\", \"reason_code\": \"review_complete\" }"
+                    .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: Some(format!(
+                "cargo xtask module resume {} --registry-url <registry-url> --reason \"<resume-reason>\" --reason-code review_complete",
+                request.id
+            )),
             write_path: true,
         });
     }
@@ -1628,6 +1760,9 @@ fn is_moderation_history_event_type(event_type: &str) -> bool {
         "release_published"
             | "publish_approval_override"
             | "request_rejected"
+            | "changes_requested"
+            | "request_held"
+            | "request_resumed"
             | "owner_transferred"
             | "release_yanked"
             | "validation_stage_running"
@@ -1659,6 +1794,9 @@ fn moderation_history_badge_label(event_type: &str, locale: Locale) -> String {
         "release_published" => tr(locale, "Approved", "Approved"),
         "publish_approval_override" => tr(locale, "Approval override", "Approval override"),
         "request_rejected" => tr(locale, "Rejected", "Rejected"),
+        "changes_requested" => tr(locale, "Changes requested", "Changes requested"),
+        "request_held" => tr(locale, "On hold", "On hold"),
+        "request_resumed" => tr(locale, "Resumed", "Resumed"),
         "owner_transferred" => tr(locale, "Owner transfer", "Owner transfer"),
         "release_yanked" => tr(locale, "Yanked", "Yanked"),
         "validation_stage_running" => tr(locale, "Stage running", "Stage running"),
@@ -1675,6 +1813,9 @@ fn moderation_history_badge_status(event_type: &str) -> &'static str {
         "release_published" => "published",
         "publish_approval_override" => "info",
         "request_rejected" => "rejected",
+        "changes_requested" => "info",
+        "request_held" => "blocked",
+        "request_resumed" => "info",
         "release_yanked" => "yanked",
         "validation_stage_failed" => "failed",
         "validation_stage_blocked" => "blocked",
@@ -4668,6 +4809,32 @@ pub fn ModuleDetailPanel(
                                             && !status_eq(&request.status, "published")
                                     }),
                             );
+                        let can_request_changes = registry_governance_action(&module, "request_changes")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_request
+                                        .as_ref()
+                                        .is_some_and(|request| status_eq(&request.status, "approved")),
+                            );
+                        let can_hold = registry_governance_action(&module, "hold")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_request.as_ref().is_some_and(|request| {
+                                        status_eq(&request.status, "submitted")
+                                            || status_eq(&request.status, "approved")
+                                            || status_eq(&request.status, "changes_requested")
+                                    }),
+                            );
+                        let can_resume = registry_governance_action(&module, "resume")
+                            .map(|action| action.enabled)
+                            .unwrap_or(
+                                live_governance_supported
+                                    && latest_registry_request
+                                        .as_ref()
+                                        .is_some_and(|request| status_eq(&request.status, "on_hold")),
+                            );
                         let can_transfer_owner = registry_governance_action(&module, "owner_transfer")
                             .map(|action| action.enabled)
                             .unwrap_or(
@@ -5022,6 +5189,177 @@ pub fn ModuleDetailPanel(
                                         Err(error) => {
                                             set_governance_error
                                                 .set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
+                        let on_request_changes = {
+                            let request_id = request_id.clone();
+                            let access_token = access_token;
+                            let tenant_slug = tenant_slug;
+                            Callback::new(move |_| {
+                                let Some(request_id) = request_id.clone() else {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                };
+                                let actor = governance_actor.get_untracked().trim().to_string();
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                if actor.is_empty() || reason.is_empty() || reason_code.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Actor, reason, and reason code are required.", "Нужны actor, reason и reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                set_governance_confirmation_action.set(None);
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let dry_run = governance_dry_run.get_untracked();
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                spawn_local(async move {
+                                    match api::request_changes_registry_publish_request(
+                                        request_id,
+                                        actor,
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            refresh_detail_after_reject.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error.set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
+                        let on_hold_request = {
+                            let request_id = request_id.clone();
+                            let access_token = access_token;
+                            let tenant_slug = tenant_slug;
+                            Callback::new(move |_| {
+                                let Some(request_id) = request_id.clone() else {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                };
+                                let actor = governance_actor.get_untracked().trim().to_string();
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                if actor.is_empty() || reason.is_empty() || reason_code.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Actor, reason, and reason code are required.", "Нужны actor, reason и reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                set_governance_confirmation_action.set(None);
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let dry_run = governance_dry_run.get_untracked();
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                spawn_local(async move {
+                                    match api::hold_registry_publish_request(
+                                        request_id,
+                                        actor,
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            refresh_detail_after_reject.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error.set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
+                        let on_resume_request = {
+                            let request_id = request_id.clone();
+                            let access_token = access_token;
+                            let tenant_slug = tenant_slug;
+                            Callback::new(move |_| {
+                                let Some(request_id) = request_id.clone() else {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                };
+                                let actor = governance_actor.get_untracked().trim().to_string();
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                if actor.is_empty() || reason.is_empty() || reason_code.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Actor, reason, and reason code are required.", "Нужны actor, reason и reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                set_governance_confirmation_action.set(None);
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let dry_run = governance_dry_run.get_untracked();
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                spawn_local(async move {
+                                    match api::resume_registry_publish_request(
+                                        request_id,
+                                        actor,
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            refresh_detail_after_reject.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error.set(Some(error.to_string()));
                                         }
                                     }
                                     set_governance_submitting.set(false);
@@ -6091,7 +6429,7 @@ pub fn ModuleDetailPanel(
                                             }).collect_view()}
                                         </div>
                                     </Show>
-                                    <Show when=move || can_validate || can_approve || can_reject || can_transfer_owner || can_yank>
+                                    <Show when=move || can_validate || can_approve || can_reject || can_request_changes || can_hold || can_resume || can_transfer_owner || can_yank>
                                         <div class="mt-3 space-y-3 rounded-lg border border-border bg-background p-3">
                                             <div class="flex flex-wrap items-center justify-between gap-3">
                                                 <p class="text-xs uppercase tracking-wide text-muted-foreground">
@@ -6194,6 +6532,27 @@ pub fn ModuleDetailPanel(
                                                             tr(locale, "Reject", "Reject")
                                                         }
                                                     }}
+                                                </Button>
+                                                <Button
+                                                    class="h-8 px-3 py-1 text-xs"
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_request_changes)
+                                                    on_click=on_request_changes
+                                                >
+                                                    {tr(locale, "Request changes", "Request changes")}
+                                                </Button>
+                                                <Button
+                                                    class="h-8 px-3 py-1 text-xs"
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_hold)
+                                                    on_click=on_hold_request
+                                                >
+                                                    {tr(locale, "Hold", "Hold")}
+                                                </Button>
+                                                <Button
+                                                    class="h-8 px-3 py-1 text-xs"
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_resume)
+                                                    on_click=on_resume_request
+                                                >
+                                                    {tr(locale, "Resume", "Resume")}
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"

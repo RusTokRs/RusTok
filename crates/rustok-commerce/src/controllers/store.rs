@@ -1517,8 +1517,9 @@ mod tests {
     use crate::{CartService, CatalogService, CustomerService, FulfillmentService};
     use rustok_customer::dto::CreateCustomerInput;
 
-    #[path = "../../../../tests/support.rs"]
-    mod support;
+    mod support {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));
+    }
 
     fn sample_cart(customer_id: Option<Uuid>) -> CartResponse {
         CartResponse {

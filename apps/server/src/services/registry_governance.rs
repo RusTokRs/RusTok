@@ -74,6 +74,26 @@ pub const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
     "governance_override",
     "other",
 ];
+pub const REGISTRY_REQUEST_CHANGES_REASON_CODES: &[&str] = &[
+    "artifact_mismatch",
+    "quality_gap",
+    "policy_gap",
+    "docs_gap",
+    "other",
+];
+pub const REGISTRY_HOLD_REASON_CODES: &[&str] = &[
+    "release_window",
+    "incident",
+    "legal_hold",
+    "security_review",
+    "other",
+];
+pub const REGISTRY_RESUME_REASON_CODES: &[&str] = &[
+    "review_complete",
+    "incident_closed",
+    "legal_cleared",
+    "other",
+];
 pub const REGISTRY_MODERATION_POLICY_REASON_CODE_THIRD_PARTY_FLOW_PENDING: &str =
     "third_party_flow_pending";
 pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
@@ -118,6 +138,7 @@ struct RegistryValidationJobClaim {
 pub struct RegistryValidationStageClaim {
     pub request: registry_publish_request::Model,
     pub stage: registry_validation_stage::Model,
+    pub claim_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +156,15 @@ pub struct RegistryPublishRequestSnapshot {
     pub approved_by: Option<String>,
     pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,
+    pub changes_requested_by: Option<String>,
+    pub changes_requested_reason: Option<String>,
+    pub changes_requested_reason_code: Option<String>,
+    pub changes_requested_at: Option<String>,
+    pub held_by: Option<String>,
+    pub held_reason: Option<String>,
+    pub held_reason_code: Option<String>,
+    pub held_at: Option<String>,
+    pub held_from_status: Option<String>,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
     pub created_at: String,
@@ -233,6 +263,14 @@ pub struct RegistryPublishRequestFollowUpSnapshot {
     pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
     pub validation_stages: Vec<RegistryValidationStageSnapshot>,
     pub approval_override_required: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryRemoteValidationStageClaim {
+    pub claim_id: String,
+    pub runner_id: String,
+    pub request: registry_publish_request::Model,
+    pub stage: registry_validation_stage::Model,
 }
 
 #[derive(Debug, Default)]
@@ -355,6 +393,15 @@ impl RegistryGovernanceService {
             approved_by: None,
             rejected_by: None,
             rejection_reason: None,
+            changes_requested_by: None,
+            changes_requested_reason: None,
+            changes_requested_reason_code: None,
+            changes_requested_at: None,
+            held_by: None,
+            held_reason: None,
+            held_reason_code: None,
+            held_at: None,
+            held_from_status: None,
             validation_warnings: serde_json::to_value(warnings)
                 .context("failed to serialize registry publish warnings")?,
             validation_errors: serde_json::json!([]),
@@ -390,6 +437,15 @@ impl RegistryGovernanceService {
             approved_by: Set(None),
             rejected_by: Set(None),
             rejection_reason: Set(None),
+            changes_requested_by: Set(None),
+            changes_requested_reason: Set(None),
+            changes_requested_reason_code: Set(None),
+            changes_requested_at: Set(None),
+            held_by: Set(None),
+            held_reason: Set(None),
+            held_reason_code: Set(None),
+            held_at: Set(None),
+            held_from_status: Set(None),
             validation_warnings: Set(model.validation_warnings.clone()),
             validation_errors: Set(model.validation_errors.clone()),
             artifact_path: Set(None),
@@ -446,7 +502,12 @@ impl RegistryGovernanceService {
             .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
         self.ensure_actor_can_manage_publish_request(actor, &request, "upload an artifact for")
             .await?;
-        if request.status != RegistryPublishRequestStatus::Draft {
+        let was_changes_requested =
+            request.status == RegistryPublishRequestStatus::ChangesRequested;
+        if !matches!(
+            request.status,
+            RegistryPublishRequestStatus::Draft | RegistryPublishRequestStatus::ChangesRequested
+        ) {
             anyhow::bail!(
                 "Registry publish request '{}' is in status '{}' and can no longer accept an artifact upload",
                 request_id,
@@ -481,10 +542,35 @@ impl RegistryGovernanceService {
         let warnings = dedupe_message_list(warnings);
 
         let submitted_at = Utc::now();
+        RegistryValidationJobEntity::delete_many()
+            .filter(registry_validation_job::Column::RequestId.eq(request.id.clone()))
+            .exec(&self.db)
+            .await?;
+        RegistryValidationStageEntity::delete_many()
+            .filter(registry_validation_stage::Column::RequestId.eq(request.id.clone()))
+            .exec(&self.db)
+            .await?;
+
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::Submitted);
         request_active.submitted_at = Set(Some(submitted_at));
         request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
+        request_active.validation_errors = Set(serde_json::json!([]));
+        request_active.approved_by = Set(None);
+        request_active.rejected_by = Set(None);
+        request_active.rejection_reason = Set(None);
+        request_active.changes_requested_by = Set(None);
+        request_active.changes_requested_reason = Set(None);
+        request_active.changes_requested_reason_code = Set(None);
+        request_active.changes_requested_at = Set(None);
+        request_active.held_by = Set(None);
+        request_active.held_reason = Set(None);
+        request_active.held_reason_code = Set(None);
+        request_active.held_at = Set(None);
+        request_active.held_from_status = Set(None);
+        request_active.validated_at = Set(None);
+        request_active.approved_at = Set(None);
+        request_active.published_at = Set(None);
         request_active.updated_at = Set(submitted_at);
         let request = request_active
             .update(&self.db)
@@ -494,7 +580,11 @@ impl RegistryGovernanceService {
             &request.slug,
             Some(&request.id),
             None,
-            "artifact_uploaded",
+            if was_changes_requested {
+                "artifact_reuploaded_after_changes_requested"
+            } else {
+                "artifact_uploaded"
+            },
             actor,
             None,
             serde_json::json!({
@@ -543,6 +633,18 @@ impl RegistryGovernanceService {
             RegistryPublishRequestStatus::Draft => {
                 anyhow::bail!(
                     "Registry publish request '{}' is still in draft status and must receive an artifact upload before validation",
+                    request_id
+                );
+            }
+            RegistryPublishRequestStatus::ChangesRequested => {
+                anyhow::bail!(
+                    "Registry publish request '{}' requires a fresh artifact upload before validation can resume",
+                    request_id
+                );
+            }
+            RegistryPublishRequestStatus::OnHold => {
+                anyhow::bail!(
+                    "Registry publish request '{}' is currently on hold and must be resumed before validation can continue",
                     request_id
                 );
             }
@@ -598,6 +700,10 @@ impl RegistryGovernanceService {
         request_active.validation_errors = Set(serde_json::json!([]));
         request_active.rejected_by = Set(None);
         request_active.rejection_reason = Set(None);
+        request_active.changes_requested_by = Set(None);
+        request_active.changes_requested_reason = Set(None);
+        request_active.changes_requested_reason_code = Set(None);
+        request_active.changes_requested_at = Set(None);
         request_active.validated_at = Set(None);
         request_active.updated_at = Set(validating_at);
         let request = request_active.update(&self.db).await?;
@@ -795,6 +901,15 @@ impl RegistryGovernanceService {
         request_active.validation_errors = Set(serde_json::json!([]));
         request_active.rejected_by = Set(None);
         request_active.rejection_reason = Set(None);
+        request_active.changes_requested_by = Set(None);
+        request_active.changes_requested_reason = Set(None);
+        request_active.changes_requested_reason_code = Set(None);
+        request_active.changes_requested_at = Set(None);
+        request_active.held_by = Set(None);
+        request_active.held_reason = Set(None);
+        request_active.held_reason_code = Set(None);
+        request_active.held_at = Set(None);
+        request_active.held_from_status = Set(None);
         request_active.validated_at = Set(Some(approved_at));
         request_active.approved_by = Set(Some(normalize_actor(actor)));
         request_active.approved_at = Set(Some(approved_at));
@@ -948,9 +1063,27 @@ impl RegistryGovernanceService {
         actor: &str,
         supported_stages: &[&str],
     ) -> anyhow::Result<Option<RegistryValidationStageClaim>> {
+        self.claim_next_validation_stage_with_runner(
+            actor,
+            supported_stages,
+            "local",
+            chrono::Duration::seconds(60),
+        )
+        .await
+    }
+
+    pub async fn claim_next_validation_stage_with_runner(
+        &self,
+        actor: &str,
+        supported_stages: &[&str],
+        runner_kind: &str,
+        lease_ttl: chrono::Duration,
+    ) -> anyhow::Result<Option<RegistryValidationStageClaim>> {
         if supported_stages.is_empty() {
             return Ok(None);
         }
+
+        self.requeue_expired_validation_stage_claims(actor).await?;
 
         let queued_stages = RegistryValidationStageEntity::find()
             .filter(
@@ -1001,7 +1134,21 @@ impl RegistryGovernanceService {
                     None,
                 )
                 .await?;
-            return Ok(Some(RegistryValidationStageClaim { request, stage }));
+            let claim_id = format!("rvc_{}", uuid::Uuid::new_v4().simple());
+            let lease_expiry = Utc::now() + lease_ttl;
+            let mut stage_active: RegistryValidationStageActiveModel = stage.into();
+            stage_active.claim_id = Set(Some(claim_id.clone()));
+            stage_active.claimed_by = Set(Some(normalize_actor(actor)));
+            stage_active.claim_expires_at = Set(Some(lease_expiry));
+            stage_active.last_heartbeat_at = Set(Some(Utc::now()));
+            stage_active.runner_kind = Set(Some(runner_kind.trim().to_ascii_lowercase()));
+            stage_active.updated_at = Set(Utc::now());
+            let stage = stage_active.update(&self.db).await?;
+            return Ok(Some(RegistryValidationStageClaim {
+                request,
+                stage,
+                claim_id,
+            }));
         }
 
         Ok(None)
@@ -1021,7 +1168,12 @@ impl RegistryGovernanceService {
         else {
             return Ok(None);
         };
-        if latest_stage.id != claim.stage.id {
+        if latest_stage.id != claim.stage.id
+            || latest_stage
+                .claim_id
+                .as_deref()
+                .is_none_or(|value| value != claim.claim_id)
+        {
             return Ok(None);
         }
 
@@ -1035,7 +1187,150 @@ impl RegistryGovernanceService {
                 reason_code,
             )
             .await?;
-        Ok(Some(stage))
+        let mut stage_active: RegistryValidationStageActiveModel = stage.into();
+        stage_active.claim_id = Set(None);
+        stage_active.claimed_by = Set(None);
+        stage_active.claim_expires_at = Set(None);
+        stage_active.last_heartbeat_at = Set(None);
+        stage_active.runner_kind = Set(None);
+        stage_active.updated_at = Set(Utc::now());
+        Ok(Some(stage_active.update(&self.db).await?))
+    }
+
+    pub async fn claim_next_remote_validation_stage(
+        &self,
+        runner_id: &str,
+        supported_stages: &[String],
+        lease_ttl: chrono::Duration,
+    ) -> anyhow::Result<Option<RegistryRemoteValidationStageClaim>> {
+        let runner_actor = remote_runner_actor(runner_id);
+        let supported_refs = supported_stages
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let Some(claim) = self
+            .claim_next_validation_stage_with_runner(
+                &runner_actor,
+                &supported_refs,
+                "remote",
+                lease_ttl,
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(RegistryRemoteValidationStageClaim {
+            claim_id: claim.claim_id,
+            runner_id: runner_id.trim().to_string(),
+            request: claim.request,
+            stage: claim.stage,
+        }))
+    }
+
+    pub async fn heartbeat_remote_validation_stage_claim(
+        &self,
+        claim_id: &str,
+        runner_id: &str,
+        lease_ttl: chrono::Duration,
+    ) -> anyhow::Result<registry_validation_stage::Model> {
+        let stage = self
+            .validation_stage_by_claim_id(claim_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry validation claim '{}' was not found", claim_id))?;
+        self.ensure_remote_claim_belongs_to_runner(&stage, claim_id, runner_id)?;
+        let now = Utc::now();
+        let mut active: RegistryValidationStageActiveModel = stage.into();
+        active.claim_expires_at = Set(Some(now + lease_ttl));
+        active.last_heartbeat_at = Set(Some(now));
+        active.updated_at = Set(now);
+        Ok(active.update(&self.db).await?)
+    }
+
+    pub async fn complete_remote_validation_stage_claim(
+        &self,
+        claim_id: &str,
+        runner_id: &str,
+        detail: &str,
+        reason_code: Option<&str>,
+    ) -> anyhow::Result<registry_validation_stage::Model> {
+        self.finish_remote_validation_stage_claim(
+            claim_id,
+            runner_id,
+            RegistryValidationStageStatus::Passed,
+            detail,
+            reason_code,
+        )
+        .await
+    }
+
+    pub async fn fail_remote_validation_stage_claim(
+        &self,
+        claim_id: &str,
+        runner_id: &str,
+        detail: &str,
+        reason_code: Option<&str>,
+    ) -> anyhow::Result<registry_validation_stage::Model> {
+        self.finish_remote_validation_stage_claim(
+            claim_id,
+            runner_id,
+            RegistryValidationStageStatus::Failed,
+            detail,
+            reason_code,
+        )
+        .await
+    }
+
+    pub async fn requeue_expired_validation_stage_claims(
+        &self,
+        actor: &str,
+    ) -> anyhow::Result<usize> {
+        let now = Utc::now();
+        let running = RegistryValidationStageEntity::find()
+            .filter(
+                registry_validation_stage::Column::Status
+                    .eq(RegistryValidationStageStatus::Running),
+            )
+            .filter(registry_validation_stage::Column::ClaimExpiresAt.lte(now))
+            .order_by_asc(registry_validation_stage::Column::ClaimExpiresAt)
+            .all(&self.db)
+            .await?;
+        let mut requeued = 0usize;
+        for stage in running {
+            let Some(request) = self.get_publish_request(&stage.request_id).await? else {
+                continue;
+            };
+            let latest = self
+                .latest_validation_stage(&request.id, &stage.stage_key)
+                .await?;
+            if latest.as_ref().is_none_or(|latest| latest.id != stage.id) {
+                continue;
+            }
+            let detail = format!(
+                "Validation stage '{}' lease expired; the claim was returned to the queue.",
+                stage.stage_key
+            );
+            let stage = self
+                .update_validation_stage_status(
+                    stage,
+                    &request,
+                    actor,
+                    RegistryValidationStageStatus::Queued,
+                    &detail,
+                    None,
+                )
+                .await?;
+            let mut active: RegistryValidationStageActiveModel = stage.into();
+            active.claim_id = Set(None);
+            active.claimed_by = Set(None);
+            active.claim_expires_at = Set(None);
+            active.last_heartbeat_at = Set(None);
+            active.runner_kind = Set(None);
+            active.updated_at = Set(Utc::now());
+            active.update(&self.db).await?;
+            requeued += 1;
+        }
+        Ok(requeued)
     }
 
     pub async fn approve_publish_request(
@@ -1229,6 +1524,221 @@ impl RegistryGovernanceService {
                 "reason": request.rejection_reason.clone(),
                 "reason_code": reason_code.trim(),
                 "errors": deserialize_message_list(&request.validation_errors),
+            }),
+        )
+        .await?;
+        Ok(request)
+    }
+
+    pub async fn request_publish_changes(
+        &self,
+        request_id: &str,
+        actor: &str,
+        reason: &str,
+        reason_code: &str,
+    ) -> anyhow::Result<registry_publish_request::Model> {
+        let request = self
+            .get_publish_request(request_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
+        self.ensure_actor_can_review_publish_request(actor, &request, "request changes for")
+            .await?;
+        if request.status != RegistryPublishRequestStatus::Approved {
+            anyhow::bail!(
+                "Registry publish request '{}' is in status '{}' and cannot transition to changes_requested",
+                request_id,
+                request_status_label(request.status.clone())
+            );
+        }
+
+        if !REGISTRY_REQUEST_CHANGES_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            anyhow::bail!(
+                "Registry request-changes reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_REQUEST_CHANGES_REASON_CODES.join(", ")
+            );
+        }
+
+        let changed_at = Utc::now();
+        let mut errors = deserialize_message_list(&request.validation_errors);
+        errors.push(format!("Governance requested changes: {}", reason.trim()));
+
+        RegistryValidationJobEntity::delete_many()
+            .filter(registry_validation_job::Column::RequestId.eq(request.id.clone()))
+            .exec(&self.db)
+            .await?;
+        RegistryValidationStageEntity::delete_many()
+            .filter(registry_validation_stage::Column::RequestId.eq(request.id.clone()))
+            .exec(&self.db)
+            .await?;
+
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(RegistryPublishRequestStatus::ChangesRequested);
+        request_active.changes_requested_by = Set(Some(normalize_actor(actor)));
+        request_active.changes_requested_reason = Set(Some(reason.trim().to_string()));
+        request_active.changes_requested_reason_code =
+            Set(Some(reason_code.trim().to_ascii_lowercase()));
+        request_active.changes_requested_at = Set(Some(changed_at));
+        request_active.approved_by = Set(None);
+        request_active.approved_at = Set(None);
+        request_active.validation_errors = Set(serde_json::to_value(dedupe_message_list(errors))?);
+        request_active.updated_at = Set(changed_at);
+        let request = request_active.update(&self.db).await?;
+
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "changes_requested",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "reason": request.changes_requested_reason.clone(),
+                "reason_code": request.changes_requested_reason_code.clone(),
+            }),
+        )
+        .await?;
+        Ok(request)
+    }
+
+    pub async fn hold_publish_request(
+        &self,
+        request_id: &str,
+        actor: &str,
+        reason: &str,
+        reason_code: &str,
+    ) -> anyhow::Result<registry_publish_request::Model> {
+        let request = self
+            .get_publish_request(request_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
+        self.ensure_actor_can_review_publish_request(actor, &request, "put on hold")
+            .await?;
+        if !matches!(
+            request.status,
+            RegistryPublishRequestStatus::Submitted
+                | RegistryPublishRequestStatus::Approved
+                | RegistryPublishRequestStatus::ChangesRequested
+        ) {
+            anyhow::bail!(
+                "Registry publish request '{}' is in status '{}' and cannot be put on hold",
+                request_id,
+                request_status_label(request.status.clone())
+            );
+        }
+
+        if !REGISTRY_HOLD_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            anyhow::bail!(
+                "Registry hold reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_HOLD_REASON_CODES.join(", ")
+            );
+        }
+
+        let held_at = Utc::now();
+        let previous_status = request_status_label(request.status.clone()).to_string();
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(RegistryPublishRequestStatus::OnHold);
+        request_active.held_by = Set(Some(normalize_actor(actor)));
+        request_active.held_reason = Set(Some(reason.trim().to_string()));
+        request_active.held_reason_code = Set(Some(reason_code.trim().to_ascii_lowercase()));
+        request_active.held_at = Set(Some(held_at));
+        request_active.held_from_status = Set(Some(previous_status.clone()));
+        request_active.updated_at = Set(held_at);
+        let request = request_active.update(&self.db).await?;
+
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "request_held",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "reason": request.held_reason.clone(),
+                "reason_code": request.held_reason_code.clone(),
+                "held_from_status": previous_status,
+            }),
+        )
+        .await?;
+        Ok(request)
+    }
+
+    pub async fn resume_publish_request(
+        &self,
+        request_id: &str,
+        actor: &str,
+        reason: &str,
+        reason_code: &str,
+    ) -> anyhow::Result<registry_publish_request::Model> {
+        let request = self
+            .get_publish_request(request_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
+        self.ensure_actor_can_review_publish_request(actor, &request, "resume")
+            .await?;
+        if request.status != RegistryPublishRequestStatus::OnHold {
+            anyhow::bail!(
+                "Registry publish request '{}' is in status '{}' and cannot be resumed",
+                request_id,
+                request_status_label(request.status.clone())
+            );
+        }
+
+        if !REGISTRY_RESUME_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            anyhow::bail!(
+                "Registry resume reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_RESUME_REASON_CODES.join(", ")
+            );
+        }
+
+        let target_status = request
+            .held_from_status
+            .as_deref()
+            .and_then(parse_request_status_label)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Registry publish request '{}' is on hold but held_from_status is missing or invalid",
+                    request_id
+                )
+            })?;
+        let resumed_at = Utc::now();
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(target_status.clone());
+        request_active.held_by = Set(None);
+        request_active.held_reason = Set(None);
+        request_active.held_reason_code = Set(None);
+        request_active.held_at = Set(None);
+        request_active.held_from_status = Set(None);
+        request_active.updated_at = Set(resumed_at);
+        let request = request_active.update(&self.db).await?;
+
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "request_resumed",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "reason": reason.trim(),
+                "reason_code": reason_code.trim().to_ascii_lowercase(),
             }),
         )
         .await?;
@@ -1461,6 +1971,15 @@ impl RegistryGovernanceService {
                 approved_by: request.approved_by,
                 rejected_by: request.rejected_by,
                 rejection_reason: request.rejection_reason,
+                changes_requested_by: request.changes_requested_by,
+                changes_requested_reason: request.changes_requested_reason,
+                changes_requested_reason_code: request.changes_requested_reason_code,
+                changes_requested_at: request.changes_requested_at.map(|value| value.to_rfc3339()),
+                held_by: request.held_by,
+                held_reason: request.held_reason,
+                held_reason_code: request.held_reason_code,
+                held_at: request.held_at.map(|value| value.to_rfc3339()),
+                held_from_status: request.held_from_status,
                 warnings: deserialize_message_list(&request.validation_warnings),
                 errors: deserialize_message_list(&request.validation_errors),
                 created_at: request.created_at.to_rfc3339(),
@@ -2091,6 +2610,16 @@ impl RegistryGovernanceService {
             .await?)
     }
 
+    async fn validation_stage_by_claim_id(
+        &self,
+        claim_id: &str,
+    ) -> anyhow::Result<Option<registry_validation_stage::Model>> {
+        Ok(RegistryValidationStageEntity::find()
+            .filter(registry_validation_stage::Column::ClaimId.eq(claim_id))
+            .one(&self.db)
+            .await?)
+    }
+
     async fn queue_follow_up_validation_stages(
         &self,
         request: &registry_publish_request::Model,
@@ -2151,6 +2680,11 @@ impl RegistryGovernanceService {
             started_at: Set(None),
             finished_at: Set(None),
             last_error: Set(None),
+            claim_id: Set(None),
+            claimed_by: Set(None),
+            claim_expires_at: Set(None),
+            last_heartbeat_at: Set(None),
+            runner_kind: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         };
@@ -2336,6 +2870,81 @@ impl RegistryGovernanceService {
             .map(|event| event.event_type))
     }
 
+    async fn finish_remote_validation_stage_claim(
+        &self,
+        claim_id: &str,
+        runner_id: &str,
+        status: RegistryValidationStageStatus,
+        detail: &str,
+        reason_code: Option<&str>,
+    ) -> anyhow::Result<registry_validation_stage::Model> {
+        let stage = self
+            .validation_stage_by_claim_id(claim_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry validation claim '{}' was not found", claim_id))?;
+        self.ensure_remote_claim_belongs_to_runner(&stage, claim_id, runner_id)?;
+        let request = self
+            .get_publish_request(&stage.request_id)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "Registry publish request '{}' for claim '{}' was not found",
+                    stage.request_id,
+                    claim_id
+                )
+            })?;
+        let runner_actor = remote_runner_actor(runner_id);
+        let stage = self
+            .update_validation_stage_status(
+                stage,
+                &request,
+                &runner_actor,
+                status,
+                detail,
+                reason_code,
+            )
+            .await?;
+        let mut active: RegistryValidationStageActiveModel = stage.into();
+        active.claim_id = Set(None);
+        active.claimed_by = Set(None);
+        active.claim_expires_at = Set(None);
+        active.last_heartbeat_at = Set(None);
+        active.runner_kind = Set(None);
+        active.updated_at = Set(Utc::now());
+        Ok(active.update(&self.db).await?)
+    }
+
+    fn ensure_remote_claim_belongs_to_runner(
+        &self,
+        stage: &registry_validation_stage::Model,
+        claim_id: &str,
+        runner_id: &str,
+    ) -> anyhow::Result<()> {
+        if stage.status != RegistryValidationStageStatus::Running {
+            anyhow::bail!(
+                "Registry validation claim '{}' is in status '{}' and can no longer be updated",
+                claim_id,
+                validation_stage_status_label(stage.status.clone())
+            );
+        }
+        let claimed_by = stage.claimed_by.as_deref().ok_or_else(|| {
+            anyhow!(
+                "Registry validation claim '{}' is missing claimed_by metadata",
+                claim_id
+            )
+        })?;
+        let expected_runner = remote_runner_actor(runner_id);
+        if claimed_by != expected_runner {
+            anyhow::bail!(
+                "Registry validation claim '{}' belongs to '{}' rather than '{}'",
+                claim_id,
+                claimed_by,
+                expected_runner
+            );
+        }
+        Ok(())
+    }
+
     async fn store_validation_rejection(
         &self,
         request: registry_publish_request::Model,
@@ -2468,6 +3077,24 @@ fn derive_registry_governance_actions(
                 restriction_reason(),
                 REGISTRY_REJECT_REASON_CODES,
             ),
+            action(
+                "request_changes",
+                false,
+                restriction_reason(),
+                REGISTRY_REQUEST_CHANGES_REASON_CODES,
+            ),
+            action(
+                "hold",
+                false,
+                restriction_reason(),
+                REGISTRY_HOLD_REASON_CODES,
+            ),
+            action(
+                "resume",
+                false,
+                restriction_reason(),
+                REGISTRY_RESUME_REASON_CODES,
+            ),
             action("stage_report", false, restriction_reason(), &[]),
             action(
                 "owner_transfer",
@@ -2520,6 +3147,20 @@ fn derive_registry_governance_actions(
             "validate",
             false,
             Some("Artifact upload must complete before validation can start.".to_string()),
+            &[],
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::ChangesRequested => {
+            action(
+                "validate",
+                false,
+                Some("Upload a fresh artifact before validation can resume.".to_string()),
+                &[],
+            )
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => action(
+            "validate",
+            false,
+            Some("Resume the request before validation can continue.".to_string()),
             &[],
         ),
         Some(request) if request.status == RegistryPublishRequestStatus::Validating => action(
@@ -2581,6 +3222,7 @@ fn derive_registry_governance_actions(
                 RegistryPublishRequestStatus::Draft
                     | RegistryPublishRequestStatus::ArtifactUploaded
                     | RegistryPublishRequestStatus::Submitted
+                    | RegistryPublishRequestStatus::ChangesRequested
             ) =>
         {
             action(
@@ -2597,6 +3239,12 @@ fn derive_registry_governance_actions(
             "approve",
             false,
             Some("Rejected publish requests cannot be approved in place.".to_string()),
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => action(
+            "approve",
+            false,
+            Some("Resume the request before approving it.".to_string()),
             REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
         ),
         Some(request) if request.status == RegistryPublishRequestStatus::Published => action(
@@ -2623,7 +3271,9 @@ fn derive_registry_governance_actions(
         Some(request)
             if !matches!(
                 request.status,
-                RegistryPublishRequestStatus::Rejected | RegistryPublishRequestStatus::Published
+                RegistryPublishRequestStatus::Rejected
+                    | RegistryPublishRequestStatus::Published
+                    | RegistryPublishRequestStatus::OnHold
             ) =>
         {
             action("reject", true, None, REGISTRY_REJECT_REASON_CODES)
@@ -2640,12 +3290,107 @@ fn derive_registry_governance_actions(
             Some("Published releases must be managed through yank/unpublish actions.".to_string()),
             REGISTRY_REJECT_REASON_CODES,
         ),
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => action(
+            "reject",
+            false,
+            Some("Resume the request before rejecting it.".to_string()),
+            REGISTRY_REJECT_REASON_CODES,
+        ),
         Some(_) => action("reject", false, None, REGISTRY_REJECT_REASON_CODES),
         None => action(
             "reject",
             false,
             Some("No publish request exists yet.".to_string()),
             REGISTRY_REJECT_REASON_CODES,
+        ),
+    };
+
+    let request_changes_action = match latest_request {
+        Some(request) if request.status == RegistryPublishRequestStatus::Approved => action(
+            "request_changes",
+            true,
+            None,
+            REGISTRY_REQUEST_CHANGES_REASON_CODES,
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::ChangesRequested => {
+            action(
+                "request_changes",
+                false,
+                Some("Changes are already requested; upload a fresh artifact next.".to_string()),
+                REGISTRY_REQUEST_CHANGES_REASON_CODES,
+            )
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => action(
+            "request_changes",
+            false,
+            Some("Resume the request before requesting changes.".to_string()),
+            REGISTRY_REQUEST_CHANGES_REASON_CODES,
+        ),
+        Some(_) => action(
+            "request_changes",
+            false,
+            Some(
+                "Request-changes is available only for review-ready publish requests.".to_string(),
+            ),
+            REGISTRY_REQUEST_CHANGES_REASON_CODES,
+        ),
+        None => action(
+            "request_changes",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            REGISTRY_REQUEST_CHANGES_REASON_CODES,
+        ),
+    };
+
+    let hold_action = match latest_request {
+        Some(request)
+            if matches!(
+                request.status,
+                RegistryPublishRequestStatus::Submitted
+                    | RegistryPublishRequestStatus::Approved
+                    | RegistryPublishRequestStatus::ChangesRequested
+            ) =>
+        {
+            action("hold", true, None, REGISTRY_HOLD_REASON_CODES)
+        }
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => action(
+            "hold",
+            false,
+            Some("This request is already on hold.".to_string()),
+            REGISTRY_HOLD_REASON_CODES,
+        ),
+        Some(_) => action(
+            "hold",
+            false,
+            Some(
+                "Only submitted, approved, or changes_requested requests can be put on hold."
+                    .to_string(),
+            ),
+            REGISTRY_HOLD_REASON_CODES,
+        ),
+        None => action(
+            "hold",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            REGISTRY_HOLD_REASON_CODES,
+        ),
+    };
+
+    let resume_action = match latest_request {
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => {
+            action("resume", true, None, REGISTRY_RESUME_REASON_CODES)
+        }
+        Some(_) => action(
+            "resume",
+            false,
+            Some("Only on-hold requests can be resumed.".to_string()),
+            REGISTRY_RESUME_REASON_CODES,
+        ),
+        None => action(
+            "resume",
+            false,
+            Some("No publish request exists yet.".to_string()),
+            REGISTRY_RESUME_REASON_CODES,
         ),
     };
 
@@ -2662,6 +3407,12 @@ fn derive_registry_governance_actions(
             "stage_report",
             false,
             Some("Rejected publish requests cannot accept follow-up stage updates.".to_string()),
+            &[],
+        ),
+        Some(request) if request.status == RegistryPublishRequestStatus::OnHold => action(
+            "stage_report",
+            false,
+            Some("Resume the request before reporting follow-up stages.".to_string()),
             &[],
         ),
         Some(_) => action(
@@ -2723,6 +3474,9 @@ fn derive_registry_governance_actions(
         validate_action,
         approve_action,
         reject_action,
+        request_changes_action,
+        hold_action,
+        resume_action,
         stage_report_action,
         owner_transfer_action,
         yank_action,
@@ -3336,6 +4090,15 @@ fn normalize_actor(value: &str) -> String {
     }
 }
 
+fn remote_runner_actor(runner_id: &str) -> String {
+    let runner_id = runner_id.trim();
+    if runner_id.is_empty() {
+        "system:registry-remote-runner:anonymous".to_string()
+    } else {
+        format!("system:registry-remote-runner:{runner_id}")
+    }
+}
+
 fn normalize_optional_actor(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -3384,6 +4147,21 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root should be resolvable from apps/server")
 }
 
+fn parse_request_status_label(value: &str) -> Option<RegistryPublishRequestStatus> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "draft" => Some(RegistryPublishRequestStatus::Draft),
+        "artifact_uploaded" => Some(RegistryPublishRequestStatus::ArtifactUploaded),
+        "submitted" => Some(RegistryPublishRequestStatus::Submitted),
+        "validating" => Some(RegistryPublishRequestStatus::Validating),
+        "approved" => Some(RegistryPublishRequestStatus::Approved),
+        "changes_requested" => Some(RegistryPublishRequestStatus::ChangesRequested),
+        "on_hold" => Some(RegistryPublishRequestStatus::OnHold),
+        "rejected" => Some(RegistryPublishRequestStatus::Rejected),
+        "published" => Some(RegistryPublishRequestStatus::Published),
+        _ => None,
+    }
+}
+
 pub fn request_status_label(status: RegistryPublishRequestStatus) -> &'static str {
     match status {
         RegistryPublishRequestStatus::Draft => "draft",
@@ -3391,6 +4169,8 @@ pub fn request_status_label(status: RegistryPublishRequestStatus) -> &'static st
         RegistryPublishRequestStatus::Submitted => "submitted",
         RegistryPublishRequestStatus::Validating => "validating",
         RegistryPublishRequestStatus::Approved => "approved",
+        RegistryPublishRequestStatus::ChangesRequested => "changes_requested",
+        RegistryPublishRequestStatus::OnHold => "on_hold",
         RegistryPublishRequestStatus::Rejected => "rejected",
         RegistryPublishRequestStatus::Published => "published",
     }
@@ -4401,6 +5181,15 @@ mod tests {
             approved_by: None,
             rejected_by: None,
             rejection_reason: None,
+            changes_requested_by: None,
+            changes_requested_reason: None,
+            changes_requested_reason_code: None,
+            changes_requested_at: None,
+            held_by: None,
+            held_reason: None,
+            held_reason_code: None,
+            held_at: None,
+            held_from_status: None,
             validation_warnings: serde_json::json!([]),
             validation_errors: serde_json::json!([]),
             artifact_path: None,
@@ -4546,6 +5335,11 @@ mod tests {
             .then_some(now)),
             last_error: Set(matches!(status, RegistryValidationStageStatus::Failed)
                 .then_some(detail.to_string())),
+            claim_id: Set(None),
+            claimed_by: Set(None),
+            claim_expires_at: Set(None),
+            last_heartbeat_at: Set(None),
+            runner_kind: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         };

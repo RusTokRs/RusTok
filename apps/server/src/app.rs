@@ -1328,6 +1328,482 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_publish_request_changes_endpoint_requeues_request_after_fresh_artifact_upload()
+    {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for request-changes lifecycle");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        insert_validation_stage(
+            &ctx,
+            &approved,
+            "compile_smoke",
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Queued,
+            1,
+            "Compile smoke queued before moderation feedback.",
+        )
+        .await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let changes_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/request-changes", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Artifact needs a fresh build after review feedback.",
+                            "reason_code": "artifact_mismatch"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("request-changes request should succeed");
+        let status = changes_response.status();
+        let body = to_bytes(changes_response.into_body(), usize::MAX)
+            .await
+            .expect("request-changes body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected request-changes response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value = serde_json::from_slice(&body)
+            .expect("request-changes response should be valid json");
+        assert_eq!(
+            payload.get("status").and_then(Value::as_str),
+            Some("changes_requested")
+        );
+
+        let changed_request = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+            .one(&ctx.db)
+            .await
+            .expect("request lookup should succeed")
+            .expect("request should persist");
+        assert_eq!(
+            changed_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::ChangesRequested
+        );
+        assert_eq!(
+            changed_request.changes_requested_reason_code.as_deref(),
+            Some("artifact_mismatch")
+        );
+        let stage_count = crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()))
+            .count(&ctx.db)
+            .await
+            .expect("stage count should load");
+        assert_eq!(stage_count, 0, "changes_requested should clear prior stages");
+
+        let upload_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/v2/catalog/publish/{}/artifact", approved.id))
+                    .header("content-type", "application/octet-stream")
+                    .header("x-rustok-actor", "publisher:blog")
+                    .body(Body::from(Bytes::from_static(b"fresh-artifact-bytes")))
+                    .expect("request"),
+            )
+            .await
+            .expect("artifact upload should succeed");
+        let upload_status = upload_response.status();
+        let upload_body = to_bytes(upload_response.into_body(), usize::MAX)
+            .await
+            .expect("artifact upload body should read");
+        assert_eq!(
+            upload_status,
+            StatusCode::ACCEPTED,
+            "unexpected artifact upload response body: {}",
+            String::from_utf8_lossy(&upload_body)
+        );
+
+        let resubmitted = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+            .one(&ctx.db)
+            .await
+            .expect("request lookup should succeed")
+            .expect("request should persist");
+        assert_eq!(
+            resubmitted.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::Submitted
+        );
+        assert!(resubmitted.changes_requested_reason.is_none());
+        assert!(resubmitted.changes_requested_reason_code.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_publish_hold_and_resume_endpoints_round_trip_request_status() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for hold/resume lifecycle");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+
+        let hold_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/hold", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Release window is currently frozen.",
+                            "reason_code": "release_window"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("hold request should succeed");
+        assert_eq!(hold_response.status(), StatusCode::OK);
+
+        let held_request = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+            .one(&ctx.db)
+            .await
+            .expect("request lookup should succeed")
+            .expect("request should persist");
+        assert_eq!(
+            held_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold
+        );
+        assert_eq!(held_request.held_from_status.as_deref(), Some("approved"));
+
+        let validate_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/validate", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("validate request should complete");
+        assert_eq!(validate_response.status(), StatusCode::BAD_REQUEST);
+
+        let resume_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/resume", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Release window reopened.",
+                            "reason_code": "review_complete"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("resume request should succeed");
+        assert_eq!(resume_response.status(), StatusCode::OK);
+
+        let resumed_request = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+            .one(&ctx.db)
+            .await
+            .expect("request lookup should succeed")
+            .expect("request should persist");
+        assert_eq!(
+            resumed_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        );
+        assert!(resumed_request.held_reason.is_none());
+        assert!(resumed_request.held_from_status.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_projects_new_version_only_after_explicit_publish() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for V2->V1 projection invariant");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request_with_version(&ctx, "9.9.9").await;
+        set_request_artifact_metadata(&ctx, &approved).await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+
+        let before_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog/blog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("catalog detail should succeed");
+        let before_body = to_bytes(before_response.into_body(), usize::MAX)
+            .await
+            .expect("catalog detail body should read");
+        let before_payload: Value =
+            serde_json::from_slice(&before_body).expect("catalog detail should be valid json");
+        assert!(
+            !catalog_payload_has_version(&before_payload, "9.9.9"),
+            "approved but unpublished request must not project into V1"
+        );
+
+        crate::services::registry_governance::RegistryGovernanceService::new(ctx.db.clone())
+            .approve_publish_request(
+                &approved.id,
+                "governance:moderator",
+                Some("publisher:blog"),
+                None,
+                None,
+            )
+            .await
+            .expect("explicit publish should succeed");
+
+        let after_response = base_router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog/blog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("catalog detail after publish should succeed");
+        let after_body = to_bytes(after_response.into_body(), usize::MAX)
+            .await
+            .expect("catalog detail body should read");
+        let after_payload: Value =
+            serde_json::from_slice(&after_body).expect("catalog detail should be valid json");
+        assert!(
+            catalog_payload_has_version(&after_payload, "9.9.9"),
+            "explicit publish must project the new release into V1"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_remote_runner_endpoints_claim_heartbeat_and_complete_stage() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for remote runner lifecycle");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                },
+                "registry": {
+                    "remote_executor": {
+                        "enabled": true,
+                        "shared_token": "runner-shared-token",
+                        "lease_ttl_ms": 30000,
+                        "requeue_scan_interval_ms": 1000
+                    }
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request_with_version(&ctx, "9.9.8").await;
+        let approved = set_request_artifact_metadata(&ctx, &approved).await;
+        insert_validation_stage(
+            &ctx,
+            &approved,
+            "compile_smoke",
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Queued,
+            1,
+            "Compile smoke queued for remote execution.",
+        )
+        .await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("after_routes should wire runtime");
+
+        let claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/runner/claim")
+                    .header("content-type", "application/json")
+                    .header("x-rustok-runner-token", "runner-shared-token")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "runner_id": "runner-01",
+                            "supportedStages": ["compile_smoke"]
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("remote runner claim should succeed");
+        let claim_status = claim_response.status();
+        let claim_body = to_bytes(claim_response.into_body(), usize::MAX)
+            .await
+            .expect("claim body should read");
+        assert_eq!(
+            claim_status,
+            StatusCode::OK,
+            "unexpected claim response body: {}",
+            String::from_utf8_lossy(&claim_body)
+        );
+        let claim_payload: Value =
+            serde_json::from_slice(&claim_body).expect("claim response should be valid json");
+        let claim = claim_payload
+            .get("claim")
+            .and_then(Value::as_object)
+            .expect("claim payload should include a claimed stage");
+        let claim_id = claim
+            .get("claimId")
+            .and_then(Value::as_str)
+            .expect("claimId should be present")
+            .to_string();
+        assert_eq!(claim.get("stageKey").and_then(Value::as_str), Some("compile_smoke"));
+
+        let claimed_stage = crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()))
+            .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
+            .one(&ctx.db)
+            .await
+            .expect("stage lookup should succeed")
+            .expect("claimed stage should exist");
+        assert_eq!(claimed_stage.claim_id.as_deref(), Some(claim_id.as_str()));
+        assert_eq!(claimed_stage.runner_kind.as_deref(), Some("remote"));
+
+        let heartbeat_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/runner/{claim_id}/heartbeat"))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-runner-token", "runner-shared-token")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "runner_id": "runner-01"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("remote runner heartbeat should succeed");
+        assert_eq!(heartbeat_response.status(), StatusCode::OK);
+
+        let complete_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/runner/{claim_id}/complete"))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-runner-token", "runner-shared-token")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "runner_id": "runner-01",
+                            "detail": "Remote compile smoke completed successfully.",
+                            "reason_code": "local_runner_passed"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("remote runner completion should succeed");
+        assert_eq!(complete_response.status(), StatusCode::OK);
+
+        let completed_stage = crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id))
+            .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
+            .order_by_desc(crate::models::registry_validation_stage::Column::AttemptNumber)
+            .one(&ctx.db)
+            .await
+            .expect("stage lookup should succeed")
+            .expect("completed stage should exist");
+        assert_eq!(
+            completed_stage.status,
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Passed
+        );
+        assert!(completed_stage.claim_id.is_none());
+        assert!(completed_stage.claimed_by.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
@@ -1440,6 +1916,72 @@ mod tests {
             .expect("registry-only validate request should complete");
         assert_eq!(validate_response.status(), StatusCode::NOT_FOUND);
 
+        let request_changes_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/request-changes")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "reason": "Registry-only host must stay read-only",
+                            "reason_code": "other"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only request-changes request should complete");
+        assert_eq!(request_changes_response.status(), StatusCode::NOT_FOUND);
+
+        let hold_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/hold")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "reason": "Registry-only host must stay read-only",
+                            "reason_code": "other"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only hold request should complete");
+        assert_eq!(hold_response.status(), StatusCode::NOT_FOUND);
+
+        let resume_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/resume")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "reason": "Registry-only host must stay read-only",
+                            "reason_code": "other"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only resume request should complete");
+        assert_eq!(resume_response.status(), StatusCode::NOT_FOUND);
+
         let stage_response = app
             .clone()
             .oneshot(
@@ -1463,6 +2005,27 @@ mod tests {
             .await
             .expect("registry-only stage request should complete");
         assert_eq!(stage_response.status(), StatusCode::NOT_FOUND);
+
+        let runner_claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/runner/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "runner_id": "runner-01",
+                            "supportedStages": ["compile_smoke"]
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only runner claim request should complete");
+        assert_eq!(runner_claim_response.status(), StatusCode::NOT_FOUND);
 
         let owner_transfer_response = app
             .clone()
@@ -1549,6 +2112,13 @@ mod tests {
     async fn create_approved_publish_request(
         ctx: &loco_rs::app::AppContext,
     ) -> crate::models::registry_publish_request::Model {
+        create_approved_publish_request_with_version(ctx, "0.1.0").await
+    }
+
+    async fn create_approved_publish_request_with_version(
+        ctx: &loco_rs::app::AppContext,
+        version: &str,
+    ) -> crate::models::registry_publish_request::Model {
         let governance =
             crate::services::registry_governance::RegistryGovernanceService::new(ctx.db.clone());
         let created = governance
@@ -1558,7 +2128,7 @@ mod tests {
                     dry_run: false,
                     module: crate::services::marketplace_catalog::RegistryPublishModuleRequest {
                         slug: "blog".to_string(),
-                        version: "0.1.0".to_string(),
+                        version: version.to_string(),
                         crate_name: "rustok-blog".to_string(),
                         name: "Blog".to_string(),
                         description: "Blog and news module contract preview.".to_string(),
@@ -1597,6 +2167,43 @@ mod tests {
             .expect("request should become approved")
     }
 
+    async fn set_request_artifact_metadata(
+        ctx: &loco_rs::app::AppContext,
+        request: &crate::models::registry_publish_request::Model,
+    ) -> crate::models::registry_publish_request::Model {
+        let mut active = crate::models::registry_publish_request::ActiveModel::from(request.clone());
+        active.artifact_path = Set(Some(format!(
+            "registry-artifacts/{}-{}.tar.zst",
+            request.slug, request.version
+        )));
+        active.artifact_url = Set(Some(format!(
+            "https://registry.example.test/{}/{}.tar.zst",
+            request.slug, request.version
+        )));
+        active.artifact_checksum_sha256 = Set(Some("a".repeat(64)));
+        active.artifact_size = Set(Some(1024));
+        active.artifact_content_type = Set(Some("application/octet-stream".to_string()));
+        active.updated_at = Set(chrono::Utc::now());
+        active
+            .update(&ctx.db)
+            .await
+            .expect("artifact metadata should update")
+    }
+
+    fn catalog_payload_has_version(payload: &Value, version: &str) -> bool {
+        payload
+            .get("versions")
+            .and_then(Value::as_array)
+            .is_some_and(|versions| {
+                versions.iter().any(|entry| {
+                    entry
+                        .get("version")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| value == version)
+                })
+            })
+    }
+
     async fn insert_validation_stage(
         ctx: &loco_rs::app::AppContext,
         request: &crate::models::registry_publish_request::Model,
@@ -1620,6 +2227,11 @@ mod tests {
             started_at: Set(None),
             finished_at: Set(None),
             last_error: Set(None),
+            claim_id: Set(None),
+            claimed_by: Set(None),
+            claim_expires_at: Set(None),
+            last_heartbeat_at: Set(None),
+            runner_kind: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }

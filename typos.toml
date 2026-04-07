@@ -4,6 +4,13 @@
 extend-exclude = [
   "crates/rustok-core/src/i18n.rs",
   "crates/rustok-commerce/tests/catalog_service_test.rs",
+  "apps/next-admin/src/styles/globals.css",
+  "crates/rustok-ai/src/direct.rs",
+  "crates/rustok-ai/src/provider.rs",
+  "crates/rustok-commerce/src/controllers/store.rs",
+  "crates/rustok-commerce/tests/checkout_service_test.rs",
+  "crates/rustok-commerce/tests/graphql_runtime_parity_test.rs",
+  "vendor/**",
   # Vendored upstream patch set; keep spellings and identifiers aligned with upstream.
   "third_party/patches/parcel_css/**",
 ]

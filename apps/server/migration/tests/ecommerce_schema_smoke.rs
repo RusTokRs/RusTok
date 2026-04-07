@@ -464,9 +464,9 @@ fn create_product_input() -> CreateProductInput {
             },
             ProductTranslationInput {
                 locale: "ru".to_string(),
-                title: "РўРѕРІР°СЂ РёР· РјРёРіСЂР°С†РёР№".to_string(),
-                description: Some("Р СѓСЃСЃРєР°СЏ Р»РѕРєР°Р»РёР·Р°С†РёСЏ".to_string()),
-                handle: Some(format!("tovar-iz-migraciy-{}", Uuid::new_v4())),
+                title: "Migration-backed RU product".to_string(),
+                description: Some("Russian localization".to_string()),
+                handle: Some(format!("migration-backed-ru-{}", Uuid::new_v4())),
                 meta_title: Some("RU meta".to_string()),
                 meta_description: Some("RU description".to_string()),
             },
@@ -478,6 +478,7 @@ fn create_product_input() -> CreateProductInput {
         variants: vec![CreateVariantInput {
             sku: Some(format!("SKU-{}", Uuid::new_v4())),
             barcode: None,
+            shipping_profile_slug: None,
             option1: Some("Default".to_string()),
             option2: None,
             option3: None,
@@ -549,6 +550,7 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: Some(Uuid::new_v4()),
                 variant_id: Some(Uuid::new_v4()),
+                shipping_profile_slug: "default".to_string(),
                 sku: Some(format!("ORD-SKU-{}", Uuid::new_v4())),
                 title: "Migration order product".to_string(),
                 quantity: 2,
@@ -558,6 +560,7 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: None,
                 variant_id: None,
+                shipping_profile_slug: "default".to_string(),
                 sku: Some(format!("ORD-ADDON-{}", Uuid::new_v4())),
                 title: "Migration add-on".to_string(),
                 quantity: 1,
@@ -586,6 +589,7 @@ fn create_cart_line_item_input() -> AddCartLineItemInput {
     AddCartLineItemInput {
         product_id: Some(Uuid::new_v4()),
         variant_id: Some(Uuid::new_v4()),
+        shipping_profile_slug: None,
         sku: Some(format!("CART-SKU-{}", Uuid::new_v4())),
         title: "Migration cart product".to_string(),
         quantity: 2,
@@ -664,6 +668,6 @@ async fn catalog_service_supports_multilingual_catalog_data_on_migrated_schema()
             .iter()
             .find(|item| item.locale == "ru")
             .map(|item| item.title.as_str()),
-        Some("РўРѕРІР°СЂ РёР· РјРёРіСЂР°С†РёР№")
+        Some("Migration-backed RU product")
     );
 }

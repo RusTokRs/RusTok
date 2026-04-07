@@ -384,6 +384,14 @@ struct ModuleValidationStageDryRunPreview {
 }
 
 #[derive(Debug, Serialize)]
+struct ModuleRegistryDecisionDryRunPreview {
+    action: String,
+    request_id: String,
+    reason: Option<String>,
+    reason_code: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct ModuleValidationStageRunPreview {
     action: String,
     slug: String,
@@ -433,6 +441,26 @@ const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
     "trusted_first_party",
     "expedited_release",
     "governance_override",
+    "other",
+];
+const REGISTRY_REQUEST_CHANGES_REASON_CODES: &[&str] = &[
+    "artifact_mismatch",
+    "quality_gap",
+    "policy_gap",
+    "docs_gap",
+    "other",
+];
+const REGISTRY_HOLD_REASON_CODES: &[&str] = &[
+    "release_window",
+    "incident",
+    "legal_hold",
+    "security_review",
+    "other",
+];
+const REGISTRY_RESUME_REASON_CODES: &[&str] = &[
+    "review_complete",
+    "incident_closed",
+    "legal_cleared",
     "other",
 ];
 const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
@@ -491,6 +519,11 @@ fn print_usage() {
     println!("  module stage-run    Execute a local follow-up validation stage and report it");
     println!("  module publish      Create/preview a publish request and stop at review-ready unless --auto-approve is set");
     println!("  module stage        Record or requeue a follow-up validation stage");
+    println!(
+        "  module request-changes Request a new artifact revision for an approved publish request"
+    );
+    println!("  module hold         Put a publish request on hold");
+    println!("  module resume       Resume a held publish request");
     println!("  module owner-transfer Emit a dry-run owner transfer payload preview");
     println!("  module yank         Emit a dry-run yank payload preview");
 }
@@ -710,6 +743,9 @@ fn module_command(args: &[String]) -> Result<()> {
         "stage-run" => module_stage_run_command(&args[1..]),
         "publish" => module_publish_command(&args[1..]),
         "stage" => module_stage_command(&args[1..]),
+        "request-changes" => module_request_changes_command(&args[1..]),
+        "hold" => module_hold_command(&args[1..]),
+        "resume" => module_resume_command(&args[1..]),
         "owner-transfer" => module_owner_transfer_command(&args[1..]),
         "yank" => module_yank_command(&args[1..]),
         other => {
@@ -731,6 +767,15 @@ fn print_module_usage() {
     );
     println!(
         "  cargo xtask module stage <request-id> <stage> <status> [--dry-run] [--detail <text>] [--reason-code <code>] [--requeue] [--registry-url <url>]"
+    );
+    println!(
+        "  cargo xtask module request-changes <request-id> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>]"
+    );
+    println!(
+        "  cargo xtask module hold <request-id> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>]"
+    );
+    println!(
+        "  cargo xtask module resume <request-id> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>]"
     );
     println!(
         "  cargo xtask module owner-transfer <slug> <new-owner-actor> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>]"
@@ -1112,6 +1157,103 @@ fn module_stage_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn module_request_changes_command(args: &[String]) -> Result<()> {
+    module_publish_decision_command(
+        args,
+        "request_changes",
+        "request-changes",
+        REGISTRY_REQUEST_CHANGES_REASON_CODES,
+        "Registry request-changes is not enabled for this request.",
+    )
+}
+
+fn module_hold_command(args: &[String]) -> Result<()> {
+    module_publish_decision_command(
+        args,
+        "hold",
+        "hold",
+        REGISTRY_HOLD_REASON_CODES,
+        "Registry hold is not enabled for this request.",
+    )
+}
+
+fn module_resume_command(args: &[String]) -> Result<()> {
+    module_publish_decision_command(
+        args,
+        "resume",
+        "resume",
+        REGISTRY_RESUME_REASON_CODES,
+        "Registry resume is not enabled for this request.",
+    )
+}
+
+fn module_publish_decision_command(
+    args: &[String],
+    action_key: &str,
+    cli_label: &str,
+    supported_reason_codes: &[&str],
+    disabled_message: &str,
+) -> Result<()> {
+    if args.is_empty() {
+        print_module_usage();
+        anyhow::bail!("module {cli_label} requires a request id");
+    }
+
+    let request_id = args[0].trim();
+    if request_id.is_empty() {
+        anyhow::bail!("module {cli_label} requires a non-empty request id");
+    }
+
+    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
+    let reason = reason_argument(&args[1..]);
+    let reason_code = decision_reason_code_argument(&args[1..], cli_label, supported_reason_codes)?;
+    let preview = ModuleRegistryDecisionDryRunPreview {
+        action: action_key.to_string(),
+        request_id: request_id.to_string(),
+        reason: reason.clone(),
+        reason_code: reason_code.clone(),
+    };
+    let registry_url = registry_url_argument(&args[1..]);
+
+    if dry_run {
+        if let Some(registry_url) = registry_url {
+            let payload = publish_decision_via_registry_dry_run(
+                &registry_url,
+                request_id,
+                action_key,
+                reason,
+                reason_code,
+            )?;
+            println!("{payload}");
+        } else {
+            println!("{}", serde_json::to_string_pretty(&preview)?);
+        }
+        return Ok(());
+    }
+
+    let registry_url = registry_url.with_context(|| {
+        format!("Live module {cli_label} requires --registry-url or RUSTOK_MODULE_REGISTRY_URL")
+    })?;
+    let reason =
+        reason.with_context(|| format!("Live module {cli_label} requires --reason <text>"))?;
+    let reason_code = reason_code.with_context(|| {
+        format!(
+            "Live module {cli_label} requires --reason-code <{}>",
+            supported_reason_codes.join("|")
+        )
+    })?;
+    let payload = publish_decision_via_registry_live(
+        &registry_url,
+        request_id,
+        action_key,
+        reason,
+        reason_code,
+        disabled_message,
+    )?;
+    println!("{payload}");
+    Ok(())
+}
+
 fn selected_modules<'a>(
     manifest: &'a Manifest,
     slug: Option<&'a str>,
@@ -1221,6 +1363,19 @@ fn validation_stage_reason_code_argument(args: &[String]) -> Result<Option<Strin
         args,
         REGISTRY_VALIDATION_STAGE_REASON_CODES,
         "module stage",
+        "--reason-code",
+    )
+}
+
+fn decision_reason_code_argument(
+    args: &[String],
+    command_label: &str,
+    allowed: &[&str],
+) -> Result<Option<String>> {
+    normalized_reason_code_argument(
+        args,
+        allowed,
+        &format!("module {command_label}"),
         "--reason-code",
     )
 }
@@ -1523,6 +1678,62 @@ fn owner_transfer_via_registry_live(
     if !response.accepted {
         anyhow::bail!(
             "Registry owner transfer request was not accepted: {}",
+            join_registry_errors(&response.errors)
+        );
+    }
+
+    pretty_json(&response)
+}
+
+fn publish_decision_via_registry_dry_run(
+    registry_url: &str,
+    request_id: &str,
+    action_key: &str,
+    reason: Option<String>,
+    reason_code: Option<String>,
+) -> Result<String> {
+    let endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}/{}",
+        registry_url.trim_end_matches('/'),
+        action_key.replace('_', "-")
+    );
+    let request = RegistryPublishDecisionHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run: true,
+        reason,
+        reason_code,
+    };
+    post_registry_json(&endpoint, &request)
+}
+
+fn publish_decision_via_registry_live(
+    registry_url: &str,
+    request_id: &str,
+    action_key: &str,
+    reason: String,
+    reason_code: String,
+    disabled_message: &str,
+) -> Result<String> {
+    let status = fetch_registry_publish_status(registry_url, request_id)?;
+    ensure_status_governance_action_enabled(&status, action_key, disabled_message)?;
+    let endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}/{}",
+        registry_url.trim_end_matches('/'),
+        action_key.replace('_', "-")
+    );
+    let request = RegistryPublishDecisionHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run: false,
+        reason: Some(reason),
+        reason_code: Some(reason_code),
+    };
+    let actor = format!("xtask:module-{}", action_key.replace('_', "-"));
+    let response: RegistryMutationHttpResponse =
+        post_registry_json_parsed(&endpoint, &request, Some(&actor), None)?;
+    if !response.accepted {
+        anyhow::bail!(
+            "Registry {} request was not accepted: {}",
+            action_key,
             join_registry_errors(&response.errors)
         );
     }

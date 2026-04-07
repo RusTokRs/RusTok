@@ -31,6 +31,7 @@ fn line_item_input() -> AddCartLineItemInput {
     AddCartLineItemInput {
         product_id: Some(Uuid::new_v4()),
         variant_id: Some(Uuid::new_v4()),
+        shipping_profile_slug: None,
         sku: Some("SKU-CART-1".to_string()),
         title: "Cart product".to_string(),
         quantity: 2,
@@ -146,6 +147,7 @@ async fn update_cart_context_rewrites_snapshot_fields() {
                 country_code: Some("pl".to_string()),
                 locale_code: Some("pl_PL".to_string()),
                 selected_shipping_option_id: Some(updated_shipping_option_id),
+                shipping_selections: None,
             },
         )
         .await
