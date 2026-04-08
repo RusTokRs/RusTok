@@ -15,7 +15,7 @@
 - `shipping_options`, `fulfillments`, `FulfillmentModule` и `FulfillmentService` уже выделены;
 - first-class `allowed_shipping_profile_slugs` уже являются частью live contract;
 - deliverability orchestration с `delivery_groups[]`, `shipping_selections[]` и multi-fulfillment checkout строится umbrella `rustok-commerce` поверх этого boundary;
-- admin/operator surface уже использует typed lifecycle для shipping options.
+- admin/operator surface уже использует typed lifecycle для shipping options, а module-owned route `rustok-fulfillment/admin` забрал ownership shipping-option UI у umbrella `rustok-commerce-admin`.
 
 ## Этапы
 
@@ -24,6 +24,7 @@
 - [x] закрепить shipping-option/fulfillment boundary;
 - [x] встроить first-class `allowed_shipping_profile_slugs`;
 - [x] удерживать compatibility shim для single-group carts только как переходный transport layer;
+- [x] вынести shipping-option admin UI в module-owned пакет `rustok-fulfillment/admin`;
 - [ ] удерживать sync между fulfillment runtime contract, commerce orchestration и module metadata.
 
 ### 2. Deliverability expansion

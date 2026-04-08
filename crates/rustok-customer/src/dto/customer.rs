@@ -38,6 +38,13 @@ pub struct UpdateCustomerInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ListCustomersInput {
+    pub search: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CustomerResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,

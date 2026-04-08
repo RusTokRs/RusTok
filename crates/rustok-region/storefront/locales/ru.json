@@ -1,0 +1,21 @@
+{
+  "region.badge": "region",
+  "region.common.countries": "стран",
+  "region.common.taxExcluded": "налог не включён",
+  "region.common.taxIncluded": "налог включён",
+  "region.common.taxRate": "ставка налога",
+  "region.error.loadStorefront": "Не удалось загрузить storefront-данные региона",
+  "region.list.empty": "Для storefront discovery пока нет доступных регионов.",
+  "region.list.open": "Открыть",
+  "region.list.title": "Доступные регионы",
+  "region.list.total": "{count} всего",
+  "region.selected.body": "Этот регион задаёт storefront baseline для поддерживаемых стран, валюты и налоговой семантики.",
+  "region.selected.countries": "Поддерживаемые страны",
+  "region.selected.coverage": "Покрытие",
+  "region.selected.currency": "Валюта",
+  "region.selected.emptyBody": "Сначала создайте регион в region admin package или включите region data для текущего tenant.",
+  "region.selected.emptyTitle": "Нет доступных storefront-регионов",
+  "region.selected.taxRate": "Ставка налога",
+  "region.subtitle": "Этот публичный route читает region, country, currency и tax baseline через storefront surface модуля region.",
+  "region.title": "Storefront discovery регионов из module package"
+}

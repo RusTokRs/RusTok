@@ -7,8 +7,9 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
@@ -33,6 +34,28 @@ mod product_field_definitions_storage {
 
 struct ProductTagState {
     tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontProductList {
+    pub items: Vec<StorefrontProductListItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontProductListItem {
+    pub id: Uuid,
+    pub status: entities::product::ProductStatus,
+    pub title: String,
+    pub handle: String,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub tags: Vec<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub struct CatalogService {
@@ -694,6 +717,151 @@ impl CatalogService {
         );
 
         Ok(response)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn list_published_products_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+        page: u64,
+        per_page: u64,
+    ) -> CommerceResult<StorefrontProductList> {
+        let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        let page = page.max(1);
+        let per_page = per_page.clamp(1, 48);
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        let visible_products = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
+            .filter(entities::product::Column::PublishedAt.is_not_null())
+            .order_by_desc(entities::product::Column::PublishedAt)
+            .order_by_desc(entities::product::Column::CreatedAt)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .filter(|product| {
+                is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+            })
+            .collect::<Vec<_>>();
+        let total = visible_products.len() as u64;
+        let products = visible_products
+            .into_iter()
+            .skip(offset as usize)
+            .take(per_page as usize)
+            .collect::<Vec<_>>();
+        let product_ids = products
+            .iter()
+            .map(|product| product.id)
+            .collect::<Vec<_>>();
+        let translations = if product_ids.is_empty() {
+            Vec::new()
+        } else {
+            entities::product_translation::Entity::find()
+                .filter(entities::product_translation::Column::ProductId.is_in(product_ids))
+                .all(&self.db)
+                .await?
+        };
+        let mut translations_by_product: HashMap<Uuid, Vec<entities::product_translation::Model>> =
+            HashMap::new();
+        for translation in translations {
+            translations_by_product
+                .entry(translation.product_id)
+                .or_default()
+                .push(translation);
+        }
+        let product_tags = self
+            .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
+            .await?;
+
+        let items = products
+            .into_iter()
+            .map(|product| {
+                let translation = translations_by_product.get(&product.id).and_then(|items| {
+                    pick_product_translation(items.as_slice(), locale, fallback_locale)
+                });
+                StorefrontProductListItem {
+                    id: product.id,
+                    status: product.status,
+                    title: translation
+                        .map(|value| value.title.clone())
+                        .unwrap_or_else(|| "Untitled product".to_string()),
+                    handle: translation
+                        .map(|value| value.handle.clone())
+                        .unwrap_or_default(),
+                    vendor: product.vendor,
+                    product_type: product.product_type,
+                    tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
+                    created_at: product.created_at.into(),
+                    published_at: product.published_at.map(Into::into),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(StorefrontProductList {
+            items,
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_published_product_by_handle_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        handle: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+    ) -> CommerceResult<Option<ProductResponse>> {
+        let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        let Some(product_id) = find_published_product_id_by_handle(
+            &self.db,
+            tenant_id,
+            handle,
+            locale,
+            fallback_locale,
+            public_channel_slug,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+
+        let mut product = match self
+            .get_product_with_locale_fallback(tenant_id, product_id, locale, Some(fallback_locale))
+            .await
+        {
+            Ok(product) => product,
+            Err(CommerceError::ProductNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+
+        if product.status != entities::product::ProductStatus::Active
+            || product.published_at.is_none()
+            || !is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+        {
+            return Ok(None);
+        }
+
+        apply_public_channel_inventory_to_product(
+            &self.db,
+            tenant_id,
+            &mut product,
+            public_channel_slug,
+        )
+        .await?;
+
+        Ok(Some(localize_product_response(
+            product,
+            locale,
+            fallback_locale,
+        )))
     }
 
     #[instrument(skip(self, input))]
@@ -1876,4 +2044,293 @@ fn merge_reserved_product_metadata(
     }
 
     Value::Object(reserved)
+}
+
+fn pick_product_translation<'a>(
+    translations: &'a [entities::product_translation::Model],
+    locale: &str,
+    fallback_locale: &str,
+) -> Option<&'a entities::product_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| translation.locale == locale)
+        .or_else(|| {
+            (fallback_locale != locale).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| translation.locale == fallback_locale)
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+fn pick_response_translation<'a>(
+    translations: &'a [ProductTranslationResponse],
+    locale: &str,
+    fallback_locale: &str,
+) -> Option<&'a ProductTranslationResponse> {
+    translations
+        .iter()
+        .find(|translation| translation.locale == locale)
+        .or_else(|| {
+            (fallback_locale != locale).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| translation.locale == fallback_locale)
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+fn localize_product_response(
+    mut product: ProductResponse,
+    locale: &str,
+    fallback_locale: &str,
+) -> ProductResponse {
+    let selected_translation =
+        pick_response_translation(product.translations.as_slice(), locale, fallback_locale)
+            .cloned()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+    if !selected_translation.is_empty() {
+        product.translations = selected_translation;
+    }
+
+    product
+}
+
+fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(|slug| slug.to_ascii_lowercase())
+}
+
+fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
+    let Some(values) = metadata
+        .as_object()
+        .and_then(|object| object.get("channel_visibility"))
+        .and_then(|value| value.as_object())
+        .and_then(|object| object.get("allowed_channel_slugs"))
+        .and_then(|value| value.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut normalized = BTreeSet::new();
+    for value in values {
+        if let Some(slug) = value
+            .as_str()
+            .and_then(|value| normalize_public_channel_slug(Some(value)))
+        {
+            normalized.insert(slug);
+        }
+    }
+
+    normalized.into_iter().collect()
+}
+
+fn is_allowlist_visible_for_public_channel(
+    allowed_channel_slugs: &[String],
+    public_channel_slug: Option<&str>,
+) -> bool {
+    if allowed_channel_slugs.is_empty() {
+        return true;
+    }
+
+    let Some(public_channel_slug) = normalize_public_channel_slug(public_channel_slug) else {
+        return false;
+    };
+
+    allowed_channel_slugs
+        .iter()
+        .any(|slug| slug == &public_channel_slug)
+}
+
+fn is_metadata_visible_for_public_channel(
+    metadata: &Value,
+    public_channel_slug: Option<&str>,
+) -> bool {
+    let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
+    is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
+}
+
+async fn load_available_inventory_by_variant_for_public_channel(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    variant_ids: &[Uuid],
+    public_channel_slug: Option<&str>,
+) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
+    if variant_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let inventory_items = entities::inventory_item::Entity::find()
+        .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
+        .all(db)
+        .await?;
+    if inventory_items.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
+        .iter()
+        .map(|item| (item.id, item.variant_id))
+        .collect();
+    let levels = entities::inventory_level::Entity::find()
+        .filter(
+            entities::inventory_level::Column::InventoryItemId
+                .is_in(item_to_variant.keys().copied()),
+        )
+        .all(db)
+        .await?;
+    if levels.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let locations = entities::stock_location::Entity::find()
+        .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+        .filter(entities::stock_location::Column::DeletedAt.is_null())
+        .filter(
+            entities::stock_location::Column::Id
+                .is_in(levels.iter().map(|level| level.location_id)),
+        )
+        .all(db)
+        .await?;
+    let visible_location_ids = locations
+        .into_iter()
+        .filter(|location| {
+            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
+        })
+        .map(|location| location.id)
+        .collect::<HashSet<_>>();
+
+    let mut available_by_variant = HashMap::new();
+    for level in levels {
+        if !visible_location_ids.contains(&level.location_id) {
+            continue;
+        }
+
+        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
+            *available_by_variant.entry(*variant_id).or_insert(0) +=
+                level.stocked_quantity - level.reserved_quantity;
+        }
+    }
+
+    Ok(available_by_variant)
+}
+
+async fn apply_public_channel_inventory_to_product(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    product: &mut ProductResponse,
+    public_channel_slug: Option<&str>,
+) -> Result<(), sea_orm::DbErr> {
+    let variant_ids = product
+        .variants
+        .iter()
+        .map(|variant| variant.id)
+        .collect::<Vec<_>>();
+    let available_by_variant = load_available_inventory_by_variant_for_public_channel(
+        db,
+        tenant_id,
+        &variant_ids,
+        public_channel_slug,
+    )
+    .await?;
+
+    for variant in &mut product.variants {
+        let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
+        variant.inventory_quantity = available_inventory;
+        variant.in_stock = available_inventory > 0 || variant.inventory_policy == "continue";
+    }
+
+    Ok(())
+}
+
+async fn find_published_product_id_by_handle(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    handle: &str,
+    locale: &str,
+    fallback_locale: &str,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<Option<Uuid>> {
+    if let Some(product_id) =
+        find_published_product_id_for_locale(db, tenant_id, handle, locale, public_channel_slug)
+            .await?
+    {
+        return Ok(Some(product_id));
+    }
+
+    if fallback_locale != locale {
+        if let Some(product_id) = find_published_product_id_for_locale(
+            db,
+            tenant_id,
+            handle,
+            fallback_locale,
+            public_channel_slug,
+        )
+        .await?
+        {
+            return Ok(Some(product_id));
+        }
+    }
+
+    find_published_product_id_any_locale(db, tenant_id, handle, public_channel_slug).await
+}
+
+async fn find_published_product_id_for_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    handle: &str,
+    locale: &str,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<Option<Uuid>> {
+    let translations = entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::Handle.eq(handle))
+        .filter(entities::product_translation::Column::Locale.eq(locale))
+        .all(db)
+        .await?;
+
+    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
+}
+
+async fn find_published_product_id_any_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    handle: &str,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<Option<Uuid>> {
+    let translations = entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::Handle.eq(handle))
+        .all(db)
+        .await?;
+
+    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
+}
+
+async fn find_first_published_product(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    translations: Vec<entities::product_translation::Model>,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<Option<Uuid>> {
+    for translation in translations {
+        let product = entities::product::Entity::find_by_id(translation.product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
+            .filter(entities::product::Column::PublishedAt.is_not_null())
+            .one(db)
+            .await?;
+
+        if product.as_ref().is_some_and(|product| {
+            is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+        }) {
+            return Ok(Some(translation.product_id));
+        }
+    }
+
+    Ok(None)
 }

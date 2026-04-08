@@ -6,7 +6,11 @@ use sea_orm_migration::MigrationTrait;
 pub mod migrations;
 pub mod services;
 
-pub use services::PricingService;
+pub use services::{
+    PricingService, StorefrontPricingPrice, StorefrontPricingProductDetail,
+    StorefrontPricingProductList, StorefrontPricingProductListItem,
+    StorefrontPricingProductTranslation, StorefrontPricingVariant,
+};
 
 pub struct PricingModule;
 

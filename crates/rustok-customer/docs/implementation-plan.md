@@ -1,7 +1,8 @@
 # План реализации `rustok-customer`
 
 Статус: customer boundary выделен; модуль остаётся owner-ом storefront customer
-profile, а transport и checkout orchestration остаются у umbrella `rustok-commerce`.
+profile, admin UI ownership уже вынесен в `rustok-customer/admin`, а storefront
+transport и checkout orchestration остаются у umbrella `rustok-commerce`.
 
 ## Область работ
 
@@ -13,6 +14,7 @@ profile, а transport и checkout orchestration остаются у umbrella `ru
 
 - `customers` и `CustomerService` уже выделены в отдельный модуль;
 - optional linkage на `user_id` и bridge к `profiles` уже существуют как integration contract;
+- `rustok-customer` уже публикует собственный module-owned admin UI package `rustok-customer/admin` с native Leptos server functions для list/detail/create/update customer records;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`;
 - customer read/write contract не превращает customer в canonical public profile surface.
 
@@ -22,7 +24,7 @@ profile, а transport и checkout orchestration остаются у umbrella `ru
 
 - [x] зафиксировать отдельный customer profile boundary;
 - [x] удерживать optional linkage к `user` и `profiles` как integration-only contract;
-- [ ] удерживать sync между customer runtime contract, commerce transport и module metadata.
+- [x] удерживать sync между customer runtime contract, commerce transport и module metadata.
 
 ### 2. Domain expansion
 
@@ -32,8 +34,8 @@ profile, а transport и checkout orchestration остаются у umbrella `ru
 
 ### 3. Operability
 
-- [ ] документировать новые customer guarantees одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
+- [x] документировать новые customer guarantees одновременно с изменением runtime surface;
+- [x] удерживать local docs и `README.md` синхронизированными;
 - [ ] добавлять richer diagnostics только при реальном operational pressure.
 
 ## Проверка

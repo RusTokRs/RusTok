@@ -5,7 +5,18 @@ version = "0.1.0"
 description = "Default order submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "capability_only"
+ui_classification = "embedded_optional"
+recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
 entry_type = "OrderModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-order-admin"
+route_segment = "orders"
+nav_label = "Orders"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

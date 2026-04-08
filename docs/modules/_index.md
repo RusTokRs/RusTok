@@ -85,6 +85,12 @@
 ### Optional/admin-поверхности
 
 - `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
+- `rustok-fulfillment` admin UI: [README](../../crates/rustok-fulfillment/admin/README.md)
+- `rustok-customer` admin UI: [README](../../crates/rustok-customer/admin/README.md)
+- `rustok-region` admin UI: [README](../../crates/rustok-region/admin/README.md)
+- `rustok-order` admin UI: [README](../../crates/rustok-order/admin/README.md)
+- `rustok-inventory` admin UI: [README](../../crates/rustok-inventory/admin/README.md)
+- `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
 - `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
 - `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
 - `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
@@ -92,6 +98,17 @@
 - `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
 - `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
 - `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
+
+### Optional/storefront-поверхности
+
+- `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
+- `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
+- `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
+- `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
+- `rustok-pricing` storefront UI: [README](../../crates/rustok-pricing/storefront/README.md)
+- `rustok-product` storefront UI: [README](../../crates/rustok-product/storefront/README.md)
+- `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
+- `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
 
 ### Capability/admin-поверхности
 
@@ -103,8 +120,14 @@
 - `rustok-content` остаётся shared helper/orchestration boundary и не публикует
   отдельный operator-facing UI.
 - UI split ecommerce family уже начат: `rustok-product` публикует собственный
-  admin package, а остальные commerce split crates пока ещё агрегируются через
-  `rustok-commerce-admin`.
+  admin package, `rustok-fulfillment` уже забрал shipping-option UI, `rustok-order`
+  уже забрал order UI, `rustok-inventory` уже забрал inventory visibility UI,
+  `rustok-pricing` уже забрал pricing visibility UI, `rustok-customer` уже
+  забрал customer operations UI, `rustok-region` уже забрал region CRUD UI, а
+  `rustok-commerce-admin` оставлен только под shipping-profile registry;
+  storefront-side split тоже продвинут: `rustok-region`, `rustok-product` и `rustok-pricing` уже публикуют собственные
+  storefront packages, а `rustok-commerce-storefront` сжат до orchestration hub без catalog/pricing ownership;
+  остальные commerce storefront flows ещё предстоит вынести из umbrella route там, где ownership boundary уже устойчива.
 - `rustok-mcp`, `rustok-ai`, `alloy` и `flex` считаются capability/support
   layers и индексируются здесь для навигации, даже если не входят в taxonomy
   `Core/Optional`.

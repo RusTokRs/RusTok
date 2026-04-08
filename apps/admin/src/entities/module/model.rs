@@ -144,11 +144,14 @@ pub struct RegistryModerationPolicyLifecycle {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryGovernanceActionLifecycle {
     pub key: String,
-    pub enabled: bool,
+    #[serde(default, rename = "reasonRequired")]
+    pub reason_required: bool,
+    #[serde(default, rename = "reasonCodeRequired")]
+    pub reason_code_required: bool,
+    #[serde(default, rename = "reasonCodes")]
+    pub reason_codes: Vec<String>,
     #[serde(default)]
-    pub reason: Option<String>,
-    #[serde(default, rename = "supportedReasonCodes")]
-    pub supported_reason_codes: Vec<String>,
+    pub destructive: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

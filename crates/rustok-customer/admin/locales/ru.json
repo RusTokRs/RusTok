@@ -1,0 +1,61 @@
+{
+  "customer": {
+    "badge": "customer",
+    "title": "Операции с клиентами",
+    "subtitle": "Module-owned customer workspace для tenant-scoped customer records, optional user linkage и видимости profile bridge без возврата админского трафика в commerce umbrella.",
+    "loading": "Загрузка клиентов...",
+    "action": {
+      "refresh": "Обновить",
+      "open": "Открыть",
+      "new": "Новый",
+      "save": "Сохранить клиента",
+      "create": "Создать клиента"
+    },
+    "error": {
+      "emailRequired": "Email обязателен.",
+      "loadCustomer": "Не удалось загрузить клиента",
+      "saveCustomer": "Не удалось сохранить клиента",
+      "loadCustomers": "Не удалось загрузить список клиентов"
+    },
+    "list": {
+      "title": "Клиенты",
+      "subtitle": "Клиентские записи tenant {tenant}, которыми владеет модуль customer.",
+      "subtitleFallback": "Tenant-scoped customer records, которыми владеет модуль customer.",
+      "search": "Поиск по email, имени или телефону",
+      "empty": "По текущим фильтрам клиенты не найдены."
+    },
+    "editor": {
+      "createTitle": "Создание клиента",
+      "editTitle": "Редактирование клиента",
+      "subtitle": "Native customer CRUD живёт в пакете customer module. Связь с user опциональна и задаётся только при создании клиента."
+    },
+    "field": {
+      "userId": "ID связанного user (опционально)",
+      "email": "Email",
+      "firstName": "Имя",
+      "lastName": "Фамилия",
+      "phone": "Телефон",
+      "locale": "Локаль"
+    },
+    "detail": {
+      "title": "Карточка клиента",
+      "subtitle": "Просмотр customer identity, optional user linkage и состояния profile bridge из customer-owned route.",
+      "empty": "Откройте клиента, чтобы посмотреть запись, связанного user и состояние profile bridge."
+    },
+    "section": {
+      "customer": "Запись клиента",
+      "profile": "Profile Bridge",
+      "metadata": "Метаданные"
+    },
+    "profile": {
+      "empty": "Публичный профиль с этим клиентом пока не связан.",
+      "noTags": "тегов нет"
+    },
+    "common": {
+      "linked": "связан с user",
+      "unlinked": "отдельный customer",
+      "noPhone": "телефон не задан",
+      "noLocale": "локаль не задана"
+    }
+  }
+}

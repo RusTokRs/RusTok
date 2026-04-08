@@ -8,12 +8,13 @@
 - варианты, опции, переводы и публикация;
 - taxonomy-backed product tags через shared `rustok-taxonomy` и product-owned relation `product_tags`;
 - product-owned migrations;
-- `ProductModule`, `CatalogService` и module-owned admin UI пакет `rustok-product/admin`.
+- `ProductModule`, `CatalogService`, module-owned admin UI пакет `rustok-product/admin` и module-owned storefront UI пакет `rustok-product/storefront`.
 
 ## Зона ответственности
 
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
-- product CRUD в admin UI уже начал переезжать из aggregate `rustok-commerce-admin`
+- storefront read-side для published catalog уже живёт в `rustok-product/storefront` и использует native Leptos server functions поверх `CatalogService`, сохраняя GraphQL storefront contract как fallback.
+- product CRUD в admin UI уже вынесен из `rustok-commerce-admin`
   в module-owned route `product`, но transport-контракт для этих форм по-прежнему
   приходит через umbrella `rustok-commerce` GraphQL surface;
 - Общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.

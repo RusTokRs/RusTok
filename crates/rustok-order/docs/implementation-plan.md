@@ -1,12 +1,13 @@
 # План реализации `rustok-order`
 
-Статус: order boundary выделен; модуль владеет order write-side lifecycle и
-outbox publication, а post-order и transport parity дособираются umbrella `rustok-commerce`.
+Статус: order boundary выделен; модуль владеет order write-side lifecycle,
+outbox publication и module-owned admin UI, а post-order и transport parity
+дособираются umbrella `rustok-commerce`.
 
 ## Область работ
 
 - удерживать `rustok-order` как owner order lifecycle и order snapshots;
-- синхронизировать order runtime contract, event flow и local docs;
+- синхронизировать order runtime contract, event flow, admin UI и local docs;
 - не смешивать order write model с payment/fulfillment/provider orchestration.
 
 ## Текущее состояние
@@ -14,7 +15,8 @@ outbox publication, а post-order и transport parity дособираются u
 - `orders` и `order_line_items` уже module-owned;
 - write-side lifecycle и order events уже закреплены внутри модуля;
 - product/variant связи хранятся как snapshot references, без cross-module FK;
-- transport adapters по-прежнему публикуются фасадом `rustok-commerce`.
+- transport adapters по-прежнему публикуются фасадом `rustok-commerce`;
+- `rustok-order/admin` публикует module-owned route для order list/detail/lifecycle.
 
 ## Этапы
 
@@ -22,6 +24,7 @@ outbox publication, а post-order и transport parity дособираются u
 
 - [x] закрепить order-owned lifecycle и snapshot model;
 - [x] удерживать event publication частью module boundary;
+- [x] вынести admin order UI в module-owned пакет `rustok-order/admin`;
 - [ ] удерживать sync между order runtime contract, commerce transport и module metadata.
 
 ### 2. Post-order expansion
@@ -45,6 +48,6 @@ outbox publication, а post-order и transport parity дособираются u
 ## Правила обновления
 
 1. При изменении order runtime contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
+2. При изменении public/runtime surface синхронизировать `README.md`, `admin/README.md` и `docs/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
 4. При изменении order/payment/fulfillment orchestration обновлять umbrella docs.

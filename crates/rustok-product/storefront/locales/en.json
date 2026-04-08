@@ -1,0 +1,22 @@
+{
+  "product.badge": "product",
+  "product.title": "Published catalog from the product module",
+  "product.subtitle": "This storefront route reads published catalog data through the product-owned package, with GraphQL kept as a fallback path.",
+  "product.error.load": "Failed to load storefront product data",
+  "product.selected.emptyTitle": "No published product selected",
+  "product.selected.emptyBody": "Publish a product from the product admin package or open one with `?handle=`.",
+  "product.selected.untitled": "Untitled product",
+  "product.selected.noDescription": "No localized merchandising copy yet.",
+  "product.selected.compareAt": "compare-at {value}",
+  "product.selected.noPrice": "No pricing yet",
+  "product.selected.catalog": "catalog",
+  "product.selected.vendorFallback": "independent label",
+  "product.selected.unscheduled": "scheduled later",
+  "product.selected.price": "Price",
+  "product.selected.inventory": "Inventory",
+  "product.list.empty": "No published products are available yet.",
+  "product.list.title": "Published products",
+  "product.list.total": "{count} total",
+  "product.list.vendorFallback": "Independent label",
+  "product.list.open": "Open"
+}

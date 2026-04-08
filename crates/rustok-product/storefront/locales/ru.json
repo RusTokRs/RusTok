@@ -1,0 +1,22 @@
+{
+  "product.badge": "product",
+  "product.title": "Опубликованный каталог из product-модуля",
+  "product.subtitle": "Этот storefront route читает опубликованный каталог через product-owned пакет, сохраняя GraphQL как fallback path.",
+  "product.error.load": "Не удалось загрузить storefront-данные каталога",
+  "product.selected.emptyTitle": "Опубликованный товар не выбран",
+  "product.selected.emptyBody": "Опубликуйте товар из admin-пакета product или откройте его через `?handle=`.",
+  "product.selected.untitled": "Товар без названия",
+  "product.selected.noDescription": "Локализованное описание пока не заполнено.",
+  "product.selected.compareAt": "старая цена {value}",
+  "product.selected.noPrice": "Цена пока не задана",
+  "product.selected.catalog": "каталог",
+  "product.selected.vendorFallback": "независимый бренд",
+  "product.selected.unscheduled": "запланировано позже",
+  "product.selected.price": "Цена",
+  "product.selected.inventory": "Остаток",
+  "product.list.empty": "Опубликованные товары пока недоступны.",
+  "product.list.title": "Опубликованные товары",
+  "product.list.total": "{count} всего",
+  "product.list.vendorFallback": "Независимый бренд",
+  "product.list.open": "Открыть"
+}

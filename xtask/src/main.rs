@@ -3477,12 +3477,12 @@ mod tests {
         reason_code_argument, registry_endpoint_uses_loopback, registry_url_argument,
         resolve_workspace_inherited_string, runner_token_argument, supported_remote_runner_stages,
         validate_module_local_docs_file, validate_module_publish_contract,
-        validate_module_ui_surface_contract, workspace_root,
-        ModuleMarketplacePreview, ModuleOwnerTransferDryRunPreview, ModulePackageManifest,
-        ModulePublishDryRunPreview, ModuleUiPackagePreview, ModuleUiPackagesPreview,
-        ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview,
-        RegistryGovernanceActionHttpResponse, RegistryPublishStatusHttpResponse,
-        REGISTRY_MUTATION_SCHEMA_VERSION, REGISTRY_YANK_REASON_CODES, REMOTE_RUNNER_TOKEN_ENV,
+        validate_module_ui_surface_contract, workspace_root, ModuleMarketplacePreview,
+        ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePublishDryRunPreview,
+        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleValidationStageDryRunPreview,
+        ModuleYankDryRunPreview, RegistryGovernanceActionHttpResponse,
+        RegistryPublishStatusHttpResponse, REGISTRY_MUTATION_SCHEMA_VERSION,
+        REGISTRY_YANK_REASON_CODES, REMOTE_RUNNER_TOKEN_ENV,
     };
     use std::{
         env,
@@ -3609,10 +3609,8 @@ mod tests {
 
     #[test]
     fn validate_module_local_docs_file_rejects_missing_heading() {
-        let path = env::temp_dir().join(format!(
-            "xtask-local-docs-{}-README.md",
-            std::process::id()
-        ));
+        let path =
+            env::temp_dir().join(format!("xtask-local-docs-{}-README.md", std::process::id()));
         std::fs::write(&path, "# Heading\n\n## Назначение\n")
             .expect("temporary docs file should be writable");
 

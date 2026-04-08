@@ -1,0 +1,61 @@
+{
+  "customer": {
+    "badge": "customer",
+    "title": "Customer Operations",
+    "subtitle": "Module-owned customer workspace for tenant-scoped customer records, optional user linkage and profile bridge visibility without routing admin traffic back through the commerce umbrella.",
+    "loading": "Loading customers...",
+    "action": {
+      "refresh": "Refresh",
+      "open": "Open",
+      "new": "New",
+      "save": "Save customer",
+      "create": "Create customer"
+    },
+    "error": {
+      "emailRequired": "Email is required.",
+      "loadCustomer": "Failed to load customer",
+      "saveCustomer": "Failed to save customer",
+      "loadCustomers": "Failed to load customers"
+    },
+    "list": {
+      "title": "Customers",
+      "subtitle": "Tenant {tenant} customer records owned by the customer module.",
+      "subtitleFallback": "Tenant-scoped customer records owned by the customer module.",
+      "search": "Search email, name or phone",
+      "empty": "No customers match the current filters."
+    },
+    "editor": {
+      "createTitle": "Create Customer",
+      "editTitle": "Edit Customer",
+      "subtitle": "Native customer CRUD lives in the customer module package. User linkage is optional and can be set only during customer creation."
+    },
+    "field": {
+      "userId": "Linked user ID (optional)",
+      "email": "Email",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "phone": "Phone",
+      "locale": "Locale"
+    },
+    "detail": {
+      "title": "Customer Detail",
+      "subtitle": "Inspect customer identity, optional user linkage and profile bridge state from the customer-owned route.",
+      "empty": "Open a customer to inspect the record, linked user and profile bridge state."
+    },
+    "section": {
+      "customer": "Customer Record",
+      "profile": "Profile Bridge",
+      "metadata": "Metadata"
+    },
+    "profile": {
+      "empty": "No public profile is linked to this customer yet.",
+      "noTags": "no tags"
+    },
+    "common": {
+      "linked": "linked user",
+      "unlinked": "standalone customer",
+      "noPhone": "no phone",
+      "noLocale": "no locale"
+    }
+  }
+}

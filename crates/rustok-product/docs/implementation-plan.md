@@ -17,6 +17,9 @@
 - typed `shipping_profile_slug` уже закреплён в product/variant persistence и DTO;
 - module-owned admin UI пакет `rustok-product/admin` уже поднят и подключён в
   manifest-driven admin composition как первый шаг UI split;
+- module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
+  подключён в manifest-driven storefront composition для published catalog
+  discovery через native Leptos server functions с GraphQL fallback;
 - transport-level validation и public transport по-прежнему публикуются фасадом `rustok-commerce`.
 
 ## Этапы
@@ -37,7 +40,7 @@
 ### 3. Operability
 
 - [x] поднять module-owned admin UI пакет для product catalog surface;
-- [ ] документировать новые catalog guarantees одновременно с изменением runtime surface;
+- [x] документировать новые catalog guarantees одновременно с изменением runtime surface;
 - [ ] удерживать local docs и `README.md` синхронизированными;
 - [ ] обновлять consumer-module docs при изменении tag/deliverability integration rules.
 

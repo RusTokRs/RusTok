@@ -11,7 +11,7 @@
 ## Зона ответственности
 
 - orchestration между `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
-- REST/GraphQL transport и переходные aggregate UI-поверхности, пока доменные surfaces не вынесены по ownership boundaries;
+- REST/GraphQL transport и переходные orchestration UI-поверхности, пока доменные surfaces не вынесены по ownership boundaries;
 - channel-aware commerce contract поверх `rustok-channel`, checkout orchestration и cross-domain deliverability semantics;
 - поддержание thin-host роли `apps/server` без возврата commerce business logic в host.
 
@@ -53,12 +53,22 @@
 - Preflight validation в checkout теперь отрабатывает до side effects: stale shipping-profile snapshot, отсутствующая per-group selection или несовместимый shipping option отпускают `checking_out` lock и не создают payment/order artifacts.
 - Admin REST и admin GraphQL теперь тоже имеют typed shipping-option management surface: `list/show/create/update/deactivate/reactivate` для shipping options поверх `FulfillmentService`, включая `allowed_shipping_profile_slugs` и lifecycle по `active`.
 - Admin REST и admin GraphQL теперь имеют и typed shipping-profile management surface: `list/show/create/update/deactivate/reactivate` поверх `ShippingProfileService`, так что compatibility rules больше не живут только в metadata или service helper'ах.
-- Module-owned admin UI пакет `rustok-commerce/admin` сейчас остаётся переходным aggregate surface: shipping profiles и shipping options остаются его прямой зоной ответственности, а product CRUD уже начал переезжать в `rustok-product/admin`.
+- Module-owned admin UI пакет `rustok-commerce/admin` теперь уже не держит ни product CRUD, ни shipping-option UI и остался только под typed shipping-profile registry.
+- Module-owned admin UI пакет `rustok-fulfillment/admin` забрал shipping-option lifecycle и compatibility UX по ownership boundary модуля `fulfillment`.
+- Module-owned admin UI пакет `rustok-customer/admin` забрал customer list/detail/create/update UX по ownership boundary модуля `customer` и использует native Leptos server functions вместо нового umbrella transport.
+- Module-owned admin UI пакет `rustok-region/admin` забрал region list/detail/create/update UX по ownership boundary модуля `region` и использует native Leptos server functions поверх `RegionService`.
+- Module-owned storefront UI пакет `rustok-region/storefront` забрал public region discovery UX по ownership boundary модуля `region`, используя native Leptos server functions с GraphQL fallback поверх `storefrontRegions`.
+- Module-owned storefront UI пакет `rustok-product/storefront` забрал published catalog discovery UX по ownership boundary модуля `product`, используя native Leptos server functions поверх `CatalogService` и сохраняя GraphQL storefront contract как fallback.
+- Module-owned storefront UI пакет `rustok-pricing/storefront` забрал public pricing atlas UX по ownership boundary модуля `pricing`, используя native Leptos server functions поверх `PricingService` и сохраняя GraphQL storefront contract как fallback.
+- Aggregate storefront UI пакет `rustok-commerce/storefront` больше не дублирует catalog/pricing discovery и сжат до orchestration hub, который показывает только effective storefront context и точки перехода в split storefront-пакеты.
+- Module-owned admin UI пакет `rustok-order/admin` забрал order list/detail/lifecycle UX по ownership boundary модуля `order`.
+- Module-owned admin UI пакет `rustok-inventory/admin` забрал inventory visibility и stock-health UX по ownership boundary модуля `inventory`, сохранив transport gap явно задокументированным.
+- Module-owned admin UI пакет `rustok-pricing/admin` забрал pricing visibility и sale-marker UX по ownership boundary модуля `pricing`, сохранив transport gap явно задокументированным.
 - Publishable UI пакеты для admin/storefront живут внутри модуля и подключаются host-приложениями через manifest-driven composition.
 
 ## Ближайший roadmap
 
-- UI split уже начат с вынесения product admin route в `rustok-product/admin`; следующий шаг — убрать product CRUD из aggregate `rustok-commerce-admin` и затем резать storefront surface.
+- UI split уже идёт и storefront-side phase тоже продвинута: product admin route живёт в `rustok-product/admin`, shipping options переехали в `rustok-fulfillment/admin`, customer operations переехали в `rustok-customer/admin`, order operations переехали в `rustok-order/admin`, inventory visibility переехала в `rustok-inventory/admin`, pricing visibility переехала в `rustok-pricing/admin`, region CRUD переехал в `rustok-region/admin`, public region discovery переехал в `rustok-region/storefront`, published catalog discovery переехал в `rustok-product/storefront`, public pricing atlas переехал в `rustok-pricing/storefront`, `rustok-commerce-admin` оставлен только под shipping-profile registry, а `rustok-commerce-storefront` сжат до orchestration hub; следующий шаг — выносить только те storefront flows, где уже есть стабильная ownership boundary поверх cart/checkout.
 - Затем закрываем seller-aware deliverability поверх уже внедрённого split-fulfillment baseline.
 - Затем идём в Pricing 2.0: channel-aware price resolution, price lists, rules и promotions.
 - После этого выносим tax, post-order flows и provider SPI.

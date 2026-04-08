@@ -4,6 +4,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
 };
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeSet, HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -11,10 +13,70 @@ use rustok_core::events::ValidateEvent;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_product::CatalogService;
 
 use rustok_commerce_foundation::dto::PriceInput;
 use rustok_commerce_foundation::entities;
+use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontPricingProductList {
+    pub items: Vec<StorefrontPricingProductListItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontPricingProductListItem {
+    pub id: Uuid,
+    pub title: String,
+    pub handle: String,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub variant_count: u64,
+    pub sale_variant_count: u64,
+    pub currencies: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontPricingProductDetail {
+    pub id: Uuid,
+    pub status: ProductStatus,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub translations: Vec<StorefrontPricingProductTranslation>,
+    pub variants: Vec<StorefrontPricingVariant>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontPricingProductTranslation {
+    pub locale: String,
+    pub title: String,
+    pub handle: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontPricingVariant {
+    pub id: Uuid,
+    pub title: String,
+    pub sku: Option<String>,
+    pub prices: Vec<StorefrontPricingPrice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorefrontPricingPrice {
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub compare_at_amount: Option<Decimal>,
+    pub on_sale: bool,
+}
 
 pub struct PricingService {
     db: DatabaseConnection,
@@ -273,8 +335,176 @@ impl PricingService {
 
         Ok(new_amount)
     }
+
+    #[instrument(skip(self))]
+    pub async fn list_published_product_pricing_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+        page: u64,
+        per_page: u64,
+    ) -> CommerceResult<StorefrontPricingProductList> {
+        let catalog = CatalogService::new(self.db.clone(), self.event_bus.clone());
+        let products = catalog
+            .list_published_products_with_locale_fallback(
+                tenant_id,
+                locale,
+                fallback_locale,
+                public_channel_slug,
+                page,
+                per_page,
+            )
+            .await?;
+        let product_ids = products
+            .items
+            .iter()
+            .map(|product| product.id)
+            .collect::<Vec<_>>();
+        let variants = if product_ids.is_empty() {
+            Vec::new()
+        } else {
+            entities::product_variant::Entity::find()
+                .filter(entities::product_variant::Column::ProductId.is_in(product_ids.clone()))
+                .all(&self.db)
+                .await?
+        };
+        let mut variant_counts_by_product = HashMap::<Uuid, u64>::new();
+        let mut variant_to_product = HashMap::<Uuid, Uuid>::new();
+        for variant in variants {
+            variant_to_product.insert(variant.id, variant.product_id);
+            *variant_counts_by_product
+                .entry(variant.product_id)
+                .or_insert(0) += 1;
+        }
+        let variant_ids = variant_to_product.keys().copied().collect::<Vec<_>>();
+        let prices = if variant_ids.is_empty() {
+            Vec::new()
+        } else {
+            entities::price::Entity::find()
+                .filter(entities::price::Column::VariantId.is_in(variant_ids))
+                .all(&self.db)
+                .await?
+        };
+        let mut currencies_by_product = HashMap::<Uuid, BTreeSet<String>>::new();
+        let mut sale_variants_by_product = HashMap::<Uuid, BTreeSet<Uuid>>::new();
+        for price in prices {
+            let Some(product_id) = variant_to_product.get(&price.variant_id).copied() else {
+                continue;
+            };
+            currencies_by_product
+                .entry(product_id)
+                .or_default()
+                .insert(price.currency_code);
+            if price
+                .compare_at_amount
+                .map(|compare| compare > price.amount)
+                .unwrap_or(false)
+            {
+                sale_variants_by_product
+                    .entry(product_id)
+                    .or_default()
+                    .insert(price.variant_id);
+            }
+        }
+
+        Ok(StorefrontPricingProductList {
+            items: products
+                .items
+                .into_iter()
+                .map(|product| StorefrontPricingProductListItem {
+                    id: product.id,
+                    title: product.title,
+                    handle: product.handle,
+                    vendor: product.vendor,
+                    product_type: product.product_type,
+                    created_at: product.created_at,
+                    published_at: product.published_at,
+                    variant_count: variant_counts_by_product.remove(&product.id).unwrap_or(0),
+                    sale_variant_count: sale_variants_by_product
+                        .remove(&product.id)
+                        .map(|variants| variants.len() as u64)
+                        .unwrap_or(0),
+                    currencies: currencies_by_product
+                        .remove(&product.id)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect(),
+                })
+                .collect(),
+            total: products.total,
+            page: products.page,
+            per_page: products.per_page,
+            has_next: products.has_next,
+        })
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_published_product_pricing_by_handle_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        handle: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+    ) -> CommerceResult<Option<StorefrontPricingProductDetail>> {
+        let catalog = CatalogService::new(self.db.clone(), self.event_bus.clone());
+        let product = catalog
+            .get_published_product_by_handle_with_locale_fallback(
+                tenant_id,
+                handle,
+                locale,
+                fallback_locale,
+                public_channel_slug,
+            )
+            .await?;
+
+        Ok(product.map(map_product_detail))
+    }
 }
 
 fn decimal_to_cents(amount: Decimal) -> Option<i64> {
     (amount * Decimal::from(100)).round_dp(0).to_i64()
+}
+
+fn map_product_detail(
+    product: rustok_commerce_foundation::dto::ProductResponse,
+) -> StorefrontPricingProductDetail {
+    StorefrontPricingProductDetail {
+        id: product.id,
+        status: product.status,
+        vendor: product.vendor,
+        product_type: product.product_type,
+        published_at: product.published_at,
+        translations: product
+            .translations
+            .into_iter()
+            .map(|translation| StorefrontPricingProductTranslation {
+                locale: translation.locale,
+                title: translation.title,
+                handle: translation.handle,
+                description: translation.description,
+            })
+            .collect(),
+        variants: product
+            .variants
+            .into_iter()
+            .map(|variant| StorefrontPricingVariant {
+                id: variant.id,
+                title: variant.title,
+                sku: variant.sku,
+                prices: variant
+                    .prices
+                    .into_iter()
+                    .map(|price| StorefrontPricingPrice {
+                        currency_code: price.currency_code,
+                        amount: price.amount,
+                        compare_at_amount: price.compare_at_amount,
+                        on_sale: price.on_sale,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
 }

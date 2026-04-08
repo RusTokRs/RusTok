@@ -27,8 +27,9 @@
 - Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
 - Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
-- Let the module-owned Leptos admin UI package keep shipping-profile registry and typed shipping-option compatibility rules, while product CRUD starts moving into `rustok-product/admin`.
+- Let the module-owned Leptos admin UI package keep the typed shipping-profile registry after product CRUD moved into `rustok-product/admin`, shipping-option UI moved into `rustok-fulfillment/admin`, order operations UI moved into `rustok-order/admin`, inventory visibility moved into `rustok-inventory/admin`, and pricing visibility moved into `rustok-pricing/admin`.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
+- Keep the aggregate storefront package transitional while split modules start publishing their own storefront routes, with `rustok-region/storefront` and `rustok-product/storefront` already owning their public slices.
 - Publish the typed RBAC surface for commerce resources.
 
 ## Interactions
@@ -42,9 +43,16 @@
 - Depends on `rustok-channel` for platform-level channel bindings and request-aware storefront visibility rules.
 - Depends on `rustok-outbox` and `rustok-events` for transactional domain-event publishing.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
-- `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned commerce control room mounted under `/modules/commerce` for catalog, shipping-profile, and shipping-option operations.
-- `apps/admin` also consumes `rustok-product-admin` through the same manifest-driven composition path, so catalog CRUD can move out of the aggregate commerce route without host-specific wiring.
+- `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned commerce control room mounted under `/modules/commerce` for shipping-profile operations.
+- `apps/admin` also consumes `rustok-fulfillment-admin` through the same manifest-driven composition path, with shipping-option CRUD and lifecycle now owned by the fulfillment module.
+- `apps/admin` also consumes `rustok-order-admin` through the same manifest-driven composition path, with order list/detail/lifecycle now owned by the order module.
+- `apps/admin` also consumes `rustok-inventory-admin` through the same manifest-driven composition path, with inventory visibility and stock-health inspection now owned by the inventory module.
+- `apps/admin` also consumes `rustok-pricing-admin` through the same manifest-driven composition path, with pricing visibility and sale-marker inspection now owned by the pricing module.
+- `apps/admin` also consumes `rustok-product-admin` through the same manifest-driven composition path, with catalog CRUD now owned by the product module instead of the aggregate commerce route.
 - `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with a public catalog surface mounted under `/modules/commerce`.
+- `apps/storefront` also consumes `rustok-product-storefront` through the same manifest-driven composition path, with published catalog discovery now owned by the product module under `/modules/products`.
+- `apps/storefront` also consumes `rustok-pricing-storefront` through the same manifest-driven composition path, with public pricing discovery now owned by the pricing module under `/modules/pricing`.
+- `apps/storefront` also consumes `rustok-region-storefront` through the same manifest-driven composition path, with public region discovery mounted under `/modules/regions`.
 - `rustok-module.toml` exports both surfaces through `[provides.admin_ui]` and `[provides.storefront_ui]`, so host wiring stays manifest-derived instead of relying on manual route registration.
 - Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,
   `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.

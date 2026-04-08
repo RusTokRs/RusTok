@@ -18,9 +18,15 @@ hydrate = [
   "rustok-ai-admin/hydrate",
   "rustok-channel-admin/hydrate",
   "rustok-comments-admin/hydrate",
+  "rustok-customer-admin/hydrate",
+  "rustok-region-admin/hydrate",
   "rustok-index-admin/hydrate",
   "rustok-media-admin/hydrate",
   "rustok-outbox-admin/hydrate",
+  "rustok-fulfillment-admin/hydrate",
+  "rustok-inventory-admin/hydrate",
+  "rustok-order-admin/hydrate",
+  "rustok-pricing-admin/hydrate",
   "rustok-product-admin/hydrate",
   "rustok-rbac-admin/hydrate",
   "rustok-search-admin/hydrate",
@@ -46,9 +52,15 @@ ssr = [
   "rustok-ai-admin/ssr",
   "rustok-channel-admin/ssr",
   "rustok-comments-admin/ssr",
+  "rustok-customer-admin/ssr",
+  "rustok-region-admin/ssr",
   "rustok-index-admin/ssr",
   "rustok-media-admin/ssr",
   "rustok-outbox-admin/ssr",
+  "rustok-fulfillment-admin/ssr",
+  "rustok-inventory-admin/ssr",
+  "rustok-order-admin/ssr",
+  "rustok-pricing-admin/ssr",
   "rustok-product-admin/ssr",
   "rustok-rbac-admin/ssr",
   "rustok-search-admin/ssr",
@@ -105,12 +117,18 @@ rustok-ai-admin = { path = "../../crates/rustok-ai/admin", default-features = fa
 rustok-channel-admin = { path = "../../crates/rustok-channel/admin", default-features = false }
 rustok-comments-admin = { path = "../../crates/rustok-comments/admin", default-features = false }
 rustok-commerce-admin = { path = "../../crates/rustok-commerce/admin", default-features = false }
+rustok-customer-admin = { path = "../../crates/rustok-customer/admin", default-features = false }
+rustok-fulfillment-admin = { path = "../../crates/rustok-fulfillment/admin", default-features = false }
 rustok-forum-admin = { path = "../../crates/rustok-forum/admin", default-features = false }
 rustok-index-admin = { path = "../../crates/rustok-index/admin", default-features = false }
+rustok-inventory-admin = { path = "../../crates/rustok-inventory/admin", default-features = false }
 rustok-media-admin = { path = "../../crates/rustok-media/admin", default-features = false }
+rustok-order-admin = { path = "../../crates/rustok-order/admin", default-features = false }
 rustok-outbox-admin = { path = "../../crates/rustok-outbox/admin", default-features = false }
 rustok-pages-admin = { path = "../../crates/rustok-pages/admin", default-features = false }
+rustok-pricing-admin = { path = "../../crates/rustok-pricing/admin", default-features = false }
 rustok-product-admin = { path = "../../crates/rustok-product/admin", default-features = false }
+rustok-region-admin = { path = "../../crates/rustok-region/admin", default-features = false }
 rustok-rbac-admin = { path = "../../crates/rustok-rbac/admin", default-features = false }
 rustok-search-admin = { path = "../../crates/rustok-search/admin", default-features = false }
 rustok-tenant-admin = { path = "../../crates/rustok-tenant/admin", default-features = false }
@@ -146,9 +164,12 @@ normal = [
   "rustok-cache",
   "rustok-comments",
   "rustok-comments-admin",
+  "rustok-customer-admin",
   "rustok-core",
   "rustok-media",
   "rustok-media-admin",
+  "rustok-order-admin",
+  "rustok-region-admin",
   "rustok-tenant",
   "rustok-storage",
   "rustok-product-admin",
@@ -157,10 +178,13 @@ normal = [
   "rustok-ai-admin",
   "rustok-channel-admin",
   "rustok-commerce-admin",
+  "rustok-fulfillment-admin",
   "rustok-forum-admin",
   "rustok-index-admin",
+  "rustok-inventory-admin",
   "rustok-outbox-admin",
   "rustok-pages-admin",
+  "rustok-pricing-admin",
   "rustok-rbac",
   "rustok-rbac-admin",
   "rustok-search-admin",

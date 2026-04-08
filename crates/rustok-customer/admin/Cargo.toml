@@ -1,0 +1,33 @@
+[package]
+name = "rustok-customer-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-customer module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-core",
+  "dep:rustok-customer",
+  "dep:rustok-profiles",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+loco-rs = { workspace = true, optional = true }
+rustok-api.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-customer = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid.workspace = true

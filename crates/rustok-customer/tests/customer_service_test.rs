@@ -1,4 +1,4 @@
-use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
+use rustok_customer::dto::{CreateCustomerInput, ListCustomersInput, UpdateCustomerInput};
 use rustok_customer::error::CustomerError;
 use rustok_customer::services::CustomerService;
 use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
@@ -97,6 +97,53 @@ async fn duplicate_email_is_rejected() {
         CustomerError::DuplicateEmail(email) => assert_eq!(email, "customer@example.com"),
         other => panic!("expected duplicate email error, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn list_customers_filters_by_search_and_paginates() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                email: "alpha@example.com".to_string(),
+                first_name: Some("Alpha".to_string()),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(Uuid::new_v4()),
+                email: "beta@example.com".to_string(),
+                first_name: Some("Beta".to_string()),
+                last_name: Some("Customer".to_string()),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let (items, total) = service
+        .list_customers(
+            tenant_id,
+            ListCustomersInput {
+                search: Some("beta".to_string()),
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(total, 1);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].email, "beta@example.com");
 }
 
 #[tokio::test]

@@ -7,7 +7,7 @@ pub mod entities;
 pub mod migrations;
 pub mod services;
 
-pub use services::CatalogService;
+pub use services::{CatalogService, StorefrontProductList, StorefrontProductListItem};
 
 pub struct ProductModule;
 

@@ -6,23 +6,22 @@ use leptos::prelude::*;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
-use crate::model::{ProductDetail, ProductListItem, StorefrontCommerceData};
+use crate::model::StorefrontCommerceData;
 
 #[component]
 pub fn CommerceView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_handle = route_context.query_value("handle").map(ToOwned::to_owned);
     let selected_locale = route_context.locale.clone();
     let badge = t(selected_locale.as_deref(), "commerce.badge", "commerce");
     let title = t(
         selected_locale.as_deref(),
         "commerce.title",
-        "Published catalog from the module package",
+        "Commerce orchestration hub",
     );
     let subtitle = t(
         selected_locale.as_deref(),
         "commerce.subtitle",
-        "The storefront now reads published products through the module-owned GraphQL contract with no commerce-specific host wiring.",
+        "Catalog, pricing, and regions now live in module-owned storefront packages. Commerce remains the aggregate storefront handoff for checkout context and cross-domain flow.",
     );
     let load_error = t(
         selected_locale.as_deref(),
@@ -31,8 +30,8 @@ pub fn CommerceView() -> impl IntoView {
     );
 
     let resource = Resource::new_blocking(
-        move || (selected_handle.clone(), selected_locale.clone()),
-        move |(handle, locale)| async move { api::fetch_storefront_commerce(handle, locale).await },
+        move || selected_locale.clone(),
+        move |locale| async move { api::fetch_storefront_commerce(locale).await },
     );
 
     view! {
@@ -43,7 +42,7 @@ pub fn CommerceView() -> impl IntoView {
                 <p class="text-sm text-muted-foreground">{subtitle}</p>
             </div>
             <div class="mt-8">
-                <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-3"><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
+                <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-2"><div class="h-48 animate-pulse rounded-2xl bg-muted"></div><div class="h-48 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
                         let resource = resource.clone();
                         let load_error = load_error.clone();
@@ -63,153 +62,129 @@ pub fn CommerceView() -> impl IntoView {
 #[component]
 fn CommerceShowcase(data: StorefrontCommerceData) -> impl IntoView {
     view! {
-        <div class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <SelectedProductCard product=data.selected_product />
-            <CatalogRail items=data.products.items total=data.products.total />
+        <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <ContextCard data=data />
+            <SurfaceRail />
         </div>
     }
 }
 
 #[component]
-fn SelectedProductCard(product: Option<ProductDetail>) -> impl IntoView {
+fn ContextCard(data: StorefrontCommerceData) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let Some(product) = product else {
-        return view! {
-            <article class="rounded-3xl border border-dashed border-border p-8">
-                <h3 class="text-lg font-semibold text-card-foreground">
-                    {t(
-                        locale.as_deref(),
-                        "commerce.selected.emptyTitle",
-                        "No published product selected",
-                    )}
-                </h3>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {t(
-                        locale.as_deref(),
-                        "commerce.selected.emptyBody",
-                        "Publish a product from the commerce admin package or open one with `?handle=`.",
-                    )}
-                </p>
-            </article>
-        }
-        .into_any();
-    };
-
-    let translation = product.translations.first().cloned();
-    let variant = product.variants.first().cloned();
-    let title = translation
-        .as_ref()
-        .map(|item| item.title.clone())
-        .unwrap_or_else(|| {
-            t(
-                locale.as_deref(),
-                "commerce.selected.untitled",
-                "Untitled product",
-            )
-        });
-    let description = translation
-        .and_then(|item| item.description)
-        .unwrap_or_else(|| {
-            t(
-                locale.as_deref(),
-                "commerce.selected.noDescription",
-                "No localized merchandising copy yet.",
-            )
-        });
-    let price = variant
-        .as_ref()
-        .and_then(|item| item.prices.first())
-        .map(|item| {
-            if let Some(compare) = &item.compare_at_amount {
-                format!(
-                    "{} {} ({})",
-                    item.currency_code,
-                    item.amount,
-                    t(
-                        locale.as_deref(),
-                        "commerce.selected.compareAt",
-                        "compare-at {value}",
-                    )
-                    .replace("{value}", compare),
-                )
-            } else {
-                format!("{} {}", item.currency_code, item.amount)
-            }
-        })
-        .unwrap_or_else(|| {
-            t(
-                locale.as_deref(),
-                "commerce.selected.noPrice",
-                "No pricing yet",
-            )
-        });
-    let inventory = variant
-        .as_ref()
-        .map(|item| item.inventory_quantity)
-        .unwrap_or(0);
+    let tenant_value = data.tenant_slug.unwrap_or_else(|| {
+        t(
+            locale.as_deref(),
+            "commerce.context.tenantMissing",
+            "host tenant",
+        )
+    });
+    let channel_value = data
+        .channel_slug
+        .unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
+    let resolution_value = data
+        .channel_resolution_source
+        .unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
 
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">
-            <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                <span>{product.product_type.unwrap_or_else(|| t(locale.as_deref(), "commerce.selected.catalog", "catalog"))}</span>
-                <span>"·"</span>
-                <span>{product.vendor.unwrap_or_else(|| t(locale.as_deref(), "commerce.selected.vendorFallback", "independent label"))}</span>
-                <span>"·"</span>
-                <span>{product.published_at.unwrap_or_else(|| t(locale.as_deref(), "commerce.selected.unscheduled", "scheduled later"))}</span>
+            <div class="space-y-3">
+                <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    {t(locale.as_deref(), "commerce.context.badge", "storefront context")}
+                </span>
+                <h3 class="text-2xl font-semibold text-card-foreground">
+                    {t(locale.as_deref(), "commerce.context.title", "Active storefront context")}
+                </h3>
+                <p class="text-sm leading-7 text-muted-foreground">
+                    {t(locale.as_deref(), "commerce.context.subtitle", "This aggregate route now exposes only the request context that still coordinates cart, delivery selection, payment collection, and checkout orchestration.")}
+                </p>
             </div>
-            <h3 class="mt-4 text-3xl font-semibold text-foreground">{title}</h3>
-            <p class="mt-4 text-sm leading-7 text-muted-foreground">{description}</p>
             <div class="mt-6 grid gap-3 md:grid-cols-2">
-                <MetricCard title=t(locale.as_deref(), "commerce.selected.price", "Price") value=price />
-                <MetricCard title=t(locale.as_deref(), "commerce.selected.inventory", "Inventory") value=inventory.to_string() />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.locale", "Effective locale") value=data.effective_locale />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.tenant", "Tenant") value=tenant_value />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.tenantDefault", "Tenant default locale") value=data.tenant_default_locale />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.channel", "Channel") value=channel_value />
+            </div>
+            <div class="mt-3">
+                <MetricCard title=t(locale.as_deref(), "commerce.context.resolution", "Channel source") value=resolution_value />
             </div>
         </article>
     }
-    .into_any()
 }
 
 #[component]
-fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
+fn SurfaceRail() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let route_segment = route_context
-        .route_segment
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| "commerce".to_string());
-    let module_route_base = route_context.module_route_base(route_segment.as_str());
-
-    if items.is_empty() {
-        return view! { <article class="rounded-3xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale.as_deref(), "commerce.list.empty", "No published products are available yet.")}</article> }.into_any();
-    }
+    let region_href = route_context.module_route_base("regions");
+    let product_href = route_context.module_route_base("products");
+    let pricing_href = route_context.module_route_base("pricing");
 
     view! {
         <div class="space-y-4">
-            <div class="flex items-center justify-between gap-3">
-                <h3 class="text-lg font-semibold text-card-foreground">{t(locale.as_deref(), "commerce.list.title", "Published products")}</h3>
-                <span class="text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "commerce.list.total", "{count} total").replace("{count}", &total.to_string())}
-                </span>
+            <div class="space-y-2">
+                <h3 class="text-lg font-semibold text-card-foreground">
+                    {t(locale.as_deref(), "commerce.surface.title", "Module-owned storefront surfaces")}
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                    {t(locale.as_deref(), "commerce.surface.subtitle", "Discovery now belongs to split modules. Commerce stays here only where flows still cross cart, region, pricing, order, and fulfillment boundaries.")}
+                </p>
             </div>
-            <div class="space-y-3">
-                {items.into_iter().map(|product| {
-                    let locale = locale.clone();
-                    let href = format!("{module_route_base}?handle={}", product.handle);
-                    view! {
-                        <article class="rounded-2xl border border-border bg-background p-5">
-                            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{product.product_type.unwrap_or_else(|| t(locale.as_deref(), "commerce.selected.catalog", "catalog"))}</div>
-                            <h4 class="mt-2 text-base font-semibold text-card-foreground">{product.title}</h4>
-                            <p class="mt-2 text-sm text-muted-foreground">{product.vendor.unwrap_or_else(|| t(locale.as_deref(), "commerce.list.vendorFallback", "Independent label"))}</p>
-                            <div class="mt-4 flex items-center justify-between gap-3">
-                                <span class="text-xs text-muted-foreground">{product.published_at.unwrap_or(product.created_at)}</span>
-                                <a class="inline-flex text-sm font-medium text-primary hover:underline" href=href>{t(locale.as_deref(), "commerce.list.open", "Open")}</a>
-                            </div>
-                        </article>
-                    }
-                }).collect_view()}
+            <div class="grid gap-3">
+                <SurfaceCard
+                    badge=t(locale.as_deref(), "commerce.surface.region.badge", "region")
+                    title=t(locale.as_deref(), "commerce.surface.region.title", "Regions")
+                    body=t(locale.as_deref(), "commerce.surface.region.body", "Region discovery now lives in the region-owned storefront package and owns country/currency selection.")
+                    href=Some(region_href)
+                />
+                <SurfaceCard
+                    badge=t(locale.as_deref(), "commerce.surface.product.badge", "product")
+                    title=t(locale.as_deref(), "commerce.surface.product.title", "Catalog")
+                    body=t(locale.as_deref(), "commerce.surface.product.body", "Published catalog discovery and product detail now live in the product-owned storefront package.")
+                    href=Some(product_href)
+                />
+                <SurfaceCard
+                    badge=t(locale.as_deref(), "commerce.surface.pricing.badge", "pricing")
+                    title=t(locale.as_deref(), "commerce.surface.pricing.title", "Pricing")
+                    body=t(locale.as_deref(), "commerce.surface.pricing.body", "Public pricing atlas, currency coverage, and sale markers now live in the pricing-owned storefront package.")
+                    href=Some(pricing_href)
+                />
+                <SurfaceCard
+                    badge=t(locale.as_deref(), "commerce.surface.aggregate.badge", "aggregate")
+                    title=t(locale.as_deref(), "commerce.surface.aggregate.title", "Remaining aggregate scope")
+                    body=t(locale.as_deref(), "commerce.surface.aggregate.body", "Cart context, shipping selection, payment collection, and checkout orchestration remain in commerce because they still coordinate multiple split modules.")
+                    href=None
+                />
             </div>
         </div>
-    }.into_any()
+    }
+}
+
+#[component]
+fn SurfaceCard(badge: String, title: String, body: String, href: Option<String>) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+
+    view! {
+        <article class="rounded-2xl border border-border bg-background p-5">
+            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{badge}</div>
+            <h4 class="mt-2 text-base font-semibold text-card-foreground">{title}</h4>
+            <p class="mt-2 text-sm leading-7 text-muted-foreground">{body}</p>
+            {match href {
+                Some(href) => view! {
+                    <div class="mt-4">
+                        <a class="inline-flex text-sm font-medium text-primary hover:underline" href=href>
+                            {t(locale.as_deref(), "commerce.surface.open", "Open")}
+                        </a>
+                    </div>
+                }.into_any(),
+                None => view! {
+                    <div class="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                        {t(locale.as_deref(), "commerce.surface.here", "stays here")}
+                    </div>
+                }.into_any(),
+            }}
+        </article>
+    }
 }
 
 #[component]

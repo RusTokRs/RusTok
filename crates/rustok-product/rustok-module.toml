@@ -22,3 +22,14 @@ nav_label = "Products"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-product-storefront"
+slot = "home_after_catalog"
+route_segment = "products"
+page_title = "Products"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

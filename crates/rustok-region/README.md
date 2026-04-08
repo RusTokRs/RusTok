@@ -13,6 +13,8 @@
 - manage the `regions` schema;
 - create, update, fetch, and list tenant regions;
 - resolve a region by country for storefront and checkout policy.
+- expose a module-owned admin route for region CRUD.
+- expose a module-owned storefront route for public region discovery.
 
 ## Interactions
 
@@ -24,6 +26,8 @@
 
 - `rustok_region::RegionModule`
 - `rustok_region::RegionService`
+- `rustok_region_admin::RegionAdmin`
+- `rustok_region_storefront::RegionView`
 
 ## Docs
 

@@ -5,11 +5,10 @@ Leptos admin UI package for the `rustok-commerce` module.
 ## Responsibilities
 
 - Exposes the commerce admin root view used by `apps/admin`.
-- Acts as the transitional umbrella admin control room while ecommerce UI ownership is split by module boundaries.
-- Keeps shipping-profile registry and shipping-option operator UX inside the commerce package.
+- Acts as the commerce-owned shipping-profile registry surface while ecommerce UI ownership is split by module boundaries.
+- Keeps the typed shipping-profile registry inside the commerce package.
 - Participates in the manifest-driven admin composition path through `rustok-module.toml`.
-- Temporarily still carries aggregate ecommerce operator flows, but product CRUD has already started moving into `rustok-product/admin`.
-- Uses registry-backed selectors for `shipping_profile_slug` and `allowed_shipping_profile_slugs`, so operators no longer type raw profile slugs into product and shipping-option forms.
+- No longer carries product CRUD; that catalog UI now lives in `rustok-product/admin`.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
 
 ## Entry Points
@@ -20,8 +19,8 @@ Leptos admin UI package for the `rustok-commerce` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Uses the `rustok-commerce` GraphQL contract plus shared auth hooks from `leptos-auth`.
-- Coexists with `rustok-product-admin` during the current UI split until product CRUD is fully removed from the aggregate commerce route.
-- Consumes `shippingProfiles`, `shippingProfile`, `createShippingProfile`, `updateShippingProfile`, `deactivateShippingProfile`, `reactivateShippingProfile`, `shippingOptions`, `shippingOption`, `createShippingOption`, `updateShippingOption`, `deactivateShippingOption`, and `reactivateShippingOption` in addition to the product catalog GraphQL contract.
+- Coexists with `rustok-product-admin` and `rustok-fulfillment-admin` during the current UI split while other ecommerce admin slices still move to their module-owned packages.
+- Consumes `shippingProfiles`, `shippingProfile`, `createShippingProfile`, `updateShippingProfile`, `deactivateShippingProfile`, and `reactivateShippingProfile`.
 - Should remain compatible with the host `/modules/{module_slug}` contract and generic shell.
 - Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
 

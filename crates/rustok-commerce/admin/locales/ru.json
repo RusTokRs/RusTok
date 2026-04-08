@@ -92,7 +92,7 @@
   "commerce.status.active": "Активен",
   "commerce.status.archived": "Архивирован",
   "commerce.status.draft": "Черновик",
-  "commerce.subtitle": "Модульная операторская поверхность для публикации каталога, управления реестром профилей доставки и совместимостью способов доставки. CRUD товаров, владение профилями и правила shipping option остаются внутри commerce-пакета.",
+  "commerce.subtitle": "Модульная операторская поверхность для typed shipping-profile registry, который используют каталог и delivery orchestration.",
   "commerce.summary.product.empty": "Откройте товар из ленты, чтобы посмотреть его локализованный контент, основной вариант и привязку к профилю доставки.",
   "commerce.summary.product.handle": "handle",
   "commerce.summary.product.inventory": "остаток",
@@ -109,5 +109,5 @@
   "commerce.summary.shippingOption.provider": "провайдер",
   "commerce.summary.shippingProfile.empty": "Откройте профиль доставки, чтобы посмотреть его slug, описание и состояние жизненного цикла.",
   "commerce.summary.shippingProfile.noDescription": "без описания",
-  "commerce.title": "Панель управления коммерцией"
+  "commerce.title": "Реестр профилей доставки commerce"
 }

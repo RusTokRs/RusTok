@@ -9623,15 +9623,21 @@ dependencies = [
  "rustok-comments-admin",
  "rustok-commerce-admin",
  "rustok-core",
+ "rustok-customer-admin",
  "rustok-forum-admin",
+ "rustok-fulfillment-admin",
  "rustok-index-admin",
+ "rustok-inventory-admin",
  "rustok-media",
  "rustok-media-admin",
+ "rustok-order-admin",
  "rustok-outbox-admin",
  "rustok-pages-admin",
+ "rustok-pricing-admin",
  "rustok-product-admin",
  "rustok-rbac",
  "rustok-rbac-admin",
+ "rustok-region-admin",
  "rustok-search",
  "rustok-search-admin",
  "rustok-storage",
@@ -10010,6 +10016,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos_axum",
  "rustok-api",
  "serde",
 ]
@@ -10096,6 +10103,22 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-customer-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-core",
+ "rustok-customer",
+ "rustok-profiles",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -10200,6 +10223,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-fulfillment-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-iggy"
 version = "0.1.0"
 dependencies = [
@@ -10280,6 +10315,18 @@ dependencies = [
  "serde_json",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustok-inventory-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -10371,6 +10418,18 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-order-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -10490,15 +10549,43 @@ name = "rustok-pricing"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "rust_decimal",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-product",
  "sea-orm",
  "sea-orm-migration",
+ "serde",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustok-pricing-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-pricing-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-pricing",
+ "serde",
 ]
 
 [[package]]
@@ -10534,6 +10621,20 @@ dependencies = [
  "rustok-api",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rustok-product-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-commerce-foundation",
+ "rustok-product",
+ "serde",
 ]
 
 [[package]]
@@ -10607,6 +10708,35 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-region-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos_axum",
+ "loco-rs",
+ "rust_decimal",
+ "rustok-api",
+ "rustok-core",
+ "rustok-region",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-region-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-region",
+ "serde",
 ]
 
 [[package]]
@@ -10796,6 +10926,9 @@ dependencies = [
  "rustok-content",
  "rustok-forum-storefront",
  "rustok-pages-storefront",
+ "rustok-pricing-storefront",
+ "rustok-product-storefront",
+ "rustok-region-storefront",
  "rustok-search-storefront",
  "rustok-tenant",
  "serde",

@@ -76,6 +76,12 @@
 ### Optional/admin-поверхности
 
 - `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
+- `rustok-fulfillment` admin UI: [README](../../crates/rustok-fulfillment/admin/README.md)
+- `rustok-customer` admin UI: [README](../../crates/rustok-customer/admin/README.md)
+- `rustok-region` admin UI: [README](../../crates/rustok-region/admin/README.md)
+- `rustok-order` admin UI: [README](../../crates/rustok-order/admin/README.md)
+- `rustok-inventory` admin UI: [README](../../crates/rustok-inventory/admin/README.md)
+- `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
 - `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
 - `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
 - `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
@@ -83,6 +89,17 @@
 - `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
 - `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
 - `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
+
+### Optional/storefront-поверхности
+
+- `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
+- `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
+- `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
+- `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
+- `rustok-pricing` storefront UI: [README](../../crates/rustok-pricing/storefront/README.md)
+- `rustok-product` storefront UI: [README](../../crates/rustok-product/storefront/README.md)
+- `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
+- `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
 
 ### Capability-owned UI
 

@@ -8,10 +8,11 @@ description = "Leptos storefront UI package for the rustok-commerce module"
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr"]
+ssr = ["leptos/ssr", "dep:leptos_axum"]
 
 [dependencies]
 leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
 rustok-api.workspace = true
 serde = { workspace = true, features = ["derive"] }

@@ -6,9 +6,31 @@ description = "Default pricing submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "capability_only"
+recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]
 product = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "PricingModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-pricing-admin"
+route_segment = "pricing"
+nav_label = "Pricing"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-pricing-storefront"
+slot = "home_after_catalog"
+route_segment = "pricing"
+page_title = "Pricing"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

@@ -6,8 +6,11 @@
 
 Актуализация этого roadmap выполнена на 8 апреля 2026 года: UI split ecommerce family
 переведён из чисто планового статуса в активную execution-фазу, потому что `product`
-уже получил собственный module-owned admin route, а aggregate `commerce` UI теперь
-считается переходным слоем до следующего cleanup-среза.
+уже получил собственный module-owned admin route, shipping options вынесены в
+`fulfillment`, order operations вынесены в `order`, inventory visibility вынесена
+в `inventory`, pricing visibility вынесена в `pricing`, customer operations вынесены
+в `customer`, region CRUD вынесен в `region`, а aggregate `commerce` UI очищен до
+typed shipping-profile registry.
 
 Исходные предпосылки:
 
@@ -46,7 +49,7 @@
 
 Ближайший execution slice:
 
-- сначала завершить начатый UI split: product admin route уже вынесен в `rustok-product/admin`, теперь нужно убрать product CRUD из aggregate ecommerce UI и затем вынести следующие domain slices;
+- сначала продолжить уже начатый UI split: product admin route вынесен в `rustok-product/admin`, shipping-option admin route вынесен в `rustok-fulfillment/admin`, customer admin route вынесен в `rustok-customer/admin`, order admin route вынесен в `rustok-order/admin`, inventory admin route вынесен в `rustok-inventory/admin`, pricing admin route вынесен в `rustok-pricing/admin`, region admin route вынесен в `rustok-region/admin`, storefront split уже идёт через `rustok-region/storefront`, `rustok-product/storefront` и `rustok-pricing/storefront`, а aggregate `rustok-commerce-storefront` уже сжат до orchestration hub; следующий шаг — выносить только оставшиеся storefront flows с устойчивой ownership boundary поверх cart/checkout;
 - затем закрыть seller-aware grouping поверх `delivery_groups[]`, чтобы split fulfillment перестал быть только profile-based;
 - затем добавить fulfillment-item model и post-order delivery changes;
 - и только после этого идти в channel-aware pricing.
@@ -91,7 +94,7 @@
 | `BL-10` | линейный order lifecycle vs post-order reality | добавить returns, refunds, exchanges, claims, order changes и draft/edit semantics |
 | `BL-11` | manual/default providers vs extensibility | стабилизировать payment/fulfillment provider SPI вместо смешивания базовой модели с внешними интеграциями |
 | `BL-12` | typed shipping profile registry, typed product/variant bindings, line-item snapshots, cart delivery groups и multi-fulfillment checkout уже есть, но deliverability model ещё не закрыта до seller-aware уровня | довести deliverability domain от profile-based split fulfillment до seller-aware grouping, fulfillment-item model и post-order delivery changes |
-| `BL-13` | split backend уже есть, но UI ownership всё ещё агрегирован в `rustok-commerce-admin` / `rustok-commerce-storefront` | разнести admin/storefront UI по split ecommerce-модулям и оставить umbrella UI только для cross-domain orchestration surfaces |
+| `BL-13` | split backend уже есть, но storefront и часть admin ownership всё ещё агрегированы в `rustok-commerce-storefront` и оставшихся umbrella admin routes | разнести admin/storefront UI по split ecommerce-модулям и оставить umbrella UI только для cross-domain orchestration surfaces |
 
 ## Этапы
 
@@ -111,13 +114,27 @@
 
 - `rustok-product` уже публикует собственный module-owned admin UI package `rustok-product/admin`;
 - `rustok-product/rustok-module.toml` уже экспортирует `[provides.admin_ui]`, а `apps/admin` подхватывает новый route через manifest-driven composition;
-- aggregate `rustok-commerce-admin` пока ещё остаётся переходным surface и временно дублирует часть product operator flows до следующего cleanup-среза.
+- `rustok-product` уже забрал product CRUD ownership;
+- `rustok-product` уже публикует собственный module-owned storefront UI package `rustok-product/storefront` и использует native Leptos server functions как default internal data layer с GraphQL fallback;
+- `rustok-pricing` уже публикует собственный module-owned storefront UI package `rustok-pricing/storefront` и использует native Leptos server functions как default internal data layer с GraphQL fallback;
+- `rustok-fulfillment` уже публикует собственный module-owned admin UI package `rustok-fulfillment/admin`;
+- `rustok-customer` уже публикует собственный module-owned admin UI package `rustok-customer/admin` и использует native Leptos server functions как default admin data layer;
+- `rustok-region` уже публикует собственный module-owned admin UI package `rustok-region/admin` и использует native Leptos server functions как default admin data layer;
+- `rustok-region` уже публикует собственный module-owned storefront UI package `rustok-region/storefront` и использует native Leptos server functions как default internal data layer с GraphQL fallback;
+- `rustok-order` уже публикует собственный module-owned admin UI package `rustok-order/admin`;
+- `rustok-inventory` уже публикует собственный module-owned admin UI package `rustok-inventory/admin` для stock visibility и low-stock triage;
+- `rustok-pricing` уже публикует собственный module-owned admin UI package `rustok-pricing/admin` для price visibility, sale markers и currency coverage;
+- `rustok-pricing` уже публикует собственный module-owned storefront UI package `rustok-pricing/storefront` для public pricing atlas, sale markers и currency coverage;
+- aggregate `rustok-commerce-storefront` больше не держит published catalog/pricing read-side и сжат до orchestration hub с request/tenant/channel context summary;
+- aggregate `rustok-commerce-admin` больше не дублирует product/shipping-option flows и оставлен только под shipping profiles.
 
 Следующие шаги:
 
-- удалить product CRUD из `rustok-commerce-admin`, оставив там только umbrella/delivery-orchestration surfaces;
-- вынести order/inventory/pricing/fulfillment UI по ownership boundaries модулей;
-- начать отдельный storefront split после стабилизации admin-side routes и navigation.
+- [x] вынести region UI по ownership boundary модуля;
+- [x] начать отдельный storefront split через `rustok-region/storefront`;
+- [x] вынести product storefront read-side из aggregate `rustok-commerce-storefront`;
+- [x] вынести pricing storefront read-side из aggregate `rustok-commerce-storefront`.
+- [x] сжать `rustok-commerce-storefront` до orchestration hub без catalog/pricing ownership.
 
 ### Phase 2. Medusa-style transport baseline
 

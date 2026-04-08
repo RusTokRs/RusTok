@@ -30,6 +30,9 @@
 - `rustok-pages-storefront`
 - `rustok-blog-storefront`
 - `rustok-commerce-storefront`
+- `rustok-pricing-storefront`
+- `rustok-product-storefront`
+- `rustok-region-storefront`
 - `rustok-forum-storefront`
 - `rustok-search-storefront`
 
@@ -44,13 +47,16 @@ Build-time wiring генерируется из `modules.toml` и `rustok-module
 - `pages/storefront-data`
 - `blog/storefront-data`
 - `commerce/storefront-data`
+- `pricing/storefront-data`
+- `product/storefront-data`
+- `region/storefront-data`
 - `forum/storefront-data`
 - `search/storefront-search`
 - `search/storefront-filter-presets`
 - `search/storefront-suggestions`
 - `search/storefront-track-click`
 
-GraphQL path при этом остаётся рабочим и поддерживаемым fallback-контрактом.
+GraphQL path при этом остаётся рабочим и поддерживаемым fallback-контрактом для module-owned discovery surfaces, а `commerce/storefront-data` теперь используется только для aggregate storefront context/orchestration hub.
 
 ## Canonical routing и locale
 

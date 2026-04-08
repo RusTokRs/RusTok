@@ -1,0 +1,22 @@
+[package]
+name = "rustok-pricing-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-pricing module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr"]
+
+[dependencies]
+leptos = { workspace = true, features = ["csr"] }
+leptos-auth.workspace = true
+leptos-graphql.workspace = true
+rustok-api.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

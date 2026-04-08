@@ -6,9 +6,20 @@ description = "Default inventory submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "capability_only"
+recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]
 product = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "InventoryModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-inventory-admin"
+route_segment = "inventory"
+nav_label = "Inventory"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

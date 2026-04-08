@@ -1,0 +1,25 @@
+[package]
+name = "rustok-region-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos storefront UI package for the rustok-region module"
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-region",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-graphql.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-api.workspace = true
+rustok-region = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }

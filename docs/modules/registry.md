@@ -162,16 +162,16 @@ graph TD
 |---|---|---|---|
 | `content` | `rustok-content` | — | Shared content helpers, orchestration, rich-text/locale contract |
 | `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context |
-| `customer` | `rustok-customer` | — | Storefront customer profile boundary |
-| `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, product-owned admin catalog UI |
+| `customer` | `rustok-customer` | — | Storefront customer profile boundary и customer-owned admin operations UI |
+| `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, product-owned admin catalog UI и storefront catalog UI |
 | `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
-| `region` | `rustok-region` | — | Region, country, currency, tax baseline |
-| `pricing` | `rustok-pricing` | `product` | Pricing domain baseline |
-| `inventory` | `rustok-inventory` | `product` | Inventory и stock availability baseline |
-| `order` | `rustok-order` | — | Order lifecycle и order snapshots |
+| `region` | `rustok-region` | — | Region, country, currency, tax baseline, region-owned admin CRUD UI и storefront discovery UI |
+| `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI и storefront pricing atlas UI |
+| `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline и inventory-owned admin visibility UI |
+| `order` | `rustok-order` | — | Order lifecycle, order snapshots и order-owned admin operations UI |
 | `payment` | `rustok-payment` | — | Payment collections и payments |
-| `fulfillment` | `rustok-fulfillment` | — | Shipping options и fulfillments |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration |
+| `fulfillment` | `rustok-fulfillment` | — | Shipping options, fulfillments и fulfillment-owned shipping-option admin UI |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration и typed shipping-profile registry |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
 | `comments` | `rustok-comments` | — | Generic comments domain |

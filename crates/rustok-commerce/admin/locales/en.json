@@ -92,7 +92,7 @@
   "commerce.status.active": "Active",
   "commerce.status.archived": "Archived",
   "commerce.status.draft": "Draft",
-  "commerce.subtitle": "Module-owned operator workspace for catalog publishing, shipping-profile registry management and delivery option compatibility. Product CRUD, profile ownership and shipping-option rules all stay inside the commerce package.",
+  "commerce.subtitle": "Module-owned operator workspace for the typed shipping-profile registry used by catalog and delivery orchestration.",
   "commerce.summary.product.empty": "Open a product from the feed to inspect its localized copy, primary variant and shipping-profile mapping.",
   "commerce.summary.product.handle": "handle",
   "commerce.summary.product.inventory": "inventory",
@@ -109,5 +109,5 @@
   "commerce.summary.shippingOption.provider": "provider",
   "commerce.summary.shippingProfile.empty": "Open a shipping profile to inspect its slug, description and lifecycle state.",
   "commerce.summary.shippingProfile.noDescription": "no description",
-  "commerce.title": "Commerce Control Room"
+  "commerce.title": "Commerce Shipping Profile Registry"
 }

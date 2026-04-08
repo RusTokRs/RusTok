@@ -34,7 +34,14 @@
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
 - UI split ecommerce family уже начат: `rustok-product/admin` стал первым
-  module-owned admin route вне aggregate `rustok-commerce-admin`.
+  module-owned admin route, `rustok-fulfillment/admin` забрал shipping options,
+  `rustok-order/admin` забрал order operations, `rustok-inventory/admin` забрал
+  inventory visibility, `rustok-pricing/admin` забрал pricing visibility,
+  `rustok-customer/admin` забрал customer operations, `rustok-region/admin`
+  забрал region CRUD, storefront-side split уже идёт через `rustok-region/storefront`
+  , `rustok-product/storefront` и `rustok-pricing/storefront`,
+  `rustok-commerce-admin` очищен до shipping-profile registry, а
+  `rustok-commerce-storefront` уже сжат до orchestration hub.
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности

@@ -1,0 +1,21 @@
+{
+  "region.badge": "region",
+  "region.common.countries": "countries",
+  "region.common.taxExcluded": "tax excluded",
+  "region.common.taxIncluded": "tax included",
+  "region.common.taxRate": "tax rate",
+  "region.error.loadStorefront": "Failed to load region storefront data",
+  "region.list.empty": "No regions are available for storefront discovery yet.",
+  "region.list.open": "Open",
+  "region.list.title": "Available regions",
+  "region.list.total": "{count} total",
+  "region.selected.body": "This region defines the storefront baseline for supported countries, currency, and tax semantics.",
+  "region.selected.countries": "Supported countries",
+  "region.selected.coverage": "Coverage",
+  "region.selected.currency": "Currency",
+  "region.selected.emptyBody": "Create a region in the region admin package or enable region data for the current tenant first.",
+  "region.selected.emptyTitle": "No storefront regions available",
+  "region.selected.taxRate": "Tax rate",
+  "region.subtitle": "This public route reads region, country, currency, and tax baseline data through the region-owned storefront surface.",
+  "region.title": "Storefront region discovery from the module package"
+}

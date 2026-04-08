@@ -19,6 +19,9 @@
   non-Flex operational metadata in `products.metadata`.
 - Publish a module-owned Leptos admin UI package in `admin/` for catalog CRUD,
   publication lifecycle, and shipping-profile selection.
+- Publish a module-owned Leptos storefront UI package in `storefront/` for
+  published catalog discovery, handle-based product selection, and
+  channel-aware inventory visibility.
 - Product module metadata for runtime registration.
 
 ## Interactions
@@ -31,11 +34,13 @@
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - Consumed by `apps/admin` through manifest-driven module UI composition.
+- Consumed by `apps/storefront` through manifest-driven module UI composition.
 
 ## Entry points
 
 - `ProductModule`
 - `CatalogService`
 - `admin::ProductAdmin`
+- `storefront::ProductView`
 
 See also `docs/README.md`.

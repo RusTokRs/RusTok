@@ -7,13 +7,15 @@ description = "Pricing domain module extracted from rustok-commerce"
 
 [dependencies]
 async-trait.workspace = true
+chrono.workspace = true
 rust_decimal.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
+rustok-product.workspace = true
+serde.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-
