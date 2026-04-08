@@ -1,131 +1,105 @@
-# WebSocket Channels
+# Каналы и real-time-поверхности
 
-Описание архитектуры real-time WebSocket-каналов платформы RusToK.
+Этот документ фиксирует роль real-time-каналов в RusToK и их место в общей
+transport-архитектуре.
 
-## Обзор
+## Назначение
 
-WebSocket-каналы реализованы поверх `axum::extract::ws` и интегрированы в Loco-сервер как обычные HTTP-маршруты, обновляемые до WebSocket-соединения (`WebSocketUpgrade`).
+Real-time-каналы используются там, где нужен push-формат доставки событий в
+долгоживущем соединении:
 
-Каналы используются для:
-- Стриминга событий сборки (build pipeline) в реальном времени
-- Будущих уведомлений: медиа-обработка, импорт данных, прогресс задач
+- streaming статуса build/runtime операций
+- live progress для длительных задач
+- будущие notification/event streams, если они требуют push-доставки
 
-## Текущие каналы
+Каналы не заменяют GraphQL, REST или event bus. Это отдельный transport surface
+для live delivery.
 
-### `GET /ws/builds`
+## Текущий baseline
 
-Стримит события сборки (`BuildEvent`) от `BuildEventHub` всем подключённым клиентам.
+На текущем слое real-time-каналы строятся поверх WebSocket-routing в
+`apps/server`.
 
-**Аутентификация**: Bearer JWT в заголовке `Authorization` (тот же формат, что и REST-эндпоинты).
+Канонические правила:
 
-**Формат сообщений**: newline-delimited JSON с полем `type` для различения типов событий.
+- websocket route живёт в host layer
+- payload-контракт должен быть типизирован и документирован
+- auth/tenant/RBAC policy применяется до выдачи канала или в handshake path
+- канал не должен становиться источником правды для доменного состояния
 
-## Архитектура
+## Где проходит граница
 
-```
-Client
-  │
-  │  GET /ws/builds
-  │  Upgrade: websocket
-  ▼
-ws_builds() handler
-  │
-  │  WebSocketUpgrade::on_upgrade()
-  ▼
-handle_socket(socket, hub)
-  │
-  ├── hub.subscribe()  ──► tokio::sync::broadcast::Receiver<BuildEvent>
-  │
-  └── tokio::select! loop
-        ├── rx.recv()        → serialize + send JSON
-        └── socket.recv()    → handle Close/Ping
-```
+### Host-слой
 
-### `BuildEventHub`
+`apps/server` отвечает за:
 
-```rust
-// apps/server/src/services/build_event_hub.rs
-pub struct BuildEventHub {
-    tx: tokio::sync::broadcast::Sender<BuildEvent>,
-}
+- websocket handshake
+- connection lifecycle
+- auth/session validation
+- tenant context
+- fan-out transport и shutdown behavior
 
-impl BuildEventHub {
-    pub fn subscribe(&self) -> Receiver<BuildEvent> { ... }
-    pub fn publish(&self, event: BuildEvent) { ... }
-}
-```
+### Module / service-слой
 
-Хаб хранится в `ctx.shared_store` и инициализируется один раз при старте.
+Модуль или runtime service отвечает за:
 
-### Wire-format
+- генерацию typed-событий
+- публикацию в hub/broadcast layer
+- семантический контракт payload-а
 
-Каждое событие сериализуется в JSON с тегом `type`:
+### Центральный event-flow
 
-```json
-{ "type": "build_requested", "build_id": "...", "requested_by": "alice" }
-{ "type": "build_started",   "build_id": "...", "stage": "compile", "progress": 10 }
-{ "type": "build_progress",  "build_id": "...", "stage": "test",    "progress": 55 }
-{ "type": "build_completed", "build_id": "...", "release_id": "v1.2.3" }
-{ "type": "build_failed",    "build_id": "...", "stage": "deploy",  "progress": 90, "error": "..." }
-{ "type": "build_cancelled", "build_id": "...", "stage": "compile", "progress": 20 }
-```
+WebSocket-канал не должен подменять event-runtime:
 
-Тег `type` генерируется через `#[serde(tag = "type", rename_all = "snake_case")]`.
+- доменные события идут через `rustok-outbox` и `rustok-events`
+- read-side и projections обновляются через event flow
+- websocket нужен только для live delivery текущего статуса или прогресса
 
-### Обработка разрыва соединения
+## Build/event-streaming
 
-`handle_socket` завершается при:
-- `RecvError::Closed` — хаб остановлен (graceful shutdown)
-- `Message::Close` или `None` от клиента — клиент отключился
-- Ошибка записи в сокет (`socket.send(...).is_err()`)
+Build/runtime progress-канал остаётся допустимым сценарием, если:
 
-При отставании (`RecvError::Lagged(n)`) пропущенные события логируются через `tracing::warn!` — соединение не разрывается.
+- есть typed event-контракт
+- payload сериализуется стабильно
+- reconnect и lag не ломают семантический контракт
+- клиент может восстановить состояние через canonical API, если пропустил события
 
-## Регистрация маршрутов
+Это важно: WebSocket-stream не должен быть единственным источником состояния.
 
-```rust
-// apps/server/src/channels/builds.rs
-pub fn routes() -> loco_rs::controller::Routes {
-    loco_rs::controller::Routes::new()
-        .prefix("ws")
-        .add("/builds", get(ws_builds))
-}
-```
+## Wire-контракт
 
-```rust
-// apps/server/src/app.rs (в Hooks::routes())
-routes = routes.add_route(channels::builds::routes());
-```
+Для WebSocket payload действует такой минимум:
 
-Маршрут добавляется безусловно (не зависит от feature-флагов).
+- явный `type`
+- стабильный machine-readable payload
+- минимальный набор обязательных полей для consumer-а
+- совместимость с tracing/observability
 
-## Graceful Shutdown
+Если канал становится долговременным платформенным контрактом, его payload должен быть
+описан и в local docs owning component.
 
-При получении сигнала завершения:
-1. Loco вызывает `Hooks::on_shutdown(ctx)`
-2. `StopHandle::stop()` отправляет `true` через `watch::Sender<bool>`
-3. Сервисы, слушающие `rx.changed()`, завершают свои циклы
-4. `BuildEventHub` остаётся активным до закрытия последнего соединения — `RecvError::Closed` не возникает до дропа `Arc<BuildEventHub>`
+## Shutdown и отказоустойчивость
 
-## Добавление нового канала
+Канал должен корректно переживать:
 
-1. Создайте `apps/server/src/channels/<name>.rs`
-2. Определите enum wire-сообщений с `#[serde(tag = "type", rename_all = "snake_case")]`
-3. Создайте хаб (или переиспользуйте существующий) через `shared_store`
-4. Реализуйте `handle_socket` с `tokio::select!` по `rx.recv()` + `socket.recv()`
-5. Экспортируйте `routes()` и добавьте в `app.rs`
+- закрытие клиентом
+- graceful shutdown хоста
+- lag/backpressure
+- временную недоступность publisher-а
 
-## Зависимости
+Отказ transport-канала не должен ломать write-side-операцию, если она уже
+завершена и подтверждена canonical API/state.
 
-| Crate | Зачем |
-|-------|-------|
-| `axum` (feature `ws`) | `WebSocketUpgrade`, `WebSocket`, `Message` |
-| `tokio::sync::broadcast` | Многоадресная рассылка событий |
-| `serde_json` | Сериализация wire-сообщений |
-| `tracing` | Логирование lag / ошибок |
+## Что не делать
+
+- не использовать websocket как единственный источник доменного состояния
+- не обходить auth/tenant/RBAC policy ради convenience
+- не публиковать ad-hoc JSON без typed-контракта
+- не переносить ownership доменных событий из event runtime в websocket hub
 
 ## Связанные документы
 
-- [Руководство по планировщику](../guides/scheduler.md)
-- [Архитектура событий](./events.md)
-- [Контракт потока событий](./event-flow-contract.md)
+- [Контракт потока доменных событий](./event-flow-contract.md)
+- [Архитектура API](./api.md)
+- [Маршрутизация и границы transport-слоя](./routing.md)
+- [Обзор архитектуры платформы](./overview.md)

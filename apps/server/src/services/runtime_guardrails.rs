@@ -1,5 +1,6 @@
 use loco_rs::app::AppContext;
 use rustok_core::events::BackpressureState;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -55,6 +56,7 @@ pub struct RuntimeGuardrailSnapshot {
     pub rate_limits: Vec<RateLimitGuardrailSnapshot>,
     pub event_bus: EventBusGuardrailSnapshot,
     pub event_transport: EventTransportGuardrailSnapshot,
+    pub remote_executor: RemoteExecutorGuardrailSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -94,6 +96,17 @@ pub struct EventBusGuardrailSnapshot {
 pub struct EventTransportGuardrailSnapshot {
     pub relay_fallback_active: bool,
     pub channel_capacity: usize,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RemoteExecutorGuardrailSnapshot {
+    pub enabled: bool,
+    pub token_configured: bool,
+    pub lease_ttl_ms: u64,
+    pub requeue_scan_interval_ms: u64,
+    pub active_claims: u64,
+    pub expired_claims: u64,
+    pub state: RuntimeGuardrailStatus,
 }
 
 pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuardrailSnapshot {
@@ -226,6 +239,26 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
             channel_capacity: 0,
         });
 
+    let remote_executor = collect_remote_executor_snapshot(ctx, &settings).await;
+    if remote_executor.state == RuntimeGuardrailStatus::Degraded {
+        escalate(
+            &mut observed_status,
+            RuntimeGuardrailStatus::Degraded,
+            &mut reasons,
+            format!(
+                "remote executor has {} expired validation stage claims awaiting requeue",
+                remote_executor.expired_claims
+            ),
+        );
+    } else if remote_executor.state == RuntimeGuardrailStatus::Critical {
+        escalate(
+            &mut observed_status,
+            RuntimeGuardrailStatus::Critical,
+            &mut reasons,
+            "remote executor is enabled but missing shared token configuration".to_string(),
+        );
+    }
+
     if event_transport.relay_fallback_active {
         escalate(
             &mut observed_status,
@@ -313,6 +346,67 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         rate_limits,
         event_bus,
         event_transport,
+        remote_executor,
+    }
+}
+
+async fn collect_remote_executor_snapshot(
+    ctx: &AppContext,
+    settings: &RustokSettings,
+) -> RemoteExecutorGuardrailSnapshot {
+    let config = &settings.registry.remote_executor;
+    if !config.enabled || settings.runtime.is_registry_only() {
+        return RemoteExecutorGuardrailSnapshot {
+            enabled: config.enabled,
+            token_configured: config
+                .shared_token
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            lease_ttl_ms: config.lease_ttl_ms,
+            requeue_scan_interval_ms: config.requeue_scan_interval_ms,
+            active_claims: 0,
+            expired_claims: 0,
+            state: RuntimeGuardrailStatus::Ok,
+        };
+    }
+
+    let active_claims =
+        crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RunnerKind.eq("remote"))
+            .filter(crate::models::registry_validation_stage::Column::Status.eq(
+                crate::models::registry_validation_stage::RegistryValidationStageStatus::Running,
+            ))
+            .count(&ctx.db)
+            .await
+            .unwrap_or(0);
+    let expired_claims = crate::models::registry_validation_stage::Entity::find()
+        .filter(crate::models::registry_validation_stage::Column::RunnerKind.eq("remote"))
+        .filter(
+            crate::models::registry_validation_stage::Column::ClaimExpiresAt.lt(chrono::Utc::now()),
+        )
+        .count(&ctx.db)
+        .await
+        .unwrap_or(0);
+    let token_configured = config
+        .shared_token
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty());
+    let state = if !token_configured {
+        RuntimeGuardrailStatus::Critical
+    } else if expired_claims > 0 {
+        RuntimeGuardrailStatus::Degraded
+    } else {
+        RuntimeGuardrailStatus::Ok
+    };
+
+    RemoteExecutorGuardrailSnapshot {
+        enabled: true,
+        token_configured,
+        lease_ttl_ms: config.lease_ttl_ms,
+        requeue_scan_interval_ms: config.requeue_scan_interval_ms,
+        active_claims,
+        expired_claims,
+        state,
     }
 }
 

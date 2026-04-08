@@ -19,6 +19,7 @@ use rustok_core::{Permission, UserRole};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
 
+#[derive(Debug)]
 pub struct CurrentUser {
     pub user: users::Model,
     pub session_id: uuid::Uuid,

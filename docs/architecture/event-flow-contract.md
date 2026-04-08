@@ -1,123 +1,112 @@
 # Контракт потока доменных событий
 
-Документ фиксирует канонический путь `DomainEvent` в RusToK: от доменной операции до
-обновления read-model, индекса и route/canonical state.
+Этот документ фиксирует канонический путь `DomainEvent` в RusToK: от доменной
+операции до обновления downstream read-side состояния.
 
-Канонические определения `DomainEvent` и `EventEnvelope` поддерживаются в
-`rustok-events`; `rustok-core::events` сохраняет совместимый re-export для
-переходного периода.
+## Канонический путь
 
-## Канонический путь события
+1. Domain/service layer выполняет бизнес-операцию.
+2. Изменение write-side состояния и запись в outbox происходят в одной транзакции.
+3. `rustok-outbox` доставляет событие в transport/runtime layer.
+4. Зарегистрированные consumers обновляют projections, индексы и другие
+   downstream surfaces идемпотентно.
+5. UI и API читают уже согласованное read-side состояние.
 
-1. Доменный сервис выполняет бизнес-операцию.
-2. Изменения данных и запись в outbox (`sys_events`) происходят в одной транзакции.
-3. `OutboxRelay` доставляет событие в transport и помечает dispatch state.
-4. `EventDispatcher` передаёт событие зарегистрированным consumer-ам.
-5. Index/read-model/routing consumers пересчитывают свои проекции идемпотентно.
+## Источники истины
 
-## Текущие владельцы событий
+- canonical event contracts живут в `rustok-events`
+- compatibility re-export может существовать в `rustok-core`, но не должен
+  подменять ownership
+- transactional delivery contract живёт в `rustok-outbox`
+- consumer-specific semantics должны быть отражены в local docs publisher-а и
+  consumer-а
 
-- `rustok-blog`, `rustok-forum`, `rustok-pages`, `rustok-comments`, `rustok-commerce`
-  публикуют доменные события из своих storage-owner моделей.
-- `rustok-content` публикует orchestration и canonical-routing события, а также
-  поддерживает shared-node helper surface для оставшихся совместимых сценариев.
-- `rustok-index` остаётся основным consumer-ом для content/product reindex flow.
-- `rustok-outbox` и `rustok-core` обеспечивают transactional delivery/runtime contract.
+## Роли компонентов
 
-## Важное уточнение по `Node*` событиям
+### Публикатор
 
-События `NodeCreated`, `NodeUpdated`, `NodeTranslationUpdated`, `NodePublished`,
-`NodeUnpublished`, `NodeDeleted` и `BodyUpdated` не являются больше основной
-публичной моделью хранения для `blog`, `forum`, `pages` и `comments`.
+Publisher:
 
-Текущая роль этого набора:
+- владеет semantic meaning события
+- определяет обязательные поля payload-а
+- публикует событие через canonical write path
 
-- shared-node helper surface;
-- helper-path для оставшихся node-backed сценариев;
-- source для части reindex/replay tooling.
+Publisher не должен считать event bus своим read-model API.
 
-Новые и развиваемые доменные сценарии должны опираться на typed storage-owner события
-своего модуля либо на orchestration/canonical события `rustok-content`, а не расширять
-central `NodeService` contract.
+### Outbox/runtime-слой
 
----
+`rustok-outbox` отвечает за:
 
-## Контентные события
+- transactional persistence
+- retry/backoff
+- delivery bookkeeping
+- предсказуемый runtime contract для consumers
 
-### Shared-node helper surface
+`rustok-outbox` остаётся `Core` module, а не support utility.
 
-| DomainEvent | Кто публикует | Кто обрабатывает | Обязательные поля | Статус |
-|---|---|---|---|---|
-| `NodeCreated` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `kind` | Shared-node helper |
-| `NodeUpdated` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `kind` | Shared-node helper |
-| `NodeTranslationUpdated` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `locale` | Shared-node helper |
-| `NodePublished` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `kind` | Shared-node helper |
-| `NodeUnpublished` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `kind` | Shared-node helper |
-| `NodeDeleted` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `kind` | Shared-node helper |
-| `BodyUpdated` | `rustok-content::NodeService` | `rustok-index::ContentIndexer` | `node_id`, `locale` | Shared-node helper |
+### Консьюмер
 
-Требования:
+Consumer:
 
-- consumer должен оставаться идемпотентным;
-- replay допустим для recovery и reindex;
-- новые продуктовые фичи не должны добавлять новые `kind`/ветки в этот слой без отдельного ADR.
+- должен быть идемпотентным
+- должен пересчитывать своё состояние из source of truth, а не из локальных
+  предположений
+- не должен ломать write-side contract publisher-а
 
-### Orchestration и canonical-routing surface
+## Content и orchestration-события
 
-| DomainEvent | Кто публикует | Кто обрабатывает | Обязательные поля | Назначение |
-|---|---|---|---|---|
-| `CanonicalUrlChanged` | `rustok-content::ContentOrchestrationService` | `rustok-index::ContentIndexer`, routing/cache consumers | `target_id`, `target_kind`, `locale`, `new_canonical_url` | Переназначение canonical URL |
-| `UrlAliasPurged` | `rustok-content::ContentOrchestrationService` | `rustok-index::ContentIndexer`, routing/cache consumers | `target_id`, `target_kind`, `locale`, `urls[]` | Удаление устаревших alias URL |
+Нужно различать:
 
-Эти события являются текущим каноническим контрактом для `topic ↔ post` conversion,
-slug migration и redirect/canonical policy.
+- storage-owner domain events конкретного модуля
+- orchestration/canonical-routing events
+- helper/reindex events для legacy или shared paths
 
-## Коммерческие события
+Новые сценарии должны опираться на typed storage-owner или orchestration events,
+а не расширять бесконечно shared helper surface.
 
-| DomainEvent | Кто публикует | Кто обрабатывает | Обязательные поля |
-|---|---|---|---|
-| `ProductCreated` | `rustok-commerce::CatalogService` | `rustok-index::ProductIndexer` | `product_id` |
-| `ProductUpdated` | `rustok-commerce::CatalogService` | `rustok-index::ProductIndexer` | `product_id` |
-| `ProductPublished` | `rustok-commerce::CatalogService` | `rustok-index::ProductIndexer` | `product_id` |
-| `ProductDeleted` | `rustok-commerce::CatalogService` | `rustok-index::ProductIndexer` | `product_id` |
-| `VariantCreated` | `server` commerce services | `rustok-index::ProductIndexer` | `variant_id`, `product_id` |
-| `VariantUpdated` | `server` commerce services | `rustok-index::ProductIndexer` | `variant_id`, `product_id` |
-| `VariantDeleted` | `server` commerce services | `rustok-index::ProductIndexer` | `variant_id`, `product_id` |
-| `InventoryUpdated` | `rustok-commerce::InventoryService` | `rustok-index::ProductIndexer` | `variant_id`, `product_id`, `location_id`, `old_quantity`, `new_quantity` |
-| `PriceUpdated` | `rustok-commerce::PricingService` | `rustok-index::ProductIndexer` | `variant_id`, `product_id`, `currency`, `new_amount` |
+## Commerce-события
 
-## Системные события индексации
+Для commerce family действует тот же принцип:
 
-| DomainEvent | Кто публикует | Кто обрабатывает | Обязательные поля |
-|---|---|---|---|
-| `ReindexRequested` (`target_type = "content"`) | admin/services | `rustok-index::ContentIndexer` | `target_type` |
-| `ReindexRequested` (`target_type = "product"`) | admin/services | `rustok-index::ProductIndexer` | `target_type` |
-| `IndexUpdated` | indexers/system services | observers/telemetry/audit | `index_name`, `target_id` |
+- ownership события у конкретного domain/service layer
+- projections и index updates идут через consumer path
+- transport/runtime не подменяет ownership домена
 
-## Retry и отказоустойчивость
+## Retry и устойчивость
 
-- Outbox relay обязан поддерживать backoff и переводить событие в `Failed` только
-  после исчерпания лимита попыток.
-- Dispatcher retry должен быть конечным и наблюдаемым.
-- Consumer-ы обязаны использовать идемпотентные операции:
-  `upsert`, `delete-if-exists`, пересчёт по source-of-truth.
-- URL-policy сценарии обязаны сопровождаться парой событий
-  `CanonicalUrlChanged` + `UrlAliasPurged`.
+Для event flow обязательны:
 
-## Какие модули обязаны ссылаться на этот контракт
+- конечный и наблюдаемый retry
+- backoff
+- идемпотентные consumer operations
+- replay-safe поведение
 
-- publishers: `rustok-content`, `rustok-commerce`, `rustok-pages`, `rustok-forum`,
-  `rustok-blog`, `rustok-comments`, `apps/server`;
-- consumers/read-model: `rustok-index`;
-- transport/runtime: `rustok-outbox`, `rustok-core`.
+Если consumer не идемпотентен, он не соответствует platform event contract.
 
-Если новый модуль публикует или потребляет `DomainEvent`, в его `docs/README.md`
-обязательна секция `Event contracts` со ссылкой на этот документ.
+## Что не делать
 
-## PR-чеклист для изменений в событиях
+- не публиковать межмодульные события мимо outbox, если нужна транзакционная
+  согласованность
+- не считать event payload единственным долгоживущим storage format
+- не переносить canonical ownership событий в host layer
+- не строить новый consumer path без обновления local docs и central contract
 
-- [ ] Добавлен consumer-path для нового события.
-- [ ] Добавлен integration test цепочки `publish -> outbox -> delivery -> consumer`.
-- [ ] Для нового события есть минимум happy-path и repeat/idempotency test.
-- [ ] Обновлены telemetry/runbook артефакты, если меняется runtime consumer loop.
-- [ ] Обновлены central docs и docs модуля-публикатора/consumer-а.
+## Когда обновлять этот документ
+
+Этот central contract нужно обновлять, если меняется:
+
+- ownership event family
+- canonical publisher path
+- consumer class
+- retry/runtime semantics
+- роль `rustok-events` или `rustok-outbox`
+
+При этом сначала обновляются local docs publisher-а и consumer-а, потом central
+docs.
+
+## Связанные документы
+
+- [Архитектура модулей](./modules.md)
+- [Каналы и real-time surfaces](./channels.md)
+- [Диаграммы платформы](./diagram.md)
+- [Реестр crate-ов модульной платформы](../modules/crates-registry.md)

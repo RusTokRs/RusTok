@@ -1,170 +1,104 @@
-# Документация по UI пакетам модулей
+# Документация по UI-пакетам модулей
 
-Обзор документации по установке и использованию модулей с UI пакетами для админки и фронтенда.
+Этот документ даёт навигацию по module-owned UI-поверхностям и фиксирует только
+актуальный контрактный слой. Он не заменяет локальные docs самих модулей и не
+дублирует их runtime/UI details.
 
-## 📚 Быстрый доступ
+## Базовое правило
 
-### Для начинающих
-- **[Быстрый старт](UI_PACKAGES_QUICKSTART.md)** — Создайте свой первый модуль с UI за 10 минут
+- UI пакеты принадлежат самому модулю, а не host-приложению;
+- Leptos admin/storefront UI-поверхности публикуются через sub-crates `admin/` и
+  `storefront/` внутри module crate;
+- Next.js host-приложения только монтируют module-owned UI-поверхности и не должны
+  становиться их каноническим владельцем;
+- источник истины для UI-wiring живёт в `rustok-module.toml`, локальном
+  `README.md` и `docs/README.md` самого модуля.
 
-### Для разработчиков
-- **[Индекс документации модулей](_index.md)** — Навигация по актуальным документам модульной системы
-- **[Манифест модулей](manifest.md)** — Каноническая спецификация формата `modules.toml`
+## Что считать UI-пакетом
 
-### Для архитекторов
-- **[Реестр модулей](registry.md)** — Lifecycle, toggle, guards и ответственные зоны
-- **[Система модулей: маркетплейс и жизненный цикл](module-system-plan.md)** — Единый план: install/uninstall, marketplace, tenant toggle
-- **[Архитектура модулей](../architecture/modules.md)** — Общая архитектурная модель модульной платформы
+Для платформенного модуля UI-поверхность считается корректно оформленной, если есть:
 
-## 🎯 Основные концепты
+- root `README.md` модуля на английском;
+- локальный `docs/README.md` на русском;
+- локальный `docs/implementation-plan.md` на русском;
+- `rustok-module.toml` с корректным `[provides.admin_ui]` и/или
+  `[provides.storefront_ui]`, если модуль реально поставляет UI;
+- `admin/Cargo.toml` и/или `storefront/Cargo.toml`, если такой UI объявлен в
+  manifest-wiring.
 
-### Что такое UI пакеты модулей?
+Само наличие папки `admin/` или `storefront/` не считается доказательством
+интеграции. Канонический источник истины здесь только manifest-wiring.
 
-Каждый модуль RusToK может включать три компонента:
+## Runtime-контракт для UI-пакетов
 
-1. **Backend crate** (`rustok-*`) — доменная логика и API
-2. **Admin UI пакет** (`leptos-*-admin`) — компоненты админки
-3. **Storefront UI пакет** (`leptos-*-storefront`) — компоненты витрины
+- Leptos module-owned UI использует host-provided locale-контракт и не
+  придумывает собственную цепочку locale fallback;
+- для internal Leptos data layer по умолчанию используются `#[server]`
+  functions, при этом GraphQL остаётся параллельным transport-контрактом;
+- Next.js hosts работают через server/API-контракты и не дублируют module-owned
+  domain logic в приложении;
+- host-приложения отвечают только за mount/wiring/navigation, а не за
+  ownership UI-функциональности модуля.
 
-Для native i18n модуль теперь может дополнительно декларировать bundle contract прямо в
-`rustok-module.toml` через `[provides.admin_ui.i18n]` и `[provides.storefront_ui.i18n]`.
-Это не заменяет host-level locale contract, а фиксирует, где лежат package-owned `locales/*.json`
-и `messages/*.json`, если модуль действительно поставляет собственные переводы.
-Модульные UI-пакеты не должны придумывать свою locale-цепочку: effective locale выбирается
-сервером и host-приложением, а пакет только потребляет уже переданный язык.
-На текущем этапе этот contract уже используется admin-пакетами `workflow`, `rbac`, `tenant`,
-`index`, `outbox`, `pages`, `comments`, `channel`, `forum`, `search`, `commerce` и storefront-пакетами `blog`, `pages`,
-`commerce`, `forum`, `search`.
-Отдельно от manifest-driven модулей тот же runtime locale contract теперь соблюдает capability-owned пакет
-`rustok-ai-admin`: он тоже хранит package-owned `admin/locales/*.json`, но не публикуется через
-`rustok-module.toml`, потому что относится к capability crate, а не к модульному registry surface.
+## Куда смотреть
 
-### Пример структуры
+### Общий контракт
 
-```
-rustok-commerce/              # Backend
-leptos-commerce-admin/         # Admin UI
-leptos-commerce-storefront/    # Storefront UI
-```
+- [Контракт `rustok-module.toml`](./manifest.md)
+- [Реестр модулей и приложений](./registry.md)
+- [Индекс документации по модулям](./_index.md)
+- [Шаблон документации модуля](../templates/module_contract.md)
 
-## ✅ Самописные Leptos библиотеки (использовать в разработке)
+### UI и хост-приложения
 
-Эти библиотеки уже есть в репозитории и должны использоваться агентами при параллельной разработке UI.
+- [Обзор UI](../UI/README.md)
+- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [Контракт storefront](../UI/storefront.md)
+- [Быстрый старт для Admin ↔ Server](../UI/admin-server-connection-quickstart.md)
 
-**Core crates**
-- [leptos-auth](../../crates/leptos-auth/README.md)
-- [leptos-forms](../../crates/leptos-forms/README.md)
-- [leptos-graphql](../../crates/leptos-graphql/README.md)
-- [leptos-hook-form](../../crates/leptos-hook-form/README.md)
-- [leptos-shadcn-pagination](../../crates/leptos-shadcn-pagination/README.md)
-- [leptos-table](../../crates/leptos-table/README.md)
-- [leptos-ui](../../crates/leptos-ui/README.md)
-- [leptos-zod](../../crates/leptos-zod/README.md)
-- [leptos-zustand](../../crates/leptos-zustand/README.md)
+### Локальные docs приложений
 
-**UI packages (module UI integration)**
-- `packages/leptos-auth`
-- `packages/leptos-graphql`
-- `packages/leptos-hook-form`
-- `packages/leptos-zod`
-- `packages/leptos-zustand`
+- [Документация Admin](../../apps/admin/docs/README.md)
+- [Документация Storefront](../../apps/storefront/docs/README.md)
+- [Документация Next Admin](../../apps/next-admin/docs/README.md)
+- [Документация Next Frontend](../../apps/next-frontend/docs/README.md)
 
-## 📖 По сценарию использования
+## Примеры модульного UI
 
-### "Я хочу создать новый модуль с UI"
-→ [Быстрый старт](UI_PACKAGES_QUICKSTART.md)
+### Core/admin-поверхности
 
-### "Я хочу понять, как работает система установки"
-→ [Полное руководство](MODULE_UI_PACKAGES_INSTALLATION.md)
+- `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
+- `rustok-index` admin UI: [README](../../crates/rustok-index/admin/README.md)
+- `rustok-outbox` admin UI: [README](../../crates/rustok-outbox/admin/README.md)
+- `rustok-tenant` admin UI: [README](../../crates/rustok-tenant/admin/README.md)
+- `rustok-rbac` admin UI: [README](../../crates/rustok-rbac/admin/README.md)
 
-### "Мне нужна спецификация формата манифеста"
-→ [Манифест модулей](module-manifest.md)
+### Optional/admin-поверхности
 
-### "Хочу посмотреть готовые примеры"
-→ [Пример modules.toml](../../modules.toml.example)
+- `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
+- `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
+- `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
+- `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
+- `rustok-forum` admin UI: [README](../../crates/rustok-forum/admin/README.md)
+- `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
+- `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
+- `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
 
-### "Хочу разобраться в архитектуре"
-→ [Полное руководство](MODULE_UI_PACKAGES_INSTALLATION.md#архитектура-системы)
+### Capability-owned UI
 
-## 🗂️ Структура документации
+- `rustok-ai` Leptos admin UI: [README](../../crates/rustok-ai/admin/README.md)
 
-### UI_PACKAGES_QUICKSTART.md (362 строки)
-- Пошаговое создание модуля с UI
-- Кодовые примеры для всех этапов
-- Использование готовых UI компонентов
-- Полезные команды
+## Что не делать
 
-### MODULE_UI_PACKAGES_INSTALLATION.md (884 строки)
-- Обзор архитектуры системы
-- Расширенный формат манифеста
-- Типы UI пакетов
-- Процесс создания модуля (9 шагов)
-- API для управления установкой
-- Режимы деплоя (monolith/headless)
-- Жизненный цикл UI пакетов
-- Локальная разработка
-- Best Practices
-- Troubleshooting
-- Примеры готовых модулей
+- не описывать UI package-контракт только в `docs/modules/*` без обновления
+  локальных docs самого модуля;
+- не дублировать module-owned UI в `apps/admin` или `apps/storefront`;
+- не вводить package-local locale negotiation;
+- не считать старые инструкции по установке и деплою источником истины для актуального UI
+  wiring.
 
-### modules.toml.example
-- Пример манифеста с UI пакетами
-- Демонстрация различных конфигураций
-- Комментарии для каждого параметра
+## Связанные документы
 
-## 🔗 Связанная документация
-
-### Модули
-- [Обзор модулей](overview.md) — Карта всех модулей в проекте
-- [Реестр модулей](registry.md) — Lifecycle, toggle, guards
-- [Реестр crate-модулей](crates-registry.md) — Карта crate-структуры и статусов
-- [Система модулей](module-system-plan.md) — Единый план: marketplace, install/uninstall, toggle
-
-### UI и Frontend
-- [Admin UI документация](../../docs/UI/README.md) — Админка документация
-- [UI компоненты](../../crates/leptos-ui/README.md) — Библиотека компонентов
-- [Формы и валидация](../../crates/leptos-forms/README.md) — Система форм
-- [GraphQL интеграция](../../crates/leptos-graphql/README.md) — GraphQL хуки
-
-### Архитектура
-- [Обзор архитектуры](../architecture/overview.md) — Принципы и решения платформы
-- [Манифест платформы](../../RUSTOK_MANIFEST.md) — Философия и стек
-
-## 🚀 Быстрое начало
-
-```bash
-# 1. Посмотрите быстрый старт
-cat docs/modules/UI_PACKAGES_QUICKSTART.md
-
-# 2. Создайте модуль
-cargo new --lib crates/rustok-mymodule
-
-# 3. Создайте Admin UI
-cargo new --lib crates/leptos-mymodule-admin
-
-# 4. Обновите modules.toml
-# (см. пример в modules.toml.example)
-
-# 5. Сгенерируйте регистрацию
-cargo xtask generate-registry
-
-# 6. Соберите проект
-cargo build --release --features mymodule
-```
-
-## 💡 Советы
-
-- Начните с [Быстрого старта](UI_PACKAGES_QUICKSTART.md)
-- Используйте готовые компоненты из `leptos-ui`
-- Сверяйтесь с [индексом документации модулей](_index.md), если материал переехал
-- Смотрите примеры готовых модулей в [реестре модулей](registry.md)
-
-## 🆘 Нужна помощь?
-
-- **Проблемы с компиляцией** → [Руководство по тестированию и диагностике](../guides/testing.md)
-- **Вопросы по API** → [Архитектура API](../architecture/api.md)
-- **Архитектурные вопросы** → [Архитектура модулей](../architecture/modules.md)
-
----
-
-**Последнее обновление:** 16 февраля 2026
+- [Быстрый старт по UI-пакетам](./UI_PACKAGES_QUICKSTART.md)
+- [Обзор модульной платформы](./overview.md)
+- [Реестр crate-ов модульной платформы](./crates-registry.md)

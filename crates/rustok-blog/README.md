@@ -47,3 +47,8 @@
 - `controllers::routes`
 - `admin::BlogAdmin`
 - `storefront::BlogView`
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

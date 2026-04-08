@@ -1,43 +1,49 @@
-# Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ apps/next-frontend
+# Документация Next Frontend
 
-`apps/next-frontend` вЂ” Next.js storefront РІ РїР°СЂР°Р»Р»РµР»СЊРЅРѕР№ СЃС…РµРјРµ С„СЂРѕРЅС‚РµРЅРґРѕРІ RusToK.
+Локальная документация для `apps/next-frontend`.
 
-## Р¦РµР»СЊ
+## Назначение
 
-РџСЂРёР»РѕР¶РµРЅРёРµ РїРѕРІС‚РѕСЂСЏРµС‚ РєР»СЋС‡РµРІС‹Рµ Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹Рµ РїСЂРёРЅС†РёРїС‹ Р°РґРјРёРЅРѕРє:
+`apps/next-frontend` является Next.js storefront host для RusToK. Он даёт React/Next storefront path, работает параллельно с `apps/storefront` и должен сохранять parity с Leptos storefront на уровне transport/auth/i18n/module contracts.
 
-- FSD-РѕСЂРёРµРЅС‚РёСЂРѕРІР°РЅРЅР°СЏ СЃС‚СЂСѓРєС‚СѓСЂР° СЃР»РѕС‘РІ (`app`, `modules`, `shared`);
-- РµРґРёРЅС‹Р№ UI-РєРѕРЅС‚СЂР°РєС‚ С‡РµСЂРµР· internal UI workspace (`UI/next`);
-- РїР°СЂРёС‚РµС‚ СЃРµС‚РµРІС‹С… Рё auth-РєРѕРЅС‚СЂР°РєС‚РѕРІ С‡РµСЂРµР· СЃР°РјРѕРїРёСЃРЅС‹Рµ РїР°РєРµС‚С‹ `leptos-*`.
+## Границы ответственности
 
-## Р§С‚Рѕ РїРµСЂРµРЅРµСЃРµРЅРѕ РёР· РїРѕРґС…РѕРґР° Р°РґРјРёРЅРѕРє
+- владеть Next.js storefront host и его route composition;
+- использовать shared frontend contracts для GraphQL, auth, forms и state;
+- собирать storefront через `src/app`, `src/modules`, `src/shared` и `src/components`;
+- не дублировать transport/auth code по страницам;
+- не подменять собой module-owned storefront UI contracts.
 
-### 1) РћР±С‰РёРµ frontend-Р±РёР±Р»РёРѕС‚РµРєРё
+## Runtime contract
 
-Р’ storefront РїРѕРґРєР»СЋС‡РµРЅС‹ С‚Рµ Р¶Рµ РІРЅСѓС‚СЂРµРЅРЅРёРµ РїР°РєРµС‚С‹, С‡С‚Рѕ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РґР»СЏ РїР°СЂРёС‚РµС‚Р° РІ Р°РґРјРёРЅРєР°С…:
+- host следует FSD-ориентиру `src/app`, `src/modules`, `src/shared`, `src/components`;
+- shared integration gateways живут в `src/shared/lib/*`;
+- backend API идёт через `apps/server`;
+- auth и transport contracts переиспользуются через shared packages, а не через ad-hoc clients;
+- storefront host должен оставаться синхронизированным с `apps/storefront` по route/i18n/auth contracts.
 
-- `leptos-graphql/next` вЂ” РµРґРёРЅС‹Р№ GraphQL РєРѕРЅС‚СЂР°РєС‚ (`/api/graphql`, `Authorization`, `X-Tenant-Slug`);
-- `leptos-auth/next` вЂ” РµРґРёРЅС‹Р№ С„РѕСЂРјР°С‚ РєР»РёРµРЅС‚СЃРєРѕР№ auth-СЃРµСЃСЃРёРё Рё С‚РёРїРёР·Р°С†РёСЏ РѕС€РёР±РѕРє;
-- `leptos-hook-form`, `leptos-zod`, `leptos-zustand` вЂ” СЃР»РѕР№ СЂР°СЃС€РёСЂРµРЅРёСЏ РґР»СЏ С„РѕСЂРј/РІР°Р»РёРґР°С†РёРё/СЃРѕСЃС‚РѕСЏРЅРёСЏ.
+## Frontend contract
 
-Р”Р»СЏ РїСЂРёРєР»Р°РґРЅРѕРіРѕ РєРѕРґР° РІРёС‚СЂРёРЅС‹ СЃРѕР·РґР°РЅР° FSD-РѕР±С‘СЂС‚РєР° РІ `src/shared/lib/`:
+- GraphQL contract идёт через shared storefront transport layer;
+- auth/session contract идёт через shared auth package boundary;
+- forms/state contract переиспользует shared frontend packages;
+- i18n route/layout contract должен совпадать с platform storefront expectations.
 
-- `src/shared/lib/graphql.ts` вЂ” `storefrontGraphql(...)` + СЂРµСЌРєСЃРїРѕСЂС‚ Р±Р°Р·РѕРІС‹С… GraphQL-С‚РёРїРѕРІ Рё РєРѕРЅСЃС‚Р°РЅС‚;
-- `src/shared/lib/auth.ts` вЂ” СЂРµСЌРєСЃРїРѕСЂС‚ auth-С‚РёРїРѕРІ/С…РµР»РїРµСЂРѕРІ (`getClientAuth`, `mapAuthError`, РєР»СЋС‡Рё cookie/token).
+## Взаимодействия
 
-4. Р”Р»СЏ РёР·РјРµРЅРµРЅРёР№ UI-РєРѕРЅС‚СЂР°РєС‚РѕРІ СЃРёРЅС…СЂРѕРЅРЅРѕ РѕР±РЅРѕРІР»СЏС‚СЊ:
-   - `UI/docs/api-contracts.md`;
-   - `docs/UI/storefront.md`;
-   - СЌС‚Сѓ СЃС‚СЂР°РЅРёС†Сѓ.
+- `apps/server` — backend/API provider;
+- `apps/storefront` — параллельный Leptos storefront host для contract parity;
+- `crates/rustok-*` и module-owned surfaces подключаются через backend и frontend integration layer, а не через host-local business logic.
 
-## РЎРІСЏР·Р°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
+## Проверка
 
-- `/docs/UI/storefront.md`
-- `/docs/UI/README.md`
-- `/docs/index.md`
+- lint/typecheck прогоны по `apps/next-frontend`
+- storefront route/i18n contract checks
+- сверка shared contract с `docs/UI/storefront.md` и `docs/modules/manifest.md`
 
-## Module-aware storefront notes
+## Связанные документы
 
-- `app/layout.tsx` now mounts `EnabledModulesProvider` for tenant-aware storefront UI state.
-- `src/modules/registry.ts` accepts optional `moduleSlug` and filters registered slot content by enabled modules.
-- Self-authored module packages should register storefront entries with `moduleSlug` when the widget belongs to an optional module.
+- [App README](../README.md)
+- [Storefront docs](../../../docs/UI/storefront.md)
+- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+- [Карта документации](../../../docs/index.md)

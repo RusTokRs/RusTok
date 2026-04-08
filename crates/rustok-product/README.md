@@ -17,6 +17,8 @@
 - Product-side split and locale-aware resolution of Flex attached custom-field
   values, using shared `flex` attached localized storage while preserving
   non-Flex operational metadata in `products.metadata`.
+- Publish a module-owned Leptos admin UI package in `admin/` for catalog CRUD,
+  publication lifecycle, and shipping-profile selection.
 - Product module metadata for runtime registration.
 
 ## Interactions
@@ -28,10 +30,12 @@
   module-owned.
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
+- Consumed by `apps/admin` through manifest-driven module UI composition.
 
 ## Entry points
 
 - `ProductModule`
 - `CatalogService`
+- `admin::ProductAdmin`
 
 See also `docs/README.md`.

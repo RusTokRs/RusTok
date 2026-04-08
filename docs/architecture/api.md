@@ -1,106 +1,94 @@
 # Архитектура API
 
-Политика выбора API-стилей описана в [routing.md](./routing.md).
+Политика выбора API-стиля описана в [routing.md](./routing.md). Этот документ
+фиксирует верхнеуровневую карту API surfaces RusToK.
 
 ## Краткое резюме
 
-RusToK использует гибридный подход:
+RusToK использует гибридный transport layer:
 
-- GraphQL для UI-клиентов;
-- REST для интеграций, служебных сценариев и module-owned transport;
-- OpenAPI для машиночитаемого REST-контракта;
-- health/metrics endpoints для observability.
+- GraphQL для UI-клиентов
+- REST для интеграций, webhooks, ops и module-owned HTTP contracts
+- `#[server]` functions для internal Leptos data layer
+- OpenAPI для машиночитаемого REST contract
+- health/metrics endpoints для observability
 
-| API | Endpoint | Назначение |
-| --- | --- | --- |
-| GraphQL | `/api/graphql` | единая точка для admin/storefront UI |
-| GraphQL WS | `/api/graphql/ws` | subscriptions transport |
-| REST | `/api/v1/...` | внешние интеграции, webhooks, batch jobs |
-| Commerce REST | `/store/...`, `/admin/...` | Medusa-style ecommerce transport |
-| OpenAPI | `/api/openapi.json`, `/api/openapi.yaml` | спецификация REST API |
-| Health | `/health`, `/health/live`, `/health/ready`, `/health/runtime`, `/health/modules` | runtime health/status |
-| Metrics | `/metrics` | Prometheus-метрики |
+## Канонические эндпоинты
 
-## Ecommerce transport
+| Surface | Endpoint | Назначение |
+|---|---|---|
+| GraphQL | `/api/graphql` | Единая точка для admin/storefront UI |
+| GraphQL WS | `/api/graphql/ws` | Subscriptions transport |
+| REST | `/api/v1/...` | Интеграции, webhooks, batch/ops scenarios |
+| Commerce REST | `/store/...`, `/admin/...` | Совместимые ecommerce HTTP flows |
+| OpenAPI | `/api/openapi.json`, `/api/openapi.yaml` | REST contract discovery |
+| Health | `/health`, `/health/live`, `/health/ready` | Health and readiness |
+| Metrics | `/metrics` | Observability and scraping |
 
-Для ecommerce-направления live REST-контрактом считается Medusa-style surface:
+## Владение API-поверхностью
 
-- storefront routes под `/store/*`;
-- admin routes под `/admin/*`.
+- `apps/server` владеет общим API host layer
+- platform modules владеют domain contracts, resolvers, handlers и service layer
+- host applications и UI packages не должны становиться canonical owner API logic
+- module-owned HTTP/GraphQL-поверхности должны совпадать с manifest wiring и local docs
 
-Актуальные правила:
+## GraphQL-поверхность
 
-- legacy `/api/commerce/*` удалён из runtime router и OpenAPI;
-- GraphQL остаётся отдельным transport-слоем, но должен использовать те же application services, что и REST;
-- admin ecommerce surface сейчас включает product management, paginated `GET /admin/orders`, `GET /admin/orders/{id}`, explicit order lifecycle routes (`mark-paid`, `ship`, `deliver`, `cancel`) и admin list/detail/lifecycle routes для `payment-collections` и `fulfillments`;
-- GraphQL commerce surface для admin уже включает parity-read queries `order`, `orders`, `paymentCollection`, `paymentCollections`, `fulfillment`, `fulfillments` и lifecycle mutations для order/payment-collection/fulfillment поверх тех же сервисов, что и REST;
-- storefront GraphQL surface теперь, кроме catalog queries, включает customer-owned read queries `storefrontMe` и `storefrontOrder` поверх тех же `CustomerService`/`OrderService`, что и `/store/customers/me` и `/store/orders/{id}`;
-- storefront GraphQL discovery surface теперь включает `storefrontRegions` и `storefrontShippingOptions`, причём `storefrontShippingOptions` уважает cart-context precedence и customer ownership так же, как live `/store/shipping-options`;
-- storefront GraphQL surface также включает mutations `createStorefrontPaymentCollection` и `completeStorefrontCheckout`, которые повторяют live semantics store REST для guest/customer cart access и reuse существующей cart-bound payment collection;
-- storefront GraphQL surface также покрывает базовый cart lifecycle: `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, `removeStorefrontCartLineItem`, с теми же guest/customer ownership и backend line-item resolution semantics, что и `/store/carts/*`;
-- storefront REST и storefront GraphQL теперь channel-aware поверх platform `ChannelContext`: если commerce не включён для request channel через `channel_module_bindings`, storefront surface отвечает как disabled module;
-- storefront catalog и shipping discovery используют metadata-based allowlist по `channel_slug`, а checkout/cart mutation path не пропускают товары и shipping options, скрытые для текущего channel context.
-- storefront product detail, cart line-item validation и checkout completion теперь также переоценивают product visibility и доступный inventory по видимым stock locations для текущего `channel_slug`.
-- storefront shipping discovery, cart context patch и checkout также используют shipping profile compatibility: typed source of truth теперь состоит из `shipping_profiles` registry, `products.shipping_profile_slug`, `product_variants.shipping_profile_slug`, line-item snapshots и typed cart `shipping_selections`, а metadata-backed `shipping_profile.slug` / `shipping_profiles.allowed_slugs` остаются compatibility shape.
-- admin/storefront product read contracts и admin write contracts знают first-class `shipping_profile_slug`, а shipping option contracts знают first-class `allowed_shipping_profile_slugs`; write-path принимает их только если slug существует среди active shipping profiles текущего tenant'а.
-- cart/storefront contracts теперь экспонируют `delivery_groups[]`, а checkout contracts — `shipping_selections[]` и `fulfillments[]`; legacy singular `selected_shipping_option_id`, `shipping_option_id` и `fulfillment` сохраняются только как shortcut для single-group carts.
-- checkout preflight validation теперь останавливает stale shipping-profile snapshots и несовместимые delivery-group selections до side effects: cart возвращается из `checking_out` обратно в `active`, а payment/order artifacts не создаются, если ошибка произошла до orchestration stages.
-- admin transport для delivery теперь включает и shipping-profile management: REST `/admin/shipping-profiles*` и GraphQL `shippingProfiles/shippingProfile/createShippingProfile/updateShippingProfile/deactivateShippingProfile/reactivateShippingProfile` работают поверх `ShippingProfileService`; shipping-option management (`/admin/shipping-options*` и соответствующие GraphQL операции) использует этот registry для referential validation, а module-owned `rustok-commerce-admin` UI потребляет обе typed surfaces напрямую и рендерит registry-backed selectors для product/shipping-option profile bindings.
-- storefront GraphQL cart context patch `updateStorefrontCartContext` использует tri-state input contract (`omitted` vs `null` vs explicit value) и повторяет semantics live `POST /store/carts/{id}` без потери patch-значения;
-- storefront locale может приходить через `locale` query param и `x-medusa-locale`;
-- storefront cart line items описываются как `variant_id + quantity`, а title/price резолвятся backend-ом;
-- storefront cart context обновляется route `POST /store/carts/{id}` и persist'ится в cart snapshot;
-- `shipping-options`, `payment-collections` и `checkout` читают storefront context из cart как из source of truth;
-- `complete checkout` reuse-ит уже существующий cart-bound payment collection, если storefront ранее создал его через `/store/payment-collections`;
-- guest cart может завершать checkout без auth, но customer-owned cart остаётся доступен только matching customer context;
-- checkout использует промежуточный статус `checking_out`, а повторные запросы должны стремиться к reuse/recovery existing records.
+GraphQL остаётся canonical UI-facing contract для:
 
-## GraphQL subscriptions
+- Leptos hosts
+- Next.js hosts
+- module-owned UI packages
 
-- HTTP queries/mutations остаются на `/api/graphql`;
-- subscriptions идут через `/api/graphql/ws`;
-- browser clients передают `token`, `tenantSlug` и `locale` через `connection_init`;
-- tenant resolution для WebSocket-пути происходит внутри GraphQL handshake.
+GraphQL должен собирать domain data через module/service layer, а не обходить
+ownership модулей через host-specific shortcuts.
 
-## Auth transport consistency
+## REST-поверхность
 
-Для auth/user сценариев (`register/sign_in`, `login/sign_in`, `refresh`, `change_password`, `reset_password`, `update_profile`, `create_user`) REST и GraphQL работают как thin adapters поверх общего `AuthLifecycleService`.
+REST остаётся обязательным для сценариев, где нужен явный HTTP contract:
 
-Это даёт:
+- внешние интеграции
+- webhooks
+- operational endpoints
+- совместимые ecommerce flows
+- module-owned transport routes
 
-- единый session lifecycle contract;
-- единый error mapping через типизированные ошибки;
-- общую observability-поверхность для auth flow.
+REST не должен использоваться как скрытая замена GraphQL для UI-only flows.
 
-Перед релизом auth-изменений используется:
+## `#[server]`-поверхность
 
-```bash
-scripts/auth_release_gate.sh --require-all-gates \
-  --parity-report <staging-parity-report> \
-  --security-signoff <security-signoff>
-```
+Leptos `#[server]` functions — это internal host/UI contract, а не замена
+публичного API surface.
 
-## MCP как отдельный API-surface
+Правила:
 
-Платформа поддерживает MCP через `crates/rustok-mcp`, но локальная документация описывает только RusToK integration layer, а не переопределяет upstream protocol semantics.
+- `#[server]` functions по умолчанию используются внутри Leptos hosts и
+  module-owned Leptos UI
+- GraphQL сохраняется параллельно
+- external integrations не завязываются на `#[server]`
 
-Server-side management surface уже включает:
+## Безопасность и контракт контекста
 
-- REST `/api/mcp/*`;
-- GraphQL `mcp*`;
-- runtime bridge `DbBackedMcpRuntimeBridge` для persisted token/policy/audit resolution.
+Каждый API path должен работать через единый host/runtime context:
 
-## Rich-text input contract
+- tenant resolution
+- auth/session handling
+- RBAC enforcement
+- request-scoped locale
+- observability hooks
 
-Для blog/forum/pages transport-слои поддерживают:
+API surface не должен обходить эти слои через локальные shortcuts.
 
-- legacy режим: `markdown`;
-- rich режим: `rt_json_v1` с обязательным `content_json`.
+## Что не делать
 
-Для tenant-by-tenant перевода legacy markdown используется migration job `migrate_legacy_richtext`.
+- не смешивать ownership API contract между host и module crate
+- не дублировать transport flows без явной причины
+- не считать UI package источником правды для API surface
+- не вводить отдельный locale/auth contract на уровне конкретного endpoint family
 
 ## Связанные документы
 
-- [routing.md](./routing.md)
-- [overview.md](./overview.md)
-- [UI GraphQL architecture](../UI/graphql-architecture.md)
+- [Маршрутизация и границы transport-слоя](./routing.md)
+- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [Архитектура модулей](./modules.md)
+- [Обзор архитектуры платформы](./overview.md)

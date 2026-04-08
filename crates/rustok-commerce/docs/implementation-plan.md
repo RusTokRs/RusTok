@@ -4,6 +4,11 @@
 
 Этот документ фиксирует актуальный roadmap umbrella-модуля `rustok-commerce` после отказа от legacy REST surface `/api/commerce/*` и после появления platform-level `rustok-channel`.
 
+Актуализация этого roadmap выполнена на 8 апреля 2026 года: UI split ecommerce family
+переведён из чисто планового статуса в активную execution-фазу, потому что `product`
+уже получил собственный module-owned admin route, а aggregate `commerce` UI теперь
+считается переходным слоем до следующего cleanup-среза.
+
 Исходные предпосылки:
 
 - live REST-контракт для ecommerce живёт на `/store/*` и `/admin/*`;
@@ -11,6 +16,12 @@
 - `rustok-commerce` продолжает играть роль root umbrella module для ecommerce family;
 - базовый split на `cart/customer/product/region/pricing/inventory/order/payment/fulfillment` уже выполнен и дальше углубляется;
 - отдельный sales-channel домен в `commerce` не нужен: платформа уже имеет `rustok-channel`, и ecommerce должен стать channel-aware поверх него, а не дублировать его модель.
+
+## Область работ
+
+- удерживать `rustok-commerce` как umbrella/root layer для ecommerce family, а не как storage owner для уже выделенных bounded contexts;
+- развивать cross-domain orchestration, transport parity и channel-aware commerce contract поверх `rustok-channel`;
+- завершить UI split и дальнейший domain split без возврата ответственности в host-слой или aggregate UI.
 
 ## Цели
 
@@ -21,7 +32,26 @@
 - добрать недостающие bounded contexts для Medusa-паритета: merchandising availability, pricing/promotions, tax, post-order flows и provider extensibility;
 - сохранять tenant isolation, outbox/event flow, index-backed read paths и thin-host роль `apps/server`.
 
-## Что уже подтверждено в коде
+## Текущий приоритет для Medusa JS clone
+
+Порядок дальнейшей разработки фиксируется так:
+
+1. выполнить UI split по module ownership: вынести domain UI из aggregate `rustok-commerce-admin` / `rustok-commerce-storefront` в соответствующие split-модули (`product`, `order`, `inventory`, `pricing`, `fulfillment`, `customer`, `region`), оставив `rustok-commerce` только orchestration/cross-domain surfaces;
+2. завершить `Phase 7` до seller-aware deliverability model поверх уже работающего split-fulfillment baseline;
+3. перевести `Phase 8` в Pricing 2.0 с channel-aware price resolution, price lists, rules и promotions;
+4. вынести `Phase 9` в отдельный tax domain с tax lines и provider seam;
+5. закрыть `Phase 10` post-order surface (`returns/refunds/exchanges/claims/order changes`);
+6. стабилизировать `Phase 11` provider architecture для payment/fulfillment;
+7. зафиксировать `Phase 12` как Medusa parity matrix и release discipline.
+
+Ближайший execution slice:
+
+- сначала завершить начатый UI split: product admin route уже вынесен в `rustok-product/admin`, теперь нужно убрать product CRUD из aggregate ecommerce UI и затем вынести следующие domain slices;
+- затем закрыть seller-aware grouping поверх `delivery_groups[]`, чтобы split fulfillment перестал быть только profile-based;
+- затем добавить fulfillment-item model и post-order delivery changes;
+- и только после этого идти в channel-aware pricing.
+
+## Текущее состояние
 
 - `rustok-commerce` уже содержит `CatalogService`, `PricingService`, `InventoryService`, `CheckoutService`, `StoreContextService`;
 - storefront и admin REST routes живут внутри `crates/rustok-commerce/src/controllers/*`;
@@ -61,8 +91,9 @@
 | `BL-10` | линейный order lifecycle vs post-order reality | добавить returns, refunds, exchanges, claims, order changes и draft/edit semantics |
 | `BL-11` | manual/default providers vs extensibility | стабилизировать payment/fulfillment provider SPI вместо смешивания базовой модели с внешними интеграциями |
 | `BL-12` | typed shipping profile registry, typed product/variant bindings, line-item snapshots, cart delivery groups и multi-fulfillment checkout уже есть, но deliverability model ещё не закрыта до seller-aware уровня | довести deliverability domain от profile-based split fulfillment до seller-aware grouping, fulfillment-item model и post-order delivery changes |
+| `BL-13` | split backend уже есть, но UI ownership всё ещё агрегирован в `rustok-commerce-admin` / `rustok-commerce-storefront` | разнести admin/storefront UI по split ecommerce-модулям и оставить umbrella UI только для cross-domain orchestration surfaces |
 
-## Фазы
+## Этапы
 
 ### Phase 1. Module topology и contracts
 
@@ -71,6 +102,22 @@
 - `rustok-commerce` закреплён как umbrella/root module;
 - базовый split на профильные crates выполнен;
 - shared DTO/entities/errors вынесены в `rustok-commerce-foundation`.
+
+### Phase 1.5. UI split по ownership boundaries
+
+Статус: `in progress`
+
+Что уже закрыто в текущем срезе:
+
+- `rustok-product` уже публикует собственный module-owned admin UI package `rustok-product/admin`;
+- `rustok-product/rustok-module.toml` уже экспортирует `[provides.admin_ui]`, а `apps/admin` подхватывает новый route через manifest-driven composition;
+- aggregate `rustok-commerce-admin` пока ещё остаётся переходным surface и временно дублирует часть product operator flows до следующего cleanup-среза.
+
+Следующие шаги:
+
+- удалить product CRUD из `rustok-commerce-admin`, оставив там только umbrella/delivery-orchestration surfaces;
+- вынести order/inventory/pricing/fulfillment UI по ownership boundaries модулей;
+- начать отдельный storefront split после стабилизации admin-side routes и navigation.
 
 ### Phase 2. Medusa-style transport baseline
 
@@ -333,7 +380,7 @@ Deliverables:
 - release checklist для `/store/*`, `/admin/*` и GraphQL parity;
 - список сознательно отложенных фич с явным объяснением, почему они вне текущего scope.
 
-## Тесты и release gates
+## Проверка
 
 Обязательный минимум:
 
@@ -354,13 +401,9 @@ Release gates:
 - нельзя заводить внутри `commerce` отдельную sales-channel taxonomy, пока platform-level `rustok-channel` остаётся каноническим channel layer;
 - нельзя тащить обратно legacy compatibility surface ради удобства локальной разработки.
 
-## Что обновлять вместе с кодом
+## Правила обновления
 
-- `crates/rustok-commerce/README.md`
-- `crates/rustok-commerce/docs/README.md`
-- `crates/rustok-channel/README.md`, если меняются contracts между `channel` и `commerce`
-- `crates/rustok-channel/docs/README.md`, если меняются semantics platform channel layer
-- `docs/architecture/api.md`
-- `docs/index.md`
-- модульные docs по вынесенным crates
-- ADR, если меняется module topology, transport contract или граница `channel` vs `commerce`
+1. При изменении umbrella/runtime contract сначала обновлять этот файл.
+2. При изменении public surface синхронизировать `crates/rustok-commerce/README.md` и `crates/rustok-commerce/docs/README.md`.
+3. При изменении контракта между `channel` и `commerce` синхронизировать `rustok-channel` docs и central `docs/architecture/api.md`.
+4. При изменении module topology, transport contract или границы `channel` vs `commerce` обновлять `docs/index.md`, локальные docs вынесенных crates и ADR при необходимости.

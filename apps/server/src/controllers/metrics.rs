@@ -162,6 +162,13 @@ rustok_runtime_guardrail_status {overall_status}\n\
 rustok_runtime_guardrail_runtime_dependencies_enabled {runtime_dependencies_enabled}\n\
 rustok_runtime_guardrail_host_mode{{mode=\"{host_mode}\"}} 1\n\
 rustok_runtime_guardrail_event_transport_fallback_active {relay_fallback_active}\n\
+rustok_runtime_guardrail_remote_executor_enabled {remote_executor_enabled}\n\
+rustok_runtime_guardrail_remote_executor_token_configured {remote_executor_token_configured}\n\
+rustok_runtime_guardrail_remote_executor_state {remote_executor_state}\n\
+rustok_runtime_guardrail_remote_executor_active_claims {remote_executor_active_claims}\n\
+rustok_runtime_guardrail_remote_executor_expired_claims {remote_executor_expired_claims}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"lease_ttl_ms\"}} {remote_executor_lease_ttl_ms}\n\
+rustok_runtime_guardrail_remote_executor_config{{setting=\"requeue_scan_interval_ms\"}} {remote_executor_requeue_scan_interval_ms}\n\
 rustok_runtime_guardrail_event_backpressure_enabled {backpressure_enabled}\n\
 rustok_runtime_guardrail_event_backpressure_state {backpressure_state}\n\
 rustok_runtime_guardrail_event_backpressure_current_depth {current_depth}\n\
@@ -183,6 +190,19 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
         } else {
             0
         },
+        remote_executor_enabled = if snapshot.remote_executor.enabled { 1 } else { 0 },
+        remote_executor_token_configured = if snapshot.remote_executor.token_configured {
+            1
+        } else {
+            0
+        },
+        remote_executor_state = snapshot.remote_executor.state.metric_value(),
+        remote_executor_active_claims = snapshot.remote_executor.active_claims,
+        remote_executor_expired_claims = snapshot.remote_executor.expired_claims,
+        remote_executor_lease_ttl_ms = snapshot.remote_executor.lease_ttl_ms,
+        remote_executor_requeue_scan_interval_ms = snapshot
+            .remote_executor
+            .requeue_scan_interval_ms,
         backpressure_enabled = if snapshot.event_bus.backpressure_enabled {
             1
         } else {
@@ -464,8 +484,8 @@ mod tests {
     use crate::services::rbac_service::RbacService;
     use crate::services::runtime_guardrails::{
         EventBusGuardrailSnapshot, EventTransportGuardrailSnapshot, RateLimitGuardrailSnapshot,
-        RateLimitPolicySnapshot, RuntimeGuardrailRollout, RuntimeGuardrailSnapshot,
-        RuntimeGuardrailStatus,
+        RateLimitPolicySnapshot, RemoteExecutorGuardrailSnapshot, RuntimeGuardrailRollout,
+        RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
     };
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
@@ -593,6 +613,15 @@ mod tests {
                 relay_fallback_active: false,
                 channel_capacity: 128,
             },
+            remote_executor: RemoteExecutorGuardrailSnapshot {
+                enabled: true,
+                token_configured: true,
+                lease_ttl_ms: 120_000,
+                requeue_scan_interval_ms: 15_000,
+                active_claims: 2,
+                expired_claims: 1,
+                state: RuntimeGuardrailStatus::Degraded,
+            },
         });
 
         assert_metric_labeled_line(
@@ -617,5 +646,7 @@ mod tests {
         );
         assert!(payload.contains("rustok_runtime_guardrail_runtime_dependencies_enabled 1"));
         assert!(payload.contains("rustok_runtime_guardrail_host_mode{mode=\"full\"} 1"));
+        assert!(payload.contains("rustok_runtime_guardrail_remote_executor_enabled 1"));
+        assert!(payload.contains("rustok_runtime_guardrail_remote_executor_expired_claims 1"));
     }
 }

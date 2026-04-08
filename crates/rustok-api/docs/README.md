@@ -1,16 +1,38 @@
-# rustok-api docs
+# Документация `rustok-api`
 
-This folder contains the local documentation for `crates/rustok-api`.
+`rustok-api` — shared web/API adapter layer платформы. Он держит общие
+request/auth/tenant/channel/GraphQL контракты, которые нужны host-слою и
+модульным transport adapters, но не должны жить в `rustok-core`.
 
-## Scope
+## Назначение
 
-`rustok-api` is the shared API adapter layer that sits between `rustok-core` and application-specific wiring in `apps/server`. It owns reusable request/auth/tenant/GraphQL primitives, while module-specific resolvers and controllers are migrated into module crates incrementally.
+- публиковать канонический shared host/API contract;
+- держать reusable request, auth, tenant, channel и GraphQL-facing primitives вне `apps/server`;
+- давать модульным crates общий transport-adapter foundation без дублирования web-layer contracts.
 
-## Architectural Boundary
+## Зона ответственности
 
-- `rustok-api` stays intentionally thin.
-- It is the single shared host/API layer for request, tenant, auth, channel, and GraphQL helper contracts.
-- It now also owns the typed `ChannelResolutionSource` contract that lets hosts surface why a request was attached to a specific channel, including the reserved `Policy` branch for the next `rustok-channel` resolution phase.
-- Generic UI host contracts such as `UiRouteContext` may live here too, as long as they stay module-agnostic and do not pull module behavior into the shared layer. Today this includes shared route segment, nested subpath, locale, query param context, and locale-aware module route helpers for module-owned Leptos UI.
-- Do not introduce a second parallel implementation of the same layer inside `apps/server` or in per-module helper crates.
-- If a helper is module-specific, keep it inside that module. If it becomes a shared host contract, move it into `rustok-api`.
+- request context types и auth/tenant/channel host contracts;
+- `UiRouteContext` и прочие module-agnostic UI host contracts;
+- GraphQL helper types и error helpers shared across modules;
+- request-level locale/tenant/channel resolution primitives, не принадлежащие domain crates;
+- отсутствие module-specific resolvers, controllers и business logic.
+
+## Интеграция
+
+- используется `apps/server` как shared composition/root API layer;
+- модульные crates могут зависеть от `rustok-api`, когда их GraphQL/REST adapters живут внутри самих модулей;
+- зависит от `rustok-core` для shared security/permission primitives;
+- не должен дублироваться ни в `apps/server`, ни в per-module helper crates.
+
+## Проверка
+
+- structural verification: local docs и root `README.md` должны оставаться синхронизированными;
+- targeted compile/tests выполняются при изменении shared request/auth/channel/GraphQL contracts;
+- изменения host/API layer должны сопровождаться синхронизацией consumer docs.
+
+## Связанные документы
+
+- [README crate](../README.md)
+- [План реализации](./implementation-plan.md)
+- [Platform documentation map](../../../docs/index.md)

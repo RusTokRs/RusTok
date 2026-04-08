@@ -1,96 +1,62 @@
-# Performance Baseline
+# Базовая производительность
 
-This document defines the repeatable evidence workflow for `2.8`.
+Этот документ фиксирует repeatable evidence workflow для performance changes в
+RusToK.
 
-## Goal
+## Назначение
 
-Before query rewrites, new indexes, read models, or partitioning, we capture:
+Перед query rewrite, новым индексом, read-model изменением или partitioning
+нужно собрать повторяемый baseline, чтобы сравнивать эффект изменений.
 
-- top SQL statements from `pg_stat_statements` on PostgreSQL;
-- `EXPLAIN` plans for known hot paths in `apps/server`;
-- a tenant-scoped snapshot that can be compared over time.
+Базовый performance baseline не заменяет оптимизацию, а даёт evidence bundle для
+архитектурного решения.
 
-The current baseline task targets these hot paths first:
+## Что собирать
 
-- `root.users.count`
-- `root.users.page`
-- `root.dashboard_stats.users_snapshot`
-- `root.dashboard_stats.posts_snapshot`
-- `root.dashboard_stats.orders_snapshot`
-- `root.recent_activity.recent_users`
+Минимальный baseline включает:
 
-## Collection Task
+- top SQL statements из `pg_stat_statements`
+- `EXPLAIN` для hot paths
+- tenant-scoped snapshot, который можно сравнить во времени
 
-Task implementation:
+## Где живёт реализация
 
-- [`db_baseline.rs`](/C:/проекты/RusTok/apps/server/src/tasks/db_baseline.rs)
+Текущий task implementation:
 
-Preflight:
+- [db_baseline.rs](/C:/проекты/RusTok/apps/server/src/tasks/db_baseline.rs)
 
-- ensure PostgreSQL is reachable on `localhost:5432`;
-- ensure the target database (`rustok_dev` in development) is up;
-- if `cargo loco` is unavailable locally, use the built server binary task runner from `apps/server`.
+## Когда использовать
 
-Run with default active tenant:
+Этот workflow нужен, если меняется:
 
-```powershell
-cargo loco task --name db_baseline
-```
+- тяжёлый query path
+- индексная стратегия
+- read-side projection
+- caching decision
+- storage layout, влияющий на latency
 
-Run for a specific tenant and save to file:
+## Рекомендуемая последовательность
 
-```powershell
-cargo loco task --name db_baseline --args "tenant_id=<uuid> top_n=15 output=tmp/db-baseline.json"
-```
+1. Прогреть целевой path репрезентативным трафиком.
+2. Запустить baseline task для нужного tenant-а.
+3. Сохранить JSON artifact для текущей даты.
+4. Внести query/index/read-model change.
+5. Повторить baseline и сравнить планы и top statements.
 
-Binary fallback from `apps/server`:
+## Ограничения
 
-```powershell
-..\..\target\debug\rustok-server.exe task db_baseline output:../../tmp/db-baseline.json
-```
+- evidence полезен только если на PostgreSQL включён `pg_stat_statements`
+- baseline task сам не принимает архитектурное решение
+- read-only evidence workflow не должен менять доменное состояние
 
-## Output
+## Что не делать
 
-The task emits JSON with:
+- не оптимизировать query path без baseline, если это затрагивает общий hot path
+- не сравнивать несопоставимые tenant snapshots
+- не считать read-model rewrite успешным без повторного baseline
 
-- `generated_at`
-- `backend`
-- `tenant_id`
-- `top_n`
-- `pg_stat_statements`
-- `explain_plans`
+## Связанные документы
 
-On PostgreSQL, `pg_stat_statements.available=true` means the extension is enabled and readable.
-
-On SQLite, the task still captures `EXPLAIN QUERY PLAN` for the hot paths, but `pg_stat_statements` is reported as unavailable by design.
-
-## How To Read It
-
-Focus on three questions:
-
-1. Which statements dominate total execution time?
-2. Do the hot-path plans use the indexes we expect?
-3. Is the expensive work coming from `COUNT`, sorting, JSON extraction, or broad scans?
-
-Use the result to decide one of four actions for each path:
-
-- leave as is
-- rewrite query
-- add or adjust index
-- move to cache or read model
-
-## Workflow
-
-Recommended sequence:
-
-1. Warm the target path with representative traffic.
-2. Run `db_baseline` for the tenant you care about.
-3. Save the JSON artifact for the current date.
-4. Make the query/index change.
-5. Re-run the same task and compare plans plus top statements.
-
-## Notes
-
-- PostgreSQL evidence is only useful if `pg_stat_statements` is enabled on the server.
-- The task is intentionally read-only.
-- The task does not decide optimizations for you; it creates the evidence bundle needed for architecture decisions.
+- [Схема данных платформы](./database.md)
+- [Контракт потока доменных событий](./event-flow-contract.md)
+- [Обзор архитектуры платформы](./overview.md)

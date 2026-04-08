@@ -1,26 +1,30 @@
 # leptos-hook-form
 
-## Назначение
-`crates/leptos-hook-form` — модуль/приложение RusToK. Здесь находится его код и корневая документация.
+## Purpose
 
-## Взаимодействие
-- apps/admin
-- apps/storefront
-- crates/leptos-zod
+`leptos-hook-form` owns lightweight Leptos form-state helpers for submission, field errors, and validation issue mapping.
 
-## Документация
-- Локальная документация: `./docs/`
-- Общая документация платформы: `/docs`
+## Responsibilities
 
-## Паспорт компонента
-- **Роль в системе:** Интеграция форм в Leptos с валидаторами и удобными binding-ами.
-- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
-- **Взаимодействует с:**
-  - apps/admin
-  - apps/storefront
-  - crates/leptos-zod
-- **Точки входа:**
-  - `crates/leptos-hook-form/src/lib.rs`
-- **Локальная документация:** `./docs/`
-- **Глобальная документация платформы:** `/docs/`
+- Represent form submission state and form-level errors.
+- Represent field-level validation errors in a UI-friendly shape.
+- Convert structured validation issues into form field errors.
 
+## Entry points
+
+- `FormState`
+- `FieldError`
+- `ValidationIssue`
+- `issues_to_field_errors`
+
+## Interactions
+
+- Used by Leptos applications and UI packages that need a small form-state contract.
+- Works well with `leptos-zod` issue payloads and other validation adapters.
+- Stays independent from domain-specific form schemas and transport clients.
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Implementation plan](./docs/implementation-plan.md)
+- [Platform docs index](../../docs/index.md)

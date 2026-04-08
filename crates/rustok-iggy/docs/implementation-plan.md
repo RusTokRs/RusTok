@@ -1,133 +1,50 @@
-# rustok-iggy module implementation plan
+# План реализации `rustok-iggy`
 
-## Scope and objective
+Статус: transport baseline уже существует; основная работа дальше — не в
+создании абстракции с нуля, а в доведении реального Iggy integration path до
+production-grade уровня.
 
-This document captures the implementation plan for `rustok-iggy` in RusToK and
-serves as the source of truth for rollout sequencing in `crates/rustok-iggy`.
+## Область работ
 
-Primary objective: provide a production-ready streaming event transport using Iggy.rs
-while preserving compatibility with platform-level contracts.
+- удерживать `rustok-iggy` как transport crate поверх `rustok-iggy-connector`;
+- синхронизировать serialization/topology/DLQ/replay contracts и local docs;
+- не допускать смешивания transport logic с connector lifecycle.
 
-## Target architecture
+## Текущее состояние
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    rustok-iggy                      │
-│  Responsibilities:                                  │
-│  - EventTransport implementation                    │
-│  - Event serialization (JSON/Postcard)              │
-│  - Topology management, consumer groups            │
-│  - DLQ, replay, health checks                      │
-└──────────────────────┬──────────────────────────────┘
-                       │ delegates connection to
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│               rustok-iggy-connector                 │
-│  Responsibilities:                                  │
-│  - Embedded/Remote mode switching                  │
-│  - Connection lifecycle (connect, shutdown)        │
-│  - Message I/O (publish, subscribe)                │
-└─────────────────────────────────────────────────────┘
-```
+- `IggyTransport` уже реализует `EventTransport`;
+- JSON/Postcard serialization, topology helpers, consumer groups, DLQ и replay abstractions уже выделены;
+- connection mode switching и low-level I/O уже вынесены в `rustok-iggy-connector`;
+- часть production-grade integration semantics по-прежнему требует углубления реального SDK path.
 
-- `rustok-iggy` implements `EventTransport` trait from `rustok-core`
-- Delegates to `rustok-iggy-connector` for Embedded/Remote mode abstraction
-- Supports both JSON and Postcard serialization formats
-- Provides topology management, consumer groups, DLQ, and replay capabilities
-- Observability via tracing and health checks
+## Этапы
 
-## Delivery phases
+### 1. Contract stability
 
-### Phase 0 — Foundation ✅ DONE
+- [x] закрепить transport boundary поверх connector crate;
+- [x] удерживать transport-facing abstractions внутри `rustok-iggy`;
+- [ ] удерживать sync между transport contracts, connector expectations и local docs.
 
-- [x] Baseline crate/module structure
-- [x] Base docs and registry presence
-- [x] Core compile-time integration with the workspace
-- [x] IggyTransport implementing EventTransport
+### 2. Real integration hardening
 
-### Phase 1 — Core Implementation ✅ DONE
+- [ ] довести full Iggy SDK integration path;
+- [ ] закрыть реальные consumption, offset management, DLQ movement и replay flows;
+- [ ] покрывать performance/recovery/security edge-cases targeted tests и drills.
 
-- [x] Fix PostcardSerializer (was returning errors)
-- [x] TopologyManager with actual state management
-- [x] ConsumerGroupManager with group tracking
-- [x] DlqManager with entry structure
-- [x] ReplayManager with configuration
-- [x] Health check functionality
-- [x] Unit tests for all components
-- [x] Partition calculation utilities
-- [x] Remove unused backend/embedded stubs
+### 3. Operability
 
-### Phase 2 — Integration (in progress)
+- [ ] развивать metrics, health checks и runbooks для production transport usage;
+- [ ] удерживать local docs синхронизированными с connector docs и event-system guidance;
+- [ ] документировать transport guarantees одновременно с изменением runtime surface.
 
-- [ ] Full Iggy SDK integration with `iggy` feature flag
-- [ ] Real message consumption via MessageSubscriber
-- [ ] Consumer group offset management
-- [ ] Actual DLQ message movement
-- [ ] Event replay implementation
+## Проверка
 
-### Phase 3 — Productionization (planned)
+- targeted compile/tests для configuration, serialization, topology, consumer groups и replay/DLQ contracts;
+- integration tests для реального Iggy backend path;
+- docs sync между transport и connector layers.
 
-- [ ] Performance benchmarks
-- [ ] Connection pooling and reconnection logic
-- [ ] Metrics integration (prometheus)
-- [ ] Error recovery strategies
-- [ ] Security hardening (TLS, auth)
-- [ ] Runbooks and operational documentation
+## Правила обновления
 
-## Component status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `config.rs` | ✅ Complete | Full configuration with serialization |
-| `transport.rs` | ✅ Complete | EventTransport implementation |
-| `serialization.rs` | ✅ Complete | JSON + Postcard with tests |
-| `topology.rs` | ✅ Complete | State management with tests |
-| `consumer.rs` | ✅ Complete | Group management with tests |
-| `producer.rs` | ✅ Complete | Request building with tests |
-| `partitioning.rs` | ✅ Complete | Deterministic partitioning |
-| `dlq.rs` | ✅ Complete | DLQ manager with tests |
-| `health.rs` | ✅ Complete | Health check with status |
-| `replay.rs` | ✅ Complete | Replay configuration |
-| `backend/` | ❌ Removed | Unused, functionality in connector |
-
-## Tracking and updates
-
-When updating `rustok-iggy` architecture, API contracts, tenancy behavior, routing,
-or observability expectations:
-
-1. Update this file first.
-2. Update `crates/rustok-iggy/README.md` when public behavior changes.
-3. Update `docs/index.md` links if documentation structure changes.
-4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
-
-## Testing strategy
-
-### Unit tests
-
-Each module has comprehensive unit tests:
-- Config parsing and defaults
-- Serialization roundtrips
-- Partition calculation determinism
-- Component lifecycle management
-
-### Integration tests
-
-Located in `tests/integration.rs`:
-- Require running Iggy backend (marked `#[ignore]`)
-- Test full transport lifecycle
-- Test both modes (embedded/remote)
-
-### Manual testing
-
-```bash
-# Start Iggy server (via Docker)
-docker run -p 8090:8090 -p 3000:3000 iggyrs/iggy:latest
-
-# Run integration tests
-cargo test -p rustok-iggy --ignored
-```
-
-## Checklist
-
-- [x] контрактные тесты покрывают все публичные use-case.
-
+1. При изменении transport contract сначала обновлять этот файл.
+2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
+3. При изменении connector boundary обновлять связанные docs в `rustok-iggy-connector`.

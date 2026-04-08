@@ -1,0 +1,11 @@
+[module]
+slug = "auth"
+name = "Auth"
+version = "0.1.0"
+description = "Core authentication module for JWT, credentials, and token lifecycle"
+ownership = "first_party"
+trust_level = "core"
+ui_classification = "capability_only"
+
+[crate]
+entry_type = "AuthModule"

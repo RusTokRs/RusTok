@@ -37,3 +37,8 @@
 - `controllers::routes`
 - `controllers::webhook_routes`
 - `admin/WorkflowAdmin` (publishable Leptos admin root page)
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

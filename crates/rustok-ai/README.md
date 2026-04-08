@@ -1,5 +1,7 @@
 # rustok-ai
 
+## Purpose
+
 `rustok-ai` is RusToK's AI host/orchestrator capability crate.
 
 It sits above `rustok-mcp`, keeps model-provider orchestration out of `rustok-mcp`, and owns the
@@ -88,8 +90,8 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
 - `ApprovalRequest`, `ApprovalDecision`
 - `AiManagementService` (`server` feature)
 
-## Documentation
+## Docs
 
-- Local component docs: [`./docs/`](./docs/)
+- [Module docs](./docs/README.md)
 - Leptos admin UI package: [`./admin/README.md`](./admin/README.md)
 - Platform docs map: [`../../docs/index.md`](../../docs/index.md)

@@ -311,6 +311,30 @@ if ([string]::IsNullOrWhiteSpace($externalBaseUrl)) {
             Write-Fail "external write stages path returns 404"
         }
 
+        if (Test-HttpStatus -Method "POST" -Url "$externalBaseUrl/v2/catalog/publish/rpr_smoke/request-changes" -ExpectedStatus "404" -Body "{}") {
+            Write-Pass "external request-changes path returns 404"
+        } else {
+            Write-Fail "external request-changes path returns 404"
+        }
+
+        if (Test-HttpStatus -Method "POST" -Url "$externalBaseUrl/v2/catalog/publish/rpr_smoke/hold" -ExpectedStatus "404" -Body "{}") {
+            Write-Pass "external hold path returns 404"
+        } else {
+            Write-Fail "external hold path returns 404"
+        }
+
+        if (Test-HttpStatus -Method "POST" -Url "$externalBaseUrl/v2/catalog/publish/rpr_smoke/resume" -ExpectedStatus "404" -Body "{}") {
+            Write-Pass "external resume path returns 404"
+        } else {
+            Write-Fail "external resume path returns 404"
+        }
+
+        if (Test-HttpStatus -Method "POST" -Url "$externalBaseUrl/v2/catalog/runner/claim" -ExpectedStatus "404" -Body "{}") {
+            Write-Pass "external runner claim path returns 404"
+        } else {
+            Write-Fail "external runner claim path returns 404"
+        }
+
         if (Test-HttpStatus -Method "POST" -Url "$externalBaseUrl/v2/catalog/owner-transfer" -ExpectedStatus "404" -Body "{}") {
             Write-Pass "external owner-transfer path returns 404"
         } else {

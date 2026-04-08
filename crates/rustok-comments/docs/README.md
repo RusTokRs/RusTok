@@ -9,6 +9,13 @@
 - зафиксировать, что `comments` и `forum replies` — разные доменные сущности;
 - подготовить модульную основу для будущих conversion flow между `blog` и `forum` через orchestration.
 
+## Зона ответственности
+
+- `rustok-comments` владеет только generic comments domain, его schema и service-level контрактами;
+- `rustok-forum` продолжает владеть `forum_topics` и `forum_replies`;
+- `rustok-content` остаётся shared library + orchestration слоем и не должен снова стать storage owner для комментариев;
+- conversion flow `post + comments -> topic + replies` и обратно должен жить в orchestration, а не через общую таблицу или live sync.
+
 ## Текущий статус
 
 - модуль зарегистрирован в workspace, `modules.toml` и optional server wiring;
@@ -24,14 +31,12 @@
   integration с `rustok-comments`, а будущие page-like discussion surfaces возможны только
   как explicit opt-in.
 
-## Архитектурная граница
+## Интеграция
 
-- `rustok-comments` владеет только generic comments domain;
-- `rustok-forum` продолжает владеть `forum_topics` и `forum_replies`;
-- `rustok-content` остаётся shared library + orchestration слоем и не должен снова стать storage owner
-  для комментариев;
-- будущие conversion flow `post + comments -> topic + replies` и обратно должны жить в orchestration,
-  а не через общую таблицу или live sync.
+- `rustok-blog` уже переведён на `rustok-comments` для live comment read/write path;
+- moderation UI публикуется как module-owned Leptos surface `rustok-comments-admin`;
+- transport adapters и host wiring остаются в `apps/server`, но доменная логика и moderation contract принадлежат модулю;
+- future integrations для page-like surfaces должны оформляться как явный opt-in contract.
 
 ## Module-owned admin UI и transport rule
 
@@ -86,6 +91,12 @@
 3. Для `forbidden` проверяйте недавние RBAC-изменения и caller scopes: `spam|trash` и смена thread status должны идти только от moderation-capable caller-ов.
 4. Для latency без error spike сначала разбирайте read-path stages, а не эскалируйте сразу общий DB incident.
 5. Для sustained `database` errors переключайтесь на общий DB/runtime incident flow: connections, recent deploy, migration drift, query pressure.
+
+## Проверка
+
+- `cargo xtask module validate comments`
+- `cargo xtask module test comments`
+- targeted tests для moderation/status contract, module-owned admin UI и blog integration path
 
 ## Связанные документы
 

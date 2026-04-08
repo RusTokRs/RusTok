@@ -1,58 +1,49 @@
-# rustok-outbox module implementation plan (`rustok-outbox`)
+# План реализации `rustok-outbox`
 
-## Scope and objective
+Статус: core outbox baseline зафиксирован; модуль приведён к единому
+manifest/doc contract.
 
-This document captures the current implementation plan for `rustok-outbox` in RusToK and
-serves as the source of truth for rollout sequencing in `crates/rustok-outbox`.
+## Область работ
 
-Primary objective: evolve `rustok-outbox` in small, testable increments while preserving
-compatibility with platform-level contracts.
+- удерживать `rustok-outbox` как bounded-context модуль transactional publishing;
+- синхронизировать relay/runtime contract, local docs и manifest metadata;
+- развивать operational guarantees без размазывания event runtime contract по host-слою.
 
-## Target architecture
+## Текущее состояние
 
-- `rustok-outbox` remains focused on its bounded context and public crate API.
-- Integrations with other modules go through stable interfaces in `rustok-core`
-  (or dedicated integration crates where applicable).
-- Behavior changes are introduced through additive, backward-compatible steps.
-- Observability and operability requirements are part of delivery readiness.
+- write-side transactional publishing contract уже реализован;
+- relay/retry/DLQ semantics уже входят в базовый runtime surface;
+- модуль публикует admin visibility через `rustok-outbox-admin`;
+- root README, local docs и manifest contract входят в scoped audit path.
 
-## Delivery phases
+## Этапы
 
-### Phase 0 — Foundation (done)
+### 1. Contract stability
 
-- [x] Baseline crate/module structure is in place.
-- [x] Base docs and registry presence are established.
-- [x] Core compile-time integration with the workspace is available.
+- [x] выровнять root README, local docs и manifest metadata под единый standard path;
+- [x] зафиксировать transactional publishing как основной bounded-context contract;
+- [ ] удерживать sync между public crate API и server event-runtime tests.
 
-### Phase 1 — Contract hardening (in progress)
+### 2. Runtime hardening
 
-- [ ] Freeze public API expectations for the current module surface.
-- [ ] Align error/validation conventions with platform guidance.
-- [ ] Expand automated tests around core invariants and boundary behavior.
+- [ ] расширить automated tests вокруг relay/backlog/DLQ boundary behavior;
+- [ ] документировать новые runtime guarantees вместе с изменениями event transport contract;
+- [ ] держать observability и operability частью delivery readiness, а не постфактум.
 
-### Phase 2 — Domain expansion (planned)
+### 3. Productionization
 
-- [ ] Implement prioritized domain capabilities for `rustok-outbox`.
-- [ ] Standardize cross-module integration points and events.
-- [ ] Document ownership and release gates for new capabilities.
+- [ ] уточнить rollout и migration strategy для incremental adoption;
+- [ ] завершить security/tenancy/rbac checks, которые реально относятся к модулю;
+- [ ] удерживать incident runbook в sync с operational semantics.
 
-### Phase 3 — Productionization (planned)
+## Проверка
 
-- [ ] Finalize rollout and migration strategy for incremental adoption.
-- [ ] Complete security/tenancy/rbac checks relevant to the module.
-- [ ] Validate observability, runbooks, and operational readiness.
+- `cargo xtask module validate outbox`
+- `cargo xtask module test outbox`
+- targeted event-runtime tests для transactional publish, relay, retry и DLQ semantics
 
-## Tracking and updates
+## Правила обновления
 
-When updating `rustok-outbox` architecture, API contracts, tenancy behavior, routing,
-or observability expectations:
-
-1. Update this file first.
-2. Update `crates/rustok-outbox/README.md` and `crates/rustok-outbox/docs/README.md` when public behavior changes.
-3. Update `docs/index.md` links if documentation structure changes.
-4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
-
-## Checklist
-
-- [x] контрактные тесты покрывают все публичные use-case.
-
+1. При изменении transactional publishing или relay contract сначала обновлять этот файл.
+2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
+3. При изменении module metadata и UI wiring синхронизировать `rustok-module.toml`.

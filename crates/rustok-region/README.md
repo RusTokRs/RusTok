@@ -20,7 +20,7 @@
 - `rustok-pricing` may reference `region_id` in prices but does not own region lifecycle;
 - platform tenant locale tables remain platform-owned and are only read by the umbrella policy layer.
 
-## Entry Points
+## Entry points
 
 - `rustok_region::RegionModule`
 - `rustok_region::RegionService`

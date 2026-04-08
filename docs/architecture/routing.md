@@ -1,35 +1,96 @@
-# API Architecture: boundaries between GraphQL and REST
+# Маршрутизация и границы transport-слоя
 
-Этот документ фиксирует границы использования API-стилей, чтобы команды не смешивали ответственность между UI-слоем, интеграциями и служебными потоками.
+Этот документ фиксирует границы между GraphQL, REST, module-owned HTTP surfaces
+и internal Leptos `#[server]` functions.
 
-## Policy
+## Основное правило
 
-- **GraphQL endpoint** используется **только** фронтами и админками (UI-клиентами).
-- **REST endpoint** используется для:
-  - внешних интеграций;
-  - webhook-коллбеков;
-  - служебных сценариев;
-  - сценариев совместимости с существующими и сторонними клиентами.
+В RusToK transport layer делится по назначению, а не по вкусу команды:
 
-## Use-case → API style matrix
+- GraphQL — основной UI-facing contract
+- REST — интеграции, webhooks, ops и совместимые transport flows
+- `#[server]` functions — internal data layer для Leptos hosts и module-owned UI
+- health/metrics endpoints — operational surface
 
-Матрица ниже обязательна как decision table для новых команд: если use-case попадает в строку, выбираем соответствующий API style и не смешиваем границы.
+Новый endpoint должен вписываться в один из этих каналов, а не создавать
+четвёртый локальный transport style.
 
-| Use-case | API style | Почему |
-|---|---|---|
-| UI queries/mutations (storefront, admin) | **GraphQL** | UI нужны гибкие выборки, композиция полей и единый контракт для экранов. |
-| External callbacks (webhook receive/ack) | **REST** | Для callback-потоков важны простые HTTP-контракты, статусы и идемпотентность. |
-| Partner ingestion (интеграция с партнёрами) | **REST** | Внешним системам проще интегрироваться через стабильные REST endpoint'ы и версии. |
-| Batch jobs / service automation | **REST** | Служебные и фоновые задачи требуют предсказуемых endpoint'ов, удобных для скриптов и scheduler'ов. |
+## Матрица выбора
 
-## Boundary rule
+| Сценарий | Канал |
+|---|---|
+| Admin/storefront UI query/mutation | GraphQL |
+| Leptos internal UI action | `#[server]` function |
+| Внешняя интеграция | REST |
+| Webhook ingress / callback | REST |
+| Health / readiness / metrics | Operational endpoints |
+| OpenAPI discovery | REST/OpenAPI |
 
-Если сценарий относится к интеграциям, webhook-потокам, служебной автоматизации или совместимости, по умолчанию выбирается **REST**. GraphQL не используется как универсальный интеграционный слой для внешних и служебных клиентов.
+## GraphQL
 
-## Runtime hardening additions
+GraphQL используется как единый UI-facing contract:
 
-- Tenant resolution now runs in strict mode when `settings.rustok.tenant.resolution=header` and `settings.rustok.tenant.fallback_mode=disabled`: missing tenant header returns `400` instead of silently falling back to the default tenant.
-- `settings.rustok.tenant.resolution=subdomain` is now distinct from `domain`: the host must match one of `settings.rustok.tenant.base_domains`, and only a single left-most label is treated as the tenant slug.
-- HTTP routing no longer trusts `Forwarded` / `X-Forwarded-*` by default. All host, client IP, and proto extraction goes through `settings.rustok.runtime.request_trust`; forwarded headers are used only in `trusted_only` mode for requests coming from configured proxy CIDR ranges.
-- Disabled tenants are rejected inside tenant middleware with `403`, before auth, channel resolution, or handler execution.
-- Embedded UI routes and API routes now have different security-header profiles: API/operator routes keep a strict CSP, while embedded `/admin` and storefront routes use a UI-compatible CSP and static asset caching.
+- `apps/admin`
+- `apps/storefront`
+- `apps/next-admin`
+- `apps/next-frontend`
+- module-owned UI packages, если им нужен GraphQL transport
+
+GraphQL не должен размываться в integration-only flows, где нужен стабильный
+REST contract.
+
+## `#[server]`-функции
+
+Для Leptos hosts и module-owned Leptos UI `#[server]` functions являются
+предпочтительным internal data layer.
+
+При этом:
+
+- GraphQL не удаляется и остаётся параллельным contract
+- `#[server]` functions не должны становиться заменой внешнего API
+- ownership бизнес-логики остаётся у module/service layer, а не у UI crate
+
+## REST
+
+REST используется для:
+
+- внешних интеграций
+- webhook callback flows
+- служебных операций
+- совместимых transport surfaces, где GraphQL не подходит
+- module-owned HTTP endpoints, если модулю нужен именно HTTP contract
+
+REST не должен дублировать UI-facing GraphQL без явной причины.
+
+## Module-owned маршрутизация
+
+Если модуль публикует HTTP routes или UI surfaces:
+
+- routing объявляется через `rustok-module.toml`
+- host application только монтирует surface
+- source of truth для wiring живёт в manifest и local docs модуля
+
+Наличие controller или UI sub-crate без manifest wiring не считается полным
+contract.
+
+## Locale и маршрутизация
+
+Locale-routing определяется host/runtime layer:
+
+- Leptos и Next hosts используют host-provided effective locale
+- module-owned UI packages не вводят собственную query/header/cookie chain
+- locale contract должен совпадать с `docs/UI/*` и локальными docs приложений
+
+## Что не делать
+
+- не использовать GraphQL как транспорт для внешнего webhook callback
+- не выносить integration-only REST contract в `#[server]` functions
+- не дублировать один и тот же UI flow в GraphQL и REST без причины
+- не прятать module-owned routing только в host application
+
+## Связанные документы
+
+- [Архитектура API](./api.md)
+- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [Быстрый старт для Admin ↔ Server](../UI/admin-server-connection-quickstart.md)
+- [Архитектура модулей](./modules.md)

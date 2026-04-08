@@ -1,7 +1,7 @@
 ﻿# RusTok: план закрытия module-system
 
 > **Дата**: 2026-03-19  
-> **Актуализировано**: 2026-04-04  
+> **Актуализировано**: 2026-04-08  
 > **Назначение**: зафиксировать текущее состояние модульной платформы, разделение `Registry V1` и `Registry V2`, а также остаток работ до production-ready контура.
 
 Легенда:
@@ -12,7 +12,7 @@
 ## Короткий вывод
 
 - `Registry V1` уже существует как постоянный read-only catalog API.
-- `Registry V2` уже существует как первый рабочий write/governance контур, но пока без полноценного async validation pipeline и богатой модели ownership/moderation.
+- `Registry V2` уже существует как рабочий write/governance контур с раздельными automated validation jobs, follow-up stages, richer moderation lifecycle и thin remote-runner path через `runner/*` + `xtask`.
 - `DeploymentProfile` и `RuntimeHostMode` уже разделены в коде и должны оставаться независимыми осями.
 - Manifest-wired Leptos UI уже работает не только для канонических dual-surface модулей, но и для расширенного набора admin-only core/optional surfaces; основной остаток здесь в полном аудите `no-ui`/`admin-only` coverage и дисциплине validation/tooling.
 
@@ -190,8 +190,16 @@ Consumer path:
 - ✅ `POST /v2/catalog/publish/{request_id}/validate`
 - ✅ `POST /v2/catalog/publish/{request_id}/approve`
 - ✅ `POST /v2/catalog/publish/{request_id}/reject`
+- ✅ `POST /v2/catalog/publish/{request_id}/request-changes`
+- ✅ `POST /v2/catalog/publish/{request_id}/hold`
+- ✅ `POST /v2/catalog/publish/{request_id}/resume`
 - ✅ `POST /v2/catalog/owner-transfer`
 - ✅ `POST /v2/catalog/yank`
+- ✅ internal full-host-only runner API:
+  - `POST /v2/catalog/runner/claim`
+  - `POST /v2/catalog/runner/{claim_id}/heartbeat`
+  - `POST /v2/catalog/runner/{claim_id}/complete`
+  - `POST /v2/catalog/runner/{claim_id}/fail`
 
 Текущее lifecycle-состояние:
 
@@ -203,8 +211,12 @@ Consumer path:
 - ✅ У validation теперь есть отдельный persisted job-layer `registry_validation_jobs` с попытками и статусами `queued` / `running` / `succeeded` / `failed`.
 - ✅ request проходит через `artifact_uploaded -> submitted -> validating -> approved` или `rejected`
 - ✅ `approved` теперь означает `review-ready` после automated artifact/manifest validation, а не уже опубликованный release
+- ✅ появились дополнительные non-terminal governance states:
+  - `changes_requested`
+  - `on_hold`
 - ✅ публикация release происходит отдельным governance action
 - ✅ `reject`, `owner-transfer` и `yank` требуют обязательную governance reason, а live `reject`/`owner-transfer`/`yank` теперь ещё и structured `reason_code`
+- ✅ `request-changes`, `hold` и `resume` теперь тоже живут как machine-readable governance actions с persisted metadata, `reason_code` и audit trail
 - ✅ финальный `approve` теперь тоже стал policy-aware: если follow-up validation stages ещё не `passed`, live approval требует explicit override `reason + reason_code`, а audit trail пишет отдельный `publish_approval_override`
 - ✅ published releases уже проецируются обратно в `V1`
 
@@ -222,6 +234,9 @@ Governance first cut:
 - ✅ `xtask module publish --auto-approve` теперь умеет и explicit approval override через `--approve-reason` / `--approve-reason-code`, если follow-up stages ещё не закрыты
 - ✅ `xtask module stage-run` теперь закрывает первый execution-path для follow-up stages: `compile_smoke` и `targeted_tests` можно прогнать локально и сразу записать их lifecycle в registry без ручного `running/passed/failed` шага, а `security_policy_review` теперь тоже идёт через operator-assisted local preflight + explicit `--confirm-manual-review`
 - ✅ `xtask module publish --auto-approve` теперь тоже стал stage-aware orchestration path, а не только approve caller: он сам прогоняет pending local stages (`compile_smoke`, `targeted_tests`, опционально `security_policy_review` при `--confirm-manual-review`) перед финальным approve/override решением
+- ✅ Live operator flows в `xtask` теперь больше не полагаются на скрытый synthetic review actor: `module publish`, `module stage`, `module stage-run`, `module owner-transfer` и `module yank` требуют явный `--actor`, а live preflight/mutation path использует один и тот же actor.
+- ✅ lease-based remote executor API уже живёт в `apps/server`: stage claims/heartbeats/completion/failure идут через `runner/*`, есть persisted lease metadata, periodic reaper и observability в `/health/runtime` + Prometheus
+- ✅ `cargo xtask module runner <runner-id> ...` теперь даёт thin remote worker поверх этого server-driven contract: он claim-ит runnable stages, шлёт heartbeat и завершает `compile_smoke` / `targeted_tests`, а `security_policy_review` остаётся opt-in через `--confirm-manual-review`
 - ✅ `xtask module owner-transfer` теперь уже умеет live V2 endpoint и structured `--reason-code` для machine-readable ownership handoff policy
 - ✅ `xtask module yank` уже умеет live V2 endpoint и structured `--reason-code` для exceptional yank policy
 - ✅ dry-run режим сохранён
@@ -241,13 +256,16 @@ Governance first cut:
 - ✅ Для ручной фиксации stage results появился live write-path `POST /v2/catalog/publish/{request_id}/stages` и matching operator command `cargo xtask module stage <request-id> <stage> <status> ...`.
 - ✅ Для `compile_smoke` и `targeted_tests` теперь есть реальный local executor поверх operator tooling: `cargo xtask module stage-run <slug> <request-id> <stage> --registry-url ...` прогоняет локальный smoke/test plan и сам пишет `running -> passed/failed` обратно в registry.
 - ✅ `security_policy_review` больше не сводится к сырому manual `stage passed/failed`: `cargo xtask module stage-run ... security_policy_review --confirm-manual-review` теперь делает local policy preflight и пишет structured stage trail после явного operator confirmation.
-- ⚠️ Generic remote/local runner в server runtime по-прежнему не встроен; execution path остаётся локальным operator tool, а не background runner внутри registry host.
+- ⚠️ Полностью managed sandbox/worker fleet по-прежнему не встроен: текущий remote execution path уже server-driven, но сам thin worker запускается как operator automation через `cargo xtask module runner`, а не как отдельный постоянно управляемый service/fleet внутри platform runtime.
 - ⚠️ Базовая persistence-модель для ownership и audit trail уже есть (`registry_module_owners`, `registry_governance_events`), и role split для review vs release-management уже начал ужесточаться: approve/reject/stage-review доступны owner + review actors (`registry:*`, `governance:moderator`, `moderator:*`), а owner-transfer/yank уже больше не приравниваются ко всем generic moderators.
 - ✅ Для exceptional yank-path теперь есть более формальный policy contract: live `POST /v2/catalog/yank` требует не только human-readable `reason`, но и structured `reason_code` (`security|legal|malware|critical_regression|rollback|other`), а audit trail сохраняет оба значения.
 - ✅ Для manual governance reject-path теперь тоже есть structured policy contract: live `POST /v2/catalog/publish/{request_id}/reject` требует не только human-readable `reason`, но и structured `reason_code` (`policy_mismatch|quality_gate_failed|ownership_mismatch|security_risk|legal|other`), а `request_rejected` audit event сохраняет оба значения.
 - ✅ Для explicit owner-transfer-path теперь тоже есть structured policy contract: live `POST /v2/catalog/owner-transfer` требует не только human-readable `reason`, но и structured `reason_code` (`maintenance_handoff|team_restructure|publisher_rotation|security_emergency|governance_override|other`), а `owner_transferred` audit event сохраняет оба значения.
 - ✅ Для финального publish-approval override теперь тоже есть structured policy contract: если follow-up validation stages ещё не закрыты, live `POST /v2/catalog/publish/{request_id}/approve` требует explicit `reason` + `reason_code` (`manual_review_complete|trusted_first_party|expedited_release|governance_override|other`), а audit trail сохраняет отдельный `publish_approval_override`.
-- ✅ Тонкие operator clients теперь тоже видят этот policy contract заранее: `GET /v2/catalog/publish/{request_id}` отдаёт `followUpGates`, canonical `validationStages`, `approvalOverrideRequired` и `approvalOverrideReasonCodes`, так что preflight для approve больше не зависит только от live error path.
+- ✅ Тонкие operator clients теперь тоже видят этот policy contract заранее: `GET /v2/catalog/publish/{request_id}` отдаёт `followUpGates`, canonical `validationStages`, `approvalOverrideRequired`, `approvalOverrideReasonCodes` и machine-readable `governanceActions`, так что preflight для approve и action availability больше не зависят только от live error path или локальных status-эвристик.
+- ✅ Для status-preflight этот contract теперь ещё и actor-aware: если thin client передаёт `x-rustok-actor`, `governanceActions` режутся до реально разрешённых request-level действий для этого actor, а не только до status-driven superset.
+- ✅ `/modules` теперь использует `registryLifecycle` только как summary/read-model, а authoritative request-level operator contract читает отдельным actor-aware fetch к `GET /v2/catalog/publish/{request_id}` по текущему полю `Actor`.
+- ✅ `xtask` теперь тоже покрывает явные governance follow-up actions поверх того же status contract: `cargo xtask module request-changes|hold|resume <request-id> --actor <actor> --reason <text> --reason-code <code> --registry-url ...` сначала смотрит `governanceActions`, а потом уже вызывает live route.
 - ✅ Follow-up stage trail тоже стал более структурированным: `POST /v2/catalog/publish/{request_id}/stages` и `cargo xtask module stage ...` теперь умеют structured `reason_code`, а для live terminal stage updates (`passed` / `failed` / `blocked`) он уже обязателен. `stage-run` проставляет его автоматически (`local_runner_passed`, `build_failure`, `test_failure`, `manual_review_complete`, `policy_preflight_failed`, ...), так что moderation history по stage updates больше не живёт только как prose-detail.
 - ⚠️ В stricter policy layer осталось добить:
   - richer moderation decisions beyond approve/reject/owner-transfer/yank
@@ -258,6 +276,7 @@ Governance first cut:
 - ⚠️ `registry_only` runtime уже есть, но отдельный внешний deployment ещё не оформлен до production-ready состояния.
 - ⚠️ Базовый rollout/runbook для dedicated catalog host уже зафиксирован в `apps/server/docs/health.md`: canonical build profile = `headless-api`, runtime host mode = `registry_only`, acceptance = V1 list/detail + cache headers + reduced OpenAPI + negative write-path checks.
 - ✅ Для внешнего dedicated host теперь есть и automation-path: `scripts/verify/verify-deployment-profiles.sh` и PowerShell-вариант поддерживают optional external smoke через `RUSTOK_REGISTRY_BASE_URL` (+ optional `RUSTOK_REGISTRY_SMOKE_SLUG`) и optional artifact capture через `RUSTOK_REGISTRY_EVIDENCE_DIR`; они проверяют public `health/runtime`, `health/modules`, V1 list/detail, cache headers, reduced OpenAPI (JSON + YAML) и negative write-path contract уже на deployed instance.
+- ✅ Negative smoke для dedicated host теперь также покрывает более новый V2 surface: `request-changes`, `hold`, `resume` и `runner/*` не должны быть доступны на `registry_only`.
 - ✅ `apps/server/docs/health.md` теперь также фиксирует provider-agnostic hand-off contract для внешнего host: edge/cache/TLS invariants, запрет на path rewrites / HTML error-page substitution, и minimal evidence package после rollout.
 - ⚠️ По `modules.rustok.dev` незакрытым остаётся уже не platform contract, а только фактическое выполнение provider-specific infra части: traffic switch, TLS/CDN/WAF policy и release-hand-off в конкретной production среде.
 
@@ -278,6 +297,7 @@ Governance first cut:
 
 - ⚠️ Точечные `cargo check` по релевантным пакетам уже проходят для большинства последних шагов.
 - ✅ `xtask` уже получил targeted unit coverage для V2 operator paths: publish/stage/owner-transfer/yank dry-run/live payload contracts, `requeue=true` contract, explicit `detail = null` stability, базовые argument-count guards, early CLI guards для empty request/stage ids, invalid semver и unknown slug, live-mode guards для missing `--registry-url` / missing `--reason`, `registry_url` env fallback/CLI precedence, `--reason`/`--detail` trimming, empty owner-transfer actor guard и loopback/no-proxy guardrails (включая IPv6 `::1`).
+- ✅ `xtask module runner` уже получил targeted unit coverage для runner-id/token/stage-set/interval argument guards.
 - ✅ `cargo xtask module publish --auto-approve` теперь использует stage-aware status preflight и останавливается раньше live approve, если request требует override, а `--approve-reason` / `--approve-reason-code` не были переданы.
 - ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах.
 - ⬜ Нужны более устойчивые targeted tests для:
@@ -288,12 +308,11 @@ Governance first cut:
 
 ## Приоритет выполнения
 
-1. Вынести compile/test/security/policy checks в отдельный асинхронный orchestration-контур поверх уже существующего `validate`.
-2. Довести ownership/governance persistence и policy model до richer moderation capabilities.
-3. Закрыть production deployment path для `modules.rustok.dev`.
-4. Доработать moderation UX в `/modules` вокруг richer validation feedback и moderation decisions.
-5. Продолжить аудит и доводку manifest-wired UI / i18n coverage.
-6. Уплотнить targeted test coverage вокруг V1/V2 и reduced host.
+1. Довести richer moderation/policy model поверх уже существующих `approve/reject/request-changes/hold/resume/owner-transfer/yank`.
+2. Закрыть production deployment path для `modules.rustok.dev`.
+3. Решить, нужен ли отдельный managed worker/sandbox fleet поверх уже существующего `runner/*` + `xtask module runner`.
+4. Продолжить аудит и доводку manifest-wired UI / i18n coverage.
+5. Уплотнить targeted test coverage вокруг V1/V2, reduced host и thin runner contract.
 
 ## Критерии завершения
 
@@ -301,6 +320,7 @@ Governance first cut:
 
 - `V1` стабилен как постоянный read-only catalog API.
 - `V2` имеет полноценный async publish/governance lifecycle.
+- thin remote runner path работает по server-driven lease contract и наблюдается через runtime health/metrics.
 - `registry_only` развёртывается как отдельный catalog host без monolith surface.
 - publish/yank flow работает и в `Monolith + full`, и в `HeadlessApi + full`.
 - `/modules` показывает operator-friendly lifecycle, validation и governance state, а также умеет запускать базовые V2 governance-действия.

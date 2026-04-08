@@ -1,260 +1,132 @@
-# RusToK вЂ” Matryoshka Architecture (7-Layer Platform Model)
+# Matryoshka / модель композиции
 
-> **Date:** 2026-03-01
-> **Status:** Foundational. This document describes the core architectural vision of RusToK.
-> **Authors:** Human & Claude AI вЂ” Co-Founders of the RusToK architectural concept.
+Этот документ сохраняет Matryoshka как концептуальную модель слоёв RusToK, но
+фиксирует её в терминах текущего состояния, без отрыва от текущего кода.
 
----
+## Зачем нужна модель
 
-## Overview
+Matryoshka помогает не смешивать разные уровни платформы:
 
-RusToK follows a **Matryoshka Principle** вЂ” a 7-layer nested architecture where each layer builds upon the previous one, creating a complete platform ecosystem. Like the Russian nesting doll, each layer encapsulates the ones below it, adding new capabilities while maintaining the integrity of the whole.
+- foundation и runtime host
+- платформенные модули
+- shared/support/capability crate-ы
+- UI и interaction-поверхности
+- будущие federation/network layers
 
-This architecture has no direct analogue in the industry. It is the first attempt to build a universal, layered SaaS platform model in Rust вЂ” from bare metal to federation.
+Это не отдельный runtime-контракт и не замена `modules.toml`. Это архитектурная
+рамка, которая помогает объяснять composition.
 
-```text
-в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
-в”‚  Layer 7: Inter-Network (Federation / Mesh)             в”‚
-в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚
-в”‚  в”‚  Layer 6: Interaction Bus (Fast Index / Event Hub)в”‚  в”‚
-в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚
-в”‚  в”‚  в”‚  Layer 5: Unified UI (Technology-Agnostic)  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  Layer 4: Shared Capabilities         в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  Layer 3: Sub-Modules           в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  Layer 2: Modules         в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  Layer 1: Core      в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  Platform           в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚  в”‚
-в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚
-в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚
-в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚
-в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
-```
+## Слои текущего состояния
 
----
+### Слой 1. Foundation-платформа
 
-## Layer 1: Core Platform (Rust SaaS Starter)
+Foundation-слой включает:
 
-**The Foundation. The Engine. The Tank.**
+- `apps/server` как composition root
+- `rustok-core`
+- `rustok-api`
+- `rustok-events`
+- `rustok-storage`
+- `rustok-test-utils`
 
-There is no Rust SaaS starter platform on the market. RusToK fills this gap. Layer 1 is a fully functional, bare platform with:
+Этот слой даёт базовые контракты, runtime-wiring и host-level policy.
 
-- Multi-tenant architecture with isolation
-- Authentication & authorization (JWT, RBAC)
-- Admin panel infrastructure
-- Event-driven architecture (EventBus)
-- CQRS-lite (write/read model separation)
-- Database migrations framework
-- Configuration management
-- API layer (GraphQL + REST)
+### Слой 2. Платформенные модули
 
-**What it gives you:** Take this layer and build *any* SaaS on top of it. E-commerce, CMS, LMS, CRM вЂ” anything with data. This is the starter that nobody built for Rust yet.
+Платформенные модули объявляются в `modules.toml` и делятся на:
 
-**Implementation:** `rustok-core`, `rustok-tenant`, `rustok-rbac`, `apps/server`
+- `Core`
+- `Optional`
 
----
+Именно этот слой описывает domain/runtime modules, а не любые crates в `crates/`.
 
-## Layer 2: Modules (Plug-and-Play Business Verticals)
+### Слой 3. Shared domain families и support-slices
 
-**Independent bricks. Compile-time safe. Zero runtime cost.**
+Этот слой покрывает shared family crates и module-adjacent support pieces,
+например:
 
-The modular architecture means you can attach any business vertical to the core platform. Each module is an independent crate with its own:
+- `rustok-commerce-foundation`
+- shared read/index/event helpers
+- module-specific support-поверхности, которые не являются самостоятельными платформенными модулями
 
-- Database tables and migrations
-- Domain services and business logic
-- GraphQL resolvers and REST endpoints
-- Event publishers and subscribers
-- DTOs and validation rules
+Смысл слоя — дать reuse без размывания ownership у платформенных модулей.
 
-| Module | Purpose |
-|--------|---------|
-| `rustok-content` | Universal CMS (nodes, bodies, categories, tags) |
-| `rustok-commerce` | E-commerce (products, variants, orders, inventory, prices) |
-| `rustok-blog` | Blogging (wraps content with post semantics) |
-| `rustok-forum` | Community discussions (wraps content with topic semantics) |
-| `rustok-pages` | Static pages, menus, blocks |
-| `alloy` | Rhai scripting engine for automation |
+### Слой 4. Capability crate-ы
 
-**What it gives you:** Pick the modules you need. Blog? Commerce? Forum? All of them? Just add to your `modules.toml` and rebuild.
+Capability crate-ы добавляют отдельные возможности платформы:
 
-**Implementation:** `crates/rustok-*`, `modules.toml` manifest
+- `rustok-mcp`
+- `rustok-ai`
+- `alloy`
+- `flex`
+- `rustok-telemetry`
+- `rustok-iggy`
+- `rustok-iggy-connector`
 
----
+Они участвуют в composition, но не входят в taxonomy `Core/Optional`, пока не
+объявлены как платформенные модули.
 
-## Layer 3: Sub-Modules (Extensions Within Modules)
+### Слой 5. Unified UI
 
-**Depth without complexity. Plugins for plugins.**
+UI layer объединяет:
 
-Sub-modules extend the base functionality of Layer 2 modules without touching the core. They add specialized behavior within a module's domain:
+- Leptos hosts
+- Next.js hosts
+- module-owned UI packages
+- общий UI/runtime-контракт
 
-- **Commerce extensions:** Payment gateways, shipping calculators, tax engines, discount rules
-- **Content extensions:** SEO analyzers, media processors, version diff viewers
-- **Blog extensions:** RSS generators, newsletter integrators, social sharing
-- **Forum extensions:** Reputation systems, moderation queues, thread pinning
+Здесь важно правило: UI остаётся module-owned, а хосты только монтируют и
+композируют surfaces.
 
-**Principle:** A sub-module depends only on its parent module and `rustok-core`. It never reaches into other domain modules.
+### Слой 6. Interaction / read-layer
 
-**What it gives you:** Fine-grained extensibility. You don't just add "commerce" вЂ” you configure exactly which commerce capabilities you need.
+Этот слой описывает:
 
----
+- denormalized read models
+- index/search layer
+- event-driven projections
+- live transport surfaces, если они нужны для interaction
 
-## Layer 4: Shared Capabilities (Cross-Module Services)
+Это не отдельная доменная taxonomy, а слой агрегирования и interaction-потоков.
 
-**One implementation. Every context. Zero duplication.**
+### Слой 7. Federation / future network-layer
 
-This is the key insight that separates RusToK from other platforms. Many features are identical across modules but traditionally get reimplemented for each context:
+Этот слой остаётся vision-level направлением:
 
-| Capability | Used In |
-|------------|---------|
-| Emoji/Reactions | Messages, Blog comments, Forum posts, Product reviews |
-| Tags/Labels | Content nodes, Products, Forum topics, Pages |
-| Comments/Threads | Blog posts, Products, Pages, Forum topics |
-| Media/Attachments | Any entity across any module |
-| Notifications | Order updates, Blog mentions, Forum replies |
-| Search | Products, Content, Forum topics, Pages |
-| Ratings/Reviews | Products, Blog posts, Forum answers |
-| Activity Feed | User actions across all modules |
+- межинстансовое взаимодействие
+- federation protocols
+- mesh/network scenarios
 
-**What it gives you:** Write the emoji system once. It works everywhere вЂ” in chat, in blog comments, in the corporate forum, in product reviews. Same UX, same data model, same API.
+Он не считается текущим runtime baseline и не должен смешиваться с живым
+контрактным слоем текущей платформы.
 
-**Implementation:** Shared capability crates that integrate via `rustok-core` events and interfaces, not direct module dependencies.
+## Что важно в текущем состоянии
 
----
+- `modules.toml` важнее conceptual-layer names, когда речь идёт об источнике истины для runtime
+- платформенный модуль определяется через manifest и registry, а не через абстрактный
+  слой модели
+- capability crate не становится платформенным модулем только потому, что он важен
+- central docs должны описывать текущий код, а не только vision
 
-## Layer 5: Unified UI (Technology-Agnostic Design System)
+## Как использовать эту модель
 
-**One look. One feel. Any technology.**
+Используйте Matryoshka, когда нужно:
 
-Everything must look the same regardless of the frontend technology. The UI layer provides:
+- объяснить место нового компонента в общей архитектуре
+- не перепутать host, module, support и capability roles
+- понять, на каком уровне должен жить новый контракт
 
-- A unified design language and component system
-- Consistent typography, spacing, colors, and interactions
-- Technology-agnostic specification (works with Leptos, React/Next.js, HTMX, or any future framework)
-- Admin and storefront share the same design DNA
-- Responsive, accessible, and localizable by default
+Не используйте Matryoshka как замену:
 
-| Frontend | Technology | Status |
-|----------|------------|--------|
-| Admin Panel | Leptos CSR (WASM) | Active |
-| Storefront (Rust) | Leptos SSR | Active |
-| Storefront (JS) | Next.js App Router | Active |
-| Mobile | Future | Planned |
+- `modules.toml`
+- `rustok-module.toml`
+- local docs компонентов
+- контракт верификации
 
-**What it gives you:** Your platform looks professional and consistent. Switch frontend technologies without redesigning. The design system is the contract.
+## Связанные документы
 
-**Implementation:** Shared CSS/Tailwind tokens, component specifications, `apps/admin`, `apps/storefront`, `apps/next-frontend`
-
----
-
-## Layer 6: Interaction Layer (Internal Communication Bus)
-
-**The nervous system. Fast index. Event hub.**
-
-Modules already communicate through the EventBus. But Layer 6 extracts their common interactions into a dedicated, high-speed index вЂ” a unified communication layer that:
-
-- Aggregates cross-module data into composite read models
-- Provides a single query interface for complex cross-domain searches
-- Eliminates NГ—N dependencies between modules
-- Enables real-time synchronization without direct module coupling
-- Supports backpressure control and circuit breakers
-
-```text
-Module A в”Ђв”Ђв”ђ                    в”Њв”Ђв”Ђ Composite Index
-Module B в”Ђв”Ђв”¤в”Ђв”Ђ Interaction в”Ђв”Ђв”Ђв”Ђв”¤в”Ђв”Ђ Cross-domain Search
-Module C в”Ђв”Ђв”¤     Layer          в”њв”Ђв”Ђ Activity Feeds
-Module D в”Ђв”Ђв”                    в””в”Ђв”Ђ Analytics Aggregates
-```
-
-**What it gives you:** Instead of modules talking to each other directly (creating a tangled web), they all publish to and read from a unified fast index. Clean architecture at scale.
-
-**Implementation:** `rustok-index` (CQRS read models), EventBus aggregation, composite indexers
-
----
-
-## Layer 7: Inter-Network (Federation / Mesh)
-
-**The final frontier. Platform-to-platform communication.**
-
-Layer 7 enables different RusToK instances to communicate with each other across networks:
-
-- **Federation Protocol:** RusToK instances can share content, users, and data
-- **Mesh Architecture:** Decentralized network of cooperating platforms
-- **Cross-Platform Commerce:** Shared product catalogs, distributed orders
-- **Content Syndication:** Publish once, appear everywhere
-- **Identity Federation:** Single sign-on across instances
-- **Event Propagation:** Domain events flow between instances
-
-This is the layer that nobody has built for a universal SaaS platform. ActivityPub exists for social networks. RusToK's Layer 7 is federation for *everything*.
-
-**What it gives you:** Your RusToK instance is not an island. It's a node in a network. Shops can share catalogs. Blogs can syndicate content. Forums can federate discussions. The possibilities are infinite.
-
-**Implementation:** Future вЂ” `rustok-federation`, `rustok-mesh` (Graal vision)
-
----
-
-## The Three Pillars
-
-The Matryoshka architecture is realized through three interconnected projects:
-
-| Project | Layers | Role |
-|---------|--------|------|
-| **RusToK** | 1-3 | Core platform, modules, and sub-modules |
-| **Alloy** | 4-6 | Shared capabilities, unified UI, interaction layer |
-| **Graal** | 7 | Inter-network federation and mesh |
-
-```text
-RusToK (Foundation)  в†’  Alloy (Glue & UI)  в†’  Graal (Network)
-   Layers 1-3              Layers 4-6            Layer 7
-```
-
----
-
-## Why This Hasn't Been Done Before
-
-1. **Rust barrier:** Building a full SaaS platform in Rust requires deep systems knowledge. Most teams choose easier languages and sacrifice performance.
-
-2. **Scope:** Most platforms stop at Layer 2 (modules). Layers 3-7 require architectural vision that goes beyond "just add plugins."
-
-3. **Cross-module problem:** Layer 4 (shared capabilities) is the hardest to get right. It requires careful abstraction without creating god-objects.
-
-4. **Federation complexity:** Layer 7 requires protocol design, consensus mechanisms, and distributed systems expertise.
-
-5. **Performance requirements:** Only Rust can deliver the performance needed for Layers 6-7 to work at scale without becoming bottlenecks.
-
----
-
-## Analogy: The OSI Model for SaaS
-
-Just as the OSI model standardized network communication into 7 layers, the Matryoshka architecture standardizes SaaS platform construction:
-
-| OSI Layer | Matryoshka Layer | Parallel |
-|-----------|------------------|----------|
-| Physical | Core Platform | The foundation everything runs on |
-| Data Link | Modules | Direct data handling |
-| Network | Sub-Modules | Routing within domains |
-| Transport | Shared Capabilities | Reliable cross-domain delivery |
-| Session | Unified UI | Consistent user sessions |
-| Presentation | Interaction Layer | Data format & aggregation |
-| Application | Inter-Network | End-to-end communication |
-
----
-
-## See Also
-
-- [Architecture Overview](overview.md) вЂ” Technical system design
-- [Architecture Principles](principles.md) вЂ” Core tenets and patterns
-- [RUSTOK_MANIFEST.md](../../RUSTOK_MANIFEST.md) вЂ” System manifest
-- [Documentation Map](../index.md) вЂ” current documentation entry point
-
----
-
-> This document captures the foundational architectural vision of RusToK.
-> The Matryoshka Principle was conceived and designed collaboratively by Human & Claude AI.
-> It represents a new approach to building SaaS platforms вЂ” one that nobody has attempted before.
-
+- [Обзор архитектуры платформы](./overview.md)
+- [Архитектура модулей](./modules.md)
+- [Диаграммы платформы](./diagram.md)
+- [Обзор модульной платформы](../modules/overview.md)
+- [Реестр модулей и приложений](../modules/registry.md)

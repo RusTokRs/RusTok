@@ -1,128 +1,106 @@
 # План верификации платформы: frontend-поверхности
 
-- **Статус:** Актуализированный детальный чеклист
-- **Контур:** Leptos host-приложения, Next.js host-приложения, UI/libraries/packages
+- **Статус:** актуальный детальный чеклист
+- **Контур:** Leptos hosts, Next.js hosts, module-owned UI packages, shared UI libraries
 - **Companion-план:** [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md)
 
 ---
 
-## Фаза 10: Фронтенды — Leptos
+## Актуальный scoped contract
 
-### 10.1 `apps/admin`
+План верификации frontend-поверхностей опирается на current-state UI model:
 
-**Файлы:**
-- `apps/admin/src/app/router.rs`
-- `apps/admin/src/app/modules/registry.rs`
-- `apps/admin/src/pages/`
+- UI остаётся module-owned
+- hosts только монтируют surfaces
+- internal Leptos data layer использует `#[server]`
+- GraphQL остаётся параллельным transport contract
+- effective locale приходит из host/runtime layer
 
-- [ ] Leptos Admin остаётся host-приложением с module-owned routing через `/modules/:module_slug` и `/modules/:module_slug/*module_path`.
-- [ ] Базовые host-страницы соответствуют коду: dashboard, profile, security, modules, users, apps, workflows.
-- [ ] Auth и data-layer integration отражают текущий dual-path: native `#[server]` first для Leptos data access, GraphQL параллельно через `leptos-auth` / `leptos-graphql` и fallback-ветки.
-- [ ] Module-owned Leptos admin packages описаны как часть live contract, а не как app-local исключения host-кода.
-- [ ] Admin module registry и module request context описаны корректно.
-- [ ] Leptos admin host прокидывает effective locale в `UiRouteContext`, а module-owned admin packages читают язык UI оттуда вместо собственных несогласованных fallback-цепочек.
-- [ ] План не обещает встроенные product/content/blog/pages screens там, где в host есть только generic module-owned surfaces.
+## Фаза 1. Leptos hosts
 
-### 10.2 `apps/storefront`
+### 1.1 `apps/admin`
 
 **Файлы:**
-- `apps/storefront/src/app/mod.rs`
-- `apps/storefront/src/modules/registry.rs`
-- `apps/storefront/src/pages/home/`
+- `apps/admin/src/`
+- `apps/admin/docs/README.md`
 
-- [ ] Leptos Storefront отражён как SSR host shell с module-owned pages и slot-based composition.
-- [ ] В плане отражены `StorefrontSlot`, page registry и enabled-modules gating.
-- [ ] Home shell, static locale data и module-owned page rendering задокументированы корректно.
-- [ ] Data-layer storefront отражает текущий dual-path: native `#[server]` path и сохранённый GraphQL fallback.
-- [ ] Locale-prefixed маршруты `/{locale}` и `/{locale}/modules/{route_segment}` отражены как текущий SSR contract, а legacy `?lang=` не описывается как primary path.
-- [ ] `UiRouteContext` и effective locale прокидываются в module-owned storefront packages без собственных несовместимых fallback-цепочек.
-- [ ] Module-owned storefront packages не генерируют hardcoded `/modules/...` ссылки внутри своих view-компонентов; для внутренних generic page links используется `UiRouteContext::module_route_base()`.
-- [ ] План не обещает отдельные catalog/blog/cart screens, если в текущем host-коде они ещё не оформлены как самостоятельные маршруты.
+- [ ] `apps/admin` остаётся host application, а не owner module UI.
+- [ ] Module routing и registry отражают текущий manifest-driven contract.
+- [ ] `#[server]` path и GraphQL path сосуществуют без дрейфа контрактов.
+- [ ] Effective locale прокидывается через host/runtime context.
 
----
-
-## Фаза 11: Фронтенды — Next.js
-
-### 11.1 `apps/next-admin`
+### 1.2 `apps/storefront`
 
 **Файлы:**
-- `apps/next-admin/package.json`
-- `apps/next-admin/src/auth.ts`
-- `apps/next-admin/src/app/dashboard/`
+- `apps/storefront/src/`
+- `apps/storefront/docs/README.md`
 
-- [ ] План отражает актуальный стек: Next.js 16, React 19, NextAuth credentials/session flow, App Router.
-- [ ] В плане отражены реальные dashboard-разделы: blog, product, modules, users, workflows и другие существующие страницы из `src/app/dashboard/`.
-- [ ] Локальные module-owned UI packages (`@rustok/blog-admin`, `@rustok/workflow-admin`) отражены как текущий механизм модульного UI.
-- [ ] Shared GraphQL transport и policy enforcement описаны на уровне host/package contracts, а не как набор app-specific экранных исключений.
-- [ ] Документация не утверждает, что текущая auth-модель построена на Clerk, если runtime-код использует `next-auth`.
-- [ ] Lint/build/type safety checks соответствуют реальным npm scripts.
+- [ ] `apps/storefront` остаётся host application для module-owned storefront surfaces.
+- [ ] Routing, locale path и host wiring совпадают с `docs/UI/storefront.md`.
+- [ ] Нет app-local business logic, подменяющей ownership module packages.
 
-### 11.2 `apps/next-frontend`
+## Фаза 2. Next.js hosts
 
-**Файлы:**
-- `apps/next-frontend/package.json`
-- `apps/next-frontend/src/app/`
-- `apps/next-frontend/src/shared/`
+### 2.1 `apps/next-admin`
 
-- [ ] План отражает текущий минимальный Next.js storefront shell с `next-intl`, enabled-modules provider и locale route `[locale]`.
-- [ ] План не обещает полноценные catalog/blog/product-detail flows, если они ещё не оформлены в `src/app/`.
-- [ ] Module-owned Next/storefront packages потребляют тот же locale contract, что и host, без собственной альтернативной цепочки выбора locale.
-- [ ] Lint/typecheck/build checks соответствуют реальным npm scripts.
+- [ ] Next admin host монтирует module-owned или capability-owned surfaces без дрейфа ownership.
+- [ ] Locale/runtime contract совпадает с общим i18n policy.
+- [ ] Frontend build/type/lint path остаётся воспроизводимым.
 
----
+### 2.2 `apps/next-frontend`
 
-## Фаза 12: UI-библиотеки и shared packages
+- [ ] Next storefront host использует host/runtime locale contract.
+- [ ] Storefront routing согласован с общим route contract.
+- [ ] Host-only код не дублирует module-owned domain logic.
 
-### 12.1 Rust / Leptos библиотеки (`crates/`)
+## Фаза 3. Module-owned UI packages
 
-- [ ] `leptos-auth`
-- [ ] `leptos-forms`
-- [ ] `leptos-graphql`
-- [ ] `leptos-hook-form`
-- [ ] `leptos-shadcn-pagination`
-- [ ] `leptos-table`
-- [ ] `leptos-ui`
-- [ ] `leptos-zod`
-- [ ] `leptos-zustand`
+### 3.1 Leptos UI packages
 
-Для каждой:
-- [ ] README/docs совпадают с текущим public API.
-- [ ] Реальные потребители в `apps/admin` / `apps/storefront` отражены корректно.
-- [ ] Нет обходных app-level реализаций там, где библиотека уже должна быть source of truth.
+- [ ] `admin/` и `storefront/` sub-crates согласованы с `rustok-module.toml`.
+- [ ] UI package docs согласованы с local docs owning module.
+- [ ] Package не вводит собственный locale/auth contract.
+- [ ] Package не переносит в себя ownership доменной логики.
 
-### 12.2 Internal UI workspace
+### 3.2 Capability-owned UI
 
-- [ ] `UI/leptos` отражён как текущий shared design-system/runtime workspace.
-- [ ] `docs/UI/README.md`, `graphql-architecture.md`, `storefront.md`, `rust-ui-component-catalog.md` не расходятся с кодом.
-- [ ] `docs/UI/graphql-architecture.md` и локальные app/crate docs не утверждают GraphQL-only модель там, где код уже работает через `#[server]` + GraphQL parallel path.
-- [ ] GraphQL hardening для sensitive admin operations описан как server-side AST/root-field policy, а `operationName` не описывается как security boundary.
-- [ ] Если между Leptos и Next.js есть shared design language, это задокументировано честно, без обещаний parity там, где её ещё нет.
+- [ ] Capability-owned UI packages не выдаются за UI-поверхности платформенных модулей.
+- [ ] Их runtime/docs contract остаётся согласованным с host layer.
 
-### 12.3 TypeScript packages (`packages/`)
+## Фаза 4. Shared UI libraries
 
-- [ ] `packages/leptos-auth`
-- [ ] `packages/leptos-graphql`
-- [ ] `packages/leptos-hook-form`
-- [ ] `packages/leptos-table`
-- [ ] `packages/leptos-zod`
-- [ ] `packages/leptos-zustand`
+### 4.1 Reusable UI/tooling layer
 
-Для каждого:
-- [ ] package metadata и build/lint/typecheck expectations актуальны.
-- [ ] Реальное использование в `apps/next-*` отражено корректно.
-- [ ] План не описывает package surfaces, которых в коде ещё нет.
+- [ ] Shared Leptos/UI libraries используются как reusable building blocks, а не как скрытый host/business layer.
+- [ ] Library contracts не конфликтуют с host locale/runtime policy.
 
----
+## Фаза 5. i18n и route checks
 
-## Фаза 13: Native i18n contract
+### 5.1 Обязательные targeted gates
 
-> [!NOTE]
-> Эта фаза закрыта как migration wave. Остаточный future scope описывается в live docs, прежде всего в `docs/architecture/i18n.md` и `apps/server/docs/loco-core-integration-plan.md`, и не должен переоткрывать package-owned UI migration как pending работу.
+- [ ] `npm.cmd run verify:i18n:ui`
+- [ ] `npm.cmd run verify:i18n:contract`
+- [ ] `npm.cmd run verify:storefront:routes`
 
-- [x] Server runtime locale chain отражён одинаково в host-приложениях и module-owned UI packages: `query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`.
-- [x] `Content-Language` и effective locale описаны как platform contract для SSR/GraphQL/server-function ответов.
-- [x] UI bundles parity проверяется машинно через `npm run verify:i18n:ui`; docs не описывают parity как ручную договорённость без проверяемого артефакта.
-- [x] Module-owned translation bundles, если они существуют, описываются через manifest-level `[provides.*_ui.i18n]` contract, а не через расплывчатые WIP-формулировки.
-- [x] Locale-aware storefront route contract проверяется отдельно через `npm run verify:storefront:routes`, чтобы module-owned Leptos packages не возвращались к hardcoded `/modules/{route_segment}` вместо `UiRouteContext::module_route_base()`.
-- [x] Package-owned Leptos admin bundles (`admin/locales/*.json`) используют тот же host locale contract и не обходят `UiRouteContext.locale` локальными источниками языка, включая capability-owned `rustok-ai-admin`.
-- [x] В verification отражено текущее покрытие package-owned bundle contract: Leptos admin surfaces `workflow`, `rbac`, `tenant`, `index`, `outbox`, `pages`, `comments`, `channel`, `forum`, `search`, `commerce`, capability-owned `rustok-ai-admin`, и storefront surfaces `blog`, `pages`, `commerce`, `forum`, `search`.
+Если менялся host wiring или UI contract, эти проверки считаются обязательными.
+
+## Фаза 6. Точечные локальные проверки
+
+### 6.1 Минимум
+
+- [ ] targeted `cargo check` / `cargo test` для затронутых Leptos packages
+- [ ] targeted `npm run lint` / `npm run typecheck` для затронутого Next host
+- [ ] targeted build/smoke, если менялся runtime wiring
+
+## Open blockers
+
+- [ ] Runtime-only blockers фиксировать отдельно и кратко, не превращая этот документ в endless backlog.
+- [ ] При drift между host docs и module docs сначала чинить local docs owning component.
+
+## Связанные документы
+
+- [UI README](../UI/README.md)
+- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [Storefront](../UI/storefront.md)
+- [Архитектура i18n](../architecture/i18n.md)
+- [Главный README по верификации](./README.md)

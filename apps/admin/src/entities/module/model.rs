@@ -108,6 +108,8 @@ pub struct RegistryModuleLifecycle {
     pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
     #[serde(default, rename = "validationStages")]
     pub validation_stages: Vec<RegistryValidationStageLifecycle>,
+    #[serde(default, rename = "governanceActions")]
+    pub governance_actions: Vec<RegistryGovernanceActionLifecycle>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -159,6 +161,18 @@ pub struct RegistryValidationStageLifecycle {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryGovernanceActionLifecycle {
+    pub key: String,
+    #[serde(rename = "reasonRequired")]
+    pub reason_required: bool,
+    #[serde(rename = "reasonCodeRequired")]
+    pub reason_code_required: bool,
+    #[serde(default, rename = "reasonCodes")]
+    pub reason_codes: Vec<String>,
+    pub destructive: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryPublishRequestLifecycle {
     pub id: String,
     pub status: String,
@@ -172,6 +186,24 @@ pub struct RegistryPublishRequestLifecycle {
     pub rejected_by: Option<String>,
     #[serde(rename = "rejectionReason")]
     pub rejection_reason: Option<String>,
+    #[serde(rename = "changesRequestedBy")]
+    pub changes_requested_by: Option<String>,
+    #[serde(rename = "changesRequestedReason")]
+    pub changes_requested_reason: Option<String>,
+    #[serde(rename = "changesRequestedReasonCode")]
+    pub changes_requested_reason_code: Option<String>,
+    #[serde(rename = "changesRequestedAt")]
+    pub changes_requested_at: Option<String>,
+    #[serde(rename = "heldBy")]
+    pub held_by: Option<String>,
+    #[serde(rename = "heldReason")]
+    pub held_reason: Option<String>,
+    #[serde(rename = "heldReasonCode")]
+    pub held_reason_code: Option<String>,
+    #[serde(rename = "heldAt")]
+    pub held_at: Option<String>,
+    #[serde(rename = "heldFromStatus")]
+    pub held_from_status: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default)]

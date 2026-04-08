@@ -1,6 +1,6 @@
 ﻿# RusToK — Главный план верификации платформы
 
-- **Дата актуализации структуры:** 2026-03-24
+- **Дата актуализации структуры:** 2026-04-08
 - **Статус:** Готов к новому периодическому прогону
 - **Режим:** Master-plan для повторяемых verification-сессий
 - **Цель:** Запускать регулярную верификацию платформы по укрупнённым фазам без накопления исторического шума в одном документе
@@ -18,17 +18,17 @@
 
 ### Детальные платформенные планы
 
-- [План foundation-верификации](./platform-foundation-verification-plan.md) — фазы 0-5: сборка, архитектура, ядро, auth, RBAC, tenancy.
-- [План верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md) — фазы 6, 7, 13.
-- [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — фазы 8-9.
-- [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md) — фазы 10-12.
-- [План верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md) — фазы 14-20.
+- [План foundation-верификации](./platform-foundation-verification-plan.md) — workspace baseline, module composition, foundation crates, auth/RBAC/tenant foundation.
+- [План верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md) — event runtime, доменные модули, integration boundaries.
+- [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — GraphQL, REST, `#[server]`, operational endpoints.
+- [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md) — host apps, module-owned UI, shared libraries, i18n/routes.
+- [План верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md) — локальные проверки качества, observability, security/dependency hygiene, documentation sync и release-readiness.
 
-### Rolling / специализированные companion-планы
+### Специализированные companion-планы
 
-- [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md) — периодический прицельный проход по RBAC-контрактам.
-- [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md) — rolling-план для библиотечного UI-контура.
-- [План rolling-верификации целостности ядра платформы](./platform-core-integrity-verification-plan.md) — верификация server + обе admin-панели + core crates как самодостаточного целого, включая i18n и UI core модулей.
+- [План верификации RBAC, сервера и runtime-модулей](./rbac-server-modules-verification-plan.md) — прицельный проход по live authorization contract и capability boundaries.
+- [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md) — companion-план для shared Leptos/UI library layer.
+- [План верификации целостности ядра платформы](./platform-core-integrity-verification-plan.md) — server + admin surfaces + core crates как единый runtime baseline.
 
 ---
 
@@ -46,7 +46,7 @@
 2. Затем проверить события, доменные модули и интеграции.
 3. После этого проверить API и frontend surfaces.
 4. Завершить прогон quality/operations/release-readiness блоком.
-5. Отдельно сверить targeted rolling-планы по RBAC и Leptos libraries, если задеты соответствующие контуры.
+5. Отдельно сверить targeted companion-планы по RBAC и Leptos-библиотекам, если задеты соответствующие контуры.
 
 ---
 
@@ -72,7 +72,7 @@
 ### Фаза 4. RBAC
 
 - [ ] Выполнить platform-level RBAC checks из [Плана foundation-верификации](./platform-foundation-verification-plan.md).
-- [ ] При изменениях server/runtime modules дополнительно пройти [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md).
+- [ ] При изменениях server/runtime modules дополнительно пройти [План верификации RBAC, сервера и runtime-модулей](./rbac-server-modules-verification-plan.md).
 
 ### Фаза 5. Multi-Tenancy
 
@@ -105,39 +105,31 @@
 ### Фаза 12. Фронтенд-библиотеки
 
 - [ ] Пройти platform-level library/package checks из [Плана верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md).
-- [ ] Для rolling-проверки Leptos library contracts использовать [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md).
+- [ ] Для targeted-проверки library contracts использовать [План верификации Leptos-библиотек](./leptos-libraries-verification-plan.md).
 
 ### Фаза 13. Интеграционные связи
 
 - [ ] Пройти E2E integration checks из [Плана верификации событий, доменов и интеграций](./platform-domain-events-integrations-verification-plan.md).
 
-### Фаза 14. Тестовое покрытие
+### Фаза 14. Локальный quality baseline
 
-- [ ] Пройти test coverage checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
+- [ ] Пройти локальные проверки качества из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
 
-### Фаза 15. Observability и операционная готовность
+### Фаза 15. Observability и operational readiness
 
 - [ ] Пройти observability/ops checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
 
-### Фаза 16. Синхронизация документации с кодом
+### Фаза 16. Documentation sync и release-readiness
 
-- [ ] Пройти документационный блок из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
+- [ ] Пройти documentation sync и release-readiness checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
 
-### Фаза 17. CI/CD и DevOps
+### Фаза 17. Security и dependency hygiene
 
-- [ ] Пройти CI/CD checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
+- [ ] Пройти security/dependency hygiene checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
 
-### Фаза 18. Безопасность
+### Фаза 18. Quality anti-patterns и correctness
 
-- [ ] Пройти security checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-
-### Фаза 19. Антипаттерны и качество кода
-
-- [ ] Пройти quality/antipattern checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-
-### Фаза 20. Правильность написания кода
-
-- [ ] Пройти code correctness checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
+- [ ] Пройти остаточные quality/correctness checks из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
 
 ---
 
@@ -152,8 +144,8 @@
 | API Surfaces | ⬜ | |
 | Frontend Surfaces | ⬜ | |
 | Quality / Operations / Release Readiness | ⬜ | |
-| Targeted RBAC rolling plan | ⬜ | |
-| Targeted Leptos libraries rolling plan | ⬜ | |
+| Targeted RBAC/server companion plan | ⬜ | |
+| Targeted Leptos libraries companion plan | ⬜ | |
 | **ИТОГО** | ⬜ | |
 
 ---

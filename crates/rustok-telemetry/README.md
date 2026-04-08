@@ -1,26 +1,28 @@
 # rustok-telemetry
 
-## Назначение
-`crates/rustok-telemetry` — модуль/приложение RusToK. Здесь находится его код и корневая документация.
+## Purpose
 
-## Взаимодействие
-- crates/rustok-core
-- apps/server/crates/rustok-mcp
-- внешние observability backends
+`rustok-telemetry` owns the shared observability bootstrap and telemetry helpers for RusToK.
 
-## Документация
-- Локальная документация: `./docs/`
-- Общая документация платформы: `/docs`
+## Responsibilities
 
-## Паспорт компонента
-- **Роль в системе:** Набор инициализации tracing/metrics и observability-интеграций.
-- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
-- **Взаимодействует с:**
-  - crates/rustok-core
-  - apps/server/crates/rustok-mcp
-  - внешние observability backends
-- **Точки входа:**
-  - `crates/rustok-telemetry/src/lib.rs`
-- **Локальная документация:** `./docs/`
-- **Глобальная документация платформы:** `/docs/`
+- Initialize tracing, metrics, and observability integrations.
+- Provide shared telemetry wiring used by server and capability layers.
+- Keep observability backends and exporter setup out of business-domain modules.
 
+## Entry points
+
+- `init_tracing`
+- `init_metrics`
+- telemetry helpers exported from `src/lib.rs`
+
+## Interactions
+
+- Used by `apps/server` for runtime observability bootstrap.
+- Used by capability crates such as `rustok-mcp` and `rustok-ai` when they need shared telemetry contracts.
+- Depends on foundational runtime crates without taking ownership of domain logic.
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

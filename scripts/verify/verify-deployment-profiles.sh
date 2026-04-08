@@ -240,6 +240,22 @@ if [[ -n "${RUSTOK_REGISTRY_BASE_URL:-}" ]]; then
     status_is POST "$BASE_URL/v2/catalog/publish/rpr_smoke/stages" 404 '{}'
 
   run_cmd \
+    "external request-changes path returns 404" \
+    status_is POST "$BASE_URL/v2/catalog/publish/rpr_smoke/request-changes" 404 '{}'
+
+  run_cmd \
+    "external hold path returns 404" \
+    status_is POST "$BASE_URL/v2/catalog/publish/rpr_smoke/hold" 404 '{}'
+
+  run_cmd \
+    "external resume path returns 404" \
+    status_is POST "$BASE_URL/v2/catalog/publish/rpr_smoke/resume" 404 '{}'
+
+  run_cmd \
+    "external runner claim path returns 404" \
+    status_is POST "$BASE_URL/v2/catalog/runner/claim" 404 '{}'
+
+  run_cmd \
     "external owner-transfer path returns 404" \
     status_is POST "$BASE_URL/v2/catalog/owner-transfer" 404 '{}'
 

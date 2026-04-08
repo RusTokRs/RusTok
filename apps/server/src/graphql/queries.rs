@@ -451,6 +451,15 @@ fn registry_module_lifecycle_from_snapshot(
                 approved_by: request.approved_by,
                 rejected_by: request.rejected_by,
                 rejection_reason: request.rejection_reason,
+                changes_requested_by: request.changes_requested_by,
+                changes_requested_reason: request.changes_requested_reason,
+                changes_requested_reason_code: request.changes_requested_reason_code,
+                changes_requested_at: request.changes_requested_at,
+                held_by: request.held_by,
+                held_reason: request.held_reason,
+                held_reason_code: request.held_reason_code,
+                held_at: request.held_at,
+                held_from_status: request.held_from_status,
                 warnings: request.warnings,
                 errors: request.errors,
                 created_at: request.created_at,
@@ -508,6 +517,19 @@ fn registry_module_lifecycle_from_snapshot(
                     updated_at: stage.updated_at,
                     started_at: stage.started_at,
                     finished_at: stage.finished_at,
+                },
+            )
+            .collect(),
+        governance_actions: snapshot
+            .governance_actions
+            .into_iter()
+            .map(
+                |action| crate::graphql::types::RegistryGovernanceActionLifecycle {
+                    key: action.key,
+                    reason_required: action.reason_required,
+                    reason_code_required: action.reason_code_required,
+                    reason_codes: action.reason_codes,
+                    destructive: action.destructive,
                 },
             )
             .collect(),

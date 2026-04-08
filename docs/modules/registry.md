@@ -1,25 +1,31 @@
-# Р В Р’В Р В Р’ВµР В Р’ВµР РЋР С“Р РЋРІР‚С™Р РЋР вЂљ Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В Р’ВµР В РІвЂћвЂ“ Р В РЎвЂ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂР В Р’В»Р В РЎвЂўР В Р’В¶Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В РІвЂћвЂ“
+# Реестр модулей и приложений
 
-Р В РІР‚СњР В РЎвЂўР В РЎвЂќР РЋРЎвЂњР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™ Р РЋРІР‚С›Р В РЎвЂР В РЎвЂќР РЋР С“Р В РЎвЂР РЋР вЂљР РЋРЎвЂњР В Р’ВµР РЋРІР‚С™ Р В Р’В°Р В РЎвЂќР РЋРІР‚С™Р РЋРЎвЂњР В Р’В°Р В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРЎвЂњР РЋР вЂ№ Р В РЎвЂќР В Р’В°Р РЋР вЂљР РЋРІР‚С™Р РЋРЎвЂњ Р В РЎвЂќР В РЎвЂўР В РЎВР В РЎвЂ”Р В РЎвЂўР В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ  RusToK Р В РЎвЂ Р РЋР вЂљР В Р’В°Р В Р’В·Р В РўвЂР В Р’ВµР В Р’В»Р РЋР РЏР В Р’ВµР РЋРІР‚С™ Р РЋРІР‚С™Р РЋР вЂљР В РЎвЂ Р РЋР вЂљР В Р’В°Р В Р’В·Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р В Р вЂ Р В Р’ВµР РЋРІР‚В°Р В РЎвЂ:
+Этот документ фиксирует актуальную карту платформенных модулей, support crate-ов,
+capability crate-ов и host-приложений в RusToK.
 
-- **platform modules** Р Р†Р вЂљРІР‚Сњ Р В Р’В°Р РЋР вЂљР РЋРІР‚В¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В РЎвЂќР РЋРІР‚С™Р РЋРЎвЂњР РЋР вЂљР В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В РЎвЂ Р В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР РЋРІР‚в„– Р В РЎвЂР В Р’В· `modules.toml`;
-- **crate** Р Р†Р вЂљРІР‚Сњ Р РЋРІР‚С™Р В Р’ВµР РЋРІР‚В¦Р В Р вЂ¦Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р В РЎвЂќР РЋРЎвЂњР РЋР вЂ№ Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР РЋРЎвЂњ Р РЋРЎвЂњР В РЎвЂ”Р В Р’В°Р В РЎвЂќР В РЎвЂўР В Р вЂ Р В РЎвЂќР В РЎвЂ Р В Р вЂ  Cargo;
-- **library/support crates** Р Р†Р вЂљРІР‚Сњ Р В Р вЂ Р РЋР С“Р В РЎвЂ”Р В РЎвЂўР В РЎВР В РЎвЂўР В РЎвЂ“Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ crate'Р РЋРІР‚в„–, Р В РЎвЂќР В РЎвЂўР РЋРІР‚С™Р В РЎвЂўР РЋР вЂљР РЋРІР‚в„–Р В Р’Вµ Р В Р’В¶Р В РЎвЂР В Р вЂ Р РЋРЎвЂњР РЋРІР‚С™ Р РЋР вЂљР РЋР РЏР В РўвЂР В РЎвЂўР В РЎВ Р РЋР С“ Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР РЏР В РЎВР В РЎвЂ, Р В Р вЂ¦Р В РЎвЂў Р В Р вЂ¦Р В Р’Вµ
-  Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋРЎвЂњР РЋРІР‚РЋР В Р’В°Р РЋР вЂ№Р РЋРІР‚С™ Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“ `Core` Р В РЎвЂР В Р’В»Р В РЎвЂ `Optional`.
+## Как читать реестр
 
-## Р В РІР‚СљР В Р’В»Р В Р’В°Р В Р вЂ Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂР В Р’В»Р В Р’В°
+1. `Core` и `Optional` модули берутся только из `modules.toml`.
+2. `crate` — это способ упаковки в Cargo, а не автоматически платформенный модуль.
+3. Shared/support/capability crate-ы живут рядом с module crate-ами, но не обязаны
+   входить в taxonomy `Core` / `Optional`.
+4. Этот реестр даёт только центральную карту ownership и ролей; источник истины для runtime-контракта живёт в локальных `README.md` и `docs/README.md` самих компонентов.
 
-1. Р В РІР‚СњР В Р’В»Р РЋР РЏ platform modules Р РЋР С“Р РЋРЎвЂњР РЋРІР‚В°Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ Р РЋРЎвЂњР РЋР вЂ№Р РЋРІР‚С™ Р РЋРІР‚С™Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р В РўвЂР В Р вЂ Р В Р’В° Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“Р В Р’В°: `Core` Р В РЎвЂ `Optional`.
-2. Р В Р’ВР РЋР С“Р РЋРІР‚С™Р В РЎвЂўР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂР В РЎвЂќ Р В РЎвЂР РЋР С“Р РЋРІР‚С™Р В РЎвЂР В Р вЂ¦Р РЋРІР‚в„– Р В РЎвЂ”Р В РЎвЂў Р РЋР С“Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р РЋРЎвЂњ platform modules Р Р†Р вЂљРІР‚Сњ `modules.toml`.
-3. `ModuleRegistry`, bootstrap Р В Р вЂ  `apps/server` Р В РЎвЂ generated wiring Р В РЎвЂР В Р’В· `build.rs` Р Р†Р вЂљРІР‚Сњ Р РЋР РЉР РЋРІР‚С™Р В РЎвЂў Р РЋР С“Р В РЎвЂ”Р В РЎвЂўР РЋР С“Р В РЎвЂўР В Р’В±Р РЋРІР‚в„–
-   Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ, Р В Р’В° Р В Р вЂ¦Р В Р’Вµ Р В РЎвЂўР РЋРІР‚С™Р В РўвЂР В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р В Р’В°Р РЋР вЂљР РЋРІР‚В¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В РЎвЂќР РЋРІР‚С™Р РЋРЎвЂњР РЋР вЂљР В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р РЋРІР‚С™Р В РЎвЂР В РЎвЂ”Р РЋРІР‚в„–.
-4. `rustok-outbox` Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚ВР РЋРІР‚С™Р РЋР С“Р РЋР РЏ `Core` module, Р В РўвЂР В Р’В°Р В Р’В¶Р В Р’Вµ Р В Р’ВµР РЋР С“Р В Р’В»Р В РЎвЂ server runtime Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В Р’ВµР РЋРІР‚С™ Р В Р’ВµР В РЎвЂ“Р В РЎвЂў Р В Р’ВµР РЋРІР‚В°Р РЋРІР‚В Р В РЎвЂ Р В Р вЂ¦Р В Р’В°Р В РЎвЂ”Р РЋР вЂљР РЋР РЏР В РЎВР РЋРЎвЂњР РЋР вЂ№.
+## Контракт документации
 
-## Р В РІР‚в„ўР В Р’ВµР РЋР вЂљР РЋРІР‚В¦Р В Р вЂ¦Р В Р’ВµР РЋРЎвЂњР РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р вЂ¦Р В Р’ВµР В Р вЂ Р В Р’В°Р РЋР РЏ Р РЋР С“Р РЋРІР‚В¦Р В Р’ВµР В РЎВР В Р’В°
+Для компонентов, перечисленных в этом реестре, действует единый стандарт документации:
+
+- root `README.md` на английском описывает разделы `Purpose`, `Responsibilities`, `Entry points` и `Interactions`;
+- локальный `docs/README.md` на русском фиксирует живой runtime/module/app-контракт;
+- локальный `docs/implementation-plan.md` на русском фиксирует живой план развития, а не исторический changelog.
+
+Центральный реестр не должен дублировать эти локальные документы. Его задача — дать карту платформы и отправить читателя в правильный компонент.
+
+## Архитектурная карта
 
 ```mermaid
 graph TD
-    subgraph Applications
+    subgraph Applications["Приложения"]
         SERVER["apps/server"]
         ADMIN["apps/admin"]
         STOREFRONT["apps/storefront"]
@@ -27,7 +33,7 @@ graph TD
         NEXT_FRONT["apps/next-frontend"]
     end
 
-    subgraph CoreModules["Core modules"]
+    subgraph CoreModules["Core-модули"]
         AUTH["rustok-auth"]
         CACHE["rustok-cache"]
         CHANNEL["rustok-channel"]
@@ -39,7 +45,7 @@ graph TD
         RBAC["rustok-rbac"]
     end
 
-    subgraph OptionalModules["Optional modules"]
+    subgraph OptionalModules["Optional-модули"]
         CONTENT["rustok-content"]
         CART["rustok-cart"]
         CUSTOMER["rustok-customer"]
@@ -61,12 +67,13 @@ graph TD
         WORKFLOW["rustok-workflow"]
     end
 
-    subgraph SupportCrates["Libraries / support crates"]
+    subgraph SupportCrates["Support / capability crates"]
         CORE["rustok-core"]
         API["rustok-api"]
         EVENTS["rustok-events"]
         COMMERCE_FOUNDATION["rustok-commerce-foundation"]
         STORAGE["rustok-storage"]
+        TEST_UTILS["rustok-test-utils"]
         IGGY["rustok-iggy + connector"]
         TELEMETRY["rustok-telemetry"]
         MCP["rustok-mcp"]
@@ -115,15 +122,15 @@ graph TD
     COMMERCE --> FULFILLMENT
     BLOG --> CONTENT
     BLOG --> COMMENTS
+    BLOG --> TAXONOMY
     FORUM --> CONTENT
     FORUM --> TAXONOMY
-    TAXONOMY --> CONTENT
     PRODUCT --> COMMERCE_FOUNDATION
     PRICING --> COMMERCE_FOUNDATION
     INVENTORY --> COMMERCE_FOUNDATION
+    MEDIA --> STORAGE
     OUTBOX --> EVENTS
     OUTBOX --> IGGY
-    MEDIA --> STORAGE
     SERVER --> API
     SERVER --> CORE
     SERVER --> TELEMETRY
@@ -133,127 +140,94 @@ graph TD
     SERVER --> FLEX
 ```
 
-## Platform modules
+## Платформенные модули
 
-### Core modules
+### Core-модули
 
-Core modules Р В Р вЂ Р РЋР С“Р В Р’ВµР В РЎвЂ“Р В РўвЂР В Р’В° Р В Р вЂ Р В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р РЋРІР‚в„– Р В Р вЂ  Р В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР РЋРЎвЂњ, Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР В Р’В°Р В Р’В¶Р В Р’ВµР В Р вЂ¦Р РЋРІР‚в„– Р В Р вЂ  `modules.toml` Р В РЎвЂќР В Р’В°Р В РЎвЂќ `required = true` Р В РЎвЂ
-Р РЋР вЂљР В Р’ВµР В РЎвЂ“Р В РЎвЂР РЋР С“Р РЋРІР‚С™Р РЋР вЂљР В РЎвЂР РЋР вЂљР РЋРЎвЂњР РЋР вЂ№Р РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р В Р вЂ  runtime Р В РЎвЂќР В Р’В°Р В РЎвЂќ `ModuleKind::Core`.
-
-| Slug | Crate | Р В Р’В Р В РЎвЂўР В Р’В»Р РЋР Р‰ |
+| Slug | Crate | Роль |
 |---|---|---|
-| `auth` | `rustok-auth` | JWT lifecycle, credentials, token flows |
+| `auth` | `rustok-auth` | Auth lifecycle, credentials, tokens |
 | `cache` | `rustok-cache` | Cache backend factory, Redis/in-memory fallback |
-| `channel` | `rustok-channel` | Platform-level channel context, targets and OAuth app bindings |
-| `email` | `rustok-email` | SMTP transport, templates, delivery lifecycle |
-| `index` | `rustok-index` | Cross-module indexing, links, denormalized read-model substrate |
-| `search` | `rustok-search` | Product-facing search, dictionaries/query rules, engine selection |
-| `outbox` | `rustok-outbox` | Transactional event persistence, relay, retry, DLQ |
-| `tenant` | `rustok-tenant` | Tenant lifecycle Р В РЎвЂ module enablement |
-| `rbac` | `rustok-rbac` | Permissions, authorization, role/policy runtime |
+| `channel` | `rustok-channel` | Platform channel context, bindings, resolution |
+| `email` | `rustok-email` | Email transport, templates, delivery lifecycle |
+| `index` | `rustok-index` | Indexed read-model substrate и cross-module filtering |
+| `search` | `rustok-search` | Product-facing search, ranking, dictionaries, query rules |
+| `outbox` | `rustok-outbox` | Transactional events, relay, retry, DLQ |
+| `tenant` | `rustok-tenant` | Tenant lifecycle и tenant module enablement |
+| `rbac` | `rustok-rbac` | Permission runtime, authorization, policy layer |
 
-### Optional modules
+### Optional-модули
 
-Optional modules Р В РЎвЂќР В РЎвЂўР В РЎВР В РЎвЂ”Р В РЎвЂўР В Р вЂ¦Р РЋРЎвЂњР РЋР вЂ№Р РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р В Р вЂ  Р РЋР С“Р В Р’В±Р В РЎвЂўР РЋР вЂљР В РЎвЂќР РЋРЎвЂњ Р В РЎвЂ Р В Р’В·Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В РЎВ Р В РЎВР В РЎвЂўР В РЎвЂ“Р РЋРЎвЂњР РЋРІР‚С™ Р В Р вЂ Р В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’В°Р РЋРІР‚С™Р РЋР Р‰Р РЋР С“Р РЋР РЏ Р В РЎвЂР В Р’В»Р В РЎвЂ Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’В°Р РЋРІР‚С™Р РЋР Р‰Р РЋР С“Р РЋР РЏ Р В РўвЂР В Р’В»Р РЋР РЏ tenant'Р В Р’В° Р РЋРІР‚РЋР В Р’ВµР РЋР вЂљР В Р’ВµР В Р’В·
-`tenant_modules`.
-
-| Slug | Crate | Р В РІР‚вЂќР В Р’В°Р В Р вЂ Р В РЎвЂР РЋР С“Р В РЎвЂР В РЎВР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В РЎвЂ | Р В Р’В Р В РЎвЂўР В Р’В»Р РЋР Р‰ |
+| Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
-| `content` | `rustok-content` | Р Р†Р вЂљРІР‚Сњ | Shared content helpers Р В РЎвЂ orchestration-Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰; Р В Р’В±Р В РЎвЂўР В Р’В»Р РЋР Р‰Р РЋРІвЂљВ¬Р В Р’Вµ Р В Р вЂ¦Р В Р’Вµ product storage/backend Р В РўвЂР В Р’В»Р РЋР РЏ `blog`, `forum`, `pages` Р В РЎвЂ Р В Р вЂ¦Р В Р’Вµ Р В РЎвЂ”Р РЋРЎвЂњР В Р’В±Р В Р’В»Р В РЎвЂР РЋРІР‚РЋР В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ transport layer |
-| `cart` | `rustok-cart` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ cart-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce`: cart lifecycle, line items Р В РЎвЂ totals |
-| `customer` | `rustok-customer` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ storefront customer-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce`: Р В РЎвЂўР РЋРІР‚С™Р В РўвЂР В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ customer profile Р В РЎвЂ optional linkage Р В Р вЂ¦Р В Р’В° `user_id` |
-| `product` | `rustok-product` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ catalog-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce` |
-| `profiles` | `rustok-profiles` | Р Р†Р вЂљРІР‚Сњ | Р В Р в‚¬Р В Р вЂ¦Р В РЎвЂР В Р вЂ Р В Р’ВµР РЋР вЂљР РЋР С“Р В Р’В°Р В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р В РЎвЂ”Р РЋРЎвЂњР В Р’В±Р В Р’В»Р В РЎвЂР РЋРІР‚РЋР В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋРІР‚С›Р В РЎвЂР В Р’В»Р РЋР Р‰ Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР РЏ Р В РЎвЂ”Р В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР РЋРІР‚В¦ platform `users`, Р В РЎвЂўР РЋРІР‚С™Р В РўвЂР В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ Р В РЎвЂўР РЋРІР‚С™ `customer` Р В РЎвЂ Р В Р’В±Р РЋРЎвЂњР В РўвЂР РЋРЎвЂњР РЋРІР‚В°Р В РЎвЂР РЋРІР‚В¦ seller/staff Р В РўвЂР В РЎвЂўР В РЎВР В Р’ВµР В Р вЂ¦Р В РЎвЂўР В Р вЂ  |
-| `region` | `rustok-region` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ region-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce`: Р РЋР вЂљР В Р’ВµР В РЎвЂ“Р В РЎвЂР В РЎвЂўР В Р вЂ¦Р РЋРІР‚в„–, Р В Р вЂ Р В Р’В°Р В Р’В»Р РЋР вЂ№Р РЋРІР‚С™Р РЋРІР‚в„–, Р РЋР С“Р РЋРІР‚С™Р РЋР вЂљР В Р’В°Р В Р вЂ¦Р РЋРІР‚в„– Р В РЎвЂ Р В Р’В±Р В Р’В°Р В Р’В·Р В РЎвЂўР В Р вЂ Р РЋРІР‚в„–Р В РІвЂћвЂ“ region lookup |
-| `pricing` | `rustok-pricing` | `product` | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ pricing-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce` |
-| `inventory` | `rustok-inventory` | `product` | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ inventory-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce` Р РЋР С“ Р В Р вЂ¦Р В РЎвЂўР РЋР вЂљР В РЎВР В Р’В°Р В Р’В»Р В РЎвЂР В Р’В·Р В РЎвЂўР В Р вЂ Р В Р’В°Р В Р вЂ¦Р В Р вЂ¦Р РЋРІР‚в„–Р В РЎВР В РЎвЂ stock levels Р В РЎвЂ reservations |
-| `order` | `rustok-order` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ order-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce`: lifecycle, line item snapshots, order events |
-| `payment` | `rustok-payment` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ payment-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce`: payment collections, attempts Р В РЎвЂ Р В Р’В±Р В Р’В°Р В Р’В·Р В РЎвЂўР В Р вЂ Р РЋРІР‚в„–Р В РІвЂћвЂ“ lifecycle Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂўР РЋР вЂљР В РЎвЂР В Р’В·Р В Р’В°Р РЋРІР‚В Р В РЎвЂР В РЎвЂ |
-| `fulfillment` | `rustok-fulfillment` | Р Р†Р вЂљРІР‚Сњ | Р В РІР‚СњР В Р’ВµР РЋРІР‚С›Р В РЎвЂўР В Р’В»Р РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ fulfillment-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰ Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `commerce/ecommerce`: shipping options, fulfillment records Р В РЎвЂ shipment lifecycle |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Root umbrella module Р РЋР С“Р В Р’ВµР В РЎВР В Р’ВµР В РІвЂћвЂ“Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В Р’В° `ecommerce`: orchestration, compatibility facade, checkout flow layer Р В РЎвЂ store context |
-| `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Р В РІР‚ВР В Р’В»Р В РЎвЂўР В РЎвЂ“ Р В Р вЂ Р В Р’В»Р В Р’В°Р В РўвЂР В Р’ВµР В Р’ВµР РЋРІР‚С™ Р РЋР С“Р В Р вЂ Р В РЎвЂўР В РЎвЂР В РЎВР В РЎвЂ posts/categories/tags Р РЋРІР‚С™Р В Р’В°Р В Р’В±Р В Р’В»Р В РЎвЂР РЋРІР‚В Р В Р’В°Р В РЎВР В РЎвЂ, Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В Р’ВµР РЋРІР‚С™ `rustok-comments` Р В РўвЂР В Р’В»Р РЋР РЏ generic comments Р В РЎвЂ `rustok-content` Р РЋРІР‚С™Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р В РЎвЂќР В Р’В°Р В РЎвЂќ shared helper/orchestration dependency |
-| `forum` | `rustok-forum` | `content`, `taxonomy` | Р В Р’В¤Р В РЎвЂўР РЋР вЂљР РЋРЎвЂњР В РЎВ Р РЋР С“Р В РЎвЂў Р РЋР С“Р В Р вЂ Р В РЎвЂўР В РЎвЂР В РЎВР В РЎвЂ Р РЋРІР‚С™Р В Р’В°Р В Р’В±Р В Р’В»Р В РЎвЂР РЋРІР‚В Р В Р’В°Р В РЎВР В РЎвЂ; `content` Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В Р’ВµР РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р РЋРІР‚С™Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р В РЎвЂќР В Р’В°Р В РЎвЂќ shared helper/orchestration dependency |
-| `comments` | `rustok-comments` | Р Р†Р вЂљРІР‚Сњ | Generic comments domain Р РЋР С“Р В РЎвЂў Р РЋР С“Р В Р вЂ Р В РЎвЂўР В РЎвЂР В РЎВР В РЎвЂ `comment_threads` / `comments` / `comment_bodies`; canonical storage-owner Р В РўвЂР В Р’В»Р РЋР РЏ blog comments Р В РЎвЂ Р В РўвЂР РЋР вЂљР РЋРЎвЂњР В РЎвЂ“Р В РЎвЂР РЋРІР‚В¦ opt-in Р В РЎвЂќР В Р’В»Р В Р’В°Р РЋР С“Р РЋР С“Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р В РЎвЂќР В РЎвЂР РЋРІР‚В¦ Р В РЎвЂќР В РЎвЂўР В РЎВР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р В Р’В°Р РЋР вЂљР В РЎвЂР В Р’ВµР В Р вЂ  Р В Р вЂ Р В Р вЂ¦Р В Р’Вµ Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР РЋРЎвЂњР В РЎВР В Р’В° |
-| `pages` | `rustok-pages` | `content` | Р В Р Р‹Р РЋРІР‚С™Р РЋР вЂљР В Р’В°Р В Р вЂ¦Р В РЎвЂР РЋРІР‚В Р РЋРІР‚в„–, Р В Р’В±Р В Р’В»Р В РЎвЂўР В РЎвЂќР В РЎвЂ Р В РЎвЂ Р В РЎВР В Р’ВµР В Р вЂ¦Р РЋР вЂ№ Р РЋР С“Р В РЎвЂў Р РЋР С“Р В Р вЂ Р В РЎвЂўР В Р’ВµР В РІвЂћвЂ“ persistence-Р В РЎВР В РЎвЂўР В РўвЂР В Р’ВµР В Р’В»Р РЋР Р‰Р РЋР вЂ№; `rustok-content` Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В Р’ВµР РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р РЋРІР‚С™Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р В РЎвЂќР В Р’В°Р В РЎвЂќ shared helper dependency, Р В Р’В° default integration Р РЋР С“ `rustok-comments` Р В РЎвЂўР РЋРІР‚С™Р РЋР С“Р РЋРЎвЂњР РЋРІР‚С™Р РЋР С“Р РЋРІР‚С™Р В Р вЂ Р РЋРЎвЂњР В Р’ВµР РЋРІР‚С™ |
-| `taxonomy` | `rustok-taxonomy` | `content` | Shared scope-aware vocabulary module for global and module-local terms; owns dictionary, translation and alias storage while leaving entity-term relation tables module-owned |
-| `media` | `rustok-media` | Р Р†Р вЂљРІР‚Сњ | Media lifecycle, upload, storage-facing API |
-| `workflow` | `rustok-workflow` | Р Р†Р вЂљРІР‚Сњ | Workflow execution, templates, webhook ingress |
+| `content` | `rustok-content` | — | Shared content helpers, orchestration, rich-text/locale contract |
+| `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context |
+| `customer` | `rustok-customer` | — | Storefront customer profile boundary |
+| `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, product-owned admin catalog UI |
+| `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
+| `region` | `rustok-region` | — | Region, country, currency, tax baseline |
+| `pricing` | `rustok-pricing` | `product` | Pricing domain baseline |
+| `inventory` | `rustok-inventory` | `product` | Inventory и stock availability baseline |
+| `order` | `rustok-order` | — | Order lifecycle и order snapshots |
+| `payment` | `rustok-payment` | — | Payment collections и payments |
+| `fulfillment` | `rustok-fulfillment` | — | Shipping options и fulfillments |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration |
+| `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |
+| `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
+| `comments` | `rustok-comments` | — | Generic comments domain |
+| `pages` | `rustok-pages` | `content` | Pages, menus, page-builder surfaces |
+| `taxonomy` | `rustok-taxonomy` | `content` | Shared vocabulary/dictionary layer |
+| `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
+| `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |
 
-## Runtime wiring
+## Общие библиотечные crate-ы
 
-## Правило для Leptos UI и модульных пакетов
-
-- `apps/admin` и `apps/storefront` рассматриваются как Leptos host-приложения с native `#[server]` data-layer по умолчанию.
-- Module-owned Leptos UI crates должны следовать той же схеме: `UI -> local api -> #[server]`, а не прямой GraphQL-only transport из view.
-- GraphQL остаётся обязательным параллельным контрактом для headless-клиентов, Next.js UI и fallback-веток; добавление `#[server]` не означает удаление GraphQL.
-- Для core-модулей в текущей волне допустимы только два legacy fallback path: GraphQL fallback для GraphQL-backed surfaces и REST fallback для `rustok-channel-admin`, пока legacy channel controllers ещё поддерживаются параллельно.
-- Для core module-owned Leptos admin surfaces теперь дополнительно публикуются `rustok-index-admin`, `rustok-outbox-admin`, `rustok-tenant-admin` и `rustok-rbac-admin`; это additive native `#[server]` overviews, а не замена host-страниц или GraphQL/REST контрактов.
-- Для optional-wave `rustok-media-admin` следует dual-path правилу: native `#[server]` first, GraphQL fallback для `library/detail/translations/delete/usage`, REST fallback для upload; существующие `/api/graphql` и `/api/media` сохраняются.
-- Для optional-wave `rustok-comments-admin` зафиксировано исключение: UI идёт через native `#[server]` path без GraphQL/REST fallback, потому что legacy transport surface у `rustok-comments` отсутствовал; это не меняет существующую интеграцию `rustok-blog -> rustok-comments`.
-- `rustok-content` остаётся shared helper/orchestration boundary без собственного admin UI, а commerce split crates не выносятся в отдельные admin packages и продолжают агрегироваться через `rustok-commerce-admin`.
-- Если модуль поставляет и Leptos UI, и внешние API surfaces, transport rule нужно отражать и в crate README, и в локальной docs папке.
-
-Р В РЎС›Р В Р’ВµР В РЎвЂќР РЋРЎвЂњР РЋРІР‚В°Р В Р’В°Р РЋР РЏ Р РЋР вЂљР В Р’ВµР В Р’В°Р В Р’В»Р В РЎвЂР В Р’В·Р В Р’В°Р РЋРІР‚В Р В РЎвЂР РЋР РЏ Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В Р’ВµР РЋРІР‚С™ Р В Р вЂ¦Р В Р’ВµР РЋР С“Р В РЎвЂќР В РЎвЂўР В Р’В»Р РЋР Р‰Р В РЎвЂќР В РЎвЂў Р В РЎВР В Р’ВµР РЋРІР‚В¦Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’В·Р В РЎВР В РЎвЂўР В Р вЂ  Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ, Р В РЎвЂ Р РЋР РЉР РЋРІР‚С™Р В РЎвЂў Р В Р вЂ¦Р В РЎвЂўР РЋР вЂљР В РЎВР В Р’В°Р В Р’В»Р РЋР Р‰Р В Р вЂ¦Р В РЎвЂў:
-
-- `apps/server/src/modules/mod.rs` Р РЋР С“Р В РЎвЂўР В Р’В±Р В РЎвЂР РЋР вЂљР В Р’В°Р В Р’ВµР РЋРІР‚С™ `ModuleRegistry`;
-- `apps/server/build.rs` Р В РЎвЂ“Р В Р’ВµР В Р вЂ¦Р В Р’ВµР РЋР вЂљР В РЎвЂР РЋР вЂљР РЋРЎвЂњР В Р’ВµР РЋРІР‚С™ wiring Р В РўвЂР В Р’В»Р РЋР РЏ optional-Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В Р’ВµР В РІвЂћвЂ“;
-- `apps/server/src/services/app_runtime.rs` Р В РЎвЂ `event_transport_factory.rs` Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎВР В Р’В°Р РЋР вЂ№Р РЋРІР‚С™ event runtime;
-- `modules.toml` Р В РЎвЂ `apps/server/src/modules/manifest.rs` Р РЋР С“Р В Р вЂ Р В Р’ВµР РЋР вЂљР РЋР РЏР РЋР вЂ№Р РЋРІР‚С™ manifest Р В РЎвЂ runtime.
-
-Р В РІР‚в„ўР В Р’В°Р В Р’В¶Р В Р вЂ¦Р В РЎвЂў: Р РЋР РЉР РЋРІР‚С™Р В РЎвЂ Р В РЎВР В Р’ВµР РЋРІР‚В¦Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’В·Р В РЎВР РЋРІР‚в„– Р В Р вЂ¦Р В Р’Вµ Р РЋР С“Р В РЎвЂўР В Р’В·Р В РўвЂР В Р’В°Р РЋР вЂ№Р РЋРІР‚С™ Р В РЎвЂўР РЋРІР‚С™Р В РўвЂР В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р РЋРІР‚С™Р В РЎвЂР В РЎвЂ”Р РЋРІР‚в„– Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В Р’ВµР В РІвЂћвЂ“. Р В РЎвЂєР В Р вЂ¦Р В РЎвЂ Р В Р’В»Р В РЎвЂР РЋРІвЂљВ¬Р РЋР Р‰ Р В РЎвЂўР В РЎвЂ”Р В РЎвЂР РЋР С“Р РЋРІР‚в„–Р В Р вЂ Р В Р’В°Р РЋР вЂ№Р РЋРІР‚С™, Р В РЎвЂќР В Р’В°Р В РЎвЂќ Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰
-Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’В°Р В Р’ВµР РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р В РЎвЂќ runtime.
-
-## Crate-Р РЋР С“Р В Р’В»Р В РЎвЂўР В РІвЂћвЂ“ Р В Р вЂ Р В Р вЂ¦Р В Р’Вµ taxonomy Core/Optional
-
-Р В РЎСљР В Р’Вµ Р В РЎвЂќР В Р’В°Р В Р’В¶Р В РўвЂР РЋРІР‚в„–Р В РІвЂћвЂ“ crate Р В Р вЂ  `crates/` Р РЋР РЏР В Р вЂ Р В Р’В»Р РЋР РЏР В Р’ВµР РЋРІР‚С™Р РЋР С“Р РЋР РЏ platform module. Р В Р’В Р РЋР РЏР В РўвЂР В РЎвЂўР В РЎВ Р РЋР С“ Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РЎВР В РЎвЂ crate'Р В Р’В°Р В РЎВР В РЎвЂ Р В Р’В¶Р В РЎвЂР В Р вЂ Р РЋРЎвЂњР РЋРІР‚С™
-Р В Р’В±Р В РЎвЂР В Р’В±Р В Р’В»Р В РЎвЂР В РЎвЂўР РЋРІР‚С™Р В Р’ВµР В РЎвЂќР В РЎвЂ Р В РЎвЂ support-Р В РЎвЂќР В РЎвЂўР В РЎВР В РЎвЂ”Р В РЎвЂўР В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р РЋРІР‚в„–.
-
-### Shared library crates
-
-| Crate | Р В РЎСљР В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ |
+| Crate | Роль |
 |---|---|
-| `rustok-core` | Р В РІР‚ВР В Р’В°Р В Р’В·Р В РЎвЂўР В Р вЂ Р РЋРІР‚в„–Р В Р’Вµ Р В РЎвЂ”Р В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р В РЎвЂќР В РЎвЂўР В Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР В Р’В°Р В РЎвЂќР РЋРІР‚С™Р РЋРІР‚в„– Р В РЎвЂ Р В РЎвЂўР В Р’В±Р РЋРІР‚В°Р В РЎвЂР В Р’Вµ Р РЋРІР‚С™Р В РЎвЂР В РЎвЂ”Р РЋРІР‚в„– |
-| `rustok-api` | Р В РЎвЂєР В Р’В±Р РЋРІР‚В°Р В РЎвЂР В РІвЂћвЂ“ host/API Р РЋР С“Р В Р’В»Р В РЎвЂўР В РІвЂћвЂ“ Р В РўвЂР В Р’В»Р РЋР РЏ transport-Р В Р’В°Р В РўвЂР В Р’В°Р В РЎвЂ”Р РЋРІР‚С™Р В Р’ВµР РЋР вЂљР В РЎвЂўР В Р вЂ  |
-| `rustok-commerce-foundation` | Р В РЎвЂєР В Р’В±Р РЋРІР‚В°Р В РЎвЂР В РІвЂћвЂ“ DTO/entity/error/search Р РЋР С“Р В Р’В»Р В РЎвЂўР В РІвЂћвЂ“ Р В РўвЂР В Р’В»Р РЋР РЏ split-Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В Р’ВµР В РІвЂћвЂ“ commerce |
-| `rustok-events` | Р В РЎв„ўР В Р’В°Р В Р вЂ¦Р В РЎвЂўР В Р вЂ¦Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р В РЎвЂќР В РЎвЂР В РІвЂћвЂ“ import point Р В РўвЂР В Р’В»Р РЋР РЏ event contracts |
-| `rustok-storage` | Storage backend contracts |
-| `rustok-test-utils` | Р В РЎС›Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р РЋРІР‚в„–Р В Р’Вµ Р РЋРІР‚В¦Р В Р’ВµР В Р’В»Р В РЎвЂ”Р В Р’ВµР РЋР вЂљР РЋРІР‚в„– |
+| `rustok-core` | Shared foundation contracts, typed primitives, validation/security helpers |
+| `rustok-api` | Shared host/API layer для transport adapters |
+| `rustok-events` | Canonical import point для event contracts |
+| `rustok-storage` | Storage backend abstraction |
+| `rustok-test-utils` | Shared testing helpers, mocks, fixtures |
+| `rustok-commerce-foundation` | Shared DTO/entities/errors/search helpers для split commerce family |
 
-### Infrastructure / capability crates
+## Инфраструктурные и capability crate-ы
 
-| Crate | Р В РЎСљР В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ |
+| Crate | Роль |
 |---|---|
-| `rustok-iggy` + `rustok-iggy-connector` | Streaming transport runtime |
-| `rustok-telemetry` | Observability bootstrap |
-| `rustok-mcp` | MCP adapter/server surface |
-| `rustok-ai` | AI host/orchestrator capability + dual admin UI packages |
-| `alloy` | Alloy runtime/engine capability |
-| `flex` | Extracted attached-mode contracts |
+| `rustok-iggy` | Streaming transport runtime |
+| `rustok-iggy-connector` | Embedded/remote connector layer для Iggy |
+| `rustok-telemetry` | Observability bootstrap и shared telemetry helpers |
+| `rustok-mcp` | MCP adapter/server tool surface |
+| `rustok-ai` | AI host/orchestrator capability |
+| `alloy` | Script/runtime capability |
+| `flex` | Custom fields capability и attached/standalone contracts |
 
-## Р В РЎСџР РЋР вЂљР В РЎвЂР В Р’В»Р В РЎвЂўР В Р’В¶Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ
+## Приложения
 
-| Р В РЎСџР РЋРЎвЂњР РЋРІР‚С™Р РЋР Р‰ | Р В РЎСљР В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ |
+| Компонент | Роль |
 |---|---|
 | `apps/server` | Composition root, HTTP/GraphQL entry point, runtime wiring |
-| `apps/admin` | Р В РЎвЂєР РЋР С“Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В Р вЂ¦Р В Р’В°Р РЋР РЏ Leptos admin-Р В РЎвЂ”Р В Р’В°Р В Р вЂ¦Р В Р’ВµР В Р’В»Р РЋР Р‰ |
-| `apps/storefront` | Р В РЎвЂєР РЋР С“Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В Р вЂ¦Р В Р’В°Р РЋР РЏ Leptos storefront-Р В Р вЂ Р В РЎвЂР РЋРІР‚С™Р РЋР вЂљР В РЎвЂР В Р вЂ¦Р В Р’В° |
-| `apps/next-admin` | Р В Р’В­Р В РЎвЂќР РЋР С“Р В РЎвЂ”Р В Р’ВµР РЋР вЂљР В РЎвЂР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р В Р’В°Р В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ headless admin |
-| `apps/next-frontend` | Р В Р’В­Р В РЎвЂќР РЋР С“Р В РЎвЂ”Р В Р’ВµР РЋР вЂљР В РЎвЂР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р В Р’В°Р В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ headless storefront |
+| `apps/admin` | Leptos admin host |
+| `apps/storefront` | Leptos storefront host |
+| `apps/next-admin` | Next.js admin host |
+| `apps/next-frontend` | Next.js storefront host |
 
-## Alloy
+## Важные правила
 
-Alloy Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚ВР РЋРІР‚С™Р РЋР С“Р РЋР РЏ capability-Р РЋР С“Р В Р’В»Р В РЎвЂўР В Р’ВµР В РЎВ Р В РЎвЂ Р В Р вЂ¦Р В Р’Вµ Р В Р вЂ Р РЋРІР‚В¦Р В РЎвЂўР В РўвЂР В РЎвЂР РЋРІР‚С™ Р В Р вЂ  taxonomy `Core/Optional` platform modules:
+1. Если компонент объявлен как платформенный модуль в `modules.toml`, он обязан быть
+   либо `Core`, либо `Optional`.
+2. `ModuleRegistry` — runtime composition point, а не отдельная taxonomy.
+3. Support/capability crates могут участвовать в runtime composition, но не
+   становятся от этого автоматически tenant-toggled modules.
+4. Module-owned UI должен поставляться самим модулем, а host-приложения
+   должны только монтировать его через manifest-driven wiring.
+5. Описание роли в этом реестре должно совпадать с локальными docs компонента; если поменялся ownership/runtime-контракт, сначала обновляются local docs, затем этот central registry.
 
-- `alloy` — runtime/engine crate;
-- `alloy` — runtime/engine crate с собственными GraphQL/HTTP surfaces;
-- tenant lifecycle Р В Р вЂ¦Р В Р’Вµ Р РЋРЎвЂњР В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В Р’В»Р РЋР РЏР В Р’ВµР РЋРІР‚С™ Alloy Р В РЎвЂќР В Р’В°Р В РЎвЂќ Р В РЎвЂўР В Р’В±Р РЋРІР‚в„–Р РЋРІР‚РЋР В Р вЂ¦Р РЋРІР‚в„–Р В РЎВ Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В Р’ВµР В РЎВ;
-- workflow Р В РЎвЂ MCP Р В РЎВР В РЎвЂўР В РЎвЂ“Р РЋРЎвЂњР РЋРІР‚С™ Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋРІР‚С™Р РЋР Р‰ Alloy Р В РЎвЂќР В Р’В°Р В РЎвЂќ capability, Р В Р вЂ¦Р В РЎвЂў Р В Р вЂ¦Р В Р’Вµ Р В РЎвЂќР В Р’В°Р В РЎвЂќ optional module dependency.
+## Связанные документы
 
-## Р В РЎСџР РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂР В Р’В»Р В РЎвЂў Р РЋР С“Р В РЎвЂўР В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В РЎвЂўР В Р’В¶Р В РўвЂР В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ
-
-Р В РЎСџР РЋР вЂљР В РЎвЂ Р В Р’В»Р РЋР вЂ№Р В Р’В±Р В РЎвЂўР В РЎВ Р В РЎвЂР В Р’В·Р В РЎВР В Р’ВµР В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В РЎвЂ Р РЋР С“Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р В Р’В° Р В РЎВР В РЎвЂўР В РўвЂР РЋРЎвЂњР В Р’В»Р В Р’ВµР В РІвЂћвЂ“, Р В РЎвЂР РЋРІР‚В¦ Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“Р В Р’В° Р В РЎвЂР В Р’В»Р В РЎвЂ wiring:
-
-1. Р В РЎвЂєР В Р’В±Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В РЎвЂР РЋРІР‚С™Р РЋР Р‰ Р РЋР РЉР РЋРІР‚С™Р В РЎвЂўР РЋРІР‚С™ Р РЋР вЂљР В Р’ВµР В Р’ВµР РЋР С“Р РЋРІР‚С™Р РЋР вЂљ.
-2. Р В РЎвЂєР В Р’В±Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В РЎвЂР РЋРІР‚С™Р РЋР Р‰ [docs/index.md](../index.md).
-3. Р В РЎвЂєР В Р’В±Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В РЎвЂР РЋРІР‚С™Р РЋР Р‰ [docs/modules/overview.md](./overview.md).
-4. Р В РІР‚СћР РЋР С“Р В Р’В»Р В РЎвЂ Р В РЎвЂ”Р В РЎвЂўР В РЎВР В Р’ВµР В Р вЂ¦Р РЋР РЏР В Р’В»Р РЋР С“Р РЋР РЏ runtime contract, Р В РЎвЂўР В Р’В±Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В РЎвЂР РЋРІР‚С™Р РЋР Р‰ [docs/architecture/modules.md](../architecture/modules.md).
+- [Обзор модульной платформы](./overview.md)
+- [Индекс документации по модулям](./_index.md)
+- [Реестр crate-ов модульной платформы](./crates-registry.md)
+- [Контракт `rustok-module.toml`](./manifest.md)
+- [Шаблон документации модуля](../templates/module_contract.md)

@@ -1,232 +1,226 @@
-# Module Contract Template
+# Шаблон документации модуля
 
-> **Шаблон для документирования модулей RusToK**  
-> Скопируйте этот файл в `docs/modules/<module-name>.md`
+Этот шаблон нужен для новых platform modules, а также для support/capability crates, которые хотят соответствовать текущему documentation contract RusToK.
 
----
+Нормативный путь для module-level documentation такой:
 
-## 1. Purpose & Scope
+- корневой `README.md` рядом с кодом;
+- локальный `docs/README.md`;
+- локальный `docs/implementation-plan.md`;
+- при необходимости `rustok-module.toml`.
 
-### 1.1 Overview
+Не создавайте отдельный central doc для каждого модуля в `docs/modules/`. Central docs должны ссылаться на локальную документацию, а не дублировать её.
 
-**Название модуля:** `rustok-<name>`  
-**Slug:** `<slug>`  
-**Тип:** Core Component / Domain Module / Wrapper Module / Infrastructure  
+## 1. Минимальный набор файлов
 
-### 1.2 Description
+Для нового path-модуля ожидается следующий набор:
 
-_Краткое описание назначения модуля (2-3 предложения)_
-
-### 1.3 Bounded Context
-
-_Какую бизнес-область покрывает модуль? С какими другими контекстами граничит?_
-
-### 1.4 Dependencies
-
-| Module | Type | Description |
-|--------|------|-------------|
-| `rustok-core` | Required | Events, traits, errors |
-| _..._ | _..._ | _..._ |
-
----
-
-## 2. Data Model
-
-### 2.1 Tables
-
-```sql
--- Основная таблица
-CREATE TABLE <module>_<entity> (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    -- fields...
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+```text
+crates/rustok-<slug>/
+  Cargo.toml
+  README.md
+  rustok-module.toml
+  docs/
+    README.md
+    implementation-plan.md
 ```
 
-### 2.2 Indexes
+Для support/capability crate `rustok-module.toml` не обязателен, если crate не входит в `modules.toml`.
 
-```sql
-CREATE INDEX idx_<table>_<field> ON <table> (<field>);
+## 2. Корневой `README.md`
+
+Корневой README должен быть на английском и содержать этот каркас:
+
+```md
+# rustok-<slug>
+
+## Purpose
+
+One short paragraph explaining what this crate owns.
+
+## Responsibilities
+
+- Responsibility 1
+- Responsibility 2
+- Responsibility 3
+
+## Entry points
+
+- `MainType`
+- `MainService`
+- `controllers::routes`
+
+## Interactions
+
+- Interaction with `apps/server`
+- Interaction with other modules/crates
+- Notes about UI packages or runtime wiring
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)
 ```
 
-### 2.3 Relations
+Правила:
 
-_Описание связей между таблицами модуля_
+- один файл — один язык;
+- `README.md` не заменяет локальные docs;
+- `Docs` section обязателен;
+- названия разделов должны совпадать с contract-формой:
+  - `## Purpose`
+  - `## Responsibilities`
+  - `## Entry points`
+  - `## Interactions`
 
----
+## 3. Локальный `docs/README.md`
 
-## 3. Domain Events
+Локальный docs README пишется на русском и описывает живой модульный контракт.
 
-### 3.1 Emitted Events
+Минимальный каркас:
 
-| Event | Payload | When |
-|-------|---------|------|
-| `<Entity>Created` | `{ id: Uuid, ... }` | После создания |
-| `<Entity>Updated` | `{ id: Uuid, ... }` | После обновления |
-| `<Entity>Deleted` | `{ id: Uuid }` | После удаления |
+```md
+# <Название модуля>
 
-### 3.2 Consumed Events
+## Назначение
 
-| Event | Source | Action |
-|-------|--------|--------|
-| _..._ | _..._ | _..._ |
+Кратко: что модуль делает и почему он существует.
 
-### 3.3 Event Payload Contracts
+## Зона ответственности
 
-```rust
-// В rustok-core/src/events/types.rs
+- Чем модуль владеет
+- Чем модуль сознательно не владеет
 
-<Entity>Created { 
-    <field>: Type,
-    // ...
-},
+## Интеграция
+
+- GraphQL / REST / фоновые задачи / UI-поверхности
+- host wiring и runtime boundaries
+- зависимости на другие модули и crate-ы
+- особенно важные кросс-модульные контракты
+
+## Проверка
+
+- `cargo xtask module validate <slug>`
+- `cargo xtask module test <slug>`
+- другие точечные команды при необходимости
+
+## Связанные документы
+
+- `implementation-plan.md`
+- central docs
+- соседние host/module docs
 ```
 
----
+Допустимы дополнительные разделы, если они реально нужны модулю:
 
-## 4. APIs
+- `## Настройки и конфигурация`
+- `## Health и observability`
+- `## Ограничения`
+- `## UI contract`
 
-### 4.1 REST Endpoints
+Но минимальные разделы выше должны оставаться на месте.
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/api/v1/<entities>` | List all | Required |
-| POST | `/api/v1/<entities>` | Create | Required |
-| GET | `/api/v1/<entities>/{id}` | Get by ID | Required |
-| PUT | `/api/v1/<entities>/{id}` | Update | Required |
-| DELETE | `/api/v1/<entities>/{id}` | Delete | Required |
+## 4. Локальный `docs/implementation-plan.md`
 
-### 4.2 GraphQL Schema
+Этот файл фиксирует живой план доведения модуля до целевого состояния, а не подробную историю работ.
 
-```graphql
-type <Entity> {
-  id: ID!
-  # fields...
-}
+Минимальный каркас:
 
-type Query {
-  <entities>: [<Entity>!]!
-  <entity>(id: ID!): <Entity>
-}
+```md
+# План развития <модуля>
 
-type Mutation {
-  create<Entity>(input: Create<Entity>Input!): <Entity>!
-  update<Entity>(id: ID!, input: Update<Entity>Input!): <Entity>!
-  delete<Entity>(id: ID!): Boolean!
-}
+## Область работ
+
+Коротко: на чём сосредоточен текущий план.
+
+## Текущее состояние
+
+Коротко: что уже стабилизировано и какие инварианты модуль уже держит.
+
+## Этапы
+
+### 1. Ближайший срез
+
+- ...
+
+## Проверка
+
+- `cargo xtask module validate <slug>`
+- `cargo xtask module test <slug>`
+
+## Правила обновления
+
+1. При изменении runtime/module contract сначала обновлять этот файл.
+2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
+3. При изменении manifest metadata синхронизировать `rustok-module.toml`.
 ```
 
----
+Допустимы дополнительные разделы:
 
-## 5. RBAC Permissions
+- `## Риски и открытые вопросы`
+- `## Приоритеты`
+- `## Критерии готовности`
 
-| Permission | Description |
-|------------|-------------|
-| `<module>.<entity>.read` | Просмотр |
-| `<module>.<entity>.write` | Создание/редактирование |
-| `<module>.<entity>.delete` | Удаление |
+Но `## Область работ`, `## Текущее состояние`, `## Этапы`, `## Проверка` и `## Правила обновления` должны присутствовать как минимальный стандарт.
 
-```rust
-fn permissions(&self) -> &[Permission] {
-    &[
-        Permission::new("<module>.<entity>.read"),
-        Permission::new("<module>.<entity>.write"),
-        Permission::new("<module>.<entity>.delete"),
-    ]
-}
+## 5. `rustok-module.toml`
+
+Для path-модуля из `modules.toml` локальный manifest обязателен.
+
+Минимальный каркас:
+
+```toml
+[module]
+slug = "<slug>"
+name = "<Name>"
+version = "0.1.0"
+description = "At least one publish-ready sentence."
+ownership = "platform"
+trust_level = "first-party"
+
+[crate]
+entry_type = "<PascalSlug>Module"
 ```
 
----
+Дальше по необходимости добавляются:
 
-## 6. Indexing Strategy
+- `[provides.graphql]`
+- `[provides.http]`
+- `[provides.admin_ui]`
+- `[provides.storefront_ui]`
+- `[settings]`
+- `[marketplace]`
 
-### 6.1 Read Model Table
+Подробный contract-слой описан в [docs/modules/manifest.md](../modules/manifest.md).
 
-```sql
-CREATE TABLE index_<entities> (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL,
-    -- denormalized fields...
-    search_vector   TSVECTOR,
-    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+## 6. Обязательная локальная проверка
+
+Для нового или существенно изменённого platform module:
+
+```powershell
+cargo xtask module validate <slug>
+cargo xtask module test <slug>
 ```
 
-### 6.2 Indexer Handler
+Если меняется состав `modules.toml`, добавляется:
 
-```rust
-impl EventHandler for <Entity>Indexer {
-    fn handles(&self, event: &DomainEvent) -> bool {
-        matches!(event, 
-            DomainEvent::<Entity>Created { .. } |
-            DomainEvent::<Entity>Updated { .. } |
-            DomainEvent::<Entity>Deleted { .. }
-        )
-    }
-    
-    async fn handle(&self, envelope: &EventEnvelope) -> Result<()> {
-        // Index logic
-    }
-}
+```powershell
+cargo xtask validate-manifest
 ```
 
----
+Минимальный Windows verification path описан в [docs/verification/README.md](../verification/README.md).
 
-## 7. Failure Modes & Idempotency
+## 7. Что не делать
 
-### 7.1 Error Cases
+- не писать root `README.md` на русском;
+- не хранить единственную документацию модуля только в `docs/modules/`;
+- не добавлять path-модуль в `modules.toml` без `rustok-module.toml`;
+- не считать подпапки `admin/` и `storefront/` доказательством интеграции без manifest wiring;
+- не превращать local docs в исторический changelog, если нужен живой contract.
 
-| Error | HTTP Code | Recovery |
-|-------|-----------|----------|
-| NotFound | 404 | - |
-| ValidationError | 400 | Fix input |
-| Conflict | 409 | Retry with fresh data |
+## 8. Связанные документы
 
-### 7.2 Idempotency
-
-_Как обеспечивается идемпотентность операций?_
-
----
-
-## 8. Integration Tests
-
-### 8.1 Scenarios
-
-| # | Scenario | Status |
-|---|----------|--------|
-| 1 | Create → Read → Indexed | ⬜ TODO |
-| 2 | Update → Event emitted → Index updated | ⬜ TODO |
-| 3 | Delete → Removed from index | ⬜ TODO |
-| 4 | RBAC: unauthorized access blocked | ⬜ TODO |
-
-### 8.2 Cross-Module Flows
-
-_Описание сценариев взаимодействия с другими модулями_
-
----
-
-## 9. Implementation Checklist
-
-| # | Task | Status |
-|---|------|--------|
-| 1 | Create crate `rustok-<name>` | ⬜ TODO |
-| 2 | Migrations | ⬜ TODO |
-| 3 | SeaORM entities | ⬜ TODO |
-| 4 | DTOs (Request/Response) | ⬜ TODO |
-| 5 | Services | ⬜ TODO |
-| 6 | Events integration | ⬜ TODO |
-| 7 | REST controllers | ⬜ TODO |
-| 8 | GraphQL resolvers | ⬜ TODO |
-| 9 | Indexer handler | ⬜ TODO |
-| 10 | RBAC permissions | ⬜ TODO |
-| 11 | Tests | ⬜ TODO |
-| 12 | Documentation | ⬜ TODO |
-
----
-
-## 10. Notes / Open Questions
-
-_Любые открытые вопросы или заметки о модуле_
-
+- [Карта документации](../index.md)
+- [Обзор модульной платформы](../modules/overview.md)
+- [Контракт manifest-слоя](../modules/manifest.md)
+- [Индекс локальной документации по модулям](../modules/_index.md)

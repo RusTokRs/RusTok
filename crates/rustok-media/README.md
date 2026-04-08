@@ -35,3 +35,8 @@
 - `MediaTranslationItem`
 - `UploadInput`
 - `UpsertTranslationInput`
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

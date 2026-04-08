@@ -1,46 +1,32 @@
 # rustok-core
 
-## Назначение
-`rustok-core` — фундамент платформы. Здесь живут базовые типы, идентификация, модули, события и общие контракты, которые используют все остальные модули.
+## Purpose
 
-## Что делает
-- Определяет доменные события и конверты событий.
-- Предоставляет транспорт событий и in-memory реализацию.
-- Описывает интерфейс модулей и их здоровье.
-- Дает общие типы (права, роли, ошибки, ID).
+`rustok-core` owns the minimal platform-wide runtime contracts used across RusToK.
 
-## Как работает (простыми словами)
-1. Модули публикуют события через транспорт.
-2. Конверт события содержит все нужные метаданные (tenant, корреляция и т.д.).
-3. Регистрируются модули, которые умеют слушать события и выполнять свою логику.
+## Responsibilities
 
-## Ключевые компоненты
-- `events/` — DomainEvent, EventEnvelope, EventTransport, MemoryTransport.
-- `module.rs` — контракт `RusToKModule`, статусы здоровья.
-- `id.rs` — генерация ID.
+- Define the base module traits and registry-facing contracts.
+- Define shared permission, identity, ID, and error primitives.
+- Keep compatibility re-exports for foundational runtime contracts that are being split into dedicated crates.
+- Stay free from host-specific transport, ORM, and UI concerns.
 
-## Кому нужен
-Этот модуль подключают **все** остальные crates, потому что без него нет единого языка событий и базовых типов.
+## Entry points
 
+- `RusToKModule`
+- `ModuleRegistry`
+- `Permission`
+- `generate_id`
+- foundational runtime types re-exported from `src/lib.rs`
 
-## Взаимодействие
-- все crates/rustok-*
-- apps/server
-- crates/rustok-mcp
+## Interactions
 
-## Документация
-- Локальная документация: `./docs/`
-- Общая документация платформы: `/docs`
+- Used by all `rustok-*` domain and support crates as the common contract layer.
+- Used by `apps/server` as the composition root for module registration and shared primitives.
+- Works alongside `rustok-events`, which now owns canonical event schemas and validation rules.
+- Used by `rustok-mcp`, `rustok-ai`, and other capability crates without pulling host-specific dependencies into the core layer.
 
-## Паспорт компонента
-- **Роль в системе:** Базовый инфраструктурный crate: ошибки, события, контракты модулей, ID, контекст.
-- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
-- **Взаимодействует с:**
-  - все crates/rustok-*
-  - apps/server
-  - crates/rustok-mcp
-- **Точки входа:**
-  - `crates/rustok-core/src/lib.rs`
-- **Локальная документация:** `./docs/`
-- **Глобальная документация платформы:** `/docs/`
+## Docs
 
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

@@ -29,3 +29,8 @@ refresh-token helpers, auth config, and auth-related migrations.
 - `generate_refresh_token`
 - `hash_password`
 - `verify_password`
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

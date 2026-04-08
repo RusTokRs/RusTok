@@ -41,3 +41,4 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 
 - Module documentation: [`docs/README.md`](./docs/README.md)
 - Implementation plan: [`docs/implementation-plan.md`](./docs/implementation-plan.md)
+- Platform docs index: [`../../docs/index.md`](../../docs/index.md)

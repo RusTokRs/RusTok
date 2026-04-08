@@ -10,6 +10,7 @@ use crate::services::build_executor::BuildExecutionService;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
+use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::release_backend::ReleaseDeploymentService;
 
 // ── Graceful-shutdown handle ──────────────────────────────────────────────────
@@ -35,6 +36,7 @@ impl StopHandle {
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static BUILD_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+static REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
 
@@ -55,6 +57,17 @@ pub struct BuildWorkerHandle {
 }
 
 impl BuildWorkerHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+}
+
+pub struct RemoteExecutorReaperHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+impl RemoteExecutorReaperHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
@@ -106,6 +119,15 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
             .insert(spawn_build_worker_handle(ctx.clone(), settings.build));
     }
 
+    if settings.registry.remote_executor.enabled
+        && !ctx.shared_store.contains::<RemoteExecutorReaperHandle>()
+    {
+        ctx.shared_store.insert(spawn_remote_executor_reaper_handle(
+            ctx.clone(),
+            settings.registry.remote_executor.requeue_scan_interval_ms,
+        ));
+    }
+
     Ok(())
 }
 
@@ -123,6 +145,16 @@ fn spawn_build_worker_handle(
     BuildWorkerHandle {
         instance_id: BUILD_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
         _handle: tokio::spawn(build_worker_loop(ctx, config)),
+    }
+}
+
+fn spawn_remote_executor_reaper_handle(
+    ctx: AppContext,
+    scan_interval_ms: u64,
+) -> RemoteExecutorReaperHandle {
+    RemoteExecutorReaperHandle {
+        instance_id: REMOTE_EXECUTOR_REAPER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        _handle: tokio::spawn(remote_executor_reaper_loop(ctx, scan_interval_ms)),
     }
 }
 
@@ -176,6 +208,27 @@ async fn build_worker_loop(ctx: AppContext, config: crate::common::settings::Bui
             Err(error) => {
                 tracing::error!(error = %error, "Background build worker failed to execute queued build");
             }
+        }
+
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
+async fn remote_executor_reaper_loop(ctx: AppContext, scan_interval_ms: u64) {
+    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
+
+    loop {
+        match governance.requeue_expired_remote_validation_claims().await {
+            Ok(requeued) if requeued > 0 => tracing::info!(
+                requeued,
+                "Remote executor reaper requeued expired validation stage claims"
+            ),
+            Ok(_) => {}
+            Err(error) => tracing::error!(
+                error = %error,
+                "Remote executor reaper failed to process expired validation stage claims"
+            ),
         }
 
         tokio::time::sleep(poll_interval).await;

@@ -1037,8 +1037,8 @@ impl RootMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        map_create_user_error, map_manifest_error, validate_custom_fields, AuthLifecycleError,
-        ManifestError,
+        map_create_user_error, map_manifest_error, prepare_user_custom_fields_write,
+        validate_custom_fields, AuthLifecycleError, ManifestError,
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use migration::Migrator;

@@ -1,62 +1,29 @@
 # RusToK Admin (Leptos)
 
-`apps/admin` — Leptos admin RusToK с `csr`, `ssr` и `hydrate` профилями, развиваемая параллельно с `apps/next-admin` для функционального паритета.
+## Purpose
 
-## Роль в платформе
+`apps/admin` owns the primary Leptos-based admin application for RusToK.
 
-- управление контентом, пользователями, безопасностью и настройками;
-- Rust/Leptos реализация admin-панели;
-- эталон для внутреннего UI и crate-контрактов в Rust фронтенде.
+## Responsibilities
 
-## FSD структура
+- Provide the primary operator/admin UI for platform and module management.
+- Host manifest-driven Leptos admin surfaces from platform modules.
+- Keep the Rust-first admin stack functional in parallel with `apps/next-admin`.
 
-Приложение следует FSD-слоям:
+## Entry points
 
-- `shared/` — инфраструктурные утилиты, API, UI primitives.
+- `src/main.rs`
+- `src/app.rs`
+- module wiring generated through `build.rs`
+- generic module route `/modules/:module_slug`
 
-## Соглашения об именовании (Naming Conventions)
+## Interactions
 
-В проекте приняты следующие соглашения для обеспечения чистоты кода и соблюдения стандартов Rust:
+- Uses `apps/server` through GraphQL and Leptos `#[server]` transport paths.
+- Mounts module-owned Leptos admin packages from `crates/rustok-*/admin`.
+- Stays in functional parity work with `apps/next-admin`, but remains the primary auto-deploy admin stack.
 
-- **Компоненты (функции)**: Все Leptos-компоненты именуются в `snake_case` (например, `dashboard`, `user_details`). Использование `PascalCase` для функций-компонентов не рекомендуется.
-- **Shared UI**: Общие UI-компоненты в `shared/ui/` имеют префикс `ui_` для предотвращения конфликтов со стандартными HTML-тегами (например, `ui_button`, `ui_input`).
-- **Бизнес-компоненты**: Компоненты в слоях `features/` и `widgets/` именуются описательно в `snake_case` (например, `modules_list`, `stats_card`).
+## Docs
 
-## Библиотеки и контракты
-
-### Ядро
-
-- `leptos`, `leptos_router` — UI, маршрутизация и dual runtime (`csr` / `ssr` / `hydrate`);
-- `tailwindcss` + shadcn token model;
-
-### i18n
-
-- `leptos_i18n` 0.6 — compile-time многоязычность для `csr` / `ssr` / `hydrate` путей через `t_string!()` / `t!()` макросы;
-- `leptos_i18n_build` — кодогенерация i18n-модуля из `locales/*.json` через `build.rs`;
-- файлы локалей: `locales/en.json`, `locales/ru.json` (вложенный JSON, ~260 ключей).
-
-### Данные и API
-
-- `#[server]` server functions — основной внутренний data-layer для Leptos host/UI;
-- `leptos-graphql` — параллельный GraphQL transport/контракты, который не удаляется и остаётся fallback/внешним контрактом;
-- `leptos-auth` — auth/session контракты;
-- `leptos_query` — кэширование/prefetch запросов.
-
-### Формы и состояние
-
-- `leptos-hook-form`, `leptos-zod` — формы/валидация;
-- `leptos-zustand` — управление состоянием;
-- `leptos-struct-table`, `leptos-shadcn-pagination` — таблицы/пагинация;
-- `leptos-chartistry` — графики на дашборде.
-
-## Взаимодействие
-
-- `apps/server` (`/api/graphql` и `/api/fn/*`) как backend для dual-path data access
-- `crates/rustok-rbac` и другие доменные модули через backend
-- общий UI контракт с `apps/next-admin` и storefront приложениями
-- manifest-driven Leptos module UI через `apps/admin/build.rs`, registry и generic route `/modules/:module_slug`, включая core module-owned surfaces `channel`, `index`, `outbox`, `tenant`, `rbac`
-
-## Документация
-
-- Локальная: `apps/admin/docs/README.md`
-- Платформенная: `docs/UI/README.md`, `docs/UI/rust-ui-component-catalog.md`, `docs/index.md`
+- [App docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

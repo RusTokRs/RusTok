@@ -25,13 +25,14 @@
 - Module crates may depend on `rustok-api` for shared host contracts, but keep module-specific transport code and domain behavior locally.
 - New cross-module request/auth/GraphQL helpers should go into `rustok-api` only when they are genuinely shared and host-level.
 
-## Entry Points
+## Entry points
 - `src/lib.rs`
 - `src/context/`
 - `src/request.rs`
 - `src/ui.rs`
 - `src/graphql/`
 
-## Documentation
-- Local docs: `./docs/`
-- Platform docs: `../../docs/`
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

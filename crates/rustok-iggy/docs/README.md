@@ -1,54 +1,38 @@
-# rustok-iggy docs
+# Документация `rustok-iggy`
 
-Documentation for the `crates/rustok-iggy` module.
+`rustok-iggy` — transport crate для streaming event delivery на базе Iggy. Он
+реализует `EventTransport` и держит transport-level abstractions поверх
+`rustok-iggy-connector`, не владея самим connection/mode lifecycle.
 
-## Documents
+## Назначение
 
-- [Implementation Plan](./implementation-plan.md) - Delivery phases and component status
+- публиковать канонический Iggy-based `EventTransport` surface для платформы;
+- держать serialization, topology, DLQ, replay и consumer-group abstractions внутри transport crate;
+- отделять transport behavior от connector-level connection management.
 
-## Module Overview
+## Зона ответственности
 
-`rustok-iggy` provides event streaming transport using Iggy.rs. It implements the
-`EventTransport` trait and delegates connection management to `rustok-iggy-connector`.
+- `IggyTransport` и transport-facing configuration;
+- JSON/Postcard serialization;
+- topology management, consumer groups, DLQ, replay и health abstractions;
+- observability hooks для transport layer;
+- отсутствие ownership над embedded/remote connection lifecycle.
 
-**Responsibility split:**
-- `rustok-iggy-connector` — Embedded/Remote mode switching, connection lifecycle, IggyConnector trait
-- `rustok-iggy` — EventTransport implementation, serialization, topology, DLQ, replay, consumer groups
+## Интеграция
 
-## Key Types
+- зависит от `rustok-iggy-connector` для embedded/remote mode abstraction и low-level message I/O;
+- реализует `EventTransport` для platform event system;
+- должен оставаться transport crate, а не connector/runtime configuration bucket;
+- любые изменения transport contracts должны синхронизироваться с outbox/event docs и connector docs.
 
-| Type | Description |
-|------|-------------|
-| `IggyTransport` | Main transport implementing EventTransport |
-| `IggyConfig` | Configuration for transport setup |
-| `TopologyManager` | Stream/topic tracking |
-| `ConsumerGroupManager` | Consumer group coordination |
-| `DlqManager` | Dead letter queue handling |
-| `ReplayManager` | Event replay orchestration |
-| `EventSerializer` | JSON/Postcard serialization |
+## Проверка
 
-## Quick Reference
+- targeted compile/tests для transport configuration, serialization, topology и replay/DLQ abstractions;
+- integration tests нужны при изменении реального Iggy SDK path;
+- structural verification для local docs и connector/transport boundary.
 
-```rust
-use rustok_iggy::{IggyConfig, IggyTransport, SerializationFormat};
-use rustok_core::events::EventTransport;
+## Связанные документы
 
-// Create transport (connector handles mode switching internally)
-let config = IggyConfig::default();
-let transport = IggyTransport::new(config).await?;
-
-// Use as EventTransport
-transport.publish(envelope).await?;
-
-// Cleanup
-transport.shutdown().await?;
-```
-
-## Related Crates
-
-- [rustok-iggy-connector](../../rustok-iggy-connector/README.md) — Connection layer (Embedded/Remote)
-- [rustok-core](../../rustok-core/README.md) — EventTransport trait, EventEnvelope
-
-## Configuration
-
-See the main [README](../README.md) for configuration options.
+- [README crate](../README.md)
+- [План реализации](./implementation-plan.md)
+- [Документация `rustok-iggy-connector`](../../rustok-iggy-connector/docs/README.md)

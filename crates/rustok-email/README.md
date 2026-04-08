@@ -25,3 +25,8 @@
 - `EmailConfig`
 - `PasswordResetEmail`
 - `PasswordResetEmailSender`
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

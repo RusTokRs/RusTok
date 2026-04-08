@@ -1,90 +1,50 @@
-# rustok-iggy-connector module implementation plan
+# План реализации `rustok-iggy-connector`
 
-## Scope and objective
+Статус: connector abstraction уже отделена от transport crate; дальнейшая
+работа связана с hardening реального SDK/lifecycle path и удержанием чистой
+границы ответственности.
 
-This document captures the implementation plan for `rustok-iggy-connector` in RusToK and
-serves as the source of truth for rollout sequencing.
+## Область работ
 
-Primary objective: provide a stable abstraction layer for Iggy connectivity
-supporting both embedded and remote modes.
+- удерживать `rustok-iggy-connector` как low-level connector layer;
+- синхронизировать mode switching, lifecycle contracts и local docs;
+- не допускать втягивания transport-level semantics в connector crate.
 
-## Target architecture
+## Текущее состояние
 
-- `IggyConnector` trait defines the connector contract
-- `RemoteConnector` implements external Iggy server connection
-- `EmbeddedConnector` implements in-process Iggy server
-- `MessageSubscriber` trait for message consumption
-- Feature flag `iggy` enables full SDK integration
+- `IggyConnector`, remote/embedded implementations и config model уже существуют;
+- optional `iggy` feature уже служит seam для реальной SDK integration;
+- request building, mode serialization и error handling уже выделены в отдельный crate;
+- `rustok-iggy` использует этот crate как низкоуровневый dependency.
 
-## Delivery phases
+## Этапы
 
-### Phase 0 — Foundation ✅ DONE
+### 1. Contract stability
 
-- [x] Baseline crate/module structure
-- [x] Base docs and registry presence
-- [x] Core compile-time integration with workspace
+- [x] закрепить connector boundary отдельно от transport crate;
+- [x] удерживать embedded/remote mode abstraction внутри connector crate;
+- [ ] удерживать sync между connector contracts, `rustok-iggy` expectations и local docs.
 
-### Phase 1 — Contract Implementation ✅ DONE
+### 2. Lifecycle hardening
 
-- [x] `IggyConnector` trait with `connect`, `publish`, `subscribe`, `shutdown`
-- [x] `RemoteConnector` implementation
-- [x] `EmbeddedConnector` implementation
-- [x] `ConnectorConfig` with embedded/remote settings
-- [x] `PublishRequest` for message publishing
-- [x] `MessageSubscriber` trait for consumption
-- [x] `ConnectorError` with proper error variants
-- [x] Partition calculation utilities
-- [x] Unit tests for all components
-- [x] Optional Iggy SDK support via feature flag
+- [ ] довести full SDK integration path, reconnection и pooling semantics;
+- [ ] покрывать batching, TLS и real connection failure cases targeted tests;
+- [ ] удерживать simulation mode как явный documented compatibility path.
 
-### Phase 2 — Integration (in progress)
+### 3. Operability
 
-- [ ] Full Iggy SDK integration when `iggy` feature enabled
-- [ ] Consumer group offset management
-- [ ] Message batching for high-throughput
-- [ ] Connection pooling and reconnection
-- [ ] TLS support verification
+- [ ] развивать health/metrics/runbook guidance для connector layer;
+- [ ] удерживать local docs синхронизированными с transport docs;
+- [ ] документировать lifecycle guarantees одновременно с изменением connector surface.
 
-### Phase 3 — Productionization (planned)
+## Проверка
 
-- [ ] Performance benchmarks
-- [ ] Health checks and metrics
-- [ ] Security audit (TLS, auth)
-- [ ] Runbooks and operational docs
+- targeted compile/tests для configuration, mode switching, request building и connector errors;
+- integration tests для real embedded/remote paths;
+- docs sync между connector и transport crates.
 
-## Component Status
+## Правила обновления
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `lib.rs` | ✅ Complete | All public exports |
-| `ConnectorMode` | ✅ Complete | Embedded/Remote enum |
-| `ConnectorConfig` | ✅ Complete | Full configuration |
-| `PublishRequest` | ✅ Complete | With builder methods |
-| `IggyConnector` | ✅ Complete | Full trait |
-| `RemoteConnector` | ✅ Complete | With Iggy SDK support |
-| `EmbeddedConnector` | ✅ Complete | With lifecycle management |
-| `MessageSubscriber` | ✅ Complete | Trait + implementations |
-| `ConnectorError` | ✅ Complete | All error variants |
-| `calculate_partition` | ✅ Complete | Deterministic hashing |
-
-## Usage
-
-See [README](../README.md) for usage examples.
-
-## Testing
-
-Unit tests cover:
-- Configuration parsing
-- Partition calculation
-- Mode serialization
-- Request building
-- Error handling
-
-Integration tests require:
-- Running Iggy server (for remote mode)
-- Or `iggy` feature enabled (for embedded mode)
-
-## Checklist
-
-- [x] контрактные тесты покрывают все публичные use-case.
-
+1. При изменении connector contract сначала обновлять этот файл.
+2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
+3. При изменении transport boundary обновлять связанные docs в `rustok-iggy`.

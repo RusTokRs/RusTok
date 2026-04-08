@@ -44,3 +44,8 @@
 `NodeService` remains available only under `rustok-content::services` as a
 shared-node helper surface. It is intentionally no longer part of the top-level
 crate entry points.
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

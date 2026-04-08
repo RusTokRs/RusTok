@@ -1,64 +1,50 @@
-# rustok-tenant module implementation plan (`rustok-tenant`)
+# План реализации `rustok-tenant`
 
-## Scope and objective
+Статус: базовый tenant domain contract реализован; локальная документация
+приведена к единому формату и включена в scoped audit path.
 
-This document captures the current implementation plan for `rustok-tenant` in RusToK and
-serves as the source of truth for rollout sequencing in `crates/rustok-tenant`.
+## Область работ
 
-Primary objective: evolve `rustok-tenant` in small, testable increments while preserving
-compatibility with platform-level contracts.
+- удерживать `rustok-tenant` как владельца tenant domain contract;
+- синхронизировать tenancy invariants, resolver expectations и local docs;
+- расширять tenancy surface без смещения бизнес-логики в `apps/server`.
 
-## Target architecture
+## Текущее состояние
 
-- `rustok-tenant` remains focused on its bounded context and public crate API.
-- Integrations with other modules go through stable interfaces in `rustok-core`
-  (or dedicated integration crates where applicable).
-- Behavior changes are introduced through additive, backward-compatible steps.
-- Observability and operability requirements are part of delivery readiness.
+- сущности `tenants` и `tenant_modules`, DTO и `TenantService` уже реализованы;
+- tenant middleware resolution и cache infrastructure остаются host-owned integration path;
+- module enablement уже закреплён как tenant-scoped contract;
+- root `README.md`, local docs и manifest metadata входят в scoped module audit.
 
-## Delivery phases
+## Этапы
 
-### Phase 0 — Foundation (done)
+### 1. Contract stability
 
-- [x] Baseline crate/module structure is in place.
-- [x] Base docs and registry presence are established.
-- [x] Core compile-time integration with the workspace is available.
+- [x] закрепить базовый tenant CRUD и module-toggle contract;
+- [x] зафиксировать разделение ответственности между модулем и server middleware/cache layer;
+- [ ] удерживать sync между tenancy invariants, server resolver path и module metadata.
 
-### Phase 1 — Contract hardening (done)
+### 2. Domain expansion
 
-- [x] SeaORM entities implemented: `tenant.rs` (id, name, slug, domain, settings, is_active, timestamps) and `tenant_module.rs` (id, tenant_id, module_slug, enabled, settings, timestamps).
-- [x] DTOs implemented: `CreateTenantInput`, `UpdateTenantInput`, `TenantResponse`, `TenantModuleResponse`, `ToggleModuleInput`.
-- [x] `TenantService` implemented with methods: `create_tenant()`, `get_tenant()`, `get_tenant_by_slug()`, `update_tenant()`, `list_tenants()`, `toggle_module()`, `list_tenant_modules()`.
-- [x] Error types: `TenantError` with `SlugAlreadyExists`, `NotFound`, `Database` variants via `thiserror`.
-- [x] Public API re-exported from `lib.rs`: all DTOs and `TenantService`.
-- [x] `TenantModule::health()` returns `HealthStatus::Healthy`.
-- [x] Migrations managed by `apps/server/migration` (tenants + tenant_modules tables).
+- [ ] добавить schema validation для tenant settings;
+- [ ] довести outbox events для `TenantCreated`, `TenantUpdated`, `TenantModuleToggled`;
+- [ ] синхронизировать tenancy contract с RBAC для tenant-scoped admin permissions.
 
-### Phase 2 — Domain expansion (planned)
+### 3. Operability
 
-- [ ] Tenant settings schema validation (JSON Schema or validator-based).
-- [ ] Tenant domain/subdomain resolution integration with middleware.
-- [ ] Events: `TenantCreated`, `TenantUpdated`, `TenantModuleToggled` via outbox.
-- [ ] RBAC: tenant-scoped admin permissions.
+- [ ] довести integration tests для tenant CRUD, module toggles и resolver invariants;
+- [ ] развить observability для cache hit/miss и active tenant signals;
+- [ ] документировать provisioning/deprovisioning и invalidation guarantees одновременно с изменением runtime contract.
 
-### Phase 3 — Productionization (planned)
+## Проверка
 
-- [ ] Integration tests for `TenantService` CRUD and toggle operations.
-- [ ] Audit trail for tenant configuration changes.
-- [ ] Observability: metrics for tenant cache hit/miss, active tenants count.
-- [ ] Runbook for tenant provisioning and deprovisioning.
+- `cargo xtask module validate tenant`
+- `cargo xtask module test tenant`
+- targeted tests для CRUD, module toggles, resolver invariants и cache integration path
 
-## Tracking and updates
+## Правила обновления
 
-When updating `rustok-tenant` architecture, API contracts, tenancy behavior, routing,
-or observability expectations:
-
-1. Update this file first.
-2. Update `crates/rustok-tenant/README.md` and `crates/rustok-tenant/docs/README.md` when public behavior changes.
-3. Update `docs/index.md` links if documentation structure changes.
-4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
-
-## Checklist
-
-- [x] контрактные тесты покрывают все публичные use-case.
-
+1. При изменении tenancy contract сначала обновлять этот файл.
+2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
+3. При изменении module metadata синхронизировать `rustok-module.toml`.
+4. При изменении resolver/cache expectations обновлять также server docs.

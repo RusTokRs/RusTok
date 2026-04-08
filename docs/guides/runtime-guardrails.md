@@ -14,6 +14,7 @@ Runtime guardrails агрегируют живые сигналы рантайм
 - состояние rate-limit backends и memory saturation;
 - состояние event transport fallback;
 - состояние event bus backpressure.
+- состояние `rustok.registry.remote_executor` для lease-based validation runner path.
 
 ## Endpoints
 
@@ -32,6 +33,7 @@ Runtime guardrails агрегируют живые сигналы рантайм
 - `rate_limits` — per-namespace состояние limiter'ов (`api`, `auth`, `oauth`);
 - `event_bus` — snapshot backpressure budget;
 - `event_transport` — relay fallback state.
+- `remote_executor` — состояние internal validation runner contract (`enabled`, token/config, active/expired claims, lease policy).
 
 ## Как читать snapshot
 
@@ -43,6 +45,7 @@ Runtime guardrails агрегируют живые сигналы рантайм
 4. `rate_limits[*].policy`
 5. `event_transport.relay_fallback_active`
 6. `event_bus.state`
+7. `remote_executor.state`
 
 ## Основные сценарии
 
@@ -69,6 +72,12 @@ Event bus backpressure:
 - `current_depth` подходит к `max_depth` или уже упирается в него;
 - `events_rejected` показывает, начал ли runtime терять работу.
 
+Remote executor degradation:
+
+- `remote_executor.enabled = true`, но `token_configured = false` — critical misconfiguration;
+- `remote_executor.expired_claims > 0` — reaper уже должен вернуть stage в `queued`, но оператору всё равно нужно смотреть на runner availability и lease policy;
+- `remote_executor.active_claims` помогает отличать idle host от host, на котором реально работают thin runners.
+
 ## Метрики
 
 Через `/metrics` публикуются:
@@ -83,6 +92,11 @@ Event bus backpressure:
 - `rustok_runtime_guardrail_rate_limit_config`
 - `rustok_runtime_guardrail_event_transport_fallback_active`
 - `rustok_runtime_guardrail_event_backpressure_state`
+- `rustok_runtime_guardrail_remote_executor_enabled`
+- `rustok_runtime_guardrail_remote_executor_state`
+- `rustok_runtime_guardrail_remote_executor_active_claims`
+- `rustok_runtime_guardrail_remote_executor_expired_claims`
+- `rustok_runtime_guardrail_remote_executor_config`
 
 ## Stop-the-line условия
 

@@ -1,72 +1,79 @@
 # Документация Leptos Storefront
 
-Локальная документация для `apps/storefront` как SSR-host приложения витрины.
+Локальная документация для `apps/storefront` как Leptos SSR-host приложения витрины.
 
-## Текущий runtime contract
+## Назначение
 
-- Инвариант: GraphQL transport не удаляется; native `#[server]` functions добавляются как параллельный internal path и должны сосуществовать с GraphQL.
-- Host storefront рендерит shell, домашнюю страницу и generic module pages по семейству маршрутов `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
-- Shared data access поддерживает оба пути: Leptos `#[server]` boundary и direct GraphQL HTTP.
-- Для storefront сейчас заведены прямые server functions:
-  - `/api/fn/storefront/list-enabled-modules`
-  - `/api/fn/storefront/resolve-canonical-route`
-  - `/api/fn/pages/storefront-data`
-  - `/api/fn/blog/storefront-data`
-  - `/api/fn/commerce/storefront-data`
-  - `/api/fn/forum/storefront-data`
-  - `/api/fn/search/storefront-search`
-  - `/api/fn/search/storefront-filter-presets`
-  - `/api/fn/search/storefront-suggestions`
-  - `/api/fn/search/storefront-track-click`
-- Server-side реализация этих функций берёт `AppContext` из `leptos_axum` context и идёт прямо в `rustok-tenant::TenantService` / `rustok-content::CanonicalUrlService`.
-- Рядом сохранён GraphQL transport в `shared/api`, а в `shared/context` доступны оба варианта вызова: `*_server` и `*_graphql`.
-- Runtime default для `enabled_modules` и canonical-route lookup: сначала native `#[server]`, затем automatic fallback на GraphQL при недоступности native path.
-- Такой же native-first + GraphQL-fallback path теперь используется и в module-owned storefront packages `rustok-pages-storefront` и `rustok-blog-storefront`; GraphQL в этих пакетах не удаляется.
-- Такой же native-first + GraphQL-fallback path теперь заведён и для `rustok-commerce-storefront`, `rustok-forum-storefront`, `rustok-search-storefront`; GraphQL во всех module-owned storefront пакетах сохраняется.
-- По умолчанию storefront сейчас использует server-fn preflight `resolve_canonical_route`, но GraphQL-вариант остаётся валидным и не удаляется.
-- Если server возвращает alias-hit, storefront отдаёт HTTP redirect на canonical URL до рендера страницы.
-- Host storefront теперь поддерживает locale-prefixed SSR routes: `/`, `/{locale}`, `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
-- Для canonical lookup legacy-параметр `lang` не входит в route key: effective locale сначала берётся из path prefix, затем из `?lang=` как backward-compatible fallback.
-- Если redirect произошёл по alias внутри locale-prefixed route, storefront сохраняет locale в path (`/ru/...`), а не возвращает старую query-only форму.
-- Locale lookup внутри canonical preflight идёт с shared fallback policy из `rustok-content`, поэтому alias,
-  записанный для `en`, корректно резолвится и для запросов вроде `en-us`, если более точного locale нет.
-- Enabled modules резолвятся отдельно и фильтруют storefront registry до рендера.
-- Host прокидывает `UiRouteContext` (`locale`, `route_segment`, `query params`) в module-owned storefront packages.
-- Module-owned storefront packages обязаны строить внутренние ссылки на свои generic pages через `UiRouteContext::module_route_base()`, а не через hardcoded `/modules/{route_segment}`.
-- Module-owned storefront packages не должны вводить собственную locale negotiation policy: path/query/header/cookie resolution остаётся host/runtime contract, а пакет использует уже переданный `UiRouteContext.locale`.
-- SSR идёт через in-order HTML streaming, чтобы async module-owned surfaces могли честно получать данные на сервере.
+`apps/storefront` является Rust-first storefront host для RusToK. Приложение рендерит shell, домашнюю страницу, generic module pages и монтирует module-owned storefront UI через manifest-driven wiring.
 
-## Generated module UI wiring
+## Границы ответственности
 
-- `apps/storefront/build.rs` читает `modules.toml` и модульные `rustok-module.toml`, затем генерирует registry wiring в `OUT_DIR`.
-- Publishable storefront UI по-прежнему подключается через `[provides.storefront_ui].leptos_crate`.
-- Live generic route family `/modules/{route_segment}` + `/{locale}/modules/{route_segment}` остаётся точкой входа для `blog`, `commerce`, `forum`, `pages`, `search` и других publishable storefront packages.
-- Лёгкая верификация этого contract теперь выполняется через `npm run verify:storefront:routes`.
+- владеть Leptos storefront host и его SSR/runtime wiring;
+- монтировать module-owned storefront packages из `crates/rustok-*/storefront`;
+- поддерживать generic route contract для storefront-модулей;
+- передавать в module-owned пакеты `UiRouteContext` и effective locale;
+- не забирать внутрь host модульный business UI и модульные transport contracts.
 
-## Canonical routing
+## Runtime contract
 
-- Canonical и alias state хранится не в storefront, а в `rustok-content`.
-- Storefront не знает о `content_canonical_urls` / `content_url_aliases`; lookup инкапсулирован в `CanonicalUrlService`.
-- Redirect flow может идти через внутренний server-fn слой или через GraphQL; server-fn path сейчас выбран как default internal path.
+- GraphQL transport не удаляется и остаётся обязательным внешним контрактом.
+- Native Leptos `#[server]` functions используются как внутренний data-layer path параллельно с GraphQL.
+- Generic storefront routes живут в семействе `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
+- Host сначала пытается использовать native `#[server]` path там, где он есть, и только потом откатывается к GraphQL.
+- Module-owned storefront packages обязаны строить внутренние ссылки через `UiRouteContext::module_route_base()`, а не через hardcoded route strings.
+- Module-owned storefront packages не определяют собственную locale negotiation policy; effective locale приходит из host/runtime contract.
 
-## Ограничения
+## Module-owned storefront surfaces
 
-- Nested storefront routing и более богатые page-layouts для модулей остаются отдельным слоем поверх текущего generic root-page contract.
-- Для внешних crate-ов вне workspace всё ещё нужен publishable storefront package плюс явная server-side install story.
+Сейчас этот contract уже используется как минимум для:
 
-## Рабочие exemplar-ы
+- `rustok-pages-storefront`
+- `rustok-blog-storefront`
+- `rustok-commerce-storefront`
+- `rustok-forum-storefront`
+- `rustok-search-storefront`
 
-- `rustok-blog-storefront` — module-owned blog surface с native `#[server]` read-path через `PostService` и обязательным GraphQL fallback.
-- `rustok-commerce-storefront` — catalog/package surface с native `#[server]` boundary и GraphQL fallback для списка и selected product detail.
-- `rustok-forum-storefront` — module-owned forum surface с native `#[server]` boundary и GraphQL fallback для categories/topics/replies.
-- `rustok-pages-storefront` — page-driven surface с native `#[server]` read-path через `PageService` и обязательным GraphQL fallback.
-- `rustok-search-storefront` — search/package surface с native `#[server]` boundary и GraphQL fallback для preview, presets, suggestions и click tracking.
-- `rustok-forum-storefront` — forum read-path без storefront-specific логики в host.
-- `rustok-commerce-storefront` — public catalog read-path, теперь подключённый через `[provides.storefront_ui]`.
-- `rustok-search-storefront` — storefront slot/page exemplar с manifest-driven route и search-specific UX внутри пакета модуля.
+Build-time wiring генерируется из `modules.toml` и `rustok-module.toml` через `apps/storefront/build.rs`.
+
+## Доступ к данным
+
+Прямые storefront server functions сейчас покрывают:
+
+- `list-enabled-modules`
+- `resolve-canonical-route`
+- `pages/storefront-data`
+- `blog/storefront-data`
+- `commerce/storefront-data`
+- `forum/storefront-data`
+- `search/storefront-search`
+- `search/storefront-filter-presets`
+- `search/storefront-suggestions`
+- `search/storefront-track-click`
+
+GraphQL path при этом остаётся рабочим и поддерживаемым fallback-контрактом.
+
+## Canonical routing и locale
+
+- Canonical и alias state хранится в backend/domain слоях, а не в storefront host.
+- Storefront использует canonical preflight перед рендером страницы.
+- Locale-prefixed routes являются основным route contract.
+- Legacy query-based locale fallback допускается только как backward-compatible path.
+
+## Взаимодействия
+
+- `apps/server` предоставляет GraphQL и Leptos server-function surfaces.
+- `crates/rustok-*` публикуют module-owned storefront packages и runtime transport contracts.
+- `apps/next-frontend` идёт параллельным storefront host и должен сохранять parity на уровне контрактов, а не на уровне буквального устройства кода.
+
+## Проверка
+
+- `npm.cmd run verify:storefront:routes`
+- storefront-specific точечные smoke/contract прогоны по module-owned surfaces
+- при изменении manifest wiring сверяться с `docs/modules/manifest.md`
 
 ## Связанные документы
 
 - [План реализации](./implementation-plan.md)
-- [Заметки по storefront UI](../../../docs/UI/storefront.md)
+- [Storefront architecture notes](../../../docs/UI/storefront.md)
+- [Контракт manifest-слоя](../../../docs/modules/manifest.md)
 - [Карта документации](../../../docs/index.md)

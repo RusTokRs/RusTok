@@ -27,7 +27,7 @@
 - Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
 - Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
-- Let the module-owned Leptos admin UI package manage the typed shipping-profile registry, product shipping-profile assignment, and typed shipping-option compatibility rules on top of the commerce GraphQL contract.
+- Let the module-owned Leptos admin UI package keep shipping-profile registry and typed shipping-option compatibility rules, while product CRUD starts moving into `rustok-product/admin`.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
 - Publish the typed RBAC surface for commerce resources.
 
@@ -43,6 +43,7 @@
 - Depends on `rustok-outbox` and `rustok-events` for transactional domain-event publishing.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
 - `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned commerce control room mounted under `/modules/commerce` for catalog, shipping-profile, and shipping-option operations.
+- `apps/admin` also consumes `rustok-product-admin` through the same manifest-driven composition path, so catalog CRUD can move out of the aggregate commerce route without host-specific wiring.
 - `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with a public catalog surface mounted under `/modules/commerce`.
 - `rustok-module.toml` exports both surfaces through `[provides.admin_ui]` and `[provides.storefront_ui]`, so host wiring stays manifest-derived instead of relying on manual route registration.
 - Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,

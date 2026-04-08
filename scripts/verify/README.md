@@ -219,7 +219,11 @@ Smoke-check поддерживаемых build surfaces:
 Дополнительно для `registry-only` матрица уже держит `GET /v1/catalog/{slug}` detail-path,
 cache-contract через `ETag` / `If-None-Match` и negative smoke на write-route-ы
 `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`,
-`POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/owner-transfer` и
+`POST /v2/catalog/publish/{request_id}/stages`,
+`POST /v2/catalog/publish/{request_id}/request-changes`,
+`POST /v2/catalog/publish/{request_id}/hold`,
+`POST /v2/catalog/publish/{request_id}/resume`,
+`POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` и
 `POST /v2/catalog/yank`.
 
 Для уже развёрнутого dedicated host тот же скрипт теперь умеет optional external smoke:
@@ -234,8 +238,9 @@ RUSTOK_REGISTRY_EVIDENCE_DIR=./tmp/modules-rustok-dev-smoke \
 PowerShell-вариант поддерживает тот же contract через env vars
 `RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` и optional
 `RUSTOK_REGISTRY_EVIDENCE_DIR`. Если evidence dir задан, external smoke сохраняет туда
-`runtime-*`, `catalog-*`, `openapi-*` snapshots и `registry-smoke-metadata.txt`.
-`POST /v2/catalog/publish`, `POST /v2/catalog/owner-transfer` и `POST /v2/catalog/yank`.
+`runtime-*`, `catalog-*`, `openapi-*` snapshots и `registry-smoke-metadata.txt`, а negative
+smoke покрывает тот же expanded V2 surface (`publish`, `validate`, `stages`,
+`request-changes`, `hold`, `resume`, `runner/claim`, `owner-transfer`, `yank`).
 
 Для Windows / PowerShell используйте `./scripts/verify/verify-deployment-profiles.ps1`: он
 покрывает ту же матрицу профилей развёртывания, когда `bash` недоступен в локальном окружении.

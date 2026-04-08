@@ -2,17 +2,20 @@
 
 `rustok-product` — дефолтный каталоговый подмодуль семейства `ecommerce`.
 
-## Что сейчас внутри
+## Назначение
 
 - каталог товаров;
 - варианты, опции, переводы и публикация;
 - taxonomy-backed product tags через shared `rustok-taxonomy` и product-owned relation `product_tags`;
 - product-owned migrations;
-- `ProductModule` и `CatalogService`.
+- `ProductModule`, `CatalogService` и module-owned admin UI пакет `rustok-product/admin`.
 
-## Переходная граница
+## Зона ответственности
 
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
+- product CRUD в admin UI уже начал переезжать из aggregate `rustok-commerce-admin`
+  в module-owned route `product`, но transport-контракт для этих форм по-прежнему
+  приходит через umbrella `rustok-commerce` GraphQL surface;
 - Общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 - canonical vocabulary и attach semantics для product tags живут в
   `rustok-taxonomy` + `product_tags`, а public contract использует first-class
@@ -30,7 +33,19 @@
   `rustok-commerce` и проверяет ссылку против active shipping profiles из typed
   registry `shipping_profiles`, чтобы product write-path не принимал произвольные slug'и.
 
+## Интеграция
+
+- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella ustok-commerce;
+- transport, GraphQL и UI-поверхности публикуются через ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
+- изменения cross-module контракта нужно синхронизировать с ustok-commerce и соседними split-модулями.
+
+## Проверка
+
+- cargo xtask module validate product
+- cargo xtask module test product
+- targeted commerce tests для product-домена при изменении runtime wiring
 ## Связанные документы
 
 - [README crate](../README.md)
+- [README admin UI](../admin/README.md)
 - [План распила commerce](../../rustok-commerce/docs/implementation-plan.md)

@@ -1,258 +1,48 @@
 # План реализации `rustok-channel`
 
-Статус: experimental core capability.
-Текущее состояние: `v0 baseline complete`, начат post-v0 переход к финальной resolution-архитектуре.
+Статус: experimental core capability; `v0 baseline complete`, идёт rollout
+post-v0 resolution architecture.
 
-## Состояние на 2026-03-27
+## Область работ
 
-`rustok-channel` уже доведён до рабочего v0 baseline:
+- удерживать `rustok-channel` как domain-owned resolution module, а не host middleware bucket;
+- синхронизировать channel runtime contract, admin UI и manifest metadata;
+- развивать typed resolution policies без возврата к ad-hoc host logic.
 
-- storage, service layer и миграции подняты, включая persisted policy layer для tenant-scoped typed resolution policies;
-- модуль зарегистрирован как `Core` и подключён в `modules.toml`;
-- server умеет резолвить `ChannelContext` на запросе;
-- есть тонкий REST surface для admin flow;
-- есть module-owned Leptos admin UI;
-- есть первый живой consumer в `rustok-pages`, уже расширенный до publication-level proof point;
-- есть второй живой consumer в `rustok-blog`, уже тоже расширенный до publication-level proof point;
-- runtime contract закреплён отдельными тестами server middleware на baseline order `header -> query -> host -> default`, fallback-ы и skip inactive explicit selectors;
-- документация и ADR приведены в актуальное состояние.
+## Текущее состояние
 
-После baseline уже сделан первый post-v0 stabilizing step:
+- storage, service layer, runtime resolver и admin UI уже подняты;
+- explicit default channel и tenant-scoped typed policy layer уже встроены в baseline;
+- `pages`, `blog` и `commerce` уже служат живыми channel-aware proof point;
+- local docs, root README и manifest contract входят в scoped audit path.
 
-- добавлен explicit default channel вместо fallback-by-order;
-- default-resolution в middleware теперь опирается на явный `is_default`, а не на порядок создания;
-- admin UI получил operator flow `Make Default`;
-- поведение закреплено unit/runtime тестами в `rustok-channel` и `apps/server`.
+## Этапы
 
-Это значит, что дальнейшая работа идёт уже не над `v0`, а над целевой resolution-архитектурой без middleware-driven логики и без ad-hoc fallback-правил.
+### 1. Contract stability
 
-## Целевая архитектура после v0
+- [x] зафиксировать финальную resolution-модель `explicit selectors -> built-in target slice -> typed policies -> explicit default -> unresolved`;
+- [x] удерживать domain-owned resolver внутри `rustok-channel`;
+- [ ] удерживать sync между runtime contract, admin UI и server middleware tests.
 
-Финальная модель resolution для `rustok-channel` теперь зафиксирована так:
+### 2. Policy rollout
 
-1. explicit selectors;
-2. built-in typed target-resolution slices;
-3. tenant-scoped typed resolution policies;
-4. explicit default channel;
-5. unresolved request.
+- [ ] довести policy trace в admin bootstrap/runtime diagnostics;
+- [ ] добавить operator flows для policy authoring, reorder и disable;
+- [ ] решить, остаётся ли built-in host slice отдельным fast-path после полного policy rollout.
 
-Ключевые инварианты:
+### 3. Semantic expansion
 
-- `tenant-level default rules` как отдельная концепция не вводятся;
-- terminal fallback всегда ровно один: explicit default channel tenant'а;
-- resolution precedence фиксируется кодом, а не конфигом;
-- `apps/server` только собирает request facts и применяет решение resolver'а;
-- domain logic выбора канала живёт в `rustok-channel`;
-- richer matching вводится только как typed policies, без scripting/runtime eval.
+- [ ] возвращаться к richer target/connector taxonomy только при появлении реального runtime pressure;
+- [ ] расширять channel-aware proof points в доменных модулях только вместе с локальной документацией и tests.
 
-## Цели v0
+## Проверка
 
-Собрать лёгкий рабочий прототип, который:
+- `cargo xtask module validate channel`
+- `cargo xtask module test channel`
+- targeted server middleware tests для resolution order, explicit selectors и default semantics
 
-- вводит platform-level сущность `Channel`;
-- позволяет привязать к каналу один или несколько target'ов;
-- позволяет связать канал с существующим `oauth_app`;
-- позволяет явно пометить, какие platform modules участвуют в канале.
+## Правила обновления
 
-## Что входит в v0
-
-### Storage
-
-- [x] `channels`
-- [x] `channel_targets`
-- [x] `channel_module_bindings`
-- [x] `channel_oauth_apps`
-
-### Domain/service layer
-
-- [x] создание канала;
-- [x] получение канала;
-- [x] список каналов;
-- [x] получение расширенного channel detail;
-- [x] добавление target'а;
-- [x] привязка module binding;
-- [x] привязка OAuth-приложения.
-
-### Host wiring
-
-- [x] регистрация `rustok-channel` как `Core` module;
-- [x] добавление модуля в `modules.toml`;
-- [x] включение миграций в server migrator;
-- [x] обновление центральной документации и ADR.
-
-### Runtime/context
-
-- [x] общий `ChannelContext` в `rustok-api`;
-- [x] server middleware для channel resolution;
-- [x] прокидывание channel-aware данных в `RequestContext`;
-- [x] фиксация explicit policy order `header -> query -> host -> default`;
-- [x] прокидывание `resolution_source` в `ChannelContext` и `RequestContext` для runtime diagnostics.
-
-### Transport/admin
-
-- [x] тонкий REST bootstrap/write surface в `apps/server`;
-- [x] module-owned Leptos admin UI package `rustok-channel-admin`;
-- [x] manifest-driven подключение UI в `apps/admin`;
-- [x] учёт `Core`-модулей с UI в admin host wiring.
-
-### Проверка и фиксация baseline
-
-- [x] `cargo check -p rustok-channel`;
-- [x] `cargo test -p rustok-channel --lib`;
-- [x] `cargo check -p rustok-admin`;
-- [x] `cargo check -p rustok-server`;
-- [x] `cargo test -p rustok-api --lib`;
-- [x] `cargo test -p rustok-pages graphql::query::tests --lib`;
-- [x] `cargo test -p rustok-blog graphql::query::tests --lib`;
-- [x] `cargo test -p rustok-server middleware::channel::tests --lib`;
-- [x] `cargo test -p rustok-server registry_dependencies_match_runtime_contract --lib`;
-- [x] `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`.
-
-## Что не входит в v0
-
-- финальная taxonomy `channel/site/market/touchpoint`;
-- channel-owned access tokens;
-- storefront UI;
-- GraphQL adapter'ы;
-- publishable keys;
-- сложный rule engine для per-module/per-market resolution;
-- typed credential taxonomy поверх existing OAuth subsystem.
-
-## Что уже реализовано в коде
-
-### Модуль и storage
-
-- сущности `Channel`, `ChannelTarget`, `ChannelModuleBinding`, `ChannelOauthApp`;
-- миграции для четырёх базовых таблиц;
-- `ChannelService` с create/get/list/detail/bind flows.
-
-### Server/runtime wiring
-
-- регистрация модуля в `apps/server`;
-- подключение миграций в server migrator;
-- middleware для разрешения канала через domain-owned pipeline `header -> query -> built-in host slice -> reserved policy seam -> explicit default`, где host-based resolution сейчас сознательно использует только `web_domain` targets;
-- explicit selectors (`X-Channel-ID`, `X-Channel-Slug`, `channel` query) теперь тоже резолвят только active channels и подтягивают полноценный channel detail, чтобы runtime diagnostics были консистентны с host/default flow;
-- thin REST endpoints `/api/channels/*`.
-
-### Shared host contracts
-
-- `ChannelContext` и optional extractor в `rustok-api`;
-- прокидывание `channel_id`, `channel_slug` и `channel_resolution_source` в `RequestContext`;
-- расширение `TenantContextExt` для server middleware chain.
-
-### Первый domain consumer
-
-- `rustok-pages` использует `RequestContext.channel_id` на public GraphQL read-path;
-- `channel_module_bindings` уже участвуют в реальном runtime gating для `pages`;
-- authenticated/admin flow пока intentionally bypass-ит этот gate, чтобы pilot не ломал operator UX.
-
-### Admin UI
-
-- `rustok-channel-admin` как module-owned Leptos package;
-- bootstrap page с просмотром runtime context, включая explicit resolution source;
-- создание channel;
-- добавление target;
-- binding модулей;
-- binding OAuth apps;
-- host support для `Core`-модулей с UI в `apps/admin`.
-
-## Стартовая точка на следующую сессию
-
-Завтра начинать отсюда:
-
-1. Расширить уже существующий pilot в `pages` или перенести паттерн во второй модуль.
-2. Зафиксировать, что текущий `channel_module_bindings + metadata-based allowlist` хватает для v0 без новых domain-таблиц.
-3. Отложить отдельную relation/table до появления требований, которые не покрываются request-time filtering.
-4. Только после этого расширять taxonomy и правила resolution.
-
-Текущие proof point-ы:
-
-- `pages`: public read-path уже channel-aware через module binding и metadata-based `channelSlugs` allowlist.
-- `blog`: public read-path уже channel-aware через module binding и metadata-based `channelSlugs` allowlist.
-
-## Ближайший план после v0
-
-### Приоритет 1. Первый domain consumer
-
-- [x] выбрать pilot-модуль (`pages`);
-- [x] определить минимальный channel-aware use case;
-- [x] привязать public read-path этого модуля к `ChannelContext`;
-- [x] перенести тот же паттерн в `blog` для сравнения поведения на втором домене;
-- [x] расширить `pages` до первого publication-level proof point через metadata-based `channelSlugs` allowlist.
-- [x] проверить на сравнении `pages` vs `blog`, достаточно ли текущих `channel_module_bindings` и metadata-подхода без новой relation/table.
-- [x] решить, переносим ли publication-level semantics в `blog` или сразу проектируем отдельную entity-to-channel model.
-
-### Приоритет 2. Усиление runtime resolution
-
-- [x] зафиксировать явный policy order `header -> query -> host -> default`;
-- [x] определить, что tenant-level default rules для target resolution не нужны в `v0`;
-- [x] зафиксировать, что возврат к tenant-level default rules возможен только после explicit default channel и stabilizing шага по target semantics; это точка повторного пересмотра, а не заранее принятое обязательство на реализацию;
-- [x] добавить более явную диагностику, почему был выбран конкретный канал.
-
-### Post-v0 stabilization
-
-- [x] ввести explicit default channel вместо fallback-by-order;
-- [x] обновить runtime resolution так, чтобы `default` резолвился через `is_default`;
-- [x] дать оператору admin flow для смены tenant default channel;
-- [x] закрепить explicit default semantics тестами.
-- [x] стабилизировать `web_domain` target semantics через общую canonical normalization/validation для storage и runtime host lookup.
-- [x] вынести runtime precedence в typed domain resolver contract (`RequestFacts -> ResolutionDecision`) внутри `rustok-channel`;
-- [x] зарезервировать `Policy` как first-class resolution source в shared host contract.
-
-## Итог по v0
-
-Все обязательные implementation-пункты `rustok-channel` для `v0` закрыты.
-
-Остаются только осознанно отложенные revisit-вопросы следующего этапа:
-
-- нужен ли richer split `channel/site/market/touchpoint` и отдельная connector taxonomy.
-
-Следующий этап больше не формулируется как `tenant-level default rules`.
-Следующий этап формулируется как rollout `tenant-scoped typed resolution policies`.
-
-### Приоритет 3. Уточнение channel semantics
-
-- [x] проверить, что для `v0` текущего `target_type + value` хватает, если semantics tightened до explicit target-type allowlist и `web_domain`-only host resolution;
-- [x] решить, что переход к более typed target payload для `v0` не нужен и откладывается до появления richer target-specific behavior;
-- [x] отделить то, что является target, от того, что является connector/integration: `target` остаётся inbound resolution surface, а connector/integration остаётся отдельным semantic layer через существующую связку `channel_oauth_apps`; отдельный новый connector subsystem в `v0/v1` не вводим.
-
-### Приоритет 3. Resolution architecture rollout
-
-- [x] зафиксировать финальную resolution-модель: explicit selectors -> built-in typed target slices -> tenant-scoped typed policies -> explicit default channel -> unresolved;
-- [x] убрать `tenant-level default rules` как самостоятельную целевую архитектурную сущность;
-- [x] ввести typed resolver boundary в `rustok-channel`: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`;
-- [x] перевести server middleware на domain-owned resolver pipeline вместо локальной бизнес-логики;
-- [x] добавить persisted policy storage для tenant-scoped typed resolution policies;
-- [x] определить минимальный typed predicate set для `v1`: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, `LocaleEquals`;
-- [ ] ввести policy trace в admin bootstrap/runtime diagnostics;
-- [ ] добавить operator flows для policy authoring/reordering/disable в `rustok-channel-admin`;
-- [ ] после policy rollout решить, остаётся ли built-in host slice отдельным fast-path или схлопывается в общий policy engine.
-
-### Приоритет 4. Credential story
-
-- [x] проверить, что для `v0/v1` связки `channel -> oauth_app` достаточно как минимального integration-binding слоя поверх существующей OAuth subsystem;
-- [x] решить, что publishable keys для `v0/v1` не нужны и откладываются до появления реального public-client credential flow, который нельзя честно покрыть существующим OAuth/app story;
-- [x] зафиксировать, что рядом с OAuth не вводим вторую параллельную token subsystem; richer connector/credential model обсуждаем только при появлении реального runtime pressure.
-
-### Приоритет 5. Admin UX polish
-
-- [x] показать более явный resolution source в UI;
-- [x] добавить редактирование существующих target/module/app bindings;
-- [x] добавить удаление/revoke flows;
-- [x] добавить пустые состояния и более понятные ошибки для операторов.
-
-## Эволюция после v0
-
-После эксплуатации можно отдельно решить:
-
-- нужен ли split `channel` / `site` / `connector`;
-- нужны ли publishable keys;
-- как выглядит channel-aware request context;
-- какие модульные области получают channel-specific settings.
-
-## Промежуточные выводы для v0/v1
-
-- `target` и `connector/integration` уже считаются разными semantic слоями:
-  `channel_targets` отвечают за resolution surface, а `channel_oauth_apps` — за связь канала с существующей OAuth/app subsystem.
-- `v0/v1` намеренно не вводит новый универсальный connector subsystem и не смешивает connector semantics обратно в `target_type`.
-- publishable keys и richer connector contracts остаются отложенным вопросом до появления реального public-client/runtime pressure.
+1. При изменении resolution contract сначала обновлять этот файл.
+2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
+3. При изменении module metadata и UI wiring синхронизировать `rustok-module.toml`.

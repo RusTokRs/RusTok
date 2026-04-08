@@ -880,6 +880,193 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_publish_reject_endpoint_rejects_invalid_reason_code() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for reject invalid reason_code");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/reject", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Ownership evidence is incomplete.",
+                            "reason_code": "not_supported"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("live reject request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("live reject error body should read");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "unexpected live /v2/catalog/publish/{{request_id}}/reject response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(
+            String::from_utf8_lossy(&body).contains("not supported"),
+            "reject error should mention unsupported reason_code: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_yank_endpoint_rejects_invalid_reason_code() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for yank invalid reason_code");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        insert_registry_owner_binding(&ctx, "blog", "governance:moderator").await;
+        insert_active_release(&ctx, "blog", "0.1.0", Some("governance:moderator"), None).await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/yank")
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "slug": "blog",
+                            "version": "0.1.0",
+                            "reason": "Release needs to be withdrawn.",
+                            "reason_code": "not_supported"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("live yank request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("live yank error body should read");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "unexpected live /v2/catalog/yank response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(
+            String::from_utf8_lossy(&body).contains("not supported"),
+            "yank error should mention unsupported reason_code: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_owner_transfer_endpoint_rejects_invalid_reason_code() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for owner transfer invalid reason_code");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        insert_registry_owner_binding(&ctx, "blog", "governance:moderator").await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/owner-transfer")
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "slug": "blog",
+                            "new_owner_actor": "publisher:forum",
+                            "reason": "Ownership moved to a new maintained publisher identity.",
+                            "reason_code": "not_supported"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("live owner transfer request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("live owner transfer error body should read");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "unexpected /v2/catalog/owner-transfer response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(
+            String::from_utf8_lossy(&body).contains("not supported"),
+            "owner transfer error should mention unsupported reason_code: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_validation_stage_endpoint_accepts_dry_run_contract() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
@@ -1328,6 +1515,663 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_publish_request_changes_endpoint_persists_reason_code_in_audit_event() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for request-changes audit");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v2/catalog/publish/{}/request-changes",
+                        approved.id
+                    ))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Artifact metadata drifted from the reviewed contract.",
+                            "reason_code": "artifact_mismatch"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("request-changes request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("request-changes body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected live /v2/catalog/publish/{{request_id}}/request-changes response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value =
+            serde_json::from_slice(&body).expect("request-changes response should be valid json");
+        assert_eq!(
+            payload.get("action").and_then(Value::as_str),
+            Some("request_changes")
+        );
+        assert_eq!(
+            payload.get("status").and_then(Value::as_str),
+            Some("changes_requested")
+        );
+
+        let persisted_request = crate::models::registry_publish_request::Entity::find()
+            .filter(crate::models::registry_publish_request::Column::Id.eq(approved.id.clone()))
+            .one(&ctx.db)
+            .await
+            .expect("request lookup should succeed")
+            .expect("request should persist");
+        assert_eq!(
+            persisted_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::ChangesRequested
+        );
+        assert_eq!(
+            persisted_request.changes_requested_reason.as_deref(),
+            Some("Artifact metadata drifted from the reviewed contract.")
+        );
+        assert_eq!(
+            persisted_request.changes_requested_reason_code.as_deref(),
+            Some("artifact_mismatch")
+        );
+
+        let event = crate::models::registry_governance_event::Entity::find()
+            .filter(crate::models::registry_governance_event::Column::RequestId.eq(approved.id))
+            .filter(
+                crate::models::registry_governance_event::Column::EventType.eq("changes_requested"),
+            )
+            .order_by_desc(crate::models::registry_governance_event::Column::CreatedAt)
+            .one(&ctx.db)
+            .await
+            .expect("governance event lookup should succeed")
+            .expect("changes_requested event should persist");
+        assert_eq!(
+            event.details.get("reason_code").and_then(Value::as_str),
+            Some("artifact_mismatch")
+        );
+        assert_eq!(
+            event.details.get("reason").and_then(Value::as_str),
+            Some("Artifact metadata drifted from the reviewed contract.")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_publish_hold_and_resume_endpoints_round_trip_request_status() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for hold/resume lifecycle");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+
+        let hold_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/hold", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Release window is temporarily closed.",
+                            "reason_code": "release_window"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("hold request should succeed");
+        let hold_status = hold_response.status();
+        let hold_body = to_bytes(hold_response.into_body(), usize::MAX)
+            .await
+            .expect("hold body should read");
+        assert_eq!(
+            hold_status,
+            StatusCode::OK,
+            "unexpected live /v2/catalog/publish/{{request_id}}/hold response body: {}",
+            String::from_utf8_lossy(&hold_body)
+        );
+        let hold_payload: Value =
+            serde_json::from_slice(&hold_body).expect("hold response should be valid json");
+        assert_eq!(
+            hold_payload.get("action").and_then(Value::as_str),
+            Some("hold")
+        );
+        assert_eq!(
+            hold_payload.get("status").and_then(Value::as_str),
+            Some("on_hold")
+        );
+
+        let held_request = crate::models::registry_publish_request::Entity::find()
+            .filter(crate::models::registry_publish_request::Column::Id.eq(approved.id.clone()))
+            .one(&ctx.db)
+            .await
+            .expect("held request lookup should succeed")
+            .expect("held request should persist");
+        assert_eq!(
+            held_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold
+        );
+        assert_eq!(held_request.held_from_status.as_deref(), Some("approved"));
+
+        let resume_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/resume", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Release window reopened after review.",
+                            "reason_code": "review_complete"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("resume request should succeed");
+        let resume_status = resume_response.status();
+        let resume_body = to_bytes(resume_response.into_body(), usize::MAX)
+            .await
+            .expect("resume body should read");
+        assert_eq!(
+            resume_status,
+            StatusCode::OK,
+            "unexpected live /v2/catalog/publish/{{request_id}}/resume response body: {}",
+            String::from_utf8_lossy(&resume_body)
+        );
+        let resume_payload: Value =
+            serde_json::from_slice(&resume_body).expect("resume response should be valid json");
+        assert_eq!(
+            resume_payload.get("action").and_then(Value::as_str),
+            Some("resume")
+        );
+        assert_eq!(
+            resume_payload.get("status").and_then(Value::as_str),
+            Some("approved")
+        );
+
+        let resumed_request = crate::models::registry_publish_request::Entity::find()
+            .filter(crate::models::registry_publish_request::Column::Id.eq(approved.id.clone()))
+            .one(&ctx.db)
+            .await
+            .expect("resumed request lookup should succeed")
+            .expect("resumed request should persist");
+        assert_eq!(
+            resumed_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        );
+
+        let event = crate::models::registry_governance_event::Entity::find()
+            .filter(crate::models::registry_governance_event::Column::RequestId.eq(approved.id))
+            .filter(
+                crate::models::registry_governance_event::Column::EventType.eq("request_resumed"),
+            )
+            .order_by_desc(crate::models::registry_governance_event::Column::CreatedAt)
+            .one(&ctx.db)
+            .await
+            .expect("resume event lookup should succeed")
+            .expect("request_resumed event should persist");
+        assert_eq!(
+            event
+                .details
+                .get("resumed_to_status")
+                .and_then(Value::as_str),
+            Some("approved")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_publish_status_actor_filtering_keeps_summary_fields_stable_for_review_actions(
+    ) {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for actor-aware publish status");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        insert_registry_owner_binding(&ctx, "blog", "owner:blog").await;
+        insert_validation_stage(
+            &ctx,
+            &approved,
+            "compile_smoke",
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Queued,
+            1,
+            "Compile smoke still waits for external completion.",
+        )
+        .await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let actorless_payload =
+            fetch_publish_status_payload(base_router.clone(), &approved.id, None).await;
+        let owner_payload =
+            fetch_publish_status_payload(base_router.clone(), &approved.id, Some("owner:blog"))
+                .await;
+        let governance_payload = fetch_publish_status_payload(
+            base_router.clone(),
+            &approved.id,
+            Some("governance:moderator"),
+        )
+        .await;
+        let unrelated_payload =
+            fetch_publish_status_payload(base_router, &approved.id, Some("publisher:outsider"))
+                .await;
+
+        let actorless_actions = publish_status_action_keys(&actorless_payload);
+        let owner_actions = publish_status_action_keys(&owner_payload);
+        let governance_actions = publish_status_action_keys(&governance_payload);
+        let unrelated_actions = publish_status_action_keys(&unrelated_payload);
+
+        for action in ["approve", "request_changes", "hold", "reject"] {
+            assert!(
+                actorless_actions
+                    .iter()
+                    .any(|candidate| candidate == action),
+                "actorless status should advertise '{action}': {:?}",
+                actorless_actions
+            );
+            assert!(
+                owner_actions.iter().any(|candidate| candidate == action),
+                "owner actor should advertise '{action}': {:?}",
+                owner_actions
+            );
+            assert!(
+                governance_actions
+                    .iter()
+                    .any(|candidate| candidate == action),
+                "governance actor should advertise '{action}': {:?}",
+                governance_actions
+            );
+            assert!(
+                !unrelated_actions
+                    .iter()
+                    .any(|candidate| candidate == action),
+                "unrelated actor should not advertise '{action}': {:?}",
+                unrelated_actions
+            );
+        }
+
+        for payload in [
+            &actorless_payload,
+            &owner_payload,
+            &governance_payload,
+            &unrelated_payload,
+        ] {
+            assert_eq!(
+                payload
+                    .get("approvalOverrideRequired")
+                    .and_then(Value::as_bool),
+                Some(true)
+            );
+            assert_eq!(
+                payload.get("validationStages"),
+                actorless_payload.get("validationStages")
+            );
+            assert_eq!(
+                payload.get("followUpGates"),
+                actorless_payload.get("followUpGates")
+            );
+            assert_eq!(payload.get("next_step"), actorless_payload.get("next_step"));
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_publish_status_actor_filtering_handles_validate_and_resume_actions() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for validate/resume actor-aware status");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let mut submitted = create_approved_publish_request_for_slug(&ctx, "forum").await;
+        let mut submitted_active =
+            crate::models::registry_publish_request::ActiveModel::from(submitted.clone());
+        submitted_active.status =
+            Set(crate::models::registry_publish_request::RegistryPublishRequestStatus::Submitted);
+        submitted_active.approved_at = Set(None);
+        submitted_active.updated_at = Set(chrono::Utc::now());
+        submitted = submitted_active
+            .update(&ctx.db)
+            .await
+            .expect("submitted request should persist");
+        insert_registry_owner_binding(&ctx, "forum", "owner:forum").await;
+
+        let mut held = create_approved_publish_request_for_slug(&ctx, "pages").await;
+        let mut held_active =
+            crate::models::registry_publish_request::ActiveModel::from(held.clone());
+        held_active.status =
+            Set(crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold);
+        held_active.held_from_status = Set(Some("submitted".to_string()));
+        held_active.held_at = Set(Some(chrono::Utc::now()));
+        held_active.held_by = Set(Some("governance:moderator".to_string()));
+        held_active.held_reason = Set(Some("Release train paused.".to_string()));
+        held_active.held_reason_code = Set(Some("release_window".to_string()));
+        held_active.approved_at = Set(None);
+        held_active.updated_at = Set(chrono::Utc::now());
+        held = held_active
+            .update(&ctx.db)
+            .await
+            .expect("held request should persist");
+        insert_registry_owner_binding(&ctx, "pages", "owner:pages").await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+
+        let submitted_owner =
+            fetch_publish_status_payload(base_router.clone(), &submitted.id, Some("owner:forum"))
+                .await;
+        let submitted_governance = fetch_publish_status_payload(
+            base_router.clone(),
+            &submitted.id,
+            Some("governance:moderator"),
+        )
+        .await;
+        let submitted_unrelated = fetch_publish_status_payload(
+            base_router.clone(),
+            &submitted.id,
+            Some("publisher:outsider"),
+        )
+        .await;
+        let held_owner =
+            fetch_publish_status_payload(base_router.clone(), &held.id, Some("owner:pages")).await;
+        let held_governance = fetch_publish_status_payload(
+            base_router.clone(),
+            &held.id,
+            Some("governance:moderator"),
+        )
+        .await;
+        let held_unrelated =
+            fetch_publish_status_payload(base_router, &held.id, Some("publisher:outsider")).await;
+
+        let submitted_owner_actions = publish_status_action_keys(&submitted_owner);
+        let submitted_governance_actions = publish_status_action_keys(&submitted_governance);
+        let submitted_unrelated_actions = publish_status_action_keys(&submitted_unrelated);
+        assert!(
+            submitted_owner_actions
+                .iter()
+                .any(|candidate| candidate == "validate"),
+            "owner actor should advertise validate: {:?}",
+            submitted_owner_actions
+        );
+        assert!(
+            submitted_governance_actions
+                .iter()
+                .any(|candidate| candidate == "validate"),
+            "governance actor should advertise validate: {:?}",
+            submitted_governance_actions
+        );
+        assert!(
+            !submitted_unrelated_actions
+                .iter()
+                .any(|candidate| candidate == "validate"),
+            "unrelated actor should not advertise validate: {:?}",
+            submitted_unrelated_actions
+        );
+
+        let held_owner_actions = publish_status_action_keys(&held_owner);
+        let held_governance_actions = publish_status_action_keys(&held_governance);
+        let held_unrelated_actions = publish_status_action_keys(&held_unrelated);
+        assert!(
+            held_owner_actions
+                .iter()
+                .any(|candidate| candidate == "resume"),
+            "owner actor should advertise resume: {:?}",
+            held_owner_actions
+        );
+        assert!(
+            held_governance_actions
+                .iter()
+                .any(|candidate| candidate == "resume"),
+            "governance actor should advertise resume: {:?}",
+            held_governance_actions
+        );
+        assert!(
+            !held_unrelated_actions
+                .iter()
+                .any(|candidate| candidate == "resume"),
+            "unrelated actor should not advertise resume: {:?}",
+            held_unrelated_actions
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_remote_runner_claim_and_complete_round_trip_stage_status() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for remote runner lifecycle");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "registry": {
+                    "remote_executor": {
+                        "enabled": true,
+                        "shared_token": "test-runner-token",
+                        "lease_ttl_ms": 120000,
+                        "requeue_scan_interval_ms": 15000
+                    }
+                },
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        insert_validation_stage(
+            &ctx,
+            &approved,
+            "compile_smoke",
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Queued,
+            1,
+            "Compile smoke queued for remote runner execution.",
+        )
+        .await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let claim_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/runner/claim")
+                    .header("content-type", "application/json")
+                    .header("x-rustok-runner-token", "test-runner-token")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "runner_id": "worker-1",
+                            "supportedStages": ["compile_smoke", "targeted_tests"]
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("runner claim request should succeed");
+        assert_eq!(claim_response.status(), StatusCode::OK);
+        let claim_body = to_bytes(claim_response.into_body(), usize::MAX)
+            .await
+            .expect("claim body should read");
+        let claim_payload: Value =
+            serde_json::from_slice(&claim_body).expect("claim response should be valid json");
+        let claim_id = claim_payload["claim"]["claimId"]
+            .as_str()
+            .expect("claimId should be present")
+            .to_string();
+        assert_eq!(
+            claim_payload["claim"]["stageKey"].as_str(),
+            Some("compile_smoke")
+        );
+
+        let claimed_stage = crate::models::registry_validation_stage::Entity::find()
+            .filter(
+                crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()),
+            )
+            .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
+            .order_by_desc(crate::models::registry_validation_stage::Column::AttemptNumber)
+            .one(&ctx.db)
+            .await
+            .expect("claimed stage lookup should succeed")
+            .expect("claimed stage should persist");
+        assert_eq!(
+            claimed_stage.status,
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Running
+        );
+        assert_eq!(claimed_stage.claimed_by.as_deref(), Some("worker-1"));
+
+        let complete_response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/runner/{claim_id}/complete"))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-runner-token", "test-runner-token")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "runner_id": "worker-1",
+                            "detail": "Compile smoke completed successfully on remote worker.",
+                            "reason_code": "local_runner_passed"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("runner completion request should succeed");
+        assert_eq!(complete_response.status(), StatusCode::OK);
+
+        let completed_stage = crate::models::registry_validation_stage::Entity::find()
+            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id))
+            .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
+            .order_by_desc(crate::models::registry_validation_stage::Column::AttemptNumber)
+            .one(&ctx.db)
+            .await
+            .expect("completed stage lookup should succeed")
+            .expect("completed stage should persist");
+        assert_eq!(
+            completed_stage.status,
+            crate::models::registry_validation_stage::RegistryValidationStageStatus::Passed
+        );
+        assert!(completed_stage.claim_id.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_detail_excludes_approved_but_unpublished_v2_requests() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None).await.expect(
+            "server migrations should apply for approved-but-unpublished v1 projection test",
+        );
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let slug = "module-system-shadow-v2-only";
+        let _approved = create_approved_publish_request_for_slug(&ctx, slug).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/catalog/{slug}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("v1 catalog detail request should complete");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
@@ -1464,6 +2308,72 @@ mod tests {
             .expect("registry-only stage request should complete");
         assert_eq!(stage_response.status(), StatusCode::NOT_FOUND);
 
+        let request_changes_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/request-changes")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "reason": "Registry-only host must stay read-only",
+                            "reason_code": "artifact_mismatch"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only request-changes request should complete");
+        assert_eq!(request_changes_response.status(), StatusCode::NOT_FOUND);
+
+        let hold_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/hold")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "reason": "Registry-only host must stay read-only",
+                            "reason_code": "release_window"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only hold request should complete");
+        assert_eq!(hold_response.status(), StatusCode::NOT_FOUND);
+
+        let resume_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/catalog/publish/rpr_test/resume")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": true,
+                            "reason": "Registry-only host must stay read-only",
+                            "reason_code": "review_complete"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("registry-only resume request should complete");
+        assert_eq!(resume_response.status(), StatusCode::NOT_FOUND);
+
         let owner_transfer_response = app
             .clone()
             .oneshot(
@@ -1549,6 +2459,14 @@ mod tests {
     async fn create_approved_publish_request(
         ctx: &loco_rs::app::AppContext,
     ) -> crate::models::registry_publish_request::Model {
+        create_approved_publish_request_for_slug(ctx, "blog").await
+    }
+
+    async fn create_approved_publish_request_for_slug(
+        ctx: &loco_rs::app::AppContext,
+        slug: &str,
+    ) -> crate::models::registry_publish_request::Model {
+        let publisher = format!("publisher:{slug}");
         let governance =
             crate::services::registry_governance::RegistryGovernanceService::new(ctx.db.clone());
         let created = governance
@@ -1557,11 +2475,14 @@ mod tests {
                     schema_version: 1,
                     dry_run: false,
                     module: crate::services::marketplace_catalog::RegistryPublishModuleRequest {
-                        slug: "blog".to_string(),
+                        slug: slug.to_string(),
                         version: "0.1.0".to_string(),
-                        crate_name: "rustok-blog".to_string(),
-                        name: "Blog".to_string(),
-                        description: "Blog and news module contract preview.".to_string(),
+                        crate_name: format!("rustok-{}", slug.replace('-', "_")),
+                        name: format!("{} module", slug),
+                        description: format!(
+                            "Registry publish request test contract preview for slug {}.",
+                            slug
+                        ),
                         ownership: "first_party".to_string(),
                         trust_level: "verified".to_string(),
                         license: "MIT".to_string(),
@@ -1578,8 +2499,8 @@ mod tests {
                             },
                     },
                 },
-                "xtask:module-publish",
-                Some("publisher:blog"),
+                "governance:moderator",
+                Some(publisher.as_str()),
                 &[],
             )
             .await
@@ -1620,11 +2541,126 @@ mod tests {
             started_at: Set(None),
             finished_at: Set(None),
             last_error: Set(None),
+            claim_id: Set(None),
+            claimed_by: Set(None),
+            claim_expires_at: Set(None),
+            last_heartbeat_at: Set(None),
+            runner_kind: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }
         .insert(&ctx.db)
         .await
         .expect("validation stage should insert")
+    }
+
+    async fn insert_registry_owner_binding(
+        ctx: &loco_rs::app::AppContext,
+        slug: &str,
+        owner_actor: &str,
+    ) -> crate::models::registry_module_owner::Model {
+        let now = chrono::Utc::now();
+        crate::models::registry_module_owner::ActiveModel {
+            slug: Set(slug.to_string()),
+            owner_actor: Set(owner_actor.to_string()),
+            bound_by: Set("test:setup".to_string()),
+            bound_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("owner binding should insert")
+    }
+
+    async fn insert_active_release(
+        ctx: &loco_rs::app::AppContext,
+        slug: &str,
+        version: &str,
+        publisher: Option<&str>,
+        request_id: Option<&str>,
+    ) -> crate::models::registry_module_release::Model {
+        let now = chrono::Utc::now();
+        crate::models::registry_module_release::ActiveModel {
+            id: Set(format!("rrl_{}", uuid::Uuid::new_v4().simple())),
+            request_id: Set(request_id.map(ToString::to_string)),
+            slug: Set(slug.to_string()),
+            version: Set(version.to_string()),
+            crate_name: Set(format!("rustok-{}", slug.replace('-', "_"))),
+            module_name: Set(format!("{} module", slug)),
+            description: Set(format!(
+                "Published release test contract preview for slug {}.",
+                slug
+            )),
+            ownership: Set("first_party".to_string()),
+            trust_level: Set("verified".to_string()),
+            license: Set("MIT".to_string()),
+            entry_type: Set(Some("BlogModule".to_string())),
+            marketplace: Set(serde_json::json!({
+                "category": "content",
+                "tags": ["content"]
+            })),
+            ui_packages: Set(serde_json::json!({})),
+            status: Set(
+                crate::models::registry_module_release::RegistryModuleReleaseStatus::Active,
+            ),
+            publisher: Set(publisher.unwrap_or("publisher:blog").to_string()),
+            artifact_path: Set(Some(format!("artifacts/{slug}/{version}.tar"))),
+            artifact_url: Set(Some(format!(
+                "https://modules.rustok.dev/artifacts/{slug}/{version}.tar"
+            ))),
+            checksum_sha256: Set(Some("deadbeef".repeat(8))),
+            artifact_size: Set(Some(1024)),
+            yanked_reason: Set(None),
+            yanked_by: Set(None),
+            yanked_at: Set(None),
+            published_at: Set(now),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("active release should insert")
+    }
+
+    async fn fetch_publish_status_payload(
+        router: axum::Router,
+        request_id: &str,
+        actor: Option<&str>,
+    ) -> Value {
+        let mut request = Request::builder().uri(format!("/v2/catalog/publish/{request_id}"));
+        if let Some(actor) = actor {
+            request = request.header("x-rustok-actor", actor);
+        }
+
+        let response = router
+            .oneshot(request.body(Body::empty()).expect("request"))
+            .await
+            .expect("publish status request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("publish status body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v2/catalog/publish/{{request_id}} response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        serde_json::from_slice(&body).expect("publish status response should be valid json")
+    }
+
+    fn publish_status_action_keys(payload: &Value) -> Vec<String> {
+        payload
+            .get("governanceActions")
+            .and_then(Value::as_array)
+            .map(|actions| {
+                actions
+                    .iter()
+                    .filter_map(|action| action.get("key").and_then(Value::as_str))
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }

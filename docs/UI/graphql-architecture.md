@@ -1,123 +1,86 @@
-# Архитектура GraphQL и Leptos server functions
+# GraphQL и Leptos server functions
 
-- **Дата:** 2026-04-02
-- **Статус:** Актуальный transport contract для UI-контуров
-- **Связанные ADR:** `DECISIONS/2026-03-29-leptos-server-functions-as-internal-data-layer.md`, `DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md`
+Этот документ фиксирует текущий transport contract для UI-контуров RusToK.
 
-## Главное правило
+## Основное правило
 
-Для Leptos UI в RusToK действует **dual-path модель**:
+Для Leptos UI в платформе действует dual-path модель:
 
 - native `#[server]` functions — основной внутренний data-layer для `apps/admin`, `apps/storefront` и module-owned Leptos UI packages;
-- GraphQL (`/api/graphql`) — обязательный параллельный контракт, который **не удаляется** и остаётся доступен для headless-клиентов, Next.js UI и fallback-веток в Leptos.
+- GraphQL `/api/graphql` — обязательный параллельный transport contract для Next.js hosts, headless clients и fallback-веток в Leptos.
 
-`#[server]` не заменяет GraphQL на уровне платформы. Он добавляет более короткий внутренний путь для Leptos.
+`#[server]` не заменяет GraphQL на уровне платформы. Он добавляет более короткий внутренний путь для Leptos hosts.
 
-## Матрица по UI-стекам
+## Матрица по UI hosts
 
-| Контур | Основной transport | Параллельный/обязательный transport |
-|---|---|---|
+| Host | Основной transport | Обязательный параллельный transport |
+|------|--------------------|--------------------------------------|
 | `apps/admin` | `#[server]` | GraphQL |
 | `apps/storefront` | `#[server]` | GraphQL |
-| module-owned Leptos UI crates | `#[server]` | GraphQL |
+| module-owned Leptos UI | `#[server]` | GraphQL |
 | `apps/next-admin` | GraphQL | — |
 | `apps/next-frontend` | GraphQL | — |
-| mobile / external integrations | GraphQL | — |
+| external/mobile clients | GraphQL | — |
 
-## Базовый паттерн для Leptos
+## Contract для Leptos UI
+
+- Leptos host или module-owned package должен сначала проектировать локальный API-слой поверх `#[server]`.
+- Если native path ещё не покрывает нужный сценарий, допускается fallback к GraphQL.
+- Новый Leptos UI не должен проектироваться как GraphQL-only, если `#[server]` path реалистичен.
+- GraphQL queries и mutations нельзя убирать только потому, что появился native путь.
+
+Базовый паттерн:
 
 ```text
 UI component
-  -> local api function
+  -> local API function
   -> try native #[server]
-  -> on unsupported/error path fallback to GraphQL
-  -> service layer / DB
+  -> fallback to GraphQL when required
+  -> service layer
 ```
 
-### В монолите
-
-```text
-HTTP request -> Axum -> Leptos SSR -> #[server] fn -> service layer -> DB
-```
-
-Во время SSR это может быть in-process вызов без GraphQL resolver-слоя.
-
-### В hydration / client navigation / standalone Leptos
-
-```text
-browser -> POST /api/fn/* -> server -> service layer -> DB
-```
-
-Это всё ещё native Leptos transport, но уже через HTTP endpoint `leptos_axum`.
-
-### GraphQL path
-
-```text
-client -> POST /api/graphql -> GraphQL resolver -> service layer -> DB
-```
+## Contract для GraphQL
 
 GraphQL остаётся:
 
 - публичным backend contract;
-- транспортом для Next.js UI;
-- fallback-веткой для Leptos, пока native coverage не полная;
-- transport surface для persisted queries и совместимости со старыми модулями.
-- security boundary для чувствительных admin-операций задаётся сервером по AST/root fields, а не по client-supplied `operationName`.
-- telemetry по persisted hashes допустима, но allow/deny policy должна жить в shared server/runtime contract и shared GraphQL adapters, а не в app-specific экранах.
-- текущий enforcement path в `apps/server` живёт в shared GraphQL schema extension, поэтому одинаково применяется к `/api/graphql` и GraphQL websocket execution path до входа в resolvers.
+- основным transport-слоем для Next.js hosts;
+- fallback-путём для Leptos hosts;
+- transport surface для websocket subscriptions и совместимости с headless clients.
 
-## Что обязаны делать новые Leptos модули
+Security и allow/deny policy для чувствительных admin-операций должны определяться server-side runtime-слоем, а не client-supplied `operationName` или app-local эвристиками.
 
-### Если модуль поставляет Leptos UI
-
-- Не ходить из UI напрямую в `reqwest`/GraphQL как в единственный путь.
-- Добавлять локальный API-слой рядом с UI crate или host integration.
-- Для read/write сценариев сначала проектировать native `#[server]` boundary.
-- Сохранять GraphQL query/mutation path как совместимый параллельный transport.
-
-### Если модуль поставляет только Next.js UI
-
-- Использовать GraphQL как основной transport.
-- Не требовать от Next.js клиента `#[server]` contracts.
-
-## Что обязаны делать host-приложения
+## Обязанности host-приложений
 
 ### `apps/admin`
 
-- Поддерживать `csr`, `ssr`, `hydrate` профили там, где это уже введено.
-- Для Leptos data access использовать native-first pattern.
-- Не удалять существующие GraphQL queries/mutations без отдельного решения уровня платформы.
+- использовать native-first pattern для Leptos data access;
+- сохранять GraphQL path как живой parallel contract;
+- не переносить transport policy в app-local ad hoc код.
 
 ### `apps/storefront`
 
-- Для host shell и module-owned storefront packages использовать native-first pattern.
-- Оставлять GraphQL path доступным для fallback и headless parity.
+- использовать native-first pattern для host shell и module-owned storefront packages;
+- сохранять GraphQL path для fallback и parity с headless storefront clients.
 
 ### `apps/server`
 
-- Регистрировать `/api/fn/*` через `leptos_axum::handle_server_fns()`.
-- Сохранять `/api/graphql` как отдельный живой route.
-- Не трактовать внедрение server functions как повод убирать GraphQL schema/resolvers.
-- Для sensitive admin GraphQL documents применять server-side policy независимо от того, пришёл запрос из host app или из module-owned UI package.
-- Если вводится approved-document/APQ режим, он должен подключаться через shared GraphQL transport adapters для `apps/next-*` и GraphQL fallback в Leptos, а не через разрозненный app-level код.
+- держать `/api/fn/*` и `/api/graphql` как параллельные runtime surfaces;
+- не трактовать внедрение server functions как повод убирать GraphQL schema или resolvers;
+- применять shared policy к HTTP GraphQL и websocket execution path одинаково.
 
 ## Что запрещено
 
-- Формулировать документацию как “GraphQL-only для Leptos”, если код уже использует `#[server]`.
-- Формулировать документацию как “Leptos больше не использует GraphQL вообще”, если GraphQL сохранён как fallback/parallel contract.
-- Создавать новый module-owned Leptos UI пакет с единственным transport path через GraphQL, когда native `#[server]` слой возможен.
-- Удалять GraphQL route/resolvers при миграции Leptos UI на native path.
+- описывать Leptos UI как GraphQL-only, если в коде уже существует `#[server]` path;
+- описывать Leptos migration как отказ от GraphQL вообще;
+- удалять GraphQL route или resolver только из-за появления native Leptos transport;
+- вводить разные transport contracts для app host и module-owned UI без явного platform-level решения.
 
-## Проверка документации и кода
+## Связанные документы
 
-При изменении Leptos UI нужно синхронизировать:
-
-- `AGENTS.md`
-- `docs/AI_CONTEXT.md`
-- `docs/UI/storefront.md`
-- локальные `README.md` и `docs/README.md` в `apps/admin`, `apps/storefront`, `apps/server`
-- README module-owned Leptos UI crates, если у них есть собственный data-layer
-
-Контрольный вопрос для нового UI-кода:
-
-> Если это Leptos UI, есть ли рядом native `#[server]` path и сохранился ли GraphQL как параллельный контракт?
+- [UI index](./README.md)
+- [Storefront contract](./storefront.md)
+- [Документация `apps/admin`](../../apps/admin/docs/README.md)
+- [Документация `apps/storefront`](../../apps/storefront/docs/README.md)
+- [Документация `apps/server`](../../apps/server/docs/README.md)
+- [Карта документации](../index.md)

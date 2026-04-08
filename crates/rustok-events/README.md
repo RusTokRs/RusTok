@@ -1,43 +1,34 @@
 # rustok-events
 
-`rustok-events` is the canonical event-contracts crate for RusToK.
+## Purpose
 
-## Current state
+`rustok-events` owns the canonical event contracts, schemas, and validation rules for RusToK.
 
-This crate owns `DomainEvent`, `EventEnvelope`, event schema metadata, and event validation
-rules. `rustok-core` keeps compatibility re-exports so existing consumers can migrate
-without a breaking cut-over.
+## Responsibilities
 
-## Goal
+- Define `DomainEvent`, `EventEnvelope`, and the event schema registry.
+- Keep event validation and schema metadata independent from runtime infrastructure.
+- Provide a stable compatibility path while `rustok-core` keeps transitional re-exports.
+- Serve as the single source of truth for event payload evolution policy.
 
-Keep domain event contracts independent from runtime infrastructure while preserving
-backward compatibility for downstream modules.
+## Entry points
 
-## Public API
+- `DomainEvent`
+- `EventEnvelope`
+- `EventSchema`
+- `FieldSchema`
+- `event_schema`
+- `EVENT_SCHEMAS`
+- `ValidateEvent`
+- `EventValidationError`
 
-- `rustok_events::DomainEvent`
-- `rustok_events::EventEnvelope`
-- `rustok_events::EventSchema`
-- `rustok_events::FieldSchema`
-- `rustok_events::event_schema`
-- `rustok_events::EVENT_SCHEMAS`
-- `rustok_events::ValidateEvent`
-- `rustok_events::EventValidationError`
+## Interactions
 
-## Compatibility
+- Used by domain modules that publish or consume typed RusToK events.
+- Works with `rustok-core`, which keeps compatibility re-exports during the transition.
+- Used by transport-oriented crates such as `rustok-outbox` and `rustok-iggy` through shared event contracts rather than transport-owned schemas.
 
-- `rustok_core::events::{DomainEvent, EventEnvelope}` remains available as a transition path.
-- `rustok_events::RootDomainEvent` and `rustok_events::RootEventEnvelope` are stable aliases
-  for compatibility-oriented consumers and tests.
+## Docs
 
-## Contract policy
-
-- Prefer additive payload evolution; keep `event_type()` stable for non-breaking changes.
-- Treat schema-version bumps as breaking changes that require docs and migration notes.
-- Require validation, schema registry coverage, and roundtrip tests for every event variant.
-
-## Release gate
-
-- `cargo test -p rustok-events`
-- `cargo check -p rustok-events -p rustok-core`
-- Confirm schema registry coverage matches the full `DomainEvent` variant set
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

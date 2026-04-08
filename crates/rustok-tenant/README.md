@@ -27,3 +27,8 @@
 - `CreateTenantInput`
 - `UpdateTenantInput`
 - `ToggleModuleInput`
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

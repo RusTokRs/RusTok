@@ -34,6 +34,11 @@ pub struct Model {
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
+    pub claim_id: Option<String>,
+    pub claimed_by: Option<String>,
+    pub claim_expires_at: Option<DateTime<Utc>>,
+    pub last_heartbeat_at: Option<DateTime<Utc>>,
+    pub runner_kind: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

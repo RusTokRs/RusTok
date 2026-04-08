@@ -1,7 +1,16 @@
 # rustok-mcp
 
+## Purpose
+
 `rustok-mcp` is RusToK's MCP adapter crate. It integrates platform services with the official Rust
 SDK (`rmcp`) and keeps MCP transport/protocol concerns out of business-domain crates.
+
+## Responsibilities
+
+- Expose RusToK functionality as typed MCP tools.
+- Keep MCP protocol and transport concerns out of domain crates.
+- Provide the governed bridge between MCP clients and platform capabilities such as Alloy.
+- Preserve the boundary between protocol integration and business/runtime ownership.
 
 ## Scope
 
@@ -190,9 +199,17 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - `alloy` when Alloy tools are enabled
 - `apps/server` for persisted MCP clients/tokens/policies/audit and runtime bridge wiring
 
-## Documentation
+## Entry points
 
-- Local component docs: [`./docs/`](./docs/)
+- `serve_stdio`
+- `McpServerConfig`
+- `RusToKMcpServer`
+- `AlloyMcpState`
+- MCP tool registry exported from `src/lib.rs`
+
+## Docs
+
+- [Module docs](./docs/README.md)
 - RusToK MCP implementation plan: [`./docs/implementation-plan.md`](./docs/implementation-plan.md)
 - Central MCP reference index: [`../../docs/references/mcp/README.md`](../../docs/references/mcp/README.md)
 - Platform docs map: [`../../docs/index.md`](../../docs/index.md)

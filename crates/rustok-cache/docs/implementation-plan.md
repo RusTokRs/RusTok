@@ -1,54 +1,49 @@
-# rustok-cache — План реализации
+# План реализации `rustok-cache`
 
-## Статус
+Статус: core cache baseline зафиксирован; модуль приведён к обязательному
+manifest/doc contract.
 
-`CacheModule` и `CacheService` уже реализованы (выделены из `rustok-core`, коммит `81e8bed`).
-Этот документ фиксирует, что сделано, что осталось, и план доработок.
+## Область работ
 
-## Что реализовано
+- удерживать `rustok-cache` как capability-only core module без собственного UI;
+- синхронизировать cache backend contract, local docs и manifest metadata;
+- расширять cache semantics без размазывания backend wiring по host-слою.
 
-- [x] `CacheBackend` trait (в `rustok-core`)
-- [x] `MokaBackend` — in-process кэш с TTL
-- [x] `RedisBackend` — Redis connection-manager, get/set/del
-- [x] `FallbackCacheBackend` — Redis → Moka деградация
-- [x] `CacheModule` — `impl RusToKModule`, `ModuleKind::Core`
-- [x] `CacheService` — tenant-aware API (namespace, TTL, invalidate)
-- [x] `CacheBackendFactory` — создание backend из config
+## Текущее состояние
 
-## Что осталось
+- `CacheModule` и `CacheService` уже выделены из `rustok-core`;
+- модуль публикует единый cache backend contract для runtime;
+- root `README.md`, local docs и `rustok-module.toml` входят в scoped audit path;
+- Redis support остаётся optional feature, а in-memory/fallback path — частью базового contract.
 
-### Приоритет: высокий
+## Этапы
 
-- [ ] Anti-stampede коалесцинг (через `tokio::sync::broadcast` или `DashMap<key, OnceLock>`)
-- [ ] Circuit breaker для Redis backend
-- [ ] Redis pub/sub инвалидация между инстансами
+### 1. Contract stability
 
-### Приоритет: средний
+- [x] вернуть `rustok-module.toml` в module standard path;
+- [x] выровнять local docs и root README под единый contract;
+- [ ] удерживать sync между backend contract и host integration tests.
 
-- [ ] `invalidate_pattern` с glob-паттернами
-- [ ] Batch get/set API
-- [ ] Prometheus-метрики (hit/miss/errors/degraded)
-- [ ] Health check endpoint (`/metrics` + `ModuleHealth`)
+### 2. Runtime hardening
 
-### Приоритет: низкий
+- [ ] завершить anti-stampede коалесцинг;
+- [ ] завершить circuit breaker для Redis backend;
+- [ ] завершить Redis pub/sub invalidation между инстансами.
 
-- [ ] Negative cache (кэширование "ключ не существует")
-- [ ] Cache warming strategies
-- [ ] Интеграционные тесты с реальным Redis (через `rustok-test-utils`)
+### 3. Operability
 
-## Зависимости от других crates
+- [ ] довести Prometheus metrics и health semantics до production-ready слоя;
+- [ ] покрыть multi-instance и real-Redis сценарии интеграционными тестами;
+- [ ] документировать новые operational guarantees вместе с изменениями runtime contract.
 
-| Crate | Зависимость |
-|-------|------------|
-| `rustok-core` | `CacheBackend` trait, `ModuleRegistry`, `RusToKModule` |
-| `moka` | In-process кэш |
-| `redis` | Redis client (опциональный feature `redis-cache`) |
+## Проверка
 
-## Definition of Done
+- `cargo xtask module validate cache`
+- `cargo xtask module test cache`
+- targeted runtime tests для backend selection, fallback и health semantics
 
-- [ ] Anti-stampede реализован и покрыт тестами
-- [ ] Circuit breaker с метриками
-- [ ] Redis pub/sub инвалидация работает в multi-instance сценарии
-- [ ] Все метрики доступны через `/metrics`
-- [ ] Health check возвращает корректный статус при недоступном Redis
-- [ ] Интеграционные тесты в `tests/`
+## Правила обновления
+
+1. При изменении cache backend contract сначала обновлять этот файл.
+2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
+3. При изменении module metadata синхронизировать `rustok-module.toml`.

@@ -132,3 +132,8 @@
   analytics surface.
 - The Next storefront package now mirrors the same live search and
   suggestions/autocomplete contract for parallel UI development.
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Platform docs index](../../docs/index.md)

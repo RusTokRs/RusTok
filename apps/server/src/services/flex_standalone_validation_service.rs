@@ -83,8 +83,6 @@ mod tests {
             id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             slug: "landing_form".to_string(),
-            name: "Landing Form".to_string(),
-            description: None,
             fields_config: definitions,
             settings: json!({}),
             is_active: true,

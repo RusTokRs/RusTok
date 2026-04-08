@@ -1,26 +1,28 @@
 # leptos-zustand
 
-## Назначение
-`crates/leptos-zustand` — модуль/приложение RusToK. Здесь находится его код и корневая документация.
+## Purpose
 
-## Взаимодействие
-- apps/admin
-- apps/storefront
-- frontend data stores and API clients
+`leptos-zustand` owns small serializable store snapshot/update contracts for Leptos state synchronization in RusToK.
 
-## Документация
-- Локальная документация: `./docs/`
-- Общая документация платформы: `/docs`
+## Responsibilities
 
-## Паспорт компонента
-- **Роль в системе:** Слой управления клиентским состоянием в Leptos/SSR-проектах.
-- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
-- **Взаимодействует с:**
-  - apps/admin
-  - apps/storefront
-  - клиентские API-адаптеры
-- **Точки входа:**
-  - `crates/leptos-zustand/src/lib.rs`
-- **Локальная документация:** `./docs/`
-- **Глобальная документация платформы:** `/docs/`
+- Represent serializable store snapshots.
+- Represent state transitions in a transport-friendly shape.
+- Keep lightweight shared store DTOs reusable across Leptos hosts and UI packages.
 
+## Entry points
+
+- `StoreSnapshot`
+- `StoreUpdate`
+
+## Interactions
+
+- Can be used by Leptos applications and shared UI packages that synchronize client state.
+- Works alongside app-local stores and API clients without owning business logic.
+- Stays intentionally small and generic rather than becoming a full state-management framework.
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Implementation plan](./docs/implementation-plan.md)
+- [Platform docs index](../../docs/index.md)

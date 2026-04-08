@@ -1,124 +1,160 @@
-# РђСЂС…РёС‚РµРєС‚СѓСЂРЅС‹Рµ РїСЂРёРЅС†РёРїС‹
+# Архитектурные принципы
 
-> РЎС‚Р°С‚СѓСЃ: current-state guidance
+> Статус: guidance по текущему состоянию
 
-Р”РѕРєСѓРјРµРЅС‚ С„РёРєСЃРёСЂСѓРµС‚ РїСЂРёРЅС†РёРїС‹, РїРѕ РєРѕС‚РѕСЂС‹Рј СЃРµР№С‡Р°СЃ РґРµСЂР¶РёС‚СЃСЏ Р°СЂС…РёС‚РµРєС‚СѓСЂР° RusToK.
+Это короткий набор правил, по которым удерживается архитектура RusToK.
 
-## 1. Modular monolith
+## 1. RusToK — modular monolith
 
-RusToK вЂ” СЌС‚Рѕ modular monolith, Р° РЅРµ РЅР°Р±РѕСЂ РЅРµР·Р°РІРёСЃРёРјС‹С… СЃРµСЂРІРёСЃРѕРІ.
+RusToK строится как modular monolith, а не как набор независимых сервисов.
 
-РЎР»РµРґСЃС‚РІРёСЏ:
+Следствия:
 
-- РѕР±С‰РёР№ composition root РЅР°С…РѕРґРёС‚СЃСЏ РІ `apps/server`;
-- platform modules РєРѕРјРїРѕРЅСѓСЋС‚СЃСЏ РІ РѕРґРёРЅ runtime;
-- РіСЂР°РЅРёС†С‹ РјРµР¶РґСѓ РјРѕРґСѓР»СЏРјРё РїСЂРѕС…РѕРґСЏС‚ РїРѕ РєРѕРЅС‚СЂР°РєС‚Р°Рј, Р° РЅРµ РїРѕ РїСЂРѕС†РµСЃСЃР°Рј.
+- composition root находится в `apps/server`
+- платформенные модули живут в одном runtime
+- границы между модулями проходят по контрактам, а не по процессам
 
-## 2. РўРѕР»СЊРєРѕ РґРІРµ РєР°С‚РµРіРѕСЂРёРё platform modules
+## 2. Для платформенных модулей есть только `Core` и `Optional`
 
-Р”Р»СЏ platform modules РґРѕРїСѓСЃС‚РёРјС‹ С‚РѕР»СЊРєРѕ:
+Platform module определяется через `modules.toml` и может относиться только к:
 
 - `Core`
 - `Optional`
 
-`Core` modules РІСЃРµРіРґР° Р°РєС‚РёРІРЅС‹.
-`Optional` modules СѓС‡Р°СЃС‚РІСѓСЋС‚ РІ build/runtime flow Рё Р·Р°С‚РµРј РјРѕРіСѓС‚ РїРµСЂРµРєР»СЋС‡Р°С‚СЊСЃСЏ РЅР° tenant level.
+`Core` modules всегда участвуют в runtime.  
+`Optional` modules участвуют в build/runtime composition и могут управляться на
+tenant level.
 
-РќРµ РґРѕРїСѓСЃРєР°РµС‚СЃСЏ СЃРєСЂС‹С‚Р°СЏ С‚СЂРµС‚СЊСЏ РєР°С‚РµРіРѕСЂРёСЏ вЂњРїРѕС‡С‚Рё РјРѕРґСѓР»СЊвЂќ, вЂњРѕР±СЏР·Р°С‚РµР»СЊРЅР°СЏ capability, РЅРѕ РЅРµ РјРѕРґСѓР»СЊвЂќ Рё С‚.Рї.
+Support/capability crate-ы не образуют третью taxonomy платформенных модулей.
 
-## 3. РќРµ СЃРјРµС€РёРІР°С‚СЊ СЂРѕР»СЊ, wiring Рё СѓРїР°РєРѕРІРєСѓ
+## 3. Role, taxonomy и crate-packaging нельзя смешивать
 
-РќСѓР¶РЅРѕ РІСЃРµРіРґР° СЂР°Р·Р»РёС‡Р°С‚СЊ С‚СЂРё РѕСЃРё:
+Нужно различать три оси:
 
-- Р°СЂС…РёС‚РµРєС‚СѓСЂРЅР°СЏ СЂРѕР»СЊ: module / shared library / capability crate
-- РјРѕРґСѓР»СЊРЅС‹Р№ СЃС‚Р°С‚СѓСЃ: `Core` / `Optional`
-- С‚РµС…РЅРёС‡РµСЃРєР°СЏ СѓРїР°РєРѕРІРєР°: `crate`
+- архитектурная роль: module / shared library / capability crate / host
+- runtime taxonomy: `Core` / `Optional`
+- техническая упаковка: `crate`
 
-РРјРµРЅРЅРѕ СЌС‚Рѕ СѓР±РёСЂР°РµС‚ РїСѓС‚Р°РЅРёС†Сѓ РІРёРґР°:
+Из этого следует:
 
-- `crate != Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё module`
-- `ModuleRegistry != РєР»Р°СЃСЃРёС„РёРєР°С‚РѕСЂ Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… СЂРѕР»РµР№`
-- `bootstrap wiring != РѕС‚РґРµР»СЊРЅС‹Р№ С‚РёРї РјРѕРґСѓР»СЏ`
+- `crate != platform module`
+- `ModuleRegistry != архитектурная taxonomy`
+- bootstrap wiring != ownership доменной логики
 
-## 4. Source of truth РїРѕ РјРѕРґСѓР»СЏРј
+## 4. Источник истины для platform composition — `modules.toml`
 
-РЎРѕСЃС‚Р°РІ platform modules Р·Р°РґР°С‘С‚СЃСЏ С‡РµСЂРµР· `modules.toml`.
+Состав платформенных модулей, dependency graph и composition-контракт определяются
+через `modules.toml`.
 
-Р”Р°Р»СЊС€Рµ РѕРЅ РѕР±СЏР·Р°РЅ Р±С‹С‚СЊ СЃРѕРіР»Р°СЃРѕРІР°РЅ СЃ:
+Для path-модуля это должно быть согласовано с:
 
-- `build_registry()`
-- manifest validation
-- build/codegen wiring
-- verification docs
+- `rustok-module.toml`
+- runtime registration
+- локальные docs
+- verification-flow через `xtask`
 
-## 5. Server РєР°Рє host, Р° РЅРµ РІС‚РѕСЂРѕР№ РґРѕРјРµРЅРЅС‹Р№ СЃР»РѕР№
+## 5. Источник истины для документации живёт в компоненте
 
-`apps/server` РІР»Р°РґРµРµС‚:
+Для каждого first-party компонента:
 
-- transport
+- root `README.md` на английском фиксирует публичный контракт
+- `docs/README.md` на русском фиксирует живой runtime/app/module-контракт
+- `docs/implementation-plan.md` на русском фиксирует живой план развития
+
+Central docs в `docs/` дают карту и навигацию, но не должны подменять локальные
+docs компонента.
+
+## 6. Server — host, а не свалка доменной логики
+
+`apps/server` владеет:
+
+- transport layer
 - runtime wiring
 - auth/session integration
 - RBAC enforcement path
 - operational endpoints
 
-`apps/server` РЅРµ РґРѕР»Р¶РµРЅ СЃС‚Р°РЅРѕРІРёС‚СЊСЃСЏ РјРµСЃС‚РѕРј РґР»СЏ РЅР°РєР°РїР»РёРІР°РЅРёСЏ domain logic, РµСЃР»Рё РґР»СЏ РЅРµС‘ СѓР¶Рµ РµСЃС‚СЊ РјРѕРґСѓР»СЊРЅС‹Р№ crate.
+`apps/server` не должен становиться местом для накопления module-owned domain
+логики, если у этой логики уже есть owning crate.
 
-## 6. Write-side correctness РІР°Р¶РЅРµРµ convenience
+## 7. Write-side correctness важнее convenience
 
-Write-side РѕРїРµСЂР°С†РёРё РґРѕР»Р¶РЅС‹ РѕСЃС‚Р°РІР°С‚СЊСЃСЏ:
+Write-side операции должны быть:
 
-- С‚СЂР°РЅР·Р°РєС†РёРѕРЅРЅС‹РјРё
+- транзакционными
 - tenant-safe
 - RBAC-aware
-- СЃРѕРІРјРµСЃС‚РёРјС‹РјРё СЃ event contract
+- согласованными с event-контрактом
 
-РЎРѕР±С‹С‚РёСЏ РїСѓР±Р»РёРєСѓСЋС‚СЃСЏ С‡РµСЂРµР· transactional path С‚Р°Рј, РіРґРµ РЅСѓР¶РЅР° Р°С‚РѕРјР°СЂРЅРѕСЃС‚СЊ write + event persistence.
+Межмодульные события публикуются через transactional path там, где нужна
+атомарность write + event persistence.
 
-## 7. Read-side РѕС‚РґРµР»С‘РЅ РѕС‚ write-side
+## 8. Read-side отделён от write-side
 
-RusToK РґРµСЂР¶РёС‚:
+RusToK удерживает разделение:
 
-- write-side РІ РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹С… РґРѕРјРµРЅРЅС‹С… РґР°РЅРЅС‹С…;
-- read-side РІ РёРЅРґРµРєСЃР°С…, РїСЂРѕРµРєС†РёСЏС… Рё fast-query surfaces.
+- write-side для доменных изменений
+- read-side для projections, индексов и быстрых query paths
 
-Р­С‚Рѕ РїРѕР·РІРѕР»СЏРµС‚:
+Это позволяет:
 
-- РЅРµ С‚Р°С‰РёС‚СЊ С‚СЏР¶С‘Р»С‹Рµ JOIN РІ storefront/read paths;
-- РґРµСЂР¶Р°С‚СЊ РґРѕРјРµРЅРЅС‹Рµ РёРЅРІР°СЂРёР°РЅС‚С‹ РІ СЃРµСЂРІРёСЃР°С…;
-- СЌРІРѕР»СЋС†РёРѕРЅРёСЂРѕРІР°С‚СЊ consumers Рё projections РЅРµР·Р°РІРёСЃРёРјРѕ.
+- не тащить тяжёлые join-paths в storefront/read flows
+- строить downstream consumers независимо
+- развивать индексацию и projections отдельно от write-side моделей
 
-## 8. Capability crates РЅРµ РїРѕРґРјРµРЅСЏСЋС‚ module taxonomy
+## 9. UI остаётся module-owned
 
-Capability/support crates РІСЂРѕРґРµ:
+Если модуль поставляет UI:
 
-- `alloy`
+- Leptos surfaces публикуются через `admin/` и `storefront/` sub-crates
+- host applications только монтируют surfaces через manifest-driven wiring
+- internal Leptos data layer по умолчанию использует `#[server]` functions
+- GraphQL остаётся параллельным transport-контрактом
+- locale выбирается host/runtime layer, а не package-local fallback chain
+
+## 10. Capability crate-ы не подменяют module taxonomy
+
+Capability/support crate-ы вроде:
+
 - `alloy`
 - `rustok-mcp`
+- `rustok-ai`
 - `rustok-telemetry`
+- `flex`
 
-РЅРµ РґРѕР»Р¶РЅС‹ РѕРїРёСЃС‹РІР°С‚СЊСЃСЏ РєР°Рє РѕР±С‹С‡РЅС‹Рµ tenant-toggle modules, РµСЃР»Рё РѕРЅРё С‚Р°РєРёРјРё РЅРµ СЏРІР»СЏСЋС‚СЃСЏ.
+не должны описываться как обычные tenant-toggled платформенные модули, если они не
+объявлены как платформенные модули в `modules.toml`.
 
-РќРѕ Рё РѕР±СЂР°С‚РЅРѕРµ С‚РѕР¶Рµ РІРµСЂРЅРѕ: РµСЃР»Рё РєРѕРјРїРѕРЅРµРЅС‚ РѕР±СЉСЏРІР»РµРЅ РєР°Рє platform module, РѕРЅ РѕР±СЏР·Р°РЅ Р¶РёС‚СЊ РІ taxonomy `Core/Optional`.
+И обратное тоже верно: если компонент объявлен как платформенный модуль, он обязан
+жить в taxonomy `Core/Optional`.
 
-## 9. Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ РґРѕР»Р¶РЅР° РѕС‚СЂР°Р¶Р°С‚СЊ РєРѕРґ
+## 11. Документация должна отражать код
 
-Р•СЃР»Рё РєРѕРґ Рё docs СЂР°СЃС…РѕРґСЏС‚СЃСЏ, РїСЂРёРѕСЂРёС‚РµС‚ Сѓ С‚РµРєСѓС‰РµРіРѕ РєРѕРґР°, Р° docs РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ РѕР±РЅРѕРІР»РµРЅС‹.
+Если код и docs расходятся, приоритет у текущего кода, а документация должна
+быть синхронно обновлена.
 
-РћСЃРѕР±РµРЅРЅРѕ СЌС‚Рѕ РєР°СЃР°РµС‚СЃСЏ:
+Особенно это касается:
 
 - module taxonomy
 - event flow
 - API surface
 - host wiring
-- tenant/RBAC boundaries
+- tenant и RBAC boundaries
 
-## 10. Р›СЋР±РѕРµ boundary-change С‚СЂРµР±СѓРµС‚ СЃРёРЅС…СЂРѕРЅРЅРѕРіРѕ РѕР±РЅРѕРІР»РµРЅРёСЏ
+## 12. Boundary-change требует синхронного обновления
 
-РџСЂРё РёР·РјРµРЅРµРЅРёРё Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… РіСЂР°РЅРёС† РЅСѓР¶РЅРѕ РѕР±РЅРѕРІР»СЏС‚СЊ РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ:
+При изменении архитектурных границ нужно обновлять одновременно:
 
-1. Р»РѕРєР°Р»СЊРЅС‹Рµ docs РєРѕРјРїРѕРЅРµРЅС‚Р°
-2. central docs РІ `docs/`
+1. локальные docs затронутого компонента
+2. central docs в `docs/`
 3. `docs/index.md`
-4. verification plans
-5. ADR, РµСЃР»Рё РёР·РјРµРЅРµРЅРёРµ РЅРµС‚СЂРёРІРёР°Р»СЊРЅРѕ
+4. docs верификации, если меняется verification-контракт
+5. ADR, если изменение нетривиально
 
+## Связанные документы
+
+- [Обзор архитектуры платформы](./overview.md)
+- [Архитектура модулей](./modules.md)
+- [Диаграммы платформы](./diagram.md)
+- [Обзор модульной платформы](../modules/overview.md)
+- [Контракт `rustok-module.toml`](../modules/manifest.md)

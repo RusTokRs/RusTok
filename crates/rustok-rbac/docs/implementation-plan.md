@@ -1,81 +1,51 @@
-# rustok-rbac module implementation plan (`rustok-rbac`)
+# План реализации `rustok-rbac`
 
-## Scope and objective
+Статус: переход на single-engine Casbin runtime завершён; модуль удерживается в
+steady-state hardening и drift-prevention режиме.
 
-This document captures the finalized implementation status for `rustok-rbac` in RusToK and
-records the migration outcome for the module-level RBAC runtime contract.
+## Область работ
 
-Primary objective: keep `rustok-rbac` aligned with platform-level contracts while
-documenting the completed transition to the Casbin-backed runtime.
+- удерживать `rustok-rbac` как единственную каноническую границу RBAC runtime;
+- синхронизировать permission contracts, integration events и server adapters;
+- не допускать возврата к shadow-runtime, rollout-mode или server-owned policy logic.
 
-## Target architecture
+## Текущее состояние
 
-- `rustok-rbac` remains focused on its bounded context and public crate API.
-- Integrations with other modules go through stable interfaces in `rustok-core`
-  (or dedicated integration crates where applicable).
-- Behavior changes are introduced through additive, backward-compatible steps.
-- Observability and operability requirements are part of delivery readiness.
+- relation-store остаётся source of truth для role/permission assignments;
+- live authorization выполняется только через Casbin-backed evaluator;
+- `RuntimePermissionResolver` и related contracts уже живут в модуле, а `apps/server` держит только adapters и observability;
+- local docs, root `README.md` и manifest metadata входят в scoped audit path.
 
-## Delivery phases
+## Этапы
 
-### Phase 0 — Foundation (done)
+### 1. Contract stability
 
-- [x] Baseline crate/module structure is in place.
-- [x] Base docs and registry presence are established.
-- [x] Core compile-time integration with the workspace is available.
+- [x] зафиксировать single-engine runtime contract;
+- [x] перенести policy/evaluator semantics и resolver APIs в модуль;
+- [x] стандартизировать integration events для role-assignment changes;
+- [ ] удерживать sync между runtime contracts, server adapters и module metadata.
 
-### Phase 1 — Contract hardening (done)
+### 2. Drift prevention
 
-- [x] Freeze initial public RBAC runtime API: exported `permission_policy`/`permission_evaluator` + trait contract `PermissionResolver`/`PermissionResolution` with default use-case methods (`has_*`) for adapter-driven integrations.
-- [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
-- [x] Introduce shared permission evaluation API (`permission_evaluator`) and move allow/deny + missing-permissions outcome assembly from server-side RBAC wiring into `rustok-rbac`.
-- [x] Align error/validation conventions with platform guidance and then collapse the temporary rollout-mode parsing surface once the single-engine Casbin cutover was finalized.
-- [x] Expand automated tests around core invariants and boundary behavior (including stable normalized permission payload from both relation and cache paths, empty-requirements decision contract, and resolver error propagation in `permission_authorizer`).
+- [ ] держать periodic verification зелёным для RBAC/server integration;
+- [ ] продолжать вычищать presentation-only role inference вне primary authorization path;
+- [ ] расширять guardrails при появлении новых RBAC-managed surfaces.
 
-### Phase 2 — Domain expansion (done)
+### 3. Operability
 
-- [x] Implement prioritized domain capabilities for `rustok-rbac` (module now owns `permission_authorizer` use-case evaluation, relation-resolve orchestration via `RelationPermissionStore`, shared cache-aware resolver path (`resolve_permissions_with_cache` + `PermissionCache`) and runtime resolver service `RuntimePermissionResolver` with assignment contract `RoleAssignmentStore` (including role-assignment removal operations); `apps/server` consumes module runtime resolver instead of local `ServerPermissionResolver`).
-- [x] Remove rollout-mode parsing from the live module contract after finalizing the Casbin-only runtime.
-- [x] Keep internal permission-check shape primitives inside `rustok-rbac` so `apps/server` keeps only transport/observability concerns.
-- [x] Route module-level authorization through the real Casbin library so `apps/server` does not keep a local engine implementation.
-- [x] Standardize cross-module integration points and events (published canonical RBAC role-assignment integration event contract: `RbacRoleAssignmentEvent` + `RbacIntegrationEventKind` + stable `rbac.*` event-type constants).
-- [x] Document ownership and release gates for new capabilities (added module owner, review boundaries, and release-gate checklist to `crates/rustok-rbac/docs/README.md`).
+- [ ] удерживать decision/cache/latency telemetry частью live contract;
+- [ ] документировать runbooks и adapter expectations вместе с изменениями runtime surface;
+- [ ] покрывать новые event contracts и resolver paths точечными integration tests.
 
-### Phase 3 — Productionization (done for current migration scope)
+## Проверка
 
-- [x] Finalize rollout and migration strategy for incremental adoption (documented final single-engine runtime posture and compatibility behavior in `crates/rustok-rbac/docs/README.md`).
-- [x] Complete security/tenancy/rbac checks relevant to the migration contract.
-- [x] Validate observability, runbooks, and operational readiness for the Casbin-backed runtime contract.
+- `cargo xtask module validate rbac`
+- `cargo xtask module test rbac`
+- targeted tests для permission resolution, authorization decisions, cache semantics и integration events
 
-## Current status
+## Правила обновления
 
-- `rustok-rbac` is the canonical module boundary for RBAC runtime logic.
-- Runtime authorization executes through the real `casbin` library.
-- Authorization runtime is fixed to `casbin_only`; the crate no longer exposes a rollout-mode switch.
-- Migration backlog is closed. Ongoing work is limited to steady-state hardening and drift prevention.
-
-## Ongoing hardening backlog
-
-### Phase 4 - Verification and drift prevention
-
-- [ ] Keep the periodic verification cycle green using `docs/verification/rbac-server-modules-verification-plan.md`.
-- [ ] Continue removing authorization drift where presentation-oriented role inference still exists outside the primary RBAC path.
-- [ ] Keep runtime-module `permissions()` / `dependencies()` / `README.md -> Interactions` aligned as modules evolve.
-- [ ] Expand module-level and server-level guardrails whenever a new RBAC-managed surface is added.
-
-## Tracking and updates
-
-When updating `rustok-rbac` architecture, API contracts, tenancy behavior, routing,
-or observability expectations:
-
-1. Update this file first.
-2. Update `crates/rustok-rbac/README.md` and `crates/rustok-rbac/docs/README.md` when public behavior changes.
-3. Update `docs/index.md` links if documentation structure changes.
-4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
-5. If the live RBAC contract changes, update `apps/server/docs/README.md` and the RBAC verification plan.
-
-## Checklist
-
-- [x] контрактные тесты покрывают все публичные use-case.
-
-
+1. При изменении RBAC runtime contract сначала обновлять этот файл.
+2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
+3. При изменении module metadata, dependency graph или verification expectations синхронизировать `rustok-module.toml` и профильные verification docs.
+4. При изменении live contract обновлять также `apps/server/docs/README.md`.

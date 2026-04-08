@@ -224,6 +224,15 @@ pub struct RegistryPublishRequestLifecycle {
     pub approved_by: Option<String>,
     pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,
+    pub changes_requested_by: Option<String>,
+    pub changes_requested_reason: Option<String>,
+    pub changes_requested_reason_code: Option<String>,
+    pub changes_requested_at: Option<String>,
+    pub held_by: Option<String>,
+    pub held_reason: Option<String>,
+    pub held_reason_code: Option<String>,
+    pub held_at: Option<String>,
+    pub held_from_status: Option<String>,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
     pub created_at: String,
@@ -281,6 +290,15 @@ pub struct RegistryValidationStageLifecycle {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct RegistryGovernanceActionLifecycle {
+    pub key: String,
+    pub reason_required: bool,
+    pub reason_code_required: bool,
+    pub reason_codes: Vec<String>,
+    pub destructive: bool,
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct RegistryModuleLifecycle {
     pub owner_binding: Option<RegistryOwnerLifecycle>,
     pub latest_request: Option<RegistryPublishRequestLifecycle>,
@@ -288,6 +306,7 @@ pub struct RegistryModuleLifecycle {
     pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
     pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
     pub validation_stages: Vec<RegistryValidationStageLifecycle>,
+    pub governance_actions: Vec<RegistryGovernanceActionLifecycle>,
 }
 
 #[derive(SimpleObject, Clone)]

@@ -9639,6 +9639,7 @@ dependencies = [
  "rustok-media-admin",
  "rustok-outbox-admin",
  "rustok-pages-admin",
+ "rustok-product-admin",
  "rustok-rbac",
  "rustok-rbac-admin",
  "rustok-search",
@@ -10531,6 +10532,18 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-product-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

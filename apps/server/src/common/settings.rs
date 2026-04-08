@@ -31,10 +31,38 @@ pub struct RustokSettings {
     #[serde(default)]
     pub cache: CacheSettings,
     #[serde(default)]
+    pub registry: RegistrySettings,
+    #[serde(default)]
     pub runtime: RuntimeSettings,
     #[cfg(feature = "mod-media")]
     #[serde(default)]
     pub storage: StorageConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RegistrySettings {
+    #[serde(default)]
+    pub validation_runner: RegistryValidationRunnerSettings,
+    #[serde(default)]
+    pub remote_executor: RegistryRemoteExecutorSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RegistryValidationRunnerSettings {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RegistryRemoteExecutorSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub shared_token: Option<String>,
+    #[serde(default = "default_registry_remote_executor_lease_ttl_ms")]
+    pub lease_ttl_ms: u64,
+    #[serde(default = "default_registry_remote_executor_requeue_scan_interval_ms")]
+    pub requeue_scan_interval_ms: u64,
 }
 
 /// Cache configuration.
@@ -107,6 +135,32 @@ impl Default for EmailSettings {
             smtp: SmtpSettings::default(),
             from: default_email_from(),
             reset_base_url: default_reset_base_url(),
+        }
+    }
+}
+
+impl Default for RegistrySettings {
+    fn default() -> Self {
+        Self {
+            validation_runner: RegistryValidationRunnerSettings::default(),
+            remote_executor: RegistryRemoteExecutorSettings::default(),
+        }
+    }
+}
+
+impl Default for RegistryValidationRunnerSettings {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+impl Default for RegistryRemoteExecutorSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            shared_token: None,
+            lease_ttl_ms: default_registry_remote_executor_lease_ttl_ms(),
+            requeue_scan_interval_ms: default_registry_remote_executor_requeue_scan_interval_ms(),
         }
     }
 }
@@ -942,6 +996,14 @@ fn default_search_reindex_yield_every() -> u64 {
 
 fn default_build_poll_interval_ms() -> u64 {
     5_000
+}
+
+fn default_registry_remote_executor_lease_ttl_ms() -> u64 {
+    120_000
+}
+
+fn default_registry_remote_executor_requeue_scan_interval_ms() -> u64 {
+    15_000
 }
 
 fn default_build_deployment_filesystem_root_dir() -> String {

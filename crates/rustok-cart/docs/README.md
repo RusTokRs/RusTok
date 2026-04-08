@@ -2,7 +2,7 @@
 
 `rustok-cart` — дефолтный cart-подмодуль семейства `ecommerce`.
 
-## Что сейчас внутри
+## Назначение
 
 - схема `carts` и `cart_line_items`;
 - `CartModule` и `CartService`;
@@ -11,7 +11,7 @@
 - lifecycle корзины: `active -> checking_out -> completed` и `active -> abandoned`;
 - CRUD line items, расчёт cart totals и нормализация locale/country snapshot для storefront-контекста.
 
-## Архитектурная граница
+## Зона ответственности
 
 - модуль не зависит от `rustok-commerce` umbrella, чтобы не создавать цикл;
 - product/variant ссылки в корзине хранятся как snapshot references, а не как обязательные cross-module foreign keys;
@@ -19,6 +19,17 @@
   cross-module orchestration остаются на уровне `rustok-commerce` umbrella;
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
 
+## Интеграция
+
+- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella ustok-commerce;
+- transport, GraphQL и UI-поверхности публикуются через ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
+- изменения cross-module контракта нужно синхронизировать с ustok-commerce и соседними split-модулями.
+
+## Проверка
+
+- cargo xtask module validate cart
+- cargo xtask module test cart
+- targeted commerce tests для cart-домена при изменении runtime wiring
 ## Связанные документы
 
 - [README crate](../README.md)

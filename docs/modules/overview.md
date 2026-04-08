@@ -1,32 +1,44 @@
-# Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ РїРѕ РјРѕРґСѓР»СЏРј RusToK
+# Обзор модульной платформы
 
-Р­С‚РѕС‚ РґРѕРєСѓРјРµРЅС‚ С„РёРєСЃРёСЂСѓРµС‚ Р°РєС‚СѓР°Р»СЊРЅСѓСЋ РјРѕРґСѓР»СЊРЅСѓСЋ РјРѕРґРµР»СЊ RusToK Р±РµР· СЃРјРµС€РµРЅРёСЏ
-Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… С‚РµСЂРјРёРЅРѕРІ Рё С‚РµС…РЅРёС‡РµСЃРєРѕР№ СѓРїР°РєРѕРІРєРё.
+Этот документ фиксирует актуальную модульную модель RusToK без смешения
+архитектурных ролей и технической упаковки.
 
-## Р‘Р°Р·РѕРІР°СЏ РјРѕРґРµР»СЊ
+Central docs в `docs/modules/` описывают карту платформы, taxonomy и правила
+композиции, но не заменяют локальные docs самих компонентов.
 
-Р”Р»СЏ platform modules СЃСѓС‰РµСЃС‚РІСѓРµС‚ С‚РѕР»СЊРєРѕ РґРІР° СЃС‚Р°С‚СѓСЃР°:
+## Базовая модель
+
+Для платформенных модулей существует только две категории:
 
 - `Core`
 - `Optional`
 
-РСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹ РїРѕ РЅРёРј: `modules.toml`.
+Источник истины по составу и зависимостям платформенных модулей: `modules.toml`.
 
-РџСЂРё СЌС‚РѕРј:
+При этом важно различать:
 
-- `crate` вЂ” СЌС‚Рѕ С‚РµСЂРјРёРЅ Cargo Рё СЃРїРѕСЃРѕР± СѓРїР°РєРѕРІРєРё;
-- РЅРµ РєР°Р¶РґС‹Р№ crate РІ `crates/` СЏРІР»СЏРµС‚СЃСЏ platform module;
-- СЂСЏРґРѕРј СЃ module-crates Р»РµР¶Р°С‚ shared libraries Рё infrastructure/support crates.
+- платформенный модуль — crate, который объявлен в `modules.toml` и входит в runtime-taxonomy `Core` или `Optional`;
+- support/library crate — shared dependency или инфраструктурный слой, который живёт в `crates/`, но не является платформенным модулем;
+- capability crate — отдельный runtime capability-layer, который может подключаться к платформе, но не обязан входить в `Core/Optional` taxonomy.
 
-## Р“РґРµ СЃРјРѕС‚СЂРµС‚СЊ РІ РєРѕРґРµ
+## Источники истины по документации
 
-- СЃРѕСЃС‚Р°РІ platform modules: `modules.toml`
+- корневой `README.md` компонента на английском фиксирует публичный контракт:
+  `Purpose`, `Responsibilities`, `Entry points`, `Interactions`;
+- локальный `docs/README.md` на русском фиксирует живой runtime/module/app-контракт;
+- локальный `docs/implementation-plan.md` на русском фиксирует живой план развития;
+- central docs в `docs/modules/` связывают эту картину вместе и не должны
+  дублировать локальные документы построчно.
+
+## Где смотреть в коде
+
+- состав платформенных модулей: `modules.toml`
 - runtime registry: `apps/server/src/modules/mod.rs`
-- СЃРІРµСЂРєР° manifest Рё registry: `apps/server/src/modules/manifest.rs`
-- Р±Р°Р·РѕРІС‹Рµ РјРѕРґСѓР»СЊРЅС‹Рµ РєРѕРЅС‚СЂР°РєС‚С‹: `crates/rustok-core/src/module.rs`
-- РєР°С‚РµРіРѕСЂРёРё `Core` / `Optional`: `crates/rustok-core/src/registry.rs`
+- manifest-wiring: `apps/server/src/modules/manifest.rs`
+- базовые модульные контракты: `crates/rustok-core/src/module.rs`
+- taxonomy `Core` / `Optional`: `crates/rustok-core/src/registry.rs`
 
-## РўРµРєСѓС‰РёР№ СЃРѕСЃС‚Р°РІ platform modules
+## Platform modules
 
 ### Core
 
@@ -46,72 +58,83 @@
 
 | Slug | Crate | Depends on |
 |---|---|---|
-| `content` | `rustok-content` | вЂ” |
-| `cart` | `rustok-cart` | вЂ” |
-| `customer` | `rustok-customer` | вЂ” |
+| `content` | `rustok-content` | — |
+| `cart` | `rustok-cart` | — |
+| `customer` | `rustok-customer` | — |
 | `product` | `rustok-product` | `taxonomy` |
 | `profiles` | `rustok-profiles` | `taxonomy` |
-| `region` | `rustok-region` | вЂ” |
+| `region` | `rustok-region` | — |
 | `pricing` | `rustok-pricing` | `product` |
 | `inventory` | `rustok-inventory` | `product` |
-| `order` | `rustok-order` | вЂ” |
-| `payment` | `rustok-payment` | вЂ” |
-| `fulfillment` | `rustok-fulfillment` | вЂ” |
+| `order` | `rustok-order` | — |
+| `payment` | `rustok-payment` | — |
+| `fulfillment` | `rustok-fulfillment` | — |
 | `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` |
 | `forum` | `rustok-forum` | `content`, `taxonomy` |
-| `comments` | `rustok-comments` | вЂ” |
+| `comments` | `rustok-comments` | — |
 | `pages` | `rustok-pages` | `content` |
 | `taxonomy` | `rustok-taxonomy` | `content` |
-| `media` | `rustok-media` | вЂ” |
-| `workflow` | `rustok-workflow` | вЂ” |
+| `media` | `rustok-media` | — |
+| `workflow` | `rustok-workflow` | — |
 
-## Р’Р°Р¶РЅРѕРµ СѓС‚РѕС‡РЅРµРЅРёРµ РїРѕ wiring
+## Что лежит рядом с модулями
 
-`ModuleRegistry` вЂ” СЌС‚Рѕ runtime composition point, Р° РЅРµ РєР»Р°СЃСЃРёС„РёРєР°С‚РѕСЂ
-Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… СЂРѕР»РµР№.
+Не каждый crate в `crates/` является платформенным модулем.
 
-РР· СЌС‚РѕРіРѕ СЃР»РµРґСѓСЋС‚ РґРІР° РїСЂР°РІРёР»Р°:
+### Shared libraries
 
-1. Р•СЃР»Рё РєРѕРјРїРѕРЅРµРЅС‚ РѕР±СЉСЏРІР»РµРЅ РєР°Рє platform module РІ `modules.toml`, РѕРЅ РѕР±СЏР·Р°РЅ Р±С‹С‚СЊ
-   Р»РёР±Рѕ `Core`, Р»РёР±Рѕ `Optional`.
-2. РўРµС…РЅРёС‡РµСЃРєРёР№ СЃРїРѕСЃРѕР± РїРѕРґРєР»СЋС‡РµРЅРёСЏ РјРѕРґСѓР»СЏ РјРѕР¶РµС‚ РѕС‚Р»РёС‡Р°С‚СЊСЃСЏ:
-   - СЂРµРіРёСЃС‚СЂР°С†РёСЏ РІ `ModuleRegistry`
-   - bootstrap/runtime wiring
-   - generated host wiring
+- `rustok-core`
+- `rustok-api`
+- `rustok-events`
+- `rustok-storage`
+- `rustok-test-utils`
+- `rustok-commerce-foundation`
 
-`rustok-outbox` вЂ” С…РѕСЂРѕС€РёР№ РїСЂРёРјРµСЂ. РћРЅ СЏРІР»СЏРµС‚СЃСЏ `Core` module Рё РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ
-РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РЅР°РїСЂСЏРјСѓСЋ event runtime СЃР»РѕРµРј. Р­С‚Рѕ РЅРµ РґРµР»Р°РµС‚ РµРіРѕ РѕС‚РґРµР»СЊРЅС‹Рј
-"С‚СЂРµС‚СЊРёРј С‚РёРїРѕРј".
+### Infrastructure / capability crates
 
-## Р§С‚Рѕ Р»РµР¶РёС‚ СЂСЏРґРѕРј СЃ РјРѕРґСѓР»СЏРјРё
+- `rustok-iggy`
+- `rustok-iggy-connector`
+- `rustok-telemetry`
+- `rustok-mcp`
+- `rustok-ai`
+- `alloy`
+- `flex`
 
-Р’ `crates/` С‚Р°РєР¶Рµ Р¶РёРІСѓС‚ РєРѕРјРїРѕРЅРµРЅС‚С‹, РєРѕС‚РѕСЂС‹Рµ РЅРµ РІС…РѕРґСЏС‚ РІ taxonomy
-`Core/Optional`:
+Именно поэтому нельзя автоматически отождествлять «любой crate в `crates/`» с
+платформенный модуль.
 
-- shared libraries: `rustok-core`, `rustok-api`, `rustok-events`,
-  `rustok-storage`, `rustok-test-utils`
-- infra/capability crates: `rustok-iggy`, `rustok-iggy-connector`,
-  `rustok-telemetry`, `rustok-mcp`, `alloy`, `flex`
-
-РРјРµРЅРЅРѕ РїРѕСЌС‚РѕРјСѓ РЅРµР»СЊР·СЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРёСЂР°РІРЅРёРІР°С‚СЊ "Р»СЋР±РѕР№ crate РІ `crates/`" Рє
-platform module.
+При изменении ownership, runtime-контракта или boundaries компонента сначала
+обновляются локальные docs этого компонента, затем `overview.md`, `registry.md`,
+`_index.md` и остальные central registry docs.
 
 ## UI composition policy
 
-Р•СЃР»Рё Сѓ РјРѕРґСѓР»СЏ РµСЃС‚СЊ UI, РѕРЅ РґРѕР»Р¶РµРЅ РїРѕСЃС‚Р°РІР»СЏС‚СЊСЃСЏ СЃР°РјРёРј РјРѕРґСѓР»РµРј:
+Если модуль поставляет UI, этот UI должен оставаться module-owned:
 
-- Leptos: С‡РµСЂРµР· sub-crates `admin/` Рё `storefront/`
-- Next.js: С‡РµСЂРµР· РїР°РєРµС‚С‹ РІ `apps/next-admin/packages/*` Рё
-  `apps/next-frontend/packages/*`
+- Leptos UI-поверхности публикуются через sub-crates `admin/` и `storefront/`;
+- Next.js UI-поверхности публикуются через пакеты в `apps/next-admin/packages/*` и
+  `apps/next-frontend/packages/*`;
+- host-приложения монтируют эти UI-поверхности через manifest-driven wiring, а не
+  через жёстко пришитые module-specific branches.
 
-Host-РїСЂРёР»РѕР¶РµРЅРёСЏ РґРѕР»Р¶РЅС‹ РјРѕРЅС‚РёСЂРѕРІР°С‚СЊ СЌС‚Рё РїРѕРІРµСЂС…РЅРѕСЃС‚Рё С‡РµСЂРµР· manifest-driven
-wiring, Р° РЅРµ С‡РµСЂРµР· Р¶С‘СЃС‚РєРѕ РїСЂРёС€РёС‚С‹Рµ module-specific РІРµС‚РєРё.
+## Alloy и capability crates
 
-## РЎРІСЏР·Р°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
+`alloy`, `rustok-ai`, `rustok-mcp` и `flex` не входят в taxonomy `Core/Optional`
+как обычные платформенные модули.
 
-- [Р РµРµСЃС‚СЂ РјРѕРґСѓР»РµР№ Рё РїСЂРёР»РѕР¶РµРЅРёР№](./registry.md)
-- [Р РµРµСЃС‚СЂ crate-РѕРІ RusToK](./crates-registry.md)
-- [РњР°РЅРёС„РµСЃС‚ РјРѕРґСѓР»РµР№](./manifest.md)
-- [РђСЂС…РёС‚РµРєС‚СѓСЂР° РјРѕРґСѓР»РµР№](../architecture/modules.md)
+Это означает:
 
+- они могут быть частью runtime-composition;
+- они могут иметь собственные docs, UI и capability-поверхность;
+- но их роль описывается как support/capability-слой, а не как tenant-toggled
+  module category.
+
+## Связанные документы
+
+- [Реестр модулей и приложений](./registry.md)
+- [Индекс документации по модулям](./_index.md)
+- [Реестр crate-ов модульной платформы](./crates-registry.md)
+- [Контракт `rustok-module.toml`](./manifest.md)
+- [Спец-план rich-text и визуального page builder](./tiptap-page-builder-implementation-plan.md)
+- [Архитектура модулей](../architecture/modules.md)

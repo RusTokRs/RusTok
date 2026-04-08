@@ -31,6 +31,14 @@ const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/v
 const REGISTRY_PUBLISH_STAGE_REPORT_PATH: &str = "/v2/catalog/publish/{request_id}/stages";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
 const REGISTRY_PUBLISH_REJECT_PATH: &str = "/v2/catalog/publish/{request_id}/reject";
+const REGISTRY_PUBLISH_REQUEST_CHANGES_PATH: &str =
+    "/v2/catalog/publish/{request_id}/request-changes";
+const REGISTRY_PUBLISH_HOLD_PATH: &str = "/v2/catalog/publish/{request_id}/hold";
+const REGISTRY_PUBLISH_RESUME_PATH: &str = "/v2/catalog/publish/{request_id}/resume";
+const REGISTRY_RUNNER_CLAIM_PATH: &str = "/v2/catalog/runner/claim";
+const REGISTRY_RUNNER_HEARTBEAT_PATH: &str = "/v2/catalog/runner/{claim_id}/heartbeat";
+const REGISTRY_RUNNER_COMPLETE_PATH: &str = "/v2/catalog/runner/{claim_id}/complete";
+const REGISTRY_RUNNER_FAIL_PATH: &str = "/v2/catalog/runner/{claim_id}/fail";
 const REGISTRY_OWNER_TRANSFER_PATH: &str = "/v2/catalog/owner-transfer";
 const REGISTRY_YANK_PATH: &str = "/v2/catalog/yank";
 
@@ -544,7 +552,21 @@ pub struct RegistryPublishStatusResponse {
     pub approval_override_required: bool,
     #[serde(default, rename = "approvalOverrideReasonCodes")]
     pub approval_override_reason_codes: Vec<String>,
+    #[serde(default, rename = "governanceActions")]
+    pub governance_actions: Vec<RegistryGovernanceAction>,
     pub next_step: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryGovernanceAction {
+    pub key: String,
+    #[serde(rename = "reasonRequired")]
+    pub reason_required: bool,
+    #[serde(rename = "reasonCodeRequired")]
+    pub reason_code_required: bool,
+    #[serde(default, rename = "reasonCodes")]
+    pub reason_codes: Vec<String>,
+    pub destructive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -601,6 +623,78 @@ pub struct RegistryPublishDecisionRequest {
     pub dry_run: bool,
     pub reason: Option<String>,
     pub reason_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerClaimRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub runner_id: String,
+    #[serde(default, rename = "supportedStages")]
+    pub supported_stages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerHeartbeatRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub runner_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerCompletionRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    pub runner_id: String,
+    pub detail: Option<String>,
+    pub reason_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerClaimResponse {
+    pub accepted: bool,
+    pub claim: Option<RegistryRunnerClaimPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerClaimPayload {
+    #[serde(rename = "claimId")]
+    pub claim_id: String,
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    #[serde(rename = "stageKey")]
+    pub stage_key: String,
+    #[serde(rename = "executionMode")]
+    pub execution_mode: String,
+    pub runnable: bool,
+    #[serde(rename = "requiresManualConfirmation")]
+    pub requires_manual_confirmation: bool,
+    #[serde(default, rename = "allowedTerminalReasonCodes")]
+    pub allowed_terminal_reason_codes: Vec<String>,
+    #[serde(default, rename = "suggestedPassReasonCode")]
+    pub suggested_pass_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedFailureReasonCode")]
+    pub suggested_failure_reason_code: Option<String>,
+    #[serde(default, rename = "suggestedBlockedReasonCode")]
+    pub suggested_blocked_reason_code: Option<String>,
+    #[serde(rename = "artifactUrl")]
+    pub artifact_url: String,
+    #[serde(rename = "artifactChecksumSha256")]
+    pub artifact_checksum_sha256: String,
+    #[serde(rename = "crateName")]
+    pub crate_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryRunnerMutationResponse {
+    pub accepted: bool,
+    #[serde(rename = "claimId")]
+    pub claim_id: String,
+    pub status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -859,6 +953,34 @@ pub fn registry_publish_approve_path() -> &'static str {
 
 pub fn registry_publish_reject_path() -> &'static str {
     REGISTRY_PUBLISH_REJECT_PATH
+}
+
+pub fn registry_publish_request_changes_path() -> &'static str {
+    REGISTRY_PUBLISH_REQUEST_CHANGES_PATH
+}
+
+pub fn registry_publish_hold_path() -> &'static str {
+    REGISTRY_PUBLISH_HOLD_PATH
+}
+
+pub fn registry_publish_resume_path() -> &'static str {
+    REGISTRY_PUBLISH_RESUME_PATH
+}
+
+pub fn registry_runner_claim_path() -> &'static str {
+    REGISTRY_RUNNER_CLAIM_PATH
+}
+
+pub fn registry_runner_heartbeat_path() -> &'static str {
+    REGISTRY_RUNNER_HEARTBEAT_PATH
+}
+
+pub fn registry_runner_complete_path() -> &'static str {
+    REGISTRY_RUNNER_COMPLETE_PATH
+}
+
+pub fn registry_runner_fail_path() -> &'static str {
+    REGISTRY_RUNNER_FAIL_PATH
 }
 
 pub fn registry_owner_transfer_path() -> &'static str {

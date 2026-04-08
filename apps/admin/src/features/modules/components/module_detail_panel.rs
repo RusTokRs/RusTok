@@ -3,12 +3,12 @@ use leptos::task::spawn_local;
 use std::collections::HashMap;
 
 use crate::entities::module::model::{
-    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
-    RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
+    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
-use crate::features::modules::api::{self, RegistryMutationResult};
+use crate::features::modules::api::{self, RegistryMutationResult, RegistryPublishStatusContract};
 use crate::shared::ui::{Button, Input};
 use crate::{use_i18n, Locale};
 
@@ -137,6 +137,225 @@ fn validation_feedback_badge_classes(status: &str) -> &'static str {
 
 fn status_eq(value: &str, expected: &str) -> bool {
     value.eq_ignore_ascii_case(expected)
+}
+
+fn governance_action_available(actions: &[RegistryGovernanceActionLifecycle], key: &str) -> bool {
+    actions
+        .iter()
+        .any(|action| action.key.eq_ignore_ascii_case(key))
+}
+
+fn governance_action_contract<'a>(
+    actions: &'a [RegistryGovernanceActionLifecycle],
+    key: &str,
+) -> Option<&'a RegistryGovernanceActionLifecycle> {
+    actions
+        .iter()
+        .find(|action| action.key.eq_ignore_ascii_case(key))
+}
+
+fn merge_governance_actions(
+    primary: &[RegistryGovernanceActionLifecycle],
+    secondary: &[RegistryGovernanceActionLifecycle],
+) -> Vec<RegistryGovernanceActionLifecycle> {
+    let mut merged = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for action in primary.iter().chain(secondary.iter()) {
+        if seen.insert(action.key.to_ascii_lowercase()) {
+            merged.push(action.clone());
+        }
+    }
+
+    merged
+}
+
+fn governance_action_reason_required(
+    actions: &[RegistryGovernanceActionLifecycle],
+    key: &str,
+) -> bool {
+    governance_action_contract(actions, key).is_some_and(|action| action.reason_required)
+}
+
+fn governance_action_reason_code_required(
+    actions: &[RegistryGovernanceActionLifecycle],
+    key: &str,
+) -> bool {
+    governance_action_contract(actions, key).is_some_and(|action| action.reason_code_required)
+}
+
+fn governance_action_reason_codes(
+    actions: &[RegistryGovernanceActionLifecycle],
+    key: &str,
+) -> Vec<String> {
+    governance_action_contract(actions, key)
+        .map(|action| action.reason_codes.clone())
+        .unwrap_or_default()
+}
+
+fn governance_action_reason_code_validation_message(
+    actions: &[RegistryGovernanceActionLifecycle],
+    key: &str,
+    reason_code: &str,
+    locale: Locale,
+) -> Option<String> {
+    let reason_code = reason_code.trim();
+    if reason_code.is_empty() {
+        return None;
+    }
+
+    let allowed_codes = governance_action_reason_codes(actions, key);
+    if allowed_codes.is_empty()
+        || allowed_codes
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(reason_code))
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{} {}: {}.",
+        governance_action_label(key, locale),
+        tr(
+            locale,
+            "expects one of the advertised reason codes",
+            "ожидает один из объявленных reason code"
+        ),
+        allowed_codes.join(", ")
+    ))
+}
+
+fn governance_action_label(action_key: &str, locale: Locale) -> &'static str {
+    match action_key {
+        "validate" => tr(locale, "Validate", "Validate"),
+        "approve" => tr(locale, "Approve", "Approve"),
+        "request_changes" => tr(locale, "Request changes", "Запросить изменения"),
+        "hold" => tr(locale, "Hold", "Поставить на hold"),
+        "resume" => tr(locale, "Resume", "Возобновить"),
+        "reject" => tr(locale, "Reject", "Reject"),
+        "owner_transfer" => tr(locale, "Owner transfer", "Owner transfer"),
+        "yank" => tr(locale, "Yank", "Yank"),
+        other => {
+            if other.is_empty() {
+                tr(locale, "governance action", "governance-действие")
+            } else {
+                tr(locale, "governance action", "governance-действие")
+            }
+        }
+    }
+}
+
+fn governance_reason_code_placeholder(
+    selected_action: Option<&str>,
+    actions: &[RegistryGovernanceActionLifecycle],
+    locale: Locale,
+) -> String {
+    let Some(action_key) = selected_action else {
+        return tr(
+            locale,
+            "Select an action to see the allowed reason codes.",
+            "Выберите действие, чтобы увидеть допустимые reason code.",
+        )
+        .to_string();
+    };
+
+    let reason_codes = governance_action_reason_codes(actions, action_key);
+    if reason_codes.is_empty() {
+        return tr(
+            locale,
+            "This action does not currently advertise reason codes.",
+            "Для этого действия reason code сейчас не объявлены.",
+        )
+        .to_string();
+    }
+
+    reason_codes.join(" / ")
+}
+
+fn governance_reason_placeholder(
+    selected_action: Option<&str>,
+    actions: &[RegistryGovernanceActionLifecycle],
+    locale: Locale,
+) -> String {
+    let Some(action_key) = selected_action else {
+        return tr(
+            locale,
+            "Select an action to see whether a governance reason is required.",
+            "Выберите действие, чтобы понять, нужен ли governance reason.",
+        )
+        .to_string();
+    };
+
+    if governance_action_reason_required(actions, action_key) {
+        format!(
+            "{} {}.",
+            governance_action_label(action_key, locale),
+            tr(
+                locale,
+                "requires a governance reason in live mode",
+                "требует governance reason в live-режиме"
+            )
+        )
+    } else {
+        format!(
+            "{} {}.",
+            governance_action_label(action_key, locale),
+            tr(
+                locale,
+                "does not require a governance reason unless the server asks for an override",
+                "не требует governance reason, если только сервер отдельно не запросит override"
+            )
+        )
+    }
+}
+
+fn governance_action_requirement_hint(
+    selected_action: Option<&str>,
+    actions: &[RegistryGovernanceActionLifecycle],
+    locale: Locale,
+) -> Option<String> {
+    let action_key = selected_action?;
+    let reason_required = governance_action_reason_required(actions, action_key);
+    let reason_code_required = governance_action_reason_code_required(actions, action_key);
+    let reason_codes = governance_action_reason_codes(actions, action_key);
+    let requirement = match (reason_required, reason_code_required) {
+        (true, true) => tr(
+            locale,
+            "Live mode requires both Reason and Reason code.",
+            "В live-режиме нужны и Reason, и Reason code.",
+        ),
+        (true, false) => tr(
+            locale,
+            "Live mode requires Reason.",
+            "В live-режиме нужен Reason.",
+        ),
+        (false, true) => tr(
+            locale,
+            "Live mode requires Reason code.",
+            "В live-режиме нужен Reason code.",
+        ),
+        (false, false) => tr(
+            locale,
+            "The server currently marks this action as optional for Reason/Reason code.",
+            "Сейчас сервер считает Reason/Reason code для этого действия необязательными.",
+        ),
+    };
+    let reason_code_hint = if reason_codes.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " {}: {}.",
+            tr(locale, "Allowed codes", "Допустимые коды"),
+            reason_codes.join(", ")
+        )
+    };
+
+    Some(format!(
+        "{} {}{}",
+        governance_action_label(action_key, locale),
+        requirement,
+        reason_code_hint
+    ))
 }
 
 fn validation_stage_requires_approval_override(status: &str) -> bool {
@@ -808,6 +1027,22 @@ fn registry_review_policy_lines(
                 )
                 .to_string(),
             ),
+            status if status_eq(status, "changes_requested") => lines.push(
+                tr(
+                    locale,
+                    "Changes were requested; upload a fresh artifact revision before validation and review can continue.",
+                    "Запрошены изменения; загрузите новый artifact revision, прежде чем продолжать validation и review.",
+                )
+                .to_string(),
+            ),
+            status if status_eq(status, "on_hold") => lines.push(
+                tr(
+                    locale,
+                    "The request is explicitly on hold; validate/approve/reject should stay paused until a resume decision restores the previous lifecycle state.",
+                    "Запрос явно поставлен на hold; validate/approve/reject должны оставаться на паузе, пока resume не вернёт предыдущее lifecycle-состояние.",
+                )
+                .to_string(),
+            ),
             status if status_eq(status, "rejected") => lines.push(
                 tr(
                     locale,
@@ -943,6 +1178,22 @@ fn registry_next_action_lines(
                 );
             }
         }
+        Some(status) if status_eq(status, "changes_requested") => lines.push(
+            tr(
+                locale,
+                "Upload a fresh artifact revision next; request-changes keeps the same publish request alive, but review stays blocked until the new artifact is validated again.",
+                "Следующий шаг — загрузить новый artifact revision; request-changes сохраняет тот же publish request, но review остаётся заблокированным, пока новый артефакт снова не пройдёт validation.",
+            )
+            .to_string(),
+        ),
+        Some(status) if status_eq(status, "on_hold") => lines.push(
+            tr(
+                locale,
+                "The request is on hold; resume it explicitly when the blocking condition is cleared.",
+                "Запрос находится на hold; явно возобновите его, когда блокирующее условие будет снято.",
+            )
+            .to_string(),
+        ),
         Some(status) if status_eq(status, "rejected") => lines.push(format!(
             "{}: {} publish {} --dry-run {}",
             tr(locale, "Next step", "Следующий шаг"),
@@ -1024,6 +1275,7 @@ fn registry_operator_command_lines(
     match request.map(|request| request.status.as_str()) {
         None => lines.push(publish_dry_run.clone()),
         Some(status) if status_eq(status, "draft") => lines.push(publish_live),
+        Some(status) if status_eq(status, "changes_requested") => lines.push(publish_live),
         Some(status) if status_eq(status, "rejected") => lines.push(publish_dry_run.clone()),
         Some(status) if status_eq(status, "published") => {
             let version = release
@@ -1156,6 +1408,29 @@ fn registry_live_api_action_lines(
             )),
             write_path: true,
         });
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
+            authority: registry_review_authority_label(owner_binding, locale),
+            note: Some(
+                tr(
+                    locale,
+                    "Pause the request without rejecting it; live hold requires both a governance reason and a structured reason_code.",
+                    "Поставить запрос на паузу без reject; live hold требует и governance reason, и structured reason_code.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                tr(
+                    locale,
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
+                )
+                .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: None,
+            write_path: true,
+        });
     }
 
     if status_eq(&request.status, "approved") {
@@ -1207,6 +1482,52 @@ fn registry_live_api_action_lines(
                     locale,
                     "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\", \"reason_code\": \"policy_mismatch\" }",
                     "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\", \"reason_code\": \"policy_mismatch\" }",
+                )
+                .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: None,
+            write_path: true,
+        });
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/request-changes", request.id),
+            authority: registry_review_authority_label(owner_binding, locale),
+            note: Some(
+                tr(
+                    locale,
+                    "Request a fresh artifact revision without terminating the publish request; live request-changes requires both a governance reason and a structured reason_code.",
+                    "Запросить новый artifact revision без завершения publish request; live request-changes требует и governance reason, и structured reason_code.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                tr(
+                    locale,
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<change-request-reason>\", \"reason_code\": \"quality_gap\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<change-request-reason>\", \"reason_code\": \"quality_gap\" }",
+                )
+                .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: None,
+            write_path: true,
+        });
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
+            authority: registry_review_authority_label(owner_binding, locale),
+            note: Some(
+                tr(
+                    locale,
+                    "Pause the request without rejecting it; live hold requires both a governance reason and a structured reason_code.",
+                    "Поставить запрос на паузу без reject; live hold требует и governance reason, и structured reason_code.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                tr(
+                    locale,
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
                 )
                 .to_string(),
             ),
@@ -1268,6 +1589,80 @@ fn registry_live_api_action_lines(
             header_hint: None,
             xtask_hint: None,
             write_path: false,
+        });
+    } else if status_eq(&request.status, "changes_requested") {
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("PUT /v2/catalog/publish/{}/artifact", request.id),
+            authority: manage_publish_authority.clone(),
+            note: Some(
+                tr(
+                    locale,
+                    "Upload a fresh artifact revision to continue the same publish request after request-changes.",
+                    "Загрузите новый artifact revision, чтобы продолжить тот же publish request после request-changes.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                tr(
+                    locale,
+                    "<binary publish artifact body>",
+                    "<binary publish artifact body>",
+                )
+                .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(owner_binding.is_some())),
+            xtask_hint: Some(format!(
+                "cargo xtask module publish {} --registry-url <registry-url>",
+                module.slug
+            )),
+            write_path: true,
+        });
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
+            authority: registry_review_authority_label(owner_binding, locale),
+            note: Some(
+                tr(
+                    locale,
+                    "Pause the request without rejecting it; live hold requires both a governance reason and a structured reason_code.",
+                    "Поставить запрос на паузу без reject; live hold требует и governance reason, и structured reason_code.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                tr(
+                    locale,
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
+                )
+                .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: None,
+            write_path: true,
+        });
+    } else if status_eq(&request.status, "on_hold") {
+        lines.push(RegistryLiveApiActionHint {
+            endpoint: format!("POST /v2/catalog/publish/{}/resume", request.id),
+            authority: registry_review_authority_label(owner_binding, locale),
+            note: Some(
+                tr(
+                    locale,
+                    "Resume the held request back into its previous lifecycle status; live resume requires both a governance reason and a structured reason_code.",
+                    "Вернуть held request в предыдущее lifecycle-состояние; live resume требует и governance reason, и structured reason_code.",
+                )
+                .to_string(),
+            ),
+            body_hint: Some(
+                tr(
+                    locale,
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<resume-reason>\", \"reason_code\": \"review_complete\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<resume-reason>\", \"reason_code\": \"review_complete\" }",
+                )
+                .to_string(),
+            ),
+            header_hint: Some(actor_header_hint(true)),
+            xtask_hint: None,
+            write_path: true,
         });
     } else if status_eq(&request.status, "published") {
         lines.push(RegistryLiveApiActionHint {
@@ -1474,6 +1869,9 @@ fn is_moderation_history_event_type(event_type: &str) -> bool {
         "release_published"
             | "publish_approval_override"
             | "request_rejected"
+            | "changes_requested"
+            | "request_held"
+            | "request_resumed"
             | "owner_transferred"
             | "release_yanked"
             | "validation_stage_running"
@@ -1505,6 +1903,9 @@ fn moderation_history_badge_label(event_type: &str, locale: Locale) -> String {
         "release_published" => tr(locale, "Approved", "Approved"),
         "publish_approval_override" => tr(locale, "Approval override", "Approval override"),
         "request_rejected" => tr(locale, "Rejected", "Rejected"),
+        "changes_requested" => tr(locale, "Changes requested", "Запрошены изменения"),
+        "request_held" => tr(locale, "On hold", "На hold"),
+        "request_resumed" => tr(locale, "Resumed", "Возобновлён"),
         "owner_transferred" => tr(locale, "Owner transfer", "Owner transfer"),
         "release_yanked" => tr(locale, "Yanked", "Yanked"),
         "validation_stage_running" => tr(locale, "Stage running", "Stage running"),
@@ -1521,6 +1922,9 @@ fn moderation_history_badge_status(event_type: &str) -> &'static str {
         "release_published" => "published",
         "publish_approval_override" => "info",
         "request_rejected" => "rejected",
+        "changes_requested" => "info",
+        "request_held" => "blocked",
+        "request_resumed" => "running",
         "release_yanked" => "yanked",
         "validation_stage_failed" => "failed",
         "validation_stage_blocked" => "blocked",
@@ -1619,6 +2023,9 @@ fn governance_event_title(event_type: &str, locale: Locale) -> String {
         "validation_failed" => tr(locale, "Validation failed", "Валидация провалена"),
         "release_published" => tr(locale, "Release published", "Релиз опубликован"),
         "request_rejected" => tr(locale, "Request rejected", "Запрос отклонён"),
+        "changes_requested" => tr(locale, "Changes requested", "Запрошены изменения"),
+        "request_held" => tr(locale, "Request placed on hold", "Запрос поставлен на hold"),
+        "request_resumed" => tr(locale, "Request resumed", "Запрос возобновлён"),
         "release_yanked" => tr(locale, "Release yanked", "Релиз отозван"),
         "owner_bound" => tr(
             locale,
@@ -1886,6 +2293,76 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
                 )
                 .to_string()
             }),
+        "changes_requested" => reason
+            .map(|value| {
+                let prefix = reason_code
+                    .as_deref()
+                    .map(|code| {
+                        format!(
+                            "{} ({})",
+                            tr(locale, "Changes requested", "Запрошены изменения"),
+                            humanize_token(code)
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        tr(locale, "Changes requested", "Запрошены изменения").to_string()
+                    });
+                format!("{prefix}: {value}")
+            })
+            .unwrap_or_else(|| {
+                tr(
+                    locale,
+                    "Review requested a fresh artifact revision.",
+                    "Review запросил новый artifact revision.",
+                )
+                .to_string()
+            }),
+        "request_held" => reason
+            .map(|value| {
+                let prefix = reason_code
+                    .as_deref()
+                    .map(|code| {
+                        format!(
+                            "{} ({})",
+                            tr(locale, "On hold", "На hold"),
+                            humanize_token(code)
+                        )
+                    })
+                    .unwrap_or_else(|| tr(locale, "On hold", "На hold").to_string());
+                format!("{prefix}: {value}")
+            })
+            .unwrap_or_else(|| {
+                tr(
+                    locale,
+                    "The request was placed on hold.",
+                    "Запрос был поставлен на hold.",
+                )
+                .to_string()
+            }),
+        "request_resumed" => {
+            let resumed_to_status = governance_detail_string(&event.details, "resumed_to_status")
+                .unwrap_or_else(|| {
+                    tr(
+                        locale,
+                        "previous lifecycle state",
+                        "предыдущее lifecycle-состояние",
+                    )
+                    .to_string()
+                });
+            match reason {
+                Some(reason) => format!(
+                    "{}: {} ({})",
+                    tr(locale, "Resumed to", "Возобновлён до"),
+                    humanize_token(&resumed_to_status),
+                    reason
+                ),
+                None => format!(
+                    "{}: {}",
+                    tr(locale, "Resumed to", "Возобновлён до"),
+                    humanize_token(&resumed_to_status)
+                ),
+            }
+        }
         "release_yanked" => reason
             .map(|value| format!("{}: {}", tr(locale, "Yanked", "Отозван"), value))
             .unwrap_or_else(|| {
@@ -4336,6 +4813,68 @@ pub fn ModuleDetailPanel(
     let (governance_result, set_governance_result) = signal(None::<RegistryMutationResult>);
     let (governance_confirmation_action, set_governance_confirmation_action) =
         signal(None::<String>);
+    let (governance_intent_action, set_governance_intent_action) = signal(None::<String>);
+    let (governance_status_contract, set_governance_status_contract) =
+        signal(None::<RegistryPublishStatusContract>);
+    let (governance_status_contract_loading, set_governance_status_contract_loading) =
+        signal(false);
+    let (governance_status_contract_error, set_governance_status_contract_error) =
+        signal(None::<String>);
+    let (governance_contract_refresh_nonce, set_governance_contract_refresh_nonce) = signal(0u32);
+    let status_request_id = module.as_ref().and_then(|module| {
+        module
+            .registry_lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.latest_request.as_ref())
+            .map(|request| request.id.clone())
+    });
+
+    Effect::new(move |_| {
+        let Some(request_id) = status_request_id.clone() else {
+            set_governance_status_contract.set(None);
+            set_governance_status_contract_loading.set(false);
+            set_governance_status_contract_error.set(None);
+            return;
+        };
+
+        let _refresh_nonce = governance_contract_refresh_nonce.get();
+        let actor = governance_actor.get().trim().to_string();
+        let token = access_token.get();
+        let tenant = tenant_slug.get();
+
+        if actor.is_empty() || token.is_none() {
+            set_governance_status_contract.set(None);
+            set_governance_status_contract_loading.set(false);
+            set_governance_status_contract_error.set(None);
+            return;
+        }
+
+        set_governance_status_contract_loading.set(true);
+        set_governance_status_contract_error.set(None);
+
+        spawn_local(async move {
+            let requested_actor = actor.clone();
+            match api::fetch_registry_publish_request_status(request_id, actor, token, tenant).await
+            {
+                Ok(status) => {
+                    if governance_actor.get_untracked().trim() == requested_actor {
+                        set_governance_status_contract.set(Some(status));
+                        set_governance_status_contract_error.set(None);
+                    }
+                }
+                Err(error) => {
+                    if governance_actor.get_untracked().trim() == requested_actor {
+                        set_governance_status_contract.set(None);
+                        set_governance_status_contract_error.set(Some(error.to_string()));
+                    }
+                }
+            }
+
+            if governance_actor.get_untracked().trim() == requested_actor {
+                set_governance_status_contract_loading.set(false);
+            }
+        });
+    });
 
     view! {
         <div class="rounded-xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
@@ -4479,28 +5018,19 @@ pub fn ModuleDetailPanel(
                             locale,
                         );
                         let live_api_action_lines_for_show = live_api_action_lines.clone();
-                        let can_validate = latest_registry_request.as_ref().is_some_and(|request| {
-                            status_eq(&request.status, "artifact_uploaded")
-                                || status_eq(&request.status, "submitted")
-                        });
-                        let can_approve = latest_registry_request
+                        let summary_governance_actions = module
+                            .registry_lifecycle
                             .as_ref()
-                            .is_some_and(|request| status_eq(&request.status, "approved"));
-                        let can_reject = latest_registry_request.as_ref().is_some_and(|request| {
-                            !status_eq(&request.status, "rejected")
-                                && !status_eq(&request.status, "published")
-                        });
-                        let can_transfer_owner = latest_registry_request.as_ref().is_some_and(|request| {
-                            request.publisher_identity.as_ref().is_some_and(|publisher| {
-                                registry_owner_binding
-                                    .as_ref()
-                                    .is_none_or(|owner| owner.owner_actor != *publisher)
+                            .map(|lifecycle| lifecycle.governance_actions.clone())
+                            .unwrap_or_default();
+                        let summary_release_management_actions = summary_governance_actions
+                            .iter()
+                            .filter(|action| {
+                                action.key.eq_ignore_ascii_case("owner_transfer")
+                                    || action.key.eq_ignore_ascii_case("yank")
                             })
-                        }) || registry_owner_binding.is_some();
-                        let can_yank = latest_registry_release.as_ref().is_some_and(|release| {
-                            status_eq(&release.status, "published")
-                                || status_eq(&release.status, "active")
-                        });
+                            .cloned()
+                            .collect::<Vec<_>>();
                         let recent_governance_events = module
                             .registry_lifecycle
                             .as_ref()
@@ -4579,13 +5109,6 @@ pub fn ModuleDetailPanel(
                             follow_up_gate_status_summary(&follow_up_gates, locale);
                         let validation_stage_summary =
                             validation_stage_status_summary(&validation_stages, locale);
-                        let approval_override_warning_items = latest_registry_request
-                            .as_ref()
-                            .filter(|request| status_eq(&request.status, "approved"))
-                            .map(|_| approval_override_warning_lines(&validation_stages, locale))
-                            .unwrap_or_default();
-                        let approval_override_warning_items_for_show =
-                            StoredValue::new(approval_override_warning_items.clone());
                         let validation_warning_items_for_show =
                             StoredValue::new(validation_warning_items.clone());
                         let validation_error_items_for_show =
@@ -4603,11 +5126,24 @@ pub fn ModuleDetailPanel(
                             || has_automated_check_items;
                         let show_follow_up_gates = !follow_up_gates.is_empty();
                         let show_validation_stages = !validation_stages.is_empty();
-                        let show_approval_override_warning =
-                            !approval_override_warning_items.is_empty();
                         let governance_hint = registry_governance_hint(&module, locale);
                         let checksum = short_checksum(module.checksum_sha256.as_deref());
                         let request_id = latest_registry_request.as_ref().map(|request| request.id.clone());
+                        let has_request_status_contract = latest_registry_request.is_some();
+                        let summary_release_management_actions_for_form =
+                            summary_release_management_actions.clone();
+                        let governance_actions_for_form = Memo::new(move |_| {
+                            let request_level_actions = governance_status_contract
+                                .get()
+                                .map(|status| status.governance_actions)
+                                .unwrap_or_default();
+                            merge_governance_actions(
+                                &request_level_actions,
+                                &summary_release_management_actions_for_form,
+                            )
+                        });
+                        let show_interactive_governance_form = latest_registry_request.is_some()
+                            || !summary_release_management_actions.is_empty();
                         let release_version = latest_registry_release
                             .as_ref()
                             .map(|release| release.version.clone())
@@ -4624,6 +5160,9 @@ pub fn ModuleDetailPanel(
                             .any(|surface| surface == &admin_surface);
                         let refresh_detail_after_validate = on_refresh_detail.clone();
                         let refresh_detail_after_approve = on_refresh_detail.clone();
+                        let refresh_detail_after_request_changes = on_refresh_detail.clone();
+                        let refresh_detail_after_hold = on_refresh_detail.clone();
+                        let refresh_detail_after_resume = on_refresh_detail.clone();
                         let refresh_detail_after_reject = on_refresh_detail.clone();
                         let refresh_detail_after_transfer = on_refresh_detail.clone();
                         let refresh_detail_after_yank = on_refresh_detail.clone();
@@ -4632,6 +5171,7 @@ pub fn ModuleDetailPanel(
                             let access_token = access_token;
                             let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("validate".to_string()));
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
@@ -4669,6 +5209,7 @@ pub fn ModuleDetailPanel(
                                                 registry_mutation_result_summary(&result, locale),
                                             ));
                                             set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
                                             refresh_detail_after_validate.run(());
                                         }
                                         Err(error) => {
@@ -4685,6 +5226,7 @@ pub fn ModuleDetailPanel(
                             let access_token = access_token;
                             let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("approve".to_string()));
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
@@ -4713,6 +5255,43 @@ pub fn ModuleDetailPanel(
                                     governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "approve",
+                                    )
+                                    && reason.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "approve",
+                                    )
+                                    && reason_code.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "approve",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
+                                    return;
+                                }
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
@@ -4733,7 +5312,300 @@ pub fn ModuleDetailPanel(
                                                 registry_mutation_result_summary(&result, locale),
                                             ));
                                             set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
                                             refresh_detail_after_approve.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error
+                                                .set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
+                        let on_request_changes_request = {
+                            let request_id = request_id.clone();
+                            let access_token = access_token;
+                            let tenant_slug = tenant_slug;
+                            Callback::new(move |_| {
+                                set_governance_intent_action
+                                    .set(Some("request_changes".to_string()));
+                                set_governance_confirmation_action.set(None);
+                                let Some(request_id) = request_id.clone() else {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                };
+                                let actor = governance_actor.get_untracked().trim().to_string();
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
+                                if actor.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Actor is required.", "Нужно указать actor.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "request_changes",
+                                    )
+                                    && reason.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "request_changes",
+                                    )
+                                    && reason_code.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "request_changes",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
+                                    return;
+                                }
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                spawn_local(async move {
+                                    match api::request_changes_registry_publish_request(
+                                        request_id,
+                                        actor,
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
+                                            refresh_detail_after_request_changes.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error
+                                                .set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
+                        let on_hold_request = {
+                            let request_id = request_id.clone();
+                            let access_token = access_token;
+                            let tenant_slug = tenant_slug;
+                            Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("hold".to_string()));
+                                set_governance_confirmation_action.set(None);
+                                let Some(request_id) = request_id.clone() else {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                };
+                                let actor = governance_actor.get_untracked().trim().to_string();
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
+                                if actor.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Actor is required.", "Нужно указать actor.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "hold",
+                                    )
+                                    && reason.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "hold",
+                                    )
+                                    && reason_code.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "hold",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
+                                    return;
+                                }
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                spawn_local(async move {
+                                    match api::hold_registry_publish_request(
+                                        request_id,
+                                        actor,
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
+                                            refresh_detail_after_hold.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error
+                                                .set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
+                        let on_resume_request = {
+                            let request_id = request_id.clone();
+                            let access_token = access_token;
+                            let tenant_slug = tenant_slug;
+                            Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("resume".to_string()));
+                                set_governance_confirmation_action.set(None);
+                                let Some(request_id) = request_id.clone() else {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                };
+                                let actor = governance_actor.get_untracked().trim().to_string();
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
+                                if actor.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Actor is required.", "Нужно указать actor.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "resume",
+                                    )
+                                    && reason.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "resume",
+                                    )
+                                    && reason_code.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "resume",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
+                                    return;
+                                }
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                spawn_local(async move {
+                                    match api::resume_registry_publish_request(
+                                        request_id,
+                                        actor,
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
+                                            refresh_detail_after_resume.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -4750,6 +5622,7 @@ pub fn ModuleDetailPanel(
                             let tenant_slug = tenant_slug;
                             let module_slug_for_actions = module_slug_for_actions.clone();
                             Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("reject".to_string()));
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
                                         tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
@@ -4762,6 +5635,8 @@ pub fn ModuleDetailPanel(
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
                                 if actor.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(locale, "Actor is required.", "Нужно указать actor.")
@@ -4769,18 +5644,39 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 }
-                                if reason.is_empty() {
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "reject",
+                                    )
+                                    && reason.is_empty()
+                                {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
                                 }
-                                if reason_code.is_empty() {
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "reject",
+                                    )
+                                    && reason_code.is_empty()
+                                {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "reject",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
                                     return;
                                 }
                                 if !dry_run
@@ -4825,6 +5721,7 @@ pub fn ModuleDetailPanel(
                                                 registry_mutation_result_summary(&result, locale),
                                             ));
                                             set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
                                             refresh_detail_after_reject.run(());
                                         }
                                         Err(error) => {
@@ -4841,6 +5738,8 @@ pub fn ModuleDetailPanel(
                             let access_token = access_token;
                             let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
+                                set_governance_intent_action
+                                    .set(Some("owner_transfer".to_string()));
                                 let actor = governance_actor.get_untracked().trim().to_string();
                                 let new_owner_actor =
                                     governance_new_owner_actor.get_untracked().trim().to_string();
@@ -4848,6 +5747,8 @@ pub fn ModuleDetailPanel(
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
                                 if actor.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(locale, "Actor is required.", "Нужно указать actor.")
@@ -4866,18 +5767,39 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 }
-                                if reason.is_empty() {
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "owner_transfer",
+                                    )
+                                    && reason.is_empty()
+                                {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
                                 }
-                                if reason_code.is_empty() {
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "owner_transfer",
+                                    )
+                                    && reason_code.is_empty()
+                                {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "owner_transfer",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
                                     return;
                                 }
                                 if !dry_run
@@ -4924,6 +5846,7 @@ pub fn ModuleDetailPanel(
                                                 registry_mutation_result_summary(&result, locale),
                                             ));
                                             set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
                                             refresh_detail_after_transfer.run(());
                                         }
                                         Err(error) => {
@@ -4941,11 +5864,14 @@ pub fn ModuleDetailPanel(
                             let access_token = access_token;
                             let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("yank".to_string()));
                                 let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
                                 if actor.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(locale, "Actor is required.", "Нужно указать actor.")
@@ -4953,18 +5879,39 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 }
-                                if reason.is_empty() {
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "yank",
+                                    )
+                                    && reason.is_empty()
+                                {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
                                 }
-                                if reason_code.is_empty() {
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "yank",
+                                    )
+                                    && reason_code.is_empty()
+                                {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "yank",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
                                     return;
                                 }
                                 if !dry_run
@@ -5012,6 +5959,7 @@ pub fn ModuleDetailPanel(
                                                 registry_mutation_result_summary(&result, locale),
                                             ));
                                             set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
                                             refresh_detail_after_yank.run(());
                                         }
                                         Err(error) => {
@@ -5768,7 +6716,7 @@ pub fn ModuleDetailPanel(
                                             }).collect_view()}
                                         </div>
                                     </Show>
-                                    <Show when=move || can_validate || can_approve || can_reject || can_transfer_owner || can_yank>
+                                    <Show when=move || show_interactive_governance_form>
                                         <div class="mt-3 space-y-3 rounded-lg border border-border bg-background p-3">
                                             <div class="flex flex-wrap items-center justify-between gap-3">
                                                 <p class="text-xs uppercase tracking-wide text-muted-foreground">
@@ -5790,16 +6738,64 @@ pub fn ModuleDetailPanel(
                                                     <span>{tr(locale, "Dry run", "Dry run")}</span>
                                                 </label>
                                             </div>
-                                            <Show when=move || show_approval_override_warning>
+                                            <Show when=move || governance_status_contract.get().is_some_and(|status| status.approval_override_required)>
                                                 <div class="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-900">
                                                     <p class="font-medium">
                                                         {tr(locale, "Approval override required", "Нужен approval override")}
                                                     </p>
                                                     <ul class="list-disc space-y-1 pl-4">
-                                                        {approval_override_warning_items_for_show.get_value().into_iter().map(|line| {
-                                                            view! { <li>{line}</li> }
-                                                        }).collect_view()}
+                                                        {move || governance_status_contract
+                                                            .get()
+                                                            .filter(|status| status.approval_override_required)
+                                                            .map(|status| approval_override_warning_lines(&status.validation_stages, locale))
+                                                            .unwrap_or_default()
+                                                            .into_iter()
+                                                            .map(|line| view! { <li>{line}</li> })
+                                                            .collect_view()}
                                                     </ul>
+                                                </div>
+                                            </Show>
+                                            <Show when=move || governance_status_contract_loading.get() || governance_status_contract_error.get().is_some() || governance_status_contract.get().is_some() || has_request_status_contract>
+                                                <div class="rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                                                    {move || {
+                                                        if governance_status_contract_loading.get() {
+                                                            return tr(
+                                                                locale,
+                                                                "Refreshing actor-aware request status contract...",
+                                                                "Обновляется actor-aware контракт статуса запроса...",
+                                                            )
+                                                            .to_string();
+                                                        }
+                                                        if let Some(error) = governance_status_contract_error.get() {
+                                                            return format!(
+                                                                "{} {}",
+                                                                tr(
+                                                                    locale,
+                                                                    "Actor-aware request status is unavailable; request-level actions stay disabled until the fetch succeeds.",
+                                                                    "Actor-aware статус запроса недоступен; request-level действия останутся выключенными, пока fetch не пройдет.",
+                                                                ),
+                                                                error
+                                                            );
+                                                        }
+                                                        if let Some(status) = governance_status_contract.get() {
+                                                            return format!(
+                                                                "{}: {}{}",
+                                                                tr(locale, "Actor-aware request contract", "Actor-aware контракт запроса"),
+                                                                humanize_token(&status.status),
+                                                                status
+                                                                    .next_step
+                                                                    .as_ref()
+                                                                    .map(|next_step| format!(" · {}", next_step))
+                                                                    .unwrap_or_default()
+                                                            );
+                                                        }
+                                                        tr(
+                                                            locale,
+                                                            "Enter Actor to load the authoritative request-level governance contract. Until then, request-level actions stay read-only.",
+                                                            "Укажите Actor, чтобы загрузить authoritative request-level governance contract. До этого request-level действия остаются read-only.",
+                                                        )
+                                                        .to_string()
+                                                    }}
                                                 </div>
                                             </Show>
                                             <div class="grid gap-3 lg:grid-cols-2">
@@ -5824,7 +6820,11 @@ pub fn ModuleDetailPanel(
                                                 <Input
                                                     value=Signal::derive(move || governance_reason_code.get())
                                                     set_value=set_governance_reason_code
-                                                    placeholder=tr(locale, "manual_review_complete / policy_mismatch / maintenance_handoff / rollback", "manual_review_complete / policy_mismatch / maintenance_handoff / rollback")
+                                                    placeholder=move || governance_reason_code_placeholder(
+                                                        governance_intent_action.get().as_deref(),
+                                                        &governance_actions_for_form.get(),
+                                                        locale,
+                                                    )
                                                     label=tr(locale, "Reason code", "Reason code")
                                                 />
                                                 <div class="flex flex-col gap-2">
@@ -5834,31 +6834,72 @@ pub fn ModuleDetailPanel(
                                                     <textarea
                                                         class="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                                                         prop:value=move || governance_reason.get()
-                                                        placeholder=tr(locale, "Required for reject, owner transfer, yank, and stage-aware approve override.", "Обязательно для reject, owner transfer, yank и stage-aware approve override.")
+                                                        placeholder=move || governance_reason_placeholder(
+                                                            governance_intent_action.get().as_deref(),
+                                                            &governance_actions_for_form.get(),
+                                                            locale,
+                                                        )
                                                         on:input=move |event| {
                                                             set_governance_reason.set(event_target_value(&event));
                                                         }
                                                     ></textarea>
+                                                    <p class="text-[11px] text-muted-foreground">
+                                                        {move || governance_reason_placeholder(
+                                                            governance_intent_action.get().as_deref(),
+                                                            &governance_actions_for_form.get(),
+                                                            locale,
+                                                        )}
+                                                    </p>
                                                 </div>
                                             </div>
+                                            <Show when=move || governance_intent_action.get().is_some()>
+                                                <div class="rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                                                    {move || governance_action_requirement_hint(
+                                                        governance_intent_action.get().as_deref(),
+                                                        &governance_actions_for_form.get(),
+                                                        locale,
+                                                    ).unwrap_or_default()}
+                                                </div>
+                                            </Show>
                                             <div class="flex flex-wrap gap-2">
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_validate)
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "validate"))
                                                     on_click=on_validate_request
                                                 >
                                                     {tr(locale, "Validate", "Validate")}
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_approve)
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "approve"))
                                                     on_click=on_approve_request
                                                 >
                                                     {tr(locale, "Approve", "Approve")}
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_reject)
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "request_changes"))
+                                                    on_click=on_request_changes_request
+                                                >
+                                                    {tr(locale, "Request changes", "Запросить изменения")}
+                                                </Button>
+                                                <Button
+                                                    class="h-8 px-3 py-1 text-xs"
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "hold"))
+                                                    on_click=on_hold_request
+                                                >
+                                                    {tr(locale, "Hold", "Поставить на hold")}
+                                                </Button>
+                                                <Button
+                                                    class="h-8 px-3 py-1 text-xs"
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "resume"))
+                                                    on_click=on_resume_request
+                                                >
+                                                    {tr(locale, "Resume", "Возобновить")}
+                                                </Button>
+                                                <Button
+                                                    class="h-8 px-3 py-1 text-xs"
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "reject"))
                                                     on_click=on_reject_request
                                                 >
                                                     {move || {
@@ -5874,7 +6915,7 @@ pub fn ModuleDetailPanel(
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_transfer_owner)
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "owner_transfer"))
                                                     on_click=on_transfer_owner
                                                 >
                                                     {move || {
@@ -5890,7 +6931,7 @@ pub fn ModuleDetailPanel(
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !can_yank)
+                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "yank"))
                                                     on_click=on_yank_release
                                                 >
                                                     {move || {
@@ -5908,8 +6949,10 @@ pub fn ModuleDetailPanel(
                                                     class="h-8 px-3 py-1 text-xs"
                                                     disabled=Signal::derive(move || governance_submitting.get())
                                                     on_click=Callback::new(move |_| {
+                                                        set_governance_intent_action.set(None);
                                                         set_governance_confirmation_action.set(None);
                                                         set_governance_feedback.set(None);
+                                                        set_governance_contract_refresh_nonce.update(|value| *value += 1);
                                                         on_refresh_detail.run(())
                                                     })
                                                 >

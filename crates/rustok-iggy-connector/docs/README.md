@@ -1,102 +1,38 @@
-# rustok-iggy-connector docs
+# Документация `rustok-iggy-connector`
 
-Documentation for `crates/rustok-iggy-connector`.
+`rustok-iggy-connector` — connection abstraction layer для Iggy transport
+стека. Он владеет embedded/remote mode switching, connection lifecycle и
+low-level message I/O, не забирая у `rustok-iggy` transport-level semantics.
 
-## Documents
+## Назначение
 
-- [Implementation Plan](./implementation-plan.md) - Delivery phases and component status
+- публиковать канонический connector contract для Iggy-based transport stack;
+- держать embedded/remote mode switching и lifecycle management в отдельном crate;
+- давать `rustok-iggy` и другим возможным consumers единый low-level connector surface.
 
-## Overview
+## Зона ответственности
 
-`rustok-iggy-connector` provides connection abstraction for Iggy in two modes:
-- **Embedded**: In-process Iggy server
-- **Remote**: External Iggy server via TCP/HTTP
+- `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`;
+- `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `ConnectorError`;
+- connection lifecycle, mode abstraction и low-level publish/subscribe contracts;
+- optional Iggy SDK integration через feature flag;
+- отсутствие ownership над transport-level serialization, DLQ, replay и topology policy.
 
-## Key Types
+## Интеграция
 
-| Type | Description |
-|------|-------------|
-| `IggyConnector` | Trait for connector implementations |
-| `RemoteConnector` | Connects to external Iggy server |
-| `EmbeddedConnector` | Runs embedded Iggy server |
-| `ConnectorConfig` | Configuration for both modes |
-| `PublishRequest` | Message publishing request |
-| `MessageSubscriber` | Message consumption interface |
+- используется `rustok-iggy` как low-level connection layer;
+- должен оставаться отдельным connector crate без transport/business semantics;
+- любые изменения connector contracts должны синхронизироваться с `rustok-iggy` docs и runtime expectations;
+- simulation mode без feature flag должен оставаться явно задокументированной compatibility surface.
 
-## Quick Start
+## Проверка
 
-```rust
-use rustok_iggy_connector::{ConnectorConfig, IggyConnector, RemoteConnector, PublishRequest};
+- targeted compile/tests для connector configuration, mode switching, request building и error handling;
+- integration tests нужны при изменении реального SDK/lifecycle path;
+- structural verification для boundary между connector и transport crate.
 
-// Create connector
-let connector = RemoteConnector::new();
+## Связанные документы
 
-// Connect
-let config = ConnectorConfig::default();
-connector.connect(&config).await?;
-
-// Publish
-let request = PublishRequest::simple("tenant-1", b"data".to_vec(), "event-1");
-connector.publish(request).await?;
-
-// Shutdown
-connector.shutdown().await?;
-```
-
-## Configuration
-
-### Embedded Mode
-
-```rust
-ConnectorConfig {
-    mode: ConnectorMode::Embedded,
-    embedded: EmbeddedConnectorConfig {
-        data_dir: "./data/iggy".to_string(),
-        tcp_port: 8090,
-        http_port: 3000,
-        persistent: true,
-    },
-    stream_name: "rustok".to_string(),
-    topic_name: "domain".to_string(),
-    partitions: 8,
-    ..Default::default()
-}
-```
-
-### Remote Mode
-
-```rust
-ConnectorConfig {
-    mode: ConnectorMode::Remote,
-    remote: RemoteConnectorConfig {
-        addresses: vec!["127.0.0.1:8090".to_string()],
-        protocol: "tcp".to_string(),
-        username: "rustok".to_string(),
-        password: "secret".to_string(),
-        tls_enabled: false,
-    },
-    stream_name: "rustok".to_string(),
-    topic_name: "domain".to_string(),
-    partitions: 8,
-    ..Default::default()
-}
-```
-
-## Feature Flags
-
-- `iggy`: Enable full Iggy SDK support (optional)
-
-Without the `iggy` feature, connectors run in simulation mode with logging only.
-
-## Error Handling
-
-```rust
-use rustok_iggy_connector::ConnectorError;
-
-match connector.publish(request).await {
-    Ok(()) => println!("Published"),
-    Err(ConnectorError::NotConnected) => println!("Not connected"),
-    Err(ConnectorError::Publish(msg)) => println!("Publish error: {}", msg),
-    Err(e) => println!("Other error: {}", e),
-}
-```
+- [README crate](../README.md)
+- [План реализации](./implementation-plan.md)
+- [Документация `rustok-iggy`](../../rustok-iggy/docs/README.md)
