@@ -81,3 +81,5 @@
 - `controllers::routes`
 - `admin::ForumAdmin` (publishable Leptos package)
 - `storefront::ForumView` (publishable Leptos package)
+
+See also [docs/README.md](docs/README.md).

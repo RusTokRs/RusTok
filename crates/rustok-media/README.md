@@ -35,3 +35,5 @@
 - `MediaTranslationItem`
 - `UploadInput`
 - `UpsertTranslationInput`
+
+See also [docs/README.md](docs/README.md).

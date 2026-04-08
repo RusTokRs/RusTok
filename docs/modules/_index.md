@@ -5,7 +5,7 @@
 ## Правило размещения
 
 - документация модуля хранится в `crates/<name>/docs/`;
-- root `README.md` остаётся обязательным английским описанием crate;
+- root `README.md` остаётся обязательным английским описанием crate и должен содержать `## Purpose`, `## Responsibilities`, `## Entry points`, `## Interactions` и ссылку на `docs/README.md`;
 - `docs/README.md` и `docs/implementation-plan.md` обязательны для каждого path-модуля из `modules.toml`.
 
 ## Core и platform foundation

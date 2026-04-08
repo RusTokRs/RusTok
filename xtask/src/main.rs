@@ -2885,8 +2885,24 @@ fn validate_module_documentation_contract(slug: &str, module_root: &Path) -> Res
     }
     let root_readme = fs::read_to_string(&readme_path)
         .with_context(|| format!("Failed to read module README at {}", readme_path.display()))?;
-    if !root_readme.contains("## Interactions") {
-        anyhow::bail!("Module '{slug}' README.md must contain an `## Interactions` section");
+    let normalized_root_readme = root_readme.to_ascii_lowercase();
+    for (section, display_name) in [
+        ("## purpose", "## Purpose"),
+        ("## responsibilities", "## Responsibilities"),
+        ("## entry points", "## Entry points"),
+        ("## interactions", "## Interactions"),
+    ] {
+        if !normalized_root_readme.contains(section) {
+            anyhow::bail!(
+                "Module '{slug}' README.md must contain a `{}` section",
+                display_name
+            );
+        }
+    }
+    if !normalized_root_readme.contains("docs/readme.md") {
+        anyhow::bail!(
+            "Module '{slug}' README.md must link to `docs/README.md`"
+        );
     }
 
     let docs_readme_path = module_root.join("docs").join("README.md");

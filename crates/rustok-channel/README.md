@@ -1,5 +1,7 @@
 # rustok-channel
 
+## Purpose
+
 `rustok-channel` is an experimental core module that introduces a platform-level channel context for external delivery surfaces such as websites, applications, API clients, embedded targets, and other entry points.
 
 ## Responsibilities
@@ -60,9 +62,23 @@ It does not yet provide:
 - Domain modules may gradually become channel-aware by reading channel context or channel bindings.
 - The Leptos admin UI lives in `crates/rustok-channel/admin` and is mounted by `apps/admin` through manifest-driven wiring.
 
+## Entry points
+
+- `ChannelModule`
+- `ChannelService`
+- `ChannelResolver`
+- `ChannelContext`
+- `RequestFacts`
+- `ResolutionDecision`
+- `ResolutionTraceStep`
+- `controllers::routes`
+- `rustok-channel-admin`
+
 ## Next Steps
 
 - Keep the current `channel_module_bindings + metadata` model for v0 while `pages` and `blog` continue to serve as proof points.
 - Revisit a dedicated relation model only if future domains need stronger DB-level querying, authoring UX, or semantics that request-time filtering can no longer cover cleanly.
 - Roll out tenant-scoped typed resolution policies as the next architecture phase, without introducing a second fallback concept beyond explicit default channel.
 - Decide later whether `target`, `connector`, and publishable credentials should become separate concepts.
+
+See also [docs/README.md](docs/README.md).

@@ -195,7 +195,7 @@
 ### 4.3 Runtime-module permission ownership
 
 - [ ] `permissions()` Сѓ runtime-РјРѕРґСѓР»РµР№ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ СЂРµР°Р»СЊРЅС‹Рј server callsites.
-- [ ] README runtime-РјРѕРґСѓР»РµР№ СЃРѕРґРµСЂР¶РёС‚ Р°РєС‚СѓР°Р»СЊРЅС‹Рµ `## Interactions` Рё permission surface.
+- [ ] README runtime-РјРѕРґСѓР»РµР№ СЃРѕРґРµСЂР¶РёС‚ `## Purpose`, `## Responsibilities`, `## Entry points`, `## Interactions`, СЃСЃС‹Р»РєСѓ РЅР° `docs/README.md` Рё permission surface.
 - [ ] `pages`, `media`, `workflow` РѕС‚СЂР°Р¶РµРЅС‹ РІ RBAC vocabulary Рё server enforcement.
 
 ---

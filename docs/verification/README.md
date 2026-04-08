@@ -21,6 +21,9 @@ cargo xtask module validate
 Проверка должна fail-fast, если path-модуль:
 
 - не имеет `rustok-module.toml`;
+- не имеет root `README.md`;
+- имеет root `README.md` без `## Purpose`, `## Responsibilities`, `## Entry points` или `## Interactions`;
+- не содержит в root `README.md` ссылку на `docs/README.md`;
 - не имеет `docs/README.md` или `docs/implementation-plan.md`;
 - имеет drift по зависимостям между `modules.toml` и локальным manifest;
 - имеет broken admin/storefront wiring;

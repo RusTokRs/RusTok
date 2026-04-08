@@ -14,7 +14,8 @@ Runtime guardrails агрегируют живые сигналы рантайм
 - состояние rate-limit backends и memory saturation;
 - состояние event transport fallback;
 - состояние event bus backpressure.
-- состояние optional registry validation runner для follow-up stages.
+- состояние optional registry validation runner для follow-up stages;
+- состояние optional remote executor API и lease reaper для distributed follow-up execution.
 
 ## Endpoints
 
@@ -39,6 +40,13 @@ Runtime guardrails агрегируют живые сигналы рантайм
   - `worker_attached` и `instance_id` — поднят ли background worker в текущем процессе;
   - `auto_confirm_manual_review`, `poll_interval_ms`, `supported_stages` — effective execution contract;
   - `state` — `degraded`, если runner должен быть активен, но worker не attached, либо если worker attached при выключенном config.
+- `remote_executor` — состояние lease-based remote runner surface:
+  - `configured_enabled` — включён ли remote executor в config;
+  - `active` — должен ли он реально работать на этом host (`full`, не `registry_only`, и есть `shared_token`);
+  - `token_configured` — задан ли `shared_token` для `x-rustok-runner-token`;
+  - `reaper_attached` и `reaper_instance_id` — поднят ли periodic requeue worker для истёкших lease;
+  - `lease_ttl_ms`, `requeue_scan_interval_ms` — effective lease contract;
+  - `state` — `degraded`, если executor включён без token или если full-host должен обслуживать remote claims, но reaper не attached.
 
 ## Как читать snapshot
 
@@ -52,6 +60,8 @@ Runtime guardrails агрегируют живые сигналы рантайм
 6. `event_bus.state`
 7. `validation_runner.state`
 8. `validation_runner.worker_attached`
+9. `remote_executor.state`
+10. `remote_executor.reaper_attached`
 
 ## Основные сценарии
 
@@ -85,6 +95,12 @@ Registry validation runner detached:
 - `validation_runner.worker_attached = false`;
 - `/health/ready` должен нести matching reason через `runtime_guardrails`.
 
+Registry remote executor misconfigured:
+
+- `remote_executor.configured_enabled = true`;
+- `remote_executor.token_configured = false` или `remote_executor.reaper_attached = false`;
+- `/health/ready` должен нести matching reason через `runtime_guardrails`.
+
 ## Метрики
 
 Через `/metrics` публикуются:
@@ -100,6 +116,8 @@ Registry validation runner detached:
 - `rustok_runtime_guardrail_validation_runner_state`
 - `rustok_runtime_guardrail_validation_runner_config`
 - `rustok_runtime_guardrail_validation_runner_supported_stage`
+- `rustok_runtime_guardrail_remote_executor_state`
+- `rustok_runtime_guardrail_remote_executor_config`
 - `rustok_runtime_guardrail_event_transport_fallback_active`
 - `rustok_runtime_guardrail_event_backpressure_state`
 
@@ -109,6 +127,7 @@ Registry validation runner detached:
 - event relay fallback активирован;
 - event bus дошёл до critical backpressure;
 - validation runner должен быть активен, но worker не attached;
+- remote executor включён без `shared_token` или full-host должен обслуживать remote claims, но lease reaper не attached;
 - readiness деградировал из-за runtime guardrails, а причина не объяснена оператором.
 
 ## Связанные файлы

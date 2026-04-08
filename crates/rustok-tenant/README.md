@@ -27,3 +27,5 @@
 - `CreateTenantInput`
 - `UpdateTenantInput`
 - `ToggleModuleInput`
+
+See also [docs/README.md](docs/README.md).

@@ -24,3 +24,5 @@ in-memory cache implementations.
 - `CacheModule`
 - `CacheService`
 - `CacheHealthReport`
+
+See also [docs/README.md](docs/README.md).

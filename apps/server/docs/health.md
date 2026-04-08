@@ -58,7 +58,7 @@ surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-ap
 - `host_mode` (`full|registry_only`);
 - `runtime_dependencies_enabled` — поднят ли полный runtime dependency layer;
 - `reasons` с человекочитаемыми причинами деградации;
-- `rate_limits`, `event_bus`, `event_transport`, `validation_runner`.
+- `rate_limits`, `event_bus`, `event_transport`, `validation_runner`, `remote_executor`.
 
 Prometheus surface теперь также публикует:
 
@@ -67,6 +67,8 @@ Prometheus surface теперь также публикует:
 - `rustok_runtime_guardrail_validation_runner_state`
 - `rustok_runtime_guardrail_validation_runner_config{setting="configured_enabled|active|worker_attached|auto_confirm_manual_review|poll_interval_ms"}`
 - `rustok_runtime_guardrail_validation_runner_supported_stage{stage="..."}`
+- `rustok_runtime_guardrail_remote_executor_state`
+- `rustok_runtime_guardrail_remote_executor_config{setting="configured_enabled|active|token_configured|reaper_attached|lease_ttl_ms|requeue_scan_interval_ms"}`
 
 `validation_runner` в snapshot нужен для operator-visible статуса optional background runner над
 `registry_validation_stages`. Он показывает не только config (`configured_enabled`,
@@ -74,6 +76,11 @@ Prometheus surface теперь также публикует:
 worker'а к текущему процессу (`worker_attached`, `instance_id`). Если runner должен быть активен на
 full-host (`active=true`), но worker не attached, runtime guardrails деградируют и readiness получает
 matching reason через `runtime_guardrails`.
+
+`remote_executor` в этом же snapshot описывает lease-based remote runner contract: включён ли
+internal runner API, задан ли `shared_token`, и поднят ли periodic reaper для просроченных lease.
+Если full-host должен обслуживать remote claims, но `shared_token` пустой или reaper не attached,
+runtime guardrails тоже деградируют.
 
 Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
 
@@ -107,10 +114,11 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 - `GET /health/ready` и `GET /health/modules` возвращают `200`, несмотря на reduced surface;
 - `GET /health/runtime` явно возвращает `host_mode="registry_only"` и `runtime_dependencies_enabled=false`;
 - `validation_runner.active=false`, даже если config включает runner, потому что reduced host не поднимает background workers;
+- `remote_executor.active=false`, даже если config включает remote executor, потому что reduced host не монтирует full-host runner surface и не поднимает lease reaper;
 - `GET /v1/catalog` возвращает read-only catalog contract с `ETag`, `Cache-Control` и `X-Total-Count`;
 - `GET /v1/catalog/{slug}` остаётся доступным как canonical detail contract для внешнего discovery;
 - `GET /api/openapi.json` рекламирует только registry/health/metrics/swagger surface;
-- `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/owner-transfer` и `POST /v2/catalog/yank` не должны быть доступны и в норме дают `404`;
+- `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/runner/*`, `POST /v2/catalog/owner-transfer` и `POST /v2/catalog/yank` не должны быть доступны и в норме дают `404`;
 - `GET /api/graphql`, `GET /api/auth/me`, `GET /admin` не должны быть доступны и в норме дают `404`.
 
 Для автоматизированной локальной проверки тот же runtime contract покрыт в
@@ -136,7 +144,7 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 4. Проверить `GET /v1/catalog?limit=1` и `GET /v1/catalog/{slug}` на целевом instance.
 5. Проверить `ETag`, `Cache-Control` и `X-Total-Count` на `GET /v1/catalog?limit=1`.
 6. Проверить `GET /api/openapi.json` и убедиться, что в spec нет `/v2/catalog/*`, `/api/graphql`, `/api/auth/*`.
-7. Проверить negative smoke: `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank`, `GET /api/graphql`, `GET /admin` должны давать `404`.
+7. Проверить negative smoke: `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank`, `GET /api/graphql`, `GET /admin` должны давать `404`.
 
 Provider-agnostic edge/runtime invariants для этого host:
 

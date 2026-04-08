@@ -225,11 +225,13 @@ impl Hooks for App {
 #[cfg(test)]
 mod tests {
     use super::App;
-    use axum::body::{to_bytes, Body};
+    use axum::body::{to_bytes, Body, Bytes};
     use axum::http::{Request, StatusCode};
     use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
     use migration::Migrator;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
+    };
     use sea_orm_migration::MigratorTrait;
     use serde_json::Value;
     use serial_test::serial;
@@ -1328,8 +1330,8 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn registry_publish_request_changes_endpoint_requeues_request_after_fresh_artifact_upload()
-    {
+    async fn registry_publish_request_changes_endpoint_requeues_request_after_fresh_artifact_upload(
+    ) {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
             .await
@@ -1364,7 +1366,10 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/request-changes", approved.id))
+                    .uri(format!(
+                        "/v2/catalog/publish/{}/request-changes",
+                        approved.id
+                    ))
                     .header("content-type", "application/json")
                     .header("x-rustok-actor", "governance:moderator")
                     .body(Body::from(
@@ -1390,18 +1395,19 @@ mod tests {
             "unexpected request-changes response body: {}",
             String::from_utf8_lossy(&body)
         );
-        let payload: Value = serde_json::from_slice(&body)
-            .expect("request-changes response should be valid json");
+        let payload: Value =
+            serde_json::from_slice(&body).expect("request-changes response should be valid json");
         assert_eq!(
             payload.get("status").and_then(Value::as_str),
             Some("changes_requested")
         );
 
-        let changed_request = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
-            .one(&ctx.db)
-            .await
-            .expect("request lookup should succeed")
-            .expect("request should persist");
+        let changed_request =
+            crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+                .one(&ctx.db)
+                .await
+                .expect("request lookup should succeed")
+                .expect("request should persist");
         assert_eq!(
             changed_request.status,
             crate::models::registry_publish_request::RegistryPublishRequestStatus::ChangesRequested
@@ -1411,11 +1417,16 @@ mod tests {
             Some("artifact_mismatch")
         );
         let stage_count = crate::models::registry_validation_stage::Entity::find()
-            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()))
+            .filter(
+                crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()),
+            )
             .count(&ctx.db)
             .await
             .expect("stage count should load");
-        assert_eq!(stage_count, 0, "changes_requested should clear prior stages");
+        assert_eq!(
+            stage_count, 0,
+            "changes_requested should clear prior stages"
+        );
 
         let upload_response = base_router
             .clone()
@@ -1441,11 +1452,12 @@ mod tests {
             String::from_utf8_lossy(&upload_body)
         );
 
-        let resubmitted = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
-            .one(&ctx.db)
-            .await
-            .expect("request lookup should succeed")
-            .expect("request should persist");
+        let resubmitted =
+            crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+                .one(&ctx.db)
+                .await
+                .expect("request lookup should succeed")
+                .expect("request should persist");
         assert_eq!(
             resubmitted.status,
             crate::models::registry_publish_request::RegistryPublishRequestStatus::Submitted
@@ -1500,11 +1512,12 @@ mod tests {
             .expect("hold request should succeed");
         assert_eq!(hold_response.status(), StatusCode::OK);
 
-        let held_request = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
-            .one(&ctx.db)
-            .await
-            .expect("request lookup should succeed")
-            .expect("request should persist");
+        let held_request =
+            crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+                .one(&ctx.db)
+                .await
+                .expect("request lookup should succeed")
+                .expect("request should persist");
         assert_eq!(
             held_request.status,
             crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold
@@ -1555,11 +1568,12 @@ mod tests {
             .expect("resume request should succeed");
         assert_eq!(resume_response.status(), StatusCode::OK);
 
-        let resumed_request = crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
-            .one(&ctx.db)
-            .await
-            .expect("request lookup should succeed")
-            .expect("request should persist");
+        let resumed_request =
+            crate::models::registry_publish_request::Entity::find_by_id(approved.id.clone())
+                .one(&ctx.db)
+                .await
+                .expect("request lookup should succeed")
+                .expect("request should persist");
         assert_eq!(
             resumed_request.status,
             crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
@@ -1730,10 +1744,15 @@ mod tests {
             .and_then(Value::as_str)
             .expect("claimId should be present")
             .to_string();
-        assert_eq!(claim.get("stageKey").and_then(Value::as_str), Some("compile_smoke"));
+        assert_eq!(
+            claim.get("stageKey").and_then(Value::as_str),
+            Some("compile_smoke")
+        );
 
         let claimed_stage = crate::models::registry_validation_stage::Entity::find()
-            .filter(crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()))
+            .filter(
+                crate::models::registry_validation_stage::Column::RequestId.eq(approved.id.clone()),
+            )
             .filter(crate::models::registry_validation_stage::Column::StageKey.eq("compile_smoke"))
             .one(&ctx.db)
             .await
@@ -2171,7 +2190,8 @@ mod tests {
         ctx: &loco_rs::app::AppContext,
         request: &crate::models::registry_publish_request::Model,
     ) -> crate::models::registry_publish_request::Model {
-        let mut active = crate::models::registry_publish_request::ActiveModel::from(request.clone());
+        let mut active =
+            crate::models::registry_publish_request::ActiveModel::from(request.clone());
         active.artifact_path = Set(Some(format!(
             "registry-artifacts/{}-{}.tar.zst",
             request.slug, request.version

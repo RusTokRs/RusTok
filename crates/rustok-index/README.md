@@ -33,3 +33,5 @@
 - `LocaleIndexer`
 - `IndexerContext`
 - `IndexerRuntimeConfig`
+
+See also [docs/README.md](docs/README.md).

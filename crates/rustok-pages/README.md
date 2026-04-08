@@ -59,3 +59,5 @@
 - `controllers::routes`
 - `rustok-pages-admin::PagesAdmin`
 - `rustok-pages-storefront::PagesView`
+
+See also [docs/README.md](docs/README.md).

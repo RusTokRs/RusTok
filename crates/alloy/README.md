@@ -28,3 +28,5 @@
 - `graphql::AlloyQuery`
 - `graphql::AlloyMutation`
 - `controllers::routes`
+
+See also [docs/README.md](docs/README.md).

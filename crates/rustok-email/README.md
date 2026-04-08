@@ -25,3 +25,5 @@
 - `EmailConfig`
 - `PasswordResetEmail`
 - `PasswordResetEmailSender`
+
+See also [docs/README.md](docs/README.md).

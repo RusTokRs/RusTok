@@ -63,7 +63,8 @@ RBAC-контракт задаётся тремя источниками:
 
 - `RusToKModule::permissions()`;
 - `RusToKModule::dependencies()`;
-- `README.md` -> `## Interactions`.
+- root `README.md` с `## Purpose`, `## Responsibilities`, `## Entry points`, `## Interactions`
+  и ссылкой на `docs/README.md`.
 
 Текущее владение RBAC surface:
 

@@ -1,6 +1,7 @@
 # Rust build artifacts
 /target
 **/target
+/target_xtask_validate/
 # Note: Cargo.lock IS intentionally tracked for binary applications (server, admin, storefront)
 # See: https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 
@@ -54,6 +55,7 @@ docs/book/
 
 # Node.js (for admin/storefront if using Node)
 node_modules/
+.next/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

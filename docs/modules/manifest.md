@@ -20,6 +20,12 @@
 - `docs/README.md`
 - `docs/implementation-plan.md`
 
+Root `README.md` для каждого path-модуля тоже входит в contract minimum. Он обязан:
+
+- оставаться английским crate-level описанием;
+- содержать `## Purpose`, `## Responsibilities`, `## Entry points` и `## Interactions`;
+- содержать явную ссылку на `docs/README.md`.
+
 Если модуль публикует Leptos UI surfaces, дополнительно обязателен фактический subcrate и соответствующий manifest wiring:
 
 - `admin/Cargo.toml` ↔ `[provides.admin_ui]`
@@ -124,6 +130,9 @@ entry_type = "AuthModule"
 `cargo xtask module validate` должен fail-fast, если path-модуль:
 
 - не имеет `rustok-module.toml`;
+- не имеет `README.md`;
+- имеет root `README.md` без `## Purpose`, `## Responsibilities`, `## Entry points` или `## Interactions`;
+- не содержит в root `README.md` ссылку на `docs/README.md`;
 - не имеет `docs/README.md` или `docs/implementation-plan.md`;
 - имеет broken UI wiring;
 - имеет drift между `modules.toml` и `[dependencies]`;

@@ -47,3 +47,5 @@
 - `controllers::routes`
 - `admin::BlogAdmin`
 - `storefront::BlogView`
+
+See also [docs/README.md](docs/README.md).

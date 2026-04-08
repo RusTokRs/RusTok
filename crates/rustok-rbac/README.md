@@ -30,3 +30,5 @@
 - `authorize_any_permission`
 - `authorize_all_permissions`
 - `has_effective_permission_in_set`
+
+See also [docs/README.md](docs/README.md).

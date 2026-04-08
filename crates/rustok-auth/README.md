@@ -29,3 +29,5 @@ refresh-token helpers, auth config, and auth-related migrations.
 - `generate_refresh_token`
 - `hash_password`
 - `verify_password`
+
+See also [docs/README.md](docs/README.md).
