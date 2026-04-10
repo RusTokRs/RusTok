@@ -2123,6 +2123,53 @@ async fn test_resolve_variant_price_rejects_inactive_price_list_context() {
 }
 
 #[tokio::test]
+async fn test_resolve_variant_price_rejects_price_list_outside_requested_channel() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list_with_channel(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        None,
+        Some(web_channel_id),
+        Some("web-store"),
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let result = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: Some(Uuid::new_v4()),
+                channel_slug: Some("mobile-app".to_string()),
+                quantity: Some(1),
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("price_list_id is not available for the requested channel"));
+        }
+        other => panic!("Expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn test_resolve_variant_price_reports_discount_percent() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
