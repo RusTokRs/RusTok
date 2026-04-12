@@ -124,6 +124,18 @@ pub fn compose_application_router(
     if rustok_settings.runtime.is_registry_only() {
         return router
             .layer(Extension(runtime.registry))
+            // Rate limiting must be present to prevent resource exhaustion even
+            // in registry-only mode.
+            .layer(axum_middleware::from_fn_with_state(
+                runtime.rate_limit_state,
+                rate_limit_for_paths,
+            ))
+            // Auth context must be resolved so registry handlers can enforce
+            // authentication (RTK-001: actor derived from AuthContextExtension).
+            .layer(axum_middleware::from_fn_with_state(
+                ctx.clone(),
+                middleware::auth_context::resolve_optional,
+            ))
             .layer(axum_middleware::from_fn_with_state(
                 ctx.clone(),
                 middleware::locale::resolve_locale,

@@ -14,12 +14,11 @@ use redis::Script;
 use rustok_telemetry::metrics::{
     record_rate_limit_backend_unavailable, record_rate_limit_exceeded, update_rate_limit_runtime,
 };
-use std::collections::HashMap;
+use moka::future::Cache;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use rustok_cache::CacheService;
@@ -83,10 +82,12 @@ struct RequestCounter {
     window_start: Instant,
 }
 
+const MEMORY_BACKEND_MAX_ENTRIES: u64 = 100_000;
+
 #[derive(Clone)]
 enum RateLimiterBackend {
     Memory {
-        requests: Arc<RwLock<HashMap<String, RequestCounter>>>,
+        requests: Cache<String, RequestCounter>,
     },
     Redis {
         client: redis::Client,
@@ -107,10 +108,12 @@ impl RateLimiter {
     }
 
     pub fn new_with_namespace(config: RateLimitConfig, namespace: impl Into<String>) -> Self {
+        let requests = Cache::builder()
+            .max_capacity(MEMORY_BACKEND_MAX_ENTRIES)
+            .time_to_idle(config.window)
+            .build();
         Self {
-            backend: RateLimiterBackend::Memory {
-                requests: Arc::new(RwLock::new(HashMap::new())),
-            },
+            backend: RateLimiterBackend::Memory { requests },
             config,
             namespace: namespace.into(),
         }
@@ -177,80 +180,53 @@ impl RateLimiter {
 
     async fn check_rate_limit_memory(
         &self,
-        requests: &Arc<RwLock<HashMap<String, RequestCounter>>>,
+        requests: &Cache<String, RequestCounter>,
         key: &str,
     ) -> Result<RateLimitInfo, RateLimitCheckError> {
         let now = Instant::now();
+        let max_requests = self.config.max_requests;
+        let window = self.config.window;
 
-        {
-            let requests = requests.read().await;
-            if let Some(counter) = requests.get(key).filter(|counter| {
-                now.duration_since(counter.window_start) <= self.config.window
-                    && counter.count >= self.config.max_requests
-            }) {
-                let retry_after = self
-                    .config
-                    .window
-                    .saturating_sub(now.duration_since(counter.window_start))
-                    .as_secs();
-
-                warn!(
-                    key = %key,
-                    count = counter.count,
-                    limit = self.config.max_requests,
-                    retry_after = retry_after,
-                    "Rate limit exceeded"
-                );
-
-                return Err(RateLimitCheckError::Exceeded(RateLimitExceeded::new(
-                    self.config.max_requests,
-                    retry_after,
-                )));
-            }
-        }
-
-        let mut requests = requests.write().await;
+        // Atomically read-modify-write the counter so there is no TOCTOU race.
         let counter = requests
             .entry(key.to_string())
-            .or_insert_with(|| RequestCounter {
-                count: 0,
-                window_start: now,
-            });
+            .and_upsert_with(|maybe| async move {
+                let mut c = maybe
+                    .map(|e| e.into_value())
+                    .unwrap_or(RequestCounter { count: 0, window_start: now });
+                if now.duration_since(c.window_start) > window {
+                    c.count = 0;
+                    c.window_start = now;
+                }
+                c.count = c.count.saturating_add(1);
+                c
+            })
+            .await
+            .into_value();
 
-        if now.duration_since(counter.window_start) > self.config.window {
-            counter.count = 0;
-            counter.window_start = now;
-        }
-
-        if counter.count >= self.config.max_requests {
-            let retry_after = self
-                .config
-                .window
+        if counter.count > max_requests {
+            let retry_after = window
                 .saturating_sub(now.duration_since(counter.window_start))
                 .as_secs();
-
             warn!(
                 key = %key,
                 count = counter.count,
-                limit = self.config.max_requests,
+                limit = max_requests,
                 retry_after = retry_after,
-                "Rate limit exceeded (race condition check)"
+                "Rate limit exceeded"
             );
-
             return Err(RateLimitCheckError::Exceeded(RateLimitExceeded::new(
-                self.config.max_requests,
+                max_requests,
                 retry_after,
             )));
         }
 
-        counter.count += 1;
-
-        let reset_at = counter.window_start + self.config.window;
+        let reset_at = counter.window_start + window;
         let reset_secs = reset_at.saturating_duration_since(now).as_secs();
 
         Ok(RateLimitInfo {
-            limit: self.config.max_requests,
-            remaining: self.config.max_requests.saturating_sub(counter.count),
+            limit: max_requests,
+            remaining: max_requests.saturating_sub(counter.count),
             reset: reset_secs,
         })
     }
@@ -324,14 +300,9 @@ return {current, ttl}
         let RateLimiterBackend::Memory { requests } = &self.backend else {
             return;
         };
-        let mut requests = requests.write().await;
-        let now = Instant::now();
-
-        requests
-            .retain(|_, counter| now.duration_since(counter.window_start) <= self.config.window);
-
+        requests.run_pending_tasks().await;
         debug!(
-            retained = requests.len(),
+            retained = requests.entry_count(),
             "Cleaned up expired rate limit entries"
         );
     }
@@ -367,10 +338,10 @@ return {current, ttl}
     pub async fn get_stats(&self) -> RateLimitStats {
         match &self.backend {
             RateLimiterBackend::Memory { requests } => {
-                let requests = requests.read().await;
+                let count = requests.entry_count() as usize;
                 RateLimitStats {
-                    active_clients: requests.len(),
-                    total_entries: requests.len(),
+                    active_clients: count,
+                    total_entries: count,
                     distributed: false,
                 }
             }

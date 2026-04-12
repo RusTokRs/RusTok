@@ -27,6 +27,15 @@ impl StopHandle {
         (Self { stop_tx: tx }, rx)
     }
 
+    /// Create a new `Receiver` subscribed to the shutdown signal.
+    ///
+    /// The returned receiver immediately sees the current value and will be
+    /// notified when [`stop`] is called.  Clone it once per background worker
+    /// so each worker gets its own independent view of the channel.
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.stop_tx.subscribe()
+    }
+
     pub async fn stop(&self) {
         let _ = self.stop_tx.send(true);
         // Yield so spawned tasks have a chance to notice the signal.
@@ -100,6 +109,15 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
         ctx.shared_store.insert(handle);
     }
 
+    // Obtain a stop receiver from the stored handle so workers can observe
+    // the shutdown signal.  `subscribe()` creates a new independent receiver
+    // from the existing sender — safe to call multiple times.
+    let stop_handle = ctx
+        .shared_store
+        .get_ref::<StopHandle>()
+        .expect("StopHandle must be registered before spawning workers");
+    let stop_rx = stop_handle.subscribe();
+
     if ctx.shared_store.contains::<OutboxRelayWorkerHandle>() {
         // Keep going: build worker may still need to be attached.
     } else {
@@ -110,13 +128,13 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
 
         if let Some(relay_config) = event_runtime.relay_config.clone() {
             ctx.shared_store
-                .insert(spawn_relay_worker_handle(relay_config));
+                .insert(spawn_relay_worker_handle(relay_config, stop_rx.clone()));
         }
     }
 
     if settings.build.enabled && !ctx.shared_store.contains::<BuildWorkerHandle>() {
         ctx.shared_store
-            .insert(spawn_build_worker_handle(ctx.clone(), settings.build));
+            .insert(spawn_build_worker_handle(ctx.clone(), settings.build, stop_rx.clone()));
     }
 
     if settings.registry.remote_executor.enabled
@@ -125,45 +143,62 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
         ctx.shared_store.insert(spawn_remote_executor_reaper_handle(
             ctx.clone(),
             settings.registry.remote_executor.requeue_scan_interval_ms,
+            stop_rx.clone(),
         ));
     }
 
     Ok(())
 }
 
-fn spawn_relay_worker_handle(relay_config: RelayRuntimeConfig) -> OutboxRelayWorkerHandle {
+fn spawn_relay_worker_handle(
+    relay_config: RelayRuntimeConfig,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
+) -> OutboxRelayWorkerHandle {
     OutboxRelayWorkerHandle {
         instance_id: OUTBOX_RELAY_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
-        _handle: spawn_outbox_relay_worker(relay_config),
+        _handle: spawn_outbox_relay_worker(relay_config, stop_rx),
     }
 }
 
 fn spawn_build_worker_handle(
     ctx: AppContext,
     config: crate::common::settings::BuildRuntimeSettings,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> BuildWorkerHandle {
     BuildWorkerHandle {
         instance_id: BUILD_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
-        _handle: tokio::spawn(build_worker_loop(ctx, config)),
+        _handle: tokio::spawn(build_worker_loop(ctx, config, stop_rx)),
     }
 }
 
 fn spawn_remote_executor_reaper_handle(
     ctx: AppContext,
     scan_interval_ms: u64,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> RemoteExecutorReaperHandle {
     RemoteExecutorReaperHandle {
         instance_id: REMOTE_EXECUTOR_REAPER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
-        _handle: tokio::spawn(remote_executor_reaper_loop(ctx, scan_interval_ms)),
+        _handle: tokio::spawn(remote_executor_reaper_loop(ctx, scan_interval_ms, stop_rx)),
     }
 }
 
-async fn build_worker_loop(ctx: AppContext, config: crate::common::settings::BuildRuntimeSettings) {
+async fn build_worker_loop(
+    ctx: AppContext,
+    config: crate::common::settings::BuildRuntimeSettings,
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let executor = BuildExecutionService::new(&ctx);
     let release_backend = ReleaseDeploymentService::new(&ctx, config.clone());
     let poll_interval = Duration::from_millis(config.poll_interval_ms);
 
     loop {
+        // Check for shutdown before doing any work so a stop signal received
+        // before the first iteration is honoured immediately.
+        if *stop_rx.borrow() {
+            tracing::info!("Build worker received shutdown signal, exiting");
+            return;
+        }
+
         match executor.execute_next_queued_build(false).await {
             Ok(Some(report)) => {
                 tracing::info!(
@@ -210,15 +245,33 @@ async fn build_worker_loop(ctx: AppContext, config: crate::common::settings::Bui
             }
         }
 
-        tokio::time::sleep(poll_interval).await;
+        // Wait for the next poll interval or a shutdown signal — whichever
+        // comes first.  This replaces the unconditional sleep so the worker
+        // exits promptly rather than waiting a full poll interval.
+        tokio::select! {
+            _ = tokio::time::sleep(poll_interval) => {}
+            _ = stop_rx.changed() => {
+                tracing::info!("Build worker received shutdown signal, exiting");
+                return;
+            }
+        }
     }
 }
 
-async fn remote_executor_reaper_loop(ctx: AppContext, scan_interval_ms: u64) {
+async fn remote_executor_reaper_loop(
+    ctx: AppContext,
+    scan_interval_ms: u64,
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let governance = RegistryGovernanceService::new(ctx.db.clone());
     let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
 
     loop {
+        if *stop_rx.borrow() {
+            tracing::info!("Remote executor reaper received shutdown signal, exiting");
+            return;
+        }
+
         match governance.requeue_expired_remote_validation_claims().await {
             Ok(requeued) if requeued > 0 => tracing::info!(
                 requeued,
@@ -231,7 +284,13 @@ async fn remote_executor_reaper_loop(ctx: AppContext, scan_interval_ms: u64) {
             ),
         }
 
-        tokio::time::sleep(poll_interval).await;
+        tokio::select! {
+            _ = tokio::time::sleep(poll_interval) => {}
+            _ = stop_rx.changed() => {
+                tracing::info!("Remote executor reaper received shutdown signal, exiting");
+                return;
+            }
+        }
     }
 }
 

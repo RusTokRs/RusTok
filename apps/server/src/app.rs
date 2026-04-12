@@ -65,6 +65,8 @@ impl Hooks for App {
     }
 
     async fn after_context(mut ctx: AppContext) -> Result<AppContext> {
+        check_production_secrets(&ctx)?;
+
         // Initialise Loco's ctx.mailer when email.provider = "loco".
         // This must happen before after_routes so every request handler
         // can call email_service_from_ctx() and get a working Loco mailer.
@@ -221,6 +223,53 @@ impl Hooks for App {
 
         tracing::info!("RusTok server shut down cleanly");
     }
+}
+
+/// Abort startup when known dev/test secrets are detected in a release build.
+///
+/// This is a defence-in-depth guard: a misconfigured production deployment that
+/// copies the sample config verbatim will fail loudly at boot time rather than
+/// silently running with a predictable JWT secret.  The check is compiled out in
+/// debug builds so local development and tests are unaffected.
+fn check_production_secrets(ctx: &AppContext) -> Result<()> {
+    #[cfg(not(debug_assertions))]
+    {
+        const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
+            "dev-secret",
+            "test-secret",
+            "change-in-production",
+            "dev_secret",
+            "rustok-dev-secret",
+        ];
+
+        let jwt_secret = ctx
+            .config
+            .auth
+            .as_ref()
+            .and_then(|auth| auth.jwt.as_ref())
+            .map(|jwt| jwt.secret.as_str())
+            .unwrap_or("");
+
+        for fragment in KNOWN_DEV_SUBSTRINGS {
+            if jwt_secret.contains(fragment) {
+                return Err(loco_rs::Error::Message(format!(
+                    "FATAL: JWT secret contains a known development value (\"{fragment}\"). \
+                     Set a strong, random secret in your production configuration."
+                )));
+            }
+        }
+
+        if !jwt_secret.is_empty() && jwt_secret.len() < 32 {
+            return Err(loco_rs::Error::Message(
+                "FATAL: JWT secret is too short (< 32 characters) for production use. \
+                 Generate a cryptographically random secret of at least 32 characters."
+                    .to_string(),
+            ));
+        }
+    }
+
+    let _ = ctx; // suppress unused warning in debug builds
+    Ok(())
 }
 
 #[cfg(test)]

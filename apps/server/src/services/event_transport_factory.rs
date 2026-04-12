@@ -77,27 +77,60 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
     }
 }
 
-pub fn spawn_outbox_relay_worker(config: RelayRuntimeConfig) -> JoinHandle<()> {
+pub fn spawn_outbox_relay_worker(
+    config: RelayRuntimeConfig,
+    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
+            // Check for shutdown before spawning the inner worker.
+            if *stop_rx.borrow() {
+                tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
+                return;
+            }
+
             let relay = config.relay.clone();
             let interval = config.interval;
-            let result = tokio::spawn(async move {
+
+            // The inner worker is aborted explicitly when the supervisor receives
+            // the stop signal, so it does not need its own stop_rx.
+            let mut inner_handle = tokio::spawn(async move {
                 loop {
                     if let Err(error) = relay.process_pending_once().await {
                         tracing::error!("Outbox relay iteration failed: {error}");
                     }
                     tokio::time::sleep(interval).await;
                 }
-            })
-            .await;
+            });
 
-            if let Err(panic) = result {
-                tracing::error!(
-                    "Outbox relay worker panicked: {:?}. Restarting in 5s.",
-                    panic
-                );
-                tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::select! {
+                result = &mut inner_handle => {
+                    if *stop_rx.borrow() {
+                        tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
+                        return;
+                    }
+                    if let Err(panic) = result {
+                        tracing::error!(
+                            "Outbox relay worker panicked: {:?}. Restarting in 5s.",
+                            panic
+                        );
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                            _ = stop_rx.changed() => {
+                                tracing::info!(
+                                    "Outbox relay supervisor received shutdown signal during restart delay, exiting"
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    // Inner task completed normally (shouldn't happen); loop back.
+                }
+                _ = stop_rx.changed() => {
+                    tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
+                    inner_handle.abort();
+                    return;
+                }
             }
         }
     })

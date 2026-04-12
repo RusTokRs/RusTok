@@ -3024,9 +3024,17 @@ async fn store_registry_artifact(
             )
         })?;
 
+    // Use a relative, server-rooted URL rather than the raw filesystem path.
+    // Exposing the local FS path to clients leaks server directory structure
+    // and makes no sense as a downloadable URL.
+    let artifact_url = format!(
+        "/registry-artifacts/{}/{}-{}.crate",
+        request.id, request.slug, request.version
+    );
+
     Ok(StoredRegistryArtifact {
         artifact_path: artifact_path.display().to_string(),
-        artifact_url: artifact_path.display().to_string(),
+        artifact_url,
         artifact_size: artifact.bytes.len() as i64,
     })
 }
