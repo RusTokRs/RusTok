@@ -6,7 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{CreatePageDraft, PageListItem};
@@ -14,6 +15,8 @@ use crate::model::{CreatePageDraft, PageListItem};
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let selected_page_query = use_route_query_value(AdminQueryKey::PageId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let default_locale = route_context
@@ -106,6 +109,29 @@ pub fn PagesAdmin() -> impl IntoView {
             )
         }
     });
+    let editing_banner_text = Signal::derive({
+        move || {
+            editing_page_id
+                .get()
+                .map(|page_id| {
+                    t(
+                        locale.get().as_str().into(),
+                        "pages.form.editingBanner",
+                        "Editing page {id}",
+                    )
+                    .replace("{id}", page_id.as_str())
+                })
+                .unwrap_or_default()
+        }
+    });
+    let reset_current_page = Callback::new({
+        let query_writer = query_writer.clone();
+        let reset_form_action = reset_form_action.clone();
+        move |_| {
+            query_writer.clear_key(AdminQueryKey::PageId.as_str());
+            reset_form_action.run(());
+        }
+    });
 
     let pages_resource = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -114,9 +140,11 @@ pub fn PagesAdmin() -> impl IntoView {
         },
     );
 
+    let edit_default_locale = default_locale.clone();
     let edit_page = Callback::new(move |page_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let default_locale = edit_default_locale.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(format!("edit:{page_id}")));
 
@@ -128,7 +156,7 @@ pub fn PagesAdmin() -> impl IntoView {
                         .as_ref()
                         .map(|translation| translation.locale.clone())
                         .or_else(|| page.body.as_ref().map(|page_body| page_body.locale.clone()))
-                        .unwrap_or_else(|| "en".to_string());
+                        .unwrap_or_else(|| default_locale.clone());
                     let page_title = page
                         .translation
                         .as_ref()
@@ -154,19 +182,58 @@ pub fn PagesAdmin() -> impl IntoView {
                     set_publish_now.set(page.status.eq_ignore_ascii_case("published"));
                 }
                 Ok(None) => {
+                    reset_page_form(
+                        set_editing_page_id,
+                        set_title,
+                        set_slug,
+                        set_body,
+                        set_channel_slugs_text,
+                        set_locale,
+                        set_publish_now,
+                        default_locale.as_str(),
+                    );
                     set_submit_error.set(Some("Page not found for editing.".to_string()));
                 }
                 Err(err) => {
+                    reset_page_form(
+                        set_editing_page_id,
+                        set_title,
+                        set_slug,
+                        set_body,
+                        set_channel_slugs_text,
+                        set_locale,
+                        set_publish_now,
+                        default_locale.as_str(),
+                    );
                     set_submit_error.set(Some(format!("Failed to load page: {err}")));
                 }
             }
             set_busy_key.set(None);
         });
     });
+    let initial_edit_page = edit_page.clone();
+    let effect_default_locale = default_locale.clone();
+    Effect::new(move |_| {
+        match selected_page_query.get() {
+            Some(page_id) if !page_id.trim().is_empty() => initial_edit_page.run(page_id),
+            _ => reset_page_form(
+                set_editing_page_id,
+                set_title,
+                set_slug,
+                set_body,
+                set_channel_slugs_text,
+                set_locale,
+                set_publish_now,
+                effect_default_locale.as_str(),
+            ),
+        }
+    });
 
+    let submit_query_writer = query_writer.clone();
     let submit_page = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_submit_error.set(None);
+        let submit_query_writer = submit_query_writer.clone();
 
         let draft = CreatePageDraft {
             locale: locale.get_untracked(),
@@ -203,11 +270,13 @@ pub fn PagesAdmin() -> impl IntoView {
             match result {
                 Ok(page) => {
                     let status = page.status.to_lowercase();
-                    set_editing_page_id.set(Some(page.id));
+                    let page_id = page.id;
+                    set_editing_page_id.set(Some(page_id.clone()));
                     if status == "published" {
                         set_publish_now.set(true);
                     }
                     set_refresh_nonce.update(|value| *value += 1);
+                    submit_query_writer.replace_value(AdminQueryKey::PageId.as_str(), page_id);
                 }
                 Err(err) => {
                     set_submit_error.set(Some(format!("Failed to save page: {err}")));
@@ -247,9 +316,11 @@ pub fn PagesAdmin() -> impl IntoView {
         });
     });
 
+    let delete_query_writer = query_writer.clone();
     let delete_page = Callback::new(move |page_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let delete_query_writer = delete_query_writer.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(format!("delete:{page_id}")));
 
@@ -257,6 +328,7 @@ pub fn PagesAdmin() -> impl IntoView {
             match api::delete_page(token_value, tenant_value, page_id.clone()).await {
                 Ok(true) => {
                     if editing_page_id.get_untracked().as_deref() == Some(page_id.as_str()) {
+                        delete_query_writer.clear_key(AdminQueryKey::PageId.as_str());
                         reset_form_action.run(());
                     }
                     set_refresh_nonce.update(|value| *value += 1);
@@ -270,6 +342,10 @@ pub fn PagesAdmin() -> impl IntoView {
             }
             set_busy_key.set(None);
         });
+    });
+    let open_query_writer = query_writer.clone();
+    let open_page = Callback::new(move |page_id: String| {
+        open_query_writer.push_value(AdminQueryKey::PageId.as_str(), page_id);
     });
 
     view! {
@@ -319,7 +395,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                             total=page_list.total
                                             editing_page_id=editing_page_id.get()
                                             busy_key=busy_key.get()
-                                            on_edit=edit_page
+                                            on_edit=open_page
                                             on_toggle_publish=publish_page
                                             on_delete=delete_page
                                         />
@@ -359,30 +435,11 @@ pub fn PagesAdmin() -> impl IntoView {
                     </div>
 
                     <Show when=move || editing_page_id.get().is_some()>
-                        <div class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
-                            <div class="text-sm text-muted-foreground">
-                                {move || {
-                                    editing_page_id
-                                        .get()
-                                        .map(|page_id| {
-                                            t(
-                                                locale.get().as_str().into(),
-                                                "pages.form.editingBanner",
-                                                "Editing page {id}",
-                                            )
-                                            .replace("{id}", page_id.as_str())
-                                        })
-                                        .unwrap_or_default()
-                                }}
-                            </div>
-                            <button
-                                type="button"
-                                class="text-xs font-medium text-primary hover:underline"
-                                on:click=move |_| reset_form_action.run(())
-                            >
-                                {create_new_instead_text.clone()}
-                            </button>
-                        </div>
+                        <PagesEditBanner
+                            banner_text=editing_banner_text
+                            create_new_label=create_new_instead_text.clone()
+                            on_reset=reset_current_page
+                        />
                     </Show>
 
                     <form class="mt-5 space-y-4" on:submit=submit_page>
@@ -501,6 +558,28 @@ pub fn PagesAdmin() -> impl IntoView {
                     </form>
                 </section>
             </section>
+        </div>
+    }
+}
+
+#[component]
+fn PagesEditBanner(
+    banner_text: Signal<String>,
+    create_new_label: String,
+    on_reset: Callback<()>,
+) -> impl IntoView {
+    view! {
+        <div class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+            <div class="text-sm text-muted-foreground">
+                {move || banner_text.get()}
+            </div>
+            <button
+                type="button"
+                class="text-xs font-medium text-primary hover:underline"
+                on:click=move |_| on_reset.run(())
+            >
+                {create_new_label}
+            </button>
         </div>
     }
 }

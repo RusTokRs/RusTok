@@ -5,6 +5,7 @@ mod model;
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_ui_routing::read_route_query_value;
 use leptos::web_sys;
 use rustok_api::UiRouteContext;
 
@@ -17,12 +18,9 @@ use crate::model::{
 #[component]
 pub fn SearchView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let query = route_context.query_value("q").unwrap_or("").to_string();
+    let query = read_route_query_value(&route_context, "q").unwrap_or_default();
     let (search_input, set_search_input) = signal(query.clone());
-    let preset_key = route_context
-        .query_value("preset")
-        .unwrap_or("")
-        .to_string();
+    let preset_key = read_route_query_value(&route_context, "preset").unwrap_or_default();
     let (selected_preset, set_selected_preset) = signal(preset_key.clone());
     let locale = route_context.locale.clone();
     let badge_label = t(locale.as_deref(), "search.badge", "search");
@@ -83,9 +81,15 @@ pub fn SearchView() -> impl IntoView {
         "search.error.loadResults",
         "Failed to load storefront search results",
     );
-    let entity_types = parse_csv(route_context.query_value("entity_types").unwrap_or(""));
-    let source_modules = parse_csv(route_context.query_value("source_modules").unwrap_or(""));
-    let statuses = parse_csv(route_context.query_value("statuses").unwrap_or(""));
+    let entity_types = parse_csv(
+        read_route_query_value(&route_context, "entity_types").as_deref().unwrap_or(""),
+    );
+    let source_modules = parse_csv(
+        read_route_query_value(&route_context, "source_modules").as_deref().unwrap_or(""),
+    );
+    let statuses = parse_csv(
+        read_route_query_value(&route_context, "statuses").as_deref().unwrap_or(""),
+    );
     let filters = SearchPreviewFilters {
         entity_types,
         source_modules,

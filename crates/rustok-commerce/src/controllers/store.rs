@@ -600,6 +600,9 @@ pub async fn add_cart_line_item(
         .add_line_item(tenant.id, id, resolved_input)
         .await
         .map_err(map_cart_error)?;
+    let cart =
+        reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &service, cart)
+            .await?;
     Ok(Json(
         enrich_storefront_cart(
             &ctx,
@@ -679,13 +682,16 @@ pub async fn update_cart_line_item(
                 ))
             })?;
 
+        let pricing_update =
+            storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);
         service
             .update_line_item_pricing(
                 tenant.id,
                 id,
                 line_id,
                 input.quantity,
-                resolved_price.amount,
+                pricing_update.unit_price,
+                pricing_update.pricing_adjustment,
             )
             .await
             .map_err(map_cart_error)?
@@ -1176,10 +1182,11 @@ async fn reprice_storefront_cart_line_items(
                     variant_id, cart.currency_code
                 ))
             })?;
-        updates.push(rustok_cart::services::cart::CartLineItemPricingUpdate {
-            line_item_id: line_item.id,
-            unit_price: resolved_price.amount,
-        });
+        updates.push(storefront_cart_pricing_update(
+            line_item.id,
+            line_item.quantity,
+            &resolved_price,
+        ));
     }
 
     if updates.is_empty() {
@@ -1189,6 +1196,77 @@ async fn reprice_storefront_cart_line_items(
             .reprice_line_items(tenant_id, cart.id, updates)
             .await
             .map_err(map_cart_error)
+    }
+}
+
+fn storefront_cart_pricing_update(
+    line_item_id: Uuid,
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
+    let base_unit_price = resolved_price
+        .compare_at_amount
+        .filter(|compare_at| *compare_at > resolved_price.amount)
+        .unwrap_or(resolved_price.amount);
+    let pricing_adjustment = if base_unit_price > resolved_price.amount {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "kind".to_string(),
+            Value::from(if resolved_price.price_list_id.is_some() {
+                "price_list"
+            } else {
+                "sale"
+            }),
+        );
+        metadata.insert(
+            "base_amount".to_string(),
+            Value::from(base_unit_price.normalize().to_string()),
+        );
+        metadata.insert(
+            "effective_amount".to_string(),
+            Value::from(resolved_price.amount.normalize().to_string()),
+        );
+        if let Some(compare_at_amount) = resolved_price.compare_at_amount {
+            metadata.insert(
+                "compare_at_amount".to_string(),
+                Value::from(compare_at_amount.normalize().to_string()),
+            );
+        }
+        if let Some(discount_percent) = resolved_price.discount_percent {
+            metadata.insert(
+                "discount_percent".to_string(),
+                Value::from(discount_percent.normalize().to_string()),
+            );
+        }
+        if let Some(price_list_id) = resolved_price.price_list_id {
+            metadata.insert(
+                "price_list_id".to_string(),
+                Value::from(price_list_id.to_string()),
+            );
+        }
+        if let Some(channel_id) = resolved_price.channel_id {
+            metadata.insert(
+                "channel_id".to_string(),
+                Value::from(channel_id.to_string()),
+            );
+        }
+        if let Some(channel_slug) = resolved_price.channel_slug.as_deref() {
+            metadata.insert("channel_slug".to_string(), Value::from(channel_slug));
+        }
+
+        Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
+            source_id: resolved_price.price_list_id.map(|value| value.to_string()),
+            amount: (base_unit_price - resolved_price.amount) * Decimal::from(quantity),
+            metadata: Value::Object(metadata),
+        })
+    } else {
+        None
+    };
+
+    rustok_cart::services::cart::CartLineItemPricingUpdate {
+        line_item_id,
+        unit_price: base_unit_price,
+        pricing_adjustment,
     }
 }
 

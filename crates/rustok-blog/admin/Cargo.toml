@@ -13,6 +13,6 @@ leptos-ui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rustok-api.workspace = true
-rustok-ui-routing.workspace = true
+leptos-ui-routing.workspace = true
 rustok-core.workspace = true
 rustok-blog.workspace = true

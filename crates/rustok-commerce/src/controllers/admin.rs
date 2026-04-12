@@ -731,6 +731,7 @@ pub async fn list_shipping_profiles(
                 per_page: pagination.limit(),
                 active: params.active,
                 search: params.search,
+                locale: Some(request_context.locale.clone()),
             },
             Some(request_context.locale.as_str()),
             Some(tenant.default_locale.as_str()),

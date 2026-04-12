@@ -6,7 +6,7 @@ use rustok_api::{
 };
 use rustok_core::{locale_tags_match, Permission};
 use rustok_pricing::PriceResolutionContext;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -337,7 +337,14 @@ impl CommerceMutation {
                 request_context.channel_slug.clone(),
             )
             .await?;
-        let cart = enrich_storefront_cart(db, tenant_id, request_context, cart).await?;
+        let cart = enrich_storefront_cart(
+            db,
+            tenant_id,
+            request_context,
+            tenant.default_locale.as_str(),
+            cart,
+        )
+        .await?;
 
         Ok(GqlStoreCart {
             cart: cart.into(),
@@ -392,8 +399,23 @@ impl CommerceMutation {
         let updated = cart_service
             .add_line_item(tenant_id, cart_id, resolved_input)
             .await?;
+        let updated = reprice_storefront_cart_line_items(
+            db,
+            tenant_id,
+            request_context,
+            event_bus,
+            &cart_service,
+            updated,
+        )
+        .await?;
         Ok(
-            enrich_storefront_cart(db, tenant_id, request_context, updated)
+            enrich_storefront_cart(
+                db,
+                tenant_id,
+                request_context,
+                tenant.default_locale.as_str(),
+                updated,
+            )
                 .await?
                 .into(),
         )
@@ -502,7 +524,14 @@ impl CommerceMutation {
             updated,
         )
         .await?;
-        let updated = enrich_storefront_cart(db, tenant_id, request_context, updated).await?;
+        let updated = enrich_storefront_cart(
+            db,
+            tenant_id,
+            request_context,
+            tenant.default_locale.as_str(),
+            updated,
+        )
+        .await?;
 
         Ok(GqlStoreCart {
             cart: updated.into(),
@@ -569,13 +598,16 @@ impl CommerceMutation {
                     ))
                 })?;
 
+            let pricing_update =
+                storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);
             cart_service
                 .update_line_item_pricing(
                     tenant_id,
                     cart_id,
                     line_id,
                     input.quantity,
-                    resolved_price.amount,
+                    pricing_update.unit_price,
+                    pricing_update.pricing_adjustment,
                 )
                 .await?
         } else {
@@ -584,7 +616,13 @@ impl CommerceMutation {
                 .await?
         };
         Ok(
-            enrich_storefront_cart(db, tenant_id, request_context, updated)
+            enrich_storefront_cart(
+                db,
+                tenant_id,
+                request_context,
+                tenant.default_locale.as_str(),
+                updated,
+            )
                 .await?
                 .into(),
         )
@@ -613,7 +651,13 @@ impl CommerceMutation {
             .remove_line_item(tenant_id, cart_id, line_id)
             .await?;
         Ok(
-            enrich_storefront_cart(db, tenant_id, ctx.data::<RequestContext>()?, updated)
+            enrich_storefront_cart(
+                db,
+                tenant_id,
+                ctx.data::<RequestContext>()?,
+                tenant.default_locale.as_str(),
+                updated,
+            )
                 .await?
                 .into(),
         )
@@ -1963,6 +2007,7 @@ async fn enrich_storefront_cart(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     request_context: &RequestContext,
+    tenant_default_locale: &str,
     cart: crate::dto::CartResponse,
 ) -> Result<crate::dto::CartResponse> {
     let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
@@ -1973,7 +2018,7 @@ async fn enrich_storefront_cart(
         cart,
         public_channel_slug.as_deref(),
         Some(request_context.locale.as_str()),
-        Some(tenant.default_locale.as_str()),
+        Some(tenant_default_locale),
     )
         .await
         .map_err(|err| async_graphql::Error::new(err.to_string()))
@@ -2328,10 +2373,11 @@ async fn reprice_storefront_cart_line_items(
                     variant_id, cart.currency_code
                 ))
             })?;
-        updates.push(rustok_cart::services::cart::CartLineItemPricingUpdate {
-            line_item_id: line_item.id,
-            unit_price: resolved_price.amount,
-        });
+        updates.push(storefront_cart_pricing_update(
+            line_item.id,
+            line_item.quantity,
+            &resolved_price,
+        ));
     }
 
     if updates.is_empty() {
@@ -2341,6 +2387,77 @@ async fn reprice_storefront_cart_line_items(
             .reprice_line_items(tenant_id, cart.id, updates)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
+}
+
+fn storefront_cart_pricing_update(
+    line_item_id: Uuid,
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
+    let base_unit_price = resolved_price
+        .compare_at_amount
+        .filter(|compare_at| *compare_at > resolved_price.amount)
+        .unwrap_or(resolved_price.amount);
+    let pricing_adjustment = if base_unit_price > resolved_price.amount {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "kind".to_string(),
+            Value::from(if resolved_price.price_list_id.is_some() {
+                "price_list"
+            } else {
+                "sale"
+            }),
+        );
+        metadata.insert(
+            "base_amount".to_string(),
+            Value::from(base_unit_price.normalize().to_string()),
+        );
+        metadata.insert(
+            "effective_amount".to_string(),
+            Value::from(resolved_price.amount.normalize().to_string()),
+        );
+        if let Some(compare_at_amount) = resolved_price.compare_at_amount {
+            metadata.insert(
+                "compare_at_amount".to_string(),
+                Value::from(compare_at_amount.normalize().to_string()),
+            );
+        }
+        if let Some(discount_percent) = resolved_price.discount_percent {
+            metadata.insert(
+                "discount_percent".to_string(),
+                Value::from(discount_percent.normalize().to_string()),
+            );
+        }
+        if let Some(price_list_id) = resolved_price.price_list_id {
+            metadata.insert(
+                "price_list_id".to_string(),
+                Value::from(price_list_id.to_string()),
+            );
+        }
+        if let Some(channel_id) = resolved_price.channel_id {
+            metadata.insert(
+                "channel_id".to_string(),
+                Value::from(channel_id.to_string()),
+            );
+        }
+        if let Some(channel_slug) = resolved_price.channel_slug.as_deref() {
+            metadata.insert("channel_slug".to_string(), Value::from(channel_slug));
+        }
+
+        Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
+            source_id: resolved_price.price_list_id.map(|value| value.to_string()),
+            amount: (base_unit_price - resolved_price.amount) * Decimal::from(quantity),
+            metadata: Value::Object(metadata),
+        })
+    } else {
+        None
+    };
+
+    rustok_cart::services::cart::CartLineItemPricingUpdate {
+        line_item_id,
+        unit_price: base_unit_price,
+        pricing_adjustment,
     }
 }
 

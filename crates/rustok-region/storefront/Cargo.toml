@@ -19,6 +19,7 @@ ssr = [
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
+leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-region = { workspace = true, optional = true }

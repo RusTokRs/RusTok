@@ -5,6 +5,7 @@ import { cn } from '@/shared/lib/utils';
 import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
 import { ForumReplyEditor } from '@/features/blog';
+import { listRouteQueryEntries, readRouteSelection } from '@/shared/lib/route-selection';
 
 export const metadata = {
   title: 'Dashboard: Forum Reply Composer'
@@ -22,11 +23,11 @@ export default async function Page(props: PageProps) {
   const tenantId = session?.user?.tenantId ?? null;
   const gqlOpts = { token, tenantSlug, tenantId: tenantId ?? undefined };
   const topics = tenantId ? await listForumTopics(gqlOpts) : [];
-  const requestedTopicId = searchParams.topicId as string | undefined;
-  const selectedTopic =
-    (requestedTopicId && topics.find((topic) => topic.id === requestedTopicId)) ||
-    topics[0] ||
-    null;
+  const requestedTopicId = readRouteSelection(searchParams, 'topic_id');
+  const selectedTopic = requestedTopicId
+    ? topics.find((topic) => topic.id === requestedTopicId) ?? null
+    : null;
+  const preservedQueryEntries = listRouteQueryEntries(searchParams, ['topic_id']);
 
   return (
     <PageContainer
@@ -39,8 +40,11 @@ export default async function Page(props: PageProps) {
       }
       pageHeaderAction={
         <form method='get' className='flex items-center gap-2'>
+          {preservedQueryEntries.map(([key, value]) => (
+            <input key={`${key}:${value}`} type='hidden' name={key} value={value} />
+          ))}
           <select
-            name='topicId'
+            name='topic_id'
             defaultValue={selectedTopic?.id ?? ''}
             className='h-9 min-w-60 rounded-md border border-input bg-background px-3 text-sm'
           >

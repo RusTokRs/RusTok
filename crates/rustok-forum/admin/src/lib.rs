@@ -6,7 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -18,6 +19,9 @@ use crate::model::{
 pub fn ForumAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let selected_category_query = use_route_query_value(AdminQueryKey::CategoryId.as_str());
+    let selected_topic_query = use_route_query_value(AdminQueryKey::TopicId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let default_locale = route_context
@@ -177,27 +181,6 @@ pub fn ForumAdmin() -> impl IntoView {
         },
     );
 
-    let reset_category_form = move || {
-        set_editing_category_id.set(None);
-        set_category_name.set(String::new());
-        set_category_slug.set(String::new());
-        set_category_description.set(String::new());
-        set_category_icon.set(String::new());
-        set_category_color.set(String::new());
-        set_category_position.set(0);
-        set_category_moderated.set(false);
-    };
-
-    let reset_topic_form = move || {
-        set_editing_topic_id.set(None);
-        set_topic_category_id.set(String::new());
-        set_topic_title.set(String::new());
-        set_topic_slug.set(String::new());
-        set_topic_body.set(String::new());
-        set_topic_body_format.set("markdown".to_string());
-        set_topic_tags.set(String::new());
-    };
-
     let edit_category = Callback::new(move |category_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
@@ -220,7 +203,19 @@ pub fn ForumAdmin() -> impl IntoView {
                     set_category_moderated,
                     &category,
                 ),
-                Err(err) => set_error.set(Some(format!("{}: {err}", load_category_error))),
+                Err(err) => {
+                    clear_category_form(
+                        set_editing_category_id,
+                        set_category_name,
+                        set_category_slug,
+                        set_category_description,
+                        set_category_icon,
+                        set_category_color,
+                        set_category_position,
+                        set_category_moderated,
+                    );
+                    set_error.set(Some(format!("{}: {err}", load_category_error)));
+                }
             }
             set_busy_key.set(None);
         });
@@ -246,15 +241,56 @@ pub fn ForumAdmin() -> impl IntoView {
                     set_topic_tags,
                     &topic,
                 ),
-                Err(err) => set_error.set(Some(format!("{}: {err}", load_topic_error))),
+                Err(err) => {
+                    clear_topic_form(
+                        set_editing_topic_id,
+                        set_topic_category_id,
+                        set_topic_title,
+                        set_topic_slug,
+                        set_topic_body,
+                        set_topic_body_format,
+                        set_topic_tags,
+                    );
+                    set_error.set(Some(format!("{}: {err}", load_topic_error)));
+                }
             }
             set_busy_key.set(None);
         });
     });
+    let initial_edit_category = edit_category.clone();
+    let initial_edit_topic = edit_topic.clone();
+    Effect::new(move |_| match selected_category_query.get() {
+        Some(category_id) if !category_id.trim().is_empty() => initial_edit_category.run(category_id),
+        _ => clear_category_form(
+            set_editing_category_id,
+            set_category_name,
+            set_category_slug,
+            set_category_description,
+            set_category_icon,
+            set_category_color,
+            set_category_position,
+            set_category_moderated,
+        ),
+    });
+    Effect::new(move |_| match selected_topic_query.get() {
+        Some(topic_id) if !topic_id.trim().is_empty() => initial_edit_topic.run(topic_id),
+        _ => clear_topic_form(
+            set_editing_topic_id,
+            set_topic_category_id,
+            set_topic_title,
+            set_topic_slug,
+            set_topic_body,
+            set_topic_body_format,
+            set_topic_tags,
+        ),
+    });
 
+    let category_query_writer = query_writer.clone();
+    let topic_query_writer = query_writer.clone();
     let submit_category = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_error.set(None);
+        let category_query_writer = category_query_writer.clone();
         let draft = CategoryDraft {
             locale: category_locale.get_untracked(),
             name: category_name.get_untracked().trim().to_string(),
@@ -281,6 +317,7 @@ pub fn ForumAdmin() -> impl IntoView {
             };
             match result {
                 Ok(category) => {
+                    let category_id = category.id.clone();
                     apply_category_to_form(
                         set_editing_category_id,
                         set_category_locale,
@@ -294,6 +331,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         &category,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
+                    category_query_writer.replace_value(AdminQueryKey::CategoryId.as_str(), category_id);
                 }
                 Err(err) => set_error.set(Some(format!("{}: {err}", save_category_error))),
             }
@@ -304,6 +342,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let submit_topic = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_error.set(None);
+        let topic_query_writer = topic_query_writer.clone();
         let draft = TopicDraft {
             locale: topic_locale.get_untracked(),
             category_id: topic_category_id.get_untracked().trim().to_string(),
@@ -329,6 +368,7 @@ pub fn ForumAdmin() -> impl IntoView {
             };
             match result {
                 Ok(topic) => {
+                    let topic_id = topic.id.clone();
                     apply_topic_to_form(
                         set_editing_topic_id,
                         set_topic_locale,
@@ -341,6 +381,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         &topic,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
+                    topic_query_writer.replace_value(AdminQueryKey::TopicId.as_str(), topic_id);
                 }
                 Err(err) => set_error.set(Some(format!("{}: {err}", save_topic_error))),
             }
@@ -348,10 +389,12 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     };
 
+    let delete_category_query_writer = query_writer.clone();
     let delete_category = Callback::new(move |category_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let delete_category_error = delete_category_error.clone();
+        let delete_category_query_writer = delete_category_query_writer.clone();
         set_error.set(None);
         set_busy_key.set(Some(format!("category:delete:{category_id}")));
         spawn_local(async move {
@@ -359,7 +402,17 @@ pub fn ForumAdmin() -> impl IntoView {
                 Ok(()) => {
                     if editing_category_id.get_untracked().as_deref() == Some(category_id.as_str())
                     {
-                        reset_category_form();
+                        delete_category_query_writer.clear_key(AdminQueryKey::CategoryId.as_str());
+                        clear_category_form(
+                            set_editing_category_id,
+                            set_category_name,
+                            set_category_slug,
+                            set_category_description,
+                            set_category_icon,
+                            set_category_color,
+                            set_category_position,
+                            set_category_moderated,
+                        );
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -369,17 +422,28 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     });
 
+    let delete_topic_query_writer = query_writer.clone();
     let delete_topic = Callback::new(move |topic_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let delete_topic_error = delete_topic_error.clone();
+        let delete_topic_query_writer = delete_topic_query_writer.clone();
         set_error.set(None);
         set_busy_key.set(Some(format!("topic:delete:{topic_id}")));
         spawn_local(async move {
             match api::delete_topic(token_value, tenant_value, topic_id.clone()).await {
                 Ok(()) => {
                     if editing_topic_id.get_untracked().as_deref() == Some(topic_id.as_str()) {
-                        reset_topic_form();
+                        delete_topic_query_writer.clear_key(AdminQueryKey::TopicId.as_str());
+                        clear_topic_form(
+                            set_editing_topic_id,
+                            set_topic_category_id,
+                            set_topic_title,
+                            set_topic_slug,
+                            set_topic_body,
+                            set_topic_body_format,
+                            set_topic_tags,
+                        );
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -401,6 +465,41 @@ pub fn ForumAdmin() -> impl IntoView {
         Some(Ok(items)) => items.len(),
         _ => 0,
     };
+    let open_category_query_writer = query_writer.clone();
+    let open_topic_query_writer = query_writer.clone();
+    let reset_category_query_writer = query_writer.clone();
+    let reset_topic_query_writer = query_writer.clone();
+    let open_category = Callback::new(move |category_id: String| {
+        open_category_query_writer.push_value(AdminQueryKey::CategoryId.as_str(), category_id);
+    });
+    let open_topic = Callback::new(move |topic_id: String| {
+        open_topic_query_writer.push_value(AdminQueryKey::TopicId.as_str(), topic_id);
+    });
+    let reset_category = Callback::new(move |_| {
+        reset_category_query_writer.clear_key(AdminQueryKey::CategoryId.as_str());
+        clear_category_form(
+            set_editing_category_id,
+            set_category_name,
+            set_category_slug,
+            set_category_description,
+            set_category_icon,
+            set_category_color,
+            set_category_position,
+            set_category_moderated,
+        );
+    });
+    let reset_topic = Callback::new(move |_| {
+        reset_topic_query_writer.clear_key(AdminQueryKey::TopicId.as_str());
+        clear_topic_form(
+            set_editing_topic_id,
+            set_topic_category_id,
+            set_topic_title,
+            set_topic_slug,
+            set_topic_body,
+            set_topic_body_format,
+            set_topic_tags,
+        );
+    });
 
     view! {
         <div class="space-y-6">
@@ -478,10 +577,10 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_position=set_category_position
                         moderated=category_moderated
                         set_moderated=set_category_moderated
-                        on_edit=edit_category
+                        on_edit=open_category
                         on_delete=delete_category
                         on_submit=submit_category
-                        on_reset=Callback::new(move |_| reset_category_form())
+                        on_reset=reset_category
                     />
                 }.into_any()
             } else {
@@ -508,10 +607,10 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_tags=set_topic_tags
                         filter_category_id=topic_filter_category_id
                         set_filter_category_id=set_topic_filter_category_id
-                        on_edit=edit_topic
+                        on_edit=open_topic
                         on_delete=delete_topic
                         on_submit=submit_topic
-                        on_reset=Callback::new(move |_| reset_topic_form())
+                        on_reset=reset_topic
                     />
                 }.into_any()
             }}
@@ -1581,6 +1680,44 @@ fn apply_topic_to_form(
     set_topic_body.set(topic.body.clone());
     set_topic_body_format.set(topic.body_format.clone());
     set_topic_tags.set(topic.tags.join(", "));
+}
+
+fn clear_category_form(
+    set_editing_category_id: WriteSignal<Option<String>>,
+    set_category_name: WriteSignal<String>,
+    set_category_slug: WriteSignal<String>,
+    set_category_description: WriteSignal<String>,
+    set_category_icon: WriteSignal<String>,
+    set_category_color: WriteSignal<String>,
+    set_category_position: WriteSignal<i32>,
+    set_category_moderated: WriteSignal<bool>,
+) {
+    set_editing_category_id.set(None);
+    set_category_name.set(String::new());
+    set_category_slug.set(String::new());
+    set_category_description.set(String::new());
+    set_category_icon.set(String::new());
+    set_category_color.set(String::new());
+    set_category_position.set(0);
+    set_category_moderated.set(false);
+}
+
+fn clear_topic_form(
+    set_editing_topic_id: WriteSignal<Option<String>>,
+    set_topic_category_id: WriteSignal<String>,
+    set_topic_title: WriteSignal<String>,
+    set_topic_slug: WriteSignal<String>,
+    set_topic_body: WriteSignal<String>,
+    set_topic_body_format: WriteSignal<String>,
+    set_topic_tags: WriteSignal<String>,
+) {
+    set_editing_topic_id.set(None);
+    set_topic_category_id.set(String::new());
+    set_topic_title.set(String::new());
+    set_topic_slug.set(String::new());
+    set_topic_body.set(String::new());
+    set_topic_body_format.set("markdown".to_string());
+    set_topic_tags.set(String::new());
 }
 
 fn parse_tags(raw: &str) -> Vec<String> {

@@ -3,8 +3,9 @@ use std::collections::BTreeSet;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use uuid::Uuid;
 
 use crate::i18n::t;
@@ -19,31 +20,22 @@ pub fn PricingAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let effective_locale = ui_locale.clone();
-    let initial_currency = route_context
-        .query_value("currency")
-        .map(ToOwned::to_owned)
-        .unwrap_or_default();
-    let initial_region_id = route_context
-        .query_value("region_id")
-        .map(ToOwned::to_owned)
-        .unwrap_or_default();
-    let initial_price_list_id = route_context
-        .query_value("price_list_id")
-        .map(ToOwned::to_owned)
-        .unwrap_or_default();
-    let initial_channel_id = route_context
-        .query_value("channel_id")
-        .map(ToOwned::to_owned)
-        .unwrap_or_default();
-    let initial_channel_slug = route_context
-        .query_value("channel_slug")
-        .map(ToOwned::to_owned)
-        .unwrap_or_default();
-    let initial_quantity = route_context
-        .query_value("quantity")
-        .map(ToOwned::to_owned)
+    let selected_product_query = use_route_query_value(AdminQueryKey::ProductId.as_str());
+    let currency_query = use_route_query_value(AdminQueryKey::Currency.as_str());
+    let region_id_query = use_route_query_value(AdminQueryKey::RegionId.as_str());
+    let price_list_id_query = use_route_query_value(AdminQueryKey::PriceListId.as_str());
+    let channel_id_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
+    let channel_slug_query = use_route_query_value(AdminQueryKey::ChannelSlug.as_str());
+    let quantity_query = use_route_query_value(AdminQueryKey::Quantity.as_str());
+    let query_writer = use_route_query_writer();
+    let initial_currency = currency_query.get_untracked().unwrap_or_default();
+    let initial_region_id = region_id_query.get_untracked().unwrap_or_default();
+    let initial_price_list_id = price_list_id_query.get_untracked().unwrap_or_default();
+    let initial_channel_id = channel_id_query.get_untracked().unwrap_or_default();
+    let initial_channel_slug = channel_slug_query.get_untracked().unwrap_or_default();
+    let initial_quantity = quantity_query
+        .get_untracked()
         .unwrap_or_else(|| "1".to_string());
-    let initial_selected_product_id = route_context.query_value("id").map(ToOwned::to_owned);
     let token = use_token();
     let tenant = use_tenant();
 
@@ -62,7 +54,6 @@ pub fn PricingAdmin() -> impl IntoView {
         signal(Option::<PricingResolutionContext>::None);
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (query_selection_applied, set_query_selection_applied) = signal(false);
     let effective_locale_for_products = effective_locale.clone();
     let effective_locale_for_open = effective_locale.clone();
 
@@ -223,6 +214,12 @@ pub fn PricingAdmin() -> impl IntoView {
     let product_module_route_base = route_context.module_route_base("product");
     let refresh_open_product = open_product.clone();
     let initial_open_product = open_product.clone();
+    let list_query_writer = query_writer.clone();
+    let context_query_writer = query_writer.clone();
+    let context_query_writer_for_region = query_writer.clone();
+    let context_query_writer_for_price_list = query_writer.clone();
+    let context_query_writer_for_channel = query_writer.clone();
+    let context_query_writer_for_quantity = query_writer.clone();
     let refresh_detail = Callback::new(move |_| {
         set_refresh_nonce.update(|value| *value += 1);
         if let Some(product_id) = selected_id.get_untracked() {
@@ -230,18 +227,27 @@ pub fn PricingAdmin() -> impl IntoView {
         }
     });
     Effect::new(move |_| {
-        if query_selection_applied.get() {
-            return;
+        match selected_product_query.get() {
+            Some(product_id) if !product_id.trim().is_empty() => {
+                if bootstrap.get().and_then(Result::ok).is_none() {
+                    return;
+                }
+                initial_open_product.run(product_id);
+            }
+            _ => {
+                set_selected_id.set(None);
+                set_selected.set(None);
+                set_applied_resolution_context.set(None);
+            }
         }
-        let Some(product_id) = initial_selected_product_id.clone() else {
-            set_query_selection_applied.set(true);
-            return;
-        };
-        if bootstrap.get().and_then(Result::ok).is_none() {
-            return;
-        }
-        set_query_selection_applied.set(true);
-        initial_open_product.run(product_id);
+    });
+    Effect::new(move |_| {
+        set_resolution_currency.set(currency_query.get().unwrap_or_default());
+        set_resolution_region_id.set(region_id_query.get().unwrap_or_default());
+        set_resolution_price_list_id.set(price_list_id_query.get().unwrap_or_default());
+        set_resolution_channel_id.set(channel_id_query.get().unwrap_or_default());
+        set_resolution_channel_slug.set(channel_slug_query.get().unwrap_or_default());
+        set_resolution_quantity.set(quantity_query.get().unwrap_or_else(|| "1".to_string()));
     });
 
     view! {
@@ -321,6 +327,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                     {list.items.into_iter().map(|product| {
                                         let open_id = product.id.clone();
                                         let selected_marker = product.id.clone();
+                                        let item_query_writer = list_query_writer.clone();
                                         let item_locale = ui_locale_for_list_status.clone();
                                         let item_locale_for_meta = item_locale.clone();
                                         let item_locale_for_profile = item_locale.clone();
@@ -329,7 +336,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                             .unwrap_or_else(|| t(item_locale_for_profile.as_deref(), "pricing.common.unassigned", "unassigned"));
                                         view! {
                                             <article class=move || {
-                                                if selected_id.get() == Some(selected_marker.clone()) {
+                                                if selected_id.get().as_deref() == Some(selected_marker.as_str()) {
                                                     "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm"
                                                 } else {
                                                     "rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40"
@@ -352,7 +359,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                         disabled=move || busy.get()
-                                                        on:click=move |_| open_product.run(open_id.clone())
+                                                        on:click=move |_| item_query_writer.push_value(AdminQueryKey::ProductId.as_str(), open_id.clone())
                                                     >
                                                         {t(item_locale.as_deref(), "pricing.action.open", "Open")}
                                                     </button>
@@ -390,18 +397,42 @@ pub fn PricingAdmin() -> impl IntoView {
                                 class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
                                 placeholder=t(ui_locale.as_deref(), "pricing.detail.currencyInput", "Currency")
                                 prop:value=move || resolution_currency.get()
-                                on:input=move |ev| set_resolution_currency.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    let next_value = event_target_value(&ev);
+                                    set_resolution_currency.set(next_value.clone());
+                                    if next_value.trim().is_empty() {
+                                        context_query_writer.clear_key(AdminQueryKey::Currency.as_str());
+                                    } else {
+                                        context_query_writer.replace_value(AdminQueryKey::Currency.as_str(), next_value);
+                                    }
+                                }
                             />
                             <input
                                 class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
                                 placeholder=t(ui_locale.as_deref(), "pricing.detail.regionInput", "Region UUID")
                                 prop:value=move || resolution_region_id.get()
-                                on:input=move |ev| set_resolution_region_id.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    let next_value = event_target_value(&ev);
+                                    set_resolution_region_id.set(next_value.clone());
+                                    if next_value.trim().is_empty() {
+                                        context_query_writer_for_region.clear_key(AdminQueryKey::RegionId.as_str());
+                                    } else {
+                                        context_query_writer_for_region.replace_value(AdminQueryKey::RegionId.as_str(), next_value);
+                                    }
+                                }
                             />
                             <select
                                 class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
                                 prop:value=move || resolution_price_list_id.get()
-                                on:change=move |ev| set_resolution_price_list_id.set(event_target_value(&ev))
+                                on:change=move |ev| {
+                                    let next_value = event_target_value(&ev);
+                                    set_resolution_price_list_id.set(next_value.clone());
+                                    if next_value.trim().is_empty() {
+                                        context_query_writer_for_price_list.clear_key(AdminQueryKey::PriceListId.as_str());
+                                    } else {
+                                        context_query_writer_for_price_list.replace_value(AdminQueryKey::PriceListId.as_str(), next_value);
+                                    }
+                                }
                             >
                                 <option value="">{t(ui_locale.as_deref(), "pricing.detail.basePriceListFallback", "base prices")}</option>
                                 {move || {
@@ -465,8 +496,23 @@ pub fn PricingAdmin() -> impl IntoView {
                                         current_channel_slug.as_str(),
                                         available_channels.as_slice(),
                                     );
-                                    set_resolution_channel_id.set(next_channel_id);
-                                    set_resolution_channel_slug.set(next_channel_slug);
+                                    set_resolution_channel_id.set(next_channel_id.clone());
+                                    set_resolution_channel_slug.set(next_channel_slug.clone());
+                                    context_query_writer_for_channel.update(
+                                        vec![
+                                            (
+                                                AdminQueryKey::ChannelId.as_str().to_string(),
+                                                (!next_channel_id.trim().is_empty())
+                                                    .then_some(next_channel_id),
+                                            ),
+                                            (
+                                                AdminQueryKey::ChannelSlug.as_str().to_string(),
+                                                (!next_channel_slug.trim().is_empty())
+                                                    .then_some(next_channel_slug),
+                                            ),
+                                        ],
+                                        true,
+                                    );
                                 }
                             >
                                 <option value=GLOBAL_CHANNEL_KEY>
@@ -533,7 +579,15 @@ pub fn PricingAdmin() -> impl IntoView {
                                 class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
                                 placeholder=t(ui_locale.as_deref(), "pricing.detail.quantityInput", "Qty")
                                 prop:value=move || resolution_quantity.get()
-                                on:input=move |ev| set_resolution_quantity.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    let next_value = event_target_value(&ev);
+                                    set_resolution_quantity.set(next_value.clone());
+                                    if next_value.trim().is_empty() {
+                                        context_query_writer_for_quantity.clear_key(AdminQueryKey::Quantity.as_str());
+                                    } else {
+                                        context_query_writer_for_quantity.replace_value(AdminQueryKey::Quantity.as_str(), next_value);
+                                    }
+                                }
                             />
                             <button
                                 type="button"

@@ -73,6 +73,7 @@ leptos_router = { workspace = true }
 leptos_axum = { workspace = true, optional = true }
 leptos-auth = { workspace = true, default-features = false }
 leptos-graphql = { workspace = true }
+leptos-ui-routing = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-forms = { workspace = true }
 leptos-hook-form = { workspace = true }

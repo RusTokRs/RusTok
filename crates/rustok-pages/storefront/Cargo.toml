@@ -22,6 +22,7 @@ ssr = [
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
+leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

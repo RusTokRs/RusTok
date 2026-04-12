@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Value,
 };
 use sea_orm::sea_query::Expr;
 use sea_orm::Condition;
@@ -92,9 +92,9 @@ impl ShippingProfileService {
             let condition =
                 shipping_profile_translation_search_condition(backend, search.trim());
             query = query.filter(
-                shipping_profile::Column::Slug
-                    .contains(search)
-                    .or(condition),
+                Condition::any()
+                    .add(shipping_profile::Column::Slug.contains(search))
+                    .add(condition),
             );
         }
 
@@ -500,8 +500,5 @@ fn shipping_profile_translation_search_condition(
         }
     };
 
-    Condition::all().add(Expr::cust_with_values(
-        exists_sql,
-        vec![pattern.into()],
-    ))
+    Condition::all().add(Expr::cust_with_values(exists_sql, vec![Value::from(pattern)]))
 }

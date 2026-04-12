@@ -28,6 +28,9 @@
 - Host `apps/next-admin` выступает только composition root.
 - То же правило действует для core-modules, optional-modules и capability packages.
 - Capability-owned surface `rustok-ai` монтируется как package-owned UI, а не как ad-hoc host feature.
+- Route-selection contract обязан быть в parity с `apps/admin`: selection state URL-owned,
+  используются только typed `snake_case` query keys, invalid key не fallback’ится на first item,
+  а локальные Next helpers не inventят отдельную schema/policy поверх `rustok-api` contract.
 
 ## Пакеты и интеграции
 

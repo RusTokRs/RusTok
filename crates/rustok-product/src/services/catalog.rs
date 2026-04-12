@@ -1853,8 +1853,7 @@ impl CatalogService {
             .map(|translation| {
                 let values = option_values
                     .iter()
-                    .enumerate()
-                    .map(|(index, value)| {
+                    .map(|value| {
                         option_value_translations_by_value
                             .get(&value.id)
                             .and_then(|items| {
@@ -1994,10 +1993,9 @@ impl CatalogService {
         }
 
         let now = Utc::now();
-        entities::stock_location::ActiveModel {
+        let location = entities::stock_location::ActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(tenant_id),
-            name: Set("Default".to_string()),
             code: Set(Some("default".to_string())),
             address_line1: Set(None),
             address_line2: Set(None),
@@ -2013,7 +2011,19 @@ impl CatalogService {
         }
         .insert(conn)
         .await
-        .map_err(CommerceError::from)
+        .map_err(CommerceError::from)?;
+
+        entities::stock_location_translation::ActiveModel {
+            id: Set(generate_id()),
+            stock_location_id: Set(location.id),
+            locale: Set(PLATFORM_FALLBACK_LOCALE.to_string()),
+            name: Set("Default".to_string()),
+        }
+        .insert(conn)
+        .await
+        .map_err(CommerceError::from)?;
+
+        Ok(location)
     }
 
     async fn create_initial_inventory_records<C>(

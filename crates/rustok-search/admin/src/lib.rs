@@ -6,8 +6,9 @@ use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use leptos_router::components::A;
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{
@@ -37,7 +38,9 @@ pub fn SearchAdmin() -> impl IntoView {
         .route_segment
         .clone()
         .unwrap_or_else(|| "search".to_string());
-    let initial_query = route_context.query_value("q").unwrap_or("").to_string();
+    let route_query_value = use_route_query_value(AdminQueryKey::Query.as_str());
+    let query_writer = use_route_query_writer();
+    let initial_query = route_query_value.get_untracked().unwrap_or_default();
     let initial_locale = route_context.locale.clone();
     let on_playground = route_context.subpath_matches("playground");
     let on_diagnostics = route_context.subpath_matches("analytics");
@@ -123,6 +126,7 @@ pub fn SearchAdmin() -> impl IntoView {
     let (storefront_presets_config, set_storefront_presets_config) = signal("[]".to_string());
     let (settings_busy, set_settings_busy) = signal(false);
     let (settings_feedback, set_settings_feedback) = signal(Option::<String>::None);
+    let preview_query_writer = query_writer.clone();
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -154,6 +158,10 @@ pub fn SearchAdmin() -> impl IntoView {
             api::fetch_filter_presets(token_value, tenant_value, "search_preview").await
         },
     );
+
+    Effect::new(move |_| {
+        set_query.set(route_query_value.get().unwrap_or_default());
+    });
 
     Effect::new(move |_| {
         if let Some(Ok(bootstrap)) = bootstrap.get() {
@@ -198,7 +206,16 @@ pub fn SearchAdmin() -> impl IntoView {
             let preset_key_value = optional_text(preset_key.get_untracked());
             let locale_value = initial_locale.clone();
             let preview_error_label = preview_error_label.clone();
+            let preview_query_writer = preview_query_writer.clone();
             async move {
+                if query_value.trim().is_empty() {
+                    preview_query_writer.clear_key(AdminQueryKey::Query.as_str());
+                } else {
+                    preview_query_writer.replace_value(
+                        AdminQueryKey::Query.as_str(),
+                        query_value.clone(),
+                    );
+                }
                 match api::fetch_search_preview(
                     token_value,
                     tenant_value,

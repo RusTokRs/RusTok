@@ -51,6 +51,11 @@
 - Host монтирует module-owned страницы через `/modules/:module_slug` и nested variant `/modules/:module_slug/*module_path`.
 - Host прокидывает effective locale через `UiRouteContext.locale`; module-owned Leptos packages обязаны использовать это значение и не должны вводить собственную query/header/cookie fallback-цепочку.
 - Core modules с UI подчиняются тому же ownership rule, что и optional modules: наличие UI не делает host владельцем модульной поверхности.
+- Route-selection contract тоже host-owned: `apps/admin` санитизирует query по typed schema из
+  `rustok-api`, отдаёт модульным пакетам уже canonical route context и предоставляет generic
+  Leptos query plumbing через `leptos-ui-routing`.
+- Для module-owned admin pages selection state живёт только в URL; отсутствие валидного key ведёт к
+  empty state, а invalid/missing entity не должен оставлять stale detail/form state.
 
 ## Взаимодействия
 

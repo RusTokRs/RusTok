@@ -60,7 +60,9 @@ impl StoreContextService {
 
         let requested_locale = input.locale.as_deref().map(normalize_locale).transpose()?;
         let locale = requested_locale
-            .filter(|locale| available_locales.iter().any(|item| item == locale))
+            .as_ref()
+            .filter(|locale| available_locales.iter().any(|item| item == *locale))
+            .cloned()
             .unwrap_or_else(|| default_locale.clone());
 
         let region = self

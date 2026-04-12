@@ -22,6 +22,8 @@
 - Host сначала пытается использовать native `#[server]` path там, где он есть, и только потом откатывается к GraphQL.
 - Module-owned storefront packages обязаны строить внутренние ссылки через `UiRouteContext::module_route_base()`, а не через hardcoded route strings.
 - Module-owned storefront packages не определяют собственную locale negotiation policy; effective locale приходит из host/runtime contract.
+- Module-owned Leptos storefront packages читают query/state через общий helper слой `leptos-ui-routing`,
+  а не через package-local direct access к `UiRouteContext.query_value(...)`.
 
 ## Module-owned storefront surfaces
 
@@ -79,6 +81,8 @@ GraphQL path при этом остаётся рабочим и поддержи
 - `apps/server` предоставляет GraphQL и Leptos server-function surfaces.
 - `crates/rustok-*` публикуют module-owned storefront packages и runtime transport contracts.
 - `apps/next-frontend` идёт параллельным storefront host и должен сохранять parity на уровне контрактов, а не на уровне буквального устройства кода.
+- `leptos-ui-routing` выступает общим Leptos route/query plumbing и для admin, и для storefront;
+  storefront host не должен дублировать этот слой отдельным Rust helper crate.
 
 ## Проверка
 

@@ -20,6 +20,11 @@ Leptos hosts являются основным runtime-путём для platfor
 - Manifest-driven wiring для publishable UI идёт через `modules.toml` и `rustok-module.toml`.
 - Leptos hosts обязаны использовать host-provided `UiRouteContext`, включая effective locale и module route base.
 - Module-owned UI пакеты не должны вводить собственную locale negotiation цепочку поверх host/runtime contract.
+- Для module-owned admin UI selection state тоже host-owned: typed `snake_case` query keys живут в URL,
+  локальный editor/detail state только гидратится из них, а отсутствие валидного key ведёт к empty state.
+- Для module-owned Leptos storefront UI query/state plumbing тоже должно идти через общий слой:
+  `leptos-ui-routing` переиспользуется и в admin, и в storefront, а прямой package-local доступ
+  к `UiRouteContext.query_value(...)` не считается каноническим паттерном.
 
 ## Transport и runtime contract
 
@@ -49,3 +54,7 @@ Leptos hosts являются основным runtime-путём для platfor
 1. Обновляйте локальные docs в `apps/*`.
 2. Обновляйте соответствующий документ в `docs/UI/`.
 3. Сверяйте ссылки в [карте документации](../index.md).
+4. Для module-owned admin UI дополнительно обновляйте route-selection contract и parity notes в
+   host docs, если меняется query schema, selection behavior или helper layer.
+5. Для module-owned storefront UI так же обновляйте routing/query parity notes, если меняется
+   reuse слоя `leptos-ui-routing`, host query semantics или storefront route/query contract.

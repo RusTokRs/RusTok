@@ -78,6 +78,12 @@ slot = "home_after_catalog"
   fallback chains;
 - UI package не тащит в себя ownership доменной логики, который должен жить в
   самом модуле.
+- Для admin-пакетов selection state считается URL-owned: используйте только typed
+  `snake_case` query keys, не читайте legacy `id`/camelCase aliases, не делайте
+  auto-select-first source of truth и очищайте stale detail/form state при failed open.
+- Для Leptos storefront-пакетов query/state plumbing тоже должно идти через общий reusable слой:
+  читайте route query через `leptos-ui-routing`, не вводите package-local helper поверх
+  `UiRouteContext.query_value(...)` и не расходите storefront contract с host-level route semantics.
 
 Для Next.js host integration:
 
@@ -125,6 +131,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 - не описывать UI-пакет только в `apps/*`;
 - не оставлять `admin/` или `storefront/` без manifest wiring;
 - не вводить отдельный i18n-контракт на уровне UI package;
+- не inventить package-local route-selection contract поверх host schema;
 - не считать старые инструкции по установке и деплою canonical source of truth;
 - не заменять GraphQL на `#[server]` и не заменять `#[server]` на GraphQL там,
   где нужен параллельный transport-контракт.

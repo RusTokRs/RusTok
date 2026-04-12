@@ -6,13 +6,15 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use leptos_router::hooks::use_location;
 #[cfg(not(target_arch = "wasm32"))]
 use model::AiLiveStreamStatePayload;
-use model::AiMetricBucketPayload;
+use model::{
+    AiMetricBucketPayload, AiProviderProfilePayload, AiTaskProfilePayload, AiToolProfilePayload,
+};
 #[cfg(target_arch = "wasm32")]
 use model::{AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
@@ -28,7 +30,12 @@ use crate::i18n::t;
 pub fn AiAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let location = use_location();
+    let tab_query = use_route_query_value(AdminQueryKey::Tab.as_str());
+    let session_query = use_route_query_value(AdminQueryKey::SessionId.as_str());
+    let provider_slug_query = use_route_query_value(AdminQueryKey::ProviderSlug.as_str());
+    let tool_profile_slug_query = use_route_query_value(AdminQueryKey::ToolProfileSlug.as_str());
+    let task_profile_slug_query = use_route_query_value(AdminQueryKey::TaskProfileSlug.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -145,7 +152,9 @@ pub fn AiAdmin() -> impl IntoView {
             }
         },
     );
-    let diagnostics_only = location.pathname.get_untracked().ends_with("/diagnostics");
+    let diagnostics_only = Signal::derive(move || {
+        matches!(tab_query.get().as_deref(), Some("diagnostics"))
+    });
     let badge_label = t(ui_locale.as_deref(), "ai.badge", "capability");
     let page_title_label = t(ui_locale.as_deref(), "ai.title", "AI Control Plane");
     let page_subtitle_label = t(
@@ -285,6 +294,201 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.error.assembleBlogPayload",
         "Failed to assemble blog draft payload. Check post/category ids.",
     );
+
+    let session_query_writer = query_writer.clone();
+    let provider_query_writer = query_writer.clone();
+    let tool_query_writer = query_writer.clone();
+    let task_query_writer = query_writer.clone();
+    let overview_tab_query_writer = query_writer.clone();
+    let diagnostics_tab_query_writer = query_writer.clone();
+    let reset_provider_query_writer = query_writer.clone();
+    let reset_tool_query_writer = query_writer.clone();
+    let reset_task_query_writer = query_writer.clone();
+    let create_provider_query_writer = query_writer.clone();
+    let update_provider_query_writer = query_writer.clone();
+    let deactivate_provider_query_writer = query_writer.clone();
+    let create_tool_query_writer = query_writer.clone();
+    let update_tool_query_writer = query_writer.clone();
+    let create_task_query_writer = query_writer.clone();
+    let update_task_query_writer = query_writer.clone();
+    let start_session_query_writer = query_writer.clone();
+    let alloy_session_query_writer = query_writer.clone();
+    let image_session_query_writer = query_writer.clone();
+    let product_session_query_writer = query_writer.clone();
+    let blog_session_query_writer = query_writer.clone();
+
+    Effect::new(move |_| {
+        match session_query.get().map(|value| value.trim().to_string()) {
+            Some(session_id) if !session_id.is_empty() => set_selected_session.set(Some(session_id)),
+            _ => set_selected_session.set(None),
+        }
+    });
+
+    Effect::new(move |_| {
+        let requested_provider_slug = provider_slug_query.get();
+        let requested_tool_slug = tool_profile_slug_query.get();
+        let requested_task_slug = task_profile_slug_query.get();
+        let requested_session_id = session_query.get();
+        match bootstrap.get() {
+            Some(Ok(bootstrap)) => {
+                match requested_provider_slug.as_deref().filter(|value| !value.trim().is_empty()) {
+                    Some(slug) => {
+                        if let Some(profile) = bootstrap.providers.iter().find(|profile| profile.slug == slug) {
+                            apply_provider_profile(
+                                selected_provider,
+                                provider_slug,
+                                provider_name,
+                                provider_kind,
+                                provider_base_url,
+                                provider_model,
+                                provider_api_key,
+                                provider_temperature,
+                                provider_max_tokens,
+                                provider_capabilities,
+                                provider_allowed_tasks,
+                                provider_denied_tasks,
+                                provider_restricted_roles,
+                                provider_active,
+                                profile,
+                            );
+                        } else {
+                            clear_provider_profile(
+                                selected_provider,
+                                provider_slug,
+                                provider_name,
+                                provider_kind,
+                                provider_base_url,
+                                provider_model,
+                                provider_api_key,
+                                provider_temperature,
+                                provider_max_tokens,
+                                provider_capabilities,
+                                provider_allowed_tasks,
+                                provider_denied_tasks,
+                                provider_restricted_roles,
+                                provider_active,
+                            );
+                            provider_query_writer.clear_key(AdminQueryKey::ProviderSlug.as_str());
+                        }
+                    }
+                    None => clear_provider_profile(
+                        selected_provider,
+                        provider_slug,
+                        provider_name,
+                        provider_kind,
+                        provider_base_url,
+                        provider_model,
+                        provider_api_key,
+                        provider_temperature,
+                        provider_max_tokens,
+                        provider_capabilities,
+                        provider_allowed_tasks,
+                        provider_denied_tasks,
+                        provider_restricted_roles,
+                        provider_active,
+                    ),
+                }
+
+                match requested_tool_slug.as_deref().filter(|value| !value.trim().is_empty()) {
+                    Some(slug) => {
+                        if let Some(profile) =
+                            bootstrap.tool_profiles.iter().find(|profile| profile.slug == slug)
+                        {
+                            apply_tool_profile(
+                                selected_tool_profile,
+                                tool_slug,
+                                tool_name,
+                                tool_description,
+                                tool_allowed,
+                                tool_denied,
+                                tool_sensitive,
+                                tool_active,
+                                profile,
+                            );
+                        } else {
+                            clear_tool_profile(
+                                selected_tool_profile,
+                                tool_slug,
+                                tool_name,
+                                tool_description,
+                                tool_allowed,
+                                tool_denied,
+                                tool_sensitive,
+                                tool_active,
+                            );
+                            tool_query_writer.clear_key(AdminQueryKey::ToolProfileSlug.as_str());
+                        }
+                    }
+                    None => clear_tool_profile(
+                        selected_tool_profile,
+                        tool_slug,
+                        tool_name,
+                        tool_description,
+                        tool_allowed,
+                        tool_denied,
+                        tool_sensitive,
+                        tool_active,
+                    ),
+                }
+
+                match requested_task_slug.as_deref().filter(|value| !value.trim().is_empty()) {
+                    Some(slug) => {
+                        if let Some(profile) =
+                            bootstrap.task_profiles.iter().find(|profile| profile.slug == slug)
+                        {
+                            apply_task_profile(
+                                selected_task_profile,
+                                task_slug,
+                                task_name,
+                                task_description,
+                                task_capability,
+                                task_system_prompt,
+                                task_allowed_providers,
+                                task_preferred_providers,
+                                task_execution_mode,
+                                task_active,
+                                profile,
+                            );
+                        } else {
+                            clear_task_profile(
+                                selected_task_profile,
+                                task_slug,
+                                task_name,
+                                task_description,
+                                task_capability,
+                                task_system_prompt,
+                                task_allowed_providers,
+                                task_preferred_providers,
+                                task_execution_mode,
+                                task_active,
+                            );
+                            task_query_writer.clear_key(AdminQueryKey::TaskProfileSlug.as_str());
+                        }
+                    }
+                    None => clear_task_profile(
+                        selected_task_profile,
+                        task_slug,
+                        task_name,
+                        task_description,
+                        task_capability,
+                        task_system_prompt,
+                        task_allowed_providers,
+                        task_preferred_providers,
+                        task_execution_mode,
+                        task_active,
+                    ),
+                }
+
+                if let Some(session_id) = requested_session_id.as_deref().filter(|value| !value.trim().is_empty()) {
+                    if !bootstrap.sessions.iter().any(|session| session.id == session_id) {
+                        set_selected_session.set(None);
+                        session_query_writer.clear_key(AdminQueryKey::SessionId.as_str());
+                    }
+                }
+            }
+            _ => {}
+        }
+    });
 
     Effect::new(move |_| {
         let session_id = selected_session.get();
@@ -516,6 +720,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let provider_created_template = provider_created_template.clone();
+        let create_provider_query_writer = create_provider_query_writer.clone();
         spawn_local(async move {
             let result = api::create_provider(
                 provider_slug.get_untracked(),
@@ -546,6 +751,10 @@ pub fn AiAdmin() -> impl IntoView {
                         provider_created_template.replace("{slug}", profile.slug.as_str()),
                     ));
                     selected_provider.set(profile.id.clone());
+                    create_provider_query_writer.replace_value(
+                        AdminQueryKey::ProviderSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -554,22 +763,23 @@ pub fn AiAdmin() -> impl IntoView {
     };
 
     let reset_provider_form = move || {
-        provider_slug.set(String::new());
-        provider_name.set(String::new());
-        provider_kind.set("openai_compatible".to_string());
-        provider_base_url.set("http://localhost:11434".to_string());
-        provider_model.set("gpt-4.1-mini".to_string());
-        provider_api_key.set(String::new());
-        provider_temperature.set("0.2".to_string());
-        provider_max_tokens.set("1024".to_string());
-        provider_capabilities.set(
-            "text_generation,structured_generation,image_generation,code_generation".to_string(),
+        reset_provider_query_writer.clear_key(AdminQueryKey::ProviderSlug.as_str());
+        clear_provider_profile(
+            selected_provider,
+            provider_slug,
+            provider_name,
+            provider_kind,
+            provider_base_url,
+            provider_model,
+            provider_api_key,
+            provider_temperature,
+            provider_max_tokens,
+            provider_capabilities,
+            provider_allowed_tasks,
+            provider_denied_tasks,
+            provider_restricted_roles,
+            provider_active,
         );
-        provider_allowed_tasks.set(String::new());
-        provider_denied_tasks.set(String::new());
-        provider_restricted_roles.set(String::new());
-        provider_active.set(true);
-        selected_provider.set(String::new());
     };
 
     let on_update_provider = move |_| {
@@ -581,6 +791,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let provider_updated_template = provider_updated_template.clone();
+        let update_provider_query_writer = update_provider_query_writer.clone();
         spawn_local(async move {
             let result = api::update_provider(
                 provider_id,
@@ -609,6 +820,10 @@ pub fn AiAdmin() -> impl IntoView {
                     set_feedback.set(Some(
                         provider_updated_template.replace("{slug}", profile.slug.as_str()),
                     ));
+                    update_provider_query_writer.replace_value(
+                        AdminQueryKey::ProviderSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -641,6 +856,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let provider_deactivated_template = provider_deactivated_template.clone();
+        let deactivate_provider_query_writer = deactivate_provider_query_writer.clone();
         spawn_local(async move {
             match api::deactivate_provider(provider_id).await {
                 Ok(profile) => {
@@ -648,6 +864,10 @@ pub fn AiAdmin() -> impl IntoView {
                     set_feedback.set(Some(
                         provider_deactivated_template.replace("{slug}", profile.slug.as_str()),
                     ));
+                    deactivate_provider_query_writer.replace_value(
+                        AdminQueryKey::ProviderSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -660,6 +880,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let tool_created_template = tool_created_template.clone();
+        let create_tool_query_writer = create_tool_query_writer.clone();
         spawn_local(async move {
             let result = api::create_tool_profile(
                 tool_slug.get_untracked(),
@@ -676,6 +897,10 @@ pub fn AiAdmin() -> impl IntoView {
                         tool_created_template.replace("{slug}", profile.slug.as_str()),
                     ));
                     selected_tool_profile.set(profile.id.clone());
+                    create_tool_query_writer.replace_value(
+                        AdminQueryKey::ToolProfileSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -684,18 +909,17 @@ pub fn AiAdmin() -> impl IntoView {
     };
 
     let reset_tool_form = move || {
-        tool_slug.set(String::new());
-        tool_name.set(String::new());
-        tool_description.set(String::new());
-        tool_allowed
-            .set("list_modules,query_modules,module_details,mcp_health,mcp_whoami".to_string());
-        tool_denied.set(String::new());
-        tool_sensitive.set(
-            "alloy_create_script,alloy_update_script,alloy_delete_script,alloy_apply_module_scaffold"
-                .to_string(),
+        reset_tool_query_writer.clear_key(AdminQueryKey::ToolProfileSlug.as_str());
+        clear_tool_profile(
+            selected_tool_profile,
+            tool_slug,
+            tool_name,
+            tool_description,
+            tool_allowed,
+            tool_denied,
+            tool_sensitive,
+            tool_active,
         );
-        tool_active.set(true);
-        selected_tool_profile.set(String::new());
     };
 
     let on_update_tool_profile = move |_| {
@@ -707,6 +931,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let tool_updated_template = tool_updated_template.clone();
+        let update_tool_query_writer = update_tool_query_writer.clone();
         spawn_local(async move {
             let result = api::update_tool_profile(
                 tool_profile_id,
@@ -723,6 +948,10 @@ pub fn AiAdmin() -> impl IntoView {
                     set_feedback.set(Some(
                         tool_updated_template.replace("{slug}", profile.slug.as_str()),
                     ));
+                    update_tool_query_writer.replace_value(
+                        AdminQueryKey::ToolProfileSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -735,6 +964,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let session_started_template = session_started_template.clone();
+        let start_session_query_writer = start_session_query_writer.clone();
         spawn_local(async move {
             let result = api::start_session(
                 session_title.get_untracked(),
@@ -747,7 +977,12 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(result) => {
-                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    start_session_query_writer.replace_value(
+                        AdminQueryKey::SessionId.as_str(),
+                        session_id,
+                    );
                     set_feedback.set(Some(
                         session_started_template
                             .replace("{title}", result.session.session.title.as_str()),
@@ -783,6 +1018,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let alloy_completed_template = alloy_completed_template.clone();
+        let alloy_session_query_writer = alloy_session_query_writer.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 alloy_title.get_untracked(),
@@ -795,7 +1031,12 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(result) => {
-                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    alloy_session_query_writer.replace_value(
+                        AdminQueryKey::SessionId.as_str(),
+                        session_id,
+                    );
                     set_feedback.set(Some(
                         alloy_completed_template
                             .replace("{title}", result.session.session.title.as_str()),
@@ -833,6 +1074,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let image_completed_template = image_completed_template.clone();
+        let image_session_query_writer = image_session_query_writer.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 image_title.get_untracked(),
@@ -845,7 +1087,12 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(result) => {
-                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    image_session_query_writer.replace_value(
+                        AdminQueryKey::SessionId.as_str(),
+                        session_id,
+                    );
                     set_feedback.set(Some(
                         image_completed_template
                             .replace("{title}", result.session.session.title.as_str()),
@@ -883,6 +1130,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let product_completed_template = product_completed_template.clone();
+        let product_session_query_writer = product_session_query_writer.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 product_title.get_untracked(),
@@ -895,7 +1143,12 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(result) => {
-                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    product_session_query_writer.replace_value(
+                        AdminQueryKey::SessionId.as_str(),
+                        session_id,
+                    );
                     set_feedback.set(Some(
                         product_completed_template
                             .replace("{title}", result.session.session.title.as_str()),
@@ -937,6 +1190,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let blog_completed_template = blog_completed_template.clone();
+        let blog_session_query_writer = blog_session_query_writer.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 blog_title.get_untracked(),
@@ -949,7 +1203,12 @@ pub fn AiAdmin() -> impl IntoView {
             .await;
             match result {
                 Ok(result) => {
-                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    blog_session_query_writer.replace_value(
+                        AdminQueryKey::SessionId.as_str(),
+                        session_id,
+                    );
                     set_feedback.set(Some(
                         blog_completed_template
                             .replace("{title}", result.session.session.title.as_str()),
@@ -962,16 +1221,19 @@ pub fn AiAdmin() -> impl IntoView {
     };
 
     let reset_task_form = move || {
-        task_slug.set(String::new());
-        task_name.set(String::new());
-        task_description.set(String::new());
-        task_capability.set("text_generation".to_string());
-        task_system_prompt.set(String::new());
-        task_allowed_providers.set(String::new());
-        task_preferred_providers.set(String::new());
-        task_execution_mode.set("auto".to_string());
-        task_active.set(true);
-        selected_task_profile.set(String::new());
+        reset_task_query_writer.clear_key(AdminQueryKey::TaskProfileSlug.as_str());
+        clear_task_profile(
+            selected_task_profile,
+            task_slug,
+            task_name,
+            task_description,
+            task_capability,
+            task_system_prompt,
+            task_allowed_providers,
+            task_preferred_providers,
+            task_execution_mode,
+            task_active,
+        );
     };
 
     let on_create_task_profile = move |ev: SubmitEvent| {
@@ -979,6 +1241,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let task_created_template = task_created_template.clone();
+        let create_task_query_writer = create_task_query_writer.clone();
         spawn_local(async move {
             let result = api::create_task_profile(
                 task_slug.get_untracked(),
@@ -998,6 +1261,10 @@ pub fn AiAdmin() -> impl IntoView {
                         task_created_template.replace("{slug}", profile.slug.as_str()),
                     ));
                     selected_task_profile.set(profile.id.clone());
+                    create_task_query_writer.replace_value(
+                        AdminQueryKey::TaskProfileSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -1014,6 +1281,7 @@ pub fn AiAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let task_updated_template = task_updated_template.clone();
+        let update_task_query_writer = update_task_query_writer.clone();
         spawn_local(async move {
             let result = api::update_task_profile(
                 task_profile_id,
@@ -1033,6 +1301,10 @@ pub fn AiAdmin() -> impl IntoView {
                     set_feedback.set(Some(
                         task_updated_template.replace("{slug}", profile.slug.as_str()),
                     ));
+                    update_task_query_writer.replace_value(
+                        AdminQueryKey::TaskProfileSlug.as_str(),
+                        profile.slug.clone(),
+                    );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(err.to_string())),
@@ -1077,26 +1349,32 @@ pub fn AiAdmin() -> impl IntoView {
                     </p>
                 </div>
                 <div class="mt-4 flex flex-wrap gap-2 text-sm">
-                    <a
-                        class=if diagnostics_only {
-                            "rounded-full border border-border px-3 py-1.5 text-muted-foreground"
-                        } else {
-                            "rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary"
+                    <button
+                        type="button"
+                        class=move || {
+                            if diagnostics_only.get() {
+                                "rounded-full border border-border px-3 py-1.5 text-muted-foreground"
+                            } else {
+                                "rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary"
+                            }
                         }
-                        href="/ai"
+                        on:click=move |_| overview_tab_query_writer.replace_value(AdminQueryKey::Tab.as_str(), "overview")
                     >
                         {overview_label.clone()}
-                    </a>
-                    <a
-                        class=if diagnostics_only {
-                            "rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary"
-                        } else {
-                            "rounded-full border border-border px-3 py-1.5 text-muted-foreground"
+                    </button>
+                    <button
+                        type="button"
+                        class=move || {
+                            if diagnostics_only.get() {
+                                "rounded-full border border-primary bg-primary/10 px-3 py-1.5 font-medium text-primary"
+                            } else {
+                                "rounded-full border border-border px-3 py-1.5 text-muted-foreground"
+                            }
                         }
-                        href="/ai/diagnostics"
+                        on:click=move |_| diagnostics_tab_query_writer.replace_value(AdminQueryKey::Tab.as_str(), "diagnostics")
                     >
                         {diagnostics_label.clone()}
-                    </a>
+                    </button>
                 </div>
             </header>
 
@@ -1147,14 +1425,18 @@ pub fn AiAdmin() -> impl IntoView {
                     let image_transport_locale = ui_locale.clone();
                     let alloy_transport_locale = ui_locale.clone();
                     let session_transport_locale = ui_locale.clone();
+                    let select_provider_query_writer = query_writer.clone();
+                    let select_tool_query_writer = query_writer.clone();
+                    let select_task_query_writer = query_writer.clone();
+                    let select_session_query_writer = query_writer.clone();
                     bootstrap.get().map(|result| match result {
                     Ok(bootstrap) => view! {
-                        <div class=if diagnostics_only {
+                        <div class=if diagnostics_only.get() {
                             "grid gap-6 xl:grid-cols-[1fr_1.6fr]".to_string()
                         } else {
                             "grid gap-6 xl:grid-cols-[1.2fr_1fr_1.6fr]".to_string()
                         }>
-                            {if !diagnostics_only { view! {
+                            {if !diagnostics_only.get() { view! {
                             <section class="space-y-6">
                                 <Card title=t(ui_locale_providers.as_deref(), "ai.card.providers", "Providers")>
                                     <form class="space-y-3" on:submit=on_create_provider.clone()>
@@ -1188,37 +1470,16 @@ pub fn AiAdmin() -> impl IntoView {
                                     </form>
                                     <div class="mt-4 space-y-2">
                                         {bootstrap.providers.into_iter().map(|provider| {
-                                            let provider_id = provider.id.clone();
                                             let provider_slug_value = provider.slug.clone();
-                                            let provider_name_value = provider.display_name.clone();
-                                            let provider_kind_value = provider.provider_kind.clone();
-                                            let provider_base_url_value = provider.base_url.clone();
-                                            let provider_model_value = provider.model.clone();
-                                            let provider_temperature_value = provider.temperature.map(|value| value.to_string()).unwrap_or_default();
-                                            let provider_max_tokens_value = provider.max_tokens.map(|value| value.to_string()).unwrap_or_default();
-                                            let provider_capabilities_value = provider.capabilities.join(",");
-                                            let provider_allowed_tasks_value = provider.allowed_task_profiles.join(",");
-                                            let provider_denied_tasks_value = provider.denied_task_profiles.join(",");
-                                            let provider_restricted_roles_value = provider.restricted_role_slugs.join(",");
-                                            let provider_active_value = provider.is_active;
+                                            let provider_query_writer = select_provider_query_writer.clone();
                                             view! {
                                                 <button
                                                     class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
                                                     on:click=move |_| {
-                                                        selected_provider.set(provider_id.clone());
-                                                        provider_slug.set(provider_slug_value.clone());
-                                                        provider_name.set(provider_name_value.clone());
-                                                        provider_kind.set(provider_kind_value.clone());
-                                                        provider_base_url.set(provider_base_url_value.clone());
-                                                        provider_model.set(provider_model_value.clone());
-                                                        provider_api_key.set(String::new());
-                                                        provider_temperature.set(provider_temperature_value.clone());
-                                                        provider_max_tokens.set(provider_max_tokens_value.clone());
-                                                        provider_capabilities.set(provider_capabilities_value.clone());
-                                                        provider_allowed_tasks.set(provider_allowed_tasks_value.clone());
-                                                        provider_denied_tasks.set(provider_denied_tasks_value.clone());
-                                                        provider_restricted_roles.set(provider_restricted_roles_value.clone());
-                                                        provider_active.set(provider_active_value);
+                                                        provider_query_writer.replace_value(
+                                                            AdminQueryKey::ProviderSlug.as_str(),
+                                                            provider_slug_value.clone(),
+                                                        );
                                                     }
                                                 >
                                                     <div class="font-medium">{provider.display_name}</div>
@@ -1261,26 +1522,16 @@ pub fn AiAdmin() -> impl IntoView {
                                     </form>
                                     <div class="mt-4 space-y-2">
                                         {bootstrap.tool_profiles.into_iter().map(|profile| {
-                                            let profile_id = profile.id.clone();
                                             let profile_slug_value = profile.slug.clone();
-                                            let profile_name_value = profile.display_name.clone();
-                                            let profile_description_value = profile.description.clone().unwrap_or_default();
-                                            let profile_allowed_value = profile.allowed_tools.join(",");
-                                            let profile_denied_value = profile.denied_tools.join(",");
-                                            let profile_sensitive_value = profile.sensitive_tools.join(",");
-                                            let profile_active_value = profile.is_active;
+                                            let tool_query_writer = select_tool_query_writer.clone();
                                             view! {
                                                 <button
                                                     class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
                                                     on:click=move |_| {
-                                                        selected_tool_profile.set(profile_id.clone());
-                                                        tool_slug.set(profile_slug_value.clone());
-                                                        tool_name.set(profile_name_value.clone());
-                                                        tool_description.set(profile_description_value.clone());
-                                                        tool_allowed.set(profile_allowed_value.clone());
-                                                        tool_denied.set(profile_denied_value.clone());
-                                                        tool_sensitive.set(profile_sensitive_value.clone());
-                                                        tool_active.set(profile_active_value);
+                                                        tool_query_writer.replace_value(
+                                                            AdminQueryKey::ToolProfileSlug.as_str(),
+                                                            profile_slug_value.clone(),
+                                                        );
                                                     }
                                                 >
                                                     <div class="font-medium">{profile.display_name}</div>
@@ -1324,34 +1575,16 @@ pub fn AiAdmin() -> impl IntoView {
                                     </form>
                                     <div class="mt-4 space-y-2">
                                         {bootstrap.task_profiles.into_iter().map(|profile| {
-                                            let profile_id = profile.id.clone();
                                             let profile_slug_value = profile.slug.clone();
-                                            let profile_name_value = profile.display_name.clone();
-                                            let profile_description_value = profile.description.clone().unwrap_or_default();
-                                            let profile_capability_value = profile.target_capability.clone();
-                                            let profile_system_prompt_value = profile.system_prompt.clone().unwrap_or_default();
-                                            let profile_allowed_value = profile.allowed_provider_profile_ids.join(",");
-                                            let profile_preferred_value = profile.preferred_provider_profile_ids.join(",");
-                                            let profile_execution_mode_value = profile.default_execution_mode.clone();
-                                            let profile_active_value = profile.is_active;
-                                            let profile_tool_profile_id = profile.tool_profile_id.clone().unwrap_or_default();
+                                            let task_query_writer = select_task_query_writer.clone();
                                             view! {
                                                 <button
                                                     class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
                                                     on:click=move |_| {
-                                                        selected_task_profile.set(profile_id.clone());
-                                                        task_slug.set(profile_slug_value.clone());
-                                                        task_name.set(profile_name_value.clone());
-                                                        task_description.set(profile_description_value.clone());
-                                                        task_capability.set(profile_capability_value.clone());
-                                                        task_system_prompt.set(profile_system_prompt_value.clone());
-                                                        task_allowed_providers.set(profile_allowed_value.clone());
-                                                        task_preferred_providers.set(profile_preferred_value.clone());
-                                                        task_execution_mode.set(profile_execution_mode_value.clone());
-                                                        task_active.set(profile_active_value);
-                                                        if !profile_tool_profile_id.is_empty() {
-                                                            selected_tool_profile.set(profile_tool_profile_id.clone());
-                                                        }
+                                                        task_query_writer.replace_value(
+                                                            AdminQueryKey::TaskProfileSlug.as_str(),
+                                                            profile_slug_value.clone(),
+                                                        );
                                                     }
                                                 >
                                                     <div class="font-medium">{profile.display_name}</div>
@@ -1539,7 +1772,7 @@ pub fn AiAdmin() -> impl IntoView {
                                     </div>
                                 </Card>
 
-                                {if !diagnostics_only { view! {
+                                {if !diagnostics_only.get() { view! {
                                 <Card title=t(ui_locale_blog.as_deref(), "ai.card.blogDraft", "Blog Draft")>
                                     <form class="space-y-3" on:submit=on_run_blog_job.clone()>
                                         <TextField label=t(ui_locale_blog.as_deref(), "ai.field.jobTitle", "Job title") value=blog_title />
@@ -1730,12 +1963,18 @@ pub fn AiAdmin() -> impl IntoView {
 
                                 <Card title=t(ui_locale_sessions.as_deref(), "ai.card.sessions", "Sessions")>
                                     <div class="space-y-2">
-                                        {bootstrap.sessions.into_iter().map(|session| {
-                                            let session_id = session.id.clone();
-                                            view! {
+                                            {bootstrap.sessions.into_iter().map(|session| {
+                                                let session_id = session.id.clone();
+                                                let item_query_writer = select_session_query_writer.clone();
+                                                view! {
                                                 <button
                                                     class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
-                                                    on:click=move |_| set_selected_session.set(Some(session_id.clone()))
+                                                    on:click=move |_| {
+                                                        item_query_writer.replace_value(
+                                                            AdminQueryKey::SessionId.as_str(),
+                                                            session_id.clone(),
+                                                        );
+                                                    }
                                                 >
                                                     <div class="font-medium">{session.title}</div>
                                                     <div class="text-muted-foreground">
@@ -2289,6 +2528,166 @@ fn active_state_label(locale: Option<&str>, active: bool) -> String {
     } else {
         t(locale, "ai.common.inactive", "inactive")
     }
+}
+
+fn apply_provider_profile(
+    selected_provider: RwSignal<String>,
+    provider_slug: RwSignal<String>,
+    provider_name: RwSignal<String>,
+    provider_kind: RwSignal<String>,
+    provider_base_url: RwSignal<String>,
+    provider_model: RwSignal<String>,
+    provider_api_key: RwSignal<String>,
+    provider_temperature: RwSignal<String>,
+    provider_max_tokens: RwSignal<String>,
+    provider_capabilities: RwSignal<String>,
+    provider_allowed_tasks: RwSignal<String>,
+    provider_denied_tasks: RwSignal<String>,
+    provider_restricted_roles: RwSignal<String>,
+    provider_active: RwSignal<bool>,
+    profile: &AiProviderProfilePayload,
+) {
+    selected_provider.set(profile.id.clone());
+    provider_slug.set(profile.slug.clone());
+    provider_name.set(profile.display_name.clone());
+    provider_kind.set(profile.provider_kind.clone());
+    provider_base_url.set(profile.base_url.clone());
+    provider_model.set(profile.model.clone());
+    provider_api_key.set(String::new());
+    provider_temperature.set(profile.temperature.map(|value| value.to_string()).unwrap_or_default());
+    provider_max_tokens.set(profile.max_tokens.map(|value| value.to_string()).unwrap_or_default());
+    provider_capabilities.set(profile.capabilities.join(","));
+    provider_allowed_tasks.set(profile.allowed_task_profiles.join(","));
+    provider_denied_tasks.set(profile.denied_task_profiles.join(","));
+    provider_restricted_roles.set(profile.restricted_role_slugs.join(","));
+    provider_active.set(profile.is_active);
+}
+
+fn clear_provider_profile(
+    selected_provider: RwSignal<String>,
+    provider_slug: RwSignal<String>,
+    provider_name: RwSignal<String>,
+    provider_kind: RwSignal<String>,
+    provider_base_url: RwSignal<String>,
+    provider_model: RwSignal<String>,
+    provider_api_key: RwSignal<String>,
+    provider_temperature: RwSignal<String>,
+    provider_max_tokens: RwSignal<String>,
+    provider_capabilities: RwSignal<String>,
+    provider_allowed_tasks: RwSignal<String>,
+    provider_denied_tasks: RwSignal<String>,
+    provider_restricted_roles: RwSignal<String>,
+    provider_active: RwSignal<bool>,
+) {
+    selected_provider.set(String::new());
+    provider_slug.set(String::new());
+    provider_name.set(String::new());
+    provider_kind.set("openai_compatible".to_string());
+    provider_base_url.set("http://localhost:11434".to_string());
+    provider_model.set("gpt-4.1-mini".to_string());
+    provider_api_key.set(String::new());
+    provider_temperature.set("0.2".to_string());
+    provider_max_tokens.set("1024".to_string());
+    provider_capabilities.set(
+        "text_generation,structured_generation,image_generation,code_generation".to_string(),
+    );
+    provider_allowed_tasks.set(String::new());
+    provider_denied_tasks.set(String::new());
+    provider_restricted_roles.set(String::new());
+    provider_active.set(true);
+}
+
+fn apply_tool_profile(
+    selected_tool_profile: RwSignal<String>,
+    tool_slug: RwSignal<String>,
+    tool_name: RwSignal<String>,
+    tool_description: RwSignal<String>,
+    tool_allowed: RwSignal<String>,
+    tool_denied: RwSignal<String>,
+    tool_sensitive: RwSignal<String>,
+    tool_active: RwSignal<bool>,
+    profile: &AiToolProfilePayload,
+) {
+    selected_tool_profile.set(profile.id.clone());
+    tool_slug.set(profile.slug.clone());
+    tool_name.set(profile.display_name.clone());
+    tool_description.set(profile.description.clone().unwrap_or_default());
+    tool_allowed.set(profile.allowed_tools.join(","));
+    tool_denied.set(profile.denied_tools.join(","));
+    tool_sensitive.set(profile.sensitive_tools.join(","));
+    tool_active.set(profile.is_active);
+}
+
+fn clear_tool_profile(
+    selected_tool_profile: RwSignal<String>,
+    tool_slug: RwSignal<String>,
+    tool_name: RwSignal<String>,
+    tool_description: RwSignal<String>,
+    tool_allowed: RwSignal<String>,
+    tool_denied: RwSignal<String>,
+    tool_sensitive: RwSignal<String>,
+    tool_active: RwSignal<bool>,
+) {
+    selected_tool_profile.set(String::new());
+    tool_slug.set(String::new());
+    tool_name.set(String::new());
+    tool_description.set(String::new());
+    tool_allowed.set("list_modules,query_modules,module_details,mcp_health,mcp_whoami".to_string());
+    tool_denied.set(String::new());
+    tool_sensitive.set(
+        "alloy_create_script,alloy_update_script,alloy_delete_script,alloy_apply_module_scaffold"
+            .to_string(),
+    );
+    tool_active.set(true);
+}
+
+fn apply_task_profile(
+    selected_task_profile: RwSignal<String>,
+    task_slug: RwSignal<String>,
+    task_name: RwSignal<String>,
+    task_description: RwSignal<String>,
+    task_capability: RwSignal<String>,
+    task_system_prompt: RwSignal<String>,
+    task_allowed_providers: RwSignal<String>,
+    task_preferred_providers: RwSignal<String>,
+    task_execution_mode: RwSignal<String>,
+    task_active: RwSignal<bool>,
+    profile: &AiTaskProfilePayload,
+) {
+    selected_task_profile.set(profile.id.clone());
+    task_slug.set(profile.slug.clone());
+    task_name.set(profile.display_name.clone());
+    task_description.set(profile.description.clone().unwrap_or_default());
+    task_capability.set(profile.target_capability.clone());
+    task_system_prompt.set(profile.system_prompt.clone().unwrap_or_default());
+    task_allowed_providers.set(profile.allowed_provider_profile_ids.join(","));
+    task_preferred_providers.set(profile.preferred_provider_profile_ids.join(","));
+    task_execution_mode.set(profile.default_execution_mode.clone());
+    task_active.set(profile.is_active);
+}
+
+fn clear_task_profile(
+    selected_task_profile: RwSignal<String>,
+    task_slug: RwSignal<String>,
+    task_name: RwSignal<String>,
+    task_description: RwSignal<String>,
+    task_capability: RwSignal<String>,
+    task_system_prompt: RwSignal<String>,
+    task_allowed_providers: RwSignal<String>,
+    task_preferred_providers: RwSignal<String>,
+    task_execution_mode: RwSignal<String>,
+    task_active: RwSignal<bool>,
+) {
+    selected_task_profile.set(String::new());
+    task_slug.set(String::new());
+    task_name.set(String::new());
+    task_description.set(String::new());
+    task_capability.set("text_generation".to_string());
+    task_system_prompt.set(String::new());
+    task_allowed_providers.set(String::new());
+    task_preferred_providers.set(String::new());
+    task_execution_mode.set("auto".to_string());
+    task_active.set(true);
 }
 
 #[cfg(target_arch = "wasm32")]

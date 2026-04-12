@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use leptos::prelude::*;
+use leptos_ui_routing::RouteQueryPolicy;
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_router::NavigateOptions;
 use rustok_api::{sanitize_admin_route_query, UiRouteContext};
@@ -60,6 +61,7 @@ pub fn ModuleRequestProvider(
         );
     });
 
+    provide_context(RouteQueryPolicy::new(sanitize_admin_route_query));
     provide_context(UiRouteContext {
         locale,
         route_segment,

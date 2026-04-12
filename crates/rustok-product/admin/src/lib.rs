@@ -6,8 +6,9 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -19,7 +20,8 @@ pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let effective_locale = ui_locale.clone();
-    let initial_selected_product_id = route_context.query_value("id").map(ToOwned::to_owned);
+    let selected_product_query = use_route_query_value(AdminQueryKey::ProductId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -44,7 +46,6 @@ pub fn ProductAdmin() -> impl IntoView {
     let (status_filter, set_status_filter) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (query_selection_applied, set_query_selection_applied) = signal(false);
     let effective_locale_for_products = effective_locale.clone();
     let effective_locale_for_selected_pricing = effective_locale.clone();
     let effective_locale_for_initial_open = effective_locale.clone();
@@ -173,44 +174,58 @@ pub fn ProductAdmin() -> impl IntoView {
     let initial_product_not_found_label = product_not_found_label.clone();
     let initial_load_product_error_label = load_product_error_label.clone();
     Effect::new(move |_| {
-        if query_selection_applied.get() {
-            return;
+        match selected_product_query.get() {
+            Some(product_id) if !product_id.trim().is_empty() => {
+                let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
+                    return;
+                };
+                open_product_for_edit(
+                    bootstrap,
+                    token.get(),
+                    tenant.get(),
+                    effective_locale_for_initial_open.clone(),
+                    product_id,
+                    initial_product_not_found_label.clone(),
+                    initial_load_product_error_label.clone(),
+                    set_busy,
+                    set_error,
+                    set_editing_id,
+                    set_selected,
+                    set_title,
+                    set_handle,
+                    set_description,
+                    set_seller_id,
+                    set_vendor,
+                    set_product_type,
+                    set_shipping_profile_slug,
+                    set_sku,
+                    set_barcode,
+                    set_currency_code,
+                    set_amount,
+                    set_compare_at_amount,
+                    set_inventory_quantity,
+                    set_publish_now,
+                );
+            }
+            _ => clear_product_form(
+                set_editing_id,
+                set_selected,
+                set_title,
+                set_handle,
+                set_description,
+                set_seller_id,
+                set_vendor,
+                set_product_type,
+                set_shipping_profile_slug,
+                set_sku,
+                set_barcode,
+                set_currency_code,
+                set_amount,
+                set_compare_at_amount,
+                set_inventory_quantity,
+                set_publish_now,
+            ),
         }
-        let Some(product_id) = initial_selected_product_id.clone() else {
-            set_query_selection_applied.set(true);
-            return;
-        };
-        let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
-            return;
-        };
-        set_query_selection_applied.set(true);
-        open_product_for_edit(
-            bootstrap,
-            token.get(),
-            tenant.get(),
-            effective_locale_for_initial_open.clone(),
-            product_id,
-            initial_product_not_found_label.clone(),
-            initial_load_product_error_label.clone(),
-            set_busy,
-            set_error,
-            set_editing_id,
-            set_selected,
-            set_title,
-            set_handle,
-            set_description,
-            set_seller_id,
-            set_vendor,
-            set_product_type,
-            set_shipping_profile_slug,
-            set_sku,
-            set_barcode,
-            set_currency_code,
-            set_amount,
-            set_compare_at_amount,
-            set_inventory_quantity,
-            set_publish_now,
-        );
     });
 
     let reset_form = move || {
@@ -237,8 +252,10 @@ pub fn ProductAdmin() -> impl IntoView {
     let submit_ui_locale = ui_locale.clone();
     let locale_unavailable_label_for_submit = locale_unavailable_label.clone();
     let bootstrap_loading_label_for_submit = bootstrap_loading_label.clone();
+    let submit_query_writer = query_writer.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
+        let submit_query_writer = submit_query_writer.clone();
         if title.get_untracked().trim().is_empty() {
             set_error.set(Some(title_required_label_for_submit.clone()));
             return;
@@ -305,6 +322,7 @@ pub fn ProductAdmin() -> impl IntoView {
 
             match result {
                 Ok(product) => {
+                    let product_id = product.id.clone();
                     apply_product(
                         &product,
                         Some(submit_locale.as_str()),
@@ -326,6 +344,7 @@ pub fn ProductAdmin() -> impl IntoView {
                         set_publish_now,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
+                    submit_query_writer.replace_value(AdminQueryKey::ProductId.as_str(), product_id);
                 }
                 Err(err) => set_error.set(Some(format!("{save_product_error_label}: {err}"))),
             }
@@ -343,6 +362,13 @@ pub fn ProductAdmin() -> impl IntoView {
     let ui_locale_for_profile_panel = ui_locale.clone();
     let ui_locale_for_summary_title = ui_locale.clone();
     let pricing_module_route_base = route_context.module_route_base("pricing");
+    let list_query_writer = query_writer.clone();
+    let reset_query_writer = query_writer.clone();
+    let delete_query_writer = query_writer.clone();
+    let reset_current_product = Callback::new(move |_| {
+        reset_query_writer.clear_key(AdminQueryKey::ProductId.as_str());
+        reset_form();
+    });
 
     view! {
         <section class="space-y-6">
@@ -423,11 +449,13 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let item_locale_for_chip = item_locale.clone();
                                         let item_locale_for_buttons = item_locale.clone();
                                         let item_locale_for_edit = item_locale.clone();
+                                        let item_query_writer = list_query_writer.clone();
                                         let edit_id = product.id.clone();
                                         let publish_id = product.id.clone();
                                         let draft_id = product.id.clone();
                                         let archive_id = product.id.clone();
                                         let delete_id = product.id.clone();
+                                        let delete_query_writer_for_item = delete_query_writer.clone();
                                         let status = product.status.clone();
                                         let shipping_profile_label = product.shipping_profile_slug.clone();
                                         let show_shipping_profile = shipping_profile_label.is_some();
@@ -444,12 +472,8 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let bootstrap_loading_label_for_archive = bootstrap_loading_label.clone();
                                         let change_status_error_label_for_archive = change_status_error_label.clone();
                                         let bootstrap_loading_label_for_delete = bootstrap_loading_label.clone();
-                                        let bootstrap_loading_label_for_edit = bootstrap_loading_label.clone();
                                         let delete_returned_false_label_for_delete = delete_returned_false_label.clone();
                                         let delete_product_error_label_for_delete = delete_product_error_label.clone();
-                                        let product_not_found_label_for_edit = product_not_found_label.clone();
-                                        let load_product_error_label_for_edit = load_product_error_label.clone();
-                                        let effective_locale_for_edit = effective_locale.clone();
                                         view! {
                                             <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -474,39 +498,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                         </p>
                                                     </div>
                                                     <div class="flex flex-wrap gap-2">
-                                                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| {
-                                                            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-                                                                set_error.set(Some(bootstrap_loading_label_for_edit.clone()));
-                                                                return;
-                                                            };
-                                                            open_product_for_edit(
-                                                                bootstrap,
-                                                                token.get_untracked(),
-                                                                tenant.get_untracked(),
-                                                                effective_locale_for_edit.clone(),
-                                                                edit_id.clone(),
-                                                                product_not_found_label_for_edit.clone(),
-                                                                load_product_error_label_for_edit.clone(),
-                                                                set_busy,
-                                                                set_error,
-                                                                set_editing_id,
-                                                                set_selected,
-                                                                set_title,
-                                                                set_handle,
-                                                                set_description,
-                                                                set_seller_id,
-                                                                set_vendor,
-                                                                set_product_type,
-                                                                set_shipping_profile_slug,
-                                                                set_sku,
-                                                                set_barcode,
-                                                                set_currency_code,
-                                                                set_amount,
-                                                                set_compare_at_amount,
-                                                                set_inventory_quantity,
-                                                                set_publish_now,
-                                                            );
-                                                        }>
+                                                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| item_query_writer.push_value(AdminQueryKey::ProductId.as_str(), edit_id.clone())>
                                                             {t(item_locale_for_edit.as_deref(), "product.action.edit", "Edit")}
                                                         </button>
                                                         <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| mutate_status(
@@ -561,6 +553,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             let token_value = token.get_untracked();
                                                             let tenant_value = tenant.get_untracked();
                                                             let delete_id_value = delete_id.clone();
+                                                            let delete_query_writer = delete_query_writer_for_item.clone();
                                                             let delete_returned_false_label = delete_returned_false_label_for_delete.clone();
                                                             let delete_product_error_label = delete_product_error_label_for_delete.clone();
                                                             spawn_local(async move {
@@ -573,6 +566,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                 ).await {
                                                                     Ok(true) => {
                                                                         if editing_id.get_untracked().as_deref() == Some(delete_id_value.as_str()) {
+                                                                            delete_query_writer.clear_key(AdminQueryKey::ProductId.as_str());
                                                                             set_editing_id.set(None);
                                                                             set_selected.set(None);
                                                                             set_title.set(String::new());
@@ -626,7 +620,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     {t(ui_locale_for_editor_subtitle.as_deref(), "product.editor.subtitle", "Single-SKU catalog editor backed by the existing commerce GraphQL contract.")}
                                 </p>
                             </div>
-                            <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_form()>
+                            <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_current_product.run(())>
                                 {t(ui_locale.as_deref(), "product.action.new", "New")}
                             </button>
                         </div>

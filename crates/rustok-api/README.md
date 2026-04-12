@@ -7,6 +7,7 @@
 - Provide reusable tenant and auth request context types.
 - Provide reusable channel request context types for channel-aware runtime resolution.
 - Provide thin UI host route context types when module-owned frontend packages need generic host data such as route segment, nested subpath, locale, and query params.
+- Provide typed route-selection schemas and sanitization helpers for host-owned URL contracts.
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
 - Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`) from host middleware into module adapters.
@@ -30,6 +31,7 @@
 - `src/context/`
 - `src/request.rs`
 - `src/ui.rs`
+- `src/route_selection.rs`
 - `src/graphql/`
 
 ## Docs

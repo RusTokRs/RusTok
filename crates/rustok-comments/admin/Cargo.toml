@@ -23,7 +23,7 @@ leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
-rustok-ui-routing.workspace = true
+leptos-ui-routing.workspace = true
 rustok-comments.workspace = true
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true

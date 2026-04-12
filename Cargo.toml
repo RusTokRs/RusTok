@@ -193,7 +193,7 @@ rustok-index = { path = "crates/rustok-index" }
 rustok-search = { path = "crates/rustok-search" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api" }
-rustok-ui-routing = { path = "crates/rustok-ui-routing" }
+leptos-ui-routing = { path = "crates/leptos-ui-routing" }
 rustok-cache = { path = "crates/rustok-cache" }
 rustok-channel = { path = "crates/rustok-channel" }
 rustok-email = { path = "crates/rustok-email" }

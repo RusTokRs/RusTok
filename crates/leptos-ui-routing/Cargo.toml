@@ -1,9 +1,9 @@
 [package]
-name = "rustok-ui-routing"
+name = "leptos-ui-routing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Shared URL-owned route selection helpers for module-owned Leptos admin UI"
+description = "Shared Leptos URL/query routing helpers for host-owned and module-owned UI"
 
 [lib]
 crate-type = ["rlib"]

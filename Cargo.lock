@@ -6053,6 +6053,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos-ui-routing"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos_router",
+ "rustok-api",
+ "serde_urlencoded",
+]
+
+[[package]]
 name = "leptos-use"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9604,6 +9614,7 @@ dependencies = [
  "leptos-shadcn-pagination",
  "leptos-struct-table",
  "leptos-ui",
+ "leptos-ui-routing",
  "leptos-use",
  "leptos-zod",
  "leptos-zustand",
@@ -9697,13 +9708,13 @@ dependencies = [
  "chrono",
  "leptos 0.8.17",
  "leptos-auth",
+ "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
  "loco-rs",
  "rustok-ai",
  "rustok-api",
  "rustok-core",
- "rustok-ui-routing",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9810,11 +9821,11 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "leptos-ui",
+ "leptos-ui-routing",
  "leptos_router",
  "rustok-api",
  "rustok-blog",
  "rustok-core",
- "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -9825,6 +9836,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
@@ -9877,6 +9889,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
@@ -9912,6 +9925,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
+ "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
  "loco-rs",
@@ -9919,7 +9933,6 @@ dependencies = [
  "rustok-api",
  "rustok-channel",
  "rustok-core",
- "rustok-ui-routing",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9952,11 +9965,11 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-comments",
- "rustok-ui-routing",
  "serde",
  "uuid",
 ]
@@ -10013,8 +10026,8 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
- "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10041,6 +10054,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
@@ -10142,13 +10156,13 @@ name = "rustok-customer-admin"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-core",
  "rustok-customer",
  "rustok-profiles",
- "rustok-ui-routing",
  "serde",
  "serde_json",
  "uuid",
@@ -10218,9 +10232,9 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
+ "leptos-ui-routing",
  "reqwest 0.13.2",
  "rustok-api",
- "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10231,6 +10245,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
  "serde",
 ]
@@ -10263,8 +10278,8 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
- "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10359,8 +10374,9 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
- "rustok-ui-routing",
+ "rustok-core",
  "serde",
  "serde_json",
 ]
@@ -10417,6 +10433,7 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "reqwest 0.13.2",
@@ -10424,7 +10441,6 @@ dependencies = [
  "rustok-core",
  "rustok-media",
  "rustok-storage",
- "rustok-ui-routing",
  "sea-orm",
  "serde",
  "uuid",
@@ -10464,8 +10480,8 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
- "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10539,8 +10555,8 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
- "rustok-ui-routing",
  "serde",
 ]
 
@@ -10550,6 +10566,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
@@ -10609,6 +10626,7 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rust_decimal",
@@ -10627,7 +10645,6 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-test-utils",
- "rustok-ui-routing",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10641,10 +10658,12 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-channel",
+ "rustok-core",
  "rustok-pricing",
  "serde",
  "uuid",
@@ -10680,8 +10699,9 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
- "rustok-ui-routing",
+ "rustok-core",
  "serde",
  "serde_json",
 ]
@@ -10692,10 +10712,12 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
  "rustok-commerce-foundation",
+ "rustok-core",
  "rustok-pricing",
  "rustok-product",
  "serde",
@@ -10780,13 +10802,13 @@ name = "rustok-region-admin"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rust_decimal",
  "rustok-api",
  "rustok-core",
  "rustok-region",
- "rustok-ui-routing",
  "serde",
  "serde_json",
  "uuid",
@@ -10798,6 +10820,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
  "rustok-api",
@@ -10830,6 +10853,7 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
  "loco-rs",
@@ -10849,6 +10873,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "leptos-ui-routing",
  "rustok-api",
  "serde",
 ]
@@ -11095,16 +11120,6 @@ dependencies = [
  "tokio",
  "tokio-test",
  "uuid",
-]
-
-[[package]]
-name = "rustok-ui-routing"
-version = "0.1.0"
-dependencies = [
- "leptos 0.8.17",
- "leptos_router",
- "rustok-api",
- "serde_urlencoded",
 ]
 
 [[package]]

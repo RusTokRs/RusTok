@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 

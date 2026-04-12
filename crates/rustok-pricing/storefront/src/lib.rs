@@ -5,6 +5,7 @@ mod model;
 use std::collections::BTreeSet;
 
 use leptos::prelude::*;
+use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 use rustok_core::locale_tags_match;
 
@@ -17,23 +18,14 @@ use crate::model::{
 #[component]
 pub fn PricingView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_handle = route_context.query_value("handle").map(ToOwned::to_owned);
+    let selected_handle = read_route_query_value(&route_context, "handle");
     let selected_locale = route_context.locale.clone();
-    let selected_currency_code = route_context.query_value("currency").map(ToOwned::to_owned);
-    let selected_region_id = route_context
-        .query_value("region_id")
-        .map(ToOwned::to_owned);
-    let selected_price_list_id = route_context
-        .query_value("price_list_id")
-        .map(ToOwned::to_owned);
-    let selected_channel_id = route_context
-        .query_value("channel_id")
-        .map(ToOwned::to_owned);
-    let selected_channel_slug = route_context
-        .query_value("channel_slug")
-        .map(ToOwned::to_owned);
-    let selected_quantity = route_context
-        .query_value("quantity")
+    let selected_currency_code = read_route_query_value(&route_context, "currency");
+    let selected_region_id = read_route_query_value(&route_context, "region_id");
+    let selected_price_list_id = read_route_query_value(&route_context, "price_list_id");
+    let selected_channel_id = read_route_query_value(&route_context, "channel_id");
+    let selected_channel_slug = read_route_query_value(&route_context, "channel_slug");
+    let selected_quantity = read_route_query_value(&route_context, "quantity")
         .and_then(|value| value.parse::<i32>().ok());
     let badge = t(selected_locale.as_deref(), "pricing.badge", "pricing");
     let title = t(
@@ -397,21 +389,12 @@ fn PricingRail(items: Vec<PricingProductListItem>, total: u64) -> impl IntoView 
         .cloned()
         .unwrap_or_else(|| "pricing".to_string());
     let module_route_base = route_context.module_route_base(route_segment.as_str());
-    let selected_currency_code = route_context.query_value("currency").map(ToOwned::to_owned);
-    let selected_region_id = route_context
-        .query_value("region_id")
-        .map(ToOwned::to_owned);
-    let selected_price_list_id = route_context
-        .query_value("price_list_id")
-        .map(ToOwned::to_owned);
-    let selected_channel_id = route_context
-        .query_value("channel_id")
-        .map(ToOwned::to_owned);
-    let selected_channel_slug = route_context
-        .query_value("channel_slug")
-        .map(ToOwned::to_owned);
-    let selected_quantity = route_context
-        .query_value("quantity")
+    let selected_currency_code = read_route_query_value(&route_context, "currency");
+    let selected_region_id = read_route_query_value(&route_context, "region_id");
+    let selected_price_list_id = read_route_query_value(&route_context, "price_list_id");
+    let selected_channel_id = read_route_query_value(&route_context, "channel_id");
+    let selected_channel_slug = read_route_query_value(&route_context, "channel_slug");
+    let selected_quantity = read_route_query_value(&route_context, "quantity")
         .and_then(|value| value.parse::<i32>().ok());
 
     if items.is_empty() {

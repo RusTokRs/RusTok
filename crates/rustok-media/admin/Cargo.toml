@@ -29,7 +29,7 @@ leptos-graphql.workspace = true
 loco-rs = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "multipart"] }
 rustok-api.workspace = true
-rustok-ui-routing.workspace = true
+leptos-ui-routing.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-media.workspace = true
 rustok-storage = { workspace = true, optional = true }

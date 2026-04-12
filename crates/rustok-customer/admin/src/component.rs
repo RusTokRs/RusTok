@@ -1,7 +1,8 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerListItem};
@@ -10,7 +11,8 @@ use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, Custom
 pub fn CustomerAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_selected_customer_id = route_context.query_value("id").map(ToOwned::to_owned);
+    let selected_customer_query = use_route_query_value(AdminQueryKey::CustomerId.as_str());
+    let query_writer = use_route_query_writer();
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_id, set_editing_id) = signal(Option::<String>::None);
@@ -23,7 +25,6 @@ pub fn CustomerAdmin() -> impl IntoView {
     let (phone, set_phone) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || refresh_nonce.get(),
@@ -107,23 +108,29 @@ pub fn CustomerAdmin() -> impl IntoView {
     });
     let initial_open_customer = open_customer.clone();
     Effect::new(move |_| {
-        if query_selection_applied.get() {
-            return;
+        match selected_customer_query.get() {
+            Some(customer_id) if !customer_id.trim().is_empty() => {
+                initial_open_customer.run(customer_id);
+            }
+            _ => {
+                clear_customer_form(
+                    set_editing_id,
+                    set_selected,
+                    set_user_id,
+                    set_email,
+                    set_first_name,
+                    set_last_name,
+                    set_phone,
+                );
+            }
         }
-        let Some(customer_id) = initial_selected_customer_id.clone() else {
-            set_query_selection_applied.set(true);
-            return;
-        };
-        set_query_selection_applied.set(true);
-        if customer_id.trim().is_empty() {
-            return;
-        }
-        initial_open_customer.run(customer_id);
     });
 
     let submit_ui_locale = ui_locale.clone();
+    let submit_query_writer = query_writer.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
+        let submit_query_writer = submit_query_writer.clone();
         if email.get_untracked().trim().is_empty() {
             set_error.set(Some(email_required_label.clone()));
             return;
@@ -153,6 +160,7 @@ pub fn CustomerAdmin() -> impl IntoView {
 
             match result {
                 Ok(detail) => {
+                    let detail_id = detail.customer.id.clone();
                     apply_customer_detail(
                         &detail,
                         set_editing_id,
@@ -164,6 +172,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                         set_phone,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
+                    submit_query_writer.replace_value(AdminQueryKey::CustomerId.as_str(), detail_id);
                 }
                 Err(err) => set_error.set(Some(format!("{save_customer_error_label}: {err}"))),
             }
@@ -179,6 +188,8 @@ pub fn CustomerAdmin() -> impl IntoView {
     let ui_locale_for_empty = ui_locale.clone();
     let ui_locale_for_editor_heading = ui_locale.clone();
     let ui_locale_for_editor = ui_locale.clone();
+    let list_query_writer = query_writer.clone();
+    let reset_query_writer = query_writer.clone();
 
     view! {
         <section class="space-y-6">
@@ -245,8 +256,9 @@ pub fn CustomerAdmin() -> impl IntoView {
                                         let customer_id = customer.id.clone();
                                         let customer_marker = customer.id.clone();
                                         let item_locale = ui_locale_for_list.clone();
+                                        let item_query_writer = list_query_writer.clone();
                                         view! {
-                                            <article class=move || if editing_id.get() == Some(customer_marker.clone()) { "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm" } else { "rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40" }>
+                                            <article class=move || if editing_id.get().as_deref() == Some(customer_marker.as_str()) { "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm" } else { "rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40" }>
                                                 <div class="flex items-start justify-between gap-3">
                                                     <div class="space-y-2">
                                                         <div class="flex flex-wrap items-center gap-2">
@@ -260,7 +272,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                         disabled=move || busy.get()
-                                                        on:click=move |_| open_customer.run(customer_id.clone())
+                                                        on:click=move |_| item_query_writer.push_value(AdminQueryKey::CustomerId.as_str(), customer_id.clone())
                                                     >
                                                         {t(item_locale.as_deref(), "customer.action.open", "Open")}
                                                     </button>
@@ -289,7 +301,10 @@ pub fn CustomerAdmin() -> impl IntoView {
                                 type="button"
                                 class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                 disabled=move || busy.get()
-                                on:click=move |_| reset_form()
+                                on:click=move |_| {
+                                    reset_query_writer.clear_key(AdminQueryKey::CustomerId.as_str());
+                                    reset_form();
+                                }
                             >
                                 {t(ui_locale.as_deref(), "customer.action.new", "New")}
                             </button>

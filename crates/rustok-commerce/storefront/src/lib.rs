@@ -4,6 +4,7 @@ mod model;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
@@ -16,7 +17,7 @@ use crate::model::{
 pub fn CommerceView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let selected_locale = route_context.locale.clone();
-    let selected_cart_id = route_context.query_value("cart_id").map(ToOwned::to_owned);
+    let selected_cart_id = read_route_query_value(&route_context, "cart_id");
     let badge = t(selected_locale.as_deref(), "commerce.badge", "commerce");
     let title = t(
         selected_locale.as_deref(),

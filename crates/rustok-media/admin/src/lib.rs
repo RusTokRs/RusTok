@@ -7,7 +7,8 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::api::ApiError;
 use crate::i18n::t;
@@ -17,6 +18,9 @@ use crate::model::{MediaListItem, MediaUsageSnapshot, UpsertTranslationPayload};
 pub fn MediaAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let selected_media_query = use_route_query_value(AdminQueryKey::MediaId.as_str());
+    let requested_locale_query = use_route_query_value(AdminQueryKey::Locale.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let badge_text = t(ui_locale.as_deref(), "media.badge", "media");
@@ -78,15 +82,27 @@ pub fn MediaAdmin() -> impl IntoView {
 
     let (page, set_page) = signal(1_i32);
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let (selected_media_id, set_selected_media_id) = signal(Option::<String>::None);
-    let (selected_locale, set_selected_locale) =
-        signal(ui_locale.clone().unwrap_or_else(|| "en".to_string()));
+    let (selected_media_id, set_selected_media_id) = signal(selected_media_query.get_untracked());
+    let (selected_locale, set_selected_locale) = signal(
+        requested_locale_query
+            .get_untracked()
+            .or_else(|| ui_locale.clone())
+            .unwrap_or_default(),
+    );
     let (title, set_title) = signal(String::new());
     let (alt_text, set_alt_text) = signal(String::new());
     let (caption, set_caption) = signal(String::new());
     let (upload_error, set_upload_error) = signal(Option::<String>::None);
     let (mutation_error, set_mutation_error) = signal(Option::<String>::None);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
+    let media_query_writer = query_writer.clone();
+    let locale_query_writer = query_writer.clone();
+    let locale_chip_query_writer = query_writer.clone();
+    let upload_query_writer = query_writer.clone();
+    let delete_query_writer = query_writer.clone();
+    let select_media_query_writer = media_query_writer.clone();
+    let select_locale_chip_query_writer = locale_chip_query_writer.clone();
+    let route_effect_locale = ui_locale.clone();
     let file_input: NodeRef<html::Input> = NodeRef::new();
 
     let library = Resource::new(
@@ -142,13 +158,13 @@ pub fn MediaAdmin() -> impl IntoView {
     );
 
     Effect::new(move |_| {
-        if let Some(Ok(payload)) = library.get() {
-            if selected_media_id.get_untracked().is_none() {
-                if let Some(first) = payload.items.first() {
-                    set_selected_media_id.set(Some(first.id.clone()));
-                }
-            }
-        }
+        set_selected_media_id.set(selected_media_query.get());
+        set_selected_locale.set(
+            requested_locale_query
+                .get()
+                .or_else(|| route_effect_locale.clone())
+                .unwrap_or_default(),
+        );
     });
 
     Effect::new(move |_| {
@@ -170,6 +186,7 @@ pub fn MediaAdmin() -> impl IntoView {
     let upload_selected = move |_| {
         set_upload_error.set(None);
         let upload_ui_locale = upload_ui_locale.clone();
+        let upload_query_writer = upload_query_writer.clone();
         let Some(input) = file_input.get() else {
             set_upload_error.set(Some(t(
                 upload_ui_locale.as_deref(),
@@ -194,8 +211,10 @@ pub fn MediaAdmin() -> impl IntoView {
                     .await
                     {
                         Ok(item) => {
-                            set_selected_media_id.set(Some(item.id));
+                            let media_id = item.id;
+                            set_selected_media_id.set(Some(media_id.clone()));
                             set_refresh_nonce.update(|value| *value += 1);
+                            upload_query_writer.replace_value(AdminQueryKey::MediaId.as_str(), media_id);
                         }
                         Err(err) => set_upload_error.set(Some(format!(
                             "{}: {err}",
@@ -267,6 +286,7 @@ pub fn MediaAdmin() -> impl IntoView {
     let delete_selected = move |_| {
         set_mutation_error.set(None);
         let delete_ui_locale = delete_ui_locale.clone();
+        let delete_query_writer = delete_query_writer.clone();
         let Some(media_id) = selected_media_id.get_untracked() else {
             return;
         };
@@ -276,6 +296,7 @@ pub fn MediaAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::delete_media(media_id, token_value, tenant_value).await {
                 Ok(true) => {
+                    delete_query_writer.clear_key(AdminQueryKey::MediaId.as_str());
                     set_selected_media_id.set(None);
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -380,11 +401,12 @@ pub fn MediaAdmin() -> impl IntoView {
                                         <div class="space-y-2">
                                             {payload.items.into_iter().map(|item| {
                                                 let item_id = item.id.clone();
+                                                let media_query_writer = select_media_query_writer.clone();
                                                 view! {
                                                     <button
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
-                                                        on:click=move |_| set_selected_media_id.set(Some(item_id.clone()))
+                                                        on:click=move |_| media_query_writer.push_value(AdminQueryKey::MediaId.as_str(), item_id.clone())
                                                     >
                                                         <MediaListCard item=item />
                                                     </button>
@@ -430,7 +452,15 @@ pub fn MediaAdmin() -> impl IntoView {
                                 id="translation-locale"
                                 class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                                 prop:value=selected_locale
-                                on:input=move |ev| set_selected_locale.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    let next_value = event_target_value(&ev);
+                                    set_selected_locale.set(next_value.clone());
+                                    if next_value.trim().is_empty() {
+                                        locale_query_writer.clear_key(AdminQueryKey::Locale.as_str());
+                                    } else {
+                                        locale_query_writer.replace_value(AdminQueryKey::Locale.as_str(), next_value);
+                                    }
+                                }
                             />
                         </div>
                         <Suspense fallback=move || view! { <div class="h-20 animate-pulse rounded-xl bg-muted"></div> }>
@@ -441,11 +471,15 @@ pub fn MediaAdmin() -> impl IntoView {
                                             {items.into_iter().map(|item| {
                                                 let locale = item.locale.clone();
                                                 let locale_label = locale.clone();
+                                                let locale_chip_query_writer = select_locale_chip_query_writer.clone();
                                                 view! {
                                                     <button
                                                         type="button"
                                                         class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
-                                                        on:click=move |_| set_selected_locale.set(locale.clone())
+                                                        on:click=move |_| {
+                                                            set_selected_locale.set(locale.clone());
+                                                            locale_chip_query_writer.replace_value(AdminQueryKey::Locale.as_str(), locale.clone());
+                                                        }
                                                     >
                                                         {locale_label}
                                                     </button>

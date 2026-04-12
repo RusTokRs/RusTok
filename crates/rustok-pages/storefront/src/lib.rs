@@ -3,6 +3,7 @@ mod i18n;
 mod model;
 
 use leptos::prelude::*;
+use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
@@ -11,10 +12,8 @@ use crate::model::{PageBlock, PageDetail, PageListItem, StorefrontPagesData};
 #[component]
 pub fn PagesView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_slug = route_context
-        .query_value("slug")
-        .unwrap_or("home")
-        .to_string();
+    let selected_slug = read_route_query_value(&route_context, "slug")
+        .unwrap_or_else(|| "home".to_string());
     let selected_locale = route_context.locale.clone();
     let badge = t(selected_locale.as_deref(), "pages.badge", "pages");
     let title = t(

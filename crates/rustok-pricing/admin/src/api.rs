@@ -209,7 +209,15 @@ pub async fn fetch_products(
     {
         Ok(data) => Ok(data),
         Err(_) => {
-            fetch_products_graphql(token, tenant_slug, tenant_id, locale, search, status).await
+            fetch_products_graphql(
+                token,
+                tenant_slug,
+                tenant_id,
+                locale.unwrap_or_default(),
+                search,
+                status,
+            )
+            .await
         }
     }
 }
@@ -262,7 +270,7 @@ pub async fn fetch_product(
                 tenant_slug,
                 tenant_id,
                 id,
-                locale,
+                locale.unwrap_or_default(),
                 currency_code,
                 region_id,
                 price_list_id,
@@ -502,6 +510,7 @@ fn text_or_none(value: String) -> Option<String> {
     }
 }
 
+#[cfg(feature = "ssr")]
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,

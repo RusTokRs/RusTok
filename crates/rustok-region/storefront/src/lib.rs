@@ -3,6 +3,7 @@ mod i18n;
 mod model;
 
 use leptos::prelude::*;
+use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
@@ -11,7 +12,7 @@ use crate::model::{StorefrontRegion, StorefrontRegionsData};
 #[component]
 pub fn RegionView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_region_id = route_context.query_value("region").map(ToOwned::to_owned);
+    let selected_region_id = read_route_query_value(&route_context, "region");
     let selected_locale = route_context.locale.clone();
     let badge = t(selected_locale.as_deref(), "region.badge", "region");
     let title = t(

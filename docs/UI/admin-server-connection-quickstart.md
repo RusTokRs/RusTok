@@ -46,6 +46,20 @@ UI host должен уметь достучаться до:
 
 Если эти шаги проходят, host ↔ server contract собран корректно.
 
+## Route-selection contract для admin hosts
+
+Для module-owned admin surfaces runtime contract включает не только transport, но и routing:
+
+1. selection state хранится в URL;
+2. module-owned admin UI читает его через host route context;
+3. valid user-driven select/open пишет canonical typed `snake_case` key обратно в query;
+4. reset/delete/archive/close очищают соответствующий key;
+5. invalid или удалённый entity id даёт empty state и не оставляет stale detail/form state.
+
+Для Leptos host этот contract проходит через `UiRouteContext` + host-provided policy для
+`leptos-ui-routing`. Для `apps/next-admin` действует тот же schema-level contract через локальные
+Next helpers. Legacy keys вроде `id`, `pageId`, `topicId` не поддерживаются.
+
 ## Диагностика
 
 ### `401 Unauthorized`

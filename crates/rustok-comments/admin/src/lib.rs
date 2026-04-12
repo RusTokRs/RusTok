@@ -4,7 +4,8 @@ mod i18n;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_comments::{CommentStatus, CommentThreadStatus};
 
 use crate::i18n::t;
@@ -13,6 +14,9 @@ use crate::i18n::t;
 pub fn CommentsAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let selected_thread_query = use_route_query_value(AdminQueryKey::ThreadId.as_str());
+    let requested_locale_query = use_route_query_value(AdminQueryKey::Locale.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let badge_text = t(ui_locale.as_deref(), "comments.badge", "comments");
@@ -69,13 +73,24 @@ pub fn CommentsAdmin() -> impl IntoView {
 
     let (page, set_page) = signal(1_u64);
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let (selected_thread_id, set_selected_thread_id) = signal(Option::<String>::None);
+    let (selected_thread_id, set_selected_thread_id) =
+        signal(selected_thread_query.get_untracked());
     let (target_type_filter, set_target_type_filter) = signal(String::new());
     let (thread_status_filter, set_thread_status_filter) = signal("all".to_string());
     let (comment_status_filter, set_comment_status_filter) = signal("all".to_string());
-    let (locale, set_locale) = signal(ui_locale.clone().unwrap_or_else(|| "en".to_string()));
+    let (locale, set_locale) = signal(
+        requested_locale_query
+            .get_untracked()
+            .or_else(|| ui_locale.clone())
+            .unwrap_or_default(),
+    );
     let (mutation_error, set_mutation_error) = signal(Option::<String>::None);
     let (_busy_key, set_busy_key) = signal(Option::<String>::None);
+    let locale_query_writer = query_writer.clone();
+    let thread_query_writer = query_writer.clone();
+    let select_thread_query_writer = thread_query_writer.clone();
+    let detail_error_locale = ui_locale.clone();
+    let route_effect_locale = ui_locale.clone();
 
     let threads = Resource::new(
         move || {
@@ -111,26 +126,28 @@ pub fn CommentsAdmin() -> impl IntoView {
                 locale.get(),
             )
         },
-        move |(_, _, thread_id, _, locale_value)| async move {
+        move |(_, _, thread_id, _, locale_value)| {
+            let detail_error_locale = detail_error_locale.clone();
+            async move {
             match thread_id {
                 Some(thread_id) => api::fetch_thread_detail(thread_id, locale_value, 1, 100).await,
                 None => Err(api::ApiError::ServerFn(t(
-                    Some("en"),
+                    detail_error_locale.as_deref(),
                     "comments.error.selectThread",
                     "Select a thread first",
                 ))),
             }
-        },
+        }},
     );
 
     Effect::new(move |_| {
-        if let Some(Ok(payload)) = threads.get() {
-            if selected_thread_id.get_untracked().is_none() {
-                if let Some(first) = payload.items.first() {
-                    set_selected_thread_id.set(Some(first.id.to_string()));
-                }
-            }
-        }
+        set_selected_thread_id.set(selected_thread_query.get());
+        set_locale.set(
+            requested_locale_query
+                .get()
+                .or_else(|| route_effect_locale.clone())
+                .unwrap_or_default(),
+        );
     });
 
     let update_thread_status = move |status: CommentThreadStatus| {
@@ -218,12 +235,20 @@ pub fn CommentsAdmin() -> impl IntoView {
                         <option value="spam">{spam_label.clone()}</option>
                         <option value="trash">{trash_label.clone()}</option>
                     </select>
-                    <input
-                        class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        placeholder=locale_placeholder
-                        prop:value=locale
-                        on:input=move |ev| set_locale.set(event_target_value(&ev))
-                    />
+                            <input
+                                class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                                placeholder=locale_placeholder
+                                prop:value=locale
+                                on:input=move |ev| {
+                                    let next_value = event_target_value(&ev);
+                                    set_locale.set(next_value.clone());
+                                    if next_value.trim().is_empty() {
+                                        locale_query_writer.clear_key(AdminQueryKey::Locale.as_str());
+                                    } else {
+                                        locale_query_writer.replace_value(AdminQueryKey::Locale.as_str(), next_value);
+                                    }
+                                }
+                            />
                 </div>
             </section>
 
@@ -273,11 +298,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                             {payload.items.into_iter().map(|thread| {
                                                 let thread_id = thread.id.to_string();
                                                 let status = format!("{:?}", thread.status).to_lowercase();
+                                                let thread_query_writer = select_thread_query_writer.clone();
                                                 view! {
                                                     <button
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
-                                                        on:click=move |_| set_selected_thread_id.set(Some(thread_id.clone()))
+                                                        on:click=move |_| thread_query_writer.push_value(AdminQueryKey::ThreadId.as_str(), thread_id.clone())
                                                     >
                                                         <div class="space-y-1">
                                                             <div class="flex items-center justify-between gap-3">

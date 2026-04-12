@@ -6,6 +6,11 @@ import Link from 'next/link';
 import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
 import { PageBuilder } from '@/features/blog';
+import {
+  buildRouteSelectionHref,
+  listRouteQueryEntries,
+  readRouteSelection
+} from '@/shared/lib/route-selection';
 
 export const metadata = {
   title: 'Dashboard: Page Builder'
@@ -23,14 +28,15 @@ export default async function Page(props: PageProps) {
   const tenantId = session?.user?.tenantId ?? null;
   const gqlOpts = { token, tenantSlug, tenantId: tenantId ?? undefined };
   const pages = tenantId ? await listPages(gqlOpts) : [];
-  const requestedPageId = searchParams.pageId as string | undefined;
+  const requestedPageId = readRouteSelection(searchParams, 'page_id');
   const selectedPageId =
     requestedPageId && pages.some((page) => page.id === requestedPageId)
       ? requestedPageId
-      : pages[0]?.id;
+      : undefined;
   const selectedPage = selectedPageId
     ? await getPage(selectedPageId, gqlOpts)
     : null;
+  const preservedQueryEntries = listRouteQueryEntries(searchParams, ['page_id']);
 
   return (
     <PageContainer
@@ -43,8 +49,11 @@ export default async function Page(props: PageProps) {
       }
       pageHeaderAction={
         <form method='get' className='flex items-center gap-2'>
+          {preservedQueryEntries.map(([key, value]) => (
+            <input key={`${key}:${value}`} type='hidden' name={key} value={value} />
+          ))}
           <select
-            name='pageId'
+            name='page_id'
             defaultValue={selectedPageId ?? ''}
             className='h-9 min-w-60 rounded-md border border-input bg-background px-3 text-sm'
           >
@@ -63,7 +72,12 @@ export default async function Page(props: PageProps) {
           </button>
           {selectedPageId && (
             <Link
-              href={`/dashboard/blog/page-builder?pageId=${selectedPageId}`}
+              href={buildRouteSelectionHref(
+                '/dashboard/blog/page-builder',
+                searchParams,
+                'page_id',
+                selectedPageId
+              )}
               className={cn(buttonVariants({ variant: 'ghost' }), 'h-9 px-3')}
             >
               Refresh

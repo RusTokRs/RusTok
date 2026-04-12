@@ -6,7 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
@@ -15,6 +16,8 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
 pub fn BlogAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let selected_post_query = use_route_query_value(AdminQueryKey::PostId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let default_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
@@ -90,6 +93,14 @@ pub fn BlogAdmin() -> impl IntoView {
             })
             .unwrap_or_default()
     });
+    let reset_current_post = Callback::new({
+        let query_writer = query_writer.clone();
+        let reset_form_action = reset_form_action.clone();
+        move |_| {
+            query_writer.clear_key(AdminQueryKey::PostId.as_str());
+            reset_form_action.run(());
+        }
+    });
 
     let posts_resource = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get(), locale.get()),
@@ -99,10 +110,12 @@ pub fn BlogAdmin() -> impl IntoView {
     );
 
     let edit_post_locale = ui_locale.clone();
+    let edit_post_default_locale = default_locale.clone();
     let edit_post = Callback::new(move |(post_id, requested_locale): (String, String)| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = edit_post_locale.clone();
+        let default_locale = edit_post_default_locale.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(format!("edit:{post_id}")));
 
@@ -130,6 +143,18 @@ pub fn BlogAdmin() -> impl IntoView {
                     );
                 }
                 Ok(None) => {
+                    reset_form(
+                        set_editing_post_id,
+                        set_title,
+                        set_slug,
+                        set_excerpt,
+                        set_body,
+                        set_locale,
+                        set_body_format,
+                        set_tags_input,
+                        set_publish_now,
+                        default_locale.as_str(),
+                    );
                     set_submit_error.set(Some(t(
                         ui_locale.as_deref(),
                         "blog.error.postNotFound",
@@ -137,6 +162,18 @@ pub fn BlogAdmin() -> impl IntoView {
                     )));
                 }
                 Err(err) => {
+                    reset_form(
+                        set_editing_post_id,
+                        set_title,
+                        set_slug,
+                        set_excerpt,
+                        set_body,
+                        set_locale,
+                        set_body_format,
+                        set_tags_input,
+                        set_publish_now,
+                        default_locale.as_str(),
+                    );
                     set_submit_error.set(Some(format!(
                         "{}: {err}",
                         t(
@@ -151,12 +188,35 @@ pub fn BlogAdmin() -> impl IntoView {
             set_busy_key.set(None);
         });
     });
+    let initial_edit_post = edit_post.clone();
+    let effect_default_locale = default_locale.clone();
+    Effect::new(move |_| {
+        match selected_post_query.get() {
+            Some(post_id) if !post_id.trim().is_empty() => {
+                initial_edit_post.run((post_id, effect_default_locale.clone()));
+            }
+            _ => reset_form(
+                set_editing_post_id,
+                set_title,
+                set_slug,
+                set_excerpt,
+                set_body,
+                set_locale,
+                set_body_format,
+                set_tags_input,
+                set_publish_now,
+                effect_default_locale.as_str(),
+            ),
+        }
+    });
 
     let submit_ui_locale = ui_locale.clone();
+    let submit_query_writer = query_writer.clone();
     let submit_post = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_submit_error.set(None);
         let submit_ui_locale = submit_ui_locale.clone();
+        let submit_query_writer = submit_query_writer.clone();
 
         let draft = BlogPostDraft {
             locale: locale.get_untracked(),
@@ -195,6 +255,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
             match result {
                 Ok(post) => {
+                    let post_id = post.id.clone();
                     apply_post_to_form(
                         set_editing_post_id,
                         set_title,
@@ -208,6 +269,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         &post,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
+                    submit_query_writer.replace_value(AdminQueryKey::PostId.as_str(), post_id);
                 }
                 Err(err) => {
                     set_submit_error.set(Some(format!(
@@ -340,11 +402,13 @@ pub fn BlogAdmin() -> impl IntoView {
 
     let delete_post_locale = ui_locale.clone();
     let delete_post_default_locale = default_locale.clone();
+    let delete_query_writer = query_writer.clone();
     let delete_post = Callback::new(move |post_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = delete_post_locale.clone();
         let default_locale = delete_post_default_locale.clone();
+        let delete_query_writer = delete_query_writer.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(format!("delete:{post_id}")));
 
@@ -352,6 +416,7 @@ pub fn BlogAdmin() -> impl IntoView {
             match api::delete_post(token_value, tenant_value, post_id.clone()).await {
                 Ok(true) => {
                     if editing_post_id.get_untracked().as_deref() == Some(post_id.as_str()) {
+                        delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
                         reset_form(
                             set_editing_post_id,
                             set_title,
@@ -388,6 +453,10 @@ pub fn BlogAdmin() -> impl IntoView {
 
             set_busy_key.set(None);
         });
+    });
+    let open_query_writer = query_writer.clone();
+    let open_post = Callback::new(move |(post_id, _requested_locale): (String, String)| {
+        open_query_writer.push_value(AdminQueryKey::PostId.as_str(), post_id);
     });
 
     view! {
@@ -456,7 +525,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                             total=post_list.total
                                             editing_post_id=editing_post_id.get()
                                             busy_key=busy_key.get()
-                                            on_edit=edit_post
+                                            on_edit=open_post
                                             on_toggle_publish=toggle_publish
                                             on_archive=archive_post
                                             on_delete=delete_post
@@ -488,18 +557,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     </div>
 
                     <Show when=move || editing_post_id.get().is_some()>
-                        <div class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
-                            <div class="text-sm text-muted-foreground">
-                                {move || editing_banner_text.get()}
-                            </div>
-                            <button
-                                type="button"
-                                class="text-xs font-medium text-primary hover:underline"
-                                on:click=move |_| reset_form_action.run(())
-                            >
-                                {form_create_new_instead.clone()}
-                            </button>
-                        </div>
+                        <BlogEditBanner
+                            banner_text=Signal::derive({
+                                let editing_banner_text = editing_banner_text.clone();
+                                move || editing_banner_text.get()
+                            })
+                            create_new_label=form_create_new_instead.clone()
+                            on_reset=reset_current_post
+                        />
                     </Show>
 
                     <form class="mt-5 space-y-4" on:submit=submit_post>
@@ -652,6 +717,28 @@ pub fn BlogAdmin() -> impl IntoView {
                     </form>
                 </section>
             </section>
+        </div>
+    }
+}
+
+#[component]
+fn BlogEditBanner(
+    banner_text: Signal<String>,
+    create_new_label: String,
+    on_reset: Callback<()>,
+) -> impl IntoView {
+    view! {
+        <div class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+            <div class="text-sm text-muted-foreground">
+                {move || banner_text.get()}
+            </div>
+            <button
+                type="button"
+                class="text-xs font-medium text-primary hover:underline"
+                on:click=move |_| on_reset.run(())
+            >
+                {create_new_label}
+            </button>
         </div>
     }
 }

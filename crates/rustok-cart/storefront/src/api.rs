@@ -714,13 +714,16 @@ async fn storefront_cart_decrement_line_item(
                     ServerFnError::new("Unable to resolve storefront price for cart line item")
                 })?;
 
+            let pricing_update =
+                storefront_cart_pricing_update(parsed_line_item_id, next_quantity, &resolved_price);
             cart_service
                 .update_line_item_pricing(
                     tenant.id,
                     parsed_cart_id,
                     parsed_line_item_id,
                     next_quantity,
-                    resolved_price.amount,
+                    pricing_update.unit_price,
+                    pricing_update.pricing_adjustment,
                 )
                 .await
                 .map_err(|err| ServerFnError::new(err.to_string()))?;
@@ -734,6 +737,81 @@ async fn storefront_cart_decrement_line_item(
         Err(ServerFnError::new(
             "cart/decrement-line-item requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn storefront_cart_pricing_update(
+    line_item_id: Uuid,
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
+    let base_unit_price = resolved_price
+        .compare_at_amount
+        .filter(|compare_at| *compare_at > resolved_price.amount)
+        .unwrap_or(resolved_price.amount);
+    let pricing_adjustment = if base_unit_price > resolved_price.amount {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "kind".to_string(),
+            serde_json::Value::from(if resolved_price.price_list_id.is_some() {
+                "price_list"
+            } else {
+                "sale"
+            }),
+        );
+        metadata.insert(
+            "base_amount".to_string(),
+            serde_json::Value::from(base_unit_price.normalize().to_string()),
+        );
+        metadata.insert(
+            "effective_amount".to_string(),
+            serde_json::Value::from(resolved_price.amount.normalize().to_string()),
+        );
+        if let Some(compare_at_amount) = resolved_price.compare_at_amount {
+            metadata.insert(
+                "compare_at_amount".to_string(),
+                serde_json::Value::from(compare_at_amount.normalize().to_string()),
+            );
+        }
+        if let Some(discount_percent) = resolved_price.discount_percent {
+            metadata.insert(
+                "discount_percent".to_string(),
+                serde_json::Value::from(discount_percent.normalize().to_string()),
+            );
+        }
+        if let Some(price_list_id) = resolved_price.price_list_id {
+            metadata.insert(
+                "price_list_id".to_string(),
+                serde_json::Value::from(price_list_id.to_string()),
+            );
+        }
+        if let Some(channel_id) = resolved_price.channel_id {
+            metadata.insert(
+                "channel_id".to_string(),
+                serde_json::Value::from(channel_id.to_string()),
+            );
+        }
+        if let Some(channel_slug) = resolved_price.channel_slug.as_deref() {
+            metadata.insert(
+                "channel_slug".to_string(),
+                serde_json::Value::from(channel_slug),
+            );
+        }
+
+        Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
+            source_id: resolved_price.price_list_id.map(|value| value.to_string()),
+            amount: (base_unit_price - resolved_price.amount) * rust_decimal::Decimal::from(quantity),
+            metadata: serde_json::Value::Object(metadata),
+        })
+    } else {
+        None
+    };
+
+    rustok_cart::services::cart::CartLineItemPricingUpdate {
+        line_item_id,
+        unit_price: base_unit_price,
+        pricing_adjustment,
     }
 }
 

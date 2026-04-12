@@ -6,7 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_api::context::ChannelResolutionSource;
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -18,6 +19,8 @@ use crate::model::{
 pub fn ChannelAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
+    let query_writer = use_route_query_writer();
     let token = leptos_auth::hooks::use_token();
     let tenant = leptos_auth::hooks::use_tenant();
     let badge_label = t(ui_locale.as_deref(), "channel.badge", "Experimental Core");
@@ -78,6 +81,19 @@ pub fn ChannelAdmin() -> impl IntoView {
             api::fetch_bootstrap(token_value, tenant_value).await
         },
     );
+    let create_channel_query_writer = query_writer.clone();
+
+    Effect::new(move |_| {
+        let selected_channel_id = selected_channel_query.get();
+        match (selected_channel_id.as_deref(), bootstrap.get()) {
+            (Some(channel_id), Some(Ok(bootstrap)))
+                if !bootstrap.channels.iter().any(|channel| channel.channel.id == channel_id) =>
+            {
+                query_writer.clear_key(AdminQueryKey::ChannelId.as_str());
+            }
+            _ => {}
+        }
+    });
 
     let on_create = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -85,6 +101,7 @@ pub fn ChannelAdmin() -> impl IntoView {
         set_feedback.set(None);
         set_error.set(None);
         let ui_locale = ui_locale.clone();
+        let create_channel_query_writer = create_channel_query_writer.clone();
 
         spawn_local({
             let token_value = token.get_untracked();
@@ -116,6 +133,10 @@ pub fn ChannelAdmin() -> impl IntoView {
                         ));
                         create_slug.set(String::new());
                         create_name.set(String::new());
+                        create_channel_query_writer.replace_value(
+                            AdminQueryKey::ChannelId.as_str(),
+                            channel.id.clone(),
+                        );
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err.to_string())),
@@ -292,6 +313,11 @@ fn ChannelCard(
     set_refresh_nonce: WriteSignal<u64>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
+    let selected_target_query = use_route_query_value(AdminQueryKey::TargetId.as_str());
+    let selected_module_query = use_route_query_value(AdminQueryKey::ModuleSlug.as_str());
+    let selected_oauth_query = use_route_query_value(AdminQueryKey::OauthAppId.as_str());
+    let query_writer = use_route_query_writer();
     let common_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
     let targets_cancel_label = common_cancel_label.clone();
     let modules_cancel_label = common_cancel_label.clone();
@@ -450,6 +476,26 @@ fn ChannelCard(
     let busy = RwSignal::new(false);
     let channel_id = channel.channel.id.clone();
     let channel_slug = channel.channel.slug.clone();
+    let channel_targets = channel.targets.clone();
+    let channel_module_bindings = channel.module_bindings.clone();
+    let channel_oauth_bindings = channel.oauth_apps.clone();
+    let is_selected_channel = Signal::derive({
+        let channel_id = channel_id.clone();
+        move || selected_channel_query.get().as_deref() == Some(channel_id.as_str())
+    });
+    let cancel_target_query_writer = query_writer.clone();
+    let cancel_module_query_writer = query_writer.clone();
+    let cancel_oauth_query_writer = query_writer.clone();
+    let select_channel_query_writer = query_writer.clone();
+    let create_target_query_writer = query_writer.clone();
+    let bind_module_query_writer = query_writer.clone();
+    let bind_oauth_query_writer = query_writer.clone();
+    let target_edit_query_writer = query_writer.clone();
+    let target_delete_query_writer = query_writer.clone();
+    let module_edit_query_writer = query_writer.clone();
+    let module_delete_query_writer = query_writer.clone();
+    let oauth_edit_query_writer = query_writer.clone();
+    let oauth_delete_query_writer = query_writer.clone();
     let token_for_target = token.clone();
     let tenant_for_target = tenant.clone();
     let channel_id_for_target = channel_id.clone();
@@ -477,28 +523,107 @@ fn ChannelCard(
     let tenant_for_app_delete = tenant_for_app.clone();
     let channel_id_for_app_delete = channel_id_for_app.clone();
     let channel_slug_for_app_delete = channel_slug_for_app.clone();
-    let cancel_target_edit = move |_| {
-        editing_target_id.set(None);
-        target_type.set("web_domain".to_string());
-        target_value.set(String::new());
-        target_primary.set(true);
-    };
-    let cancel_module_edit = move |_| {
-        editing_module_slug.set(None);
-        bind_module_slug.set(initial_module_slug.get_untracked());
-        bind_module_enabled.set(true);
-    };
-    let cancel_oauth_edit = move |_| {
-        editing_oauth_app_id.set(None);
-        bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
-        bind_oauth_role.set(String::new());
-    };
+    let select_channel_button_writer = select_channel_query_writer.clone();
+    let select_channel_button_id = channel_id_for_default.clone();
+    let select_button_locale = ui_locale.clone();
+    let target_edit_channel_id = channel_id_for_target.clone();
+    let module_edit_channel_id = channel_id_for_module.clone();
+    let oauth_edit_channel_id = channel_id_for_app.clone();
+    let selection_query_writer = query_writer.clone();
+    Effect::new(move |_| {
+        if !is_selected_channel.get() {
+            editing_target_id.set(None);
+            editing_module_slug.set(None);
+            editing_oauth_app_id.set(None);
+            target_type.set("web_domain".to_string());
+            target_value.set(String::new());
+            target_primary.set(true);
+            bind_module_slug.set(initial_module_slug.get_untracked());
+            bind_module_enabled.set(true);
+            bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+            bind_oauth_role.set(String::new());
+            return;
+        }
+
+        match selected_target_query.get().as_deref().filter(|value| !value.trim().is_empty()) {
+            Some(target_id) => {
+                if let Some(target) = channel_targets.iter().find(|target| target.id == target_id) {
+                    editing_target_id.set(Some(target.id.clone()));
+                    target_type.set(target.target_type.clone());
+                    target_value.set(target.value.clone());
+                    target_primary.set(target.is_primary);
+                } else {
+                    editing_target_id.set(None);
+                    target_type.set("web_domain".to_string());
+                    target_value.set(String::new());
+                    target_primary.set(true);
+                    selection_query_writer.clear_key(AdminQueryKey::TargetId.as_str());
+                }
+            }
+            None => {
+                editing_target_id.set(None);
+                target_type.set("web_domain".to_string());
+                target_value.set(String::new());
+                target_primary.set(true);
+            }
+        }
+
+        match selected_module_query.get().as_deref().filter(|value| !value.trim().is_empty()) {
+            Some(module_slug) => {
+                if let Some(binding) = channel_module_bindings
+                    .iter()
+                    .find(|binding| binding.module_slug == module_slug)
+                {
+                    editing_module_slug.set(Some(binding.module_slug.clone()));
+                    bind_module_slug.set(binding.module_slug.clone());
+                    bind_module_enabled.set(binding.is_enabled);
+                } else {
+                    editing_module_slug.set(None);
+                    bind_module_slug.set(initial_module_slug.get_untracked());
+                    bind_module_enabled.set(true);
+                    selection_query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
+                }
+            }
+            None => {
+                editing_module_slug.set(None);
+                bind_module_slug.set(initial_module_slug.get_untracked());
+                bind_module_enabled.set(true);
+            }
+        }
+
+        match selected_oauth_query.get().as_deref().filter(|value| !value.trim().is_empty()) {
+            Some(oauth_app_id) => {
+                if let Some(binding) = channel_oauth_bindings
+                    .iter()
+                    .find(|binding| binding.oauth_app_id == oauth_app_id)
+                {
+                    editing_oauth_app_id.set(Some(binding.oauth_app_id.clone()));
+                    bind_oauth_app_id.set(binding.oauth_app_id.clone());
+                    bind_oauth_role.set(binding.role.clone().unwrap_or_default());
+                } else {
+                    editing_oauth_app_id.set(None);
+                    bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                    bind_oauth_role.set(String::new());
+                    selection_query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
+                }
+            }
+            None => {
+                editing_oauth_app_id.set(None);
+                bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                bind_oauth_role.set(String::new());
+            }
+        }
+    });
 
     let make_default_locale = ui_locale.clone();
     let make_default = move |_| {
         busy.set(true);
         set_feedback.set(None);
         set_error.set(None);
+        select_channel_query_writer.replace_value(
+            AdminQueryKey::ChannelId.as_str(),
+            channel_id_for_default.clone(),
+        );
         spawn_local({
             let token = token_for_default.clone();
             let tenant = tenant_for_default.clone();
@@ -531,6 +656,7 @@ fn ChannelCard(
         busy.set(true);
         set_feedback.set(None);
         set_error.set(None);
+        let create_target_query_writer = create_target_query_writer.clone();
         spawn_local({
             let token = token_for_target.clone();
             let tenant = tenant_for_target.clone();
@@ -571,6 +697,19 @@ fn ChannelCard(
                                 .replace("{target}", target.value.as_str())
                                 .replace("{channel}", channel_slug.as_str()),
                         ));
+                        create_target_query_writer.update(
+                            vec![
+                                (
+                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                    Some(channel_id.clone()),
+                                ),
+                                (
+                                    AdminQueryKey::TargetId.as_str().to_string(),
+                                    Some(target.id.clone()),
+                                ),
+                            ],
+                            true,
+                        );
                         editing_target_id.set(None);
                         target_type.set("web_domain".to_string());
                         target_value.set(String::new());
@@ -590,6 +729,7 @@ fn ChannelCard(
         busy.set(true);
         set_feedback.set(None);
         set_error.set(None);
+        let bind_module_query_writer = bind_module_query_writer.clone();
         spawn_local({
             let token = token_for_module.clone();
             let tenant = tenant_for_module.clone();
@@ -624,6 +764,19 @@ fn ChannelCard(
                             )
                         };
                         set_feedback.set(Some(message.replace("{channel}", channel_slug.as_str())));
+                        bind_module_query_writer.update(
+                            vec![
+                                (
+                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                    Some(channel_id.clone()),
+                                ),
+                                (
+                                    AdminQueryKey::ModuleSlug.as_str().to_string(),
+                                    Some(bind_module_slug.get_untracked()),
+                                ),
+                            ],
+                            true,
+                        );
                         editing_module_slug.set(None);
                         set_refresh_nonce.update(|value| *value += 1);
                     }
@@ -640,6 +793,7 @@ fn ChannelCard(
         busy.set(true);
         set_feedback.set(None);
         set_error.set(None);
+        let bind_oauth_query_writer = bind_oauth_query_writer.clone();
         spawn_local({
             let token = token_for_app.clone();
             let tenant = tenant_for_app.clone();
@@ -673,6 +827,19 @@ fn ChannelCard(
                             )
                         };
                         set_feedback.set(Some(message.replace("{channel}", channel_slug.as_str())));
+                        bind_oauth_query_writer.update(
+                            vec![
+                                (
+                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                    Some(channel_id.clone()),
+                                ),
+                                (
+                                    AdminQueryKey::OauthAppId.as_str().to_string(),
+                                    Some(bind_oauth_app_id.get_untracked()),
+                                ),
+                            ],
+                            true,
+                        );
                         editing_oauth_app_id.set(None);
                         bind_oauth_role.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
@@ -685,7 +852,10 @@ fn ChannelCard(
     };
 
     view! {
-        <article class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <article
+            class="rounded-2xl border border-border bg-card p-6 shadow-sm"
+            class=("ring-2 ring-primary/30", move || is_selected_channel.get())
+        >
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div class="space-y-2">
                     <div class="flex flex-wrap gap-2">
@@ -718,6 +888,27 @@ fn ChannelCard(
                     </p>
                 </div>
                 <div class="space-y-3">
+                    <button
+                        type="button"
+                        class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-card-foreground transition hover:bg-muted disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click={
+                            let channel_id = select_channel_button_id.clone();
+                            let query_writer = select_channel_button_writer.clone();
+                            move |_| {
+                                query_writer.replace_value(
+                                    AdminQueryKey::ChannelId.as_str(),
+                                    channel_id.clone(),
+                                );
+                            }
+                        }
+                    >
+                        {move || if is_selected_channel.get() {
+                            t(select_button_locale.as_deref(), "channel.card.selected", "Selected")
+                        } else {
+                            t(select_button_locale.as_deref(), "channel.card.select", "Select")
+                        }}
+                    </button>
                     {if is_default_channel {
                         view! {
                             <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
@@ -761,7 +952,16 @@ fn ChannelCard(
                             <button
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
-                                on:click=cancel_target_edit
+                                on:click={
+                                    let query_writer = cancel_target_query_writer.clone();
+                                    move |_| {
+                                        query_writer.clear_key(AdminQueryKey::TargetId.as_str());
+                                        editing_target_id.set(None);
+                                        target_type.set("web_domain".to_string());
+                                        target_value.set(String::new());
+                                        target_primary.set(true);
+                                    }
+                                }
                             >
                                 {targets_cancel_label.clone()}
                             </button>
@@ -792,11 +992,22 @@ fn ChannelCard(
                                                 disabled=move || busy.get()
                                                 on:click={
                                                     let target = target.clone();
+                                                    let channel_id = target_edit_channel_id.clone();
+                                                    let query_writer = target_edit_query_writer.clone();
                                                     move |_| {
-                                                        editing_target_id.set(Some(target.id.clone()));
-                                                        target_type.set(target.target_type.clone());
-                                                        target_value.set(target.value.clone());
-                                                        target_primary.set(target.is_primary);
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                                                    Some(channel_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::TargetId.as_str().to_string(),
+                                                                    Some(target.id.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
                                                     }
                                                 }
                                             >
@@ -813,8 +1024,10 @@ fn ChannelCard(
                                                     let channel_id = channel_id_for_target_delete.clone();
                                                     let channel_slug = channel_slug_for_target_delete.clone();
                                                     let target_removed_template = target_removed_template.clone();
+                                                    let query_writer = target_delete_query_writer.clone();
                                                     move |_| {
                                                         let target_removed_template = target_removed_template.clone();
+                                                        let query_writer = query_writer.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
                                                         set_error.set(None);
@@ -840,6 +1053,7 @@ fn ChannelCard(
                                                                             .as_deref()
                                                                             == Some(target.id.as_str())
                                                                         {
+                                                                            query_writer.clear_key(AdminQueryKey::TargetId.as_str());
                                                                             editing_target_id.set(None);
                                                                             target_type.set("web_domain".to_string());
                                                                             target_value.set(String::new());
@@ -904,7 +1118,15 @@ fn ChannelCard(
                             <button
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
-                                on:click=cancel_module_edit
+                                on:click={
+                                    let query_writer = cancel_module_query_writer.clone();
+                                    move |_| {
+                                        query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
+                                        editing_module_slug.set(None);
+                                        bind_module_slug.set(initial_module_slug.get_untracked());
+                                        bind_module_enabled.set(true);
+                                    }
+                                }
                             >
                                 {modules_cancel_label.clone()}
                             </button>
@@ -939,10 +1161,22 @@ fn ChannelCard(
                                                 disabled=move || busy.get()
                                                 on:click={
                                                     let binding = binding.clone();
+                                                    let channel_id = module_edit_channel_id.clone();
+                                                    let query_writer = module_edit_query_writer.clone();
                                                     move |_| {
-                                                        editing_module_slug.set(Some(binding.module_slug.clone()));
-                                                        bind_module_slug.set(binding.module_slug.clone());
-                                                        bind_module_enabled.set(binding.is_enabled);
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                                                    Some(channel_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::ModuleSlug.as_str().to_string(),
+                                                                    Some(binding.module_slug.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
                                                     }
                                                 }
                                             >
@@ -959,8 +1193,10 @@ fn ChannelCard(
                                                     let channel_id = channel_id_for_module_delete.clone();
                                                     let channel_slug = channel_slug_for_module_delete.clone();
                                                     let module_removed_template = module_removed_template.clone();
+                                                    let query_writer = module_delete_query_writer.clone();
                                                     move |_| {
                                                         let module_removed_template = module_removed_template.clone();
+                                                        let query_writer = query_writer.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
                                                         set_error.set(None);
@@ -986,6 +1222,7 @@ fn ChannelCard(
                                                                             .as_deref()
                                                                             == Some(binding.module_slug.as_str())
                                                                         {
+                                                                            query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
                                                                             editing_module_slug.set(None);
                                                                             bind_module_slug.set(initial_module_slug.get_untracked());
                                                                             bind_module_enabled.set(true);
@@ -1060,7 +1297,15 @@ fn ChannelCard(
                             <button
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
-                                on:click=cancel_oauth_edit
+                                on:click={
+                                    let query_writer = cancel_oauth_query_writer.clone();
+                                    move |_| {
+                                        query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
+                                        editing_oauth_app_id.set(None);
+                                        bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                                        bind_oauth_role.set(String::new());
+                                    }
+                                }
                             >
                                 {oauth_cancel_label.clone()}
                             </button>
@@ -1089,10 +1334,22 @@ fn ChannelCard(
                                                 disabled=move || busy.get()
                                                 on:click={
                                                     let binding = binding.clone();
+                                                    let channel_id = oauth_edit_channel_id.clone();
+                                                    let query_writer = oauth_edit_query_writer.clone();
                                                     move |_| {
-                                                        editing_oauth_app_id.set(Some(binding.oauth_app_id.clone()));
-                                                        bind_oauth_app_id.set(binding.oauth_app_id.clone());
-                                                        bind_oauth_role.set(binding.role.clone().unwrap_or_default());
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                                                    Some(channel_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::OauthAppId.as_str().to_string(),
+                                                                    Some(binding.oauth_app_id.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
                                                     }
                                                 }
                                             >
@@ -1109,8 +1366,10 @@ fn ChannelCard(
                                                     let channel_id = channel_id_for_app_delete.clone();
                                                     let channel_slug = channel_slug_for_app_delete.clone();
                                                     let oauth_revoked_template = oauth_revoked_template.clone();
+                                                    let query_writer = oauth_delete_query_writer.clone();
                                                     move |_| {
                                                         let oauth_revoked_template = oauth_revoked_template.clone();
+                                                        let query_writer = query_writer.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
                                                         set_error.set(None);
@@ -1136,6 +1395,7 @@ fn ChannelCard(
                                                                             .as_deref()
                                                                             == Some(binding.oauth_app_id.as_str())
                                                                         {
+                                                                            query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
                                                                             editing_oauth_app_id.set(None);
                                                                             bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
                                                                             bind_oauth_role.set(String::new());

@@ -112,6 +112,13 @@
 - [GraphQL и Leptos server functions](./UI/graphql-architecture.md)
 - [Контракт storefront](./UI/storefront.md)
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
+- Route-selection contract для module-owned admin UI теперь жёстко закреплён как URL-owned:
+  typed `snake_case` query keys живут в `rustok-api`, `leptos-ui-routing` остаётся только generic
+  Leptos route/query plumbing, а `apps/admin` и `apps/next-admin` обязаны держать parity по этому
+  контракту без legacy `id`/camelCase key compatibility и без hidden auto-select-first.
+- Тот же `leptos-ui-routing` теперь используется и в module-owned Leptos storefront packages:
+  storefront query/state reads не inventят второй helper layer поверх `UiRouteContext`, а `apps/storefront`
+  и `apps/next-frontend` должны держать parity по тому же host-owned route/query contract.
 - [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
 - [Трек rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Архитектура i18n](./architecture/i18n.md) — request locale chain, shared locale normalization/validation contract, `verify:i18n:ui` + `verify:i18n:contract` gates, storefront locale-prefixed routes, outbound built-in auth email locale contract, manifest-level module UI bundle contract, временно без ecommerce locale alignment
@@ -189,6 +196,9 @@
 - При изменении архитектуры, API, tenancy, routing, observability или модульной системы обновляйте и локальные docs компонента, и центральные документы в `docs/`.
 - Любая новая схема проходит i18n-аудит: локализованные строки не храним в base-таблицах, display-поля живут только в `*_translations`. Module-owned UI пакеты не вводят package-local locale override и гидратят edit/detail формы по host-provided effective locale, а не по `first()` переводу сущности.
 - Read-side/runtime locale resolution тоже живёт по общему contract: locale matching идёт через shared normalization (`requested -> tenant default -> first available`), а не через raw string equality вроде `ru` vs `ru-RU`.
+- Любой новый module-owned admin UI обязан пройти route-selection audit: selection state хранится в URL,
+  используются только typed `snake_case` query keys, локальный state остаётся производным от URL,
+  а invalid/missing selection не должен silently fallback’иться на first-item auto-open.
 
 ## Architecture Decisions
 

@@ -2,7 +2,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::helpers::{
     action_hint, apply_order_detail, clear_order_detail, format_order_caption,
@@ -17,7 +18,8 @@ use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope};
 pub fn OrderAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_selected_order_id = route_context.query_value("id").map(ToOwned::to_owned);
+    let selected_order_query = use_route_query_value(AdminQueryKey::OrderId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -33,7 +35,6 @@ pub fn OrderAdmin() -> impl IntoView {
     let (cancel_reason, set_cancel_reason) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -505,22 +506,28 @@ pub fn OrderAdmin() -> impl IntoView {
     let ui_locale_for_fulfillment = ui_locale.clone();
     let ui_locale_for_actions = ui_locale.clone();
     let initial_open_order = open_order.clone();
+    let list_query_writer = query_writer.clone();
     Effect::new(move |_| {
-        if query_selection_applied.get() {
-            return;
+        match selected_order_query.get() {
+            Some(order_id) if !order_id.trim().is_empty() => {
+                if bootstrap.get().and_then(Result::ok).is_none() {
+                    return;
+                }
+                initial_open_order.run(order_id);
+            }
+            _ => {
+                clear_order_detail(
+                    set_selected_id,
+                    set_selected,
+                    set_payment_id,
+                    set_payment_method,
+                    set_tracking_number,
+                    set_carrier,
+                    set_delivered_signature,
+                    set_cancel_reason,
+                );
+            }
         }
-        let Some(order_id) = initial_selected_order_id.clone() else {
-            set_query_selection_applied.set(true);
-            return;
-        };
-        if bootstrap.get().and_then(Result::ok).is_none() {
-            return;
-        }
-        set_query_selection_applied.set(true);
-        if order_id.trim().is_empty() {
-            return;
-        }
-        initial_open_order.run(order_id);
     });
 
     view! {
@@ -558,6 +565,7 @@ pub fn OrderAdmin() -> impl IntoView {
                             Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_orders_label.clone()}</div> }.into_any(),
                             Some(Ok(list)) => list.items.into_iter().map(|order| {
                                 let open_id = order.id.clone();
+                                let item_query_writer = list_query_writer.clone();
                                 let status_label = localized_order_status(ui_locale_for_list.as_deref(), order.status.as_str());
                                 let order_lines = summarize_order_lines(order.line_items.as_slice());
                                 view! {
@@ -571,7 +579,7 @@ pub fn OrderAdmin() -> impl IntoView {
                                                 <p class="text-sm text-muted-foreground">{format_order_caption(&order)}</p>
                                                 <p class="text-xs text-muted-foreground">{order_lines}</p>
                                             </div>
-                                            <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| open_order.run(open_id.clone())>{open_label.clone()}</button>
+                                            <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| item_query_writer.push_value(AdminQueryKey::OrderId.as_str(), open_id.clone())>{open_label.clone()}</button>
                                         </div>
                                     </article>
                                 }

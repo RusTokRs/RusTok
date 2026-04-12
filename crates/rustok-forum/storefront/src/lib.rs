@@ -3,6 +3,7 @@ mod i18n;
 mod model;
 
 use leptos::prelude::*;
+use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
@@ -14,8 +15,8 @@ use crate::model::{
 #[component]
 pub fn ForumView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_category_id = route_context.query_value("category").map(str::to_string);
-    let selected_topic_id = route_context.query_value("topic").map(str::to_string);
+    let selected_category_id = read_route_query_value(&route_context, "category");
+    let selected_topic_id = read_route_query_value(&route_context, "topic");
     let locale = route_context.locale.clone();
     let badge_label = t(locale.as_deref(), "forum.badge", "forum");
     let title_label = t(

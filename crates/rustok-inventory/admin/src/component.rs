@@ -1,8 +1,9 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -16,7 +17,8 @@ pub fn InventoryAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let effective_locale = ui_locale.clone();
-    let initial_selected_product_id = route_context.query_value("id").map(ToOwned::to_owned);
+    let selected_product_query = use_route_query_value(AdminQueryKey::ProductId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -27,7 +29,6 @@ pub fn InventoryAdmin() -> impl IntoView {
     let (status_filter, set_status_filter) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (query_selection_applied, set_query_selection_applied) = signal(false);
     let effective_locale_for_products = effective_locale.clone();
     let effective_locale_for_open = effective_locale.clone();
 
@@ -139,22 +140,20 @@ pub fn InventoryAdmin() -> impl IntoView {
     let ui_locale_for_empty = ui_locale.clone();
     let effective_locale_for_detail = effective_locale.clone();
     let initial_open_product = open_product.clone();
+    let list_query_writer = query_writer.clone();
     Effect::new(move |_| {
-        if query_selection_applied.get() {
-            return;
+        match selected_product_query.get() {
+            Some(product_id) if !product_id.trim().is_empty() => {
+                if bootstrap.get().and_then(Result::ok).is_none() {
+                    return;
+                }
+                initial_open_product.run(product_id);
+            }
+            _ => {
+                set_selected_id.set(None);
+                set_selected.set(None);
+            }
         }
-        let Some(product_id) = initial_selected_product_id.clone() else {
-            set_query_selection_applied.set(true);
-            return;
-        };
-        if bootstrap.get().and_then(Result::ok).is_none() {
-            return;
-        }
-        set_query_selection_applied.set(true);
-        if product_id.trim().is_empty() {
-            return;
-        }
-        initial_open_product.run(product_id);
     });
 
     view! {
@@ -234,6 +233,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                     {list.items.into_iter().map(|product| {
                                         let open_id = product.id.clone();
                                         let selected_marker = product.id.clone();
+                                        let item_query_writer = list_query_writer.clone();
                                         let item_locale = ui_locale_for_list_status.clone();
                                         let item_locale_for_meta = item_locale.clone();
                                         let item_locale_for_profile = item_locale.clone();
@@ -242,7 +242,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                             .unwrap_or_else(|| t(item_locale_for_profile.as_deref(), "inventory.common.unassigned", "unassigned"));
                                         view! {
                                             <article class=move || {
-                                                if selected_id.get() == Some(selected_marker.clone()) {
+                                                if selected_id.get().as_deref() == Some(selected_marker.as_str()) {
                                                     "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm"
                                                 } else {
                                                     "rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40"
@@ -265,7 +265,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                         disabled=move || busy.get()
-                                                        on:click=move |_| open_product.run(open_id.clone())
+                                                        on:click=move |_| item_query_writer.push_value(AdminQueryKey::ProductId.as_str(), open_id.clone())
                                                     >
                                                         {t(item_locale.as_deref(), "inventory.action.open", "Open")}
                                                     </button>

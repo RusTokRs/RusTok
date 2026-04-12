@@ -48,7 +48,17 @@ pub struct CartService {
 pub struct CartLineItemPricingUpdate {
     pub line_item_id: Uuid,
     pub unit_price: Decimal,
+    pub pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
 }
+
+#[derive(Clone, Debug)]
+pub struct CartPricingAdjustmentUpdate {
+    pub source_id: Option<String>,
+    pub amount: Decimal,
+    pub metadata: Value,
+}
+
+const PRICING_ADJUSTMENT_SOURCE_TYPE: &str = "pricing";
 
 impl CartService {
     pub fn new(db: DatabaseConnection) -> Self {
@@ -359,6 +369,7 @@ impl CartService {
         line_item_id: Uuid,
         quantity: i32,
         unit_price: Decimal,
+        pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
         if quantity < 1 {
             return Err(CartError::Validation(
@@ -383,6 +394,13 @@ impl CartService {
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
+        self.replace_pricing_adjustments(
+            &txn,
+            cart.id,
+            cart.currency_code.as_str(),
+            vec![(line_item_id, pricing_adjustment)],
+        )
+        .await?;
 
         self.recalculate_totals(&txn, cart).await?;
         self.reconcile_cart_shipping_state(&txn, cart_id).await?;
@@ -400,9 +418,9 @@ impl CartService {
             return self.get_cart(tenant_id, cart_id).await;
         }
 
-        let updates_map: HashMap<Uuid, Decimal> = updates
+        let updates_map: HashMap<Uuid, CartLineItemPricingUpdate> = updates
             .into_iter()
-            .map(|update| (update.line_item_id, update.unit_price))
+            .map(|update| (update.line_item_id, update))
             .collect();
         let txn = self.db.begin().await?;
         let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
@@ -414,16 +432,26 @@ impl CartService {
             .await?;
 
         let now = Utc::now();
+        let mut pricing_adjustments = Vec::new();
         for line_item in line_items {
-            if let Some(unit_price) = updates_map.get(&line_item.id) {
+            if let Some(update) = updates_map.get(&line_item.id) {
+                let line_item_id = line_item.id;
                 let quantity = line_item.quantity;
                 let mut active: entities::cart_line_item::ActiveModel = line_item.into();
-                active.unit_price = Set(*unit_price);
-                active.total_price = Set(*unit_price * Decimal::from(quantity));
+                active.unit_price = Set(update.unit_price);
+                active.total_price = Set(update.unit_price * Decimal::from(quantity));
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
+                pricing_adjustments.push((line_item_id, update.pricing_adjustment.clone()));
             }
         }
+        self.replace_pricing_adjustments(
+            &txn,
+            cart.id,
+            cart.currency_code.as_str(),
+            pricing_adjustments,
+        )
+        .await?;
 
         self.recalculate_totals(&txn, cart).await?;
         self.reconcile_cart_shipping_state(&txn, cart_id).await?;
@@ -595,6 +623,56 @@ impl CartService {
         active.tax_total = Set(tax_total);
         active.updated_at = Set(Utc::now().into());
         active.update(conn).await?;
+        Ok(())
+    }
+
+    async fn replace_pricing_adjustments<C>(
+        &self,
+        conn: &C,
+        cart_id: Uuid,
+        currency_code: &str,
+        updates: Vec<(Uuid, Option<CartPricingAdjustmentUpdate>)>,
+    ) -> CartResult<()>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        let line_item_ids = updates.iter().map(|(line_item_id, _)| *line_item_id).collect::<Vec<_>>();
+        entities::cart_adjustment::Entity::delete_many()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .filter(entities::cart_adjustment::Column::SourceType.eq(PRICING_ADJUSTMENT_SOURCE_TYPE))
+            .filter(entities::cart_adjustment::Column::CartLineItemId.is_in(line_item_ids))
+            .exec(conn)
+            .await?;
+
+        let now = Utc::now();
+        for (line_item_id, adjustment) in updates {
+            let Some(adjustment) = adjustment else {
+                continue;
+            };
+            if adjustment.amount <= Decimal::ZERO {
+                continue;
+            }
+
+            entities::cart_adjustment::ActiveModel {
+                id: Set(generate_id()),
+                cart_id: Set(cart_id),
+                cart_line_item_id: Set(Some(line_item_id)),
+                source_type: Set(PRICING_ADJUSTMENT_SOURCE_TYPE.to_string()),
+                source_id: Set(normalize_adjustment_source_id(adjustment.source_id.as_deref())),
+                amount: Set(adjustment.amount),
+                currency_code: Set(currency_code.to_ascii_uppercase()),
+                metadata: Set(sanitize_adjustment_metadata(adjustment.metadata)),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            }
+            .insert(conn)
+            .await?;
+        }
+
         Ok(())
     }
 

@@ -173,7 +173,7 @@ async fn load_region_detail(
 async fn region_bootstrap_native() -> Result<RegionAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{AuthContext, RequestContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext};
         use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
@@ -182,10 +182,6 @@ async fn region_bootstrap_native() -> Result<RegionAdminBootstrap, ServerFnError
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let request_context = leptos_axum::extract::<RequestContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-
         ensure_permission(
             &auth.permissions,
             &[Permission::REGIONS_LIST, Permission::REGIONS_READ],
@@ -210,7 +206,7 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{AuthContext, RequestContext, TenantContext};
         use rustok_core::Permission;
         use rustok_region::RegionService;
 
@@ -219,6 +215,9 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
 
@@ -321,6 +320,7 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
         )?;
 
         let service = RegionService::new(app_ctx.db.clone());
+        let requested_locale = payload.locale.trim().to_string();
         let created = service
             .create_region(
                 tenant.id,
@@ -339,7 +339,7 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
             .await
             .map_err(ServerFnError::new)?;
 
-        load_region_detail(&service, &tenant, created.id).await
+        load_region_detail(&service, &tenant, created.id, Some(requested_locale.as_str())).await
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -379,6 +379,7 @@ async fn region_update_native(
 
         let region_id = parse_uuid(&region_id, "region_id")?;
         let service = RegionService::new(app_ctx.db.clone());
+        let requested_locale = payload.locale.trim().to_string();
         service
             .update_region(
                 tenant.id,
@@ -398,7 +399,7 @@ async fn region_update_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        load_region_detail(&service, &tenant, region_id).await
+        load_region_detail(&service, &tenant, region_id, Some(requested_locale.as_str())).await
     }
     #[cfg(not(feature = "ssr"))]
     {

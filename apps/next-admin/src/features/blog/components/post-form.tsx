@@ -102,7 +102,7 @@ export default function PostForm({
 }) {
   const router = useRouter();
   const hostLocale = useLocale();
-  const defaultLocale = initialData?.locale?.trim() || hostLocale;
+  const defaultLocale = hostLocale;
   const initialDoc = useMemo(
     () => resolveInitialDoc(initialData, defaultLocale),
     [defaultLocale, initialData]

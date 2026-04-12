@@ -6,7 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::UiRouteContext;
+use rustok_api::{AdminQueryKey, UiRouteContext};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -17,7 +18,8 @@ use crate::model::{
 pub fn FulfillmentAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_selected_option_id = route_context.query_value("id").map(ToOwned::to_owned);
+    let selected_option_query = use_route_query_value(AdminQueryKey::ShippingOptionId.as_str());
+    let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -35,7 +37,6 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     let (provider_filter, set_provider_filter) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -311,8 +312,10 @@ pub fn FulfillmentAdmin() -> impl IntoView {
 
     let submit_bootstrap_loading_label = bootstrap_loading_label.clone();
     let submit_ui_locale = ui_locale.clone();
+    let submit_query_writer = query_writer.clone();
     let submit_option = move |ev: SubmitEvent| {
         ev.prevent_default();
+        let submit_query_writer = submit_query_writer.clone();
         let Some(FulfillmentAdminBootstrap { current_tenant }) =
             bootstrap.get_untracked().and_then(Result::ok)
         else {
@@ -366,6 +369,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             };
             match result {
                 Ok(option) => {
+                    let option_id = option.id.clone();
                     apply_shipping_option(
                         &option,
                         set_editing_id,
@@ -378,6 +382,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                         set_metadata_json,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
+                    submit_query_writer.replace_value(AdminQueryKey::ShippingOptionId.as_str(), option_id);
                 }
                 Err(err) => set_error.set(Some(format!("{save_error_label}: {err}"))),
             }
@@ -444,22 +449,32 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     let ui_locale_for_selected_profiles = ui_locale.clone();
     let ui_locale_for_summary = ui_locale.clone();
     let initial_edit_option = edit_option.clone();
+    let list_query_writer = query_writer.clone();
+    let reset_current_option = Callback::new(move |_| {
+        query_writer.clear_key(AdminQueryKey::ShippingOptionId.as_str());
+        reset_form();
+    });
     Effect::new(move |_| {
-        if query_selection_applied.get() {
-            return;
+        match selected_option_query.get() {
+            Some(option_id) if !option_id.trim().is_empty() => {
+                if bootstrap.get().and_then(Result::ok).is_none() {
+                    return;
+                }
+                initial_edit_option.run(option_id);
+            }
+            _ => {
+                clear_shipping_option_form(
+                    set_editing_id,
+                    set_selected,
+                    set_name,
+                    set_currency_code,
+                    set_amount,
+                    set_provider_id,
+                    set_allowed_profiles,
+                    set_metadata_json,
+                );
+            }
         }
-        let Some(option_id) = initial_selected_option_id.clone() else {
-            set_query_selection_applied.set(true);
-            return;
-        };
-        if bootstrap.get().and_then(Result::ok).is_none() {
-            return;
-        }
-        set_query_selection_applied.set(true);
-        if option_id.trim().is_empty() {
-            return;
-        }
-        initial_edit_option.run(option_id);
     });
 
     view! {
@@ -491,6 +506,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                                 let item_locale = ui_locale_for_list.clone();
                                 let edit_id = option.id.clone();
                                 let toggle_item = option.clone();
+                                let item_query_writer = list_query_writer.clone();
                                 let active_label = localized_active_label(item_locale.as_deref(), option.active);
                                 let toggle_label = if option.active {
                                     t(item_locale.as_deref(), "fulfillment.action.deactivate", "Deactivate")
@@ -513,7 +529,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                                                 <p class="text-xs text-muted-foreground">{option.updated_at.clone()}</p>
                                             </div>
                                             <div class="flex flex-wrap gap-2">
-                                                <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| edit_option.run(edit_id.clone())>{edit_label.clone()}</button>
+                                                <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| item_query_writer.push_value(AdminQueryKey::ShippingOptionId.as_str(), edit_id.clone())>{edit_label.clone()}</button>
                                                 <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| toggle_option.run(toggle_item.clone())>{toggle_label}</button>
                                             </div>
                                         </div>
@@ -531,7 +547,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                             <h3 class="text-lg font-semibold text-card-foreground">{move || if editing_id.get().is_some() { editor_label.clone() } else { create_label.clone() }}</h3>
                             <p class="text-sm text-muted-foreground">{editor_subtitle_label.clone()}</p>
                         </div>
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_form()>{new_label.clone()}</button>
+                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_current_option.run(())>{new_label.clone()}</button>
                     </div>
                     <Show when=move || error.get().is_some()>
                         <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{move || error.get().unwrap_or_default()}</div>

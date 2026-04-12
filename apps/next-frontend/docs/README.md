@@ -21,6 +21,8 @@
 - backend API идёт через `apps/server`;
 - auth и transport contracts переиспользуются через shared packages, а не через ad-hoc clients;
 - storefront host должен оставаться синхронизированным с `apps/storefront` по route/i18n/auth contracts.
+- query semantics для module-owned storefront surfaces должны оставаться в parity с `apps/storefront`;
+  host не inventит отдельную schema/policy поверх backend и Leptos host contract.
 
 ## Frontend contract
 
@@ -28,6 +30,8 @@
 - auth/session contract идёт через shared auth package boundary;
 - forms/state contract переиспользует shared frontend packages;
 - i18n route/layout contract должен совпадать с platform storefront expectations.
+- если module-owned storefront surface использует query-driven state, Next host обязан держать
+  те же key semantics и canonical behavior, что и Leptos storefront.
 
 ## Взаимодействия
 

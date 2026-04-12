@@ -795,6 +795,7 @@ impl CommerceQuery {
                     per_page,
                     active: filter.active,
                     search: filter.search,
+                    locale: Some(locale.clone()),
                 },
                 Some(locale.as_str()),
                 Some(tenant.default_locale.as_str()),

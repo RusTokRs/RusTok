@@ -27,7 +27,7 @@ leptos-auth.workspace = true
 leptos_router.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
-rustok-ui-routing.workspace = true
+leptos-ui-routing.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

@@ -12,6 +12,7 @@ All significant architectural choices should be recorded as ADRs.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [2026-04-12](./2026-04-12-url-owned-admin-route-selection.md) | URL-owned route selection for module-owned admin UI | Accepted |
 | [2026-04-05](./2026-04-05-multilingual-db-storage-parallel-localized-records.md) | Multilingual DB storage via parallel localized records | Accepted |
 | [2026-03-29](./2026-03-29-taxonomy-module-scope-aware-terms.md) | `rustok-taxonomy` as a shared scope-aware vocabulary module | Accepted |
 | [2026-04-03](./2026-04-03-request-trust-and-tenant-hardening.md) | Request trust, strict tenant fallback and forwarded-header policy | Accepted |

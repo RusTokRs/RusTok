@@ -13,5 +13,6 @@ ssr = ["leptos/ssr"]
 [dependencies]
 leptos.workspace = true
 leptos-graphql.workspace = true
+leptos-ui-routing.workspace = true
 rustok-api.workspace = true
 serde = { workspace = true, features = ["derive"] }
