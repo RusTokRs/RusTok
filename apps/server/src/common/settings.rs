@@ -931,6 +931,15 @@ impl RuntimeSettings {
     }
 }
 
+/// Cached, shared reference to the parsed [`RustokSettings`].
+///
+/// Stored in `AppContext.shared_store` at bootstrap time so that per-request
+/// middleware (tenant resolution, channel resolution, etc.) can read
+/// configuration without re-parsing `ctx.config.settings` (JSON
+/// deserialisation + env-var overrides) on every HTTP request.
+#[derive(Clone)]
+pub struct SharedRustokSettings(pub std::sync::Arc<RustokSettings>);
+
 fn parse_event_transport(value: &str) -> Result<EventTransportKind, serde_json::Error> {
     match value.trim().to_ascii_lowercase().as_str() {
         "memory" => Ok(EventTransportKind::Memory),
