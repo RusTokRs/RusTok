@@ -11,7 +11,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::common::{extract_effective_host, peer_ip_from_extensions, RustokSettings};
+use crate::common::{
+    extract_effective_host, peer_ip_from_extensions, RustokSettings, SharedRustokSettings,
+};
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
@@ -90,8 +92,11 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     };
 
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let shared = ctx
+        .shared_store
+        .get::<SharedRustokSettings>()
+        .ok_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let settings: &RustokSettings = &shared.0;
     let resolver = ChannelResolver::new(ctx.db.clone());
     let facts = build_request_facts(
         tenant.id,

@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
 
 use crate::auth::auth_config_from_ctx;
-use crate::common::settings::RustokSettings;
+use crate::common::settings::{RustokSettings, SharedRustokSettings};
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
@@ -58,6 +58,10 @@ pub async fn bootstrap_app_runtime(
 ) -> Result<AppRuntimeBootstrap> {
     let cache_service = CacheService::from_url(settings.cache.redis_url.as_deref());
     ctx.shared_store.insert(cache_service.clone());
+
+    // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
+    ctx.shared_store
+        .insert(SharedRustokSettings(Arc::new(settings.clone())));
 
     init_marketplace_catalog(ctx);
 

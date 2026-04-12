@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use crate::common::{
     extract_effective_host, peer_ip_from_extensions,
-    settings::{RustokSettings, TenantFallbackMode},
+    settings::{RustokSettings, SharedRustokSettings, TenantFallbackMode},
 };
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::models::tenants;
@@ -663,9 +663,12 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     }
 
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let identifier = resolve_identifier(&req, &settings)?;
+    let shared = ctx
+        .shared_store
+        .get::<SharedRustokSettings>()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    let settings: &RustokSettings = &shared.0;
+    let identifier = resolve_identifier(&req, settings)?;
 
     let Some(infra) = tenant_infra(&ctx) else {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
