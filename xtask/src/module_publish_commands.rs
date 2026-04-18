@@ -9,7 +9,7 @@ pub(crate) fn module_publish_command(args: &[String]) -> Result<()> {
     let slug = args[0].as_str();
     let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
     let registry_url = registry_url_argument(&args[1..]);
-    let actor = actor_argument(&args[1..]);
+    let auth_token = auth_token_argument(&args[1..]);
     let auto_approve = auto_approve_argument(&args[1..]);
     let approve_reason = approve_reason_argument(&args[1..]);
     let approve_reason_code = approve_reason_code_argument(&args[1..])?;
@@ -21,10 +21,15 @@ pub(crate) fn module_publish_command(args: &[String]) -> Result<()> {
             "Live module publish requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
         })?)
     };
-    let live_actor = if dry_run {
+    let live_auth_token = if dry_run {
         None
     } else {
-        Some(actor.with_context(|| "Live module publish requires --actor <actor>")?)
+        Some(auth_token.with_context(|| {
+            format!(
+                "Live module publish requires --auth-token <token> or {}",
+                MODULE_AUTH_TOKEN_ENV
+            )
+        })?)
     };
 
     let preview = load_module_publish_preview_for_slug(slug)?;
@@ -40,13 +45,13 @@ pub(crate) fn module_publish_command(args: &[String]) -> Result<()> {
         let live_registry_url = live_registry_url
             .as_deref()
             .with_context(|| "Live module publish requires resolved registry URL")?;
-        let live_actor = live_actor
+        let live_auth_token = live_auth_token
             .as_deref()
-            .with_context(|| "Live module publish requires resolved actor")?;
+            .with_context(|| "Live module publish requires resolved auth token")?;
         let payload = publish_via_registry_live(
             live_registry_url,
             &preview,
-            live_actor,
+            live_auth_token,
             auto_approve,
             approve_reason,
             approve_reason_code,

@@ -7,8 +7,8 @@ pub use auth::{
     scope_matches, AuthContext, AuthContextExtension, OptionalAuthContext,
 };
 pub use channel::{
-    ChannelContext, ChannelContextExt, ChannelContextExtension, ChannelResolutionSource,
-    OptionalChannel,
+    ChannelContext, ChannelContextExt, ChannelContextExtension, ChannelResolutionOutcome,
+    ChannelResolutionSource, ChannelResolutionStage, ChannelResolutionTraceStep, OptionalChannel,
 };
 pub use tenant::{
     OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension, TenantError,

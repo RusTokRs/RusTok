@@ -13,20 +13,18 @@ pub(crate) fn publish_via_registry_dry_run(
 pub(crate) fn publish_via_registry_live(
     registry_url: &str,
     preview: &ModulePublishDryRunPreview,
-    actor: &str,
+    auth_token: &str,
     auto_approve: bool,
     approve_reason: Option<String>,
     approve_reason_code: Option<String>,
     confirm_manual_review: bool,
 ) -> Result<String> {
-    let publisher = format!("publisher:{}", preview.slug);
     let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
     let create_request = build_live_publish_registry_request(preview);
     let create_response: RegistryMutationHttpResponse = post_registry_json_parsed(
         &create_endpoint,
         &create_request,
-        Some(actor),
-        Some(&publisher),
+        Some(auth_token),
     )?;
     if !create_response.accepted {
         anyhow::bail!(
@@ -55,8 +53,7 @@ pub(crate) fn publish_via_registry_live(
         &upload_endpoint,
         &artifact_bytes,
         "application/json",
-        Some(actor),
-        Some(&publisher),
+        Some(auth_token),
     )?;
     ensure_publish_step_accepted(
         "artifact upload",
@@ -76,8 +73,7 @@ pub(crate) fn publish_via_registry_live(
     let validate_response: RegistryMutationHttpResponse = post_registry_json_parsed(
         &validate_endpoint,
         &validate_request,
-        Some(actor),
-        Some(&publisher),
+        Some(auth_token),
     )?;
     ensure_publish_step_accepted(
         "validation",
@@ -92,7 +88,7 @@ pub(crate) fn publish_via_registry_live(
     );
     let readiness = poll_registry_publish_status_until(
         &readiness_endpoint,
-        Some(actor),
+        Some(auth_token),
         &["approved", "published", "rejected"],
     )?;
     ensure_publish_status_not_rejected(&readiness)?;
@@ -124,7 +120,7 @@ pub(crate) fn publish_via_registry_live(
         registry_url,
         preview,
         readiness,
-        actor,
+        auth_token,
         confirm_manual_review,
     )?;
     if readiness.approval_override_required
@@ -171,8 +167,7 @@ pub(crate) fn publish_via_registry_live(
     let approve_response: RegistryMutationHttpResponse = post_registry_json_parsed(
         &approve_endpoint,
         &approve_request,
-        Some(actor),
-        Some(&publisher),
+        Some(auth_token),
     )?;
     ensure_publish_step_accepted(
         "approval",
@@ -187,7 +182,7 @@ pub(crate) fn publish_via_registry_live(
     );
     let status = poll_registry_publish_status_until(
         &status_endpoint,
-        Some(actor),
+        Some(auth_token),
         &["published", "rejected"],
     )?;
     ensure_publish_status_not_rejected(&status)?;

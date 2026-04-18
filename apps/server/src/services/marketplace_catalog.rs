@@ -12,6 +12,7 @@ use rustok_core::ModuleRegistry;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::modules::{
     CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
@@ -685,8 +686,8 @@ pub struct RegistryRunnerClaimPayload {
     pub suggested_failure_reason_code: Option<String>,
     #[serde(default, rename = "suggestedBlockedReasonCode")]
     pub suggested_blocked_reason_code: Option<String>,
-    #[serde(rename = "artifactUrl")]
-    pub artifact_url: String,
+    #[serde(rename = "artifactDownloadUrl")]
+    pub artifact_download_url: String,
     #[serde(rename = "artifactChecksumSha256")]
     pub artifact_checksum_sha256: String,
     #[serde(rename = "crateName")]
@@ -710,7 +711,7 @@ pub struct RegistryOwnerTransferRequest {
     #[serde(default)]
     pub dry_run: bool,
     pub slug: String,
-    pub new_owner_actor: String,
+    pub new_owner_user_id: Uuid,
     pub reason: Option<String>,
     pub reason_code: Option<String>,
 }
@@ -729,6 +730,7 @@ pub struct RegistryPublishModuleRequest {
     pub slug: String,
     pub version: String,
     pub crate_name: String,
+    pub default_locale: String,
     pub name: String,
     pub description: String,
     pub ownership: String,

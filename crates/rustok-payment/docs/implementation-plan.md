@@ -27,7 +27,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ### 2. Provider expansion
 
 - [ ] сформировать provider SPI до подключения внешних gateway integrations;
-- [ ] покрывать authorize/capture/cancel/refund semantics targeted tests;
+- [x] покрывать authorize/capture/cancel/refund semantics targeted tests;
 - [ ] не смешивать provider-specific webhook logic с базовым payment domain contract.
 
 ### 3. Operability

@@ -7,6 +7,7 @@
 ## Responsibilities
 
 - Own payment collection and payment-attempt storage.
+- Own refund record storage and basic refund lifecycle for the default manual flow.
 - Prepare a stable payment boundary for checkout orchestration.
 - Keep payment state transitions isolated from the ecommerce umbrella.
 - Provide a built-in manual/default payment flow for the current stage, without external payment providers.

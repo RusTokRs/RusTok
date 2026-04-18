@@ -160,6 +160,7 @@ pub(crate) struct ModulePublishDryRunPreview {
     pub(crate) slug: String,
     pub(crate) version: String,
     pub(crate) crate_name: String,
+    pub(crate) module_default_locale: String,
     pub(crate) module_name: String,
     pub(crate) module_description: String,
     pub(crate) ownership: String,

@@ -489,7 +489,7 @@ Deliverables:
 
 ### Phase 10. Post-order flows: returns, refunds, exchanges, claims, order changes
 
-Статус: `planned`
+Статус: `in progress`
 
 Фокус:
 
@@ -503,6 +503,12 @@ Deliverables:
 - exchanges / claims, если остаются в целевом Medusa parity scope;
 - order change / draft order / preview-apply semantics;
 - admin/store transport для post-order сценариев.
+
+Текущее состояние:
+
+- стартовый refund slice уже поднят поверх `payment-collections`: `rustok-payment` теперь хранит first-class `refunds`, `PaymentService` умеет `create/list/show/complete/cancel`, а aggregate `PaymentCollectionResponse` возвращает `refunded_amount` и `refunds[]`;
+- admin REST/GraphQL уже публикуют первый post-order refund transport (`/admin/payment-collections/{id}/refunds`, `/admin/refunds*`, `createRefund`, `completeRefund`, `cancelRefund`, `refunds`), так что Phase 10 больше не начинается с нуля;
+- следующий объём внутри Phase 10 остаётся шире refund-only baseline: returns, exchanges/claims и order-change/draft-edit semantics.
 
 Обязательные проверки:
 

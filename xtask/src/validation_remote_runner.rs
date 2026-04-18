@@ -163,6 +163,6 @@ fn execute_remote_validation_claim(
 fn remote_claim_running_detail(claim: &RegistryRunnerClaimHttpPayload) -> String {
     format!(
         "Remote runner '{}' executing '{}' for module '{}' from {}.",
-        claim.execution_mode, claim.stage_key, claim.slug, claim.artifact_url
+        claim.execution_mode, claim.stage_key, claim.slug, claim.artifact_download_url
     )
 }

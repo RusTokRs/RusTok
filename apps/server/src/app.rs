@@ -1144,6 +1144,7 @@ mod tests {
                         slug: "blog".to_string(),
                         version: "0.1.0".to_string(),
                         crate_name: "rustok-blog".to_string(),
+                        default_locale: "en".to_string(),
                         name: "Blog".to_string(),
                         description: "Blog and news module contract preview.".to_string(),
                         ownership: "first_party".to_string(),
@@ -2528,6 +2529,7 @@ mod tests {
                         slug: slug.to_string(),
                         version: "0.1.0".to_string(),
                         crate_name: format!("rustok-{}", slug.replace('-', "_")),
+                        default_locale: "en".to_string(),
                         name: format!("{} module", slug),
                         description: format!(
                             "Registry publish request test contract preview for slug {}.",

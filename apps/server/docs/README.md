@@ -37,13 +37,16 @@ Shared foundation / support crates:
 ## Runtime surface
 
 - `/api/graphql` и `/api/fn/*` являются параллельными transport-слоями; Leptos server functions не заменяют GraphQL API.
+- Commerce OpenAPI/REST surface на `/admin/*` теперь включает первый post-order refund contract поверх `payment-collections`; host публикует эти routes, но refund lifecycle остаётся domain-owned в `rustok-payment` и `rustok-commerce`.
 - `flex` standalone schemas/entries сейчас публикуются через `/api/graphql` и `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
+- Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле.
 - Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
 - `apps/server` может работать как `full` host или как `registry_only`, но `host_mode` не заменяет deployment profile и не меняет build/deploy semantics.
 - Для registry/governance surfaces именно сервер остаётся каноническим валидатором lifecycle policy, `reason` / `reason_code` contract и allowed action set; thin clients могут делать preflight, но не определяют policy локально.
-- `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без `x-rustok-actor` он возвращает status-driven superset `governanceActions`, а при наличии actor header режет только request-level действия до реально разрешённых для этого actor.
+- Registry metadata теперь следует общему multilingual storage contract: publish/release base rows держат language-agnostic state и `default_locale`, а display metadata (`name`, `description`) живут в `registry_*_translations`.
+- `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без bearer auth он возвращает status-driven superset `governanceActions`, а при session-backed user bearer режет request-level действия до реально разрешённых для этого principal.
 - Repo-side surface для текущего `module-system` считается закрытым для цели Admin-driven install/uninstall/upgrade/deploy с progress feedback; дальше остаётся поддерживать targeted verification и docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
 
 ## Границы ответственности

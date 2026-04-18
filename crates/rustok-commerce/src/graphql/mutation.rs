@@ -1228,6 +1228,93 @@ impl CommerceMutation {
         Ok(collection.into())
     }
 
+    async fn create_refund(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        payment_collection_id: Uuid,
+        input: CreateRefundInputObject,
+    ) -> Result<GqlRefund> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let refund = PaymentService::new(db.clone())
+            .create_refund(
+                tenant_id,
+                payment_collection_id,
+                crate::dto::CreateRefundInput {
+                    amount: parse_decimal(&input.amount)?,
+                    reason: input.reason,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(refund.into())
+    }
+
+    async fn complete_refund(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CompleteRefundInputObject,
+    ) -> Result<GqlRefund> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let refund = PaymentService::new(db.clone())
+            .complete_refund(
+                tenant_id,
+                id,
+                crate::dto::CompleteRefundInput {
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(refund.into())
+    }
+
+    async fn cancel_refund(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CancelRefundInputObject,
+    ) -> Result<GqlRefund> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let refund = PaymentService::new(db.clone())
+            .cancel_refund(
+                tenant_id,
+                id,
+                crate::dto::CancelRefundInput {
+                    reason: input.reason,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(refund.into())
+    }
+
     async fn create_shipping_option(
         &self,
         ctx: &Context<'_>,

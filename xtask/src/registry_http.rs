@@ -8,15 +8,14 @@ pub(crate) fn post_registry_json<T>(endpoint: &str, payload: &T) -> Result<Strin
 where
     T: Serialize,
 {
-    let value: serde_json::Value = post_registry_json_parsed(endpoint, payload, None, None)?;
+    let value: serde_json::Value = post_registry_json_parsed(endpoint, payload, None)?;
     pretty_json(&value)
 }
 
 pub(crate) fn post_registry_json_parsed<T, U>(
     endpoint: &str,
     payload: &T,
-    actor: Option<&str>,
-    publisher: Option<&str>,
+    auth_token: Option<&str>,
 ) -> Result<U>
 where
     T: Serialize,
@@ -24,11 +23,8 @@ where
 {
     let client = build_registry_http_client(endpoint)?;
     let mut request = client.post(endpoint).json(payload);
-    if let Some(actor) = actor {
-        request = request.header("x-rustok-actor", actor);
-    }
-    if let Some(publisher) = publisher {
-        request = request.header("x-rustok-publisher", publisher);
+    if let Some(auth_token) = auth_token {
+        request = request.bearer_auth(auth_token);
     }
     let response = request
         .send()
@@ -59,8 +55,7 @@ pub(crate) fn put_registry_bytes_parsed<U>(
     endpoint: &str,
     payload: &[u8],
     content_type: &str,
-    actor: Option<&str>,
-    publisher: Option<&str>,
+    auth_token: Option<&str>,
 ) -> Result<U>
 where
     U: DeserializeOwned,
@@ -70,11 +65,8 @@ where
         .put(endpoint)
         .header("content-type", content_type)
         .body(payload.to_vec());
-    if let Some(actor) = actor {
-        request = request.header("x-rustok-actor", actor);
-    }
-    if let Some(publisher) = publisher {
-        request = request.header("x-rustok-publisher", publisher);
+    if let Some(auth_token) = auth_token {
+        request = request.bearer_auth(auth_token);
     }
     let response = request
         .send()
@@ -82,14 +74,14 @@ where
     parse_registry_json_response(endpoint, response)
 }
 
-pub(crate) fn get_registry_json_parsed<U>(endpoint: &str, actor: Option<&str>) -> Result<U>
+pub(crate) fn get_registry_json_parsed<U>(endpoint: &str, auth_token: Option<&str>) -> Result<U>
 where
     U: DeserializeOwned,
 {
     let client = build_registry_http_client(endpoint)?;
     let mut request = client.get(endpoint);
-    if let Some(actor) = actor {
-        request = request.header("x-rustok-actor", actor);
+    if let Some(auth_token) = auth_token {
+        request = request.bearer_auth(auth_token);
     }
     let response = request
         .send()

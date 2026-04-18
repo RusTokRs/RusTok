@@ -1,4 +1,4 @@
-use rustok_payment::entities::{payment, payment_collection};
+use rustok_payment::entities::{payment, payment_collection, refund};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
 pub async fn ensure_payment_schema(db: &DatabaseConnection) {
@@ -19,6 +19,12 @@ pub async fn ensure_payment_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(payment::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(refund::Entity),
     )
     .await;
 }

@@ -16,6 +16,7 @@ use crate::modules::{
 };
 use crate::services::build_service::BuildEvent;
 use crate::services::flex_attached_values::FlexAttachedValuesService;
+use crate::services::registry_principal::RegistryPrincipalRef;
 use crate::services::rbac_service::RbacService;
 
 #[derive(SimpleObject, Clone)]
@@ -216,19 +217,45 @@ pub struct MarketplaceModuleVersion {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct RegistryPrincipal {
+    pub kind: String,
+    pub user_id: Option<String>,
+    pub subject: String,
+    pub display_label: String,
+    pub legacy_label: Option<String>,
+}
+
+impl From<RegistryPrincipalRef> for RegistryPrincipal {
+    fn from(value: RegistryPrincipalRef) -> Self {
+        Self {
+            kind: match value.kind {
+                crate::services::registry_principal::RegistryPrincipalKind::User => "user",
+                crate::services::registry_principal::RegistryPrincipalKind::Runner => "runner",
+                crate::services::registry_principal::RegistryPrincipalKind::Legacy => "legacy",
+            }
+            .to_string(),
+            user_id: value.user_id.map(|value| value.to_string()),
+            subject: value.subject,
+            display_label: value.display_label,
+            legacy_label: value.legacy_label,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct RegistryPublishRequestLifecycle {
     pub id: String,
     pub status: String,
-    pub requested_by: String,
-    pub publisher_identity: Option<String>,
-    pub approved_by: Option<String>,
-    pub rejected_by: Option<String>,
+    pub requested_by: RegistryPrincipal,
+    pub publisher_identity: Option<RegistryPrincipal>,
+    pub approved_by: Option<RegistryPrincipal>,
+    pub rejected_by: Option<RegistryPrincipal>,
     pub rejection_reason: Option<String>,
-    pub changes_requested_by: Option<String>,
+    pub changes_requested_by: Option<RegistryPrincipal>,
     pub changes_requested_reason: Option<String>,
     pub changes_requested_reason_code: Option<String>,
     pub changes_requested_at: Option<String>,
-    pub held_by: Option<String>,
+    pub held_by: Option<RegistryPrincipal>,
     pub held_reason: Option<String>,
     pub held_reason_code: Option<String>,
     pub held_at: Option<String>,
@@ -244,29 +271,50 @@ pub struct RegistryPublishRequestLifecycle {
 pub struct RegistryReleaseLifecycle {
     pub version: String,
     pub status: String,
-    pub publisher: String,
+    pub publisher: RegistryPrincipal,
     pub checksum_sha256: Option<String>,
     pub published_at: String,
     pub yanked_reason: Option<String>,
-    pub yanked_by: Option<String>,
+    pub yanked_by: Option<RegistryPrincipal>,
     pub yanked_at: Option<String>,
 }
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryOwnerLifecycle {
-    pub owner_actor: String,
-    pub bound_by: String,
+    pub owner_actor: RegistryPrincipal,
+    pub bound_by: RegistryPrincipal,
     pub bound_at: String,
     pub updated_at: String,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryOwnerTransitionLifecycle {
+    pub previous_owner: Option<RegistryPrincipal>,
+    pub new_owner: Option<RegistryPrincipal>,
+    pub bound_by: Option<RegistryPrincipal>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryGovernanceEventPayloadLifecycle {
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
+    pub detail: Option<String>,
+    pub version: Option<String>,
+    pub stage_key: Option<String>,
+    pub attempt_number: Option<i32>,
+    pub owner_transition: Option<RegistryOwnerTransitionLifecycle>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub mode: Option<String>,
 }
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryGovernanceEventLifecycle {
     pub id: String,
     pub event_type: String,
-    pub actor: String,
-    pub publisher: Option<String>,
-    pub details: serde_json::Value,
+    pub actor: RegistryPrincipal,
+    pub publisher: Option<RegistryPrincipal>,
+    pub payload: RegistryGovernanceEventPayloadLifecycle,
     pub created_at: String,
 }
 

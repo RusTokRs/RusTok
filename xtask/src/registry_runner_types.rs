@@ -35,7 +35,7 @@ pub(crate) struct RegistryRunnerClaimHttpPayload {
     pub(crate) version: String,
     pub(crate) stage_key: String,
     pub(crate) execution_mode: String,
-    pub(crate) artifact_url: String,
+    pub(crate) artifact_download_url: String,
     pub(crate) runnable: bool,
     #[serde(default)]
     pub(crate) allowed_terminal_reason_codes: Vec<String>,

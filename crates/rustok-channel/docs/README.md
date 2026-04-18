@@ -12,14 +12,15 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 ## Зона ответственности
 
 - storage для `channels`, `channel_targets`, `channel_module_bindings`, `channel_oauth_apps`;
+- storage для `channel_resolution_policy_sets` и `channel_resolution_policy_rules`;
 - domain-owned resolution layer: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, `ChannelResolver`;
 - tenant-scoped typed resolution policies и explicit default channel semantics;
-- module-owned Leptos admin UI package `rustok-channel-admin`.
+- module-owned Leptos admin UI package `rustok-channel-admin` с базовым policy authoring flow.
 
 ## Интеграция
 
 - используется `apps/server` как обязательный `Core` module и как runtime composition root;
-- публикует shared host contract через `rustok-api` (`ChannelContext`, request-level metadata);
+- публикует shared host contract через `rustok-api` (`ChannelContext`, request-level metadata, `resolution_trace`);
 - использует `rustok-auth` как источник истины для OAuth applications и access tokens;
 - уже служит runtime proof point для `rustok-pages`, `rustok-blog` и `rustok-commerce`.
 

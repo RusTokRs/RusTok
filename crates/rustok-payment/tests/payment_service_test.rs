@@ -1,6 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_payment::dto::{
-    AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
+    AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
+    CompleteRefundInput, CreatePaymentCollectionInput, CreateRefundInput,
 };
 use rustok_payment::error::PaymentError;
 use rustok_payment::services::PaymentService;
@@ -212,4 +213,180 @@ async fn find_reusable_collection_by_cart_returns_latest_active_collection() {
         .expect("expected reusable collection");
     assert_eq!(reusable.id, second.id);
     assert_eq!(reusable.status, "pending");
+}
+
+#[tokio::test]
+async fn refund_lifecycle_tracks_pending_completed_and_cancelled_records() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_collection(tenant_id, create_collection_input())
+        .await
+        .unwrap();
+    service
+        .authorize_collection(
+            tenant_id,
+            created.id,
+            AuthorizePaymentInput {
+                provider_id: Some("manual".to_string()),
+                provider_payment_id: Some("refund-test-1".to_string()),
+                amount: None,
+                metadata: serde_json::json!({ "step": "authorized" }),
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .capture_collection(
+            tenant_id,
+            created.id,
+            CapturePaymentInput {
+                amount: Some(Decimal::from_str("40.00").expect("valid decimal")),
+                metadata: serde_json::json!({ "step": "captured" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let pending = service
+        .create_refund(
+            tenant_id,
+            created.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("15.00").expect("valid decimal"),
+                reason: Some("customer-request".to_string()),
+                metadata: serde_json::json!({ "step": "refund-created" }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(pending.status, "pending");
+
+    let completed = service
+        .complete_refund(
+            tenant_id,
+            pending.id,
+            CompleteRefundInput {
+                metadata: serde_json::json!({ "step": "refund-completed" }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.status, "refunded");
+
+    let second = service
+        .create_refund(
+            tenant_id,
+            created.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("10.00").expect("valid decimal"),
+                reason: Some("operator-cancel".to_string()),
+                metadata: serde_json::json!({ "step": "refund-created-2" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cancelled = service
+        .cancel_refund(
+            tenant_id,
+            second.id,
+            CancelRefundInput {
+                reason: Some("review-failed".to_string()),
+                metadata: serde_json::json!({ "step": "refund-cancelled" }),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(cancelled.status, "cancelled");
+
+    let collection = service.get_collection(tenant_id, created.id).await.unwrap();
+    assert_eq!(
+        collection.refunded_amount,
+        Decimal::from_str("15.00").expect("valid decimal")
+    );
+    assert_eq!(collection.refunds.len(), 2);
+
+    let (refunds, total) = service
+        .list_refunds(
+            tenant_id,
+            rustok_payment::dto::ListRefundsInput {
+                page: 1,
+                per_page: 20,
+                payment_collection_id: Some(created.id),
+                status: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(total, 2);
+    assert_eq!(refunds[0].id, second.id);
+    assert_eq!(refunds[1].id, pending.id);
+}
+
+#[tokio::test]
+async fn refund_amount_cannot_exceed_remaining_captured_total() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_collection(tenant_id, create_collection_input())
+        .await
+        .unwrap();
+    service
+        .authorize_collection(
+            tenant_id,
+            created.id,
+            AuthorizePaymentInput {
+                provider_id: None,
+                provider_payment_id: None,
+                amount: Some(Decimal::from_str("20.00").expect("valid decimal")),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .capture_collection(
+            tenant_id,
+            created.id,
+            CapturePaymentInput {
+                amount: Some(Decimal::from_str("20.00").expect("valid decimal")),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .create_refund(
+            tenant_id,
+            created.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("12.00").expect("valid decimal"),
+                reason: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .create_refund(
+            tenant_id,
+            created.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("9.00").expect("valid decimal"),
+                reason: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        PaymentError::Validation(message) => {
+            assert!(message.contains("remaining refundable amount"));
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
 }

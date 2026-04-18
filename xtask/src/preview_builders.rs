@@ -136,11 +136,27 @@ pub(crate) fn build_module_publish_preview(
             .and_then(|ui| ui.leptos_crate.as_deref()),
         &package_manifest.module.showcase_admin_surfaces,
     )?;
+    let module_default_locale = package_manifest
+        .provides
+        .admin_ui
+        .as_ref()
+        .and_then(|ui| ui.i18n.as_ref())
+        .and_then(|i18n| i18n.default_locale.clone())
+        .or_else(|| {
+            package_manifest
+                .provides
+                .storefront_ui
+                .as_ref()
+                .and_then(|ui| ui.i18n.as_ref())
+                .and_then(|i18n| i18n.default_locale.clone())
+        })
+        .unwrap_or_else(|| "en".to_string());
 
     Ok(ModulePublishDryRunPreview {
         slug: slug.to_string(),
         version: package_manifest.module.version.clone(),
         crate_name: crate_package.name,
+        module_default_locale,
         module_name: package_manifest.module.name.clone(),
         module_description: package_manifest.module.description.clone(),
         ownership: package_manifest.module.ownership.clone(),

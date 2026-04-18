@@ -17,6 +17,9 @@ use crate::common::{
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
+use rustok_api::{
+    ChannelResolutionOutcome, ChannelResolutionStage, ChannelResolutionTraceStep,
+};
 use rustok_channel::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, TargetSurface,
 };
@@ -128,7 +131,7 @@ pub async fn resolve(
         .await
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let cached_context = resolved_detail_and_source(decision).map(|(detail, source)| {
+    let cached_context = resolved_detail_source_and_trace(decision).map(|(detail, source, trace)| {
         let selected_target = detail
             .targets
             .iter()
@@ -145,6 +148,7 @@ pub async fn resolve(
             target_value: selected_target.map(|target| target.value.clone()),
             settings: detail.channel.settings,
             resolution_source: source,
+            resolution_trace: trace,
         }
     });
 
@@ -177,11 +181,12 @@ fn build_request_facts(
     }
 }
 
-fn resolved_detail_and_source(
+fn resolved_detail_source_and_trace(
     decision: ResolutionDecision,
 ) -> Option<(
     rustok_channel::ChannelDetailResponse,
     ChannelResolutionSource,
+    Vec<ChannelResolutionTraceStep>,
 )> {
     let detail = decision.detail?;
     let source = match decision.source? {
@@ -193,7 +198,30 @@ fn resolved_detail_and_source(
         ChannelResolutionOrigin::Default => ChannelResolutionSource::Default,
     };
 
-    Some((detail, source))
+    Some((
+        detail,
+        source,
+        decision.trace.into_iter().map(map_trace_step).collect(),
+    ))
+}
+
+fn map_trace_step(step: rustok_channel::ResolutionTraceStep) -> ChannelResolutionTraceStep {
+    ChannelResolutionTraceStep {
+        stage: match step.stage {
+            rustok_channel::ResolutionStage::HeaderId => ChannelResolutionStage::HeaderId,
+            rustok_channel::ResolutionStage::HeaderSlug => ChannelResolutionStage::HeaderSlug,
+            rustok_channel::ResolutionStage::Query => ChannelResolutionStage::Query,
+            rustok_channel::ResolutionStage::Host => ChannelResolutionStage::Host,
+            rustok_channel::ResolutionStage::Policy => ChannelResolutionStage::Policy,
+            rustok_channel::ResolutionStage::Default => ChannelResolutionStage::Default,
+        },
+        outcome: match step.outcome {
+            rustok_channel::ResolutionOutcome::Matched => ChannelResolutionOutcome::Matched,
+            rustok_channel::ResolutionOutcome::Miss => ChannelResolutionOutcome::Miss,
+            rustok_channel::ResolutionOutcome::Rejected => ChannelResolutionOutcome::Rejected,
+        },
+        detail: step.detail,
+    }
 }
 
 fn channel_id_from_header(headers: &axum::http::HeaderMap) -> Option<Uuid> {
@@ -229,10 +257,12 @@ pub async fn invalidate_tenant_channel_cache(ctx: &AppContext, tenant_id: Uuid) 
 mod tests {
     use super::{
         build_request_facts, channel_id_from_header, channel_slug_from_header,
-        channel_slug_from_query, resolved_detail_and_source,
+        channel_slug_from_query, resolved_detail_source_and_trace,
     };
     use crate::common::RustokSettings;
-    use crate::context::ChannelResolutionSource;
+    use crate::context::{
+        ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
+    };
     use axum::http::{header::HOST, HeaderMap};
     use rustok_channel::{
         migrations, ChannelResolver, ChannelService, CreateChannelInput, CreateChannelTargetInput,
@@ -394,7 +424,7 @@ mod tests {
         headers.insert(HOST, "shop.example.test".parse().expect("host header"));
 
         let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_and_source(
+        let selected = resolved_detail_source_and_trace(
             resolver
                 .resolve(&build_request_facts(
                     tenant_id,
@@ -428,7 +458,7 @@ mod tests {
         headers.insert(HOST, "SHOP.EXAMPLE.TEST.:443".parse().expect("host header"));
 
         let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_and_source(
+        let selected = resolved_detail_source_and_trace(
             resolver
                 .resolve(&build_request_facts(
                     tenant_id,
@@ -465,7 +495,7 @@ mod tests {
 
         let headers = HeaderMap::new();
         let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_and_source(
+        let selected = resolved_detail_source_and_trace(
             resolver
                 .resolve(&build_request_facts(
                     tenant_id,
@@ -509,7 +539,7 @@ mod tests {
         headers.insert(HOST, "SHOP.EXAMPLE.TEST.:443".parse().expect("host header"));
 
         let resolver = ChannelResolver::new(db.clone());
-        let selected = resolved_detail_and_source(
+        let selected = resolved_detail_source_and_trace(
             resolver
                 .resolve(&build_request_facts(
                     tenant_id,
@@ -526,5 +556,52 @@ mod tests {
         assert_eq!(selected.0.channel.id, host_channel_id);
         assert_eq!(selected.0.channel.slug, "host-channel");
         assert_eq!(selected.1, ChannelResolutionSource::Host);
+    }
+
+    #[tokio::test]
+    async fn resolved_context_keeps_resolution_trace_for_runtime_diagnostics() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+
+        let _default_channel_id = create_channel(&service, tenant_id, "default").await;
+        let host_channel_id = create_channel(&service, tenant_id, "host-channel").await;
+        add_web_target(&service, host_channel_id, "shop.example.test").await;
+
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "shop.example.test".parse().expect("host header"));
+
+        let resolver = ChannelResolver::new(db);
+        let selected = resolved_detail_source_and_trace(
+            resolver
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &headers,
+                    Some("channel=missing"),
+                    None,
+                    &test_settings(),
+                ))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("host fallback should resolve");
+
+        assert!(
+            selected
+                .2
+                .iter()
+                .any(|step| step.stage == ChannelResolutionStage::Query
+                    && step.outcome == ChannelResolutionOutcome::Miss),
+            "trace should preserve pre-host misses for runtime diagnostics"
+        );
+        assert!(
+            selected
+                .2
+                .iter()
+                .any(|step| step.stage == ChannelResolutionStage::Host
+                    && step.outcome == ChannelResolutionOutcome::Matched),
+            "trace should preserve the final match"
+        );
     }
 }

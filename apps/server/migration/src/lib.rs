@@ -38,6 +38,8 @@ mod m20260405_000004_create_flex_attached_localized_values;
 mod m20260408_000001_expand_registry_publish_request_governance_states;
 mod m20260408_000002_expand_registry_validation_stage_runner_leases;
 mod m20260410_000001_cleanup_flex_attached_legacy_inline_metadata;
+mod m20260412_000001_reset_registry_identity_and_artifacts;
+mod m20260412_000002_split_registry_localized_metadata;
 
 pub struct Migrator;
 
@@ -80,6 +82,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260410_000001_cleanup_flex_attached_legacy_inline_metadata::Migration),
             Box::new(m20260408_000001_expand_registry_publish_request_governance_states::Migration),
             Box::new(m20260408_000002_expand_registry_validation_stage_runner_leases::Migration),
+            Box::new(m20260412_000001_reset_registry_identity_and_artifacts::Migration),
+            Box::new(m20260412_000002_split_registry_localized_metadata::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

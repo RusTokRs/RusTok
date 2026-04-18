@@ -99,6 +99,27 @@ Commerce storage остаётся split-domain family, но верхнеуров
 И здесь действует тот же принцип: base rows language-agnostic, локализованные
 поля вынесены в parallel records.
 
+## Registry / marketplace
+
+Registry storage для publish/governance тоже выровнен под тот же multilingual contract:
+
+- `registry_publish_requests`
+- `registry_publish_request_translations`
+- `registry_module_releases`
+- `registry_module_release_translations`
+- `registry_module_owners`
+- `registry_governance_events`
+
+Принцип:
+
+- base rows publish/release держат language-agnostic state, typed principals, status,
+  artifact storage keys и `default_locale`
+- display metadata модуля (`name`, `description`) живут в dedicated translations tables,
+  а не в base rows
+- ownership и governance audit trail остаются language-agnostic persistence
+- `registry_governance_events.details` считается internal audit payload, а не canonical
+  multilingual business copy
+
 ## Flex
 
 `flex` — capability slice, но он подчиняется тому же storage contract.

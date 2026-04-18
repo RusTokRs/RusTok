@@ -12,6 +12,7 @@ pub(crate) struct RegistryPublishModuleHttpRequest {
     pub(crate) slug: String,
     pub(crate) version: String,
     pub(crate) crate_name: String,
+    pub(crate) default_locale: String,
     pub(crate) name: String,
     pub(crate) description: String,
     pub(crate) ownership: String,
@@ -54,7 +55,7 @@ pub(crate) struct RegistryOwnerTransferHttpRequest {
     pub(crate) schema_version: u32,
     pub(crate) dry_run: bool,
     pub(crate) slug: String,
-    pub(crate) new_owner_actor: String,
+    pub(crate) new_owner_user_id: String,
     pub(crate) reason: Option<String>,
     pub(crate) reason_code: Option<String>,
 }

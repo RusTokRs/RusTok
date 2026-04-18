@@ -23,7 +23,7 @@ pub(crate) fn run_command(command: &ModuleCommandPreview) -> Result<()> {
 pub(crate) fn run_validation_stage_plan_via_registry(
     registry_url: &str,
     plan: &ModuleValidationStageRunPreview,
-    actor: &str,
+    auth_token: &str,
 ) -> Result<()> {
     let running_preview = ModuleValidationStageDryRunPreview {
         action: "validation_stage".to_string(),
@@ -34,7 +34,7 @@ pub(crate) fn run_validation_stage_plan_via_registry(
         reason_code: None,
         requeue: false,
     };
-    validation_stage_via_registry_live(registry_url, &running_preview, actor)?;
+    validation_stage_via_registry_live(registry_url, &running_preview, auth_token)?;
 
     for command in &plan.commands {
         println!("  > {}", command.argv.join(" "));
@@ -49,7 +49,7 @@ pub(crate) fn run_validation_stage_plan_via_registry(
                 requeue: false,
             };
             let report_error =
-                validation_stage_via_registry_live(registry_url, &failed_preview, actor)
+                validation_stage_via_registry_live(registry_url, &failed_preview, auth_token)
                     .err()
                     .map(|report_error| {
                         format!("; failed to persist failed stage status: {report_error}")
@@ -68,6 +68,6 @@ pub(crate) fn run_validation_stage_plan_via_registry(
         reason_code: Some(validation_stage_success_reason_code(&plan.stage).to_string()),
         requeue: false,
     };
-    validation_stage_via_registry_live(registry_url, &passed_preview, actor)?;
+    validation_stage_via_registry_live(registry_url, &passed_preview, auth_token)?;
     Ok(())
 }

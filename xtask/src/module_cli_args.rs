@@ -19,6 +19,8 @@ pub(crate) fn runner_token_argument(args: &[String]) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+pub(crate) const MODULE_AUTH_TOKEN_ENV: &str = "RUSTOK_MODULE_AUTH_TOKEN";
+
 pub(crate) fn positive_u64_argument(
     args: &[String],
     flag: &str,
@@ -36,8 +38,9 @@ pub(crate) fn positive_u64_argument(
     Ok(Some(parsed))
 }
 
-pub(crate) fn actor_argument(args: &[String]) -> Option<String> {
-    cli_option_value(args, "--actor")
+pub(crate) fn auth_token_argument(args: &[String]) -> Option<String> {
+    cli_option_value(args, "--auth-token")
+        .or_else(|| std::env::var(MODULE_AUTH_TOKEN_ENV).ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }

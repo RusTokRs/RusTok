@@ -602,6 +602,111 @@ fn admin_order_parity_query(
     )
 }
 
+fn admin_create_refund_mutation(
+    tenant_id: Uuid,
+    payment_collection_id: Uuid,
+    amount: &str,
+    reason: &str,
+    step: &str,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          createRefund(
+            tenantId: "{tenant_id}",
+            paymentCollectionId: "{payment_collection_id}",
+            input: {{
+              amount: "{amount}"
+              reason: "{reason}"
+              metadata: "{{\"source\":\"graphql-refund\",\"step\":\"{step}\"}}"
+            }}
+          ) {{
+            id
+            status
+            amount
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_complete_refund_mutation(tenant_id: Uuid, refund_id: Uuid) -> String {
+    format!(
+        r#"
+        mutation {{
+          completeRefund(
+            tenantId: "{tenant_id}",
+            id: "{refund_id}",
+            input: {{
+              metadata: "{{\"source\":\"graphql-refund\",\"step\":\"complete-1\"}}"
+            }}
+          ) {{
+            id
+            status
+            refundedAt
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_cancel_refund_mutation(tenant_id: Uuid, refund_id: Uuid) -> String {
+    format!(
+        r#"
+        mutation {{
+          cancelRefund(
+            tenantId: "{tenant_id}",
+            id: "{refund_id}",
+            input: {{
+              reason: "review-failed"
+              metadata: "{{\"source\":\"graphql-refund\",\"step\":\"cancel-2\"}}"
+            }}
+          ) {{
+            id
+            status
+            cancelledAt
+            reason
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_refund_query(tenant_id: Uuid, refund_id: Uuid, payment_collection_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          refund(tenantId: "{tenant_id}", id: "{refund_id}") {{
+            id
+            status
+            amount
+            reason
+          }}
+          refunds(
+            tenantId: "{tenant_id}",
+            filter: {{ page: 1, perPage: 20, paymentCollectionId: "{payment_collection_id}" }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              paymentCollectionId
+            }}
+          }}
+          paymentCollection(tenantId: "{tenant_id}", id: "{payment_collection_id}") {{
+            id
+            status
+            refundedAmount
+            refunds {{
+              id
+              status
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -2712,6 +2817,214 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         query_json["fulfillments"]["items"][0]["id"],
         Value::from(fulfillment.id.to_string())
     );
+}
+
+#[tokio::test]
+async fn admin_graphql_refund_surface_matches_runtime_services() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let event_bus = mock_transactional_event_bus();
+    let order_service = OrderService::new(db.clone(), event_bus.clone());
+    let payment_service = PaymentService::new(db.clone());
+
+    let created_order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-ADMIN-REFUND-1".to_string()),
+                    title: "GraphQL Admin Refund".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-admin-refund-parity" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-admin-refund-parity" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+    let confirmed_order = order_service
+        .confirm_order(tenant_id, actor_id, created_order.id)
+        .await
+        .expect("order should be confirmed");
+    let payment_collection = payment_service
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(confirmed_order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "graphql-admin-refund-parity" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+    payment_service
+        .authorize_collection(
+            tenant_id,
+            payment_collection.id,
+            rustok_commerce::dto::AuthorizePaymentInput {
+                provider_id: Some("manual".to_string()),
+                provider_payment_id: Some("graphql-refund-pay-1".to_string()),
+                amount: None,
+                metadata: serde_json::json!({ "step": "authorized" }),
+            },
+        )
+        .await
+        .expect("payment collection should be authorized");
+    payment_service
+        .capture_collection(
+            tenant_id,
+            payment_collection.id,
+            rustok_commerce::dto::CapturePaymentInput {
+                amount: Some(Decimal::from_str("25.00").expect("valid decimal")),
+                metadata: serde_json::json!({ "step": "captured" }),
+            },
+        )
+        .await
+        .expect("payment collection should be captured");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+
+    let create_first = schema
+        .execute(Request::new(admin_create_refund_mutation(
+            tenant_id,
+            payment_collection.id,
+            "10.00",
+            "customer-request",
+            "create-1",
+        )))
+        .await;
+    assert!(
+        create_first.errors.is_empty(),
+        "unexpected create refund errors: {:?}",
+        create_first.errors
+    );
+    let create_first_json = create_first
+        .data
+        .into_json()
+        .expect("GraphQL create refund response must serialize");
+    let first_refund_id = Uuid::parse_str(
+        create_first_json["createRefund"]["id"]
+            .as_str()
+            .expect("refund id should be returned"),
+    )
+    .expect("refund id should parse");
+    assert_eq!(
+        create_first_json["createRefund"]["status"],
+        Value::from("pending")
+    );
+
+    let complete_first = schema
+        .execute(Request::new(admin_complete_refund_mutation(
+            tenant_id,
+            first_refund_id,
+        )))
+        .await;
+    assert!(
+        complete_first.errors.is_empty(),
+        "unexpected complete refund errors: {:?}",
+        complete_first.errors
+    );
+    let complete_first_json = complete_first
+        .data
+        .into_json()
+        .expect("GraphQL complete refund response must serialize");
+    assert_eq!(
+        complete_first_json["completeRefund"]["status"],
+        Value::from("refunded")
+    );
+
+    let create_second = schema
+        .execute(Request::new(admin_create_refund_mutation(
+            tenant_id,
+            payment_collection.id,
+            "5.00",
+            "ops-review",
+            "create-2",
+        )))
+        .await;
+    assert!(
+        create_second.errors.is_empty(),
+        "unexpected second create refund errors: {:?}",
+        create_second.errors
+    );
+    let create_second_json = create_second
+        .data
+        .into_json()
+        .expect("GraphQL second create refund response must serialize");
+    let second_refund_id = Uuid::parse_str(
+        create_second_json["createRefund"]["id"]
+            .as_str()
+            .expect("refund id should be returned"),
+    )
+    .expect("refund id should parse");
+
+    let cancel_second = schema
+        .execute(Request::new(admin_cancel_refund_mutation(
+            tenant_id,
+            second_refund_id,
+        )))
+        .await;
+    assert!(
+        cancel_second.errors.is_empty(),
+        "unexpected cancel refund errors: {:?}",
+        cancel_second.errors
+    );
+    let cancel_second_json = cancel_second
+        .data
+        .into_json()
+        .expect("GraphQL cancel refund response must serialize");
+    assert_eq!(
+        cancel_second_json["cancelRefund"]["status"],
+        Value::from("cancelled")
+    );
+
+    let query = schema
+        .execute(Request::new(admin_refund_query(
+            tenant_id,
+            first_refund_id,
+            payment_collection.id,
+        )))
+        .await;
+    assert!(
+        query.errors.is_empty(),
+        "unexpected refund query errors: {:?}",
+        query.errors
+    );
+    let query_json = query
+        .data
+        .into_json()
+        .expect("GraphQL refund query response must serialize");
+    assert_eq!(query_json["refund"]["status"], Value::from("refunded"));
+    assert_eq!(query_json["refunds"]["total"], Value::from(2));
+    assert_eq!(
+        query_json["paymentCollection"]["refundedAmount"],
+        Value::from("10")
+    );
+    assert_eq!(query_json["paymentCollection"]["refunds"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]

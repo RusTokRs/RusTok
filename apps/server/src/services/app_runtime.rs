@@ -106,8 +106,7 @@ pub async fn bootstrap_app_runtime(
         middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
         init_content_orchestration(ctx);
 
-        #[cfg(feature = "mod-media")]
-        init_storage(ctx, settings);
+        init_storage(ctx, settings).await?;
 
         #[cfg(feature = "mod-workflow")]
         init_workflow_runtime(ctx);
@@ -126,13 +125,15 @@ pub async fn bootstrap_app_runtime(
     })
 }
 
-#[cfg(feature = "mod-media")]
-fn init_storage(ctx: &AppContext, settings: &RustokSettings) {
+async fn init_storage(ctx: &AppContext, settings: &RustokSettings) -> Result<()> {
     use rustok_storage::StorageService;
 
-    let service = StorageService::from_config(&settings.storage);
+    let service = StorageService::from_config(&settings.storage)
+        .await
+        .map_err(|error| Error::Message(format!("Failed to initialize storage backend: {error}")))?;
     tracing::info!(driver = ?settings.storage.driver, "Initialized storage backend");
     ctx.shared_store.insert(service);
+    Ok(())
 }
 
 fn init_marketplace_catalog(ctx: &AppContext) {

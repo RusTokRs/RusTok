@@ -225,10 +225,11 @@ Consumer path:
 
 Governance first cut:
 
-- ✅ header-driven actor contract уже работает
+- ✅ live authority больше не берётся из `x-rustok-actor` / `x-rustok-publisher`; user bearer auth остаётся единственным live source для registry write-path
 - ✅ persisted slug owner binding уже сохраняется отдельно от governance actor; release publisher identity и `/modules` lifecycle UX теперь читают этот binding, а `x-rustok-publisher` отделён от audit actor `x-rustok-actor`
 - ✅ requested publisher identity теперь также сохраняется прямо в `registry_publish_requests`, и approve/reject policy больше не опирается только на `requested_by`
 - ✅ persisted audit trail теперь сохраняется в `registry_governance_events` и уже отражается в `/modules` как recent governance events для publish/upload/validate/approve/reject/owner-transfer/yank/owner-binding переходов
+- ✅ publish/release metadata теперь выровнены под platform multilingual storage contract: `module name` / `description` вынесены в `registry_*_translations`, а base rows держат только language-agnostic state + `default_locale`
 - ✅ есть first-cut policy для governance actors и slug-scoped publishers
 - ✅ ownership transfer теперь вынесен в явный `POST /v2/catalog/owner-transfer` с обязательной причиной, persisted owner rebind и отдельным audit event `owner_transferred`
 - ✅ approve/reject больше не считаются self-review шагом через `publisher_identity`: review path теперь требует governance actor или текущего persisted owner
@@ -237,7 +238,7 @@ Governance first cut:
 - ✅ `xtask module publish --auto-approve` теперь умеет и explicit approval override через `--approve-reason` / `--approve-reason-code`, если follow-up stages ещё не закрыты
 - ✅ `xtask module stage-run` теперь закрывает первый execution-path для follow-up stages: `compile_smoke` и `targeted_tests` можно прогнать локально и сразу записать их lifecycle в registry без ручного `running/passed/failed` шага, а `security_policy_review` теперь тоже идёт через operator-assisted local preflight + explicit `--confirm-manual-review`
 - ✅ `xtask module publish --auto-approve` теперь тоже стал stage-aware orchestration path, а не только approve caller: он сам прогоняет pending local stages (`compile_smoke`, `targeted_tests`, опционально `security_policy_review` при `--confirm-manual-review`) перед финальным approve/override решением
-- ✅ Live operator flows в `xtask` теперь больше не полагаются на скрытый synthetic review actor: `module publish`, `module stage`, `module stage-run`, `module owner-transfer` и `module yank` требуют явный `--actor`, а live preflight/mutation path использует один и тот же actor.
+- ✅ Live operator flows в `xtask` теперь больше не полагаются на скрытый synthetic review actor: `module publish`, `module stage`, `module stage-run`, `module owner-transfer` и `module yank` требуют bearer auth через `--auth-token` / `RUSTOK_MODULE_AUTH_TOKEN`, а live preflight/mutation path использует тот же session-backed user principal.
 - ✅ lease-based remote executor API уже живёт в `apps/server`: stage claims/heartbeats/completion/failure идут через `runner/*`, есть persisted lease metadata, periodic reaper и observability в `/health/runtime` + Prometheus
 - ✅ `cargo xtask module runner <runner-id> ...` теперь даёт thin remote worker поверх этого server-driven contract: он claim-ит runnable stages, шлёт heartbeat и завершает `compile_smoke` / `targeted_tests`, а `security_policy_review` остаётся opt-in через `--confirm-manual-review`
 - ✅ `xtask module owner-transfer` теперь уже умеет live V2 endpoint и structured `--reason-code` для machine-readable ownership handoff policy
@@ -266,9 +267,9 @@ Governance first cut:
 - ✅ Для explicit owner-transfer-path теперь тоже есть structured policy contract: live `POST /v2/catalog/owner-transfer` требует не только human-readable `reason`, но и structured `reason_code` (`maintenance_handoff|team_restructure|publisher_rotation|security_emergency|governance_override|other`), а `owner_transferred` audit event сохраняет оба значения.
 - ✅ Для финального publish-approval override теперь тоже есть structured policy contract: если follow-up validation stages ещё не закрыты, live `POST /v2/catalog/publish/{request_id}/approve` требует explicit `reason` + `reason_code` (`manual_review_complete|trusted_first_party|expedited_release|governance_override|other`), а audit trail сохраняет отдельный `publish_approval_override`.
 - ✅ Тонкие operator clients теперь тоже видят этот policy contract заранее: `GET /v2/catalog/publish/{request_id}` отдаёт `followUpGates`, canonical `validationStages`, `approvalOverrideRequired`, `approvalOverrideReasonCodes` и machine-readable `governanceActions`, так что preflight для approve и action availability больше не зависят только от live error path или локальных status-эвристик.
-- ✅ Для status-preflight этот contract теперь ещё и actor-aware: если thin client передаёт `x-rustok-actor`, `governanceActions` режутся до реально разрешённых request-level действий для этого actor, а не только до status-driven superset.
-- ✅ `/modules` теперь использует `registryLifecycle` только как summary/read-model: actor-agnostic `governanceActions` в нём сведены к release-management hints (`owner_transfer`, `yank`), а authoritative request-level operator contract читается отдельным actor-aware fetch к `GET /v2/catalog/publish/{request_id}` по текущему полю `Actor`.
-- ✅ `xtask` теперь тоже покрывает явные governance follow-up actions поверх того же status contract: `cargo xtask module request-changes|hold|resume <request-id> --actor <actor> --reason <text> --reason-code <code> --registry-url ...` сначала смотрит `governanceActions`, а потом уже вызывает live route.
+- ✅ Для status-preflight этот contract теперь auth-aware: если thin client передаёт session-backed bearer auth, `governanceActions` режутся до реально разрешённых request-level действий для этого user principal, а не только до status-driven superset.
+- ✅ `/modules` теперь использует `registryLifecycle` только как summary/read-model: actor-agnostic `governanceActions` в нём сведены к release-management hints (`owner_transfer`, `yank`), а authoritative request-level operator contract читается отдельным bearer-auth fetch к `GET /v2/catalog/publish/{request_id}`.
+- ✅ `xtask` теперь тоже покрывает явные governance follow-up actions поверх того же status contract: `cargo xtask module request-changes|hold|resume <request-id> --auth-token <token> --reason <text> --reason-code <code> --registry-url ...` сначала смотрит `governanceActions`, а потом уже вызывает live route.
 - ✅ Follow-up stage trail тоже стал более структурированным: `POST /v2/catalog/publish/{request_id}/stages` и `cargo xtask module stage ...` теперь умеют structured `reason_code`, а для live terminal stage updates (`passed` / `failed` / `blocked`) он уже обязателен. `stage-run` проставляет его автоматически (`local_runner_passed`, `build_failure`, `test_failure`, `manual_review_complete`, `policy_preflight_failed`, ...), так что moderation history по stage updates больше не живёт только как prose-detail.
 - ✅ Stricter policy layer для текущего action set считается закрытым для repo-side целей: authority и `reason` / `reason_code` enforcement живут на сервере, а thin clients читают server-driven preflight без локального request-level policy.
 
@@ -302,7 +303,7 @@ Governance first cut:
 - ✅ `cargo xtask module publish --auto-approve` теперь использует stage-aware status preflight и останавливается раньше live approve, если request требует override, а `--approve-reason` / `--approve-reason-code` не были переданы.
 - ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах, поэтому acceptance по `module-system` держится на targeted checks.
 - ✅ Repo-side verification baseline для `module-system` теперь сводится к поддерживаемому targeted-набору, а не к открытому feature backlog:
-  - actor-aware `GET /v2/catalog/publish/{request_id}` и текущий governance action set
+  - auth-aware `GET /v2/catalog/publish/{request_id}` и текущий governance action set
   - V2 lifecycle transitions, включая retry/requeue semantics и `reason` / `reason_code` enforcement
   - projection V2 → V1
   - thin runner contract: claim/heartbeat/complete/fail, lease expiry и stale/duplicate claim rejection

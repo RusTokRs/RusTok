@@ -11,6 +11,7 @@ use sea_orm::{
 use semver::{Version, VersionReq};
 use std::time::Instant;
 
+use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::{encode_cursor, PageInfo, PaginationInput};
 use crate::graphql::errors::GraphQLError;
@@ -378,14 +379,16 @@ fn marketplace_module_from_catalog_entry(
 
     MarketplaceModule {
         slug: entry.slug.clone(),
-        name: runtime_module
-            .map(|module| module.name().to_string())
-            .or_else(|| entry.name.clone())
+        name: entry
+            .name
+            .clone()
+            .or_else(|| runtime_module.map(|module| module.name().to_string()))
             .unwrap_or_else(|| humanize_slug(&entry.slug)),
         latest_version: latest_version.clone(),
-        description: runtime_module
-            .map(|module| module.description().to_string())
-            .or_else(|| entry.description.clone())
+        description: entry
+            .description
+            .clone()
+            .or_else(|| runtime_module.map(|module| module.description().to_string()))
             .unwrap_or_else(|| {
                 format!(
                     "{} module from {} source",
@@ -447,8 +450,8 @@ fn registry_module_lifecycle_from_snapshot(
         },
         owner_binding: snapshot.owner_binding.map(|owner| {
             crate::graphql::types::RegistryOwnerLifecycle {
-                owner_actor: owner.owner_actor,
-                bound_by: owner.bound_by,
+                owner_actor: owner.owner_actor.into(),
+                bound_by: owner.bound_by.into(),
                 bound_at: owner.bound_at,
                 updated_at: owner.updated_at,
             }
@@ -457,16 +460,16 @@ fn registry_module_lifecycle_from_snapshot(
             crate::graphql::types::RegistryPublishRequestLifecycle {
                 id: request.id,
                 status: request.status,
-                requested_by: request.requested_by,
-                publisher_identity: request.publisher_identity,
-                approved_by: request.approved_by,
-                rejected_by: request.rejected_by,
+                requested_by: request.requested_by.into(),
+                publisher_identity: request.publisher_identity.map(Into::into),
+                approved_by: request.approved_by.map(Into::into),
+                rejected_by: request.rejected_by.map(Into::into),
                 rejection_reason: request.rejection_reason,
-                changes_requested_by: request.changes_requested_by,
+                changes_requested_by: request.changes_requested_by.map(Into::into),
                 changes_requested_reason: request.changes_requested_reason,
                 changes_requested_reason_code: request.changes_requested_reason_code,
                 changes_requested_at: request.changes_requested_at,
-                held_by: request.held_by,
+                held_by: request.held_by.map(Into::into),
                 held_reason: request.held_reason,
                 held_reason_code: request.held_reason_code,
                 held_at: request.held_at,
@@ -482,11 +485,11 @@ fn registry_module_lifecycle_from_snapshot(
             crate::graphql::types::RegistryReleaseLifecycle {
                 version: release.version,
                 status: release.status,
-                publisher: release.publisher,
+                publisher: release.publisher.into(),
                 checksum_sha256: release.checksum_sha256,
                 published_at: release.published_at,
                 yanked_reason: release.yanked_reason,
-                yanked_by: release.yanked_by,
+                yanked_by: release.yanked_by.map(Into::into),
                 yanked_at: release.yanked_at,
             }
         }),
@@ -497,9 +500,26 @@ fn registry_module_lifecycle_from_snapshot(
                 |event| crate::graphql::types::RegistryGovernanceEventLifecycle {
                     id: event.id,
                     event_type: event.event_type,
-                    actor: event.actor,
-                    publisher: event.publisher,
-                    details: event.details,
+                    actor: event.actor.into(),
+                    publisher: event.publisher.map(Into::into),
+                    payload: crate::graphql::types::RegistryGovernanceEventPayloadLifecycle {
+                        reason: event.payload.reason,
+                        reason_code: event.payload.reason_code,
+                        detail: event.payload.detail,
+                        version: event.payload.version,
+                        stage_key: event.payload.stage_key,
+                        attempt_number: event.payload.attempt_number,
+                        owner_transition: event.payload.owner_transition.map(|transition| {
+                            crate::graphql::types::RegistryOwnerTransitionLifecycle {
+                                previous_owner: transition.previous_owner.map(Into::into),
+                                new_owner: transition.new_owner.map(Into::into),
+                                bound_by: transition.bound_by.map(Into::into),
+                            }
+                        }),
+                        warnings: event.payload.warnings,
+                        errors: event.payload.errors,
+                        mode: event.payload.mode,
+                    },
                     created_at: event.created_at,
                 },
             )
@@ -686,9 +706,16 @@ async fn load_marketplace_catalog(
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
 ) -> Result<Vec<crate::modules::CatalogManifestModule>> {
-    marketplace_catalog_from_context(app_ctx)
+    let modules = marketplace_catalog_from_context(app_ctx)
         .list_modules(manifest, registry, query)
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+    RegistryGovernanceService::new(app_ctx.db.clone())
+        .apply_catalog_projection(modules, preferred_locale, fallback_locale)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
@@ -699,11 +726,22 @@ async fn load_marketplace_module(
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
     slug: &str,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
 ) -> Result<Option<crate::modules::CatalogManifestModule>> {
-    marketplace_catalog_from_context(app_ctx)
+    let module = marketplace_catalog_from_context(app_ctx)
         .get_module(manifest, registry, query, slug)
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    let Some(module) = module else {
+        return Ok(None);
+    };
+
+    let mut projected = RegistryGovernanceService::new(app_ctx.db.clone())
+        .apply_catalog_projection(vec![module], preferred_locale, fallback_locale)
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    Ok(projected.pop())
 }
 
 #[derive(Default)]
@@ -793,13 +831,21 @@ impl RootQuery {
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
+        let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
         let manifest = ManifestManager::load()
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let query = MarketplaceCatalogQuery::default();
         let catalog_by_slug: HashMap<String, crate::modules::CatalogManifestModule> =
-            load_marketplace_catalog(app_ctx, &manifest, registry, &query)
+            load_marketplace_catalog(
+                app_ctx,
+                &manifest,
+                registry,
+                &query,
+                Some(request_context.locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
                 .await?
                 .into_iter()
                 .map(|module| (module.slug.clone(), module))
@@ -949,6 +995,8 @@ impl RootQuery {
 
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
         let manifest = ManifestManager::load()
@@ -985,7 +1033,15 @@ impl RootQuery {
         };
 
         let modules = marketplace_modules_from_catalog(
-            load_marketplace_catalog(app_ctx, &manifest, registry, &query).await?,
+            load_marketplace_catalog(
+                app_ctx,
+                &manifest,
+                registry,
+                &query,
+                Some(request_context.locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?,
             registry,
             &installed_modules,
         )
@@ -1040,12 +1096,23 @@ impl RootQuery {
 
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data::<RequestContext>()?;
         let manifest = ManifestManager::load()
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let installed_modules = ManifestManager::installed_modules(&manifest);
         let slug = slug.trim().to_lowercase();
         let query = MarketplaceCatalogQuery::default();
-        let module = load_marketplace_module(app_ctx, &manifest, registry, &query, &slug).await?;
+        let module = load_marketplace_module(
+            app_ctx,
+            &manifest,
+            registry,
+            &query,
+            &slug,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await?;
         let Some(entry) = module else {
             return Ok(None);
         };

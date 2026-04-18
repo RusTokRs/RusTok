@@ -20,7 +20,8 @@ use rustok_fulfillment::services::FulfillmentService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::services::OrderService;
 use rustok_payment::dto::{
-    AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
+    AuthorizePaymentInput, CapturePaymentInput, CompleteRefundInput,
+    CreatePaymentCollectionInput, CreateRefundInput,
 };
 use rustok_payment::services::PaymentService;
 use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
@@ -244,6 +245,32 @@ async fn payment_service_supports_payment_collection_lifecycle_on_migrated_schem
         .await
         .expect("payment service should capture collection on migrated schema");
     assert_eq!(captured.status, "captured");
+
+    let refund = service
+        .create_refund(
+            tenant_id,
+            created.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("10.00").expect("valid decimal"),
+                reason: Some("migration-smoke".to_string()),
+                metadata: serde_json::json!({ "step": "refund-created" }),
+            },
+        )
+        .await
+        .expect("payment service should create refund on migrated schema");
+    assert_eq!(refund.status, "pending");
+
+    let refunded = service
+        .complete_refund(
+            tenant_id,
+            refund.id,
+            CompleteRefundInput {
+                metadata: serde_json::json!({ "step": "refund-completed" }),
+            },
+        )
+        .await
+        .expect("payment service should complete refund on migrated schema");
+    assert_eq!(refunded.status, "refunded");
 }
 
 #[tokio::test]
@@ -505,8 +532,11 @@ fn create_product_input() -> CreateProductInput {
             weight: Some(Decimal::from_str("1.5").expect("valid decimal")),
             weight_unit: Some("kg".to_string()),
         }],
+        seller_id: None,
         vendor: Some("Migration Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
+        shipping_profile_slug: None,
+        tags: Vec::new(),
         publish: false,
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
@@ -539,6 +569,7 @@ async fn ecommerce_migrations_create_expected_tables() {
         "customers",
         "payment_collections",
         "payments",
+        "refunds",
         "shipping_options",
         "fulfillments",
         "stock_locations",

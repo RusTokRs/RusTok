@@ -6,6 +6,7 @@ fn build_module_test_plan_includes_main_and_ui_crates() {
         slug: "blog".to_string(),
         version: "1.2.3".to_string(),
         crate_name: "rustok-blog".to_string(),
+        module_default_locale: "en".to_string(),
         module_name: "Blog".to_string(),
         module_description: "A blog module description long enough.".to_string(),
         ownership: "first_party".to_string(),
@@ -50,6 +51,7 @@ fn build_publish_registry_request_serializes_v2_contract() {
         slug: "blog".to_string(),
         version: "1.2.3".to_string(),
         crate_name: "rustok-blog".to_string(),
+        module_default_locale: "en".to_string(),
         module_name: "Blog".to_string(),
         module_description: "A blog module description long enough.".to_string(),
         ownership: "first_party".to_string(),
@@ -84,6 +86,7 @@ fn build_publish_registry_request_serializes_v2_contract() {
     assert_eq!(request_body["module"]["slug"], "blog");
     assert_eq!(request_body["module"]["version"], "1.2.3");
     assert_eq!(request_body["module"]["crate_name"], "rustok-blog");
+    assert_eq!(request_body["module"]["default_locale"], "en");
     assert_eq!(request_body["module"]["name"], "Blog");
     assert_eq!(
         request_body["module"]["description"],
@@ -114,6 +117,7 @@ fn build_live_publish_registry_request_turns_off_dry_run() {
         slug: "blog".to_string(),
         version: "1.2.3".to_string(),
         crate_name: "rustok-blog".to_string(),
+        module_default_locale: "en".to_string(),
         module_name: "Blog".to_string(),
         module_description: "A blog module description long enough.".to_string(),
         ownership: "first_party".to_string(),
@@ -170,7 +174,7 @@ fn module_publish_command_live_requires_registry_url() {
 }
 
 #[test]
-fn module_publish_command_live_requires_actor() {
+fn module_publish_command_live_requires_auth_token() {
     let _cwd_guard = WorkspaceRootGuard::enter();
     let args = vec![
         "blog".to_string(),
@@ -179,11 +183,11 @@ fn module_publish_command_live_requires_actor() {
     ];
 
     let error = module_publish_command(&args)
-        .expect_err("live publish should require actor before any network call");
+        .expect_err("live publish should require auth token before any network call");
 
     assert!(error
         .to_string()
-        .contains("Live module publish requires --actor <actor>"));
+        .contains("Live module publish requires --auth-token <token>"));
 }
 
 #[test]
@@ -452,7 +456,7 @@ fn module_stage_command_live_requires_registry_url() {
 }
 
 #[test]
-fn module_stage_command_live_requires_actor() {
+fn module_stage_command_live_requires_auth_token() {
     let args = vec![
         "rpr_test".to_string(),
         "compile_smoke".to_string(),
@@ -462,15 +466,15 @@ fn module_stage_command_live_requires_actor() {
     ];
 
     let error = module_stage_command(&args)
-        .expect_err("live stage update should require actor before any network call");
+        .expect_err("live stage update should require auth token before any network call");
 
     assert!(error
         .to_string()
-        .contains("Live module stage requires --actor <actor>"));
+        .contains("Live module stage requires --auth-token <token>"));
 }
 
 #[test]
-fn module_stage_run_command_live_requires_actor() {
+fn module_stage_run_command_live_requires_auth_token() {
     let _cwd_guard = WorkspaceRootGuard::enter();
     let args = vec![
         "blog".to_string(),
@@ -481,11 +485,11 @@ fn module_stage_run_command_live_requires_actor() {
     ];
 
     let error = module_stage_run_command(&args)
-        .expect_err("live stage-run should require actor before any network call");
+        .expect_err("live stage-run should require auth token before any network call");
 
     assert!(error
         .to_string()
-        .contains("Live module stage-run requires --actor <actor>"));
+        .contains("Live module stage-run requires --auth-token <token>"));
 }
 
 #[test]
@@ -537,18 +541,20 @@ fn runner_token_argument_uses_trimmed_env_and_ignores_blank_values() {
 }
 
 #[test]
-fn actor_argument_trims_and_ignores_blank_values() {
+fn auth_token_argument_trims_and_ignores_blank_values() {
     assert_eq!(
-        actor_argument(&[
-            "--actor".to_string(),
-            "  governance:moderator  ".to_string()
+        auth_token_argument(&[
+            "--auth-token".to_string(),
+            "  bearer-token  ".to_string()
         ]),
-        Some("governance:moderator".to_string())
+        Some("bearer-token".to_string())
     );
     assert_eq!(
-        actor_argument(&["--actor".to_string(), "   ".to_string()]),
+        auth_token_argument(&["--auth-token".to_string(), "   ".to_string()]),
         None
     );
+    let _guard = EnvVarGuard::set(MODULE_AUTH_TOKEN_ENV, Some("  env-token  "));
+    assert_eq!(auth_token_argument(&[]), Some("env-token".to_string()));
 }
 
 #[test]
@@ -592,7 +598,7 @@ fn publish_status_action_available_matches_governance_actions_case_insensitively
 }
 
 #[test]
-fn module_request_changes_command_live_requires_actor() {
+fn module_request_changes_command_live_requires_auth_token() {
     let args = vec![
         "rpr_123".to_string(),
         "--registry-url".to_string(),
@@ -604,11 +610,11 @@ fn module_request_changes_command_live_requires_actor() {
     ];
 
     let error = module_request_changes_command(&args)
-        .expect_err("live request-changes should require actor before any network call");
+        .expect_err("live request-changes should require auth token before any network call");
 
     assert!(error
         .to_string()
-        .contains("Live module request-changes requires --actor <actor>"));
+        .contains("Live module request-changes requires --auth-token <token>"));
 }
 
 #[test]
@@ -617,8 +623,8 @@ fn module_hold_command_live_requires_reason_code() {
         "rpr_123".to_string(),
         "--registry-url".to_string(),
         "http://localhost:5150".to_string(),
-        "--actor".to_string(),
-        "governance:moderator".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--reason".to_string(),
         "Incident review".to_string(),
     ];
@@ -637,8 +643,8 @@ fn module_resume_command_live_requires_reason() {
         "rpr_123".to_string(),
         "--registry-url".to_string(),
         "http://localhost:5150".to_string(),
-        "--actor".to_string(),
-        "governance:moderator".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--reason-code".to_string(),
         "review_complete".to_string(),
     ];
@@ -722,27 +728,27 @@ fn reason_code_argument_rejects_unknown_values() {
 }
 
 #[test]
-fn module_owner_transfer_command_rejects_empty_new_owner_actor() {
+fn module_owner_transfer_command_rejects_empty_new_owner_user_id() {
     let args = vec!["blog".to_string(), "   ".to_string()];
 
     let error = module_owner_transfer_command(&args)
-        .expect_err("empty new owner actor must fail before manifest lookup");
+        .expect_err("empty new owner user id must fail before manifest lookup");
 
     assert!(error
         .to_string()
-        .contains("module owner-transfer requires a non-empty new owner actor"));
+        .contains("module owner-transfer requires a non-empty new owner user id"));
 }
 
 #[test]
-fn module_owner_transfer_command_requires_slug_and_new_owner_actor() {
+fn module_owner_transfer_command_requires_slug_and_new_owner_user_id() {
     let args = vec!["blog".to_string()];
 
     let error = module_owner_transfer_command(&args)
-        .expect_err("owner-transfer command without actor should fail immediately");
+        .expect_err("owner-transfer command without new owner user id should fail immediately");
 
     assert!(error
         .to_string()
-        .contains("module owner-transfer requires a module slug and new owner actor"));
+        .contains("module owner-transfer requires a module slug and new owner user id"));
 }
 
 #[test]
@@ -750,9 +756,9 @@ fn module_owner_transfer_command_live_requires_reason() {
     let _guard = WorkspaceRootGuard::enter();
     let args = vec![
         "blog".to_string(),
-        "publisher:forum".to_string(),
-        "--actor".to_string(),
-        "registry:admin".to_string(),
+        "11111111-1111-1111-1111-111111111111".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--registry-url".to_string(),
         "http://127.0.0.1:5150".to_string(),
     ];
@@ -771,9 +777,9 @@ fn module_owner_transfer_command_live_requires_registry_url() {
     let _env_guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", None);
     let args = vec![
         "blog".to_string(),
-        "publisher:forum".to_string(),
-        "--actor".to_string(),
-        "registry:admin".to_string(),
+        "11111111-1111-1111-1111-111111111111".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--reason".to_string(),
         "ownership move".to_string(),
     ];
@@ -787,11 +793,11 @@ fn module_owner_transfer_command_live_requires_registry_url() {
 }
 
 #[test]
-fn module_owner_transfer_command_live_requires_actor() {
+fn module_owner_transfer_command_live_requires_auth_token() {
     let _guard = WorkspaceRootGuard::enter();
     let args = vec![
         "blog".to_string(),
-        "publisher:forum".to_string(),
+        "11111111-1111-1111-1111-111111111111".to_string(),
         "--reason".to_string(),
         "ownership move".to_string(),
         "--reason-code".to_string(),
@@ -801,11 +807,11 @@ fn module_owner_transfer_command_live_requires_actor() {
     ];
 
     let error = module_owner_transfer_command(&args)
-        .expect_err("live owner-transfer should require actor before any network call");
+        .expect_err("live owner-transfer should require auth token before any network call");
 
     assert!(error
         .to_string()
-        .contains("Live module owner-transfer requires --actor <actor>"));
+        .contains("Live module owner-transfer requires --auth-token <token>"));
 }
 
 #[test]
@@ -814,8 +820,8 @@ fn module_yank_command_live_requires_reason() {
     let args = vec![
         "blog".to_string(),
         "1.2.3".to_string(),
-        "--actor".to_string(),
-        "registry:admin".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--reason-code".to_string(),
         "rollback".to_string(),
         "--registry-url".to_string(),
@@ -849,8 +855,8 @@ fn module_yank_command_live_requires_registry_url() {
     let args = vec![
         "blog".to_string(),
         "1.2.3".to_string(),
-        "--actor".to_string(),
-        "registry:admin".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--reason".to_string(),
         "policy rollback".to_string(),
         "--reason-code".to_string(),
@@ -866,7 +872,7 @@ fn module_yank_command_live_requires_registry_url() {
 }
 
 #[test]
-fn module_yank_command_live_requires_actor() {
+fn module_yank_command_live_requires_auth_token() {
     let _guard = WorkspaceRootGuard::enter();
     let args = vec![
         "blog".to_string(),
@@ -880,11 +886,11 @@ fn module_yank_command_live_requires_actor() {
     ];
 
     let error = module_yank_command(&args)
-        .expect_err("live yank should require actor before any network call");
+        .expect_err("live yank should require auth token before any network call");
 
     assert!(error
         .to_string()
-        .contains("Live module yank requires --actor <actor>"));
+        .contains("Live module yank requires --auth-token <token>"));
 }
 
 #[test]
@@ -894,8 +900,8 @@ fn module_yank_command_live_requires_reason_code() {
     let args = vec![
         "blog".to_string(),
         "1.2.3".to_string(),
-        "--actor".to_string(),
-        "registry:admin".to_string(),
+        "--auth-token".to_string(),
+        "token".to_string(),
         "--reason".to_string(),
         "critical regression in production".to_string(),
         "--registry-url".to_string(),
@@ -983,7 +989,7 @@ fn build_owner_transfer_registry_request_serializes_v2_contract() {
         crate_name: "rustok-blog".to_string(),
         current_local_version: "1.2.3".to_string(),
         package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
-        new_owner_actor: "publisher:forum".to_string(),
+        new_owner_user_id: "11111111-1111-1111-1111-111111111111".to_string(),
         reason: Some("Ownership transferred to the forum publisher".to_string()),
         reason_code: Some("maintenance_handoff".to_string()),
     };
@@ -1000,7 +1006,10 @@ fn build_owner_transfer_registry_request_serializes_v2_contract() {
     );
     assert_eq!(request_body["dry_run"], true);
     assert_eq!(request_body["slug"], "blog");
-    assert_eq!(request_body["new_owner_actor"], "publisher:forum");
+    assert_eq!(
+        request_body["new_owner_user_id"],
+        "11111111-1111-1111-1111-111111111111"
+    );
     assert_eq!(
         request_body["reason"],
         "Ownership transferred to the forum publisher"
@@ -1016,7 +1025,7 @@ fn build_live_owner_transfer_registry_request_turns_off_dry_run() {
         crate_name: "rustok-blog".to_string(),
         current_local_version: "1.2.3".to_string(),
         package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
-        new_owner_actor: "publisher:comments".to_string(),
+        new_owner_user_id: "22222222-2222-2222-2222-222222222222".to_string(),
         reason: Some("Transfer to the comments publisher".to_string()),
         reason_code: Some("publisher_rotation".to_string()),
     };
@@ -1029,7 +1038,10 @@ fn build_live_owner_transfer_registry_request_turns_off_dry_run() {
     .expect("live owner transfer request should serialize");
 
     assert_eq!(request_body["dry_run"], false);
-    assert_eq!(request_body["new_owner_actor"], "publisher:comments");
+    assert_eq!(
+        request_body["new_owner_user_id"],
+        "22222222-2222-2222-2222-222222222222"
+    );
     assert_eq!(request_body["reason_code"], "publisher_rotation");
 }
 

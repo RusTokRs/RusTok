@@ -1998,6 +1998,7 @@ mod tests {
             target_value: Some(format!("{slug}.example.test")),
             settings: json!({}),
             resolution_source: ChannelResolutionSource::Host,
+            resolution_trace: Vec::new(),
         }
     }
 

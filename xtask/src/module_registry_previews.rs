@@ -32,7 +32,7 @@ pub(crate) fn build_module_yank_preview_for_slug(
 
 pub(crate) fn build_module_owner_transfer_preview_for_slug(
     slug: &str,
-    new_owner_actor: &str,
+    new_owner_user_id: &str,
     reason: Option<String>,
     reason_code: Option<String>,
 ) -> Result<ModuleOwnerTransferDryRunPreview> {
@@ -44,7 +44,7 @@ pub(crate) fn build_module_owner_transfer_preview_for_slug(
         crate_name: preview.crate_name,
         current_local_version: preview.version,
         package_manifest_path: preview.package_manifest_path,
-        new_owner_actor: new_owner_actor.to_string(),
+        new_owner_user_id: new_owner_user_id.to_string(),
         reason,
         reason_code,
     })

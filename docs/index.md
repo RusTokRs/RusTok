@@ -25,6 +25,7 @@
 ## Модульная система
 
 - [Обзор модульной платформы](./modules/overview.md)
+- [Как писать модуль в RusToK](./modules/module-authoring.md)
 - [План и текущее состояние модульной системы](./modules/module-system-plan.md)
 - [Контракт `rustok-module.toml`](./modules/manifest.md) — включая capability-only ghost modules вроде `alloy` и `flex`
 - [Реестр модулей и приложений](./modules/registry.md)

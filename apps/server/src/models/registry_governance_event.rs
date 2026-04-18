@@ -11,8 +11,10 @@ pub struct Model {
     pub request_id: Option<String>,
     pub release_id: Option<String>,
     pub event_type: String,
-    pub actor: String,
-    pub publisher: Option<String>,
+    #[sea_orm(column_name = "actor_principal")]
+    pub actor: Json,
+    #[sea_orm(column_name = "publisher_principal")]
+    pub publisher: Option<Json>,
     pub details: Json,
     pub created_at: DateTime<Utc>,
 }

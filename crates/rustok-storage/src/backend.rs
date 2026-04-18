@@ -29,6 +29,19 @@ pub trait StorageBackend: Send + Sync {
     /// Remove the object at `path`.  Idempotent — missing objects return `Ok`.
     async fn delete(&self, path: &str) -> Result<()>;
 
+    /// Read the raw object bytes for private download or validation flows.
+    async fn read(&self, path: &str) -> Result<bytes::Bytes>;
+
+    /// Resolve a private download URL when the backend supports native presigning.
+    async fn private_download_url(
+        &self,
+        path: &str,
+        expires_in: std::time::Duration,
+    ) -> Result<Option<String>>;
+
     /// Resolve the public URL for a stored path.
     fn public_url(&self, path: &str) -> String;
+
+    /// Stable backend identifier for diagnostics and persisted metadata.
+    fn backend_name(&self) -> &'static str;
 }

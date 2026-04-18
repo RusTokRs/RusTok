@@ -15,15 +15,14 @@ pub(crate) fn yank_via_registry_dry_run(
 pub(crate) fn yank_via_registry_live(
     registry_url: &str,
     preview: &ModuleYankDryRunPreview,
-    actor: &str,
+    auth_token: &str,
     reason: String,
     reason_code: String,
 ) -> Result<String> {
     let endpoint = format!("{}/v2/catalog/yank", registry_url.trim_end_matches('/'));
     let request = build_live_yank_registry_request(preview, Some(reason), Some(reason_code));
-    let publisher = format!("publisher:{}", preview.slug);
     let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, Some(actor), Some(&publisher))?;
+        post_registry_json_parsed(&endpoint, &request, Some(auth_token))?;
     if !response.accepted {
         anyhow::bail!(
             "Registry yank request was not accepted: {}",
@@ -52,7 +51,7 @@ pub(crate) fn owner_transfer_via_registry_dry_run(
 pub(crate) fn owner_transfer_via_registry_live(
     registry_url: &str,
     preview: &ModuleOwnerTransferDryRunPreview,
-    actor: &str,
+    auth_token: &str,
     reason: String,
     reason_code: String,
 ) -> Result<String> {
@@ -63,7 +62,7 @@ pub(crate) fn owner_transfer_via_registry_live(
     let request =
         build_live_owner_transfer_registry_request(preview, Some(reason), Some(reason_code));
     let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, Some(actor), None)?;
+        post_registry_json_parsed(&endpoint, &request, Some(auth_token))?;
     if !response.accepted {
         anyhow::bail!(
             "Registry owner transfer request was not accepted: {}",

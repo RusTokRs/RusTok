@@ -17,7 +17,7 @@ use rustok_fulfillment::entities::{
 use rustok_order::entities::{
     order, order_adjustment, order_line_item, order_line_item_translation, order_tax_line,
 };
-use rustok_payment::entities::{payment, payment_collection};
+use rustok_payment::entities::{payment, payment_collection, refund};
 use rustok_product::entities::product_tag;
 use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use rustok_tenant::entities::tenant_module;
@@ -205,6 +205,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(payment::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(refund::Entity),
     )
     .await;
     create_entity_table(db, &builder, schema.create_table_from_entity(order::Entity)).await;

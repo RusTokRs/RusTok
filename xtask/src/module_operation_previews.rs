@@ -27,7 +27,7 @@ pub(crate) struct ModuleOwnerTransferDryRunPreview {
     pub(crate) crate_name: String,
     pub(crate) current_local_version: String,
     pub(crate) package_manifest_path: String,
-    pub(crate) new_owner_actor: String,
+    pub(crate) new_owner_user_id: String,
     pub(crate) reason: Option<String>,
     pub(crate) reason_code: Option<String>,
 }

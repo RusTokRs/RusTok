@@ -23,6 +23,7 @@ fn build_publish_registry_request_with_dry_run(
             slug: preview.slug.clone(),
             version: preview.version.clone(),
             crate_name: preview.crate_name.clone(),
+            default_locale: preview.module_default_locale.clone(),
             name: preview.module_name.clone(),
             description: preview.module_description.clone(),
             ownership: preview.ownership.clone(),
@@ -107,7 +108,7 @@ fn build_owner_transfer_registry_request_with_dry_run(
         schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
         dry_run,
         slug: preview.slug.clone(),
-        new_owner_actor: preview.new_owner_actor.clone(),
+        new_owner_user_id: preview.new_owner_user_id.clone(),
         reason,
         reason_code,
     }

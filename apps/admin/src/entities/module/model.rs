@@ -1,4 +1,158 @@
 use serde::{Deserialize, Serialize};
+fn deserialize_registry_principal_label<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    registry_principal_label_from_value(&value)
+        .ok_or_else(|| serde::de::Error::custom("expected registry principal object or label"))
+}
+
+fn deserialize_optional_registry_principal_label<'de, D>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value
+        .as_ref()
+        .and_then(registry_principal_label_from_value))
+}
+
+pub fn registry_principal_label_from_value(value: &serde_json::Value) -> Option<String> {
+    value
+        .as_str()
+        .map(ToString::to_string)
+        .or_else(|| {
+            value
+                .get("displayLabel")
+                .or_else(|| value.get("display_label"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            value
+                .get("subject")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            value
+                .get("legacyLabel")
+                .or_else(|| value.get("legacy_label"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string)
+        })
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryOwnerTransitionLifecycle {
+    #[serde(rename = "previousOwner")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    pub previous_owner: Option<String>,
+    #[serde(rename = "newOwner")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    pub new_owner: Option<String>,
+    #[serde(rename = "boundBy")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    pub bound_by: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct RegistryGovernanceEventPayloadLifecycle {
+    pub reason: Option<String>,
+    #[serde(rename = "reasonCode")]
+    pub reason_code: Option<String>,
+    pub detail: Option<String>,
+    pub version: Option<String>,
+    #[serde(rename = "stageKey")]
+    pub stage_key: Option<String>,
+    #[serde(rename = "attemptNumber")]
+    pub attempt_number: Option<i32>,
+    #[serde(rename = "ownerTransition")]
+    pub owner_transition: Option<RegistryOwnerTransitionLifecycle>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    pub mode: Option<String>,
+}
+
+impl RegistryGovernanceEventPayloadLifecycle {
+    pub fn from_details(details: &serde_json::Value) -> Self {
+        let warnings = details
+            .get("warnings")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(ToString::to_string))
+            .collect();
+        let errors = details
+            .get("errors")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(ToString::to_string))
+            .collect();
+        let attempt_number = details
+            .get("attempt_number")
+            .and_then(serde_json::Value::as_i64)
+            .map(|value| value as i32);
+        let owner_transition = if details.get("previous_owner_actor").is_some()
+            || details.get("new_owner_actor").is_some()
+            || details.get("owner_actor").is_some()
+            || details.get("bound_by").is_some()
+        {
+            Some(RegistryOwnerTransitionLifecycle {
+                previous_owner: details
+                    .get("previous_owner_actor")
+                    .and_then(registry_principal_label_from_value),
+                new_owner: details
+                    .get("new_owner_actor")
+                    .or_else(|| details.get("owner_actor"))
+                    .and_then(registry_principal_label_from_value),
+                bound_by: details
+                    .get("bound_by")
+                    .and_then(registry_principal_label_from_value),
+            })
+        } else {
+            None
+        };
+
+        Self {
+            reason: details
+                .get("reason")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            reason_code: details
+                .get("reason_code")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            detail: details
+                .get("detail")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            version: details
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            stage_key: details
+                .get("stage")
+                .or_else(|| details.get("gate"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            attempt_number,
+            owner_transition,
+            warnings,
+            errors,
+            mode: details
+                .get("mode")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ModuleInfo {
@@ -157,8 +311,10 @@ pub struct RegistryGovernanceActionLifecycle {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryOwnerLifecycle {
     #[serde(rename = "ownerActor")]
+    #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub owner_actor: String,
     #[serde(rename = "boundBy")]
+    #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub bound_by: String,
     #[serde(rename = "boundAt")]
     pub bound_at: String,
@@ -171,9 +327,12 @@ pub struct RegistryGovernanceEventLifecycle {
     pub id: String,
     #[serde(rename = "eventType")]
     pub event_type: String,
+    #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub actor: String,
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub publisher: Option<String>,
-    pub details: serde_json::Value,
+    #[serde(rename = "payload", alias = "details")]
+    pub payload: RegistryGovernanceEventPayloadLifecycle,
     #[serde(rename = "createdAt")]
     pub created_at: String,
 }
@@ -221,16 +380,21 @@ pub struct RegistryPublishRequestLifecycle {
     pub id: String,
     pub status: String,
     #[serde(rename = "requestedBy")]
+    #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub requested_by: String,
     #[serde(rename = "publisherIdentity")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub publisher_identity: Option<String>,
     #[serde(rename = "approvedBy")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub approved_by: Option<String>,
     #[serde(rename = "rejectedBy")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub rejected_by: Option<String>,
     #[serde(rename = "rejectionReason")]
     pub rejection_reason: Option<String>,
     #[serde(rename = "changesRequestedBy")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub changes_requested_by: Option<String>,
     #[serde(rename = "changesRequestedReason")]
     pub changes_requested_reason: Option<String>,
@@ -239,6 +403,7 @@ pub struct RegistryPublishRequestLifecycle {
     #[serde(rename = "changesRequestedAt")]
     pub changes_requested_at: Option<String>,
     #[serde(rename = "heldBy")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub held_by: Option<String>,
     #[serde(rename = "heldReason")]
     pub held_reason: Option<String>,
@@ -264,6 +429,7 @@ pub struct RegistryPublishRequestLifecycle {
 pub struct RegistryReleaseLifecycle {
     pub version: String,
     pub status: String,
+    #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub publisher: String,
     #[serde(rename = "checksumSha256")]
     pub checksum_sha256: Option<String>,
@@ -272,6 +438,7 @@ pub struct RegistryReleaseLifecycle {
     #[serde(rename = "yankedReason")]
     pub yanked_reason: Option<String>,
     #[serde(rename = "yankedBy")]
+    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
     pub yanked_by: Option<String>,
     #[serde(rename = "yankedAt")]
     pub yanked_at: Option<String>,

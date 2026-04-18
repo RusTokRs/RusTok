@@ -68,8 +68,32 @@ impl StorageBackend for LocalStorage {
         }
     }
 
+    #[instrument(skip(self), fields(path))]
+    async fn read(&self, path: &str) -> Result<bytes::Bytes> {
+        let dest = self.resolve(path)?;
+        match tokio::fs::read(&dest).await {
+            Ok(bytes) => Ok(bytes::Bytes::from(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Err(StorageError::NotFound(path.to_string()))
+            }
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
+    async fn private_download_url(
+        &self,
+        _path: &str,
+        _expires_in: std::time::Duration,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn public_url(&self, path: &str) -> String {
         format!("{}/{}", self.base_url, path.trim_start_matches('/'))
+    }
+
+    fn backend_name(&self) -> &'static str {
+        "local"
     }
 }
 

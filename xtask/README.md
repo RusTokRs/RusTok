@@ -34,11 +34,11 @@ Registry/operator flows use the same binary:
 cargo xtask module publish <slug> --dry-run
 cargo xtask module stage-run <slug> <request-id> <stage> --dry-run
 cargo xtask module runner <runner-id> --dry-run --once
-cargo xtask module request-changes <request-id> --dry-run --actor <actor> --reason <text> --reason-code <code>
-cargo xtask module hold <request-id> --dry-run --actor <actor> --reason <text> --reason-code <code>
-cargo xtask module resume <request-id> --dry-run --actor <actor> --reason <text> --reason-code <code>
-cargo xtask module owner-transfer <slug> <new-owner-actor> --dry-run --actor <actor> --reason <text> --reason-code <code>
-cargo xtask module yank <slug> <version> --dry-run --actor <actor> --reason <text> --reason-code <code>
+cargo xtask module request-changes <request-id> --dry-run --auth-token <token> --reason <text> --reason-code <code>
+cargo xtask module hold <request-id> --dry-run --auth-token <token> --reason <text> --reason-code <code>
+cargo xtask module resume <request-id> --dry-run --auth-token <token> --reason <text> --reason-code <code>
+cargo xtask module owner-transfer <slug> <new-owner-user-id> --dry-run --auth-token <token> --reason <text> --reason-code <code>
+cargo xtask module yank <slug> <version> --dry-run --auth-token <token> --reason <text> --reason-code <code>
 ```
 
 Use `--dry-run` first for commands that would contact the registry or mutate publish lifecycle state.

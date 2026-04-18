@@ -8,6 +8,8 @@ use crate::{
     error::Result,
     local::LocalStorageConfig,
 };
+#[cfg(feature = "s3")]
+use crate::s3::{S3Storage, S3StorageConfig};
 
 /// High-level storage service wrapping a concrete backend.
 #[derive(Clone)]
@@ -15,9 +17,11 @@ pub struct StorageService(Arc<dyn StorageBackend>);
 
 impl StorageService {
     /// Build from a config struct.
-    pub fn from_config(config: &StorageConfig) -> Self {
+    pub async fn from_config(config: &StorageConfig) -> Result<Self> {
         match &config.driver {
-            StorageDriver::Local => Self::new(config.local.build()),
+            StorageDriver::Local => Ok(Self::new(config.local.build())),
+            #[cfg(feature = "s3")]
+            StorageDriver::S3 => Ok(Self::new(S3Storage::from_config(&config.s3).await?)),
         }
     }
 
@@ -57,12 +61,24 @@ impl StorageService {
         self.0.delete(path).await
     }
 
+    pub async fn read(&self, path: &str) -> Result<bytes::Bytes> {
+        self.0.read(path).await
+    }
+
+    pub async fn private_download_url(
+        &self,
+        path: &str,
+        expires_in: std::time::Duration,
+    ) -> Result<Option<String>> {
+        self.0.private_download_url(path, expires_in).await
+    }
+
     pub fn public_url(&self, path: &str) -> String {
         self.0.public_url(path)
     }
 
     pub fn backend_name(&self) -> &'static str {
-        "local" // extended when S3 backend added
+        self.0.backend_name()
     }
 }
 
@@ -71,6 +87,8 @@ impl StorageService {
 pub enum StorageDriver {
     #[default]
     Local,
+    #[cfg(feature = "s3")]
+    S3,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +97,9 @@ pub struct StorageConfig {
     pub driver: StorageDriver,
     #[serde(default)]
     pub local: LocalStorageConfig,
+    #[cfg(feature = "s3")]
+    #[serde(default)]
+    pub s3: S3StorageConfig,
 }
 
 impl Default for StorageConfig {
@@ -86,6 +107,8 @@ impl Default for StorageConfig {
         Self {
             driver: StorageDriver::Local,
             local: LocalStorageConfig::default(),
+            #[cfg(feature = "s3")]
+            s3: S3StorageConfig::default(),
         }
     }
 }

@@ -22,12 +22,13 @@ post-v0 resolution architecture.
 
 - [x] зафиксировать финальную resolution-модель `explicit selectors -> built-in target slice -> typed policies -> explicit default -> unresolved`;
 - [x] удерживать domain-owned resolver внутри `rustok-channel`;
-- [ ] удерживать sync между runtime contract, admin UI и server middleware tests.
+- [x] удерживать sync между runtime contract, admin UI и server middleware tests.
 
 ### 2. Policy rollout
 
-- [ ] довести policy trace в admin bootstrap/runtime diagnostics;
-- [ ] добавить operator flows для policy authoring, reorder и disable;
+- [x] довести policy trace в admin bootstrap/runtime diagnostics;
+- [x] добавить базовые operator flows для policy-set activation и policy-rule authoring/removal;
+- [ ] добавить полный operator flow для policy reorder и disable;
 - [ ] решить, остаётся ли built-in host slice отдельным fast-path после полного policy rollout.
 
 ### 3. Semantic expansion

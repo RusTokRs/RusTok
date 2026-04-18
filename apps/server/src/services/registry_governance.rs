@@ -3,9 +3,10 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Context};
 use chrono::{Duration, Utc};
+use rustok_core::{build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -21,9 +22,19 @@ use crate::models::registry_module_release::{
     self, ActiveModel as RegistryModuleReleaseActiveModel, Entity as RegistryModuleReleaseEntity,
     RegistryModuleReleaseStatus,
 };
+use crate::models::registry_module_release_translation::{
+    self as registry_module_release_translation,
+    ActiveModel as RegistryModuleReleaseTranslationActiveModel,
+    Entity as RegistryModuleReleaseTranslationEntity,
+};
 use crate::models::registry_publish_request::{
     self, ActiveModel as RegistryPublishRequestActiveModel, Entity as RegistryPublishRequestEntity,
     RegistryPublishRequestStatus,
+};
+use crate::models::registry_publish_request_translation::{
+    self as registry_publish_request_translation,
+    ActiveModel as RegistryPublishRequestTranslationActiveModel,
+    Entity as RegistryPublishRequestTranslationEntity,
 };
 use crate::models::registry_validation_job::{
     self, ActiveModel as RegistryValidationJobActiveModel, Entity as RegistryValidationJobEntity,
@@ -38,6 +49,7 @@ use crate::services::marketplace_catalog::{
     RegistryPublishMarketplaceRequest, RegistryPublishRequest, RegistryPublishUiPackagesRequest,
     REGISTRY_MUTATION_SCHEMA_VERSION,
 };
+use crate::services::registry_principal::RegistryPrincipalRef;
 
 const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
 const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
@@ -152,7 +164,7 @@ pub struct RegistryRemoteValidationClaim {
     pub suggested_pass_reason_code: Option<String>,
     pub suggested_failure_reason_code: Option<String>,
     pub suggested_blocked_reason_code: Option<String>,
-    pub artifact_url: String,
+    pub artifact_download_url: String,
     pub artifact_checksum_sha256: String,
     pub crate_name: String,
 }
@@ -161,16 +173,16 @@ pub struct RegistryRemoteValidationClaim {
 pub struct RegistryPublishRequestSnapshot {
     pub id: String,
     pub status: String,
-    pub requested_by: String,
-    pub publisher_identity: Option<String>,
-    pub approved_by: Option<String>,
-    pub rejected_by: Option<String>,
+    pub requested_by: RegistryPrincipalRef,
+    pub publisher_identity: Option<RegistryPrincipalRef>,
+    pub approved_by: Option<RegistryPrincipalRef>,
+    pub rejected_by: Option<RegistryPrincipalRef>,
     pub rejection_reason: Option<String>,
-    pub changes_requested_by: Option<String>,
+    pub changes_requested_by: Option<RegistryPrincipalRef>,
     pub changes_requested_reason: Option<String>,
     pub changes_requested_reason_code: Option<String>,
     pub changes_requested_at: Option<String>,
-    pub held_by: Option<String>,
+    pub held_by: Option<RegistryPrincipalRef>,
     pub held_reason: Option<String>,
     pub held_reason_code: Option<String>,
     pub held_at: Option<String>,
@@ -186,18 +198,18 @@ pub struct RegistryPublishRequestSnapshot {
 pub struct RegistryModuleReleaseSnapshot {
     pub version: String,
     pub status: String,
-    pub publisher: String,
+    pub publisher: RegistryPrincipalRef,
     pub checksum_sha256: Option<String>,
     pub published_at: String,
     pub yanked_reason: Option<String>,
-    pub yanked_by: Option<String>,
+    pub yanked_by: Option<RegistryPrincipalRef>,
     pub yanked_at: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RegistryModuleOwnerSnapshot {
-    pub owner_actor: String,
-    pub bound_by: String,
+    pub owner_actor: RegistryPrincipalRef,
+    pub bound_by: RegistryPrincipalRef,
     pub bound_at: String,
     pub updated_at: String,
 }
@@ -206,10 +218,31 @@ pub struct RegistryModuleOwnerSnapshot {
 pub struct RegistryGovernanceEventSnapshot {
     pub id: String,
     pub event_type: String,
-    pub actor: String,
-    pub publisher: Option<String>,
-    pub details: serde_json::Value,
+    pub actor: RegistryPrincipalRef,
+    pub publisher: Option<RegistryPrincipalRef>,
+    pub payload: RegistryGovernanceEventPayload,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RegistryGovernanceEventPayload {
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
+    pub detail: Option<String>,
+    pub version: Option<String>,
+    pub stage_key: Option<String>,
+    pub attempt_number: Option<i32>,
+    pub owner_transition: Option<RegistryOwnerTransitionPayload>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryOwnerTransitionPayload {
+    pub previous_owner: Option<RegistryPrincipalRef>,
+    pub new_owner: Option<RegistryPrincipalRef>,
+    pub bound_by: Option<RegistryPrincipalRef>,
 }
 
 #[derive(Debug, Clone)]
@@ -270,6 +303,13 @@ struct RegistryValidationCheckDetail {
     key: String,
     status: String,
     detail: String,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryLocalizedMetadata {
+    locale: String,
+    name: String,
+    description: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -363,8 +403,7 @@ impl RegistryGovernanceService {
             slug: request.module.slug.clone(),
             version: request.module.version.clone(),
             crate_name: request.module.crate_name.clone(),
-            module_name: request.module.name.clone(),
-            description: request.module.description.clone(),
+            default_locale: normalize_registry_locale(&request.module.default_locale),
             ownership: request.module.ownership.clone(),
             trust_level: request.module.trust_level.clone(),
             license: request.module.license.clone(),
@@ -374,8 +413,8 @@ impl RegistryGovernanceService {
             ui_packages: serde_json::to_value(&request.module.ui_packages)
                 .context("failed to serialize registry publish ui_packages metadata")?,
             status: RegistryPublishRequestStatus::Draft,
-            requested_by: normalize_actor(requested_by),
-            publisher_identity: normalize_optional_actor(publisher),
+            requested_by: actor_principal(requested_by).to_json_value(),
+            publisher_identity: optional_actor_principal(publisher).map(|value| value.to_json_value()),
             approved_by: None,
             rejected_by: None,
             rejection_reason: None,
@@ -391,8 +430,7 @@ impl RegistryGovernanceService {
             validation_warnings: serde_json::to_value(warnings)
                 .context("failed to serialize registry publish warnings")?,
             validation_errors: serde_json::json!([]),
-            artifact_path: None,
-            artifact_url: None,
+            artifact_storage_key: None,
             artifact_checksum_sha256: None,
             artifact_size: None,
             artifact_content_type: None,
@@ -409,8 +447,7 @@ impl RegistryGovernanceService {
             slug: Set(model.slug.clone()),
             version: Set(model.version.clone()),
             crate_name: Set(model.crate_name.clone()),
-            module_name: Set(model.module_name.clone()),
-            description: Set(model.description.clone()),
+            default_locale: Set(model.default_locale.clone()),
             ownership: Set(model.ownership.clone()),
             trust_level: Set(model.trust_level.clone()),
             license: Set(model.license.clone()),
@@ -434,8 +471,7 @@ impl RegistryGovernanceService {
             held_from_status: Set(None),
             validation_warnings: Set(model.validation_warnings.clone()),
             validation_errors: Set(model.validation_errors.clone()),
-            artifact_path: Set(None),
-            artifact_url: Set(None),
+            artifact_storage_key: Set(None),
             artifact_checksum_sha256: Set(None),
             artifact_size: Set(None),
             artifact_content_type: Set(None),
@@ -448,6 +484,13 @@ impl RegistryGovernanceService {
         };
 
         active_model.insert(&self.db).await?;
+        self.upsert_publish_request_translation(
+            &model.id,
+            &model.default_locale,
+            &request.module.name,
+            &request.module.description,
+        )
+        .await?;
         self.record_governance_event(
             &model.slug,
             Some(&model.id),
@@ -474,6 +517,68 @@ impl RegistryGovernanceService {
         Ok(RegistryPublishRequestEntity::find_by_id(request_id)
             .one(&self.db)
             .await?)
+    }
+
+    async fn publish_request_default_metadata(
+        &self,
+        request: &registry_publish_request::Model,
+    ) -> anyhow::Result<RegistryLocalizedMetadata> {
+        load_publish_request_metadata(
+            &self.db,
+            &request.id,
+            Some(request.default_locale.as_str()),
+            Some(request.default_locale.as_str()),
+        )
+        .await
+    }
+
+    async fn upsert_publish_request_translation(
+        &self,
+        request_id: &str,
+        locale: &str,
+        name: &str,
+        description: &str,
+    ) -> anyhow::Result<()> {
+        upsert_publish_request_translation_record(&self.db, request_id, locale, name, description)
+            .await
+    }
+
+    async fn replace_release_translations_from_request(
+        &self,
+        release_id: &str,
+        request: &registry_publish_request::Model,
+    ) -> anyhow::Result<()> {
+        let translations = load_publish_request_translation_rows(&self.db, &request.id).await?;
+        if translations.is_empty() {
+            let metadata = self.publish_request_default_metadata(request).await?;
+            upsert_release_translation_record(
+                &self.db,
+                release_id,
+                &metadata.locale,
+                &metadata.name,
+                &metadata.description,
+            )
+            .await?;
+            return Ok(());
+        }
+
+        RegistryModuleReleaseTranslationEntity::delete_many()
+            .filter(registry_module_release_translation::Column::ReleaseId.eq(release_id))
+            .exec(&self.db)
+            .await?;
+
+        for translation in translations {
+            upsert_release_translation_record(
+                &self.db,
+                release_id,
+                &translation.locale,
+                &translation.name,
+                &translation.description,
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 
     pub async fn upload_publish_artifact(
@@ -508,8 +613,7 @@ impl RegistryGovernanceService {
 
         let mut request_active: RegistryPublishRequestActiveModel = request.clone().into();
         request_active.status = Set(RegistryPublishRequestStatus::ArtifactUploaded);
-        request_active.artifact_path = Set(Some(stored.artifact_path.clone()));
-        request_active.artifact_url = Set(Some(stored.artifact_url.clone()));
+        request_active.artifact_storage_key = Set(Some(stored.artifact_storage_key.clone()));
         request_active.artifact_checksum_sha256 = Set(Some(checksum.clone()));
         request_active.artifact_size = Set(Some(stored.artifact_size));
         request_active.artifact_content_type = Set(Some(artifact.content_type.clone()));
@@ -532,10 +636,11 @@ impl RegistryGovernanceService {
             deserialize_message_list(&request.validation_warnings)
         };
         let upload_actor = normalize_actor(actor);
-        if upload_actor != request.requested_by {
+        let requested_by = principal_display_label(&request.requested_by);
+        if upload_actor != requested_by {
             warnings.push(format!(
                 "Artifact was uploaded by '{}' for publish request originally created by '{}'.",
-                upload_actor, request.requested_by
+                upload_actor, requested_by
             ));
         }
         let warnings = dedupe_message_list(warnings);
@@ -574,13 +679,14 @@ impl RegistryGovernanceService {
         )
         .await?;
         if reupload_after_changes_requested {
+            let publisher = optional_principal_display_label(&request.publisher_identity);
             self.record_governance_event(
                 &request.slug,
                 Some(&request.id),
                 None,
                 "artifact_reuploaded_after_changes_requested",
                 actor,
-                request.publisher_identity.as_deref(),
+                publisher.as_deref(),
                 serde_json::json!({
                     "version": request.version.clone(),
                     "status": request_status_label(request.status.clone()),
@@ -848,7 +954,7 @@ impl RegistryGovernanceService {
             }
         };
 
-        let validation = validate_registry_artifact_bundle(&request, &artifact);
+        let validation = validate_registry_artifact_bundle(&self.db, &request, &artifact).await?;
         let mut warnings = deserialize_message_list(&request.validation_warnings);
         if artifact_load_attempt > 1 {
             warnings.push(format!(
@@ -893,7 +999,7 @@ impl RegistryGovernanceService {
         request_active.rejected_by = Set(None);
         request_active.rejection_reason = Set(None);
         request_active.validated_at = Set(Some(approved_at));
-        request_active.approved_by = Set(Some(normalize_actor(actor)));
+        request_active.approved_by = Set(Some(actor_principal(actor).to_json_value()));
         request_active.approved_at = Set(Some(approved_at));
         request_active.updated_at = Set(approved_at);
         let request = request_active.update(&self.db).await?;
@@ -1073,7 +1179,7 @@ impl RegistryGovernanceService {
             ) {
                 continue;
             }
-            let Some(artifact_url) = request.artifact_url.clone() else {
+            let Some(_artifact_storage_key) = request.artifact_storage_key.clone() else {
                 continue;
             };
             let Some(artifact_checksum_sha256) = request.artifact_checksum_sha256.clone() else {
@@ -1116,7 +1222,7 @@ impl RegistryGovernanceService {
 
             return Ok(Some(RegistryRemoteValidationClaim {
                 claim_id,
-                request_id: request.id,
+                request_id: request.id.clone(),
                 slug: request.slug,
                 version: request.version,
                 stage_key: stage.stage_key.clone(),
@@ -1138,7 +1244,7 @@ impl RegistryGovernanceService {
                 suggested_blocked_reason_code: Some(
                     remote_validation_blocked_reason_code(&stage.stage_key).to_string(),
                 ),
-                artifact_url,
+                artifact_download_url: registry_artifact_download_path(&request.id),
                 artifact_checksum_sha256,
                 crate_name: request.crate_name,
             }));
@@ -1332,11 +1438,8 @@ impl RegistryGovernanceService {
         }
 
         let stored = StoredRegistryArtifact {
-            artifact_path: request.artifact_path.clone().ok_or_else(|| {
-                anyhow!("Registry publish request '{request_id}' is missing artifact_path")
-            })?,
-            artifact_url: request.artifact_url.clone().ok_or_else(|| {
-                anyhow!("Registry publish request '{request_id}' is missing artifact_url")
+            artifact_storage_key: request.artifact_storage_key.clone().ok_or_else(|| {
+                anyhow!("Registry publish request '{request_id}' is missing artifact_storage_key")
             })?,
             artifact_size: request.artifact_size.ok_or_else(|| {
                 anyhow!("Registry publish request '{request_id}' is missing artifact_size")
@@ -1421,7 +1524,7 @@ impl RegistryGovernanceService {
 
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::Published);
-        request_active.approved_by = Set(Some(normalize_actor(actor)));
+        request_active.approved_by = Set(Some(actor_principal(actor).to_json_value()));
         request_active.approved_at = Set(Some(published_at));
         request_active.published_at = Set(Some(published_at));
         request_active.updated_at = Set(published_at);
@@ -1488,7 +1591,7 @@ impl RegistryGovernanceService {
         ));
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::Rejected);
-        request_active.rejected_by = Set(Some(normalize_actor(actor)));
+        request_active.rejected_by = Set(Some(actor_principal(actor).to_json_value()));
         request_active.rejection_reason = Set(Some(normalized_reason.clone()));
         request_active.validation_errors = Set(serde_json::to_value(dedupe_message_list(errors))?);
         request_active.updated_at = Set(rejected_at);
@@ -1545,19 +1648,20 @@ impl RegistryGovernanceService {
         let requested_at = Utc::now();
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::ChangesRequested);
-        request_active.changes_requested_by = Set(Some(normalize_actor(actor)));
+        request_active.changes_requested_by = Set(Some(actor_principal(actor).to_json_value()));
         request_active.changes_requested_reason = Set(Some(normalized_reason.clone()));
         request_active.changes_requested_reason_code = Set(Some(normalized_reason_code.clone()));
         request_active.changes_requested_at = Set(Some(requested_at));
         request_active.updated_at = Set(requested_at);
         let request = request_active.update(&self.db).await?;
+        let publisher = optional_principal_display_label(&request.publisher_identity);
         self.record_governance_event(
             &request.slug,
             Some(&request.id),
             None,
             "changes_requested",
             actor,
-            request.publisher_identity.as_deref(),
+            publisher.as_deref(),
             serde_json::json!({
                 "version": request.version.clone(),
                 "status": request_status_label(request.status.clone()),
@@ -1604,7 +1708,7 @@ impl RegistryGovernanceService {
         let previous_status = request.status.clone();
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::OnHold);
-        request_active.held_by = Set(Some(normalize_actor(actor)));
+        request_active.held_by = Set(Some(actor_principal(actor).to_json_value()));
         request_active.held_reason = Set(Some(normalized_reason.clone()));
         request_active.held_reason_code = Set(Some(normalized_reason_code.clone()));
         request_active.held_at = Set(Some(held_at));
@@ -1613,13 +1717,14 @@ impl RegistryGovernanceService {
         ));
         request_active.updated_at = Set(held_at);
         let request = request_active.update(&self.db).await?;
+        let publisher = optional_principal_display_label(&request.publisher_identity);
         self.record_governance_event(
             &request.slug,
             Some(&request.id),
             None,
             "request_held",
             actor,
-            request.publisher_identity.as_deref(),
+            publisher.as_deref(),
             serde_json::json!({
                 "version": request.version.clone(),
                 "status": request_status_label(request.status.clone()),
@@ -1673,13 +1778,14 @@ impl RegistryGovernanceService {
         request_active.status = Set(resumed_status.clone());
         request_active.updated_at = Set(resumed_at);
         let request = request_active.update(&self.db).await?;
+        let publisher = optional_principal_display_label(&request.publisher_identity);
         self.record_governance_event(
             &request.slug,
             Some(&request.id),
             None,
             "request_resumed",
             actor,
-            request.publisher_identity.as_deref(),
+            publisher.as_deref(),
             serde_json::json!({
                 "version": request.version.clone(),
                 "status": request_status_label(request.status.clone()),
@@ -1716,17 +1822,18 @@ impl RegistryGovernanceService {
         let mut active: RegistryModuleReleaseActiveModel = release.into();
         active.status = Set(RegistryModuleReleaseStatus::Yanked);
         active.yanked_reason = Set(Some(normalized_reason.clone()));
-        active.yanked_by = Set(Some(normalize_actor(actor)));
+        active.yanked_by = Set(Some(actor_principal(actor).to_json_value()));
         active.yanked_at = Set(Some(Utc::now()));
         active.updated_at = Set(Utc::now());
         let release = active.update(&self.db).await?;
+        let publisher = principal_display_label(&release.publisher);
         self.record_governance_event(
             &release.slug,
             release.request_id.as_deref(),
             Some(&release.id),
             "release_yanked",
             actor,
-            Some(&release.publisher),
+            Some(&publisher),
             serde_json::json!({
                 "version": release.version.clone(),
                 "status": release_status_label(release.status.clone()),
@@ -1760,7 +1867,7 @@ impl RegistryGovernanceService {
                 slug
             );
         }
-        if existing.owner_actor == next_owner {
+        if principal_matches_actor(&existing.owner_actor, &next_owner) {
             anyhow::bail!(
                 "Registry owner for slug '{}' is already bound to '{}'",
                 slug,
@@ -1774,12 +1881,12 @@ impl RegistryGovernanceService {
             "Registry owner transfer",
         )?;
 
-        let previous_owner = existing.owner_actor.clone();
+        let previous_owner = principal_display_label(&existing.owner_actor);
         let normalized_actor = normalize_actor(actor);
         let now = Utc::now();
         let mut active: RegistryModuleOwnerActiveModel = existing.into();
-        active.owner_actor = Set(next_owner.clone());
-        active.bound_by = Set(normalized_actor.clone());
+        active.owner_actor = Set(actor_principal(&next_owner).to_json_value());
+        active.bound_by = Set(actor_principal(&normalized_actor).to_json_value());
         active.bound_at = Set(now);
         active.updated_at = Set(now);
         let binding = active.update(&self.db).await?;
@@ -1789,11 +1896,11 @@ impl RegistryGovernanceService {
             None,
             "owner_transferred",
             &normalized_actor,
-            Some(&binding.owner_actor),
+            Some(&next_owner),
             serde_json::json!({
                 "previous_owner_actor": previous_owner,
-                "new_owner_actor": binding.owner_actor.clone(),
-                "bound_by": binding.bound_by.clone(),
+                "new_owner_actor": principal_display_label(&binding.owner_actor),
+                "bound_by": principal_display_label(&binding.bound_by),
                 "reason": normalized_reason,
                 "reason_code": normalized_reason_code,
             }),
@@ -1805,6 +1912,8 @@ impl RegistryGovernanceService {
     pub async fn apply_catalog_projection(
         &self,
         modules: Vec<CatalogManifestModule>,
+        preferred_locale: Option<&str>,
+        fallback_locale: Option<&str>,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
         let releases = RegistryModuleReleaseEntity::find()
             .order_by_desc(registry_module_release::Column::PublishedAt)
@@ -1852,8 +1961,17 @@ impl RegistryGovernanceService {
                 .iter()
                 .find(|release| release.status == RegistryModuleReleaseStatus::Active)
             {
+                let metadata = load_release_metadata(
+                    &self.db,
+                    &latest_active.id,
+                    preferred_locale,
+                    fallback_locale.or(Some(latest_active.default_locale.as_str())),
+                )
+                .await?;
                 module.version = Some(latest_active.version.clone());
-                module.publisher = Some(latest_active.publisher.clone());
+                module.name = Some(metadata.name);
+                module.description = Some(metadata.description);
+                module.publisher = Some(principal_display_label(&latest_active.publisher));
                 module.checksum_sha256 = latest_active.checksum_sha256.clone();
             }
             module.versions = versions;
@@ -1922,8 +2040,8 @@ impl RegistryGovernanceService {
             owner_binding: owner_binding
                 .as_ref()
                 .map(|binding| RegistryModuleOwnerSnapshot {
-                    owner_actor: binding.owner_actor.clone(),
-                    bound_by: binding.bound_by.clone(),
+                    owner_actor: principal_from_json(&binding.owner_actor),
+                    bound_by: principal_from_json(&binding.bound_by),
                     bound_at: binding.bound_at.to_rfc3339(),
                     updated_at: binding.updated_at.to_rfc3339(),
                 }),
@@ -1932,18 +2050,20 @@ impl RegistryGovernanceService {
                 .map(|request| RegistryPublishRequestSnapshot {
                     id: request.id.clone(),
                     status: request_status_label(request.status.clone()).to_string(),
-                    requested_by: request.requested_by.clone(),
-                    publisher_identity: request.publisher_identity.clone(),
-                    approved_by: request.approved_by.clone(),
-                    rejected_by: request.rejected_by.clone(),
+                    requested_by: principal_from_json(&request.requested_by),
+                    publisher_identity: optional_principal_from_json(&request.publisher_identity),
+                    approved_by: optional_principal_from_json(&request.approved_by),
+                    rejected_by: optional_principal_from_json(&request.rejected_by),
                     rejection_reason: request.rejection_reason.clone(),
-                    changes_requested_by: request.changes_requested_by.clone(),
+                    changes_requested_by: optional_principal_from_json(
+                        &request.changes_requested_by,
+                    ),
                     changes_requested_reason: request.changes_requested_reason.clone(),
                     changes_requested_reason_code: request.changes_requested_reason_code.clone(),
                     changes_requested_at: request
                         .changes_requested_at
                         .map(|value| value.to_rfc3339()),
-                    held_by: request.held_by.clone(),
+                    held_by: optional_principal_from_json(&request.held_by),
                     held_reason: request.held_reason.clone(),
                     held_reason_code: request.held_reason_code.clone(),
                     held_at: request.held_at.map(|value| value.to_rfc3339()),
@@ -1959,11 +2079,11 @@ impl RegistryGovernanceService {
                 .map(|release| RegistryModuleReleaseSnapshot {
                     version: release.version.clone(),
                     status: release_status_label(release.status.clone()).to_string(),
-                    publisher: release.publisher.clone(),
+                    publisher: principal_from_json(&release.publisher),
                     checksum_sha256: release.checksum_sha256.clone(),
                     published_at: release.published_at.to_rfc3339(),
                     yanked_reason: release.yanked_reason.clone(),
-                    yanked_by: release.yanked_by.clone(),
+                    yanked_by: optional_principal_from_json(&release.yanked_by),
                     yanked_at: release.yanked_at.map(|value| value.to_rfc3339()),
                 }),
             recent_events: recent_events
@@ -1971,9 +2091,9 @@ impl RegistryGovernanceService {
                 .map(|event| RegistryGovernanceEventSnapshot {
                     id: event.id,
                     event_type: event.event_type,
-                    actor: event.actor,
-                    publisher: event.publisher,
-                    details: event.details,
+                    actor: principal_from_json(&event.actor),
+                    publisher: optional_principal_from_json(&event.publisher),
+                    payload: governance_event_payload(&event.details),
                     created_at: event.created_at.to_rfc3339(),
                 })
                 .collect(),
@@ -2049,13 +2169,13 @@ impl RegistryGovernanceService {
         let marketplace = request.marketplace.clone();
         let ui_packages = request.ui_packages.clone();
         let publisher = normalize_actor(publisher);
+        let publisher_principal = actor_principal(&publisher).to_json_value();
 
         if let Some(existing) = existing {
             let mut active: RegistryModuleReleaseActiveModel = existing.into();
             active.request_id = Set(Some(request_id.to_string()));
             active.crate_name = Set(request.crate_name.clone());
-            active.module_name = Set(request.module_name.clone());
-            active.description = Set(request.description.clone());
+            active.default_locale = Set(request.default_locale.clone());
             active.ownership = Set(request.ownership.clone());
             active.trust_level = Set(request.trust_level.clone());
             active.license = Set(request.license.clone());
@@ -2063,9 +2183,8 @@ impl RegistryGovernanceService {
             active.marketplace = Set(marketplace);
             active.ui_packages = Set(ui_packages);
             active.status = Set(RegistryModuleReleaseStatus::Active);
-            active.publisher = Set(publisher);
-            active.artifact_path = Set(Some(stored.artifact_path));
-            active.artifact_url = Set(Some(stored.artifact_url));
+            active.publisher = Set(publisher_principal);
+            active.artifact_storage_key = Set(Some(stored.artifact_storage_key));
             active.checksum_sha256 = Set(Some(checksum));
             active.artifact_size = Set(Some(stored.artifact_size));
             active.yanked_reason = Set(None);
@@ -2073,7 +2192,10 @@ impl RegistryGovernanceService {
             active.yanked_at = Set(None);
             active.published_at = Set(published_at);
             active.updated_at = Set(Utc::now());
-            return Ok(active.update(&self.db).await?);
+            let release = active.update(&self.db).await?;
+            self.replace_release_translations_from_request(&release.id, request)
+                .await?;
+            return Ok(release);
         }
 
         let id = format!("rrel_{}", uuid::Uuid::new_v4().simple());
@@ -2083,8 +2205,7 @@ impl RegistryGovernanceService {
             slug: Set(request.slug.clone()),
             version: Set(request.version.clone()),
             crate_name: Set(request.crate_name.clone()),
-            module_name: Set(request.module_name.clone()),
-            description: Set(request.description.clone()),
+            default_locale: Set(request.default_locale.clone()),
             ownership: Set(request.ownership.clone()),
             trust_level: Set(request.trust_level.clone()),
             license: Set(request.license.clone()),
@@ -2092,9 +2213,8 @@ impl RegistryGovernanceService {
             marketplace: Set(marketplace),
             ui_packages: Set(ui_packages),
             status: Set(RegistryModuleReleaseStatus::Active),
-            publisher: Set(publisher),
-            artifact_path: Set(Some(stored.artifact_path)),
-            artifact_url: Set(Some(stored.artifact_url)),
+            publisher: Set(publisher_principal),
+            artifact_storage_key: Set(Some(stored.artifact_storage_key)),
             checksum_sha256: Set(Some(checksum)),
             artifact_size: Set(Some(stored.artifact_size)),
             yanked_reason: Set(None),
@@ -2104,7 +2224,10 @@ impl RegistryGovernanceService {
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
         };
-        Ok(active.insert(&self.db).await?)
+        let release = active.insert(&self.db).await?;
+        self.replace_release_translations_from_request(&release.id, request)
+            .await?;
+        Ok(release)
     }
 
     async fn ensure_actor_can_create_publish_request(
@@ -2119,18 +2242,20 @@ impl RegistryGovernanceService {
         }
 
         let owner = self.registry_slug_owner(slug).await?;
-        let requested_publisher = normalize_optional_actor(publisher);
+        let requested_publisher = optional_actor_principal(publisher);
         if owner.as_ref().is_some_and(|owner| {
-            actor == owner.owner_actor
-                || requested_publisher.as_deref() == Some(owner.owner_actor.as_str())
+            principal_matches_actor(&owner.owner_actor, &actor)
+                || requested_publisher.as_ref().is_some_and(|publisher| {
+                    publisher == &principal_from_json(&owner.owner_actor)
+                })
         }) {
             return Ok(());
         }
 
         if owner.is_none()
             && (legacy_actor_can_manage_registry_slug(&actor, slug)
-                || requested_publisher.as_deref().is_some_and(|publisher| {
-                    legacy_actor_can_manage_registry_slug(publisher, slug)
+                || requested_publisher.as_ref().is_some_and(|publisher| {
+                    legacy_actor_can_manage_registry_slug(publisher.persisted_label(), slug)
                 }))
         {
             return Ok(());
@@ -2194,10 +2319,10 @@ impl RegistryGovernanceService {
         let actor = normalize_actor(actor);
         let owner = self.registry_slug_owner(&release.slug).await?;
         if actor_is_registry_admin(&actor)
-            || actor == release.publisher
+            || principal_matches_actor(&release.publisher, &actor)
             || owner
                 .as_ref()
-                .is_some_and(|owner| actor == owner.owner_actor)
+                .is_some_and(|owner| principal_matches_actor(&owner.owner_actor, &actor))
             || (owner.is_none() && legacy_actor_can_manage_registry_slug(&actor, &release.slug))
         {
             return Ok(());
@@ -2219,7 +2344,8 @@ impl RegistryGovernanceService {
         action: &str,
     ) -> anyhow::Result<()> {
         let actor = normalize_actor(actor);
-        if actor_is_registry_admin(&actor) || actor == binding.owner_actor {
+        if actor_is_registry_admin(&actor) || principal_matches_actor(&binding.owner_actor, &actor)
+        {
             return Ok(());
         }
 
@@ -2238,15 +2364,15 @@ impl RegistryGovernanceService {
         publisher: Option<&str>,
     ) -> anyhow::Result<String> {
         if let Some(owner) = self.registry_slug_owner(&request.slug).await? {
-            return Ok(owner.owner_actor);
+            return Ok(principal_display_label(&owner.owner_actor));
         }
 
-        if let Some(publisher) = request.publisher_identity.clone() {
+        if let Some(publisher) = optional_principal_display_label(&request.publisher_identity) {
             return Ok(publisher);
         }
 
-        if let Some(publisher) = normalize_optional_actor(publisher) {
-            return Ok(publisher);
+        if let Some(publisher) = optional_actor_principal(publisher) {
+            return Ok(publisher.label().to_string());
         }
 
         let actor = normalize_actor(actor);
@@ -2265,15 +2391,17 @@ impl RegistryGovernanceService {
     ) -> anyhow::Result<registry_module_owner::Model> {
         let owner_actor = normalize_actor(owner_actor);
         let bound_by = normalize_actor(bound_by);
+        let owner_principal = actor_principal(&owner_actor).to_json_value();
+        let bound_by_principal = actor_principal(&bound_by).to_json_value();
         let now = Utc::now();
 
         if let Some(existing) = RegistryModuleOwnerEntity::find_by_id(slug)
             .one(&self.db)
             .await?
         {
-            if existing.owner_actor == owner_actor {
+            if principal_matches_actor(&existing.owner_actor, &owner_actor) {
                 let mut active: RegistryModuleOwnerActiveModel = existing.into();
-                active.bound_by = Set(bound_by);
+                active.bound_by = Set(bound_by_principal);
                 active.updated_at = Set(now);
                 return Ok(active.update(&self.db).await?);
             }
@@ -2287,8 +2415,8 @@ impl RegistryGovernanceService {
             }
 
             let mut active: RegistryModuleOwnerActiveModel = existing.into();
-            active.owner_actor = Set(owner_actor);
-            active.bound_by = Set(bound_by);
+            active.owner_actor = Set(owner_principal);
+            active.bound_by = Set(bound_by_principal);
             active.bound_at = Set(now);
             active.updated_at = Set(now);
             let binding = active.update(&self.db).await?;
@@ -2297,11 +2425,11 @@ impl RegistryGovernanceService {
                 None,
                 None,
                 "owner_bound",
-                &binding.bound_by,
-                Some(&binding.owner_actor),
+                &bound_by,
+                Some(&owner_actor),
                 serde_json::json!({
-                    "owner_actor": binding.owner_actor.clone(),
-                    "bound_by": binding.bound_by.clone(),
+                    "owner_actor": principal_display_label(&binding.owner_actor),
+                    "bound_by": principal_display_label(&binding.bound_by),
                     "mode": "rebind",
                 }),
             )
@@ -2311,8 +2439,8 @@ impl RegistryGovernanceService {
 
         let active = RegistryModuleOwnerActiveModel {
             slug: Set(slug.to_string()),
-            owner_actor: Set(owner_actor),
-            bound_by: Set(bound_by),
+            owner_actor: Set(owner_principal),
+            bound_by: Set(bound_by_principal),
             bound_at: Set(now),
             updated_at: Set(now),
         };
@@ -2322,11 +2450,11 @@ impl RegistryGovernanceService {
             None,
             None,
             "owner_bound",
-            &binding.bound_by,
-            Some(&binding.owner_actor),
+            &bound_by,
+            Some(&owner_actor),
             serde_json::json!({
-                "owner_actor": binding.owner_actor.clone(),
-                "bound_by": binding.bound_by.clone(),
+                "owner_actor": principal_display_label(&binding.owner_actor),
+                "bound_by": principal_display_label(&binding.bound_by),
                 "mode": "initial",
             }),
         )
@@ -2912,7 +3040,7 @@ impl RegistryGovernanceService {
         request_active.status = Set(RegistryPublishRequestStatus::Rejected);
         request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
         request_active.validation_errors = Set(serde_json::to_value(&errors)?);
-        request_active.rejected_by = Set(Some(normalize_actor(actor)));
+        request_active.rejected_by = Set(Some(actor_principal(actor).to_json_value()));
         request_active.rejection_reason = Set(errors.first().cloned());
         request_active.validated_at = Set(Some(rejected_at));
         request_active.approved_by = Set(None);
@@ -2956,8 +3084,8 @@ impl RegistryGovernanceService {
             request_id: Set(request_id.map(ToString::to_string)),
             release_id: Set(release_id.map(ToString::to_string)),
             event_type: Set(event_type.to_string()),
-            actor: Set(normalize_actor(actor)),
-            publisher: Set(normalize_optional_actor(publisher)),
+            actor: Set(actor_principal(actor).to_json_value()),
+            publisher: Set(optional_actor_principal(publisher).map(|value| value.to_json_value())),
             details: Set(details),
             created_at: Set(Utc::now()),
         };
@@ -2967,24 +3095,25 @@ impl RegistryGovernanceService {
 
 #[derive(Debug, Clone)]
 struct StoredRegistryArtifact {
-    artifact_path: String,
-    artifact_url: String,
+    artifact_storage_key: String,
     artifact_size: i64,
 }
 
 async fn load_registry_artifact(
     request: &registry_publish_request::Model,
 ) -> anyhow::Result<RegistryArtifactUpload> {
-    let artifact_path = request.artifact_path.as_deref().ok_or_else(|| {
+    let artifact_storage_key = request.artifact_storage_key.as_deref().ok_or_else(|| {
         anyhow!(
-            "Registry publish request '{}' is missing artifact_path",
+            "Registry publish request '{}' is missing artifact_storage_key",
             request.id
         )
     })?;
-    let bytes = tokio::fs::read(artifact_path).await.with_context(|| {
+    let artifact_path = storage_key_path(artifact_storage_key);
+    let bytes = tokio::fs::read(&artifact_path).await.with_context(|| {
         format!(
             "failed to read registry artifact for request '{}' from {}",
-            request.id, artifact_path
+            request.id,
+            artifact_path.display()
         )
     })?;
 
@@ -3001,10 +3130,12 @@ async fn store_registry_artifact(
     request: &registry_publish_request::Model,
     artifact: &RegistryArtifactUpload,
 ) -> anyhow::Result<StoredRegistryArtifact> {
-    let artifact_dir = workspace_root()
-        .join("storage")
-        .join("registry-artifacts")
-        .join(&request.id);
+    let artifact_storage_key = registry_artifact_storage_key(&request.id, &request.slug, &request.version);
+    let artifact_path = storage_key_path(&artifact_storage_key);
+    let artifact_dir = artifact_path
+        .parent()
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("Registry artifact storage key resolved without parent directory"))?;
     tokio::fs::create_dir_all(&artifact_dir)
         .await
         .with_context(|| {
@@ -3014,7 +3145,6 @@ async fn store_registry_artifact(
             )
         })?;
 
-    let artifact_path = artifact_dir.join(format!("{}-{}.crate", request.slug, request.version));
     tokio::fs::write(&artifact_path, &artifact.bytes)
         .await
         .with_context(|| {
@@ -3024,19 +3154,26 @@ async fn store_registry_artifact(
             )
         })?;
 
-    // Use a relative, server-rooted URL rather than the raw filesystem path.
-    // Exposing the local FS path to clients leaks server directory structure
-    // and makes no sense as a downloadable URL.
-    let artifact_url = format!(
-        "/registry-artifacts/{}/{}-{}.crate",
-        request.id, request.slug, request.version
-    );
-
     Ok(StoredRegistryArtifact {
-        artifact_path: artifact_path.display().to_string(),
-        artifact_url,
+        artifact_storage_key,
         artifact_size: artifact.bytes.len() as i64,
     })
+}
+
+fn registry_artifact_storage_key(request_id: &str, slug: &str, version: &str) -> String {
+    format!("registry/artifacts/{request_id}/{slug}-{version}.crate")
+}
+
+fn storage_key_path(storage_key: &str) -> PathBuf {
+    let mut path = workspace_root().join("storage").join("media");
+    for part in storage_key.split('/') {
+        path.push(part);
+    }
+    path
+}
+
+fn registry_artifact_download_path(request_id: &str) -> String {
+    format!("/v2/catalog/publish/{request_id}/artifact/download")
 }
 
 fn follow_up_validation_warning() -> &'static str {
@@ -3544,13 +3681,6 @@ fn normalize_actor(value: &str) -> String {
     }
 }
 
-fn normalize_optional_actor(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(normalize_actor)
-}
-
 fn dedupe_message_list(values: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut deduped = Vec::new();
@@ -3646,9 +3776,7 @@ fn lifecycle_governance_actions(
         request
             .publisher_identity
             .as_ref()
-            .is_some_and(|publisher| {
-                owner_binding.is_none_or(|owner| owner.owner_actor != *publisher)
-            })
+            .is_some_and(|publisher| owner_binding.is_none_or(|owner| owner.owner_actor != *publisher))
     }) || owner_binding.is_some()
     {
         actions.push(governance_action_snapshot(
@@ -3814,6 +3942,311 @@ fn dedupe_governance_actions(
         .collect()
 }
 
+fn normalize_registry_locale(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+}
+
+async fn load_publish_request_translation_rows<C>(
+    db: &C,
+    request_id: &str,
+) -> anyhow::Result<Vec<registry_publish_request_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(RegistryPublishRequestTranslationEntity::find()
+        .filter(registry_publish_request_translation::Column::RequestId.eq(request_id))
+        .order_by_asc(registry_publish_request_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_release_translation_rows<C>(
+    db: &C,
+    release_id: &str,
+) -> anyhow::Result<Vec<registry_module_release_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(RegistryModuleReleaseTranslationEntity::find()
+        .filter(registry_module_release_translation::Column::ReleaseId.eq(release_id))
+        .order_by_asc(registry_module_release_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+fn resolve_registry_metadata<T, FName, FDescription, FLocale>(
+    translations: &[T],
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+    locale_of: FLocale,
+    name_of: FName,
+    description_of: FDescription,
+) -> Option<RegistryLocalizedMetadata>
+where
+    FLocale: Fn(&T) -> &str,
+    FName: Fn(&T) -> &str,
+    FDescription: Fn(&T) -> &str,
+{
+    let candidates = build_locale_candidates(
+        [
+            preferred_locale,
+            fallback_locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    );
+
+    for candidate in candidates {
+        if let Some(translation) = translations
+            .iter()
+            .find(|translation| locale_tags_match(locale_of(translation), &candidate))
+        {
+            return Some(RegistryLocalizedMetadata {
+                locale: normalize_registry_locale(locale_of(translation)),
+                name: name_of(translation).to_string(),
+                description: description_of(translation).to_string(),
+            });
+        }
+    }
+
+    translations.first().map(|translation| RegistryLocalizedMetadata {
+        locale: normalize_registry_locale(locale_of(translation)),
+        name: name_of(translation).to_string(),
+        description: description_of(translation).to_string(),
+    })
+}
+
+async fn load_publish_request_metadata<C>(
+    db: &C,
+    request_id: &str,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> anyhow::Result<RegistryLocalizedMetadata>
+where
+    C: ConnectionTrait,
+{
+    let translations = load_publish_request_translation_rows(db, request_id).await?;
+    resolve_registry_metadata(
+        &translations,
+        preferred_locale,
+        fallback_locale,
+        |translation| translation.locale.as_str(),
+        |translation| translation.name.as_str(),
+        |translation| translation.description.as_str(),
+    )
+    .ok_or_else(|| anyhow!("Registry publish request '{request_id}' is missing metadata translations"))
+}
+
+async fn load_release_metadata<C>(
+    db: &C,
+    release_id: &str,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> anyhow::Result<RegistryLocalizedMetadata>
+where
+    C: ConnectionTrait,
+{
+    let translations = load_release_translation_rows(db, release_id).await?;
+    resolve_registry_metadata(
+        &translations,
+        preferred_locale,
+        fallback_locale,
+        |translation| translation.locale.as_str(),
+        |translation| translation.name.as_str(),
+        |translation| translation.description.as_str(),
+    )
+    .ok_or_else(|| anyhow!("Registry release '{release_id}' is missing metadata translations"))
+}
+
+async fn upsert_publish_request_translation_record<C>(
+    db: &C,
+    request_id: &str,
+    locale: &str,
+    name: &str,
+    description: &str,
+) -> anyhow::Result<()>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_registry_locale(locale);
+    if let Some(existing) =
+        RegistryPublishRequestTranslationEntity::find_by_id((request_id.to_string(), locale.clone()))
+            .one(db)
+            .await?
+    {
+        let mut active: RegistryPublishRequestTranslationActiveModel = existing.into();
+        active.name = Set(name.trim().to_string());
+        active.description = Set(description.trim().to_string());
+        active.updated_at = Set(Utc::now());
+        active.update(db).await?;
+    } else {
+        RegistryPublishRequestTranslationActiveModel {
+            request_id: Set(request_id.to_string()),
+            locale: Set(locale),
+            name: Set(name.trim().to_string()),
+            description: Set(description.trim().to_string()),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+        }
+        .insert(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn upsert_release_translation_record<C>(
+    db: &C,
+    release_id: &str,
+    locale: &str,
+    name: &str,
+    description: &str,
+) -> anyhow::Result<()>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_registry_locale(locale);
+    if let Some(existing) =
+        RegistryModuleReleaseTranslationEntity::find_by_id((release_id.to_string(), locale.clone()))
+            .one(db)
+            .await?
+    {
+        let mut active: RegistryModuleReleaseTranslationActiveModel = existing.into();
+        active.name = Set(name.trim().to_string());
+        active.description = Set(description.trim().to_string());
+        active.updated_at = Set(Utc::now());
+        active.update(db).await?;
+    } else {
+        RegistryModuleReleaseTranslationActiveModel {
+            release_id: Set(release_id.to_string()),
+            locale: Set(locale),
+            name: Set(name.trim().to_string()),
+            description: Set(description.trim().to_string()),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+        }
+        .insert(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+fn actor_principal(actor: &str) -> RegistryPrincipalRef {
+    RegistryPrincipalRef::from_legacy_value(&normalize_actor(actor))
+}
+
+fn optional_actor_principal(actor: Option<&str>) -> Option<RegistryPrincipalRef> {
+    actor.map(actor_principal)
+}
+
+fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
+    RegistryPrincipalRef::from_json_value(value)
+}
+
+fn optional_principal_from_json(value: &Option<serde_json::Value>) -> Option<RegistryPrincipalRef> {
+    value.as_ref().map(principal_from_json)
+}
+
+fn principal_display_label(value: &serde_json::Value) -> String {
+    principal_from_json(value).label().to_string()
+}
+
+fn optional_principal_display_label(value: &Option<serde_json::Value>) -> Option<String> {
+    optional_principal_from_json(value).map(|principal| principal.label().to_string())
+}
+
+fn principal_matches_actor(value: &serde_json::Value, actor: &str) -> bool {
+    let left = principal_from_json(value);
+    let right = actor_principal(actor);
+    if left.is_user() && right.is_user() {
+        return left.user_id() == right.user_id();
+    }
+    left.subject == right.subject || left.persisted_label() == right.persisted_label()
+}
+
+fn optional_principal_matches_actor(value: &Option<serde_json::Value>, actor: &str) -> bool {
+    value.as_ref()
+        .is_some_and(|principal| principal_matches_actor(principal, actor))
+}
+
+fn governance_event_payload(details: &serde_json::Value) -> RegistryGovernanceEventPayload {
+    let warnings = details
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(ToString::to_string))
+        .collect();
+    let errors = details
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(ToString::to_string))
+        .collect();
+    let attempt_number = details
+        .get("attempt_number")
+        .and_then(serde_json::Value::as_i64)
+        .map(|value| value as i32);
+
+    let owner_transition = if details.get("previous_owner_actor").is_some()
+        || details.get("new_owner_actor").is_some()
+        || details.get("owner_actor").is_some()
+        || details.get("bound_by").is_some()
+    {
+        Some(RegistryOwnerTransitionPayload {
+            previous_owner: details
+                .get("previous_owner_actor")
+                .and_then(serde_json::Value::as_str)
+                .map(RegistryPrincipalRef::from_legacy_value),
+            new_owner: details
+                .get("new_owner_actor")
+                .or_else(|| details.get("owner_actor"))
+                .and_then(serde_json::Value::as_str)
+                .map(RegistryPrincipalRef::from_legacy_value),
+            bound_by: details
+                .get("bound_by")
+                .and_then(serde_json::Value::as_str)
+                .map(RegistryPrincipalRef::from_legacy_value),
+        })
+    } else {
+        None
+    };
+
+    RegistryGovernanceEventPayload {
+        reason: details
+            .get("reason")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        reason_code: details
+            .get("reason_code")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        detail: details
+            .get("detail")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        version: details
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        stage_key: details
+            .get("stage")
+            .or_else(|| details.get("gate"))
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        attempt_number,
+        owner_transition,
+        warnings,
+        errors,
+        mode: details
+            .get("mode")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+    }
+}
+
 fn normalize_runtime_actor(actor: Option<&str>) -> Option<String> {
     actor
         .map(normalize_actor)
@@ -3826,12 +4259,10 @@ fn actor_can_manage_publish_request(
     owner: Option<&registry_module_owner::Model>,
 ) -> bool {
     let actor = normalize_actor(actor);
-    let actor_matches_request = actor == request.requested_by
-        || request
-            .publisher_identity
-            .as_ref()
-            .is_some_and(|publisher| actor == publisher.as_str());
-    let actor_matches_owner = owner.is_some_and(|owner| actor == owner.owner_actor);
+    let actor_matches_request = principal_matches_actor(&request.requested_by, &actor)
+        || optional_principal_matches_actor(&request.publisher_identity, &actor);
+    let actor_matches_owner =
+        owner.is_some_and(|owner| principal_matches_actor(&owner.owner_actor, &actor));
 
     if actor_is_registry_governance(&actor) || actor_matches_owner {
         return true;
@@ -3847,7 +4278,7 @@ fn actor_can_review_publish_request(
 ) -> bool {
     let actor = normalize_actor(actor);
     actor_is_registry_review_governance(&actor)
-        || owner.is_some_and(|owner| actor == owner.owner_actor)
+        || owner.is_some_and(|owner| principal_matches_actor(&owner.owner_actor, &actor))
 }
 
 fn normalize_reason_code(
@@ -3903,10 +4334,11 @@ fn legacy_actor_can_manage_registry_slug(actor: &str, slug: &str) -> bool {
     actor == "publisher:*" || actor == format!("publisher:{slug}")
 }
 
-fn validate_registry_artifact_bundle(
+async fn validate_registry_artifact_bundle(
+    db: &DatabaseConnection,
     request: &registry_publish_request::Model,
     artifact: &RegistryArtifactUpload,
-) -> RegistryArtifactValidation {
+) -> anyhow::Result<RegistryArtifactValidation> {
     let mut validation = RegistryArtifactValidation::default();
 
     if !artifact
@@ -3925,9 +4357,16 @@ fn validate_registry_artifact_bundle(
             validation.errors.push(format!(
                 "Artifact bundle is not valid JSON for the registry publish contract: {error}"
             ));
-            return validation;
+            return Ok(validation);
         }
     };
+    let request_metadata = load_publish_request_metadata(
+        db,
+        &request.id,
+        Some(request.default_locale.as_str()),
+        Some(request.default_locale.as_str()),
+    )
+    .await?;
 
     if bundle.schema_version != REGISTRY_MUTATION_SCHEMA_VERSION {
         validation.errors.push(format!(
@@ -3942,16 +4381,22 @@ fn validate_registry_artifact_bundle(
         ));
     }
 
-    validate_artifact_module_contract(request, &bundle, &mut validation);
-    validate_artifact_file_contract(request, &bundle, &mut validation);
+    validate_artifact_module_contract(request, &request_metadata, &bundle, &mut validation);
+    validate_artifact_file_contract(
+        request,
+        &request_metadata,
+        &bundle,
+        &mut validation,
+    );
 
     validation.warnings = dedupe_message_list(validation.warnings);
     validation.errors = dedupe_message_list(validation.errors);
-    validation
+    Ok(validation)
 }
 
 fn validate_artifact_module_contract(
     request: &registry_publish_request::Model,
+    request_metadata: &RegistryLocalizedMetadata,
     bundle: &RegistryPublishArtifactBundle,
     validation: &mut RegistryArtifactValidation,
 ) {
@@ -3980,13 +4425,13 @@ fn validate_artifact_module_contract(
     validate_exact_field(
         "module.name",
         &bundle.module.module_name,
-        &request.module_name,
+        &request_metadata.name,
         &mut validation.errors,
     );
     validate_exact_field(
         "module.description",
         &bundle.module.module_description,
-        &request.description,
+        &request_metadata.description,
         &mut validation.errors,
     );
     validate_exact_field(
@@ -4058,6 +4503,7 @@ fn validate_artifact_module_contract(
 
 fn validate_artifact_file_contract(
     request: &registry_publish_request::Model,
+    request_metadata: &RegistryLocalizedMetadata,
     bundle: &RegistryPublishArtifactBundle,
     validation: &mut RegistryArtifactValidation,
 ) {
@@ -4103,6 +4549,7 @@ fn validate_artifact_file_contract(
         validate_package_manifest_contract(
             source,
             request,
+            request_metadata,
             &request_marketplace,
             &request_ui,
             validation,
@@ -4146,6 +4593,7 @@ fn validate_artifact_file_contract(
 fn validate_package_manifest_contract(
     source: &str,
     request: &registry_publish_request::Model,
+    request_metadata: &RegistryLocalizedMetadata,
     request_marketplace: &RegistryPublishMarketplaceRequest,
     request_ui: &RegistryPublishUiPackagesRequest,
     validation: &mut RegistryArtifactValidation,
@@ -4171,7 +4619,7 @@ fn validate_package_manifest_contract(
         &manifest,
         &["module", "name"],
         "rustok-module.toml [module].name",
-        &request.module_name,
+        &request_metadata.name,
         &mut validation.errors,
     );
     validate_toml_string_field(
@@ -4185,7 +4633,7 @@ fn validate_package_manifest_contract(
         &manifest,
         &["module", "description"],
         "rustok-module.toml [module].description",
-        &request.description,
+        &request_metadata.description,
         &mut validation.errors,
     );
     validate_toml_string_field(

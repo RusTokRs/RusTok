@@ -12,6 +12,8 @@ pub enum PaymentError {
     PaymentCollectionNotFound(Uuid),
     #[error("payment for collection {0} not found")]
     PaymentNotFound(Uuid),
+    #[error("refund {0} not found")]
+    RefundNotFound(Uuid),
     #[error("invalid payment transition from `{from}` to `{to}`")]
     InvalidTransition { from: String, to: String },
     #[error(transparent)]

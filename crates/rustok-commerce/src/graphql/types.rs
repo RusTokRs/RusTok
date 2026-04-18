@@ -603,6 +603,7 @@ pub struct GqlPaymentCollection {
     pub amount: String,
     pub authorized_amount: String,
     pub captured_amount: String,
+    pub refunded_amount: String,
     pub provider_id: Option<String>,
     pub cancellation_reason: Option<String>,
     pub metadata: String,
@@ -612,6 +613,7 @@ pub struct GqlPaymentCollection {
     pub captured_at: Option<String>,
     pub cancelled_at: Option<String>,
     pub payments: Vec<GqlPayment>,
+    pub refunds: Vec<GqlRefund>,
 }
 
 #[derive(SimpleObject)]
@@ -636,6 +638,31 @@ pub struct GqlPayment {
 #[derive(SimpleObject)]
 pub struct GqlPaymentCollectionList {
     pub items: Vec<GqlPaymentCollection>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlRefund {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub payment_collection_id: Uuid,
+    pub status: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub reason: Option<String>,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub refunded_at: Option<String>,
+    pub cancelled_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlRefundList {
+    pub items: Vec<GqlRefund>,
     pub total: u64,
     pub page: u64,
     pub per_page: u64,
@@ -799,6 +826,14 @@ pub struct PaymentCollectionsFilter {
 }
 
 #[derive(InputObject)]
+pub struct RefundsFilter {
+    pub payment_collection_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
 pub struct FulfillmentsFilter {
     pub status: Option<String>,
     pub order_id: Option<Uuid>,
@@ -863,6 +898,24 @@ pub struct CapturePaymentCollectionInput {
 
 #[derive(InputObject)]
 pub struct CancelPaymentCollectionInput {
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateRefundInputObject {
+    pub amount: String,
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CompleteRefundInputObject {
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CancelRefundInputObject {
     pub reason: Option<String>,
     pub metadata: Option<String>,
 }
@@ -1756,6 +1809,7 @@ impl From<dto::PaymentCollectionResponse> for GqlPaymentCollection {
             amount: value.amount.to_string(),
             authorized_amount: value.authorized_amount.to_string(),
             captured_amount: value.captured_amount.to_string(),
+            refunded_amount: value.refunded_amount.to_string(),
             provider_id: value.provider_id,
             cancellation_reason: value.cancellation_reason,
             metadata: value.metadata.to_string(),
@@ -1765,6 +1819,7 @@ impl From<dto::PaymentCollectionResponse> for GqlPaymentCollection {
             captured_at: value.captured_at.map(|value| value.to_rfc3339()),
             cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
             payments: value.payments.into_iter().map(Into::into).collect(),
+            refunds: value.refunds.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -1786,6 +1841,25 @@ impl From<dto::PaymentResponse> for GqlPayment {
             updated_at: value.updated_at.to_rfc3339(),
             authorized_at: value.authorized_at.map(|value| value.to_rfc3339()),
             captured_at: value.captured_at.map(|value| value.to_rfc3339()),
+            cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
+        }
+    }
+}
+
+impl From<dto::RefundResponse> for GqlRefund {
+    fn from(value: dto::RefundResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            payment_collection_id: value.payment_collection_id,
+            status: value.status,
+            currency_code: value.currency_code,
+            amount: value.amount.to_string(),
+            reason: value.reason,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            refunded_at: value.refunded_at.map(|value| value.to_rfc3339()),
             cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
         }
     }

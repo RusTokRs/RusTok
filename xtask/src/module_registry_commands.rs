@@ -34,17 +34,17 @@ pub(crate) fn module_publish_governance_command(
     }
 
     let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
-    let actor = actor_argument(&args[1..]);
+    let auth_token = auth_token_argument(&args[1..]);
     let reason = reason_argument(&args[1..]);
     let reason_code =
         governance_reason_code_argument(&args[1..], command_name, allowed_reason_codes)?;
-    let preview = ModulePublishGovernanceDryRunPreview {
-        action: action_key.to_string(),
-        request_id: request_id.to_string(),
-        actor: actor.clone(),
-        reason: reason.clone(),
-        reason_code: reason_code.clone(),
-    };
+        let preview = ModulePublishGovernanceDryRunPreview {
+            action: action_key.to_string(),
+            request_id: request_id.to_string(),
+            actor: None,
+            reason: reason.clone(),
+            reason_code: reason_code.clone(),
+        };
     let registry_url = registry_url_argument(&args[1..]);
 
     if dry_run {
@@ -54,7 +54,7 @@ pub(crate) fn module_publish_governance_command(
                 request_id,
                 command_name,
                 action_key,
-                actor.as_deref(),
+                auth_token.as_deref(),
                 reason,
                 reason_code,
                 true,
@@ -69,8 +69,12 @@ pub(crate) fn module_publish_governance_command(
     let registry_url = registry_url.with_context(|| {
         format!("Live module {command_name} requires --registry-url or RUSTOK_MODULE_REGISTRY_URL")
     })?;
-    let actor =
-        actor.with_context(|| format!("Live module {command_name} requires --actor <actor>"))?;
+    let auth_token = auth_token.with_context(|| {
+        format!(
+            "Live module {command_name} requires --auth-token <token> or {}",
+            MODULE_AUTH_TOKEN_ENV
+        )
+    })?;
     let reason =
         reason.with_context(|| format!("Live module {command_name} requires --reason <text>"))?;
     let reason_code = reason_code.with_context(|| {
@@ -85,7 +89,7 @@ pub(crate) fn module_publish_governance_command(
         request_id,
         command_name,
         action_key,
-        Some(&actor),
+        Some(&auth_token),
         Some(reason),
         Some(reason_code),
         false,
@@ -125,7 +129,7 @@ pub(crate) fn module_stage_command(args: &[String]) -> Result<()> {
     let dry_run = args.iter().skip(3).any(|arg| arg == "--dry-run");
     let detail = detail_argument(&args[3..]);
     let reason_code = validation_stage_reason_code_argument(&args[3..])?;
-    let actor = actor_argument(&args[3..]);
+    let auth_token = auth_token_argument(&args[3..]);
     let registry_url = registry_url_argument(&args[3..]);
 
     let preview = ModuleValidationStageDryRunPreview {
@@ -155,7 +159,12 @@ pub(crate) fn module_stage_command(args: &[String]) -> Result<()> {
     let registry_url = registry_url.with_context(|| {
         "Live module stage requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
     })?;
-    let actor = actor.with_context(|| "Live module stage requires --actor <actor>")?;
+    let auth_token = auth_token.with_context(|| {
+        format!(
+            "Live module stage requires --auth-token <token> or {}",
+            MODULE_AUTH_TOKEN_ENV
+        )
+    })?;
     if validation_stage_status_requires_reason_code(&preview.status)
         && preview.reason_code.is_none()
     {
@@ -165,7 +174,7 @@ pub(crate) fn module_stage_command(args: &[String]) -> Result<()> {
             REGISTRY_VALIDATION_STAGE_REASON_CODES.join("|")
         );
     }
-    let payload = validation_stage_via_registry_live(&registry_url, &preview, &actor)?;
+    let payload = validation_stage_via_registry_live(&registry_url, &preview, &auth_token)?;
     println!("{payload}");
     Ok(())
 }

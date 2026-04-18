@@ -5,12 +5,16 @@ use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "ssr")]
 use crate::model::{
-    AvailableModuleItem, AvailableOauthAppItem, ChannelDetail, ResolvedChannelContext,
+    AvailableModuleItem, AvailableOauthAppItem, ChannelDetail, ChannelResolutionActionRecord,
+    ChannelResolutionPolicySetDetail, ChannelResolutionPolicySetRecord,
+    ChannelResolutionPredicateRecord, ChannelResolutionRuleDefinitionRecord,
+    ChannelResolutionRuleRecord, ResolvedChannelContext,
 };
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap,
     ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord, ChannelTargetRecord,
-    CreateChannelPayload, CreateChannelTargetPayload,
+    CreateChannelPayload, CreateChannelTargetPayload, CreateResolutionPolicySetPayload,
+    CreateResolutionRulePayload,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +234,57 @@ pub async fn make_default_channel(
             .await
         }
     }
+}
+
+pub async fn create_resolution_policy_set(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    payload: &CreateResolutionPolicySetPayload,
+) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
+    post_json("/api/channels/policies", payload, token, tenant_slug).await
+}
+
+pub async fn activate_resolution_policy_set(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    policy_set_id: &str,
+) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
+    post_json(
+        &format!("/api/channels/policies/{policy_set_id}/activate"),
+        &serde_json::json!({}),
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+pub async fn create_resolution_rule(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    policy_set_id: &str,
+    payload: &CreateResolutionRulePayload,
+) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
+    post_json(
+        &format!("/api/channels/policies/{policy_set_id}/rules"),
+        payload,
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+pub async fn delete_resolution_rule(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    policy_set_id: &str,
+    rule_id: &str,
+) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
+    delete_json(
+        &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
+        token,
+        tenant_slug,
+    )
+    .await
 }
 
 pub async fn create_target(
@@ -456,6 +511,7 @@ fn map_current_channel(value: rustok_api::ChannelContext) -> ResolvedChannelCont
         target_value: value.target_value,
         settings: value.settings,
         resolution_source: value.resolution_source,
+        resolution_trace: value.resolution_trace,
     }
 }
 
@@ -478,6 +534,20 @@ fn map_channel_detail(value: rustok_channel::ChannelDetailResponse) -> ChannelDe
 }
 
 #[cfg(feature = "ssr")]
+fn map_policy_set_detail(
+    value: rustok_channel::ChannelResolutionPolicySetDetailResponse,
+) -> ChannelResolutionPolicySetDetail {
+    ChannelResolutionPolicySetDetail {
+        policy_set: map_policy_set_record(value.policy_set),
+        rules: value
+            .rules
+            .into_iter()
+            .map(map_policy_rule_record)
+            .collect(),
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_channel_record(value: rustok_channel::ChannelResponse) -> ChannelRecord {
     ChannelRecord {
         id: value.id.to_string(),
@@ -494,6 +564,22 @@ fn map_channel_record(value: rustok_channel::ChannelResponse) -> ChannelRecord {
 }
 
 #[cfg(feature = "ssr")]
+fn map_policy_set_record(
+    value: rustok_channel::ChannelResolutionPolicySetResponse,
+) -> ChannelResolutionPolicySetRecord {
+    ChannelResolutionPolicySetRecord {
+        id: value.id.to_string(),
+        tenant_id: value.tenant_id.to_string(),
+        slug: value.slug,
+        name: value.name,
+        schema_version: value.schema_version,
+        is_active: value.is_active,
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_target_record(value: rustok_channel::ChannelTargetResponse) -> ChannelTargetRecord {
     ChannelTargetRecord {
         id: value.id.to_string(),
@@ -504,6 +590,70 @@ fn map_target_record(value: rustok_channel::ChannelTargetResponse) -> ChannelTar
         settings: value.settings,
         created_at: value.created_at.to_rfc3339(),
         updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_policy_rule_record(
+    value: rustok_channel::ChannelResolutionRuleResponse,
+) -> ChannelResolutionRuleRecord {
+    ChannelResolutionRuleRecord {
+        id: value.id.to_string(),
+        policy_set_id: value.policy_set_id.to_string(),
+        priority: value.priority,
+        is_active: value.is_active,
+        action_channel_id: value.action_channel_id.to_string(),
+        definition: map_policy_rule_definition(value.definition),
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_policy_rule_definition(
+    value: rustok_channel::ChannelResolutionRuleDefinition,
+) -> ChannelResolutionRuleDefinitionRecord {
+    ChannelResolutionRuleDefinitionRecord {
+        predicates: value
+            .predicates
+            .into_iter()
+            .map(map_policy_predicate)
+            .collect(),
+        action: map_policy_action(value.action),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_policy_predicate(
+    value: rustok_channel::ResolutionPredicate,
+) -> ChannelResolutionPredicateRecord {
+    match value {
+        rustok_channel::ResolutionPredicate::HostEquals(value) => {
+            ChannelResolutionPredicateRecord::HostEquals(value)
+        }
+        rustok_channel::ResolutionPredicate::HostSuffix(value) => {
+            ChannelResolutionPredicateRecord::HostSuffix(value)
+        }
+        rustok_channel::ResolutionPredicate::OAuthAppEquals(value) => {
+            ChannelResolutionPredicateRecord::OAuthAppEquals(value.to_string())
+        }
+        rustok_channel::ResolutionPredicate::SurfaceIs(rustok_channel::TargetSurface::Http) => {
+            ChannelResolutionPredicateRecord::SurfaceIs("http".to_string())
+        }
+        rustok_channel::ResolutionPredicate::LocaleEquals(value) => {
+            ChannelResolutionPredicateRecord::LocaleEquals(value)
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_policy_action(value: rustok_channel::ResolutionAction) -> ChannelResolutionActionRecord {
+    match value {
+        rustok_channel::ResolutionAction::ResolveToChannel { channel_id } => {
+            ChannelResolutionActionRecord::ResolveToChannel {
+                channel_id: channel_id.to_string(),
+            }
+        }
     }
 }
 
@@ -567,6 +717,13 @@ async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, ServerFnErr
             .into_iter()
             .map(map_channel_detail)
             .collect();
+        let policy_sets = service
+            .list_resolution_policy_sets(tenant.id)
+            .await
+            .map_err(ServerFnError::new)?
+            .into_iter()
+            .map(map_policy_set_detail)
+            .collect();
 
         let mut available_modules = registry
             .list()
@@ -629,6 +786,7 @@ async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, ServerFnErr
         Ok(ChannelAdminBootstrap {
             current_channel: current_channel.map(map_current_channel),
             channels,
+            policy_sets,
             available_modules,
             oauth_apps,
         })

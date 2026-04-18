@@ -240,6 +240,7 @@ mod tests {
                 target_value: Some("example.test".to_string()),
                 settings: serde_json::json!({}),
                 resolution_source: ChannelResolutionSource::Host,
+                resolution_trace: Vec::new(),
             }));
 
         let runtime = Runtime::new().expect("tokio runtime");

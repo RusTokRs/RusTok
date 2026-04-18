@@ -29,8 +29,8 @@ use crate::entities::channel_resolution_policy_set::{
 use crate::entities::channel_target::{self, ActiveModel as ChannelTargetActiveModel};
 use crate::error::{ChannelError, ChannelResult};
 use crate::policy::{
-    ChannelResolutionRuleDefinition, StoredChannelResolutionRule,
-    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
+    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition,
+    StoredChannelResolutionRule,
 };
 use crate::target_type::ChannelTargetType;
 
@@ -585,6 +585,20 @@ impl ChannelService {
         Ok(to_channel_resolution_rule_response(model)?)
     }
 
+    #[instrument(skip(self), fields(policy_set_id = %policy_set_id))]
+    pub async fn set_active_resolution_policy_set(
+        &self,
+        policy_set_id: Uuid,
+    ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        let policy_set = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(policy_set_id))?;
+        self.replace_active_policy_set(policy_set.tenant_id, policy_set_id)
+            .await?;
+        self.get_resolution_policy_set(policy_set_id).await
+    }
+
     pub async fn get_resolution_policy_set(
         &self,
         policy_set_id: Uuid,
@@ -626,6 +640,26 @@ impl ChannelService {
         }
 
         Ok(items)
+    }
+
+    #[instrument(skip(self), fields(policy_set_id = %policy_set_id, rule_id = %rule_id))]
+    pub async fn remove_resolution_rule(
+        &self,
+        policy_set_id: Uuid,
+        rule_id: Uuid,
+    ) -> ChannelResult<ChannelResolutionRuleResponse> {
+        let rule = channel_resolution_policy_rule::Entity::find_by_id(rule_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(rule_id))?;
+        if rule.policy_set_id != policy_set_id {
+            return Err(ChannelError::NotFound(rule_id));
+        }
+
+        let response = to_channel_resolution_rule_response(rule.clone())?;
+        let active: channel_resolution_policy_rule::ActiveModel = rule.into();
+        active.delete(&self.db).await?;
+        Ok(response)
     }
 
     pub async fn list_active_resolution_rules(

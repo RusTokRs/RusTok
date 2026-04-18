@@ -28,13 +28,13 @@ This crate intentionally ships a minimal v0 model:
 
 Current v0 wiring also includes:
 
-- server-side channel resolution middleware now delegates to the domain-owned pipeline `header -> query -> built-in host slice -> policy seam -> default`, where `default` means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors and typed `resolution_source` diagnostics,
+- server-side channel resolution middleware now delegates to the domain-owned pipeline `header -> query -> built-in host slice -> policy seam -> default`, where `default` means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors plus typed `resolution_source + resolution_trace` diagnostics,
 - the first typed domain resolution seam for the final architecture: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, and a `ChannelResolver` that keeps precedence inside `rustok-channel`,
 - persisted tenant-scoped typed resolution policies via `channel_resolution_policy_sets` and `channel_resolution_policy_rules`, with versioned JSON definitions, action-channel foreign keys, and deterministic rule order by `priority`,
 - the first live typed predicate set for policies: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, and `LocaleEquals`,
 - `web_domain` targets now use shared canonical normalization/validation (`scheme/path/port` trimming, lowercase, strict host validation), and host lookup reuses the same semantics as storage,
-- a thin REST bootstrap/write surface in `apps/server`,
-- `rustok-channel-admin` for Leptos admin composition,
+- a thin REST bootstrap/write surface in `apps/server`, now including policy-set/rule authoring endpoints and runtime trace diagnostics in channel bootstrap,
+- `rustok-channel-admin` for Leptos admin composition, now including basic policy-set activation and policy-rule authoring/removal flows,
 - live proof points in `rustok-pages` and `rustok-blog`, where public read-path gating already uses `channel_module_bindings`, and both modules now exercise metadata-based publication-level `channelSlugs` allowlists.
 
 Validated baseline:

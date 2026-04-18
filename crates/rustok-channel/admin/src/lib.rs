@@ -6,13 +6,16 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::context::ChannelResolutionSource;
+use rustok_api::context::{
+    ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
+};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,
-    CreateChannelPayload, CreateChannelTargetPayload,
+    ChannelResolutionPolicySetDetail, CreateChannelPayload, CreateChannelTargetPayload,
+    CreateResolutionPolicySetPayload, CreateResolutionRulePayload,
 };
 
 #[component]
@@ -220,6 +223,16 @@ pub fn ChannelAdmin() -> impl IntoView {
                         Ok(bootstrap) => view! {
                             <div class="space-y-6">
                                 <RuntimeContext bootstrap=bootstrap.clone() />
+                                <PolicyWorkbench
+                                    policy_sets=bootstrap.policy_sets.clone()
+                                    channels=bootstrap.channels.clone()
+                                    oauth_apps=bootstrap.oauth_apps.clone()
+                                    token=token.get()
+                                    tenant=tenant.get()
+                                    set_feedback=set_feedback
+                                    set_error=set_error
+                                    set_refresh_nonce=set_refresh_nonce
+                                />
                                 {if bootstrap.channels.is_empty() {
                                     view! {
                                         <div class="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -287,6 +300,39 @@ fn RuntimeContext(bootstrap: ChannelAdminBootstrap) -> impl IntoView {
                     <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
                         {resolution_source_description(&current.resolution_source, ui_locale.as_deref())}
                     </div>
+                    <div class="mt-4 space-y-2">
+                        <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            {t(
+                                ui_locale.as_deref(),
+                                "channel.runtime.traceTitle",
+                                "Resolution Trace",
+                            )}
+                        </div>
+                        <div class="space-y-2">
+                            {current
+                                .resolution_trace
+                                .into_iter()
+                                .map(|step| {
+                                    let badge_class = resolution_outcome_badge_class(&step.outcome);
+                                    let stage = resolution_stage_label(&step.stage, ui_locale.as_deref());
+                                    let outcome = resolution_outcome_label(&step.outcome, ui_locale.as_deref());
+                                    view! {
+                                        <div class="rounded-xl border border-border bg-background px-4 py-3">
+                                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                                <span class="inline-flex items-center rounded-full border border-border px-2 py-1 font-medium text-muted-foreground">
+                                                    {stage}
+                                                </span>
+                                                <span class=badge_class>
+                                                    {outcome}
+                                                </span>
+                                            </div>
+                                            <div class="mt-2 text-sm text-card-foreground">{step.detail}</div>
+                                        </div>
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    </div>
                 }.into_any(),
                 None => view! {
                     <div class="mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
@@ -298,6 +344,509 @@ fn RuntimeContext(bootstrap: ChannelAdminBootstrap) -> impl IntoView {
                     </div>
                 }.into_any(),
             }}
+        </section>
+    }
+}
+
+#[component]
+fn PolicyWorkbench(
+    policy_sets: Vec<ChannelResolutionPolicySetDetail>,
+    channels: Vec<ChannelDetail>,
+    oauth_apps: Vec<crate::model::AvailableOauthAppItem>,
+    token: Option<String>,
+    tenant: Option<String>,
+    set_feedback: WriteSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    set_refresh_nonce: WriteSignal<u64>,
+) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let create_slug = RwSignal::new(String::new());
+    let create_name = RwSignal::new(String::new());
+    let create_is_active = RwSignal::new(policy_sets.is_empty());
+    let create_busy = RwSignal::new(false);
+    let section_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.title",
+        "Resolution Policies",
+    );
+    let section_subtitle = t(
+        ui_locale.as_deref(),
+        "channel.policies.subtitle",
+        "Tenant-scoped typed rules run after built-in host resolution and before the explicit default channel.",
+    );
+    let empty_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.emptyTitle",
+        "No policy sets yet.",
+    );
+    let empty_body = t(
+        ui_locale.as_deref(),
+        "channel.policies.emptyBody",
+        "Create the first policy set when channel selection should depend on locale, OAuth app, or richer host matching instead of only explicit selectors and host targets.",
+    );
+    let create_policy_ctx = StoredValue::new((token.clone(), tenant.clone(), ui_locale.clone()));
+
+    let on_create = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        create_busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        let (token, tenant, ui_locale) = create_policy_ctx.get_value();
+
+        spawn_local({
+            async move {
+                let result = api::create_resolution_policy_set(
+                    token,
+                    tenant,
+                    &CreateResolutionPolicySetPayload {
+                        slug: create_slug.get_untracked(),
+                        name: create_name.get_untracked(),
+                        is_active: create_is_active.get_untracked(),
+                    },
+                )
+                .await;
+
+                match result {
+                    Ok(policy_set) => {
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.policies.feedback.created",
+                                "Policy set `{slug}` created.",
+                            )
+                            .replace("{slug}", policy_set.slug.as_str()),
+                        ));
+                        create_slug.set(String::new());
+                        create_name.set(String::new());
+                        create_is_active.set(false);
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+
+                create_busy.set(false);
+            }
+        });
+    };
+
+    view! {
+        <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div class="space-y-1">
+                <h2 class="text-lg font-semibold text-card-foreground">{section_title}</h2>
+                <p class="text-sm text-muted-foreground">{section_subtitle}</p>
+            </div>
+
+            <div class="mt-5 space-y-4">
+                {if policy_sets.is_empty() {
+                    view! {
+                        <EmptyState title=empty_title body=empty_body />
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="space-y-4">
+                            {policy_sets.into_iter().map(|policy_set| view! {
+                                <PolicySetCard
+                                    policy_set=policy_set
+                                    channels=channels.clone()
+                                    oauth_apps=oauth_apps.clone()
+                                    token=token.clone()
+                                    tenant=tenant.clone()
+                                    set_feedback=set_feedback
+                                    set_error=set_error
+                                    set_refresh_nonce=set_refresh_nonce
+                                />
+                            }).collect_view()}
+                        </div>
+                    }.into_any()
+                }}
+            </div>
+
+            <form class="mt-6 grid gap-3 rounded-xl border border-border bg-background p-4 lg:grid-cols-[1fr_1fr_auto_auto]" on:submit=on_create>
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.slugPlaceholder", "policy slug")
+                    prop:value=create_slug
+                    on:input=move |ev| create_slug.set(event_target_value(&ev))
+                />
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.namePlaceholder", "policy set name")
+                    prop:value=create_name
+                    on:input=move |ev| create_name.set(event_target_value(&ev))
+                />
+                <label class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        prop:checked=create_is_active
+                        on:change=move |ev| create_is_active.set(event_target_checked(&ev))
+                    />
+                    {t(ui_locale.as_deref(), "channel.policies.active", "Activate now")}
+                </label>
+                <button
+                    type="submit"
+                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    disabled=move || create_busy.get()
+                >
+                    {move || if create_busy.get() {
+                        t(ui_locale.as_deref(), "channel.policies.creating", "Creating...")
+                    } else {
+                        t(ui_locale.as_deref(), "channel.policies.create", "Create Policy Set")
+                    }}
+                </button>
+            </form>
+        </section>
+    }
+}
+
+#[component]
+fn PolicySetCard(
+    policy_set: ChannelResolutionPolicySetDetail,
+    channels: Vec<ChannelDetail>,
+    oauth_apps: Vec<crate::model::AvailableOauthAppItem>,
+    token: Option<String>,
+    tenant: Option<String>,
+    set_feedback: WriteSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    set_refresh_nonce: WriteSignal<u64>,
+) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let has_channels = !channels.is_empty();
+    let busy = RwSignal::new(false);
+    let action_channel_id = RwSignal::new(
+        channels
+            .first()
+            .map(|channel| channel.channel.id.clone())
+            .unwrap_or_default(),
+    );
+    let priority = RwSignal::new(
+        policy_set
+            .rules
+            .last()
+            .map(|rule| rule.priority + 10)
+            .unwrap_or(10),
+    );
+    let is_active = RwSignal::new(true);
+    let host_equals = RwSignal::new(String::new());
+    let host_suffix = RwSignal::new(String::new());
+    let locale = RwSignal::new(String::new());
+    let surface = RwSignal::new("http".to_string());
+    let oauth_app_id = RwSignal::new(String::new());
+    let policy_set_id = policy_set.policy_set.id.clone();
+    let policy_set_slug = policy_set.policy_set.slug.clone();
+    let activate_ctx = StoredValue::new((
+        token.clone(),
+        tenant.clone(),
+        policy_set_id.clone(),
+        policy_set_slug.clone(),
+        ui_locale.clone(),
+    ));
+    let create_rule_ctx = StoredValue::new((
+        token.clone(),
+        tenant.clone(),
+        policy_set_id.clone(),
+        policy_set_slug.clone(),
+        ui_locale.clone(),
+    ));
+    let active_badge_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.activeBadge",
+        "Active",
+    );
+    let schema_label = t(ui_locale.as_deref(), "channel.policies.schema", "Schema");
+    let activate_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.activate",
+        "Activate",
+    );
+    let empty_rules_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.rules.emptyTitle",
+        "No rules yet.",
+    );
+    let empty_rules_body = t(
+        ui_locale.as_deref(),
+        "channel.policies.rules.emptyBody",
+        "Add the first rule to connect request facts to a specific channel.",
+    );
+    let delete_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.deleteRule",
+        "Delete",
+    );
+    let rules_ui_locale = ui_locale.clone();
+
+    let on_create_rule = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+
+        spawn_local({
+            let (token, tenant, policy_set_id, policy_set_slug, ui_locale) =
+                create_rule_ctx.get_value();
+            async move {
+                let payload = CreateResolutionRulePayload {
+                    priority: priority.get_untracked(),
+                    is_active: is_active.get_untracked(),
+                    action_channel_id: action_channel_id.get_untracked(),
+                    host_equals: optional_text(host_equals.get_untracked()),
+                    host_suffix: optional_text(host_suffix.get_untracked()),
+                    oauth_app_id: optional_text(oauth_app_id.get_untracked()),
+                    surface: optional_text(surface.get_untracked()),
+                    locale: optional_text(locale.get_untracked()),
+                };
+                let result =
+                    api::create_resolution_rule(token, tenant, policy_set_id.as_str(), &payload)
+                        .await;
+
+                match result {
+                    Ok(rule) => {
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.policies.feedback.ruleCreated",
+                                "Rule `{rule}` added to policy set `{slug}`.",
+                            )
+                            .replace("{rule}", short_id(rule.id.as_str()).as_str())
+                            .replace("{slug}", policy_set_slug.as_str()),
+                        ));
+                        host_equals.set(String::new());
+                        host_suffix.set(String::new());
+                        locale.set(String::new());
+                        oauth_app_id.set(String::new());
+                        priority.update(|value| *value += 10);
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+
+                busy.set(false);
+            }
+        });
+    };
+
+    view! {
+        <section class="space-y-4 rounded-xl border border-border bg-background p-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {policy_set.policy_set.name.clone()}
+                        </h3>
+                        <span class="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                            {policy_set.policy_set.slug.clone()}
+                        </span>
+                        <Show when=move || policy_set.policy_set.is_active>
+                            <span class="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                                {active_badge_label.clone()}
+                            </span>
+                        </Show>
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        {format!("{} {}", schema_label.clone(), policy_set.policy_set.schema_version)}
+                    </p>
+                </div>
+                <Show when=move || !policy_set.policy_set.is_active>
+                    <button
+                        type="button"
+                        class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click=move |_| {
+                            busy.set(true);
+                            set_feedback.set(None);
+                            set_error.set(None);
+                            let (token, tenant, policy_set_id, policy_set_slug, ui_locale) =
+                                activate_ctx.get_value();
+
+                            spawn_local(async move {
+                                let result = api::activate_resolution_policy_set(
+                                    token,
+                                    tenant,
+                                    policy_set_id.as_str(),
+                                )
+                                .await;
+                                match result {
+                                    Ok(_) => {
+                                        set_feedback.set(Some(
+                                            t(
+                                                ui_locale.as_deref(),
+                                                "channel.policies.feedback.activated",
+                                                "Policy set `{slug}` is now active.",
+                                            )
+                                            .replace("{slug}", policy_set_slug.as_str()),
+                                        ));
+                                        set_refresh_nonce.update(|value| *value += 1);
+                                    }
+                                    Err(err) => set_error.set(Some(err.to_string())),
+                                }
+                                busy.set(false);
+                            });
+                        }
+                    >
+                        {activate_label.clone()}
+                    </button>
+                </Show>
+            </div>
+
+            {if policy_set.rules.is_empty() {
+                view! {
+                    <EmptyState
+                        title=empty_rules_title.clone()
+                        body=empty_rules_body.clone()
+                    />
+                }.into_any()
+            } else {
+                view! {
+                    <div class="space-y-2">
+                        {policy_set.rules.into_iter().map(|rule| {
+                            let summary = policy_rule_summary(&rule, &channels);
+                            let policy_set_id = policy_set.policy_set.id.clone();
+                            let token = token.clone();
+                            let tenant = tenant.clone();
+                            let ui_locale = rules_ui_locale.clone();
+                            let rule_id = rule.id.clone();
+                            let rule_id_for_feedback = rule.id.clone();
+                            view! {
+                                <div class="rounded-lg border border-border px-3 py-3 text-sm">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="space-y-1">
+                                            <div class="font-medium text-card-foreground">
+                                                {format!("#{} · {}", rule.priority, short_id(rule.id.as_str()))}
+                                            </div>
+                                            <div class="text-muted-foreground">{summary}</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                            disabled=move || busy.get()
+                                            on:click=move |_| {
+                                                busy.set(true);
+                                                set_feedback.set(None);
+                                                set_error.set(None);
+                                                spawn_local({
+                                                    let token = token.clone();
+                                                    let tenant = tenant.clone();
+                                                    let policy_set_id = policy_set_id.clone();
+                                                    let rule_id = rule_id.clone();
+                                                    let rule_id_for_feedback = rule_id_for_feedback.clone();
+                                                    let ui_locale = ui_locale.clone();
+                                                    async move {
+                                                        let result = api::delete_resolution_rule(
+                                                            token,
+                                                            tenant,
+                                                            policy_set_id.as_str(),
+                                                            rule_id.as_str(),
+                                                        )
+                                                        .await;
+                                                        match result {
+                                                            Ok(_) => {
+                                                                set_feedback.set(Some(
+                                                                    t(
+                                                                        ui_locale.as_deref(),
+                                                                        "channel.policies.feedback.ruleDeleted",
+                                                                        "Rule `{rule}` removed.",
+                                                                    )
+                                                                    .replace("{rule}", short_id(rule_id_for_feedback.as_str()).as_str()),
+                                                                ));
+                                                                set_refresh_nonce.update(|value| *value += 1);
+                                                            }
+                                                            Err(err) => set_error.set(Some(err.to_string())),
+                                                        }
+                                                        busy.set(false);
+                                                    }
+                                                });
+                                            }
+                                        >
+                                            {delete_rule_label.clone()}
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }}
+
+            <form class="grid gap-3 rounded-lg border border-border bg-card p-4 lg:grid-cols-2" on:submit=on_create_rule>
+                <input
+                    type="number"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    prop:value=move || priority.get().to_string()
+                    on:input=move |ev| {
+                        if let Ok(value) = event_target_value(&ev).parse::<i32>() {
+                            priority.set(value);
+                        }
+                    }
+                />
+                <select
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    prop:value=action_channel_id
+                    on:change=move |ev| action_channel_id.set(event_target_value(&ev))
+                >
+                    {channels.iter().map(|channel| {
+                        let channel_id = channel.channel.id.clone();
+                        let label = format!("{} ({})", channel.channel.name, channel.channel.slug);
+                        view! { <option value=channel_id.clone()>{label}</option> }
+                    }).collect_view()}
+                </select>
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.hostEquals", "host equals")
+                    prop:value=host_equals
+                    on:input=move |ev| host_equals.set(event_target_value(&ev))
+                />
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.hostSuffix", "host suffix")
+                    prop:value=host_suffix
+                    on:input=move |ev| host_suffix.set(event_target_value(&ev))
+                />
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.locale", "locale")
+                    prop:value=locale
+                    on:input=move |ev| locale.set(event_target_value(&ev))
+                />
+                <select
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    prop:value=surface
+                    on:change=move |ev| surface.set(event_target_value(&ev))
+                >
+                    <option value="http">"http"</option>
+                </select>
+                <select
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm lg:col-span-2"
+                    prop:value=oauth_app_id
+                    on:change=move |ev| oauth_app_id.set(event_target_value(&ev))
+                >
+                    <option value="">{t(ui_locale.as_deref(), "channel.policies.oauthAny", "any OAuth app")}</option>
+                    {oauth_apps.iter().map(|app| {
+                        let app_id = app.id.clone();
+                        let label = format!("{} ({})", app.name, app.slug);
+                        view! { <option value=app_id.clone()>{label}</option> }
+                    }).collect_view()}
+                </select>
+                <label class="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
+                    <input
+                        type="checkbox"
+                        prop:checked=is_active
+                        on:change=move |ev| is_active.set(event_target_checked(&ev))
+                    />
+                    {t(ui_locale.as_deref(), "channel.policies.ruleActive", "Rule is active")}
+                </label>
+                <button
+                    type="submit"
+                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 lg:col-span-2"
+                    disabled=move || busy.get() || !has_channels
+                >
+                    {t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule")}
+                </button>
+            </form>
         </section>
     }
 }
@@ -1491,6 +2040,42 @@ fn EmptyState(title: String, body: String) -> impl IntoView {
     }
 }
 
+fn policy_rule_summary(
+    rule: &crate::model::ChannelResolutionRuleRecord,
+    channels: &[ChannelDetail],
+) -> String {
+    let action_channel = channels
+        .iter()
+        .find(|channel| channel.channel.id == rule.action_channel_id)
+        .map(|channel| channel.channel.slug.clone())
+        .unwrap_or_else(|| short_id(rule.action_channel_id.as_str()));
+    let predicates = rule
+        .definition
+        .predicates
+        .iter()
+        .map(|predicate| match predicate {
+            crate::model::ChannelResolutionPredicateRecord::HostEquals(value) => {
+                format!("host = {value}")
+            }
+            crate::model::ChannelResolutionPredicateRecord::HostSuffix(value) => {
+                format!("host suffix = {value}")
+            }
+            crate::model::ChannelResolutionPredicateRecord::OAuthAppEquals(value) => {
+                format!("oauth app = {}", short_id(value.as_str()))
+            }
+            crate::model::ChannelResolutionPredicateRecord::SurfaceIs(value) => {
+                format!("surface = {value}")
+            }
+            crate::model::ChannelResolutionPredicateRecord::LocaleEquals(value) => {
+                format!("locale = {value}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" + ");
+
+    format!("{predicates} -> {action_channel}")
+}
+
 fn short_id(value: &str) -> String {
     value.chars().take(8).collect()
 }
@@ -1549,5 +2134,42 @@ fn resolution_source_description(source: &ChannelResolutionSource, locale: Optio
             "channel.sourceDescription.default",
             "No explicit channel selector matched, so the tenant's explicit default channel was used.",
         ),
+    }
+}
+
+fn resolution_stage_label(stage: &ChannelResolutionStage, locale: Option<&str>) -> String {
+    match stage {
+        ChannelResolutionStage::HeaderId => t(locale, "channel.trace.stage.headerId", "Header ID"),
+        ChannelResolutionStage::HeaderSlug => {
+            t(locale, "channel.trace.stage.headerSlug", "Header Slug")
+        }
+        ChannelResolutionStage::Query => t(locale, "channel.trace.stage.query", "Query"),
+        ChannelResolutionStage::Host => t(locale, "channel.trace.stage.host", "Host"),
+        ChannelResolutionStage::Policy => t(locale, "channel.trace.stage.policy", "Policy"),
+        ChannelResolutionStage::Default => t(locale, "channel.trace.stage.default", "Default"),
+    }
+}
+
+fn resolution_outcome_label(outcome: &ChannelResolutionOutcome, locale: Option<&str>) -> String {
+    match outcome {
+        ChannelResolutionOutcome::Matched => t(locale, "channel.trace.outcome.matched", "Matched"),
+        ChannelResolutionOutcome::Miss => t(locale, "channel.trace.outcome.miss", "Miss"),
+        ChannelResolutionOutcome::Rejected => {
+            t(locale, "channel.trace.outcome.rejected", "Rejected")
+        }
+    }
+}
+
+fn resolution_outcome_badge_class(outcome: &ChannelResolutionOutcome) -> &'static str {
+    match outcome {
+        ChannelResolutionOutcome::Matched => {
+            "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-medium text-emerald-700"
+        }
+        ChannelResolutionOutcome::Miss => {
+            "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-medium text-amber-700"
+        }
+        ChannelResolutionOutcome::Rejected => {
+            "inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-1 font-medium text-rose-700"
+        }
     }
 }

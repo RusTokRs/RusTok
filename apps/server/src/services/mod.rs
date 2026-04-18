@@ -26,6 +26,7 @@ pub mod rbac_runtime;
 pub mod rbac_service;
 pub mod redis_runtime;
 pub mod registry_governance;
+pub mod registry_principal;
 pub mod release_backend;
 pub mod runtime_guardrails;
 pub mod settings_service;

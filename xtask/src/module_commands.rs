@@ -31,31 +31,31 @@ pub(crate) fn print_module_usage() {
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
-        "  cargo xtask module stage-run <slug> <request-id> <stage> [--dry-run] [--registry-url <url>] [--actor <actor>] [--detail <text>] [--confirm-manual-review]"
+        "  cargo xtask module stage-run <slug> <request-id> <stage> [--dry-run] [--registry-url <url>] [--auth-token <token>] [--detail <text>] [--confirm-manual-review]"
     );
     println!(
         "  cargo xtask module runner <runner-id> [--dry-run] [--once] [--registry-url <url>] [--runner-token <token>] [--poll-interval-ms <ms>] [--heartbeat-interval-ms <ms>] [--confirm-manual-review]"
     );
     println!(
-        "  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>] [--actor <actor>] [--auto-approve] [--approve-reason <text>] [--approve-reason-code <code>] [--confirm-manual-review]"
+        "  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>] [--auth-token <token>] [--auto-approve] [--approve-reason <text>] [--approve-reason-code <code>] [--confirm-manual-review]"
     );
     println!(
-        "  cargo xtask module request-changes <request-id> [--dry-run] [--registry-url <url>] --actor <actor> --reason <text> --reason-code <code>"
+        "  cargo xtask module request-changes <request-id> [--dry-run] [--registry-url <url>] --auth-token <token> --reason <text> --reason-code <code>"
     );
     println!(
-        "  cargo xtask module hold <request-id> [--dry-run] [--registry-url <url>] --actor <actor> --reason <text> --reason-code <code>"
+        "  cargo xtask module hold <request-id> [--dry-run] [--registry-url <url>] --auth-token <token> --reason <text> --reason-code <code>"
     );
     println!(
-        "  cargo xtask module resume <request-id> [--dry-run] [--registry-url <url>] --actor <actor> --reason <text> --reason-code <code>"
+        "  cargo xtask module resume <request-id> [--dry-run] [--registry-url <url>] --auth-token <token> --reason <text> --reason-code <code>"
     );
     println!(
-        "  cargo xtask module stage <request-id> <stage> <status> [--dry-run] [--detail <text>] [--reason-code <code>] [--registry-url <url>] [--actor <actor>] [--requeue]"
+        "  cargo xtask module stage <request-id> <stage> <status> [--dry-run] [--detail <text>] [--reason-code <code>] [--registry-url <url>] [--auth-token <token>] [--requeue]"
     );
     println!(
-        "  cargo xtask module owner-transfer <slug> <new-owner-actor> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--actor <actor>]"
+        "  cargo xtask module owner-transfer <slug> <new-owner-user-id> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--auth-token <token>]"
     );
     println!(
-        "  cargo xtask module yank <slug> <version> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--actor <actor>]"
+        "  cargo xtask module yank <slug> <version> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--auth-token <token>]"
     );
 }
 
@@ -113,7 +113,7 @@ pub(crate) fn module_stage_run_command(args: &[String]) -> Result<()> {
 
     let dry_run = args.iter().skip(3).any(|arg| arg == "--dry-run");
     let registry_url = registry_url_argument(&args[3..]);
-    let actor = actor_argument(&args[3..]);
+    let auth_token = auth_token_argument(&args[3..]);
     let live_registry_url = if dry_run {
         None
     } else {
@@ -121,10 +121,15 @@ pub(crate) fn module_stage_run_command(args: &[String]) -> Result<()> {
             "Live module stage-run requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
         })?)
     };
-    let live_actor = if dry_run {
+    let live_auth_token = if dry_run {
         None
     } else {
-        Some(actor.with_context(|| "Live module stage-run requires --actor <actor>")?)
+        Some(auth_token.with_context(|| {
+            format!(
+                "Live module stage-run requires --auth-token <token> or {}",
+                MODULE_AUTH_TOKEN_ENV
+            )
+        })?)
     };
     let manifest_path = manifest_path();
     let manifest = load_manifest_from(&manifest_path)?;
@@ -156,10 +161,10 @@ pub(crate) fn module_stage_run_command(args: &[String]) -> Result<()> {
     let live_registry_url = live_registry_url
         .as_deref()
         .with_context(|| "Live module stage-run requires resolved registry URL")?;
-    let live_actor = live_actor
+    let live_auth_token = live_auth_token
         .as_deref()
-        .with_context(|| "Live module stage-run requires resolved actor")?;
-    run_validation_stage_plan_via_registry(live_registry_url, &plan, live_actor)?;
+        .with_context(|| "Live module stage-run requires resolved auth token")?;
+    run_validation_stage_plan_via_registry(live_registry_url, &plan, live_auth_token)?;
     println!("{}", serde_json::to_string_pretty(&plan)?);
     Ok(())
 }

@@ -4,7 +4,7 @@ pub(crate) fn run_publish_follow_up_stages_if_needed(
     registry_url: &str,
     preview: &ModulePublishDryRunPreview,
     mut status: RegistryPublishStatusHttpResponse,
-    actor: &str,
+    auth_token: &str,
     confirm_manual_review: bool,
 ) -> Result<RegistryPublishStatusHttpResponse> {
     let executable_stages = ["compile_smoke", "targeted_tests"];
@@ -16,11 +16,11 @@ pub(crate) fn run_publish_follow_up_stages_if_needed(
                 stage,
                 None,
             )?;
-            run_validation_stage_plan_via_registry(registry_url, &plan, actor)?;
+            run_validation_stage_plan_via_registry(registry_url, &plan, auth_token)?;
             status = fetch_registry_publish_status_with_actor(
                 registry_url,
                 &status.request_id,
-                Some(actor),
+                Some(auth_token),
             )?;
             ensure_publish_status_not_rejected(&status)?;
         }
@@ -35,11 +35,11 @@ pub(crate) fn run_publish_follow_up_stages_if_needed(
             "security_policy_review",
             None,
         )?;
-        run_validation_stage_plan_via_registry(registry_url, &plan, actor)?;
+        run_validation_stage_plan_via_registry(registry_url, &plan, auth_token)?;
         status = fetch_registry_publish_status_with_actor(
             registry_url,
             &status.request_id,
-            Some(actor),
+            Some(auth_token),
         )?;
         ensure_publish_status_not_rejected(&status)?;
     }
@@ -50,13 +50,13 @@ pub(crate) fn run_publish_follow_up_stages_if_needed(
 pub(crate) fn fetch_registry_publish_status_with_actor(
     registry_url: &str,
     request_id: &str,
-    actor: Option<&str>,
+    auth_token: Option<&str>,
 ) -> Result<RegistryPublishStatusHttpResponse> {
     let endpoint = format!(
         "{}/v2/catalog/publish/{request_id}",
         registry_url.trim_end_matches('/')
     );
-    get_registry_json_parsed(&endpoint, actor)
+    get_registry_json_parsed(&endpoint, auth_token)
 }
 
 pub(crate) fn publish_status_stage_requires_action(
@@ -82,13 +82,14 @@ pub(crate) fn publish_status_action_available(
 
 pub(crate) fn poll_registry_publish_status_until(
     endpoint: &str,
-    actor: Option<&str>,
+    auth_token: Option<&str>,
     desired_statuses: &[&str],
 ) -> Result<RegistryPublishStatusHttpResponse> {
     let mut last_status = None;
 
     for attempt in 0..10 {
-        let status: RegistryPublishStatusHttpResponse = get_registry_json_parsed(endpoint, actor)?;
+        let status: RegistryPublishStatusHttpResponse =
+            get_registry_json_parsed(endpoint, auth_token)?;
         let terminal = desired_statuses
             .iter()
             .any(|candidate| status.status == *candidate);

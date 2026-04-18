@@ -430,12 +430,12 @@ fn validation_stage_runner_xtask_hint(
 ) -> String {
     if stage_key.eq_ignore_ascii_case("security_policy_review") {
         format!(
-            "cargo xtask module stage-run {} {} {} --confirm-manual-review --detail \"Manual security/policy review completed.\" --registry-url <registry-url>",
+            "cargo xtask module stage-run {} {} {} --confirm-manual-review --detail \"Manual security/policy review completed.\" --registry-url <registry-url> --auth-token <token>",
             module_slug, request_id, stage_key
         )
     } else {
         format!(
-            "cargo xtask module stage-run {} {} {} --registry-url <registry-url>",
+            "cargo xtask module stage-run {} {} {} --registry-url <registry-url> --auth-token <token>",
             module_slug, request_id, stage_key
         )
     }
@@ -469,7 +469,7 @@ fn destructive_governance_confirmation_message(
     action: &str,
     module_slug: &str,
     release_version: Option<&str>,
-    new_owner_actor: Option<&str>,
+    new_owner_user_id: Option<&str>,
     locale: Locale,
 ) -> String {
     match action {
@@ -496,7 +496,7 @@ fn destructive_governance_confirmation_message(
             ),
             module_slug,
             tr(locale, "to", "к"),
-            new_owner_actor.unwrap_or("<new-owner-actor>"),
+            new_owner_user_id.unwrap_or("<new-owner-user-id>"),
             tr(
                 locale,
                 "This rebinding is live and affects future publish and review authority.",
@@ -629,6 +629,7 @@ fn latest_validation_job_event(
         .find(|event| is_validation_job_event_type(&event.event_type))
 }
 
+#[allow(dead_code)]
 fn governance_detail_automated_checks(
     details: &serde_json::Value,
 ) -> Vec<RegistryAutomatedCheckItem> {
@@ -670,32 +671,22 @@ fn validation_job_event_context_lines(
     locale: Locale,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    if let Some(job_id) = governance_detail_string(&event.details, "job_id") {
-        lines.push(format!("{}: {}", tr(locale, "Job", "Job"), job_id));
-    }
-    if let Some(attempt_number) = governance_detail_i64(&event.details, "attempt_number") {
+    if let Some(attempt_number) = governance_detail_i64(&event.payload, "attempt_number") {
         lines.push(format!(
             "{}: {}",
             tr(locale, "Attempt", "Attempt"),
             attempt_number
         ));
     }
-    if let Some(queue_reason) = governance_detail_string(&event.details, "queue_reason") {
+    if let Some(detail) = governance_detail_string(&event.payload, "detail") {
+        lines.push(format!("{}: {}", tr(locale, "Detail", "Detail"), detail));
+    }
+    if !event.payload.errors.is_empty() {
         lines.push(format!(
             "{}: {}",
-            tr(locale, "Queue reason", "Queue reason"),
-            humanize_token(&queue_reason)
+            tr(locale, "Error", "Error"),
+            event.payload.errors.join("; ")
         ));
-    }
-    if let Some(request_status) = governance_detail_string(&event.details, "request_status") {
-        lines.push(format!(
-            "{}: {}",
-            tr(locale, "Request status", "Request status"),
-            humanize_token(&request_status)
-        ));
-    }
-    if let Some(error) = governance_detail_string(&event.details, "error") {
-        lines.push(format!("{}: {}", tr(locale, "Error", "Error"), error));
     }
     lines
 }
@@ -1223,7 +1214,7 @@ fn registry_next_action_lines(
             .is_some_and(|(publisher, owner)| publisher != owner)
     {
         lines.push(format!(
-            "{}: {} owner-transfer {} <new-owner-actor> --dry-run {}",
+            "{}: {} owner-transfer {} <new-owner-user-id> --dry-run {}",
             tr(
                 locale,
                 "If ownership should move",
@@ -1268,7 +1259,7 @@ fn registry_operator_command_lines(
 
     let publish_dry_run = format!("cargo xtask module publish {} --dry-run", module.slug);
     let publish_live = format!(
-        "cargo xtask module publish {} --registry-url <registry-url>",
+        "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
         module.slug
     );
 
@@ -1296,7 +1287,7 @@ fn registry_operator_command_lines(
             .is_some_and(|(publisher, owner)| publisher != owner)
     {
         lines.push(format!(
-            "cargo xtask module owner-transfer {} <new-owner-actor> --dry-run",
+            "cargo xtask module owner-transfer {} <new-owner-user-id> --dry-run",
             module.slug
         ));
     }
@@ -1342,22 +1333,9 @@ fn registry_live_api_action_lines(
         return Vec::new();
     };
 
-    let owner_actor = owner_binding.map(|owner| owner.owner_actor.as_str());
-    let request_actor = request.requested_by.as_str();
-    let publisher_identity = request.publisher_identity.as_deref();
     let manage_publish_authority =
         registry_manage_publish_authority_label(request, owner_binding, locale);
-    let actor_header_hint = |prefer_owner: bool| {
-        if prefer_owner {
-            owner_actor
-                .map(|owner| format!("x-rustok-actor: {}", owner))
-                .unwrap_or_else(|| format!("x-rustok-actor: {}", request_actor))
-        } else {
-            format!("x-rustok-actor: {}", request_actor)
-        }
-    };
-    let publisher_header_hint =
-        || publisher_identity.map(|publisher| format!("x-rustok-publisher: {}", publisher));
+    let bearer_header_hint = || "Authorization: Bearer <session-user-jwt>".to_string();
 
     let mut lines = vec![RegistryLiveApiActionHint {
         endpoint: format!("GET /v2/catalog/publish/{}", request.id),
@@ -1401,9 +1379,9 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(owner_binding.is_some())),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url>",
+                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
                 module.slug
             )),
             write_path: true,
@@ -1427,7 +1405,7 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: None,
             write_path: true,
         });
@@ -1454,14 +1432,9 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(
-                std::iter::once(actor_header_hint(true))
-                    .chain(publisher_header_hint())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url>",
+                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
                 module.slug
             )),
             write_path: true,
@@ -1485,7 +1458,7 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: None,
             write_path: true,
         });
@@ -1508,7 +1481,7 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: None,
             write_path: true,
         });
@@ -1531,7 +1504,7 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: None,
             write_path: true,
         });
@@ -1556,12 +1529,12 @@ fn registry_live_api_action_lines(
                         "local_runner_passed"
                     }
                 )),
-                header_hint: Some(actor_header_hint(true)),
+                header_hint: Some(bearer_header_hint()),
                 xtask_hint: Some(if validation_stage_has_local_xtask_runner(&stage.key) {
                     validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key)
                 } else {
                     format!(
-                        "cargo xtask module stage {} {} passed --detail \"External validation recorded by operator.\" --registry-url <registry-url>",
+                        "cargo xtask module stage {} {} passed --detail \"External validation recorded by operator.\" --registry-url <registry-url> --auth-token <token>",
                         request.id, stage.key
                     )
                 }),
@@ -1610,9 +1583,9 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(owner_binding.is_some())),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url>",
+                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
                 module.slug
             )),
             write_path: true,
@@ -1636,7 +1609,7 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: None,
             write_path: true,
         });
@@ -1660,7 +1633,7 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: None,
             write_path: true,
         });
@@ -1684,9 +1657,9 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(owner_binding.is_some())),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module yank {} {} --reason <yank-reason> --reason-code <security|legal|malware|critical_regression|rollback|other> --registry-url <registry-url>",
+                "cargo xtask module yank {} {} --reason <yank-reason> --reason-code <security|legal|malware|critical_regression|rollback|other> --registry-url <registry-url> --auth-token <token>",
                 module.slug,
                 release
                     .map(|value| value.version.as_str())
@@ -1714,14 +1687,9 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(
-                std::iter::once(actor_header_hint(owner_binding.is_some()))
-                    .chain(publisher_header_hint())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url>",
+                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
                 module.slug
             )),
             write_path: true,
@@ -1749,14 +1717,14 @@ fn registry_live_api_action_lines(
             body_hint: Some(
                 tr(
                     locale,
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_actor\": \"<actor>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_actor\": \"<actor>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_user_id\": \"<uuid>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_user_id\": \"<uuid>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
                 )
                 .to_string(),
             ),
-            header_hint: Some(actor_header_hint(true)),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module owner-transfer {} <new-owner-actor> --reason <transfer-reason> --reason-code <maintenance_handoff|team_restructure|publisher_rotation|security_emergency|governance_override|other> --registry-url <registry-url>",
+                "cargo xtask module owner-transfer {} <new-owner-user-id> --reason <transfer-reason> --reason-code <maintenance_handoff|team_restructure|publisher_rotation|security_emergency|governance_override|other> --registry-url <registry-url> --auth-token <token>",
                 module.slug
             )),
             write_path: true,
@@ -1783,14 +1751,9 @@ fn registry_live_api_action_lines(
                 )
                 .to_string(),
             ),
-            header_hint: Some(
-                std::iter::once(actor_header_hint(owner_binding.is_some()))
-                    .chain(publisher_header_hint())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+            header_hint: Some(bearer_header_hint()),
             xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url>",
+                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
                 module.slug
             )),
             write_path: true,
@@ -1802,37 +1765,66 @@ fn registry_live_api_action_lines(
     lines
 }
 
-fn governance_detail_string(details: &serde_json::Value, key: &str) -> Option<String> {
-    details
-        .get(key)
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
+fn governance_detail_string(
+    payload: &crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle,
+    key: &str,
+) -> Option<String> {
+    let value = match key {
+        "reason" => payload.reason.as_deref(),
+        "reason_code" => payload.reason_code.as_deref(),
+        "detail" => payload.detail.as_deref(),
+        "version" => payload.version.as_deref(),
+        "stage" | "gate" => payload.stage_key.as_deref(),
+        "mode" => payload.mode.as_deref(),
+        "previous_owner_actor" => payload
+            .owner_transition
+            .as_ref()
+            .and_then(|value| value.previous_owner.as_deref()),
+        "new_owner_actor" | "owner_actor" => payload
+            .owner_transition
+            .as_ref()
+            .and_then(|value| value.new_owner.as_deref()),
+        "bound_by" => payload
+            .owner_transition
+            .as_ref()
+            .and_then(|value| value.bound_by.as_deref()),
+        _ => None,
+    }?;
+
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
-fn governance_detail_string_list(details: &serde_json::Value, key: &str) -> Vec<String> {
-    details
-        .get(key)
-        .and_then(|value| value.as_array())
+fn governance_detail_string_list(
+    payload: &crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle,
+    key: &str,
+) -> Vec<String> {
+    let values = match key {
+        "warnings" => payload.warnings.clone(),
+        "errors" => payload.errors.clone(),
+        _ => Vec::new(),
+    };
+
+    values
         .into_iter()
-        .flatten()
-        .filter_map(|item| item.as_str().map(str::trim).map(ToString::to_string))
+        .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .collect()
 }
 
-fn governance_detail_i64(details: &serde_json::Value, key: &str) -> Option<i64> {
-    details.get(key).and_then(|value| {
-        value
-            .as_i64()
-            .or_else(|| value.as_u64().map(|number| number as i64))
-    })
+fn governance_detail_i64(
+    payload: &crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle,
+    key: &str,
+) -> Option<i64> {
+    match key {
+        "attempt_number" => payload.attempt_number.map(i64::from),
+        _ => None,
+    }
 }
 
 fn governance_event_stage_key(event: &RegistryGovernanceEventLifecycle) -> Option<String> {
-    governance_detail_string(&event.details, "stage")
-        .or_else(|| governance_detail_string(&event.details, "gate"))
+    governance_detail_string(&event.payload, "stage")
+        .or_else(|| governance_detail_string(&event.payload, "gate"))
 }
 
 fn validation_stage_recent_history(
@@ -1938,15 +1930,15 @@ fn moderation_history_context_lines(
     locale: Locale,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    let reason = governance_detail_string(&event.details, "reason");
-    let reason_code = governance_detail_string(&event.details, "reason_code");
-    let detail = governance_detail_string(&event.details, "detail");
-    let version = governance_detail_string(&event.details, "version");
+    let reason = governance_detail_string(&event.payload, "reason");
+    let reason_code = governance_detail_string(&event.payload, "reason_code");
+    let detail = governance_detail_string(&event.payload, "detail");
+    let version = governance_detail_string(&event.payload, "version");
     let stage_key = governance_event_stage_key(event);
-    let attempt_number = governance_detail_i64(&event.details, "attempt_number");
-    let previous_owner = governance_detail_string(&event.details, "previous_owner_actor");
-    let new_owner = governance_detail_string(&event.details, "new_owner_actor")
-        .or_else(|| governance_detail_string(&event.details, "owner_actor"));
+    let attempt_number = governance_detail_i64(&event.payload, "attempt_number");
+    let previous_owner = governance_detail_string(&event.payload, "previous_owner_actor");
+    let new_owner = governance_detail_string(&event.payload, "new_owner_actor")
+        .or_else(|| governance_detail_string(&event.payload, "owner_actor"));
 
     if let Some(version) = version {
         lines.push(format!(
@@ -2079,22 +2071,21 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
         "validation_stage_started" => "validation_stage_running",
         other => other,
     };
-    let version = governance_detail_string(&event.details, "version");
-    let reason = governance_detail_string(&event.details, "reason");
-    let reason_code = governance_detail_string(&event.details, "reason_code");
-    let publisher =
-        governance_detail_string(&event.details, "publisher").or_else(|| event.publisher.clone());
-    let owner_actor = governance_detail_string(&event.details, "owner_actor");
-    let mode = governance_detail_string(&event.details, "mode");
-    let warnings = governance_detail_string_list(&event.details, "warnings");
-    let errors = governance_detail_string_list(&event.details, "errors");
+    let version = governance_detail_string(&event.payload, "version");
+    let reason = governance_detail_string(&event.payload, "reason");
+    let reason_code = governance_detail_string(&event.payload, "reason_code");
+    let publisher = event.publisher.clone();
+    let owner_actor = governance_detail_string(&event.payload, "owner_actor");
+    let mode = governance_detail_string(&event.payload, "mode");
+    let warnings = governance_detail_string_list(&event.payload, "warnings");
+    let errors = governance_detail_string_list(&event.payload, "errors");
     let stage_key = governance_event_stage_key(event);
     let stage_label = stage_key
         .as_deref()
         .map(|value| follow_up_gate_label(value, locale))
         .unwrap_or_else(|| tr(locale, "Validation stage", "Этап валидации").to_string());
-    let stage_attempt = governance_detail_i64(&event.details, "attempt_number");
-    let stage_detail = governance_detail_string(&event.details, "detail");
+    let stage_attempt = governance_detail_i64(&event.payload, "attempt_number");
+    let stage_detail = governance_detail_string(&event.payload, "detail");
 
     match event_type {
         "request_created" => version
@@ -2250,18 +2241,14 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
                 "{} {status}",
                 tr(locale, "Validation job", "Validation job")
             )];
-            if let Some(attempt) = governance_detail_i64(&event.details, "attempt_number") {
+            if let Some(attempt) = governance_detail_i64(&event.payload, "attempt_number") {
                 parts.push(format!("{} {}", tr(locale, "attempt", "attempt"), attempt));
             }
-            if let Some(queue_reason) = governance_detail_string(&event.details, "queue_reason") {
-                parts.push(format!(
-                    "{}: {}",
-                    tr(locale, "reason", "reason"),
-                    humanize_token(&queue_reason)
-                ));
+            if let Some(detail) = governance_detail_string(&event.payload, "detail") {
+                parts.push(detail);
             }
-            if let Some(error) = governance_detail_string(&event.details, "error") {
-                parts.push(error);
+            if !event.payload.errors.is_empty() {
+                parts.push(event.payload.errors.join("; "));
             }
             parts.join(" · ")
         }
@@ -2340,7 +2327,7 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
                 .to_string()
             }),
         "request_resumed" => {
-            let resumed_to_status = governance_detail_string(&event.details, "resumed_to_status")
+            let resumed_to_status = governance_event_stage_key(event)
                 .unwrap_or_else(|| {
                     tr(
                         locale,
@@ -2407,9 +2394,9 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
                 .unwrap_or_else(|| label.to_string())
         }
         "owner_transferred" => {
-            let previous_owner = governance_detail_string(&event.details, "previous_owner_actor");
+            let previous_owner = governance_detail_string(&event.payload, "previous_owner_actor");
             let new_owner =
-                governance_detail_string(&event.details, "new_owner_actor").or(owner_actor);
+                governance_detail_string(&event.payload, "new_owner_actor").or(owner_actor);
             match (previous_owner, new_owner, reason) {
                 (Some(previous_owner), Some(new_owner), Some(reason)) => format!(
                     "{}: {} -> {} ({})",
@@ -4753,59 +4740,9 @@ pub fn ModuleDetailPanel(
     let selected_slug_for_body = StoredValue::new(selected_slug.clone());
     let tenant_module_for_body = StoredValue::new(tenant_module.clone());
     let settings_schema_for_body = StoredValue::new(settings_schema.clone());
-    let default_actor = module
-        .as_ref()
-        .and_then(|module| {
-            module
-                .registry_lifecycle
-                .as_ref()
-                .and_then(|lifecycle| lifecycle.owner_binding.as_ref())
-                .map(|owner| owner.owner_actor.clone())
-                .or_else(|| {
-                    module
-                        .registry_lifecycle
-                        .as_ref()
-                        .and_then(|lifecycle| lifecycle.latest_request.as_ref())
-                        .map(|request| request.requested_by.clone())
-                })
-        })
-        .unwrap_or_else(|| "governance:platform".to_string());
-    let default_publisher = module
-        .as_ref()
-        .and_then(|module| {
-            module
-                .registry_lifecycle
-                .as_ref()
-                .and_then(|lifecycle| lifecycle.latest_request.as_ref())
-                .and_then(|request| request.publisher_identity.clone())
-                .or_else(|| module.publisher.clone())
-        })
-        .unwrap_or_default();
-    let default_new_owner_actor = module
-        .as_ref()
-        .and_then(|module| {
-            let lifecycle = module.registry_lifecycle.as_ref()?;
-            let requested = lifecycle
-                .latest_request
-                .as_ref()
-                .and_then(|request| request.publisher_identity.as_ref())?;
-            if lifecycle
-                .owner_binding
-                .as_ref()
-                .is_none_or(|owner| owner.owner_actor != *requested)
-            {
-                Some(requested.clone())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
-    let (governance_actor, set_governance_actor) = signal(default_actor);
-    let (governance_publisher, set_governance_publisher) = signal(default_publisher);
     let (governance_reason, set_governance_reason) = signal(String::new());
     let (governance_reason_code, set_governance_reason_code) = signal(String::new());
-    let (governance_new_owner_actor, set_governance_new_owner_actor) =
-        signal(default_new_owner_actor);
+    let (governance_new_owner_user_id, set_governance_new_owner_user_id) = signal(String::new());
     let (governance_dry_run, set_governance_dry_run) = signal(false);
     let (governance_submitting, set_governance_submitting) = signal(false);
     let (governance_feedback, set_governance_feedback) = signal(None::<String>);
@@ -4837,12 +4774,11 @@ pub fn ModuleDetailPanel(
             return;
         };
 
-        let _refresh_nonce = governance_contract_refresh_nonce.get();
-        let actor = governance_actor.get().trim().to_string();
+        let requested_refresh_nonce = governance_contract_refresh_nonce.get();
         let token = access_token.get();
         let tenant = tenant_slug.get();
 
-        if actor.is_empty() || token.is_none() {
+        if token.is_none() {
             set_governance_status_contract.set(None);
             set_governance_status_contract_loading.set(false);
             set_governance_status_contract_error.set(None);
@@ -4853,24 +4789,22 @@ pub fn ModuleDetailPanel(
         set_governance_status_contract_error.set(None);
 
         spawn_local(async move {
-            let requested_actor = actor.clone();
-            match api::fetch_registry_publish_request_status(request_id, actor, token, tenant).await
-            {
+            match api::fetch_registry_publish_request_status(request_id, token, tenant).await {
                 Ok(status) => {
-                    if governance_actor.get_untracked().trim() == requested_actor {
+                    if governance_contract_refresh_nonce.get_untracked() == requested_refresh_nonce {
                         set_governance_status_contract.set(Some(status));
                         set_governance_status_contract_error.set(None);
                     }
                 }
                 Err(error) => {
-                    if governance_actor.get_untracked().trim() == requested_actor {
+                    if governance_contract_refresh_nonce.get_untracked() == requested_refresh_nonce {
                         set_governance_status_contract.set(None);
                         set_governance_status_contract_error.set(Some(error.to_string()));
                     }
                 }
             }
 
-            if governance_actor.get_untracked().trim() == requested_actor {
+            if governance_contract_refresh_nonce.get_untracked() == requested_refresh_nonce {
                 set_governance_status_contract_loading.set(false);
             }
         });
@@ -5088,9 +5022,7 @@ pub fn ModuleDetailPanel(
                                     event.actor.clone(),
                                 )
                             });
-                        let automated_check_items = latest_validation_event(&recent_governance_events)
-                            .map(|event| governance_detail_automated_checks(&event.details))
-                            .unwrap_or_default();
+                        let automated_check_items: Vec<RegistryAutomatedCheckItem> = Vec::new();
                         let automated_check_items_for_show =
                             StoredValue::new(automated_check_items.clone());
                         let latest_validation_job_summary = latest_validation_job_event(
@@ -5180,14 +5112,6 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 };
-                                let actor = governance_actor.get_untracked().trim().to_string();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 set_governance_submitting.set(true);
                                 set_governance_feedback.set(None);
                                 set_governance_error.set(None);
@@ -5197,7 +5121,6 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::validate_registry_publish_request(
                                         request_id,
-                                        actor,
                                         dry_run,
                                         token,
                                         tenant,
@@ -5235,22 +5158,10 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 };
-                                let actor = governance_actor.get_untracked().trim().to_string();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 set_governance_submitting.set(true);
                                 set_governance_feedback.set(None);
                                 set_governance_error.set(None);
                                 let dry_run = governance_dry_run.get_untracked();
-                                let publisher = governance_publisher
-                                    .get_untracked()
-                                    .trim()
-                                    .to_string();
                                 let reason =
                                     governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
@@ -5297,8 +5208,6 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::approve_registry_publish_request(
                                         request_id,
-                                        actor,
-                                        (!publisher.is_empty()).then_some(publisher),
                                         (!reason.is_empty()).then_some(reason),
                                         (!reason_code.is_empty()).then_some(reason_code),
                                         dry_run,
@@ -5339,20 +5248,12 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 };
-                                let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 let governance_actions =
                                     governance_actions_for_form.get_untracked();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 if !dry_run
                                     && governance_action_reason_required(
                                         &governance_actions,
@@ -5396,7 +5297,6 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::request_changes_registry_publish_request(
                                         request_id,
-                                        actor,
                                         reason,
                                         reason_code,
                                         dry_run,
@@ -5436,20 +5336,12 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 };
-                                let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 let governance_actions =
                                     governance_actions_for_form.get_untracked();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 if !dry_run
                                     && governance_action_reason_required(
                                         &governance_actions,
@@ -5493,7 +5385,6 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::hold_registry_publish_request(
                                         request_id,
-                                        actor,
                                         reason,
                                         reason_code,
                                         dry_run,
@@ -5533,20 +5424,12 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 };
-                                let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 let governance_actions =
                                     governance_actions_for_form.get_untracked();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 if !dry_run
                                     && governance_action_reason_required(
                                         &governance_actions,
@@ -5590,7 +5473,6 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::resume_registry_publish_request(
                                         request_id,
-                                        actor,
                                         reason,
                                         reason_code,
                                         dry_run,
@@ -5630,20 +5512,12 @@ pub fn ModuleDetailPanel(
                                     ));
                                     return;
                                 };
-                                let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 let governance_actions =
                                     governance_actions_for_form.get_untracked();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 if !dry_run
                                     && governance_action_reason_required(
                                         &governance_actions,
@@ -5707,7 +5581,6 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::reject_registry_publish_request(
                                         request_id,
-                                        actor,
                                         reason,
                                         reason_code,
                                         dry_run,
@@ -5740,28 +5613,22 @@ pub fn ModuleDetailPanel(
                             Callback::new(move |_| {
                                 set_governance_intent_action
                                     .set(Some("owner_transfer".to_string()));
-                                let actor = governance_actor.get_untracked().trim().to_string();
-                                let new_owner_actor =
-                                    governance_new_owner_actor.get_untracked().trim().to_string();
+                                let new_owner_user_id = governance_new_owner_user_id
+                                    .get_untracked()
+                                    .trim()
+                                    .to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 let governance_actions =
                                     governance_actions_for_form.get_untracked();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
-                                if new_owner_actor.is_empty() {
+                                if new_owner_user_id.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(
                                             locale,
-                                            "New owner actor is required.",
-                                            "Нужно указать нового владельца."
+                                            "New owner user id is required.",
+                                            "Нужно указать user id нового владельца."
                                         )
                                         .to_string(),
                                     ));
@@ -5813,7 +5680,7 @@ pub fn ModuleDetailPanel(
                                             "owner-transfer",
                                             &module_slug_for_actions,
                                             None,
-                                            Some(&new_owner_actor),
+                                            Some(&new_owner_user_id),
                                             locale,
                                         ),
                                     ));
@@ -5831,8 +5698,7 @@ pub fn ModuleDetailPanel(
                                 spawn_local(async move {
                                     match api::transfer_registry_owner(
                                         module_slug_for_actions.clone(),
-                                        actor,
-                                        new_owner_actor,
+                                        new_owner_user_id,
                                         reason,
                                         reason_code,
                                         dry_run,
@@ -5865,20 +5731,12 @@ pub fn ModuleDetailPanel(
                             let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("yank".to_string()));
-                                let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
                                 let reason_code =
                                     governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 let governance_actions =
                                     governance_actions_for_form.get_untracked();
-                                if actor.is_empty() {
-                                    set_governance_error.set(Some(
-                                        tr(locale, "Actor is required.", "Нужно указать actor.")
-                                            .to_string(),
-                                    ));
-                                    return;
-                                }
                                 if !dry_run
                                     && governance_action_reason_required(
                                         &governance_actions,
@@ -5945,7 +5803,6 @@ pub fn ModuleDetailPanel(
                                     match api::yank_registry_release(
                                         module_slug_for_actions.clone(),
                                         release_version.clone(),
-                                        actor,
                                         reason,
                                         reason_code,
                                         dry_run,
@@ -6761,8 +6618,8 @@ pub fn ModuleDetailPanel(
                                                         if governance_status_contract_loading.get() {
                                                             return tr(
                                                                 locale,
-                                                                "Refreshing actor-aware request status contract...",
-                                                                "Обновляется actor-aware контракт статуса запроса...",
+                                                                "Refreshing authenticated request status contract...",
+                                                                "Обновляется аутентифицированный контракт статуса запроса...",
                                                             )
                                                             .to_string();
                                                         }
@@ -6771,8 +6628,8 @@ pub fn ModuleDetailPanel(
                                                                 "{} {}",
                                                                 tr(
                                                                     locale,
-                                                                    "Actor-aware request status is unavailable; request-level actions stay disabled until the fetch succeeds.",
-                                                                    "Actor-aware статус запроса недоступен; request-level действия останутся выключенными, пока fetch не пройдет.",
+                                                                    "Authenticated request status is unavailable; request-level actions stay disabled until the fetch succeeds.",
+                                                                    "Аутентифицированный статус запроса недоступен; request-level действия останутся выключенными, пока fetch не пройдет.",
                                                                 ),
                                                                 error
                                                             );
@@ -6780,7 +6637,7 @@ pub fn ModuleDetailPanel(
                                                         if let Some(status) = governance_status_contract.get() {
                                                             return format!(
                                                                 "{}: {}{}",
-                                                                tr(locale, "Actor-aware request contract", "Actor-aware контракт запроса"),
+                                                                tr(locale, "Authenticated request contract", "Аутентифицированный контракт запроса"),
                                                                 humanize_token(&status.status),
                                                                 status
                                                                     .next_step
@@ -6791,8 +6648,8 @@ pub fn ModuleDetailPanel(
                                                         }
                                                         tr(
                                                             locale,
-                                                            "Enter Actor to load the authoritative request-level governance contract. Until then, request-level actions stay read-only.",
-                                                            "Укажите Actor, чтобы загрузить authoritative request-level governance contract. До этого request-level действия остаются read-only.",
+                                                            "Sign in with a session-backed user token to load the authoritative request-level governance contract. Until then, request-level actions stay read-only.",
+                                                            "Войдите с session-backed user token, чтобы загрузить authoritative request-level governance contract. До этого request-level действия остаются read-only.",
                                                         )
                                                         .to_string()
                                                     }}
@@ -6800,22 +6657,10 @@ pub fn ModuleDetailPanel(
                                             </Show>
                                             <div class="grid gap-3 lg:grid-cols-2">
                                                 <Input
-                                                    value=Signal::derive(move || governance_actor.get())
-                                                    set_value=set_governance_actor
-                                                    placeholder=tr(locale, "governance:platform", "governance:platform")
-                                                    label=tr(locale, "Actor", "Actor")
-                                                />
-                                                <Input
-                                                    value=Signal::derive(move || governance_publisher.get())
-                                                    set_value=set_governance_publisher
-                                                    placeholder=tr(locale, "publisher:team", "publisher:team")
-                                                    label=tr(locale, "Publisher (optional)", "Publisher (необязательно)")
-                                                />
-                                                <Input
-                                                    value=Signal::derive(move || governance_new_owner_actor.get())
-                                                    set_value=set_governance_new_owner_actor
-                                                    placeholder=tr(locale, "publisher:new-owner", "publisher:new-owner")
-                                                    label=tr(locale, "New owner actor", "Новый владелец")
+                                                    value=Signal::derive(move || governance_new_owner_user_id.get())
+                                                    set_value=set_governance_new_owner_user_id
+                                                    placeholder=tr(locale, "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000")
+                                                    label=tr(locale, "New owner user id", "User id нового владельца")
                                                 />
                                                 <Input
                                                     value=Signal::derive(move || governance_reason_code.get())
@@ -7630,6 +7475,69 @@ mod tests {
         }
     }
 
+    fn sample_request(status: &str, publisher_identity: Option<&str>) -> RegistryPublishRequestLifecycle {
+        RegistryPublishRequestLifecycle {
+            id: "req_123".to_string(),
+            status: status.to_string(),
+            requested_by: "user:requester".to_string(),
+            publisher_identity: publisher_identity.map(str::to_string),
+            approved_by: None,
+            rejected_by: None,
+            rejection_reason: None,
+            changes_requested_by: None,
+            changes_requested_reason: None,
+            changes_requested_reason_code: None,
+            changes_requested_at: None,
+            held_by: None,
+            held_reason: None,
+            held_reason_code: None,
+            held_at: None,
+            held_from_status: None,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            created_at: "2026-04-05T10:00:00Z".to_string(),
+            updated_at: "2026-04-05T10:00:00Z".to_string(),
+            published_at: None,
+        }
+    }
+
+    fn sample_module() -> MarketplaceModule {
+        MarketplaceModule {
+            slug: "example-module".to_string(),
+            name: "Example Module".to_string(),
+            latest_version: "1.2.3".to_string(),
+            description: "Example description".to_string(),
+            source: "registry".to_string(),
+            kind: "feature".to_string(),
+            category: "catalog".to_string(),
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
+            crate_name: "rustok-example".to_string(),
+            dependencies: Vec::new(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            rustok_min_version: None,
+            rustok_max_version: None,
+            publisher: Some("publisher:team".to_string()),
+            checksum_sha256: None,
+            signature_present: true,
+            versions: Vec::new(),
+            has_admin_ui: true,
+            has_storefront_ui: false,
+            ui_classification: "admin-only".to_string(),
+            registry_lifecycle: None,
+            compatible: true,
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+            settings_schema: Vec::new(),
+            installed: false,
+            installed_version: None,
+            update_available: false,
+        }
+    }
+
     fn sample_event(
         event_type: &str,
         details: serde_json::Value,
@@ -7639,7 +7547,10 @@ mod tests {
             event_type: event_type.to_string(),
             actor: "registry:admin".to_string(),
             publisher: None,
-            details,
+            payload:
+                crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle::from_details(
+                    &details,
+                ),
             created_at: "2026-04-05T10:00:00Z".to_string(),
         }
     }
@@ -7727,5 +7638,115 @@ mod tests {
         assert!(!lines
             .iter()
             .any(|line| line.contains("governance actor may override")));
+    }
+
+    #[test]
+    fn owner_transfer_confirmation_uses_new_owner_user_id_contract() {
+        let message = destructive_governance_confirmation_message(
+            "owner-transfer",
+            "example-module",
+            None,
+            Some("9a6b5c9e-0d3e-4b62-9f2f-c11d1aa6f12f"),
+            Locale::en,
+        );
+
+        assert!(message.contains("example-module"));
+        assert!(message.contains("9a6b5c9e-0d3e-4b62-9f2f-c11d1aa6f12f"));
+        assert!(!message.contains("new-owner-actor"));
+    }
+
+    #[test]
+    fn validation_stage_runner_hint_requires_auth_token() {
+        let hint = validation_stage_runner_xtask_hint(
+            "example-module",
+            "req_123",
+            "compile_smoke",
+        );
+
+        assert!(hint.contains("--registry-url <registry-url>"));
+        assert!(hint.contains("--auth-token <token>"));
+    }
+
+    #[test]
+    fn live_api_action_hints_use_bearer_auth_instead_of_legacy_actor_headers() {
+        let module = sample_module();
+        let request = sample_request("approved", Some("publisher:new-owner"));
+        let owner = sample_owner("user:owner");
+
+        let hints = registry_live_api_action_lines(
+            &module,
+            Some(&request),
+            None,
+            Some(&owner),
+            &[],
+            Locale::en,
+        );
+
+        let approve_hint = hints
+            .iter()
+            .find(|hint| hint.endpoint.ends_with("/approve"))
+            .expect("approve hint");
+
+        assert_eq!(
+            approve_hint.header_hint.as_deref(),
+            Some("Authorization: Bearer <session-user-jwt>")
+        );
+        assert!(!approve_hint
+            .header_hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("x-rustok-actor"));
+        assert!(!approve_hint
+            .header_hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("x-rustok-publisher"));
+    }
+
+    #[test]
+    fn owner_transfer_hints_use_new_owner_user_id_contract() {
+        let module = sample_module();
+        let request = sample_request("published", Some("publisher:new-owner"));
+        let owner = sample_owner("user:owner");
+
+        let api_hints = registry_live_api_action_lines(
+            &module,
+            Some(&request),
+            None,
+            Some(&owner),
+            &[],
+            Locale::en,
+        );
+        let owner_transfer_api_hint = api_hints
+            .iter()
+            .find(|hint| hint.endpoint == "POST /v2/catalog/owner-transfer")
+            .expect("owner transfer api hint");
+        let owner_transfer_cli_hint = owner_transfer_api_hint
+            .xtask_hint
+            .as_deref()
+            .expect("owner transfer cli hint");
+
+        assert!(owner_transfer_api_hint
+            .body_hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("\"new_owner_user_id\""));
+        assert!(!owner_transfer_api_hint
+            .body_hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("new_owner_actor"));
+        assert!(owner_transfer_cli_hint.contains("<new-owner-user-id>"));
+        assert!(owner_transfer_cli_hint.contains("--auth-token <token>"));
+        assert!(!owner_transfer_cli_hint.contains("<new-owner-actor>"));
+
+        let operator_hints =
+            registry_operator_command_lines(&module, Some(&request), None, Some(&owner), &[]);
+        let owner_transfer_operator_hint = operator_hints
+            .iter()
+            .find(|hint| hint.contains("owner-transfer"))
+            .expect("owner transfer operator hint");
+        assert!(owner_transfer_operator_hint.contains("<new-owner-user-id>"));
+        assert!(!owner_transfer_operator_hint.contains("<new-owner-actor>"));
     }
 }

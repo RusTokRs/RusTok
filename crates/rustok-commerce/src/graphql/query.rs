@@ -625,6 +625,73 @@ impl CommerceQuery {
         })
     }
 
+    async fn refund(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlRefund>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let refund = match PaymentService::new(db.clone()).get_refund(tenant_id, id).await {
+            Ok(refund) => refund,
+            Err(rustok_payment::error::PaymentError::RefundNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        Ok(Some(refund.into()))
+    }
+
+    async fn refunds(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<RefundsFilter>,
+    ) -> Result<GqlRefundList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let filter = filter.unwrap_or(RefundsFilter {
+            payment_collection_id: None,
+            status: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let (items, total) = PaymentService::new(db.clone())
+            .list_refunds(
+                tenant_id,
+                crate::dto::ListRefundsInput {
+                    page,
+                    per_page,
+                    payment_collection_id: filter.payment_collection_id,
+                    status: filter.status,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlRefundList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
     async fn shipping_option(
         &self,
         ctx: &Context<'_>,

@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use uuid::Uuid;
 
-#[cfg(feature = "mod-media")]
 use rustok_storage::StorageConfig;
 
 use crate::services::redis_runtime::resolve_redis_url;
@@ -34,7 +33,6 @@ pub struct RustokSettings {
     pub registry: RegistrySettings,
     #[serde(default)]
     pub runtime: RuntimeSettings,
-    #[cfg(feature = "mod-media")]
     #[serde(default)]
     pub storage: StorageConfig,
 }

@@ -3,15 +3,15 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "registry_module_owners")]
+#[sea_orm(table_name = "registry_module_release_translations")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub slug: String,
-    #[sea_orm(column_name = "owner_principal")]
-    pub owner_actor: Json,
-    #[sea_orm(column_name = "bound_by_principal")]
-    pub bound_by: Json,
-    pub bound_at: DateTime<Utc>,
+    pub release_id: String,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub locale: String,
+    pub name: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 

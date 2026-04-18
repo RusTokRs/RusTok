@@ -12,7 +12,8 @@ use rustok_core::generate_id;
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
-    ListPaymentCollectionsInput, PaymentCollectionResponse, PaymentResponse,
+    CancelRefundInput, CompleteRefundInput, CreateRefundInput, ListPaymentCollectionsInput,
+    ListRefundsInput, PaymentCollectionResponse, PaymentResponse, RefundResponse,
 };
 use crate::entities;
 use crate::error::{PaymentError, PaymentResult};
@@ -21,6 +22,9 @@ const STATUS_PENDING: &str = "pending";
 const STATUS_AUTHORIZED: &str = "authorized";
 const STATUS_CAPTURED: &str = "captured";
 const STATUS_CANCELLED: &str = "cancelled";
+const STATUS_REFUND_PENDING: &str = "pending";
+const STATUS_REFUNDED: &str = "refunded";
+const STATUS_REFUND_CANCELLED: &str = "cancelled";
 const MANUAL_PROVIDER_ID: &str = "manual";
 
 pub struct PaymentService {
@@ -212,6 +216,157 @@ impl PaymentService {
         active.update(&self.db).await?;
 
         self.get_collection(tenant_id, collection_id).await
+    }
+
+    pub async fn create_refund(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        input: CreateRefundInput,
+    ) -> PaymentResult<RefundResponse> {
+        let txn = self.db.begin().await?;
+        let collection = self
+            .load_collection_in_tx(&txn, tenant_id, collection_id)
+            .await?;
+        if collection.status != STATUS_CAPTURED {
+            return Err(PaymentError::InvalidTransition {
+                from: collection.status,
+                to: STATUS_REFUND_PENDING.to_string(),
+            });
+        }
+        if input.amount <= Decimal::ZERO {
+            return Err(PaymentError::Validation(
+                "refund amount must be greater than zero".to_string(),
+            ));
+        }
+
+        let reserved_amount = self
+            .reserved_refund_amount_in_tx(&txn, collection_id)
+            .await?;
+        let remaining_amount = collection.captured_amount - reserved_amount;
+        if input.amount > remaining_amount {
+            return Err(PaymentError::Validation(format!(
+                "refund amount exceeds remaining refundable amount of {remaining_amount}"
+            )));
+        }
+
+        let refund_id = generate_id();
+        let now = Utc::now();
+        entities::refund::ActiveModel {
+            id: Set(refund_id),
+            tenant_id: Set(tenant_id),
+            payment_collection_id: Set(collection_id),
+            status: Set(STATUS_REFUND_PENDING.to_string()),
+            currency_code: Set(collection.currency_code),
+            amount: Set(input.amount),
+            reason: Set(normalize_optional_reason(input.reason)),
+            metadata: Set(input.metadata),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            refunded_at: Set(None),
+            cancelled_at: Set(None),
+        }
+        .insert(&txn)
+        .await?;
+
+        txn.commit().await?;
+        self.get_refund(tenant_id, refund_id).await
+    }
+
+    pub async fn get_refund(&self, tenant_id: Uuid, refund_id: Uuid) -> PaymentResult<RefundResponse> {
+        let refund = self.load_refund_in_tx(&self.db, tenant_id, refund_id).await?;
+        Ok(self.build_refund_response(refund))
+    }
+
+    pub async fn list_refunds(
+        &self,
+        tenant_id: Uuid,
+        input: ListRefundsInput,
+    ) -> PaymentResult<(Vec<RefundResponse>, u64)> {
+        let page = input.page.max(1);
+        let per_page = input.per_page.clamp(1, 100);
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        let mut query =
+            entities::refund::Entity::find().filter(entities::refund::Column::TenantId.eq(tenant_id));
+
+        if let Some(collection_id) = input.payment_collection_id {
+            query = query.filter(entities::refund::Column::PaymentCollectionId.eq(collection_id));
+        }
+        if let Some(status) = input.status {
+            query = query.filter(entities::refund::Column::Status.eq(status));
+        }
+
+        let total = query.clone().count(&self.db).await?;
+        let rows = query
+            .order_by_desc(entities::refund::Column::CreatedAt)
+            .offset(offset)
+            .limit(per_page)
+            .all(&self.db)
+            .await?;
+
+        Ok((
+            rows.into_iter().map(|row| self.build_refund_response(row)).collect(),
+            total,
+        ))
+    }
+
+    pub async fn complete_refund(
+        &self,
+        tenant_id: Uuid,
+        refund_id: Uuid,
+        input: CompleteRefundInput,
+    ) -> PaymentResult<RefundResponse> {
+        let txn = self.db.begin().await?;
+        let refund = self.load_refund_in_tx(&txn, tenant_id, refund_id).await?;
+        if refund.status != STATUS_REFUND_PENDING {
+            return Err(PaymentError::InvalidTransition {
+                from: refund.status,
+                to: STATUS_REFUNDED.to_string(),
+            });
+        }
+
+        let now = Utc::now();
+        let mut active: entities::refund::ActiveModel = refund.into();
+        let current_metadata = active.metadata.clone().take().unwrap_or_default();
+        active.status = Set(STATUS_REFUNDED.to_string());
+        active.metadata = Set(merge_metadata(current_metadata, input.metadata));
+        active.updated_at = Set(now.into());
+        active.refunded_at = Set(Some(now.into()));
+        active.update(&txn).await?;
+
+        txn.commit().await?;
+        self.get_refund(tenant_id, refund_id).await
+    }
+
+    pub async fn cancel_refund(
+        &self,
+        tenant_id: Uuid,
+        refund_id: Uuid,
+        input: CancelRefundInput,
+    ) -> PaymentResult<RefundResponse> {
+        let txn = self.db.begin().await?;
+        let refund = self.load_refund_in_tx(&txn, tenant_id, refund_id).await?;
+        if refund.status != STATUS_REFUND_PENDING {
+            return Err(PaymentError::InvalidTransition {
+                from: refund.status,
+                to: STATUS_REFUND_CANCELLED.to_string(),
+            });
+        }
+
+        let now = Utc::now();
+        let fallback_reason = refund.reason.clone();
+        let mut active: entities::refund::ActiveModel = refund.into();
+        let current_metadata = active.metadata.clone().take().unwrap_or_default();
+        active.status = Set(STATUS_REFUND_CANCELLED.to_string());
+        active.reason = Set(normalize_optional_reason(input.reason).or(fallback_reason));
+        active.metadata = Set(merge_metadata(current_metadata, input.metadata));
+        active.updated_at = Set(now.into());
+        active.cancelled_at = Set(Some(now.into()));
+        active.update(&txn).await?;
+
+        txn.commit().await?;
+        self.get_refund(tenant_id, refund_id).await
     }
 
     pub async fn authorize_collection(
@@ -436,6 +591,44 @@ impl PaymentService {
             .ok_or(PaymentError::PaymentNotFound(collection_id))
     }
 
+    async fn load_refund_in_tx<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        refund_id: Uuid,
+    ) -> PaymentResult<entities::refund::Model>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        entities::refund::Entity::find_by_id(refund_id)
+            .filter(entities::refund::Column::TenantId.eq(tenant_id))
+            .one(conn)
+            .await?
+            .ok_or(PaymentError::RefundNotFound(refund_id))
+    }
+
+    async fn reserved_refund_amount_in_tx<C>(
+        &self,
+        conn: &C,
+        collection_id: Uuid,
+    ) -> PaymentResult<Decimal>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let refunds = entities::refund::Entity::find()
+            .filter(entities::refund::Column::PaymentCollectionId.eq(collection_id))
+            .filter(
+                entities::refund::Column::Status
+                    .is_in([STATUS_REFUND_PENDING, STATUS_REFUNDED]),
+            )
+            .all(conn)
+            .await?;
+
+        Ok(refunds
+            .into_iter()
+            .fold(Decimal::ZERO, |sum, refund| sum + refund.amount))
+    }
+
     async fn build_response(
         &self,
         collection: entities::payment_collection::Model,
@@ -445,6 +638,15 @@ impl PaymentService {
             .order_by_asc(entities::payment::Column::CreatedAt)
             .all(&self.db)
             .await?;
+        let refunds = entities::refund::Entity::find()
+            .filter(entities::refund::Column::PaymentCollectionId.eq(collection.id))
+            .order_by_asc(entities::refund::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        let refunded_amount = refunds
+            .iter()
+            .filter(|refund| refund.status == STATUS_REFUNDED)
+            .fold(Decimal::ZERO, |sum, refund| sum + refund.amount);
 
         Ok(PaymentCollectionResponse {
             id: collection.id,
@@ -457,6 +659,7 @@ impl PaymentService {
             amount: collection.amount,
             authorized_amount: collection.authorized_amount,
             captured_amount: collection.captured_amount,
+            refunded_amount,
             provider_id: collection.provider_id,
             cancellation_reason: collection.cancellation_reason,
             metadata: collection.metadata,
@@ -491,7 +694,28 @@ impl PaymentService {
                     cancelled_at: payment.cancelled_at.map(|value| value.with_timezone(&Utc)),
                 })
                 .collect(),
+            refunds: refunds
+                .into_iter()
+                .map(|refund| self.build_refund_response(refund))
+                .collect(),
         })
+    }
+
+    fn build_refund_response(&self, refund: entities::refund::Model) -> RefundResponse {
+        RefundResponse {
+            id: refund.id,
+            tenant_id: refund.tenant_id,
+            payment_collection_id: refund.payment_collection_id,
+            status: refund.status,
+            currency_code: refund.currency_code,
+            amount: refund.amount,
+            reason: refund.reason,
+            metadata: refund.metadata,
+            created_at: refund.created_at.with_timezone(&Utc),
+            updated_at: refund.updated_at.with_timezone(&Utc),
+            refunded_at: refund.refunded_at.map(|value| value.with_timezone(&Utc)),
+            cancelled_at: refund.cancelled_at.map(|value| value.with_timezone(&Utc)),
+        }
     }
 }
 
@@ -523,6 +747,10 @@ fn normalize_provider_payment_id(value: Option<String>) -> String {
         .map(|provider_payment_id| provider_payment_id.trim().to_string())
         .filter(|provider_payment_id| !provider_payment_id.is_empty())
         .unwrap_or_else(|| format!("manual_{}", generate_id()))
+}
+
+fn normalize_optional_reason(value: Option<String>) -> Option<String> {
+    value.map(|reason| reason.trim().to_string()).filter(|reason| !reason.is_empty())
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {

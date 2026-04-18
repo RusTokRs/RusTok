@@ -29,6 +29,32 @@ impl ChannelResolutionSource {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelResolutionStage {
+    HeaderId,
+    HeaderSlug,
+    Query,
+    Host,
+    Policy,
+    Default,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelResolutionOutcome {
+    Matched,
+    Miss,
+    Rejected,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChannelResolutionTraceStep {
+    pub stage: ChannelResolutionStage,
+    pub outcome: ChannelResolutionOutcome,
+    pub detail: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChannelContext {
     pub id: Uuid,
@@ -41,6 +67,7 @@ pub struct ChannelContext {
     pub target_value: Option<String>,
     pub settings: serde_json::Value,
     pub resolution_source: ChannelResolutionSource,
+    pub resolution_trace: Vec<ChannelResolutionTraceStep>,
 }
 
 #[derive(Clone)]

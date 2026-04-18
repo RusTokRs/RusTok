@@ -58,7 +58,7 @@ mod-pages     = ["dep:rustok-pages", "mod-content"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy     = ["dep:alloy"]
 mod-flex      = []
-mod-media     = ["dep:rustok-media", "dep:rustok-storage"]
+mod-media     = ["dep:rustok-media"]
 mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
@@ -89,7 +89,7 @@ rustok-content   = { workspace = true, optional = true }
 rustok-forum     = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-taxonomy  = { workspace = true, optional = true }
-rustok-storage   = { workspace = true, optional = true }
+rustok-storage   = { workspace = true, features = ["s3"] }
 rustok-media     = { workspace = true, optional = true }
 rustok-index.workspace = true
 rustok-search.workspace = true

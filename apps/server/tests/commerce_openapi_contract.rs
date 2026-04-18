@@ -94,6 +94,11 @@ fn openapi_includes_admin_order_detail_contract_path() {
         "/admin/payment-collections/{id}/authorize",
         "/admin/payment-collections/{id}/capture",
         "/admin/payment-collections/{id}/cancel",
+        "/admin/payment-collections/{id}/refunds",
+        "/admin/refunds",
+        "/admin/refunds/{id}",
+        "/admin/refunds/{id}/complete",
+        "/admin/refunds/{id}/cancel",
         "/admin/fulfillments",
         "/admin/fulfillments/{id}",
         "/admin/fulfillments/{id}/ship",
@@ -192,6 +197,26 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
         Some("#/components/schemas/CancelPaymentInput".to_string())
     );
     assert_eq!(
+        request_schema_ref(&spec, "/admin/payment-collections/{id}/refunds", "post"),
+        Some("#/components/schemas/CreateRefundInput".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/refunds", "get", "200"),
+        Some("#/components/schemas/PaginatedResponse_RefundResponse".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/refunds/{id}", "get", "200"),
+        Some("#/components/schemas/RefundResponse".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/refunds/{id}/complete", "post"),
+        Some("#/components/schemas/CompleteRefundInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/refunds/{id}/cancel", "post"),
+        Some("#/components/schemas/CancelRefundInput".to_string())
+    );
+    assert_eq!(
         response_schema_ref(&spec, "/admin/fulfillments", "get", "200"),
         Some("#/components/schemas/PaginatedResponse_FulfillmentResponse".to_string())
     );
@@ -241,6 +266,11 @@ fn openapi_registers_store_cart_related_component_schemas() {
         "AuthorizePaymentInput",
         "CapturePaymentInput",
         "CancelPaymentInput",
+        "CreateRefundInput",
+        "CompleteRefundInput",
+        "CancelRefundInput",
+        "RefundResponse",
+        "PaginatedResponse_RefundResponse",
         "PaginatedResponse_PaymentCollectionResponse",
         "FulfillmentResponse",
         "ShipFulfillmentInput",
