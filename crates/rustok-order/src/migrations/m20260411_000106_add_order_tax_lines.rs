@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -6,25 +7,54 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Orders::Table)
-                    .add_column(
-                        ColumnDef::new(Orders::TaxTotal)
-                            .decimal()
-                            .not_null()
-                            .default(0),
-                    )
-                    .add_column(
-                        ColumnDef::new(Orders::TaxIncluded)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Orders::Table)
+                        .add_column(
+                            ColumnDef::new(Orders::TaxTotal)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Orders::Table)
+                        .add_column(
+                            ColumnDef::new(Orders::TaxIncluded)
+                                .boolean()
+                                .not_null()
+                                .default(false),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Orders::Table)
+                        .add_column(
+                            ColumnDef::new(Orders::TaxTotal)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .add_column(
+                            ColumnDef::new(Orders::TaxIncluded)
+                                .boolean()
+                                .not_null()
+                                .default(false),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_table(
@@ -115,15 +145,34 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(Table::drop().table(OrderTaxLines::Table).to_owned())
             .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Orders::Table)
-                    .drop_column(Orders::TaxTotal)
-                    .drop_column(Orders::TaxIncluded)
-                    .to_owned(),
-            )
-            .await
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Orders::Table)
+                        .drop_column(Orders::TaxTotal)
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Orders::Table)
+                        .drop_column(Orders::TaxIncluded)
+                        .to_owned(),
+                )
+                .await
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Orders::Table)
+                        .drop_column(Orders::TaxTotal)
+                        .drop_column(Orders::TaxIncluded)
+                        .to_owned(),
+                )
+                .await
+        }
     }
 }
 

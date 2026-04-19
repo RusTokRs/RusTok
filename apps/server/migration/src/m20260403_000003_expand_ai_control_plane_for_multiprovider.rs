@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -6,8 +7,10 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
+        let sqlite = manager.get_database_backend() == DatabaseBackend::Sqlite;
+
+        if sqlite {
+            for column in [
                 Table::alter()
                     .table(AiProviderProfiles::Table)
                     .add_column(
@@ -16,18 +19,27 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("[]"),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(AiProviderProfiles::Table)
                     .add_column(
                         ColumnDef::new(AiProviderProfiles::AllowedTaskProfiles)
                             .json_binary()
                             .not_null()
                             .default("[]"),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(AiProviderProfiles::Table)
                     .add_column(
                         ColumnDef::new(AiProviderProfiles::DeniedTaskProfiles)
                             .json_binary()
                             .not_null()
                             .default("[]"),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(AiProviderProfiles::Table)
                     .add_column(
                         ColumnDef::new(AiProviderProfiles::RestrictedRoleSlugs)
                             .json_binary()
@@ -35,8 +47,42 @@ impl MigrationTrait for Migration {
                             .default("[]"),
                     )
                     .to_owned(),
-            )
-            .await?;
+            ] {
+                manager.alter_table(column).await?;
+            }
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiProviderProfiles::Table)
+                        .add_column(
+                            ColumnDef::new(AiProviderProfiles::Capabilities)
+                                .json_binary()
+                                .not_null()
+                                .default("[]"),
+                        )
+                        .add_column(
+                            ColumnDef::new(AiProviderProfiles::AllowedTaskProfiles)
+                                .json_binary()
+                                .not_null()
+                                .default("[]"),
+                        )
+                        .add_column(
+                            ColumnDef::new(AiProviderProfiles::DeniedTaskProfiles)
+                                .json_binary()
+                                .not_null()
+                                .default("[]"),
+                        )
+                        .add_column(
+                            ColumnDef::new(AiProviderProfiles::RestrictedRoleSlugs)
+                                .json_binary()
+                                .not_null()
+                                .default("[]"),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_table(
@@ -151,109 +197,220 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(AiChatSessions::Table)
-                    .add_column(ColumnDef::new(AiChatSessions::TaskProfileId).uuid().null())
-                    .add_column(
-                        ColumnDef::new(AiChatSessions::ExecutionMode)
-                            .string_len(32)
-                            .not_null()
-                            .default("auto"),
-                    )
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_ai_chat_sessions_task_profile")
-                            .from_tbl(AiChatSessions::Table)
-                            .from_col(AiChatSessions::TaskProfileId)
-                            .to_tbl(AiTaskProfiles::Table)
-                            .to_col(AiTaskProfiles::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        if sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiChatSessions::Table)
+                        .add_column(ColumnDef::new(AiChatSessions::TaskProfileId).uuid().null())
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiChatSessions::Table)
+                        .add_column(
+                            ColumnDef::new(AiChatSessions::ExecutionMode)
+                                .string_len(32)
+                                .not_null()
+                                .default("auto"),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiChatSessions::Table)
+                        .add_column(ColumnDef::new(AiChatSessions::TaskProfileId).uuid().null())
+                        .add_column(
+                            ColumnDef::new(AiChatSessions::ExecutionMode)
+                                .string_len(32)
+                                .not_null()
+                                .default("auto"),
+                        )
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_ai_chat_sessions_task_profile")
+                                .from_tbl(AiChatSessions::Table)
+                                .from_col(AiChatSessions::TaskProfileId)
+                                .to_tbl(AiTaskProfiles::Table)
+                                .to_col(AiTaskProfiles::Id)
+                                .on_delete(ForeignKeyAction::SetNull),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
-        manager
-            .alter_table(
+        if sqlite {
+            for column in [
                 Table::alter()
                     .table(AiChatRuns::Table)
                     .add_column(ColumnDef::new(AiChatRuns::TaskProfileId).uuid().null())
+                    .to_owned(),
+                Table::alter()
+                    .table(AiChatRuns::Table)
                     .add_column(
                         ColumnDef::new(AiChatRuns::ExecutionMode)
                             .string_len(32)
                             .not_null()
                             .default("auto"),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(AiChatRuns::Table)
                     .add_column(
                         ColumnDef::new(AiChatRuns::ExecutionPath)
                             .string_len(32)
                             .not_null()
                             .default("mcp_tooling"),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(AiChatRuns::Table)
                     .add_column(
                         ColumnDef::new(AiChatRuns::DecisionTrace)
                             .json_binary()
                             .not_null()
                             .default("{}"),
                     )
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_ai_chat_runs_task_profile")
-                            .from_tbl(AiChatRuns::Table)
-                            .from_col(AiChatRuns::TaskProfileId)
-                            .to_tbl(AiTaskProfiles::Table)
-                            .to_col(AiTaskProfiles::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
                     .to_owned(),
-            )
-            .await?;
+            ] {
+                manager.alter_table(column).await?;
+            }
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiChatRuns::Table)
+                        .add_column(ColumnDef::new(AiChatRuns::TaskProfileId).uuid().null())
+                        .add_column(
+                            ColumnDef::new(AiChatRuns::ExecutionMode)
+                                .string_len(32)
+                                .not_null()
+                                .default("auto"),
+                        )
+                        .add_column(
+                            ColumnDef::new(AiChatRuns::ExecutionPath)
+                                .string_len(32)
+                                .not_null()
+                                .default("mcp_tooling"),
+                        )
+                        .add_column(
+                            ColumnDef::new(AiChatRuns::DecisionTrace)
+                                .json_binary()
+                                .not_null()
+                                .default("{}"),
+                        )
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_ai_chat_runs_task_profile")
+                                .from_tbl(AiChatRuns::Table)
+                                .from_col(AiChatRuns::TaskProfileId)
+                                .to_tbl(AiTaskProfiles::Table)
+                                .to_col(AiTaskProfiles::Id)
+                                .on_delete(ForeignKeyAction::SetNull),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(AiChatRuns::Table)
-                    .drop_foreign_key(Alias::new("fk_ai_chat_runs_task_profile"))
-                    .drop_column(AiChatRuns::DecisionTrace)
-                    .drop_column(AiChatRuns::ExecutionPath)
-                    .drop_column(AiChatRuns::ExecutionMode)
-                    .drop_column(AiChatRuns::TaskProfileId)
-                    .to_owned(),
-            )
-            .await?;
+        let sqlite = manager.get_database_backend() == DatabaseBackend::Sqlite;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(AiChatSessions::Table)
-                    .drop_foreign_key(Alias::new("fk_ai_chat_sessions_task_profile"))
-                    .drop_column(AiChatSessions::ExecutionMode)
-                    .drop_column(AiChatSessions::TaskProfileId)
-                    .to_owned(),
-            )
-            .await?;
+        if sqlite {
+            for column in [
+                AiChatRuns::DecisionTrace,
+                AiChatRuns::ExecutionPath,
+                AiChatRuns::ExecutionMode,
+                AiChatRuns::TaskProfileId,
+            ] {
+                manager
+                    .alter_table(
+                        Table::alter()
+                            .table(AiChatRuns::Table)
+                            .drop_column(column)
+                            .to_owned(),
+                    )
+                    .await?;
+            }
+
+            for column in [AiChatSessions::ExecutionMode, AiChatSessions::TaskProfileId] {
+                manager
+                    .alter_table(
+                        Table::alter()
+                            .table(AiChatSessions::Table)
+                            .drop_column(column)
+                            .to_owned(),
+                    )
+                    .await?;
+            }
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiChatRuns::Table)
+                        .drop_foreign_key(Alias::new("fk_ai_chat_runs_task_profile"))
+                        .drop_column(AiChatRuns::DecisionTrace)
+                        .drop_column(AiChatRuns::ExecutionPath)
+                        .drop_column(AiChatRuns::ExecutionMode)
+                        .drop_column(AiChatRuns::TaskProfileId)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiChatSessions::Table)
+                        .drop_foreign_key(Alias::new("fk_ai_chat_sessions_task_profile"))
+                        .drop_column(AiChatSessions::ExecutionMode)
+                        .drop_column(AiChatSessions::TaskProfileId)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .drop_table(Table::drop().table(AiTaskProfiles::Table).to_owned())
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(AiProviderProfiles::Table)
-                    .drop_column(AiProviderProfiles::RestrictedRoleSlugs)
-                    .drop_column(AiProviderProfiles::DeniedTaskProfiles)
-                    .drop_column(AiProviderProfiles::AllowedTaskProfiles)
-                    .drop_column(AiProviderProfiles::Capabilities)
-                    .to_owned(),
-            )
-            .await?;
+        if sqlite {
+            for column in [
+                AiProviderProfiles::RestrictedRoleSlugs,
+                AiProviderProfiles::DeniedTaskProfiles,
+                AiProviderProfiles::AllowedTaskProfiles,
+                AiProviderProfiles::Capabilities,
+            ] {
+                manager
+                    .alter_table(
+                        Table::alter()
+                            .table(AiProviderProfiles::Table)
+                            .drop_column(column)
+                            .to_owned(),
+                    )
+                    .await?;
+            }
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(AiProviderProfiles::Table)
+                        .drop_column(AiProviderProfiles::RestrictedRoleSlugs)
+                        .drop_column(AiProviderProfiles::DeniedTaskProfiles)
+                        .drop_column(AiProviderProfiles::AllowedTaskProfiles)
+                        .drop_column(AiProviderProfiles::Capabilities)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         Ok(())
     }

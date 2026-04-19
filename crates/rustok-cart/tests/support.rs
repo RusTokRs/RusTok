@@ -2,8 +2,8 @@ use rustok_cart::entities::{
     cart, cart_adjustment, cart_line_item, cart_line_item_translation, cart_shipping_selection,
     cart_tax_line,
 };
-use rustok_fulfillment::entities::shipping_option;
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
+use rustok_fulfillment::entities::shipping_option;
 use rustok_tenant::entities::tenant;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, Schema,
@@ -57,7 +57,12 @@ pub async fn ensure_cart_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(shipping_option::Entity),
     )
     .await;
-    create_entity_table(db, &builder, schema.create_table_from_entity(region::Entity)).await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(region::Entity),
+    )
+    .await;
     create_entity_table(
         db,
         &builder,

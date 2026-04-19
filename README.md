@@ -389,7 +389,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for contributo
 | Module registry | [docs/modules/registry.md](docs/modules/registry.md) |
 | Module docs index | [docs/modules/_index.md](docs/modules/_index.md) |
 | System manifest | [RUSTOK_MANIFEST.md](RUSTOK_MANIFEST.md) |
-| Module system plan | [docs/modules/module-system-plan.md](docs/modules/module-system-plan.md) |
+| Module authoring guide | [docs/modules/module-authoring.md](docs/modules/module-authoring.md) |
 | Platform verification plan | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
 | Testing guide | [docs/guides/testing.md](docs/guides/testing.md) |
 | MCP reference | [docs/references/mcp/README.md](docs/references/mcp/README.md) |

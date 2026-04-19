@@ -305,7 +305,7 @@ cargo xtask validate-manifest
 
 ## Связанные документы
 
-- [План модульной системы](./module-system-plan.md)
+- [Как писать модуль в RusToK](./module-authoring.md)
 - [Реестр модулей и приложений](./registry.md)
 - [Реестр crate-ов модульной платформы](./crates-registry.md)
 - [Индекс локальной документации по модулям](./_index.md)

@@ -21,11 +21,8 @@ pub(crate) fn publish_via_registry_live(
 ) -> Result<String> {
     let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
     let create_request = build_live_publish_registry_request(preview);
-    let create_response: RegistryMutationHttpResponse = post_registry_json_parsed(
-        &create_endpoint,
-        &create_request,
-        Some(auth_token),
-    )?;
+    let create_response: RegistryMutationHttpResponse =
+        post_registry_json_parsed(&create_endpoint, &create_request, Some(auth_token))?;
     if !create_response.accepted {
         anyhow::bail!(
             "Registry publish request was not accepted: {}",
@@ -70,11 +67,8 @@ pub(crate) fn publish_via_registry_live(
         schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
         dry_run: false,
     };
-    let validate_response: RegistryMutationHttpResponse = post_registry_json_parsed(
-        &validate_endpoint,
-        &validate_request,
-        Some(auth_token),
-    )?;
+    let validate_response: RegistryMutationHttpResponse =
+        post_registry_json_parsed(&validate_endpoint, &validate_request, Some(auth_token))?;
     ensure_publish_step_accepted(
         "validation",
         validate_response.accepted,
@@ -164,11 +158,8 @@ pub(crate) fn publish_via_registry_live(
         reason: approve_reason,
         reason_code: approve_reason_code,
     };
-    let approve_response: RegistryMutationHttpResponse = post_registry_json_parsed(
-        &approve_endpoint,
-        &approve_request,
-        Some(auth_token),
-    )?;
+    let approve_response: RegistryMutationHttpResponse =
+        post_registry_json_parsed(&approve_endpoint, &approve_request, Some(auth_token))?;
     ensure_publish_step_accepted(
         "approval",
         approve_response.accepted,

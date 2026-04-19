@@ -6,8 +6,8 @@ use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
     inventory_item, inventory_level, price, price_list, price_list_translation, product,
     product_image, product_image_translation, product_option, product_option_translation,
-    product_option_value, product_option_value_translation, product_translation, product_variant, region,
-    region_country_tax_policy, region_translation, reservation_item, shipping_profile,
+    product_option_value, product_option_value_translation, product_translation, product_variant,
+    region, region_country_tax_policy, region_translation, reservation_item, shipping_profile,
     shipping_profile_translation, stock_location, stock_location_translation, variant_translation,
 };
 use rustok_customer::entities::customer;

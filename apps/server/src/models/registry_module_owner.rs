@@ -8,7 +8,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub slug: String,
     #[sea_orm(column_name = "owner_principal")]
-    pub owner_actor: Json,
+    pub owner_principal: Json,
     #[sea_orm(column_name = "bound_by_principal")]
     pub bound_by: Json,
     pub bound_at: DateTime<Utc>,

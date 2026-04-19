@@ -221,4 +221,3 @@ pub struct S3StorageConfig {
     #[serde(default)]
     pub key_prefix: Option<String>,
 }
-

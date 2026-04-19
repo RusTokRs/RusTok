@@ -15,9 +15,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(value
-        .as_ref()
-        .and_then(registry_principal_label_from_value))
+    Ok(value.as_ref().and_then(registry_principal_label_from_value))
 }
 
 pub fn registry_principal_label_from_value(value: &serde_json::Value) -> Option<String> {
@@ -49,13 +47,22 @@ pub fn registry_principal_label_from_value(value: &serde_json::Value) -> Option<
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryOwnerTransitionLifecycle {
     #[serde(rename = "previousOwner")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub previous_owner: Option<String>,
     #[serde(rename = "newOwner")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub new_owner: Option<String>,
     #[serde(rename = "boundBy")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub bound_by: Option<String>,
 }
 
@@ -99,26 +106,20 @@ impl RegistryGovernanceEventPayloadLifecycle {
             .get("attempt_number")
             .and_then(serde_json::Value::as_i64)
             .map(|value| value as i32);
-        let owner_transition = if details.get("previous_owner_actor").is_some()
-            || details.get("new_owner_actor").is_some()
-            || details.get("owner_actor").is_some()
-            || details.get("bound_by").is_some()
-        {
-            Some(RegistryOwnerTransitionLifecycle {
-                previous_owner: details
-                    .get("previous_owner_actor")
+        let owner_transition = details
+            .get("owner_transition")
+            .and_then(serde_json::Value::as_object)
+            .map(|transition| RegistryOwnerTransitionLifecycle {
+                previous_owner: transition
+                    .get("previous_owner")
                     .and_then(registry_principal_label_from_value),
-                new_owner: details
-                    .get("new_owner_actor")
-                    .or_else(|| details.get("owner_actor"))
+                new_owner: transition
+                    .get("new_owner")
                     .and_then(registry_principal_label_from_value),
-                bound_by: details
+                bound_by: transition
                     .get("bound_by")
                     .and_then(registry_principal_label_from_value),
-            })
-        } else {
-            None
-        };
+            });
 
         Self {
             reason: details
@@ -138,8 +139,7 @@ impl RegistryGovernanceEventPayloadLifecycle {
                 .and_then(serde_json::Value::as_str)
                 .map(ToString::to_string),
             stage_key: details
-                .get("stage")
-                .or_else(|| details.get("gate"))
+                .get("stage_key")
                 .and_then(serde_json::Value::as_str)
                 .map(ToString::to_string),
             attempt_number,
@@ -310,9 +310,9 @@ pub struct RegistryGovernanceActionLifecycle {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryOwnerLifecycle {
-    #[serde(rename = "ownerActor")]
+    #[serde(rename = "owner")]
     #[serde(deserialize_with = "deserialize_registry_principal_label")]
-    pub owner_actor: String,
+    pub owner: String,
     #[serde(rename = "boundBy")]
     #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub bound_by: String,
@@ -329,7 +329,10 @@ pub struct RegistryGovernanceEventLifecycle {
     pub event_type: String,
     #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub actor: String,
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub publisher: Option<String>,
     #[serde(rename = "payload", alias = "details")]
     pub payload: RegistryGovernanceEventPayloadLifecycle,
@@ -382,19 +385,31 @@ pub struct RegistryPublishRequestLifecycle {
     #[serde(rename = "requestedBy")]
     #[serde(deserialize_with = "deserialize_registry_principal_label")]
     pub requested_by: String,
-    #[serde(rename = "publisherIdentity")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
-    pub publisher_identity: Option<String>,
+    #[serde(rename = "publisher")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
+    pub publisher: Option<String>,
     #[serde(rename = "approvedBy")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub approved_by: Option<String>,
     #[serde(rename = "rejectedBy")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub rejected_by: Option<String>,
     #[serde(rename = "rejectionReason")]
     pub rejection_reason: Option<String>,
     #[serde(rename = "changesRequestedBy")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub changes_requested_by: Option<String>,
     #[serde(rename = "changesRequestedReason")]
     pub changes_requested_reason: Option<String>,
@@ -403,7 +418,10 @@ pub struct RegistryPublishRequestLifecycle {
     #[serde(rename = "changesRequestedAt")]
     pub changes_requested_at: Option<String>,
     #[serde(rename = "heldBy")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub held_by: Option<String>,
     #[serde(rename = "heldReason")]
     pub held_reason: Option<String>,
@@ -438,7 +456,10 @@ pub struct RegistryReleaseLifecycle {
     #[serde(rename = "yankedReason")]
     pub yanked_reason: Option<String>,
     #[serde(rename = "yankedBy")]
-    #[serde(default, deserialize_with = "deserialize_optional_registry_principal_label")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_registry_principal_label"
+    )]
     pub yanked_by: Option<String>,
     #[serde(rename = "yankedAt")]
     pub yanked_at: Option<String>,
@@ -543,4 +564,43 @@ pub struct ToggleModuleResult {
     pub module_slug: String,
     pub enabled: bool,
     pub settings: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RegistryGovernanceEventPayloadLifecycle;
+    use serde_json::json;
+
+    #[test]
+    fn governance_payload_reads_nested_owner_transition_only() {
+        let payload = RegistryGovernanceEventPayloadLifecycle::from_details(&json!({
+            "stage_key": "compile_smoke",
+            "owner_transition": {
+                "previous_owner": {
+                    "displayLabel": "user:00000000-0000-0000-0000-000000000001"
+                },
+                "new_owner": {
+                    "displayLabel": "user:00000000-0000-0000-0000-000000000002"
+                },
+                "bound_by": {
+                    "displayLabel": "user:00000000-0000-0000-0000-000000000003"
+                }
+            }
+        }));
+
+        assert_eq!(payload.stage_key.as_deref(), Some("compile_smoke"));
+        let transition = payload.owner_transition.expect("owner transition");
+        assert_eq!(
+            transition.previous_owner.as_deref(),
+            Some("user:00000000-0000-0000-0000-000000000001")
+        );
+        assert_eq!(
+            transition.new_owner.as_deref(),
+            Some("user:00000000-0000-0000-0000-000000000002")
+        );
+        assert_eq!(
+            transition.bound_by.as_deref(),
+            Some("user:00000000-0000-0000-0000-000000000003")
+        );
+    }
 }

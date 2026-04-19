@@ -1,5 +1,6 @@
 use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 use uuid::Uuid;
 
 #[derive(DeriveMigrationName)]
@@ -92,34 +93,77 @@ impl MigrationTrait for Migration {
                 .await?;
         }
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ShippingProfiles::Table)
-                    .drop_column(ShippingProfiles::Name)
-                    .drop_column(ShippingProfiles::Description)
-                    .to_owned(),
-            )
-            .await?;
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ShippingProfiles::Table)
+                        .drop_column(ShippingProfiles::Name)
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ShippingProfiles::Table)
+                        .drop_column(ShippingProfiles::Description)
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ShippingProfiles::Table)
+                        .drop_column(ShippingProfiles::Name)
+                        .drop_column(ShippingProfiles::Description)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ShippingProfiles::Table)
-                    .add_column(
-                        ColumnDef::new(ShippingProfiles::Name)
-                            .string_len(255)
-                            .not_null()
-                            .default(""),
-                    )
-                    .add_column(ColumnDef::new(ShippingProfiles::Description).text())
-                    .to_owned(),
-            )
-            .await?;
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ShippingProfiles::Table)
+                        .add_column(
+                            ColumnDef::new(ShippingProfiles::Name)
+                                .string_len(255)
+                                .not_null()
+                                .default(""),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ShippingProfiles::Table)
+                        .add_column(ColumnDef::new(ShippingProfiles::Description).text())
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(ShippingProfiles::Table)
+                        .add_column(
+                            ColumnDef::new(ShippingProfiles::Name)
+                                .string_len(255)
+                                .not_null()
+                                .default(""),
+                        )
+                        .add_column(ColumnDef::new(ShippingProfiles::Description).text())
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         let backend = manager.get_connection().get_database_backend();
         manager

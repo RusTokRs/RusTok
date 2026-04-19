@@ -224,7 +224,9 @@ async fn load_regions_with_translations(
     rows.into_iter()
         .map(|row| {
             let translations = translations_by_region.remove(&row.id).unwrap_or_default();
-            let country_tax_policies = country_tax_policies_by_region.remove(&row.id).unwrap_or_default();
+            let country_tax_policies = country_tax_policies_by_region
+                .remove(&row.id)
+                .unwrap_or_default();
             map_region(
                 row,
                 translations,

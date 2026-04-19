@@ -6988,6 +6988,7 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "rustok-region",
+ "rustok-taxonomy",
  "rustok-test-utils",
  "rustok-workflow",
  "sea-orm-migration",

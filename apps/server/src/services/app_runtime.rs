@@ -130,7 +130,9 @@ async fn init_storage(ctx: &AppContext, settings: &RustokSettings) -> Result<()>
 
     let service = StorageService::from_config(&settings.storage)
         .await
-        .map_err(|error| Error::Message(format!("Failed to initialize storage backend: {error}")))?;
+        .map_err(|error| {
+            Error::Message(format!("Failed to initialize storage backend: {error}"))
+        })?;
     tracing::info!(driver = ?settings.storage.driver, "Initialized storage backend");
     ctx.shared_store.insert(service);
     Ok(())

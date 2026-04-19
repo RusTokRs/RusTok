@@ -12,6 +12,7 @@
 4. Для периодической верификации и quality-gates используйте `docs/verification/*` и `docs/guides/*`.
 5. Для остаточного и будущего scope по platform contracts сверяйтесь с профильными live docs в `docs/architecture/*`, `docs/UI/*` и `apps/*/docs/*`, не смешивая это с периодической верификацией.
 6. Для изменений конкретного модуля сверяйтесь с `docs/modules/registry.md` и локальными docs соответствующего crate.
+7. Для принятых архитектурных решений и clean-cutover решений сверяйтесь с `DECISIONS/*`.
 
 ## Обязательные стартовые документы
 
@@ -26,7 +27,6 @@
 
 - [Обзор модульной платформы](./modules/overview.md)
 - [Как писать модуль в RusToK](./modules/module-authoring.md)
-- [План и текущее состояние модульной системы](./modules/module-system-plan.md)
 - [Контракт `rustok-module.toml`](./modules/manifest.md) — включая capability-only ghost modules вроде `alloy` и `flex`
 - [Реестр модулей и приложений](./modules/registry.md)
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)

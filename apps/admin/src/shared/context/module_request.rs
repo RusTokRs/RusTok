@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use leptos::prelude::*;
-use leptos_ui_routing::RouteQueryPolicy;
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_router::NavigateOptions;
+use leptos_ui_routing::RouteQueryPolicy;
 use rustok_api::{sanitize_admin_route_query, UiRouteContext};
 
 use crate::{use_i18n, Locale};

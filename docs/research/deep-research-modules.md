@@ -4,7 +4,7 @@
 
 ## Назначение
 
-Этот документ фиксирует выводы исследования, на основании которого выравнивается модульная платформа RusTok. Нормативные требования и исполнимый roadmap живут в [`docs/modules/module-system-plan.md`](../modules/module-system-plan.md) и [`docs/modules/manifest.md`](../modules/manifest.md); этот файл остаётся аналитической базой.
+Этот документ фиксирует выводы исследования, на основании которого выравнивается модульная платформа RusTok. Нормативные требования и канонический практический contract живут в [`docs/modules/module-authoring.md`](../modules/module-authoring.md) и [`docs/modules/manifest.md`](../modules/manifest.md); этот файл остаётся аналитической базой.
 
 ## Ключевые выводы
 
@@ -53,6 +53,6 @@
 
 Это исследование используется как база для трёх нормативных направлений:
 
-1. [`docs/modules/module-system-plan.md`](../modules/module-system-plan.md) фиксирует roadmap и волны remediation.
+1. [`docs/modules/module-authoring.md`](../modules/module-authoring.md) фиксирует канонический путь написания модулей и рабочие правила для агентов.
 2. [`docs/modules/manifest.md`](../modules/manifest.md) описывает обязательный контракт модуля.
 3. [`docs/verification/README.md`](../verification/README.md) описывает исполнимый verification path, включая Windows-hybrid сценарий.

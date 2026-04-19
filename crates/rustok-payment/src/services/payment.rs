@@ -11,9 +11,10 @@ use validator::Validate;
 use rustok_core::generate_id;
 
 use crate::dto::{
-    AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
-    CancelRefundInput, CompleteRefundInput, CreateRefundInput, ListPaymentCollectionsInput,
-    ListRefundsInput, PaymentCollectionResponse, PaymentResponse, RefundResponse,
+    AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
+    CompleteRefundInput, CreatePaymentCollectionInput, CreateRefundInput,
+    ListPaymentCollectionsInput, ListRefundsInput, PaymentCollectionResponse, PaymentResponse,
+    RefundResponse,
 };
 use crate::entities;
 use crate::error::{PaymentError, PaymentResult};
@@ -273,8 +274,14 @@ impl PaymentService {
         self.get_refund(tenant_id, refund_id).await
     }
 
-    pub async fn get_refund(&self, tenant_id: Uuid, refund_id: Uuid) -> PaymentResult<RefundResponse> {
-        let refund = self.load_refund_in_tx(&self.db, tenant_id, refund_id).await?;
+    pub async fn get_refund(
+        &self,
+        tenant_id: Uuid,
+        refund_id: Uuid,
+    ) -> PaymentResult<RefundResponse> {
+        let refund = self
+            .load_refund_in_tx(&self.db, tenant_id, refund_id)
+            .await?;
         Ok(self.build_refund_response(refund))
     }
 
@@ -287,8 +294,8 @@ impl PaymentService {
         let per_page = input.per_page.clamp(1, 100);
         let offset = (page.saturating_sub(1)) * per_page;
 
-        let mut query =
-            entities::refund::Entity::find().filter(entities::refund::Column::TenantId.eq(tenant_id));
+        let mut query = entities::refund::Entity::find()
+            .filter(entities::refund::Column::TenantId.eq(tenant_id));
 
         if let Some(collection_id) = input.payment_collection_id {
             query = query.filter(entities::refund::Column::PaymentCollectionId.eq(collection_id));
@@ -306,7 +313,9 @@ impl PaymentService {
             .await?;
 
         Ok((
-            rows.into_iter().map(|row| self.build_refund_response(row)).collect(),
+            rows.into_iter()
+                .map(|row| self.build_refund_response(row))
+                .collect(),
             total,
         ))
     }
@@ -618,8 +627,7 @@ impl PaymentService {
         let refunds = entities::refund::Entity::find()
             .filter(entities::refund::Column::PaymentCollectionId.eq(collection_id))
             .filter(
-                entities::refund::Column::Status
-                    .is_in([STATUS_REFUND_PENDING, STATUS_REFUNDED]),
+                entities::refund::Column::Status.is_in([STATUS_REFUND_PENDING, STATUS_REFUNDED]),
             )
             .all(conn)
             .await?;
@@ -750,7 +758,9 @@ fn normalize_provider_payment_id(value: Option<String>) -> String {
 }
 
 fn normalize_optional_reason(value: Option<String>) -> Option<String> {
-    value.map(|reason| reason.trim().to_string()).filter(|reason| !reason.is_empty())
+    value
+        .map(|reason| reason.trim().to_string())
+        .filter(|reason| !reason.is_empty())
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {

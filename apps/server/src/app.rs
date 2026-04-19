@@ -234,14 +234,6 @@ impl Hooks for App {
 fn check_production_secrets(ctx: &AppContext) -> Result<()> {
     #[cfg(not(debug_assertions))]
     {
-        const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
-            "dev-secret",
-            "test-secret",
-            "change-in-production",
-            "dev_secret",
-            "rustok-dev-secret",
-        ];
-
         let jwt_secret = ctx
             .config
             .auth
@@ -250,13 +242,11 @@ fn check_production_secrets(ctx: &AppContext) -> Result<()> {
             .map(|jwt| jwt.secret.as_str())
             .unwrap_or("");
 
-        for fragment in KNOWN_DEV_SUBSTRINGS {
-            if jwt_secret.contains(fragment) {
-                return Err(loco_rs::Error::Message(format!(
-                    "FATAL: JWT secret contains a known development value (\"{fragment}\"). \
-                     Set a strong, random secret in your production configuration."
-                )));
-            }
+        if let Some(fragment) = known_dev_jwt_fragment(jwt_secret) {
+            return Err(loco_rs::Error::Message(format!(
+                "FATAL: JWT secret contains a known development value (\"{fragment}\"). \
+                 Set a strong, random secret in your production configuration."
+            )));
         }
 
         if !jwt_secret.is_empty() && jwt_secret.len() < 32 {
@@ -266,19 +256,95 @@ fn check_production_secrets(ctx: &AppContext) -> Result<()> {
                     .to_string(),
             ));
         }
+
+        if let Some(pattern) = sample_database_credentials_pattern(&ctx.config.database.uri) {
+            return Err(loco_rs::Error::Message(format!(
+                "FATAL: database URI matches known sample credentials ({pattern}). \
+                 Set production database credentials before starting the release build."
+            )));
+        }
+
+        if let Some((variable, password)) = configured_superadmin_password() {
+            if let Some(sample) = known_sample_superadmin_password(&password) {
+                return Err(loco_rs::Error::Message(format!(
+                    "FATAL: env var {variable} contains sample superadmin password \"{sample}\". \
+                     Set a unique secret before starting the release build."
+                )));
+            }
+        }
     }
 
     let _ = ctx; // suppress unused warning in debug builds
     Ok(())
 }
 
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn known_dev_jwt_fragment(secret: &str) -> Option<&'static str> {
+    const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
+        "dev-secret",
+        "test-secret",
+        "change-in-production",
+        "dev_secret",
+        "rustok-dev-secret",
+    ];
+
+    KNOWN_DEV_SUBSTRINGS
+        .iter()
+        .copied()
+        .find(|fragment| secret.contains(fragment))
+}
+
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn sample_database_credentials_pattern(uri: &str) -> Option<&'static str> {
+    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"];
+
+    SAMPLE_PATTERNS
+        .iter()
+        .copied()
+        .find(|pattern| uri.contains(pattern))
+}
+
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn configured_superadmin_password() -> Option<(&'static str, String)> {
+    for key in [
+        "SUPERADMIN_PASSWORD",
+        "SEED_ADMIN_PASSWORD",
+        "RUSTOK_DEV_SEED_PASSWORD",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            let value = value.trim().to_string();
+            if !value.is_empty() {
+                return Some((key, value));
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn known_sample_superadmin_password(password: &str) -> Option<&'static str> {
+    const SAMPLE_PASSWORDS: &[&str] =
+        &["change-me-in-production", "admin12345", "dev-password-123"];
+
+    SAMPLE_PASSWORDS
+        .iter()
+        .copied()
+        .find(|candidate| password == *candidate)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::App;
+    use super::{
+        known_dev_jwt_fragment, known_sample_superadmin_password,
+        sample_database_credentials_pattern, App,
+    };
     use axum::body::{to_bytes, Body};
-    use axum::http::{Request, StatusCode};
+    use axum::http::{Method, Request, StatusCode};
     use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
     use migration::Migrator;
+    use rustok_api::context::{AuthContext, AuthContextExtension};
+    use rustok_core::Permission;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
     use sea_orm_migration::MigratorTrait;
     use serde_json::Value;
@@ -286,12 +352,98 @@ mod tests {
     use std::sync::Arc;
     use tower::ServiceExt;
 
+    #[test]
+    fn production_guardrail_detects_known_dev_jwt_fragments() {
+        assert_eq!(
+            known_dev_jwt_fragment("prefix-rustok-dev-secret-suffix"),
+            Some("dev-secret")
+        );
+        assert_eq!(known_dev_jwt_fragment("totally-random-secret"), None);
+    }
+
+    #[test]
+    fn production_guardrail_detects_sample_database_credentials() {
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://postgres:postgres@db.internal:5432/rustok"
+            ),
+            Some("://postgres:postgres@")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern("postgres://rustok:rustok@db.internal:5432/rustok"),
+            Some("://rustok:rustok@")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern(
+                "postgres://prod-user:strong-pass@db.internal:5432/rustok"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn production_guardrail_detects_sample_superadmin_passwords() {
+        assert_eq!(
+            known_sample_superadmin_password("admin12345"),
+            Some("admin12345")
+        );
+        assert_eq!(
+            known_sample_superadmin_password("dev-password-123"),
+            Some("dev-password-123")
+        );
+        assert_eq!(known_sample_superadmin_password("S3cure!Passphrase"), None);
+    }
+
     use crate::graphql::SharedGraphqlSchema;
     use crate::middleware::rate_limit::{
         SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
     };
     use crate::services::event_transport_factory::EventRuntime;
     use crate::services::marketplace_catalog::SharedMarketplaceCatalogService;
+    use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
+
+    fn principal_json(label: &str) -> serde_json::Value {
+        RegistryPrincipalRef::from_legacy_value(label).to_json_value()
+    }
+
+    fn registry_authority(label: &str) -> RegistryAuthority {
+        RegistryAuthority {
+            principal: RegistryPrincipalRef::from_legacy_value(label),
+            can_manage_modules: false,
+        }
+    }
+
+    fn publish_status_auth(user_id: uuid::Uuid, can_manage_modules: bool) -> AuthContext {
+        AuthContext {
+            user_id,
+            session_id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            permissions: if can_manage_modules {
+                vec![Permission::MODULES_MANAGE]
+            } else {
+                Vec::new()
+            },
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "session".to_string(),
+        }
+    }
+
+    fn governance_auth() -> AuthContext {
+        publish_status_auth(uuid::Uuid::new_v4(), true)
+    }
+
+    fn oauth_service_token_auth() -> AuthContext {
+        AuthContext {
+            user_id: uuid::Uuid::nil(),
+            session_id: uuid::Uuid::nil(),
+            tenant_id: uuid::Uuid::new_v4(),
+            permissions: vec![Permission::MODULES_MANAGE],
+            client_id: Some(uuid::Uuid::new_v4()),
+            scopes: Vec::new(),
+            grant_type: "client_credentials".to_string(),
+        }
+    }
 
     #[tokio::test]
     #[serial]
@@ -887,27 +1039,20 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/v2/catalog/owner-transfer")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": true,
-                            "slug": "blog",
-                            "new_owner_actor": "publisher:forum",
-                            "reason": "Ownership moved to a new maintained publisher identity"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("v2 owner transfer request should succeed");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            "/v2/catalog/owner-transfer",
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": true,
+                "slug": "blog",
+                "new_owner_user_id": uuid::Uuid::new_v4(),
+                "reason": "Ownership moved to a new maintained publisher identity"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -950,27 +1095,19 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/reject", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "reason": "Ownership evidence is incomplete.",
-                            "reason_code": "not_supported"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("live reject request should complete");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/reject", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Ownership evidence is incomplete.",
+                "reason_code": "not_supported"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -984,6 +1121,58 @@ mod tests {
         assert!(
             String::from_utf8_lossy(&body).contains("not supported"),
             "reject error should mention unsupported reason_code: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_publish_reject_endpoint_rejects_oauth_service_tokens() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for reject service-token validation");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/reject", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Ownership evidence is incomplete.",
+                "reason_code": "ownership_mismatch"
+            }),
+            Some(oauth_service_token_auth()),
+        )
+        .await;
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("service token reject error body should read");
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "unexpected live /v2/catalog/publish/{{request_id}}/reject response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(
+            String::from_utf8_lossy(&body).contains("OAuth service tokens are not supported"),
+            "service token error should mention unsupported principal type: {}",
             String::from_utf8_lossy(&body)
         );
     }
@@ -1006,35 +1195,35 @@ mod tests {
             }
         }));
 
-        insert_registry_owner_binding(&ctx, "blog", "governance:moderator").await;
-        insert_active_release(&ctx, "blog", "0.1.0", Some("governance:moderator"), None).await;
+        let governance_user_id = uuid::Uuid::new_v4();
+        insert_registry_owner_binding(&ctx, "blog", &format!("user:{governance_user_id}")).await;
+        insert_active_release(
+            &ctx,
+            "blog",
+            "0.1.0",
+            Some(&format!("user:{governance_user_id}")),
+            None,
+        )
+        .await;
 
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/v2/catalog/yank")
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "slug": "blog",
-                            "version": "0.1.0",
-                            "reason": "Release needs to be withdrawn.",
-                            "reason_code": "not_supported"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("live yank request should complete");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            "/v2/catalog/yank",
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "slug": "blog",
+                "version": "0.1.0",
+                "reason": "Release needs to be withdrawn.",
+                "reason_code": "not_supported"
+            }),
+            Some(publish_status_auth(governance_user_id, true)),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1070,34 +1259,27 @@ mod tests {
             }
         }));
 
-        insert_registry_owner_binding(&ctx, "blog", "governance:moderator").await;
+        insert_registry_owner_binding(&ctx, "blog", &format!("user:{}", uuid::Uuid::new_v4()))
+            .await;
 
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/v2/catalog/owner-transfer")
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "slug": "blog",
-                            "new_owner_actor": "publisher:forum",
-                            "reason": "Ownership moved to a new maintained publisher identity.",
-                            "reason_code": "not_supported"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("live owner transfer request should complete");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            "/v2/catalog/owner-transfer",
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "slug": "blog",
+                "new_owner_user_id": uuid::Uuid::new_v4(),
+                "reason": "Ownership moved to a new maintained publisher identity.",
+                "reason_code": "not_supported"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1111,6 +1293,114 @@ mod tests {
         assert!(
             String::from_utf8_lossy(&body).contains("not supported"),
             "owner transfer error should mention unsupported reason_code: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_owner_transfer_endpoint_rejects_legacy_headers_without_auth() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for legacy header rejection");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/v2/catalog/owner-transfer")
+            .header("content-type", "application/json")
+            .header(concat!("x-rustok-", "actor"), "registry:admin")
+            .body(Body::from(
+                serde_json::json!({
+                    "schema_version": 1,
+                    "dry_run": false,
+                    "slug": "blog",
+                    "new_owner_user_id": uuid::Uuid::new_v4(),
+                    "reason": "Ownership moved to a new maintained publisher identity.",
+                    "reason_code": "maintenance_handoff"
+                })
+                .to_string(),
+            ))
+            .expect("request");
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("legacy header rejection request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("legacy header rejection body should read");
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            String::from_utf8_lossy(&body).contains("legacy actor/publisher headers"),
+            "legacy header rejection should explain the clean contract: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_owner_transfer_endpoint_reports_conflict_for_same_owner() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for owner transfer conflict");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let owner_user_id = uuid::Uuid::new_v4();
+        insert_registry_owner_binding(&ctx, "blog", &format!("user:{owner_user_id}")).await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            "/v2/catalog/owner-transfer",
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "slug": "blog",
+                "new_owner_user_id": owner_user_id,
+                "reason": "Ownership moved to the same principal by mistake.",
+                "reason_code": "maintenance_handoff"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("owner transfer conflict body should read");
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(
+            String::from_utf8_lossy(&body).contains("already bound"),
+            "owner transfer conflict should preserve the typed conflict message: {}",
             String::from_utf8_lossy(&body)
         );
     }
@@ -1163,8 +1453,7 @@ mod tests {
                             },
                     },
                 },
-                "xtask:module-publish",
-                Some("publisher:blog"),
+                &registry_authority("user:00000000-0000-0000-0000-000000000111"),
                 &[],
             )
             .await
@@ -1185,28 +1474,21 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/stages", approved.id))
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": true,
-                            "stage": "compile_smoke",
-                            "status": "passed",
-                            "detail": "Compile smoke passed in external CI.",
-                            "requeue": false
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("v2 validation stage request should succeed");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/stages", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": true,
+                "stage": "compile_smoke",
+                "status": "passed",
+                "detail": "Compile smoke passed in external CI.",
+                "requeue": false
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1259,29 +1541,21 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/stages", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "stage": "compile_smoke",
-                            "status": "running",
-                            "detail": "Compile smoke started in external CI.",
-                            "requeue": false
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("live validation stage request should succeed");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/stages", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "stage": "compile_smoke",
+                "status": "running",
+                "detail": "Compile smoke started in external CI.",
+                "requeue": false
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1352,36 +1626,28 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/stages", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "stage": "compile_smoke",
-                            "status": "running",
-                            "detail": "Attempting to restart a completed stage.",
-                            "requeue": false
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("invalid transition request should complete");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/stages", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "stage": "compile_smoke",
+                "status": "running",
+                "detail": "Attempting to restart a completed stage.",
+                "requeue": false
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("invalid transition body should read");
         assert_eq!(
             status,
-            StatusCode::BAD_REQUEST,
+            StatusCode::CONFLICT,
             "unexpected invalid transition response body: {}",
             String::from_utf8_lossy(&body)
         );
@@ -1427,26 +1693,18 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/reject", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "reason": "Ownership evidence is incomplete."
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("live reject request should complete");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/reject", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Ownership evidence is incomplete."
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1486,27 +1744,19 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/reject", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "reason": "Ownership evidence is incomplete.",
-                            "reason_code": "ownership_mismatch"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("live reject request should succeed");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/reject", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Ownership evidence is incomplete.",
+                "reason_code": "ownership_mismatch"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1586,30 +1836,19 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!(
-                        "/v2/catalog/publish/{}/request-changes",
-                        approved.id
-                    ))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "reason": "Artifact metadata drifted from the reviewed contract.",
-                            "reason_code": "artifact_mismatch"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("request-changes request should succeed");
+        let response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/request-changes", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Artifact metadata drifted from the reviewed contract.",
+                "reason_code": "artifact_mismatch"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1693,27 +1932,19 @@ mod tests {
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
 
-        let hold_response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/hold", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "reason": "Release window is temporarily closed.",
-                            "reason_code": "release_window"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("hold request should succeed");
+        let hold_response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/hold", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Release window is temporarily closed.",
+                "reason_code": "release_window"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let hold_status = hold_response.status();
         let hold_body = to_bytes(hold_response.into_body(), usize::MAX)
             .await
@@ -1747,27 +1978,19 @@ mod tests {
         );
         assert_eq!(held_request.held_from_status.as_deref(), Some("approved"));
 
-        let resume_response = base_router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v2/catalog/publish/{}/resume", approved.id))
-                    .header("content-type", "application/json")
-                    .header("x-rustok-actor", "governance:moderator")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "schema_version": 1,
-                            "dry_run": false,
-                            "reason": "Release window reopened after review.",
-                            "reason_code": "review_complete"
-                        })
-                        .to_string(),
-                    ))
-                    .expect("request"),
-            )
-            .await
-            .expect("resume request should succeed");
+        let resume_response = send_json_request(
+            base_router.clone(),
+            Method::POST,
+            format!("/v2/catalog/publish/{}/resume", approved.id),
+            serde_json::json!({
+                "schema_version": 1,
+                "dry_run": false,
+                "reason": "Release window reopened after review.",
+                "reason_code": "review_complete"
+            }),
+            Some(governance_auth()),
+        )
+        .await;
         let resume_status = resume_response.status();
         let resume_body = to_bytes(resume_response.into_body(), usize::MAX)
             .await
@@ -1839,7 +2062,10 @@ mod tests {
         }));
 
         let approved = create_approved_publish_request(&ctx).await;
-        insert_registry_owner_binding(&ctx, "blog", "owner:blog").await;
+        let owner_user_id = uuid::Uuid::new_v4();
+        let governance_user_id = uuid::Uuid::new_v4();
+        let unrelated_user_id = uuid::Uuid::new_v4();
+        insert_registry_owner_binding(&ctx, "blog", &format!("user:{owner_user_id}")).await;
         insert_validation_stage(
             &ctx,
             &approved,
@@ -1855,18 +2081,24 @@ mod tests {
             .expect("base router should build");
         let actorless_payload =
             fetch_publish_status_payload(base_router.clone(), &approved.id, None).await;
-        let owner_payload =
-            fetch_publish_status_payload(base_router.clone(), &approved.id, Some("owner:blog"))
-                .await;
+        let owner_payload = fetch_publish_status_payload(
+            base_router.clone(),
+            &approved.id,
+            Some(publish_status_auth(owner_user_id, false)),
+        )
+        .await;
         let governance_payload = fetch_publish_status_payload(
             base_router.clone(),
             &approved.id,
-            Some("governance:moderator"),
+            Some(publish_status_auth(governance_user_id, true)),
         )
         .await;
-        let unrelated_payload =
-            fetch_publish_status_payload(base_router, &approved.id, Some("publisher:outsider"))
-                .await;
+        let unrelated_payload = fetch_publish_status_payload(
+            base_router,
+            &approved.id,
+            Some(publish_status_auth(unrelated_user_id, false)),
+        )
+        .await;
 
         let actorless_actions = publish_status_action_keys(&actorless_payload);
         let owner_actions = publish_status_action_keys(&owner_payload);
@@ -1944,6 +2176,11 @@ mod tests {
             }
         }));
 
+        let owner_forum_user_id = uuid::Uuid::new_v4();
+        let owner_pages_user_id = uuid::Uuid::new_v4();
+        let governance_user_id = uuid::Uuid::new_v4();
+        let unrelated_user_id = uuid::Uuid::new_v4();
+
         let mut submitted = create_approved_publish_request_for_slug(&ctx, "forum").await;
         let mut submitted_active =
             crate::models::registry_publish_request::ActiveModel::from(submitted.clone());
@@ -1955,7 +2192,7 @@ mod tests {
             .update(&ctx.db)
             .await
             .expect("submitted request should persist");
-        insert_registry_owner_binding(&ctx, "forum", "owner:forum").await;
+        insert_registry_owner_binding(&ctx, "forum", &format!("user:{owner_forum_user_id}")).await;
 
         let mut held = create_approved_publish_request_for_slug(&ctx, "pages").await;
         let mut held_active =
@@ -1964,7 +2201,7 @@ mod tests {
             Set(crate::models::registry_publish_request::RegistryPublishRequestStatus::OnHold);
         held_active.held_from_status = Set(Some("submitted".to_string()));
         held_active.held_at = Set(Some(chrono::Utc::now()));
-        held_active.held_by = Set(Some("governance:moderator".to_string()));
+        held_active.held_by = Set(Some(principal_json(&format!("user:{governance_user_id}"))));
         held_active.held_reason = Set(Some("Release train paused.".to_string()));
         held_active.held_reason_code = Set(Some("release_window".to_string()));
         held_active.approved_at = Set(None);
@@ -1973,37 +2210,48 @@ mod tests {
             .update(&ctx.db)
             .await
             .expect("held request should persist");
-        insert_registry_owner_binding(&ctx, "pages", "owner:pages").await;
+        insert_registry_owner_binding(&ctx, "pages", &format!("user:{owner_pages_user_id}")).await;
 
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
 
-        let submitted_owner =
-            fetch_publish_status_payload(base_router.clone(), &submitted.id, Some("owner:forum"))
-                .await;
+        let submitted_owner = fetch_publish_status_payload(
+            base_router.clone(),
+            &submitted.id,
+            Some(publish_status_auth(owner_forum_user_id, false)),
+        )
+        .await;
         let submitted_governance = fetch_publish_status_payload(
             base_router.clone(),
             &submitted.id,
-            Some("governance:moderator"),
+            Some(publish_status_auth(governance_user_id, true)),
         )
         .await;
         let submitted_unrelated = fetch_publish_status_payload(
             base_router.clone(),
             &submitted.id,
-            Some("publisher:outsider"),
+            Some(publish_status_auth(unrelated_user_id, false)),
         )
         .await;
-        let held_owner =
-            fetch_publish_status_payload(base_router.clone(), &held.id, Some("owner:pages")).await;
+        let held_owner = fetch_publish_status_payload(
+            base_router.clone(),
+            &held.id,
+            Some(publish_status_auth(owner_pages_user_id, false)),
+        )
+        .await;
         let held_governance = fetch_publish_status_payload(
             base_router.clone(),
             &held.id,
-            Some("governance:moderator"),
+            Some(publish_status_auth(governance_user_id, true)),
         )
         .await;
-        let held_unrelated =
-            fetch_publish_status_payload(base_router, &held.id, Some("publisher:outsider")).await;
+        let held_unrelated = fetch_publish_status_payload(
+            base_router,
+            &held.id,
+            Some(publish_status_auth(unrelated_user_id, false)),
+        )
+        .await;
 
         let submitted_owner_actions = publish_status_action_keys(&submitted_owner);
         let submitted_governance_actions = publish_status_action_keys(&submitted_governance);
@@ -2437,7 +2685,7 @@ mod tests {
                             "schema_version": 1,
                             "dry_run": true,
                             "slug": "blog",
-                            "new_owner_actor": "publisher:forum",
+                            "new_owner_user_id": uuid::Uuid::new_v4(),
                             "reason": "Registry-only host must stay read-only"
                         })
                         .to_string(),
@@ -2517,7 +2765,6 @@ mod tests {
         ctx: &loco_rs::app::AppContext,
         slug: &str,
     ) -> crate::models::registry_publish_request::Model {
-        let publisher = format!("publisher:{slug}");
         let governance =
             crate::services::registry_governance::RegistryGovernanceService::new(ctx.db.clone());
         let created = governance
@@ -2551,8 +2798,7 @@ mod tests {
                             },
                     },
                 },
-                "governance:moderator",
-                Some(publisher.as_str()),
+                &registry_authority("user:00000000-0000-0000-0000-000000000111"),
                 &[],
             )
             .await
@@ -2609,13 +2855,13 @@ mod tests {
     async fn insert_registry_owner_binding(
         ctx: &loco_rs::app::AppContext,
         slug: &str,
-        owner_actor: &str,
+        owner_principal: &str,
     ) -> crate::models::registry_module_owner::Model {
         let now = chrono::Utc::now();
         crate::models::registry_module_owner::ActiveModel {
             slug: Set(slug.to_string()),
-            owner_actor: Set(owner_actor.to_string()),
-            bound_by: Set("test:setup".to_string()),
+            owner_principal: Set(principal_json(owner_principal)),
+            bound_by: Set(principal_json("test:setup")),
             bound_at: Set(now),
             updated_at: Set(now),
         }
@@ -2632,17 +2878,13 @@ mod tests {
         request_id: Option<&str>,
     ) -> crate::models::registry_module_release::Model {
         let now = chrono::Utc::now();
-        crate::models::registry_module_release::ActiveModel {
+        let release = crate::models::registry_module_release::ActiveModel {
             id: Set(format!("rrl_{}", uuid::Uuid::new_v4().simple())),
             request_id: Set(request_id.map(ToString::to_string)),
             slug: Set(slug.to_string()),
             version: Set(version.to_string()),
             crate_name: Set(format!("rustok-{}", slug.replace('-', "_"))),
-            module_name: Set(format!("{} module", slug)),
-            description: Set(format!(
-                "Published release test contract preview for slug {}.",
-                slug
-            )),
+            default_locale: Set("en".to_string()),
             ownership: Set("first_party".to_string()),
             trust_level: Set("verified".to_string()),
             license: Set("MIT".to_string()),
@@ -2655,11 +2897,8 @@ mod tests {
             status: Set(
                 crate::models::registry_module_release::RegistryModuleReleaseStatus::Active,
             ),
-            publisher: Set(publisher.unwrap_or("publisher:blog").to_string()),
-            artifact_path: Set(Some(format!("artifacts/{slug}/{version}.tar"))),
-            artifact_url: Set(Some(format!(
-                "https://modules.rustok.dev/artifacts/{slug}/{version}.tar"
-            ))),
+            publisher: Set(principal_json(publisher.unwrap_or("publisher:blog"))),
+            artifact_storage_key: Set(Some(format!("registry/artifacts/{slug}/{version}.tar"))),
             checksum_sha256: Set(Some("deadbeef".repeat(8))),
             artifact_size: Set(Some(1024)),
             yanked_reason: Set(None),
@@ -2671,21 +2910,62 @@ mod tests {
         }
         .insert(&ctx.db)
         .await
-        .expect("active release should insert")
+        .expect("active release should insert");
+        crate::models::registry_module_release_translation::ActiveModel {
+            release_id: Set(release.id.clone()),
+            locale: Set("en".to_string()),
+            name: Set(format!("{} module", slug)),
+            description: Set(format!(
+                "Published release test contract preview for slug {}.",
+                slug
+            )),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("release translation should insert");
+        release
+    }
+
+    async fn send_json_request(
+        router: axum::Router,
+        method: Method,
+        uri: impl Into<String>,
+        payload: Value,
+        auth: Option<AuthContext>,
+    ) -> axum::response::Response {
+        let mut request = Request::builder()
+            .method(method)
+            .uri(uri.into())
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .expect("request");
+        if let Some(auth) = auth {
+            request.extensions_mut().insert(AuthContextExtension(auth));
+        }
+
+        router
+            .oneshot(request)
+            .await
+            .expect("json request should complete")
     }
 
     async fn fetch_publish_status_payload(
         router: axum::Router,
         request_id: &str,
-        actor: Option<&str>,
+        auth: Option<AuthContext>,
     ) -> Value {
-        let mut request = Request::builder().uri(format!("/v2/catalog/publish/{request_id}"));
-        if let Some(actor) = actor {
-            request = request.header("x-rustok-actor", actor);
+        let mut request = Request::builder()
+            .uri(format!("/v2/catalog/publish/{request_id}"))
+            .body(Body::empty())
+            .expect("request");
+        if let Some(auth) = auth {
+            request.extensions_mut().insert(AuthContextExtension(auth));
         }
 
         let response = router
-            .oneshot(request.body(Body::empty()).expect("request"))
+            .oneshot(request)
             .await
             .expect("publish status request should succeed");
         let status = response.status();

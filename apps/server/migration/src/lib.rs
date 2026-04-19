@@ -40,6 +40,7 @@ mod m20260408_000002_expand_registry_validation_stage_runner_leases;
 mod m20260410_000001_cleanup_flex_attached_legacy_inline_metadata;
 mod m20260412_000001_reset_registry_identity_and_artifacts;
 mod m20260412_000002_split_registry_localized_metadata;
+mod m20260419_000001_normalize_registry_governance_event_payloads;
 
 pub struct Migrator;
 
@@ -84,6 +85,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260408_000002_expand_registry_validation_stage_runner_leases::Migration),
             Box::new(m20260412_000001_reset_registry_identity_and_artifacts::Migration),
             Box::new(m20260412_000002_split_registry_localized_metadata::Migration),
+            Box::new(m20260419_000001_normalize_registry_governance_event_payloads::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into
@@ -104,6 +106,7 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_content::migrations::migrations());
         all.extend(rustok_forum::migrations::migrations());
         all.extend(rustok_index::migrations::migrations());
+        all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
         all.sort_by(|a, b| a.name().cmp(b.name()));
         all
@@ -113,6 +116,7 @@ impl MigratorTrait for Migrator {
 #[cfg(test)]
 mod tests {
     use super::Migrator;
+    use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
 
     #[test]
@@ -176,5 +180,26 @@ mod tests {
             ),
             "server migrator must include attached legacy metadata cleanup migration"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "diagnostic helper for pinpointing the first SQLite-incompatible migration"]
+    async fn sqlite_migrations_apply_incrementally() {
+        let db = setup_test_db().await;
+
+        loop {
+            let pending = Migrator::get_pending_migrations(&db)
+                .await
+                .expect("pending migrations should load");
+            if pending.is_empty() {
+                break;
+            }
+
+            let next = pending[0].name().to_string();
+            println!("applying {next}");
+            if let Err(error) = Migrator::up(&db, Some(1)).await {
+                panic!("sqlite incremental migrator failed at {next}: {error:?}");
+            }
+        }
     }
 }

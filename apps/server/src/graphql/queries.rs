@@ -450,7 +450,7 @@ fn registry_module_lifecycle_from_snapshot(
         },
         owner_binding: snapshot.owner_binding.map(|owner| {
             crate::graphql::types::RegistryOwnerLifecycle {
-                owner_actor: owner.owner_actor.into(),
+                owner: owner.owner.into(),
                 bound_by: owner.bound_by.into(),
                 bound_at: owner.bound_at,
                 updated_at: owner.updated_at,
@@ -461,7 +461,7 @@ fn registry_module_lifecycle_from_snapshot(
                 id: request.id,
                 status: request.status,
                 requested_by: request.requested_by.into(),
-                publisher_identity: request.publisher_identity.map(Into::into),
+                publisher: request.publisher.map(Into::into),
                 approved_by: request.approved_by.map(Into::into),
                 rejected_by: request.rejected_by.map(Into::into),
                 rejection_reason: request.rejection_reason,
@@ -846,10 +846,10 @@ impl RootQuery {
                 Some(request_context.locale.as_str()),
                 Some(tenant.default_locale.as_str()),
             )
-                .await?
-                .into_iter()
-                .map(|module| (module.slug.clone(), module))
-                .collect();
+            .await?
+            .into_iter()
+            .map(|module| (module.slug.clone(), module))
+            .collect();
         let enabled_modules = TenantModulesEntity::find_enabled(&app_ctx.db, tenant.id)
             .await
             .map_err(|err| err.to_string())?;

@@ -17,13 +17,18 @@ impl MigrationTrait for Migration {
             .await?;
 
         let backend = manager.get_connection().get_database_backend();
+        let metadata_tax_provider_expr = match backend {
+            sea_orm::DatabaseBackend::Sqlite => "json_extract(metadata, '$.tax_provider_id')",
+            _ => "metadata->>'tax_provider_id'",
+        };
         manager
             .get_connection()
             .execute(Statement::from_string(
                 backend,
-                "UPDATE regions
-                 SET tax_provider_id = NULLIF(LOWER(TRIM(COALESCE(metadata->>'tax_provider_id', ''))), '')"
-                    .to_string(),
+                format!(
+                    "UPDATE regions
+                     SET tax_provider_id = NULLIF(LOWER(TRIM(COALESCE({metadata_tax_provider_expr}, ''))), '')"
+                ),
             ))
             .await?;
 

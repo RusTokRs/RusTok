@@ -868,7 +868,7 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 | Документ | Связь |
 |---|---|
 | [Deployment Profiles ADR](../../DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md) | `modules.toml` определяет, какие apps создаются автоматически |
-| [Module System Plan](../modules/module-system-plan.md) | Rebuild триггерит sync_app_connections; модули маркетплейса регистрируют OAuth apps |
+| [Module authoring guide](../modules/module-authoring.md) | Rebuild триггерит sync_app_connections; модули маркетплейса регистрируют OAuth apps |
 | Security Standards (`docs/standards/security.md`) | OAuth2 расширяет существующие OWASP-защиты |
 
 ## Итог

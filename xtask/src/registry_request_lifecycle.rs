@@ -48,7 +48,8 @@ pub(crate) fn publish_request_governance_via_registry(
     dry_run: bool,
 ) -> Result<String> {
     if !dry_run {
-        let status = fetch_registry_publish_status_with_actor(registry_url, request_id, auth_token)?;
+        let status =
+            fetch_registry_publish_status_with_actor(registry_url, request_id, auth_token)?;
         if !publish_status_action_available(&status, action_key) {
             anyhow::bail!(
                 "Registry publish request '{}' does not advertise '{}' in governanceActions. Current status: '{}'. Next step: {}",

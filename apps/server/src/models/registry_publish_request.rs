@@ -44,7 +44,7 @@ pub struct Model {
     #[sea_orm(column_name = "requested_by_principal")]
     pub requested_by: Json,
     #[sea_orm(column_name = "publisher_principal")]
-    pub publisher_identity: Option<Json>,
+    pub publisher_principal: Option<Json>,
     #[sea_orm(column_name = "approved_by_principal")]
     pub approved_by: Option<Json>,
     #[sea_orm(column_name = "rejected_by_principal")]

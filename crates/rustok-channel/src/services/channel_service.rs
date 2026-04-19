@@ -29,8 +29,8 @@ use crate::entities::channel_resolution_policy_set::{
 use crate::entities::channel_target::{self, ActiveModel as ChannelTargetActiveModel};
 use crate::error::{ChannelError, ChannelResult};
 use crate::policy::{
-    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition,
-    StoredChannelResolutionRule,
+    ChannelResolutionRuleDefinition, StoredChannelResolutionRule,
+    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
 };
 use crate::target_type::ChannelTargetType;
 

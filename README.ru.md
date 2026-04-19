@@ -322,7 +322,7 @@ modules.toml
 - [Индекс модульной документации](docs/modules/_index.md)
 - [Справочный пакет MCP](docs/references/mcp/README.md)
 - [Руководство по тестированию](docs/guides/testing.md)
-- [План развития модульной платформы](docs/modules/module-system-plan.md)
+- [Как писать модуль в RusToK](docs/modules/module-authoring.md)
 - [Главный план верификации платформы](docs/verification/PLATFORM_VERIFICATION_PLAN.md)
 - [Системный манифест](RUSTOK_MANIFEST.md)
 - [Правила агентов](AGENTS.md)
@@ -367,7 +367,7 @@ cargo machete
 
 Актуальные приоритеты ведутся в живых platform docs, а не в отдельном root roadmap-файле:
 
-- [План развития модульной платформы](docs/modules/module-system-plan.md)
+- [Как писать модуль в RusToK](docs/modules/module-authoring.md)
 - [Главный план верификации платформы](docs/verification/PLATFORM_VERIFICATION_PLAN.md)
 - [Архитектурные решения](DECISIONS/README.md)
 

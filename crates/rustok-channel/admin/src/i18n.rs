@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use rustok_api::{UiMessageCatalog, build_ui_message_catalog, resolve_ui_message_or_fallback};
+use rustok_api::{build_ui_message_catalog, resolve_ui_message_or_fallback, UiMessageCatalog};
 
 static CATALOG: OnceLock<UiMessageCatalog> = OnceLock::new();
 

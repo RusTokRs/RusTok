@@ -16,8 +16,10 @@ use axum::{
 /// Prevents DoS via unbounded disk writes. Enforced at the Axum layer before
 /// the body is read into memory, so oversized requests are rejected early.
 const REGISTRY_ARTIFACT_MAX_BYTES: usize = 100 * 1024 * 1024;
+const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
+const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
 use loco_rs::app::AppContext;
-use loco_rs::controller::Routes;
+use loco_rs::controller::{ErrorDetail, Routes};
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -25,8 +27,6 @@ use utoipa::ToSchema;
 
 use crate::common::settings::SharedRustokSettings;
 use crate::error::Error;
-use rustok_api::context::AuthContextExtension;
-use rustok_api::request::RequestContext;
 use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
 use crate::services::marketplace_catalog::{
     legacy_registry_catalog_module_path, legacy_registry_catalog_path,
@@ -48,12 +48,15 @@ use crate::services::marketplace_catalog::{
 use crate::services::registry_governance::{
     release_status_label, request_status_label, validation_stage_status_label,
     RegistryArtifactUpload, RegistryFollowUpGateSnapshot, RegistryGovernanceActionSnapshot,
-    RegistryGovernanceService, RegistryValidationStageSnapshot,
+    RegistryGovernanceError, RegistryGovernanceService, RegistryValidationStageSnapshot,
     REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
+use crate::services::registry_principal::RegistryAuthority;
+use rustok_api::context::AuthContextExtension;
+use rustok_api::request::RequestContext;
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
 struct RegistryCatalogListParams {
@@ -203,9 +206,9 @@ async fn publish(
         }
 
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-        let actor = actor_from_auth(&headers, auth, "Registry publish operations")?;
+        let authority = authority_from_auth(&headers, auth, "Registry publish operations")?;
         let created = RegistryGovernanceService::new(ctx.db.clone())
-            .create_publish_request(&request, &actor, None, &warnings)
+            .create_publish_request(&request, &authority, &warnings)
             .await
             .map_err(|error| {
                 Error::Message(format!(
@@ -291,9 +294,9 @@ async fn publish_status(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = optional_actor_from_auth(&headers, auth)?;
+    let authority = optional_authority_from_auth(&headers, auth)?;
     let follow_up = governance
-        .publish_request_follow_up_snapshot_for_actor(&request, actor.as_deref())
+        .publish_request_follow_up_snapshot_for_authority(&request, authority.as_ref())
         .await
         .map_err(|error| {
             Error::Message(format!(
@@ -392,12 +395,17 @@ async fn upload_publish_artifact(
         .unwrap_or("application/octet-stream")
         .to_string();
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry artifact upload")?;
+    let authority = authority_from_auth(&headers, auth, "Registry artifact upload")?;
+    let storage = ctx
+        .shared_store
+        .get::<rustok_storage::StorageService>()
+        .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
 
     let request = RegistryGovernanceService::new(ctx.db.clone())
+        .with_storage(storage)
         .upload_publish_artifact(
             &request_id,
-            &actor,
+            &authority,
             RegistryArtifactUpload {
                 content_type,
                 bytes: body,
@@ -431,7 +439,7 @@ async fn download_publish_artifact(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Response<Body>, Error> {
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let has_user_session = optional_actor_from_auth(&headers, auth)?.is_some();
+    let has_user_session = optional_authority_from_auth(&headers, auth)?.is_some();
     if !has_user_session && require_remote_executor_access(&ctx, &headers).is_err() {
         return Err(Error::Unauthorized(
             "Registry artifact download requires a user session or x-rustok-runner-token"
@@ -458,7 +466,9 @@ async fn download_publish_artifact(
     if let Some(download_url) = storage
         .private_download_url(&storage_key, std::time::Duration::from_secs(300))
         .await
-        .map_err(|error| Error::Message(format!("Failed to create private download URL: {error}")))?
+        .map_err(|error| {
+            Error::Message(format!("Failed to create private download URL: {error}"))
+        })?
     {
         return Ok(axum::response::Redirect::temporary(&download_url).into_response());
     }
@@ -477,7 +487,11 @@ async fn download_publish_artifact(
         .header(axum::http::header::CONTENT_TYPE, content_type)
         .header(CACHE_CONTROL, "private, no-store")
         .body(Body::from(bytes))
-        .map_err(|error| Error::Message(format!("Failed to build artifact download response: {error}")))
+        .map_err(|error| {
+            Error::Message(format!(
+                "Failed to build artifact download response: {error}"
+            ))
+        })
 }
 
 /// POST /v2/catalog/publish/{request_id}/validate - Run publish artifact validation outside the upload path
@@ -527,7 +541,7 @@ async fn validate_publish_request_step(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry validation operations")?;
+    let authority = authority_from_auth(&headers, auth, "Registry validation operations")?;
 
     if request.dry_run {
         return Ok((
@@ -551,20 +565,25 @@ async fn validate_publish_request_step(
 
     let governance = RegistryGovernanceService::new(ctx.db.clone());
     let validation = governance
-        .validate_publish_request(&request_id, &actor)
+        .validate_publish_request(&request_id, &authority)
         .await
         .map_err(map_registry_governance_error)?;
     if validation.queued {
         let db = ctx.db.clone();
+        let storage = ctx
+            .shared_store
+            .get::<rustok_storage::StorageService>()
+            .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
         let request_id = validation.request.id.clone();
         let validation_job_id = validation.validation_job_id.clone().ok_or_else(|| {
             Error::Message(format!(
                 "Validation was queued for publish request '{request_id}', but no validation job id was returned"
             ))
         })?;
-        let actor = actor.clone();
+        let actor = authority.principal.label().to_string();
         tokio::spawn(async move {
             if let Err(error) = RegistryGovernanceService::new(db)
+                .with_storage(storage)
                 .run_publish_validation_job(&validation_job_id, &actor)
                 .await
             {
@@ -649,7 +668,7 @@ async fn report_validation_stage(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry validation stage reporting")?;
+    let authority = authority_from_auth(&headers, auth, "Registry validation stage reporting")?;
 
     if request.dry_run {
         let mut warnings = Vec::new();
@@ -692,7 +711,7 @@ async fn report_validation_stage(
     let result = RegistryGovernanceService::new(ctx.db.clone())
         .report_validation_stage(
             &request_id,
-            &actor,
+            &authority,
             &request.stage,
             &request.status,
             request.detail.as_deref(),
@@ -775,7 +794,7 @@ async fn approve_publish_request(
             ))
         })?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry publish approval")?;
+    let authority = authority_from_auth(&headers, auth, "Registry publish approval")?;
 
     if request.dry_run {
         let mut warnings = vec![String::from(
@@ -817,8 +836,7 @@ async fn approve_publish_request(
     let approved = RegistryGovernanceService::new(ctx.db.clone())
         .approve_publish_request(
             &request_id,
-            &actor,
-            None,
+            &authority,
             request.reason.as_deref(),
             request.reason_code.as_deref(),
         )
@@ -886,7 +904,7 @@ async fn reject_publish_request(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry publish rejection")?;
+    let authority = authority_from_auth(&headers, auth, "Registry publish rejection")?;
 
     if request.dry_run {
         return Ok((
@@ -940,7 +958,7 @@ async fn reject_publish_request(
         })?;
 
     let rejected = RegistryGovernanceService::new(ctx.db.clone())
-        .reject_publish_request(&request_id, &actor, reason, reason_code)
+        .reject_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1005,7 +1023,7 @@ async fn request_changes_publish_request(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry request-changes operations")?;
+    let authority = authority_from_auth(&headers, auth, "Registry request-changes operations")?;
 
     if request.dry_run {
         return Ok((
@@ -1060,7 +1078,7 @@ async fn request_changes_publish_request(
         })?;
 
     let updated = RegistryGovernanceService::new(ctx.db.clone())
-        .request_changes_publish_request(&request_id, &actor, reason, reason_code)
+        .request_changes_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1125,7 +1143,7 @@ async fn hold_publish_request(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry hold operations")?;
+    let authority = authority_from_auth(&headers, auth, "Registry hold operations")?;
 
     if request.dry_run {
         return Ok((
@@ -1178,7 +1196,7 @@ async fn hold_publish_request(
         })?;
 
     let updated = RegistryGovernanceService::new(ctx.db.clone())
-        .hold_publish_request(&request_id, &actor, reason, reason_code)
+        .hold_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1243,7 +1261,7 @@ async fn resume_publish_request(
         })?
         .ok_or(Error::NotFound)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let actor = actor_from_auth(&headers, auth, "Registry resume operations")?;
+    let authority = authority_from_auth(&headers, auth, "Registry resume operations")?;
 
     if request.dry_run {
         return Ok((
@@ -1298,7 +1316,7 @@ async fn resume_publish_request(
         })?;
 
     let updated = RegistryGovernanceService::new(ctx.db.clone())
-        .resume_publish_request(&request_id, &actor, reason, reason_code)
+        .resume_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1589,9 +1607,15 @@ async fn yank(
                 )
             })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-        let actor = actor_from_auth(&headers, auth, "Registry yank operations")?;
+        let authority = authority_from_auth(&headers, auth, "Registry yank operations")?;
         let release = RegistryGovernanceService::new(ctx.db.clone())
-            .yank_release(&request.slug, &request.version, reason, reason_code, &actor)
+            .yank_release(
+                &request.slug,
+                &request.version,
+                reason,
+                reason_code,
+                &authority,
+            )
             .await
             .map_err(map_registry_governance_error)?;
 
@@ -1691,14 +1715,16 @@ async fn transfer_owner(
                 )
             })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-        let actor = actor_from_auth(&headers, auth, "Registry owner transfer operations")?;
+        let authority = authority_from_auth(&headers, auth, "Registry owner transfer operations")?;
         let binding = RegistryGovernanceService::new(ctx.db.clone())
             .transfer_registry_slug_owner(
                 &request.slug,
-                &format!("user:{}", request.new_owner_user_id),
+                &crate::services::registry_principal::RegistryPrincipalRef::user(
+                    request.new_owner_user_id,
+                ),
                 reason,
                 reason_code,
-                &actor,
+                &authority,
             )
             .await
             .map_err(map_registry_governance_error)?;
@@ -1751,8 +1777,7 @@ pub fn routes() -> Routes {
         .add(registry_publish_status_path(), get(publish_status))
         .add(
             registry_publish_artifact_path(),
-            put(upload_publish_artifact)
-                .layer(DefaultBodyLimit::max(REGISTRY_ARTIFACT_MAX_BYTES)),
+            put(upload_publish_artifact).layer(DefaultBodyLimit::max(REGISTRY_ARTIFACT_MAX_BYTES)),
         )
         .add(
             registry_publish_artifact_download_path(),
@@ -2342,28 +2367,31 @@ fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
 }
 
 fn reject_legacy_registry_headers(headers: &HeaderMap) -> Result<(), Error> {
-    if headers.contains_key("x-rustok-actor") || headers.contains_key("x-rustok-publisher") {
+    if headers.contains_key(LEGACY_REGISTRY_ACTOR_HEADER)
+        || headers.contains_key(LEGACY_REGISTRY_PUBLISHER_HEADER)
+    {
         return Err(Error::BadRequest(
-            "Registry endpoints no longer accept x-rustok-actor or x-rustok-publisher; use Authorization: Bearer with a real user session.".to_string(),
+            "Registry endpoints no longer accept legacy actor/publisher headers; use Authorization: Bearer with a real user session.".to_string(),
         ));
     }
     Ok(())
 }
 
-/// Derive the actor string for a mutating registry operation from the verified
+/// Derive registry authority for a mutating operation from verified
 /// authentication context.
 ///
-/// Returns `Ok("user:<uuid>")` when the request carries a valid auth token.
-/// Returns `Err(())` when the request is unauthenticated — callers must map
-/// this to `Error::Unauthorized` and return HTTP 401.
+/// Missing auth maps to HTTP 401. OAuth service tokens are rejected with HTTP
+/// 403 because registry write-paths require a session-backed user principal.
 ///
-/// The `x-rustok-actor` header is intentionally ignored: it is untrusted
-/// client input and cannot be used as an authorization signal.
-fn actor_from_auth(
+/// Legacy actor/publisher headers are intentionally ignored: they are untrusted
+/// client input and cannot be used as authorization signals.
+fn authority_from_auth(
     headers: &HeaderMap,
     auth: Option<&AuthContextExtension>,
     action_label: &str,
-) -> Result<String, Error> {
+) -> Result<RegistryAuthority, Error> {
+    // Canonical contract: missing auth -> 401, OAuth service token -> 403,
+    // session-backed user bearer -> typed RegistryAuthority.
     reject_legacy_registry_headers(headers)?;
     match auth {
         None => Err(Error::Unauthorized(format!(
@@ -2372,24 +2400,30 @@ fn actor_from_auth(
         Some(AuthContextExtension(ctx))
             if ctx.client_id.is_some() && ctx.session_id.is_nil() =>
         {
-            Err(Error::Unauthorized(format!(
-                "{action_label} requires a user session; OAuth service tokens are not supported"
-            )))
+            Err(Error::CustomError(
+                StatusCode::FORBIDDEN,
+                ErrorDetail::new(
+                    "forbidden".to_string(),
+                    format!(
+                        "{action_label} requires a user session; OAuth service tokens are not supported"
+                    ),
+                ),
+            ))
         }
-        Some(AuthContextExtension(ctx)) => Ok(format!("user:{}", ctx.user_id)),
+        Some(auth) => Ok(RegistryAuthority::from_auth(auth)),
     }
 }
 
-fn optional_actor_from_auth(
+fn optional_authority_from_auth(
     headers: &HeaderMap,
     auth: Option<&AuthContextExtension>,
-) -> Result<Option<String>, Error> {
+) -> Result<Option<RegistryAuthority>, Error> {
     reject_legacy_registry_headers(headers)?;
     Ok(match auth {
         Some(AuthContextExtension(ctx))
             if !(ctx.client_id.is_some() && ctx.session_id.is_nil()) =>
         {
-            Some(format!("user:{}", ctx.user_id))
+            Some(RegistryAuthority::from_auth_context(ctx))
         }
         _ => None,
     })
@@ -2622,22 +2656,32 @@ fn publish_status_governance_action(
 }
 
 fn map_registry_governance_error(error: anyhow::Error) -> Error {
-    let message = error.to_string();
-    if message.contains("was not found") || message.contains("not found") {
-        Error::NotFound
-    } else if message.contains("is not allowed") || message.contains("not allowed") {
-        // Log the full error internally; return a sanitized message so we
-        // don't expose actor names, internal IDs, or DB details to the client.
-        tracing::warn!(error = %error, "Registry governance authorization denied");
-        Error::Unauthorized(
-            "You do not have permission to perform this registry operation".to_string(),
-        )
-    } else {
-        // Unexpected internal error — log in full, return a generic message.
-        tracing::error!(error = %error, "Registry governance error");
-        Error::BadRequest(
-            "Registry operation failed. Contact support if the problem persists.".to_string(),
-        )
+    let typed = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<RegistryGovernanceError>());
+
+    match typed {
+        Some(RegistryGovernanceError::Malformed(message)) => Error::BadRequest(message.clone()),
+        Some(RegistryGovernanceError::Unauthorized(message)) => {
+            tracing::warn!(error = %error, "Registry governance unauthorized");
+            Error::Unauthorized(message.clone())
+        }
+        Some(RegistryGovernanceError::Forbidden(message)) => {
+            tracing::warn!(error = %error, "Registry governance forbidden");
+            Error::CustomError(
+                StatusCode::FORBIDDEN,
+                ErrorDetail::new("forbidden", message.as_str()),
+            )
+        }
+        Some(RegistryGovernanceError::NotFound(_)) => Error::NotFound,
+        Some(RegistryGovernanceError::Conflict(message)) => Error::CustomError(
+            StatusCode::CONFLICT,
+            ErrorDetail::new("conflict", message.as_str()),
+        ),
+        Some(RegistryGovernanceError::Internal(_)) | None => {
+            tracing::error!(error = %error, "Registry governance error");
+            Error::InternalServerError
+        }
     }
 }
 

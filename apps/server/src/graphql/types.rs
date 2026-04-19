@@ -16,8 +16,8 @@ use crate::modules::{
 };
 use crate::services::build_service::BuildEvent;
 use crate::services::flex_attached_values::FlexAttachedValuesService;
-use crate::services::registry_principal::RegistryPrincipalRef;
 use crate::services::rbac_service::RbacService;
+use crate::services::registry_principal::RegistryPrincipalRef;
 
 #[derive(SimpleObject, Clone)]
 pub struct Tenant {
@@ -247,7 +247,7 @@ pub struct RegistryPublishRequestLifecycle {
     pub id: String,
     pub status: String,
     pub requested_by: RegistryPrincipal,
-    pub publisher_identity: Option<RegistryPrincipal>,
+    pub publisher: Option<RegistryPrincipal>,
     pub approved_by: Option<RegistryPrincipal>,
     pub rejected_by: Option<RegistryPrincipal>,
     pub rejection_reason: Option<String>,
@@ -281,7 +281,7 @@ pub struct RegistryReleaseLifecycle {
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryOwnerLifecycle {
-    pub owner_actor: RegistryPrincipal,
+    pub owner: RegistryPrincipal,
     pub bound_by: RegistryPrincipal,
     pub bound_at: String,
     pub updated_at: String,

@@ -87,7 +87,10 @@ pub fn routes() -> Routes {
         )
         .add("/refunds", axum::routing::get(list_refunds))
         .add("/refunds/{id}", axum::routing::get(show_refund))
-        .add("/refunds/{id}/complete", axum::routing::post(complete_refund))
+        .add(
+            "/refunds/{id}/complete",
+            axum::routing::post(complete_refund),
+        )
         .add("/refunds/{id}/cancel", axum::routing::post(cancel_refund))
         .add(
             "/shipping-profiles",
@@ -1846,10 +1849,10 @@ mod tests {
 
     use crate::dto::{
         AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
-        CompleteRefundInput, CreateFulfillmentInput, CreateFulfillmentItemInput,
-        CreateOrderInput, CreateOrderLineItemInput, CreatePaymentCollectionInput,
-        CreateRefundInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput,
-        RefundResponse, ShipFulfillmentInput, UpdateShippingOptionInput,
+        CompleteRefundInput, CreateFulfillmentInput, CreateFulfillmentItemInput, CreateOrderInput,
+        CreateOrderLineItemInput, CreatePaymentCollectionInput, CreateRefundInput,
+        DeliverFulfillmentInput, FulfillmentItemQuantityInput, RefundResponse,
+        ShipFulfillmentInput, UpdateShippingOptionInput,
     };
     use crate::{FulfillmentService, OrderService, PaymentService, ShippingProfileService};
 
@@ -2673,7 +2676,10 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/admin/payment-collections/{}/refunds", collection.id))
+                    .uri(format!(
+                        "/admin/payment-collections/{}/refunds",
+                        collection.id
+                    ))
                     .header("content-type", "application/json")
                     .header("X-Tenant-ID", tenant_id.to_string())
                     .body(Body::from(
@@ -2721,7 +2727,10 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/admin/payment-collections/{}/refunds", collection.id))
+                    .uri(format!(
+                        "/admin/payment-collections/{}/refunds",
+                        collection.id
+                    ))
                     .header("content-type", "application/json")
                     .header("X-Tenant-ID", tenant_id.to_string())
                     .body(Body::from(
@@ -2812,7 +2821,10 @@ mod tests {
             serde_json::from_slice(&detail_body).expect("response should be JSON");
         assert_eq!(detail_payload["refunded_amount"], json!("10"));
         assert_eq!(
-            detail_payload["refunds"].as_array().expect("refunds should be array").len(),
+            detail_payload["refunds"]
+                .as_array()
+                .expect("refunds should be array")
+                .len(),
             2
         );
     }

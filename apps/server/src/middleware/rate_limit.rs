@@ -9,12 +9,12 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use moka::future::Cache;
 use once_cell::sync::Lazy;
 use redis::Script;
 use rustok_telemetry::metrics::{
     record_rate_limit_backend_unavailable, record_rate_limit_exceeded, update_rate_limit_runtime,
 };
-use moka::future::Cache;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -191,9 +191,10 @@ impl RateLimiter {
         let counter = requests
             .entry(key.to_string())
             .and_upsert_with(|maybe| async move {
-                let mut c = maybe
-                    .map(|e| e.into_value())
-                    .unwrap_or(RequestCounter { count: 0, window_start: now });
+                let mut c = maybe.map(|e| e.into_value()).unwrap_or(RequestCounter {
+                    count: 0,
+                    window_start: now,
+                });
                 if now.duration_since(c.window_start) > window {
                     c.count = 0;
                     c.window_start = now;
@@ -858,8 +859,8 @@ mod tests {
             let RateLimiterBackend::Memory { requests } = &limiter.backend else {
                 panic!("expected in-memory limiter");
             };
-            let requests = requests.read().await;
-            assert_eq!(requests.len(), 3);
+            requests.run_pending_tasks().await;
+            assert_eq!(requests.entry_count(), 3);
         }
 
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -870,8 +871,8 @@ mod tests {
             let RateLimiterBackend::Memory { requests } = &limiter.backend else {
                 panic!("expected in-memory limiter");
             };
-            let requests = requests.read().await;
-            assert_eq!(requests.len(), 0);
+            requests.run_pending_tasks().await;
+            assert_eq!(requests.entry_count(), 0);
         }
     }
 

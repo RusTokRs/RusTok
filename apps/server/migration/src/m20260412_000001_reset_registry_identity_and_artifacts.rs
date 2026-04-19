@@ -23,80 +23,169 @@ impl MigrationTrait for Migration {
 }
 
 async fn add_registry_identity_columns(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager
-        .alter_table(
+    if manager.get_database_backend() == DbBackend::Sqlite {
+        for statement in [
             Table::alter()
                 .table(RegistryModuleOwners::Table)
                 .add_column(ColumnDef::new(RegistryModuleOwners::OwnerPrincipal).json_binary())
+                .to_owned(),
+            Table::alter()
+                .table(RegistryModuleOwners::Table)
                 .add_column(ColumnDef::new(RegistryModuleOwners::BoundByPrincipal).json_binary())
                 .to_owned(),
-        )
-        .await?;
-
-    manager
-        .alter_table(
             Table::alter()
                 .table(RegistryPublishRequests::Table)
                 .add_column(
                     ColumnDef::new(RegistryPublishRequests::RequestedByPrincipal).json_binary(),
                 )
+                .to_owned(),
+            Table::alter()
+                .table(RegistryPublishRequests::Table)
                 .add_column(
                     ColumnDef::new(RegistryPublishRequests::PublisherPrincipal).json_binary(),
                 )
+                .to_owned(),
+            Table::alter()
+                .table(RegistryPublishRequests::Table)
                 .add_column(
                     ColumnDef::new(RegistryPublishRequests::ApprovedByPrincipal).json_binary(),
                 )
+                .to_owned(),
+            Table::alter()
+                .table(RegistryPublishRequests::Table)
                 .add_column(
                     ColumnDef::new(RegistryPublishRequests::RejectedByPrincipal).json_binary(),
                 )
+                .to_owned(),
+            Table::alter()
+                .table(RegistryPublishRequests::Table)
                 .add_column(
                     ColumnDef::new(RegistryPublishRequests::ChangesRequestedByPrincipal)
                         .json_binary(),
                 )
-                .add_column(
-                    ColumnDef::new(RegistryPublishRequests::HeldByPrincipal).json_binary(),
-                )
+                .to_owned(),
+            Table::alter()
+                .table(RegistryPublishRequests::Table)
+                .add_column(ColumnDef::new(RegistryPublishRequests::HeldByPrincipal).json_binary())
+                .to_owned(),
+            Table::alter()
+                .table(RegistryPublishRequests::Table)
                 .add_column(
                     ColumnDef::new(RegistryPublishRequests::ArtifactStorageKey)
                         .text()
                         .null(),
                 )
                 .to_owned(),
-        )
-        .await?;
-
-    manager
-        .alter_table(
             Table::alter()
                 .table(RegistryModuleReleases::Table)
                 .add_column(
                     ColumnDef::new(RegistryModuleReleases::PublisherPrincipal).json_binary(),
                 )
-                .add_column(
-                    ColumnDef::new(RegistryModuleReleases::YankedByPrincipal).json_binary(),
-                )
+                .to_owned(),
+            Table::alter()
+                .table(RegistryModuleReleases::Table)
+                .add_column(ColumnDef::new(RegistryModuleReleases::YankedByPrincipal).json_binary())
+                .to_owned(),
+            Table::alter()
+                .table(RegistryModuleReleases::Table)
                 .add_column(
                     ColumnDef::new(RegistryModuleReleases::ArtifactStorageKey)
                         .text()
                         .null(),
                 )
                 .to_owned(),
-        )
-        .await?;
-
-    manager
-        .alter_table(
             Table::alter()
                 .table(RegistryGovernanceEvents::Table)
-                .add_column(
-                    ColumnDef::new(RegistryGovernanceEvents::ActorPrincipal).json_binary(),
-                )
+                .add_column(ColumnDef::new(RegistryGovernanceEvents::ActorPrincipal).json_binary())
+                .to_owned(),
+            Table::alter()
+                .table(RegistryGovernanceEvents::Table)
                 .add_column(
                     ColumnDef::new(RegistryGovernanceEvents::PublisherPrincipal).json_binary(),
                 )
                 .to_owned(),
-        )
-        .await
+        ] {
+            manager.alter_table(statement).await?;
+        }
+        Ok(())
+    } else {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(RegistryModuleOwners::Table)
+                    .add_column(ColumnDef::new(RegistryModuleOwners::OwnerPrincipal).json_binary())
+                    .add_column(
+                        ColumnDef::new(RegistryModuleOwners::BoundByPrincipal).json_binary(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(RegistryPublishRequests::Table)
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::RequestedByPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::PublisherPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::ApprovedByPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::RejectedByPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::ChangesRequestedByPrincipal)
+                            .json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::HeldByPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryPublishRequests::ArtifactStorageKey)
+                            .text()
+                            .null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(RegistryModuleReleases::Table)
+                    .add_column(
+                        ColumnDef::new(RegistryModuleReleases::PublisherPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryModuleReleases::YankedByPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryModuleReleases::ArtifactStorageKey)
+                            .text()
+                            .null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(RegistryGovernanceEvents::Table)
+                    .add_column(
+                        ColumnDef::new(RegistryGovernanceEvents::ActorPrincipal).json_binary(),
+                    )
+                    .add_column(
+                        ColumnDef::new(RegistryGovernanceEvents::PublisherPrincipal).json_binary(),
+                    )
+                    .to_owned(),
+            )
+            .await
+    }
 }
 
 async fn add_legacy_registry_identity_columns(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
@@ -152,8 +241,16 @@ async fn add_legacy_registry_identity_columns(manager: &SchemaManager<'_>) -> Re
                         .string_len(128)
                         .null(),
                 )
-                .add_column(ColumnDef::new(RegistryPublishRequests::ArtifactPath).text().null())
-                .add_column(ColumnDef::new(RegistryPublishRequests::ArtifactUrl).text().null())
+                .add_column(
+                    ColumnDef::new(RegistryPublishRequests::ArtifactPath)
+                        .text()
+                        .null(),
+                )
+                .add_column(
+                    ColumnDef::new(RegistryPublishRequests::ArtifactUrl)
+                        .text()
+                        .null(),
+                )
                 .to_owned(),
         )
         .await?;
@@ -172,8 +269,16 @@ async fn add_legacy_registry_identity_columns(manager: &SchemaManager<'_>) -> Re
                         .string_len(128)
                         .null(),
                 )
-                .add_column(ColumnDef::new(RegistryModuleReleases::ArtifactPath).text().null())
-                .add_column(ColumnDef::new(RegistryModuleReleases::ArtifactUrl).text().null())
+                .add_column(
+                    ColumnDef::new(RegistryModuleReleases::ArtifactPath)
+                        .text()
+                        .null(),
+                )
+                .add_column(
+                    ColumnDef::new(RegistryModuleReleases::ArtifactUrl)
+                        .text()
+                        .null(),
+                )
                 .to_owned(),
         )
         .await?;
@@ -239,9 +344,7 @@ async fn backfill_registry_module_owners(db: &SchemaManagerConnection<'_>) -> Re
     Ok(())
 }
 
-async fn backfill_registry_publish_requests(
-    db: &SchemaManagerConnection<'_>,
-) -> Result<(), DbErr> {
+async fn backfill_registry_publish_requests(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
         .query_all(Statement::from_string(
@@ -261,9 +364,15 @@ async fn backfill_registry_publish_requests(
         let held_by = row.try_get::<Option<String>>("", "held_by")?;
         let artifact_path = row.try_get::<Option<String>>("", "artifact_path")?;
         let artifact_url = row.try_get::<Option<String>>("", "artifact_url")?;
-        let artifact_storage_key =
-            derive_artifact_storage_key(Some(&id), &slug, &version, artifact_path.as_deref(), artifact_url.as_deref());
-        if let (Some(path), Some(key)) = (artifact_path.as_deref(), artifact_storage_key.as_deref()) {
+        let artifact_storage_key = derive_artifact_storage_key(
+            Some(&id),
+            &slug,
+            &version,
+            artifact_path.as_deref(),
+            artifact_url.as_deref(),
+        );
+        if let (Some(path), Some(key)) = (artifact_path.as_deref(), artifact_storage_key.as_deref())
+        {
             let _ = copy_legacy_artifact_to_default_storage(path, key);
         }
         execute_update(
@@ -287,9 +396,7 @@ async fn backfill_registry_publish_requests(
     Ok(())
 }
 
-async fn backfill_registry_module_releases(
-    db: &SchemaManagerConnection<'_>,
-) -> Result<(), DbErr> {
+async fn backfill_registry_module_releases(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
         .query_all(Statement::from_string(
@@ -313,7 +420,8 @@ async fn backfill_registry_module_releases(
             artifact_path.as_deref(),
             artifact_url.as_deref(),
         );
-        if let (Some(path), Some(key)) = (artifact_path.as_deref(), artifact_storage_key.as_deref()) {
+        if let (Some(path), Some(key)) = (artifact_path.as_deref(), artifact_storage_key.as_deref())
+        {
             let _ = copy_legacy_artifact_to_default_storage(path, key);
         }
         execute_update(
@@ -383,9 +491,7 @@ async fn restore_registry_module_owners(db: &SchemaManagerConnection<'_>) -> Res
     Ok(())
 }
 
-async fn restore_registry_publish_requests(
-    db: &SchemaManagerConnection<'_>,
-) -> Result<(), DbErr> {
+async fn restore_registry_publish_requests(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let rows = select_rows(
         db,
         "SELECT id, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, changes_requested_by_principal, held_by_principal, artifact_storage_key FROM registry_publish_requests",
@@ -422,9 +528,7 @@ async fn restore_registry_publish_requests(
     Ok(())
 }
 
-async fn restore_registry_module_releases(
-    db: &SchemaManagerConnection<'_>,
-) -> Result<(), DbErr> {
+async fn restore_registry_module_releases(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let rows = select_rows(
         db,
         "SELECT id, publisher_principal, yanked_by_principal, artifact_storage_key FROM registry_module_releases",
@@ -450,9 +554,7 @@ async fn restore_registry_module_releases(
     Ok(())
 }
 
-async fn restore_registry_governance_events(
-    db: &SchemaManagerConnection<'_>,
-) -> Result<(), DbErr> {
+async fn restore_registry_governance_events(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let rows = select_rows(
         db,
         "SELECT id, actor_principal, publisher_principal FROM registry_governance_events",
@@ -476,13 +578,10 @@ async fn restore_registry_governance_events(
     Ok(())
 }
 
-async fn drop_legacy_registry_identity_columns(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
-    drop_columns(
-        db,
-        "registry_module_owners",
-        &["owner_actor", "bound_by"],
-    )
-    .await?;
+async fn drop_legacy_registry_identity_columns(
+    db: &SchemaManagerConnection<'_>,
+) -> Result<(), DbErr> {
+    drop_columns(db, "registry_module_owners", &["owner_actor", "bound_by"]).await?;
     drop_columns(
         db,
         "registry_publish_requests",
@@ -504,12 +603,7 @@ async fn drop_legacy_registry_identity_columns(db: &SchemaManagerConnection<'_>)
         &["publisher", "yanked_by", "artifact_path", "artifact_url"],
     )
     .await?;
-    drop_columns(
-        db,
-        "registry_governance_events",
-        &["actor", "publisher"],
-    )
-    .await
+    drop_columns(db, "registry_governance_events", &["actor", "publisher"]).await
 }
 
 async fn drop_new_registry_identity_columns(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
@@ -536,7 +630,11 @@ async fn drop_new_registry_identity_columns(db: &SchemaManagerConnection<'_>) ->
     drop_columns(
         db,
         "registry_module_releases",
-        &["publisher_principal", "yanked_by_principal", "artifact_storage_key"],
+        &[
+            "publisher_principal",
+            "yanked_by_principal",
+            "artifact_storage_key",
+        ],
     )
     .await?;
     drop_columns(
@@ -547,7 +645,10 @@ async fn drop_new_registry_identity_columns(db: &SchemaManagerConnection<'_>) ->
     .await
 }
 
-async fn select_rows(db: &SchemaManagerConnection<'_>, sql: &str) -> Result<Vec<sea_orm::QueryResult>, DbErr> {
+async fn select_rows(
+    db: &SchemaManagerConnection<'_>,
+    sql: &str,
+) -> Result<Vec<sea_orm::QueryResult>, DbErr> {
     db.query_all(Statement::from_string(
         db.get_database_backend(),
         sql.to_string(),
@@ -610,8 +711,7 @@ fn principal_json_string(value: &str) -> serde_json::Value {
                 "subject": format!("user:{user_id}"),
                 "display_label": format!("user:{user_id}"),
                 "legacy_label": serde_json::Value::Null,
-            })
-            ;
+            });
         }
     }
     if let Some(runner_id) = normalized.strip_prefix("remote-runner:") {
@@ -621,8 +721,7 @@ fn principal_json_string(value: &str) -> serde_json::Value {
             "subject": format!("remote-runner:{runner_id}"),
             "display_label": format!("remote-runner:{runner_id}"),
             "legacy_label": serde_json::Value::Null,
-        })
-        ;
+        });
     }
     json!({
         "kind": "legacy",
@@ -672,7 +771,13 @@ fn derive_artifact_storage_key(
         .and_then(|value| Path::new(value).file_name())
         .and_then(|value| value.to_str())
         .map(ToString::to_string)
-        .or_else(|| artifact_url.map(Path::new).and_then(|value| value.file_name()).and_then(|value| value.to_str()).map(ToString::to_string))
+        .or_else(|| {
+            artifact_url
+                .map(Path::new)
+                .and_then(|value| value.file_name())
+                .and_then(|value| value.to_str())
+                .map(ToString::to_string)
+        })
         .unwrap_or_else(|| format!("{slug}-{version}.crate"));
     scope_id.map(|value| format!("registry/artifacts/{value}/{filename}"))
 }

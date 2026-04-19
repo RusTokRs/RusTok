@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -6,6 +7,10 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() != DatabaseBackend::Postgres {
+            return Ok(());
+        }
+
         manager
             .get_connection()
             .execute_unprepared(
@@ -24,6 +29,10 @@ ALTER TABLE tenant_locales
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() != DatabaseBackend::Postgres {
+            return Ok(());
+        }
+
         manager
             .get_connection()
             .execute_unprepared(

@@ -133,8 +133,11 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     }
 
     if settings.build.enabled && !ctx.shared_store.contains::<BuildWorkerHandle>() {
-        ctx.shared_store
-            .insert(spawn_build_worker_handle(ctx.clone(), settings.build, stop_rx.clone()));
+        ctx.shared_store.insert(spawn_build_worker_handle(
+            ctx.clone(),
+            settings.build,
+            stop_rx.clone(),
+        ));
     }
 
     if settings.registry.remote_executor.enabled

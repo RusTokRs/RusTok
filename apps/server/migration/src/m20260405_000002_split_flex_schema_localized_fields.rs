@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -80,32 +81,75 @@ ON CONFLICT (schema_id, locale) DO NOTHING;
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(FlexSchemas::Table)
-                    .drop_column(FlexSchemas::Name)
-                    .drop_column(FlexSchemas::Description)
-                    .to_owned(),
-            )
-            .await
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FlexSchemas::Table)
+                        .drop_column(FlexSchemas::Name)
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FlexSchemas::Table)
+                        .drop_column(FlexSchemas::Description)
+                        .to_owned(),
+                )
+                .await
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FlexSchemas::Table)
+                        .drop_column(FlexSchemas::Name)
+                        .drop_column(FlexSchemas::Description)
+                        .to_owned(),
+                )
+                .await
+        }
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(FlexSchemas::Table)
-                    .add_column(
-                        ColumnDef::new(FlexSchemas::Name)
-                            .string_len(255)
-                            .not_null()
-                            .default(""),
-                    )
-                    .add_column(ColumnDef::new(FlexSchemas::Description).text().null())
-                    .to_owned(),
-            )
-            .await?;
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FlexSchemas::Table)
+                        .add_column(
+                            ColumnDef::new(FlexSchemas::Name)
+                                .string_len(255)
+                                .not_null()
+                                .default(""),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FlexSchemas::Table)
+                        .add_column(ColumnDef::new(FlexSchemas::Description).text().null())
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FlexSchemas::Table)
+                        .add_column(
+                            ColumnDef::new(FlexSchemas::Name)
+                                .string_len(255)
+                                .not_null()
+                                .default(""),
+                        )
+                        .add_column(ColumnDef::new(FlexSchemas::Description).text().null())
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .get_connection()

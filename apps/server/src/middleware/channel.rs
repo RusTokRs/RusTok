@@ -17,9 +17,7 @@ use crate::common::{
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
-use rustok_api::{
-    ChannelResolutionOutcome, ChannelResolutionStage, ChannelResolutionTraceStep,
-};
+use rustok_api::{ChannelResolutionOutcome, ChannelResolutionStage, ChannelResolutionTraceStep};
 use rustok_channel::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, TargetSurface,
 };
@@ -131,26 +129,27 @@ pub async fn resolve(
         .await
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let cached_context = resolved_detail_source_and_trace(decision).map(|(detail, source, trace)| {
-        let selected_target = detail
-            .targets
-            .iter()
-            .find(|target| target.is_primary)
-            .or_else(|| detail.targets.first());
-        ChannelContext {
-            id: detail.channel.id,
-            tenant_id: detail.channel.tenant_id,
-            slug: detail.channel.slug,
-            name: detail.channel.name,
-            is_active: detail.channel.is_active,
-            status: detail.channel.status,
-            target_type: selected_target.map(|target| target.target_type.clone()),
-            target_value: selected_target.map(|target| target.value.clone()),
-            settings: detail.channel.settings,
-            resolution_source: source,
-            resolution_trace: trace,
-        }
-    });
+    let cached_context =
+        resolved_detail_source_and_trace(decision).map(|(detail, source, trace)| {
+            let selected_target = detail
+                .targets
+                .iter()
+                .find(|target| target.is_primary)
+                .or_else(|| detail.targets.first());
+            ChannelContext {
+                id: detail.channel.id,
+                tenant_id: detail.channel.tenant_id,
+                slug: detail.channel.slug,
+                name: detail.channel.name,
+                is_active: detail.channel.is_active,
+                status: detail.channel.status,
+                target_type: selected_target.map(|target| target.target_type.clone()),
+                target_value: selected_target.map(|target| target.value.clone()),
+                settings: detail.channel.settings,
+                resolution_source: source,
+                resolution_trace: trace,
+            }
+        });
 
     cache.cache.insert(cache_key, cached_context.clone()).await;
 
@@ -257,12 +256,11 @@ pub async fn invalidate_tenant_channel_cache(ctx: &AppContext, tenant_id: Uuid) 
 mod tests {
     use super::{
         build_request_facts, channel_id_from_header, channel_slug_from_header,
-        channel_slug_from_query, resolved_detail_source_and_trace,
+        channel_slug_from_query, resolved_detail_source_and_trace, ChannelResolutionOutcome,
+        ChannelResolutionStage,
     };
     use crate::common::RustokSettings;
-    use crate::context::{
-        ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
-    };
+    use crate::context::ChannelResolutionSource;
     use axum::http::{header::HOST, HeaderMap};
     use rustok_channel::{
         migrations, ChannelResolver, ChannelService, CreateChannelInput, CreateChannelTargetInput,

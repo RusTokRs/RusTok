@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -56,12 +57,18 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("tenants"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .unique()
-                            .col(FlexSchemas::TenantId)
-                            .col(FlexSchemas::Slug),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_flex_schemas_tenant_slug")
+                    .table(FlexSchemas::Table)
+                    .col(FlexSchemas::TenantId)
+                    .col(FlexSchemas::Slug)
+                    .unique()
                     .to_owned(),
             )
             .await?;
@@ -116,43 +123,56 @@ impl MigrationTrait for Migration {
                             .to(FlexSchemas::Table, FlexSchemas::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_flex_entries_entity")
-                            .col(FlexEntries::EntityType)
-                            .col(FlexEntries::EntityId),
-                    )
                     .to_owned(),
             )
             .await?;
 
         manager
-            .get_connection()
-            .execute_unprepared(
-                "CREATE INDEX IF NOT EXISTS idx_flex_entries_data ON flex_entries USING GIN (data)",
+            .create_index(
+                Index::create()
+                    .name("idx_flex_entries_entity")
+                    .table(FlexEntries::Table)
+                    .col(FlexEntries::EntityType)
+                    .col(FlexEntries::EntityId)
+                    .to_owned(),
             )
             .await?;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_flex_entries_attached ON flex_entries (tenant_id, schema_id, entity_type, entity_id) WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL",
-            )
-            .await?;
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX IF NOT EXISTS idx_flex_entries_data ON flex_entries USING GIN (data)",
+                )
+                .await?;
+        }
+
+        if manager.get_database_backend() != DatabaseBackend::Sqlite {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_flex_entries_attached ON flex_entries (tenant_id, schema_id, entity_type, entity_id) WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL",
+                )
+                .await?;
+        }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .get_connection()
-            .execute_unprepared("DROP INDEX IF EXISTS uq_flex_entries_attached")
-            .await?;
+        if manager.get_database_backend() != DatabaseBackend::Sqlite {
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS uq_flex_entries_attached")
+                .await?;
+        }
 
-        manager
-            .get_connection()
-            .execute_unprepared("DROP INDEX IF EXISTS idx_flex_entries_data")
-            .await?;
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_flex_entries_data")
+                .await?;
+        }
 
         manager
             .drop_table(Table::drop().table(FlexEntries::Table).to_owned())

@@ -363,18 +363,8 @@ async fn drop_registry_translation_tables(manager: &SchemaManager<'_>) -> Result
 async fn drop_registry_default_locale_columns(
     db: &SchemaManagerConnection<'_>,
 ) -> Result<(), DbErr> {
-    drop_columns(
-        db,
-        "registry_publish_requests",
-        &["default_locale"],
-    )
-    .await?;
-    drop_columns(
-        db,
-        "registry_module_releases",
-        &["default_locale"],
-    )
-    .await
+    drop_columns(db, "registry_publish_requests", &["default_locale"]).await?;
+    drop_columns(db, "registry_module_releases", &["default_locale"]).await
 }
 
 async fn execute_statement(
@@ -436,9 +426,11 @@ async fn load_translation_row(
             vec![owner_id.into(), default_locale.into()],
         ))
         .await?
-        .ok_or_else(|| DbErr::Custom(format!(
-            "missing registry translation row in {table} for {owner_column}={owner_id}"
-        )))?;
+        .ok_or_else(|| {
+            DbErr::Custom(format!(
+                "missing registry translation row in {table} for {owner_column}={owner_id}"
+            ))
+        })?;
 
     Ok(LocalizedMetadataRow {
         locale: row.try_get("", "locale")?,

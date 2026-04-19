@@ -38,13 +38,13 @@ pub(crate) fn module_publish_governance_command(
     let reason = reason_argument(&args[1..]);
     let reason_code =
         governance_reason_code_argument(&args[1..], command_name, allowed_reason_codes)?;
-        let preview = ModulePublishGovernanceDryRunPreview {
-            action: action_key.to_string(),
-            request_id: request_id.to_string(),
-            actor: None,
-            reason: reason.clone(),
-            reason_code: reason_code.clone(),
-        };
+    let preview = ModulePublishGovernanceDryRunPreview {
+        action: action_key.to_string(),
+        request_id: request_id.to_string(),
+        actor: None,
+        reason: reason.clone(),
+        reason_code: reason_code.clone(),
+    };
     let registry_url = registry_url_argument(&args[1..]);
 
     if dry_run {

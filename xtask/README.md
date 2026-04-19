@@ -86,6 +86,7 @@ cargo xtask module test <slug>
 - Checks admin/storefront UI host wiring against module-owned `provides.admin_ui` and `provides.storefront_ui` metadata.
 - Writes `apps/server/src/modules/generated.rs` only through `cargo xtask generate-registry`.
 - Contacts registry HTTP endpoints only for live operator commands when `--dry-run` is not used.
+- Live registry operator commands target the clean V2 contract only: bearer auth via `--auth-token` / `RUSTOK_MODULE_AUTH_TOKEN`, `new_owner_user_id` for owner transfer, `artifact_download_url` for remote runner claims, and no legacy actor/publisher header path.
 
 ## Verification
 
@@ -103,5 +104,5 @@ For module work, run `cargo xtask module validate <slug>` before broader workspa
 ## Related Documentation
 
 - [Module manifest contract](../docs/modules/manifest.md)
-- [Module system plan](../docs/modules/module-system-plan.md)
+- [Module authoring guide](../docs/modules/module-authoring.md)
 - [Verification guide](../docs/verification/README.md)

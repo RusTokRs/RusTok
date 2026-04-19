@@ -3,13 +3,13 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg(feature = "s3")]
+use crate::s3::{S3Storage, S3StorageConfig};
 use crate::{
     backend::{StorageBackend, UploadedObject},
     error::Result,
     local::LocalStorageConfig,
 };
-#[cfg(feature = "s3")]
-use crate::s3::{S3Storage, S3StorageConfig};
 
 /// High-level storage service wrapping a concrete backend.
 #[derive(Clone)]

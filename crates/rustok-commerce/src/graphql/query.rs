@@ -639,7 +639,10 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
-        let refund = match PaymentService::new(db.clone()).get_refund(tenant_id, id).await {
+        let refund = match PaymentService::new(db.clone())
+            .get_refund(tenant_id, id)
+            .await
+        {
             Ok(refund) => refund,
             Err(rustok_payment::error::PaymentError::RefundNotFound(_)) => return Ok(None),
             Err(err) => return Err(err.to_string().into()),

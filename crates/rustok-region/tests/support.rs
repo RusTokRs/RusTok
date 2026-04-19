@@ -1,5 +1,5 @@
-use rustok_commerce_foundation::entities::region_translation;
 use rustok_commerce_foundation::entities::region_country_tax_policy;
+use rustok_commerce_foundation::entities::region_translation;
 use rustok_region::entities::region;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 

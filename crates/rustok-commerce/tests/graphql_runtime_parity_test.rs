@@ -3024,7 +3024,13 @@ async fn admin_graphql_refund_surface_matches_runtime_services() {
         query_json["paymentCollection"]["refundedAmount"],
         Value::from("10")
     );
-    assert_eq!(query_json["paymentCollection"]["refunds"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        query_json["paymentCollection"]["refunds"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[tokio::test]

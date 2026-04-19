@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -6,8 +7,8 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            for statement in [
                 Table::alter()
                     .table(RegistryValidationStages::Table)
                     .add_column(
@@ -15,29 +16,76 @@ impl MigrationTrait for Migration {
                             .string_len(64)
                             .null(),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .add_column(
                         ColumnDef::new(RegistryValidationStages::ClaimedBy)
                             .string_len(128)
                             .null(),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .add_column(
                         ColumnDef::new(RegistryValidationStages::ClaimExpiresAt)
                             .timestamp_with_time_zone()
                             .null(),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .add_column(
                         ColumnDef::new(RegistryValidationStages::LastHeartbeatAt)
                             .timestamp_with_time_zone()
                             .null(),
                     )
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .add_column(
                         ColumnDef::new(RegistryValidationStages::RunnerKind)
                             .string_len(32)
                             .null(),
                     )
                     .to_owned(),
-            )
-            .await?;
+            ] {
+                manager.alter_table(statement).await?;
+            }
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(RegistryValidationStages::Table)
+                        .add_column(
+                            ColumnDef::new(RegistryValidationStages::ClaimId)
+                                .string_len(64)
+                                .null(),
+                        )
+                        .add_column(
+                            ColumnDef::new(RegistryValidationStages::ClaimedBy)
+                                .string_len(128)
+                                .null(),
+                        )
+                        .add_column(
+                            ColumnDef::new(RegistryValidationStages::ClaimExpiresAt)
+                                .timestamp_with_time_zone()
+                                .null(),
+                        )
+                        .add_column(
+                            ColumnDef::new(RegistryValidationStages::LastHeartbeatAt)
+                                .timestamp_with_time_zone()
+                                .null(),
+                        )
+                        .add_column(
+                            ColumnDef::new(RegistryValidationStages::RunnerKind)
+                                .string_len(32)
+                                .null(),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(
@@ -80,18 +128,46 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager
-            .alter_table(
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            for statement in [
                 Table::alter()
                     .table(RegistryValidationStages::Table)
                     .drop_column(RegistryValidationStages::RunnerKind)
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .drop_column(RegistryValidationStages::LastHeartbeatAt)
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .drop_column(RegistryValidationStages::ClaimExpiresAt)
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .drop_column(RegistryValidationStages::ClaimedBy)
+                    .to_owned(),
+                Table::alter()
+                    .table(RegistryValidationStages::Table)
                     .drop_column(RegistryValidationStages::ClaimId)
                     .to_owned(),
-            )
-            .await
+            ] {
+                manager.alter_table(statement).await?;
+            }
+            Ok(())
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(RegistryValidationStages::Table)
+                        .drop_column(RegistryValidationStages::RunnerKind)
+                        .drop_column(RegistryValidationStages::LastHeartbeatAt)
+                        .drop_column(RegistryValidationStages::ClaimExpiresAt)
+                        .drop_column(RegistryValidationStages::ClaimedBy)
+                        .drop_column(RegistryValidationStages::ClaimId)
+                        .to_owned(),
+                )
+                .await
+        }
     }
 }
 

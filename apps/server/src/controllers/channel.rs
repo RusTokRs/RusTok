@@ -1,12 +1,12 @@
 use axum::{
-    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
     response::Response,
     routing::{delete, get, patch, post},
+    Extension, Json,
 };
 use loco_rs::app::AppContext;
-use loco_rs::controller::{ErrorDetail, Routes, format};
+use loco_rs::controller::{format, ErrorDetail, Routes};
 use rustok_channel::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
     ChannelResolutionPolicySetDetailResponse, ChannelResponse, ChannelService,

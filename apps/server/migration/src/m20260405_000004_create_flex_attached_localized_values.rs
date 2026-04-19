@@ -59,23 +59,33 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_flex_attached_localized_values_owner")
-                            .col(FlexAttachedLocalizedValues::TenantId)
-                            .col(FlexAttachedLocalizedValues::EntityType)
-                            .col(FlexAttachedLocalizedValues::EntityId),
-                    )
-                    .index(
-                        Index::create()
-                            .name("uq_flex_attached_localized_values_locale")
-                            .unique()
-                            .col(FlexAttachedLocalizedValues::TenantId)
-                            .col(FlexAttachedLocalizedValues::EntityType)
-                            .col(FlexAttachedLocalizedValues::EntityId)
-                            .col(FlexAttachedLocalizedValues::FieldKey)
-                            .col(FlexAttachedLocalizedValues::Locale),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_flex_attached_localized_values_owner")
+                    .table(FlexAttachedLocalizedValues::Table)
+                    .col(FlexAttachedLocalizedValues::TenantId)
+                    .col(FlexAttachedLocalizedValues::EntityType)
+                    .col(FlexAttachedLocalizedValues::EntityId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_flex_attached_localized_values_locale")
+                    .table(FlexAttachedLocalizedValues::Table)
+                    .unique()
+                    .col(FlexAttachedLocalizedValues::TenantId)
+                    .col(FlexAttachedLocalizedValues::EntityType)
+                    .col(FlexAttachedLocalizedValues::EntityId)
+                    .col(FlexAttachedLocalizedValues::FieldKey)
+                    .col(FlexAttachedLocalizedValues::Locale)
                     .to_owned(),
             )
             .await

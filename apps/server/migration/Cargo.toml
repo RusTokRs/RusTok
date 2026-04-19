@@ -28,6 +28,7 @@ rustok-commerce = { path = "../../../crates/rustok-commerce" }
 rustok-content = { path = "../../../crates/rustok-content" }
 rustok-forum = { path = "../../../crates/rustok-forum" }
 rustok-index = { path = "../../../crates/rustok-index" }
+rustok-taxonomy = { path = "../../../crates/rustok-taxonomy" }
 rustok-workflow = { path = "../../../crates/rustok-workflow" }
 
 [dev-dependencies]

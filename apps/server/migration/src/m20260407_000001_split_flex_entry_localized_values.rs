@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -77,10 +78,11 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
 INSERT INTO flex_entry_localized_values (entry_id, locale, tenant_id, data, created_at, updated_at)
 SELECT
     entry_row.id,
@@ -108,13 +110,13 @@ SET
     data = EXCLUDED.data,
     updated_at = EXCLUDED.updated_at
 "#,
-            )
-            .await?;
+                )
+                .await?;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
 UPDATE flex_entries AS entry_row
 SET data = COALESCE(
     (
@@ -140,17 +142,19 @@ WHERE EXISTS (
       AND COALESCE((definition ->> 'is_localized')::boolean, false)
 )
 "#,
-            )
-            .await?;
+                )
+                .await?;
+        }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
 UPDATE flex_entries AS entry_row
 SET data = COALESCE(entry_row.data, '{}'::jsonb) || COALESCE(localized.data, '{}'::jsonb)
 FROM (
@@ -164,8 +168,9 @@ FROM (
 ) AS localized
 WHERE entry_row.id = localized.entry_id
 "#,
-            )
-            .await?;
+                )
+                .await?;
+        }
 
         manager
             .drop_table(

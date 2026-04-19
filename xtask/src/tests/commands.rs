@@ -543,10 +543,7 @@ fn runner_token_argument_uses_trimmed_env_and_ignores_blank_values() {
 #[test]
 fn auth_token_argument_trims_and_ignores_blank_values() {
     assert_eq!(
-        auth_token_argument(&[
-            "--auth-token".to_string(),
-            "  bearer-token  ".to_string()
-        ]),
+        auth_token_argument(&["--auth-token".to_string(), "  bearer-token  ".to_string()]),
         Some("bearer-token".to_string())
     );
     assert_eq!(

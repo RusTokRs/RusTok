@@ -215,8 +215,10 @@ fn resolve_effective_policy(policy: &TaxPolicySnapshot) -> TaxResult<ResolvedTax
     let requested_country_code = normalize_country_code(policy.country_code.as_deref())?;
     let mut rules = HashMap::new();
     for rule in &policy.country_rules {
-        let country_code = normalize_country_code(Some(rule.country_code.as_str()))?
-            .ok_or_else(|| TaxError::Validation("country tax policy country_code is required".to_string()))?;
+        let country_code =
+            normalize_country_code(Some(rule.country_code.as_str()))?.ok_or_else(|| {
+                TaxError::Validation("country tax policy country_code is required".to_string())
+            })?;
         if rules
             .insert(
                 country_code.clone(),

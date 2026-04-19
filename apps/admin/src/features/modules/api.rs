@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
-    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
-    RegistryReleaseLifecycle, RegistryValidationStageLifecycle, registry_principal_label_from_value,
+    registry_principal_label_from_value, RegistryFollowUpGateLifecycle,
+    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
+    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
+    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
@@ -24,7 +24,7 @@ pub const TENANT_MODULES_QUERY: &str =
 pub const MARKETPLACE_QUERY: &str =
     "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor { displayLabel } boundBy { displayLabel } boundAt updatedAt } latestRequest { id status requestedBy { displayLabel } publisherIdentity { displayLabel } approvedBy { displayLabel } rejectedBy { displayLabel } rejectionReason changesRequestedBy { displayLabel } changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy { displayLabel } heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher { displayLabel } checksumSha256 publishedAt yankedReason yankedBy { displayLabel } yankedAt } recentEvents { id eventType actor { displayLabel } publisher { displayLabel } payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode ownerTransition { previousOwner { displayLabel } newOwner { displayLabel } boundBy { displayLabel } } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { owner { displayLabel } boundBy { displayLabel } boundAt updatedAt } latestRequest { id status requestedBy { displayLabel } publisher { displayLabel } approvedBy { displayLabel } rejectedBy { displayLabel } rejectionReason changesRequestedBy { displayLabel } changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy { displayLabel } heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher { displayLabel } checksumSha256 publishedAt yankedReason yankedBy { displayLabel } yankedAt } recentEvents { id eventType actor { displayLabel } publisher { displayLabel } payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode ownerTransition { previousOwner { displayLabel } newOwner { displayLabel } boundBy { displayLabel } } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const ACTIVE_BUILD_QUERY: &str =
     "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ACTIVE_RELEASE_QUERY: &str =
@@ -1776,7 +1776,7 @@ fn map_registry_publish_request_row(
                 .map_err(|err| server_error(err.to_string()))?,
         ),
         requested_by: required_registry_principal_label(&row, "requested_by")?,
-        publisher_identity: optional_registry_principal_label(&row, "publisher_identity")?,
+        publisher: optional_registry_principal_label(&row, "publisher")?,
         approved_by: optional_registry_principal_label(&row, "approved_by")?,
         rejected_by: optional_registry_principal_label(&row, "rejected_by")?,
         rejection_reason: row
@@ -1866,7 +1866,7 @@ fn map_registry_owner_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryOwnerLifecycle, ServerFnError> {
     Ok(RegistryOwnerLifecycle {
-        owner_actor: required_registry_principal_label(&row, "owner_actor")?,
+        owner: required_registry_principal_label(&row, "owner")?,
         bound_by: required_registry_principal_label(&row, "bound_by")?,
         bound_at: row
             .try_get::<chrono::DateTime<chrono::Utc>>("", "bound_at")
@@ -2053,11 +2053,9 @@ fn derive_registry_governance_actions(
 
     if let Some(request) = latest_request {
         if request
-            .publisher_identity
+            .publisher
             .as_ref()
-            .is_some_and(|publisher| {
-                owner_binding.is_none_or(|owner| owner.owner_actor != *publisher)
-            })
+            .is_some_and(|publisher| owner_binding.is_none_or(|owner| owner.owner != *publisher))
             || owner_binding.is_some()
         {
             actions.push(registry_governance_action(
@@ -2281,7 +2279,7 @@ async fn load_registry_module_lifecycle(
                 id,
                 status,
                 requested_by_principal AS requested_by,
-                publisher_principal AS publisher_identity,
+                publisher_principal AS publisher,
                 approved_by_principal AS approved_by,
                 rejected_by_principal AS rejected_by,
                 rejection_reason,
@@ -2313,7 +2311,7 @@ async fn load_registry_module_lifecycle(
                 id,
                 status,
                 requested_by_principal AS requested_by,
-                publisher_principal AS publisher_identity,
+                publisher_principal AS publisher,
                 approved_by_principal AS approved_by,
                 rejected_by_principal AS rejected_by,
                 rejection_reason,
@@ -2384,7 +2382,7 @@ async fn load_registry_module_lifecycle(
             DbBackend::Sqlite,
             r#"
             SELECT
-                owner_principal AS owner_actor,
+                owner_principal AS owner,
                 bound_by_principal AS bound_by,
                 bound_at,
                 updated_at
@@ -2398,7 +2396,7 @@ async fn load_registry_module_lifecycle(
             DbBackend::Postgres,
             r#"
             SELECT
-                owner_principal AS owner_actor,
+                owner_principal AS owner,
                 bound_by_principal AS bound_by,
                 bound_at,
                 updated_at
@@ -2823,9 +2821,13 @@ pub async fn fetch_marketplace_modules(
     variables: MarketplaceVariables,
 ) -> Result<Vec<MarketplaceModule>, ApiError> {
     if token.is_some() {
-        let response: MarketplaceResponse =
-            request(MARKETPLACE_QUERY, variables.clone(), token.clone(), tenant_slug.clone())
-                .await?;
+        let response: MarketplaceResponse = request(
+            MARKETPLACE_QUERY,
+            variables.clone(),
+            token.clone(),
+            tenant_slug.clone(),
+        )
+        .await?;
         return Ok(response.marketplace);
     }
 
@@ -4346,14 +4348,7 @@ async fn approve_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            request_id,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-approve-publish-request requires the `ssr` feature",
         ))
@@ -4387,14 +4382,7 @@ async fn reject_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            request_id,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-reject-publish-request requires the `ssr` feature",
         ))
@@ -4431,14 +4419,7 @@ async fn request_changes_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            request_id,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-request-changes-publish-request requires the `ssr` feature",
         ))
@@ -4472,14 +4453,7 @@ async fn hold_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            request_id,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-hold-publish-request requires the `ssr` feature",
         ))
@@ -4513,14 +4487,7 @@ async fn resume_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            request_id,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-resume-publish-request requires the `ssr` feature",
         ))
@@ -4602,15 +4569,7 @@ async fn yank_registry_release_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            slug,
-            version,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (token, tenant, slug, version, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-yank-release requires the `ssr` feature",
         ))
@@ -4776,13 +4735,9 @@ pub async fn fetch_registry_publish_request_status(
     tenant_slug: Option<String>,
 ) -> Result<RegistryPublishStatusContract, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
-    fetch_registry_publish_request_status_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
+    fetch_registry_publish_request_status_native(token, tenant_slug.unwrap_or_default(), request_id)
+        .await
+        .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
 pub async fn approve_registry_publish_request(

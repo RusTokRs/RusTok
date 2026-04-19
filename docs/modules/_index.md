@@ -154,5 +154,5 @@
 
 ## Примечание по `module-system`
 
-- Финальный repo-side статус `Registry V1/V2`, authenticated governance contract, `registry_only` и thin runner path фиксируется в [module-system-plan.md](./module-system-plan.md).
+- Финальный repo-side статус `Registry V1/V2`, authenticated governance contract, `registry_only` и thin runner path фиксируется в соответствующих ADR внутри `DECISIONS/` и в живых platform docs.
 - Audit UI-классификации path-модулей (`dual-surface` / `admin-only` / `storefront-only` / `no-ui`) тоже ведётся там; этот индекс остаётся только навигацией по локальным docs.
