@@ -23,6 +23,8 @@ block и menu contracts.
 - использует `rustok-content` только для shared rich-text helpers, а не как storage backend;
 - использует `rustok-channel` для module-level и publication-level visibility contract;
 - host applications подключают pages UI через manifest-driven generated wiring;
+- `rustok-pages/admin` уже встраивает owner-side page SEO panel через `rustok-seo-admin-support`
+  и shared capability contract модуля `rustok-seo`;
 - block endpoints остаются migration-compatible surface и не должны неявно синтезировать `body`.
 
 ## Проверка

@@ -32,6 +32,9 @@
 - i18n route/layout contract должен совпадать с platform storefront expectations.
 - если module-owned storefront surface использует query-driven state, Next host обязан держать
   те же key semantics и canonical behavior, что и Leptos storefront.
+- SEO runtime не дублируется в host: canonical source of truth живёт в `rustok-seo`, а Next host выступает только adapter-слоем поверх `SeoPageContext = route + document`.
+- built-in Next Metadata API считается основным render target для SEO head; shared metadata builder должен маппить туда typed robots, Open Graph, Twitter, verification и alternates без собственного SEO source-of-truth в host.
+- Rust-host путь при этом вынесен в отдельный support crate `rustok-seo-render`; Next host остаётся TypeScript adapter-слоем и не пытается делить с ним source-of-truth.
 
 ## Взаимодействия
 

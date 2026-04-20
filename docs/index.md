@@ -34,6 +34,15 @@
 - [Шаблон документации модуля](./templates/module_contract.md)
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
+- `rustok-seo` добавляет optional SEO Hub с module-owned admin surface, tenant-scoped redirects/sitemaps/robots
+  и storefront-facing `SeoPageContext` для host SSR metadata generation без отдельного storefront UI package;
+  canonical UI ownership при этом разделён: entity SEO authoring должно жить в owner-модулях
+  (`pages/product/blog/forum`), а `rustok-seo-admin` держит cross-cutting SEO infrastructure surface;
+  текущий control-plane уже покрывает redirects, sitemaps, robots preview, tenant defaults и diagnostics;
+  headless read-side теперь также включает REST endpoint `/api/seo/page-context` поверх canonical request locale resolution,
+  а forum topic SEO routing уже учитывает host-provided request channel slug для channel-restricted public topics;
+  Rust-host rendering при этом уже вынесен в support crate `crates/rustok-seo/render`,
+  а owner-side admin widgets — в `crates/rustok-seo-admin-support`.
 - UI split ecommerce family уже начат: `rustok-product/admin` стал первым
   module-owned admin route, `rustok-fulfillment/admin` забрал shipping options,
   `rustok-order/admin` забрал order operations, `rustok-inventory/admin` забрал
@@ -148,6 +157,16 @@
 - Тот же `leptos-ui-routing` теперь используется и в module-owned Leptos storefront packages:
   storefront query/state reads не inventят второй helper layer поверх `UiRouteContext`, а `apps/storefront`
   и `apps/next-frontend` должны держать parity по тому же host-owned route/query contract.
+- SEO runtime для storefront host-ов теперь тоже идёт по общему multilingual contract:
+  `apps/storefront` потребляет tenant-aware `SeoPageContext` через `rustok-seo-render` для SSR `<title>`, `meta description`,
+  canonical, robots, hreflang и JSON-LD, а `apps/next-frontend` пока держит foundation на shared metadata builder,
+  `robots.ts` и `sitemap.ts` без искусственного расширения на несуществующие route surfaces.
+- Для module-owned admin UI SEO тоже больше не считается отдельным universal editor: контентные модули
+  должны встраивать SEO panels в собственные entity screens, а `rustok-seo-admin` остаётся control plane
+  для redirects/robots/sitemaps/defaults/diagnostics.
+- Этот cutover уже выполнен для текущих content-модулей: `pages`, `product`, `blog`, `forum`
+  используют owner-side SEO panels через `rustok-seo-admin-support`, а `rustok-seo-admin`
+  уже очищен от central metadata editor и оставлен как infrastructure/control-plane surface.
 - [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
 - [Трек rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Архитектура i18n](./architecture/i18n.md) — request locale chain, shared locale normalization/validation contract, `verify:i18n:ui` + `verify:i18n:contract` gates, storefront locale-prefixed routes, outbound built-in auth email locale contract, manifest-level module UI bundle contract, временно без ecommerce locale alignment
@@ -211,7 +230,7 @@
 ## Документация crate-ов
 
 - Для platform modules: `crates/rustok-*` согласно [реестру модулей и приложений](./modules/registry.md).
-- Для foundation и shared libraries: `crates/rustok-core`, `crates/rustok-api`, `crates/rustok-events`, `crates/rustok-storage`, `crates/rustok-test-utils`, `crates/rustok-commerce-foundation`.
+- Для foundation и shared libraries: `crates/rustok-core`, `crates/rustok-api`, `crates/rustok-events`, `crates/rustok-storage`, `crates/rustok-test-utils`, `crates/rustok-commerce-foundation`, `crates/rustok-seo/render`, `crates/rustok-seo-admin-support`.
 - Для infrastructure и capability crates: `crates/rustok-iggy`, `crates/rustok-iggy-connector`, `crates/rustok-telemetry`, `crates/rustok-mcp`, `crates/rustok-ai`, `crates/alloy`, `crates/flex`.
 - Для UI-библиотек и host-shared UI support: `crates/leptos-*`, `crates/leptos-ui`.
 - У каждого crate должен быть актуальный `README.md`, а при необходимости и `docs/`.

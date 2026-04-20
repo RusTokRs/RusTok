@@ -32,5 +32,8 @@
   "pages.table.edit": "Edit",
   "pages.table.unpublish": "Unpublish",
   "pages.table.publish": "Publish",
-  "pages.table.delete": "Delete"
+  "pages.table.delete": "Delete",
+  "pages.seo.title": "Page SEO",
+  "pages.seo.subtitle": "Explicit metadata, social tags and diagnostics for the selected page.",
+  "pages.seo.empty": "Create or open a page first. The SEO panel stays attached to the page editor instead of a central hub."
 }

@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 mod api;
 mod i18n;
 mod model;
@@ -8,6 +10,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_seo::SeoTargetKind;
+use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
 use crate::model::{
@@ -24,10 +28,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
-    let default_locale = route_context
-        .locale
-        .clone()
-        .unwrap_or_else(|| "en".to_string());
+    let default_locale = route_context.locale.clone().unwrap_or_default();
     let is_categories_page = route_context.subpath_matches("categories");
     let badge_label = t(ui_locale.as_deref(), "forum.badge", "forum control room");
     let categories_title = t(
@@ -999,6 +1000,29 @@ fn CategoriesPage(
                         </button>
                     </div>
                 </form>
+
+                <div class="mt-6">
+                    <SeoEntityPanel
+                        target_kind=SeoTargetKind::ForumCategory
+                        target_id=Signal::derive(move || editing_id.get())
+                        locale=Signal::derive(move || locale.get())
+                        panel_title=t(
+                            locale.get().as_str().into(),
+                            "forum.categories.seo.title",
+                            "Category SEO",
+                        )
+                        panel_subtitle=t(
+                            locale.get().as_str().into(),
+                            "forum.categories.seo.subtitle",
+                            "Explicit metadata, social tags and diagnostics for the selected forum category.",
+                        )
+                        empty_message=t(
+                            locale.get().as_str().into(),
+                            "forum.categories.seo.empty",
+                            "Create or open a category first. SEO stays attached to the forum category editor.",
+                        )
+                    />
+                </div>
             </section>
         </section>
     }
@@ -1415,6 +1439,27 @@ fn TopicsPage(
                         {move || replies.get().map(|result| render_reply_stack(result, replies_locale.clone()))}
                     </Suspense>
                 </section>
+
+                <SeoEntityPanel
+                    target_kind=SeoTargetKind::ForumTopic
+                    target_id=Signal::derive(move || editing_id.get())
+                    locale=Signal::derive(move || locale.get())
+                    panel_title=t(
+                        locale.get().as_str().into(),
+                        "forum.topics.seo.title",
+                        "Topic SEO",
+                    )
+                    panel_subtitle=t(
+                        locale.get().as_str().into(),
+                        "forum.topics.seo.subtitle",
+                        "Explicit metadata, social tags and diagnostics for the selected forum topic.",
+                    )
+                    empty_message=t(
+                        locale.get().as_str().into(),
+                        "forum.topics.seo.empty",
+                        "Create or open a topic first. SEO stays attached to the forum thread editor.",
+                    )
+                />
             </div>
         </section>
     }

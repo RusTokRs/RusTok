@@ -53,6 +53,11 @@
 - transport, GraphQL и UI-поверхности публикуются через ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
 - изменения cross-module контракта нужно синхронизировать с ustok-commerce и соседними split-модулями.
 
+## SEO ownership
+
+- `rustok-product/admin` уже держит owner-side product SEO panel через
+  `rustok-seo-admin-support`, не вынося product metadata editing в `rustok-seo-admin`.
+
 ## Проверка
 
 - cargo xtask module validate product

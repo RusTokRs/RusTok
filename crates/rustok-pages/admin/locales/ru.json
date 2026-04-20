@@ -32,5 +32,8 @@
   "pages.table.edit": "Редактировать",
   "pages.table.unpublish": "Снять с публикации",
   "pages.table.publish": "Опубликовать",
-  "pages.table.delete": "Удалить"
+  "pages.table.delete": "Удалить",
+  "pages.seo.title": "SEO страницы",
+  "pages.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранной страницы.",
+  "pages.seo.empty": "Сначала создайте или откройте страницу. SEO-панель остаётся частью редактора страницы, а не отдельного хаба."
 }

@@ -13,6 +13,8 @@ leptos = { workspace = true, features = ["csr"] }
 leptos-auth.workspace = true
 reqwest.workspace = true
 rustok-api.workspace = true
+rustok-seo.workspace = true
 leptos-ui-routing.workspace = true
+rustok-seo-admin-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

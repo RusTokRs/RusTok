@@ -1,0 +1,34 @@
+{
+  "seo": {
+    "badge": "seo",
+    "title": "SEO Hub",
+    "subtitle": "Cross-cutting SEO control plane for tenant defaults, redirects, robots, and sitemaps. Entity SEO authoring now lives in owner-module editors.",
+    "tab": {
+      "redirects": "Redirects",
+      "sitemaps": "Sitemaps",
+      "robots": "Robots",
+      "defaults": "Defaults",
+      "diagnostics": "Diagnostics"
+    },
+    "redirects": {
+      "title": "Redirects",
+      "subtitle": "Manual redirect rules stay tenant-scoped and run before canonical resolution. Content-specific metadata now belongs to owner-module editors."
+    },
+    "sitemaps": {
+      "title": "Sitemaps",
+      "subtitle": "Latest sitemap job status, file inventory, and manual regeneration live in one operator-focused panel. Entity SEO authoring is intentionally out of scope here."
+    },
+    "robots": {
+      "title": "Robots",
+      "subtitle": "This pane previews the tenant-level robots.txt response and linked public URLs. Entity-level meta robots remain part of owner-module SEO panels."
+    },
+    "defaults": {
+      "title": "Defaults",
+      "subtitle": "Tenant-scoped SEO defaults are persisted through the shared module settings contract. This pane does not own page, product, blog, or forum metadata editing."
+    },
+    "diagnostics": {
+      "title": "Diagnostics",
+      "subtitle": "Infrastructure-only summary of current SEO runtime inputs. Per-entity scores and analysis stay in owner-module editors."
+    }
+  }
+}

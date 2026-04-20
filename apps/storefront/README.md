@@ -21,6 +21,7 @@
 
 - Uses `apps/server` through GraphQL and Leptos `#[server]` transport paths.
 - Mounts module-owned storefront packages from `crates/rustok-*/storefront`.
+- Consumes tenant-aware SEO runtime from `rustok-seo` through the shared Rust renderer `rustok-seo-render`.
 - Stays in architectural parity with `apps/next-frontend` while remaining the Rust-first storefront host.
 
 ## Docs

@@ -1,0 +1,34 @@
+{
+  "seo": {
+    "badge": "seo",
+    "title": "SEO Hub",
+    "subtitle": "Кросс-модульная control-plane поверхность для tenant defaults, redirects, robots и sitemaps. Entity SEO authoring живёт в owner-module редакторах.",
+    "tab": {
+      "redirects": "Редиректы",
+      "sitemaps": "Sitemaps",
+      "robots": "Robots",
+      "defaults": "Defaults",
+      "diagnostics": "Diagnostics"
+    },
+    "redirects": {
+      "title": "Редиректы",
+      "subtitle": "Ручные redirect rules остаются tenant-scoped и выполняются до canonical resolution. Entity metadata теперь редактируется в owner-module editors."
+    },
+    "sitemaps": {
+      "title": "Sitemaps",
+      "subtitle": "Последний статус генерации sitemap, file inventory и ручной regeneration собраны в одном operator-facing pane. Entity SEO authoring намеренно вынесен из этого экрана."
+    },
+    "robots": {
+      "title": "Robots",
+      "subtitle": "Этот pane показывает preview tenant-level robots.txt и связанные public URLs. Entity-level meta robots остаются частью owner-module SEO panels."
+    },
+    "defaults": {
+      "title": "Defaults",
+      "subtitle": "Tenant-scoped SEO defaults сохраняются через общий module settings contract. Экран не владеет page, product, blog или forum metadata editing."
+    },
+    "diagnostics": {
+      "title": "Diagnostics",
+      "subtitle": "Только infrastructure summary текущих SEO runtime inputs. Per-entity scores и analysis остаются в owner-module editors."
+    }
+  }
+}

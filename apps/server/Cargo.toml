@@ -31,6 +31,7 @@ default = [
     "mod-alloy",
     "mod-flex",
     "mod-media",
+    "mod-seo",
     "mod-workflow",
 ]
 redis-cache = []
@@ -59,6 +60,7 @@ mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy     = ["dep:alloy"]
 mod-flex      = []
 mod-media     = ["dep:rustok-media"]
+mod-seo       = ["dep:rustok-seo", "mod-content"]
 mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
@@ -91,6 +93,7 @@ rustok-pages     = { workspace = true, optional = true }
 rustok-taxonomy  = { workspace = true, optional = true }
 rustok-storage   = { workspace = true, features = ["s3"] }
 rustok-media     = { workspace = true, optional = true }
+rustok-seo       = { workspace = true, optional = true }
 rustok-index.workspace = true
 rustok-search.workspace = true
 rustok-tenant.workspace = true

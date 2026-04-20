@@ -10,6 +10,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 
 - Validate the central module composition contract in `modules.toml`.
 - Validate each scoped path module from `modules.toml` against its publish, runtime, UI, documentation, dependency, permission, and server-wiring contracts.
+- Detect drift between `modules.toml` and central module documentation maps such as `docs/modules/registry.md`, `docs/modules/_index.md`, and UI package indexes.
 - Build targeted local module smoke plans for `cargo xtask module test <slug>`.
 - Generate server module registry artifacts from `modules.toml`.
 - Provide operator commands for module publishing, staging, governance follow-up actions, owner transfers, yanking, and remote runner execution.
@@ -51,6 +52,7 @@ Use `--dry-run` first for commands that would contact the registry or mutate pub
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
+- Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.
 - A crate under `crates/` is treated as a support/capability crate until it is added to `modules.toml`.
 
 Unknown slugs fail fast with `Unknown module slug`. Local path modules fail validation if `rustok-module.toml` is missing.

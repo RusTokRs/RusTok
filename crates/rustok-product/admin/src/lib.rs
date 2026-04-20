@@ -9,6 +9,8 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
+use rustok_seo::SeoTargetKind;
+use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
 use crate::model::{
@@ -702,6 +704,26 @@ pub fn ProductAdmin() -> impl IntoView {
                             />
                         </div>
                     </section>
+
+                    <SeoEntityPanel
+                        target_kind=SeoTargetKind::Product
+                        target_id=Signal::derive(move || editing_id.get())
+                        locale=Signal::derive({
+                            let effective_locale = effective_locale.clone();
+                            move || effective_locale.clone().unwrap_or_default()
+                        })
+                        panel_title=t(effective_locale.as_deref(), "product.seo.title", "Product SEO")
+                        panel_subtitle=t(
+                            effective_locale.as_deref(),
+                            "product.seo.subtitle",
+                            "Explicit metadata, social tags and diagnostics for the selected product.",
+                        )
+                        empty_message=t(
+                            effective_locale.as_deref(),
+                            "product.seo.empty",
+                            "Create or open a product first. The SEO panel stays attached to the product editor.",
+                        )
+                    />
                 </section>
             </div>
         </section>

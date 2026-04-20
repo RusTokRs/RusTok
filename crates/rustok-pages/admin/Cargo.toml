@@ -14,4 +14,6 @@ leptos-auth.workspace = true
 leptos-graphql.workspace = true
 rustok-api.workspace = true
 leptos-ui-routing.workspace = true
+rustok-seo.workspace = true
+rustok-seo-admin-support.workspace = true
 serde = { workspace = true, features = ["derive"] }

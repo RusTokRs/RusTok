@@ -8,6 +8,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_seo::SeoTargetKind;
+use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
@@ -16,11 +18,12 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
 pub fn BlogAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let seo_locale = ui_locale.clone();
     let selected_post_query = use_route_query_value(AdminQueryKey::PostId.as_str());
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
-    let default_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
+    let default_locale = ui_locale.clone().unwrap_or_default();
     let load_posts_error_label = t(
         ui_locale.as_deref(),
         "blog.error.loadPosts",
@@ -540,6 +543,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     </Suspense>
                 </div>
 
+                <div class="space-y-6">
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="space-y-1">
                         <h2 class="text-lg font-semibold text-card-foreground">
@@ -714,6 +718,24 @@ pub fn BlogAdmin() -> impl IntoView {
                         </button>
                     </form>
                 </section>
+
+                <SeoEntityPanel
+                    target_kind=SeoTargetKind::BlogPost
+                    target_id=Signal::derive(move || editing_post_id.get())
+                    locale=Signal::derive(move || locale.get())
+                    panel_title=t(seo_locale.as_deref(), "blog.seo.title", "Post SEO")
+                    panel_subtitle=t(
+                        seo_locale.as_deref(),
+                        "blog.seo.subtitle",
+                        "Explicit metadata, social tags and diagnostics for the selected blog post.",
+                    )
+                    empty_message=t(
+                        seo_locale.as_deref(),
+                        "blog.seo.empty",
+                        "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
+                    )
+                />
+                </div>
             </section>
         </div>
     }

@@ -1,0 +1,40 @@
+[package]
+name = "rustok-seo-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-seo module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:loco-rs",
+    "dep:rustok-core",
+    "dep:rustok-tenant",
+    "dep:sea-orm",
+    "dep:serde_json",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos-auth.workspace = true
+leptos-ui-routing.workspace = true
+leptos_axum = { workspace = true, optional = true }
+loco-rs = { workspace = true, optional = true }
+rustok-api.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-seo.workspace = true
+rustok-tenant = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+chrono.workspace = true
+tokio.workspace = true

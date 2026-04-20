@@ -343,8 +343,12 @@ mod tests {
     use axum::http::{Method, Request, StatusCode};
     use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
     use migration::Migrator;
-    use rustok_api::context::{AuthContext, AuthContextExtension};
-    use rustok_core::Permission;
+    use rustok_api::context::{
+        AuthContext, AuthContextExtension, ChannelContext, ChannelContextExtension,
+        ChannelResolutionSource, TenantContext, TenantContextExtension,
+    };
+    use rustok_core::{MemoryTransport, Permission};
+    use rustok_outbox::TransactionalEventBus;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
     use sea_orm_migration::MigratorTrait;
     use serde_json::Value;
@@ -445,6 +449,121 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "mod-seo")]
+    async fn insert_tenant(
+        ctx: &loco_rs::app::AppContext,
+        slug: &str,
+        domain: Option<&str>,
+    ) -> crate::models::_entities::tenants::Model {
+        let now = chrono::Utc::now();
+        crate::models::_entities::tenants::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            name: Set(format!("{slug} tenant")),
+            slug: Set(slug.to_string()),
+            domain: Set(domain.map(ToString::to_string)),
+            settings: Set(serde_json::json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(true),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("tenant should insert")
+    }
+
+    #[cfg(feature = "mod-seo")]
+    fn tenant_context(model: &crate::models::_entities::tenants::Model) -> TenantContext {
+        TenantContext {
+            id: model.id,
+            name: model.name.clone(),
+            slug: model.slug.clone(),
+            domain: model.domain.clone(),
+            settings: model.settings.clone(),
+            default_locale: model.default_locale.clone(),
+            is_active: model.is_active,
+        }
+    }
+
+    #[cfg(feature = "mod-seo")]
+    async fn insert_seo_redirect(
+        ctx: &loco_rs::app::AppContext,
+        tenant_id: uuid::Uuid,
+        source_pattern: &str,
+        target_url: &str,
+        status_code: i32,
+    ) {
+        let now = chrono::Utc::now();
+        rustok_seo::entities::seo_redirect::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            match_type: Set("exact".to_string()),
+            source_pattern: Set(source_pattern.to_string()),
+            target_url: Set(target_url.to_string()),
+            status_code: Set(status_code),
+            expires_at: Set(None),
+            is_active: Set(true),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("seo redirect should insert");
+    }
+
+    #[cfg(feature = "mod-seo")]
+    async fn insert_forum_topic(
+        ctx: &loco_rs::app::AppContext,
+        tenant_id: uuid::Uuid,
+        channel_slugs: Option<Vec<String>>,
+    ) -> (uuid::Uuid, uuid::Uuid) {
+        let transport = Arc::new(MemoryTransport::new());
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(transport);
+        let security = rustok_core::SecurityContext::system();
+
+        let category = rustok_forum::CategoryService::new(ctx.db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                rustok_forum::CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Announcements".to_string(),
+                    slug: "announcements".to_string(),
+                    description: Some("Forum announcements".to_string()),
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("forum category should insert");
+
+        let topic = rustok_forum::TopicService::new(ctx.db.clone(), event_bus)
+            .create(
+                tenant_id,
+                security,
+                rustok_forum::CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Mobile launch".to_string(),
+                    slug: Some("mobile-launch".to_string()),
+                    body: "Restricted forum topic for mobile storefront.".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    metadata: serde_json::json!({}),
+                    tags: Vec::new(),
+                    channel_slugs,
+                },
+            )
+            .await
+            .expect("forum topic should insert");
+
+        (category.id, topic.id)
+    }
+
     #[tokio::test]
     #[serial]
     async fn startup_smoke_builds_router_and_runtime_shared_state() {
@@ -499,6 +618,260 @@ mod tests {
             "unexpected /health/live response body: {}",
             String::from_utf8_lossy(&body)
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_page_context_rest_endpoint_returns_redirect_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for seo page-context route");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(&ctx, "seo-rest", Some("seo-rest.example.com")).await;
+        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
+            .await
+            .expect("seo module should enable");
+        insert_seo_redirect(&ctx, tenant.id, "/legacy", "https://example.com/new", 308).await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let mut request = Request::builder()
+            .uri("/api/seo/page-context?route=%2Flegacy&locale=en")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("seo page-context request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("seo page-context body should read");
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /api/seo/page-context response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("seo page-context response should be valid json");
+        assert_eq!(payload["route"]["effective_locale"], "en");
+        assert_eq!(payload["route"]["canonical_url"], "/legacy");
+        assert_eq!(
+            payload["route"]["redirect"]["target_url"],
+            "https://example.com/new"
+        );
+        assert_eq!(payload["route"]["redirect"]["status_code"], 308);
+        assert_eq!(payload["document"]["robots"]["index"], false);
+        assert_eq!(payload["document"]["robots"]["follow"], false);
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_page_context_rest_endpoint_returns_not_found_when_module_is_disabled() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for seo module disabled check");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(&ctx, "seo-disabled", Some("seo-disabled.example.com")).await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let mut request = Request::builder()
+            .uri("/api/seo/page-context?route=%2Flegacy&locale=en")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("seo page-context disabled request should complete");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_page_context_rest_endpoint_rejects_invalid_route_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for seo page-context validation");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(&ctx, "seo-invalid", Some("seo-invalid.example.com")).await;
+        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
+            .await
+            .expect("seo module should enable");
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let mut request = Request::builder()
+            .uri("/api/seo/page-context?route=%2Fbad%20route&locale=en")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("seo page-context invalid request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("seo page-context invalid body should read");
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            String::from_utf8_lossy(&body).contains("route must not contain whitespace"),
+            "invalid route response should explain validation failure: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_page_context_rest_endpoint_uses_request_channel_for_restricted_forum_topics() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for forum seo page-context route");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(&ctx, "seo-forum-channel", Some("seo-forum.example.com")).await;
+        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
+            .await
+            .expect("seo module should enable");
+        let (category_id, topic_id) =
+            insert_forum_topic(&ctx, tenant.id, Some(vec!["mobile".to_string()])).await;
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let route = format!("/modules/forum?category={category_id}&topic={topic_id}");
+        let encoded_route: String =
+            url::form_urlencoded::byte_serialize(route.as_bytes()).collect();
+
+        let mut request = Request::builder()
+            .uri(format!(
+                "/api/seo/page-context?route={encoded_route}&locale=en"
+            ))
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+        request
+            .extensions_mut()
+            .insert(ChannelContextExtension(ChannelContext {
+                id: uuid::Uuid::new_v4(),
+                tenant_id: tenant.id,
+                slug: "mobile".to_string(),
+                name: "Mobile".to_string(),
+                is_active: true,
+                status: "active".to_string(),
+                target_type: None,
+                target_value: None,
+                settings: serde_json::json!({}),
+                resolution_source: ChannelResolutionSource::Query,
+                resolution_trace: Vec::new(),
+            }));
+
+        let response = base_router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("seo page-context channel request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("seo page-context channel body should read");
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected forum channel /api/seo/page-context response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("forum channel seo page-context should be json");
+        assert_eq!(payload["route"]["target_kind"], "forum_topic");
+        assert_eq!(payload["document"]["title"], "Mobile launch");
+
+        let mut no_channel_request = Request::builder()
+            .uri(format!(
+                "/api/seo/page-context?route={encoded_route}&locale=en"
+            ))
+            .body(Body::empty())
+            .expect("request");
+        no_channel_request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+
+        let no_channel_response = base_router
+            .oneshot(no_channel_request)
+            .await
+            .expect("seo page-context without channel should complete");
+        assert_eq!(no_channel_response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

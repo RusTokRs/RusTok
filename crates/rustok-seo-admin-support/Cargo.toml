@@ -1,0 +1,19 @@
+[package]
+name = "rustok-seo-admin-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reusable SEO admin widgets and transport helpers for module-owned entity editors"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+leptos.workspace = true
+leptos-auth.workspace = true
+leptos-graphql.workspace = true
+rustok-core.workspace = true
+rustok-seo.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid.workspace = true

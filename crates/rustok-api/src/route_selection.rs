@@ -21,6 +21,7 @@ pub enum AdminQueryKey {
     TaskProfileSlug,
     ChannelId,
     TargetId,
+    TargetKind,
     ModuleSlug,
     OauthAppId,
     Tab,
@@ -55,6 +56,7 @@ impl AdminQueryKey {
             Self::TaskProfileSlug => "task_profile_slug",
             Self::ChannelId => "channel_id",
             Self::TargetId => "target_id",
+            Self::TargetKind => "target_kind",
             Self::ModuleSlug => "module_slug",
             Self::OauthAppId => "oauth_app_id",
             Self::Tab => "tab",
@@ -89,6 +91,7 @@ impl AdminQueryKey {
             "task_profile_slug" => Some(Self::TaskProfileSlug),
             "channel_id" => Some(Self::ChannelId),
             "target_id" => Some(Self::TargetId),
+            "target_kind" => Some(Self::TargetKind),
             "module_slug" => Some(Self::ModuleSlug),
             "oauth_app_id" => Some(Self::OauthAppId),
             "tab" => Some(Self::Tab),
@@ -180,6 +183,12 @@ const CHANNEL_ROUTE_KEYS: &[AdminQueryKey] = &[
     AdminQueryKey::ModuleSlug,
     AdminQueryKey::OauthAppId,
 ];
+const SEO_ROUTE_KEYS: &[AdminQueryKey] = &[
+    AdminQueryKey::TargetKind,
+    AdminQueryKey::TargetId,
+    AdminQueryKey::Locale,
+    AdminQueryKey::Tab,
+];
 const SEARCH_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::Query, AdminQueryKey::Page];
 
 const ROUTE_SCHEMAS: &[AdminRouteQuerySchema] = &[
@@ -257,6 +266,11 @@ const ROUTE_SCHEMAS: &[AdminRouteQuerySchema] = &[
         route_segment: "channels",
         allowed_keys: CHANNEL_ROUTE_KEYS,
         dependencies: CHANNEL_DEPENDENCIES,
+    },
+    AdminRouteQuerySchema {
+        route_segment: "seo",
+        allowed_keys: SEO_ROUTE_KEYS,
+        dependencies: EMPTY_DEPENDENCIES,
     },
     AdminRouteQuerySchema {
         route_segment: "search",
@@ -463,5 +477,48 @@ mod tests {
                 .map(String::as_str),
             Some("oauth_01")
         );
+    }
+
+    #[test]
+    fn seo_route_keeps_typed_selection_keys_only() {
+        let sanitized = sanitize_admin_route_query(
+            Some("seo"),
+            None,
+            &query(&[
+                ("target_kind", "product"),
+                ("target_id", "550e8400-e29b-41d4-a716-446655440000"),
+                ("locale", "en-US"),
+                ("tab", "redirects"),
+                ("product_id", "prod_01"),
+                ("id", "legacy"),
+            ]),
+        );
+
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::TargetKind.as_str())
+                .map(String::as_str),
+            Some("product")
+        );
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::TargetId.as_str())
+                .map(String::as_str),
+            Some("550e8400-e29b-41d4-a716-446655440000")
+        );
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::Locale.as_str())
+                .map(String::as_str),
+            Some("en-US")
+        );
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::Tab.as_str())
+                .map(String::as_str),
+            Some("redirects")
+        );
+        assert!(!sanitized.contains_key(AdminQueryKey::ProductId.as_str()));
+        assert!(!sanitized.contains_key("id"));
     }
 }

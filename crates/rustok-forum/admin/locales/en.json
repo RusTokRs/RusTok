@@ -102,5 +102,11 @@
   "forum.render.replies": "Replies",
   "forum.render.opened": "Opened",
   "forum.render.openThread": "Open thread",
-  "forum.render.openTopicForReplies": "Open a topic card to preview replies."
+  "forum.render.openTopicForReplies": "Open a topic card to preview replies.",
+  "forum.categories.seo.title": "Category SEO",
+  "forum.categories.seo.subtitle": "Explicit metadata, social tags and diagnostics for the selected forum category.",
+  "forum.categories.seo.empty": "Create or open a category first. SEO stays attached to the forum category editor.",
+  "forum.topics.seo.title": "Topic SEO",
+  "forum.topics.seo.subtitle": "Explicit metadata, social tags and diagnostics for the selected forum topic.",
+  "forum.topics.seo.empty": "Create or open a topic first. SEO stays attached to the forum thread editor."
 }

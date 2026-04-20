@@ -22,6 +22,7 @@
 - Uses `apps/server` as the backend/API provider.
 - Works in parallel with `apps/storefront` for storefront parity at the contract level.
 - Reuses shared frontend contracts instead of duplicating auth and transport logic per page.
+- Consumes the canonical SEO contract from `rustok-seo` through a Next Metadata adapter while Rust hosts use `rustok-seo-render`.
 
 ## Docs
 

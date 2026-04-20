@@ -47,6 +47,8 @@
 | `alloy` | [docs](../../crates/alloy/docs/README.md) | [plan](../../crates/alloy/docs/implementation-plan.md) |
 | `flex` | [docs](../../crates/flex/docs/README.md) | [plan](../../crates/flex/docs/implementation-plan.md) |
 | `rustok-commerce-foundation` | [docs](../../crates/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/rustok-commerce-foundation/docs/implementation-plan.md) |
+| `rustok-seo-render` | [docs](../../crates/rustok-seo/render/docs/README.md) | [plan](../../crates/rustok-seo/render/docs/implementation-plan.md) |
+| `rustok-seo-admin-support` | [docs](../../crates/rustok-seo-admin-support/docs/README.md) | [plan](../../crates/rustok-seo-admin-support/docs/implementation-plan.md) |
 
 ## Доменные модули
 
@@ -69,6 +71,7 @@
 | `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
+| `rustok-seo` | [docs](../../crates/rustok-seo/docs/README.md) | [plan](../../crates/rustok-seo/docs/implementation-plan.md) |
 | `rustok-taxonomy` | [docs](../../crates/rustok-taxonomy/docs/README.md) | [plan](../../crates/rustok-taxonomy/docs/implementation-plan.md) |
 | `rustok-media` | [docs](../../crates/rustok-media/docs/README.md) | [plan](../../crates/rustok-media/docs/implementation-plan.md) |
 | `rustok-workflow` | [docs](../../crates/rustok-workflow/docs/README.md) | [plan](../../crates/rustok-workflow/docs/implementation-plan.md) |
@@ -94,6 +97,7 @@
 - `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
 - `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
 - `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
+- `rustok-seo` admin UI: [README](../../crates/rustok-seo/admin/README.md)
 - `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
 - `rustok-forum` admin UI: [README](../../crates/rustok-forum/admin/README.md)
 - `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
@@ -121,6 +125,13 @@
 
 - `rustok-content` остаётся shared helper/orchestration boundary и не публикует
   отдельный operator-facing UI.
+- `rustok-seo` классифицирован как `admin_only`: storefront runtime живёт в host-приложениях
+  (`apps/storefront`, `apps/next-frontend`) через shared SEO contract и не оформлен как отдельный module-owned storefront package.
+- Entity-specific SEO UI при этом не централизуется в `rustok-seo-admin`: canonical ownership идёт через
+  `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin` и будущие
+  content-модули, а `rustok-seo-admin` остаётся cross-cutting infrastructure/control-plane surface.
+- Для Rust-host последняя миля этого contract теперь вынесена в `rustok-seo-render`, а не дублируется в `apps/storefront`.
+- Для owner-side admin SEO reuse теперь есть отдельный support crate `rustok-seo-admin-support`.
 - UI split ecommerce family уже начат: `rustok-product` публикует собственный
   admin package, `rustok-fulfillment` уже забрал shipping-option UI, `rustok-order`
   уже забрал order UI, `rustok-inventory` уже забрал inventory visibility UI,

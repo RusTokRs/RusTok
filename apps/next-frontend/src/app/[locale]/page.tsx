@@ -1,9 +1,25 @@
-﻿import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
+import type { Metadata } from "next";
+import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { getModulesForSlot } from "@/modules";
 import { fetchEnabledModules } from "@/shared/api/modules";
+import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { Button } from "@/shared/ui/base/button";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return buildSeoMetadata({
+    locale,
+    title: "RusToK Storefront",
+    description: "Next.js storefront for RusToK",
+    path: "/",
+  });
+}
 
 export default async function StorefrontHome() {
   const t = await getTranslations("Storefront");

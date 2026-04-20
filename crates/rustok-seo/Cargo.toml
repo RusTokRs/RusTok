@@ -1,0 +1,38 @@
+[package]
+name = "rustok-seo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SEO runtime, metadata, redirects, sitemaps, and robots module"
+
+[dependencies]
+async-graphql.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+loco-rs.workspace = true
+moka.workspace = true
+once_cell.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url = "2.5"
+uuid.workspace = true
+
+rustok-api.workspace = true
+rustok-blog.workspace = true
+rustok-commerce-foundation.workspace = true
+rustok-content.workspace = true
+rustok-core.workspace = true
+rustok-forum.workspace = true
+rustok-outbox.workspace = true
+rustok-pages.workspace = true
+rustok-product.workspace = true
+rustok-tenant.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+rustok-taxonomy.workspace = true

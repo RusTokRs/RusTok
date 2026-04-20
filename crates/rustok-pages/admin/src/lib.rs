@@ -8,6 +8,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_seo::SeoTargetKind;
+use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
 use crate::model::{CreatePageDraft, PageListItem};
@@ -19,10 +21,7 @@ pub fn PagesAdmin() -> impl IntoView {
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
-    let default_locale = route_context
-        .locale
-        .clone()
-        .unwrap_or_else(|| "en".to_string());
+    let default_locale = route_context.locale.clone().unwrap_or_default();
     let badge_text = t(route_context.locale.as_deref(), "pages.badge", "pages");
     let title_text = t(
         route_context.locale.as_deref(),
@@ -412,6 +411,7 @@ pub fn PagesAdmin() -> impl IntoView {
                     </Suspense>
                 </div>
 
+                <div class="space-y-6">
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="space-y-1">
                         <h2 class="text-lg font-semibold text-card-foreground">
@@ -555,6 +555,24 @@ pub fn PagesAdmin() -> impl IntoView {
                         </button>
                     </form>
                 </section>
+
+                <SeoEntityPanel
+                    target_kind=SeoTargetKind::Page
+                    target_id=Signal::derive(move || editing_page_id.get())
+                    locale=Signal::derive(move || locale.get())
+                    panel_title=t(locale.get().as_str().into(), "pages.seo.title", "Page SEO")
+                    panel_subtitle=t(
+                        locale.get().as_str().into(),
+                        "pages.seo.subtitle",
+                        "Explicit metadata, social tags and diagnostics for the selected page.",
+                    )
+                    empty_message=t(
+                        locale.get().as_str().into(),
+                        "pages.seo.empty",
+                        "Create or open a page first. The SEO panel stays attached to the page editor instead of a central hub.",
+                    )
+                />
+                </div>
             </section>
         </div>
     }

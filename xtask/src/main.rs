@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 use toml::Value as TomlValue;
 
+mod docs_registry_contracts;
 mod manifest_io;
 mod manifest_validation;
 mod module_boundary_contracts;
@@ -65,6 +66,7 @@ mod xtask_types;
 
 use crate::manifest_validation::to_pascal_case;
 use crate::xtask_types::*;
+use docs_registry_contracts::*;
 use manifest_io::*;
 use module_boundary_contracts::*;
 use module_cli_args::*;

@@ -22,6 +22,20 @@ Leptos hosts являются основным runtime-путём для platfor
 - Module-owned UI пакеты не должны вводить собственную locale negotiation цепочку поверх host/runtime contract.
 - Для module-owned admin UI selection state тоже host-owned: typed `snake_case` query keys живут в URL,
   локальный editor/detail state только гидратится из них, а отсутствие валидного key ведёт к empty state.
+- SEO admin route теперь следует ownership baseline ещё жёстче: `seo` использует только `tab`
+  и не держит package-local entity selection contract поверх host schema.
+- Для cross-cutting capability modules действует тот же ownership rule: capability runtime может давать
+  shared widgets/contracts, но entity-specific editor UI остаётся у owner-модуля. Для SEO это означает,
+  что page/product/blog/forum SEO panels живут в соответствующих module-owned admin packages, а
+  `rustok-seo-admin` остаётся только infrastructure/control-plane surface.
+- Практически этот pattern уже реализован через `rustok-seo-admin-support`: `pages`, `product`, `blog`
+  и `forum` используют общий SEO panel/tooling слой, а сам SEO runtime уже держит target kinds
+  `forum_category` и `forum_topic` для owner-side forum integration.
+- `rustok-seo-admin-support` при этом не inventит свою locale negotiation chain и не держит editable
+  locale field внутри panel UI: owner-side SEO widgets обязаны брать host-provided effective locale
+  и только canonicalize-ить его под platform i18n contract.
+- Сам `rustok-seo-admin` после cutover больше не держит metadata editor и использует только `tab`
+  как route-owned query state для redirects/sitemaps/robots/defaults/diagnostics control-plane.
 - Для module-owned Leptos storefront UI query/state plumbing тоже должно идти через общий слой:
   `leptos-ui-routing` переиспользуется и в admin, и в storefront, а прямой package-local доступ
   к `UiRouteContext.query_value(...)` не считается каноническим паттерном.

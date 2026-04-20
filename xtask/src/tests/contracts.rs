@@ -2860,6 +2860,134 @@ fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_
 }
 
 #[test]
+fn validate_module_registry_docs_contract_rejects_missing_row() {
+    let base = env::temp_dir().join(format!(
+        "xtask-registry-docs-missing-{}",
+        std::process::id()
+    ));
+    let docs_modules_dir = base.join("docs").join("modules");
+    std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
+    std::fs::write(
+        docs_modules_dir.join("registry.md"),
+        "### Core-модули\n\n| Slug | Crate | Role |\n|---|---|---|\n| `auth` | `rustok-auth` | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n",
+    )
+    .expect("temporary registry.md should be writable");
+    let manifest_path = base.join("modules.toml");
+    std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+        .expect("temporary modules.toml should be writable");
+
+    let spec = ModuleSpec {
+        crate_name: "rustok-demo".to_string(),
+        source: "path".to_string(),
+        path: Some("crates/rustok-demo".to_string()),
+        required: false,
+        version: None,
+        git: None,
+        rev: None,
+        depends_on: None,
+        features: None,
+    };
+
+    let error = validate_module_registry_docs_contract(&manifest_path, "demo", &spec)
+        .expect_err("missing registry row must fail");
+    assert!(error.to_string().contains("missing central registry row"));
+
+    let _ = std::fs::remove_file(docs_modules_dir.join("registry.md"));
+    let _ = std::fs::remove_file(&manifest_path);
+    let _ = std::fs::remove_dir(&docs_modules_dir);
+    let _ = std::fs::remove_dir(base.join("docs"));
+    let _ = std::fs::remove_dir(&base);
+}
+
+#[test]
+fn validate_module_registry_docs_contract_rejects_dependency_drift() {
+    let base = env::temp_dir().join(format!("xtask-registry-docs-deps-{}", std::process::id()));
+    let docs_modules_dir = base.join("docs").join("modules");
+    std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
+    std::fs::write(
+        docs_modules_dir.join("registry.md"),
+        "### Core-модули\n\n| Slug | Crate | Role |\n|---|---|---|\n| `auth` | `rustok-auth` | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | `content` | demo |\n",
+    )
+    .expect("temporary registry.md should be writable");
+    let manifest_path = base.join("modules.toml");
+    std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+        .expect("temporary modules.toml should be writable");
+
+    let spec = ModuleSpec {
+        crate_name: "rustok-demo".to_string(),
+        source: "path".to_string(),
+        path: Some("crates/rustok-demo".to_string()),
+        required: false,
+        version: None,
+        git: None,
+        rev: None,
+        depends_on: Some(vec!["taxonomy".to_string()]),
+        features: None,
+    };
+
+    let error = validate_module_registry_docs_contract(&manifest_path, "demo", &spec)
+        .expect_err("dependency drift must fail");
+    assert!(error.to_string().contains("dependency mismatch"));
+
+    let _ = std::fs::remove_file(docs_modules_dir.join("registry.md"));
+    let _ = std::fs::remove_file(&manifest_path);
+    let _ = std::fs::remove_dir(&docs_modules_dir);
+    let _ = std::fs::remove_dir(base.join("docs"));
+    let _ = std::fs::remove_dir(&base);
+}
+
+#[test]
+fn validate_central_module_registry_inventory_contract_rejects_undocumented_module_rows() {
+    let base = env::temp_dir().join(format!(
+        "xtask-registry-docs-undocumented-{}",
+        std::process::id()
+    ));
+    let docs_modules_dir = base.join("docs").join("modules");
+    std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
+    std::fs::write(
+        docs_modules_dir.join("registry.md"),
+        "### Core-модули\n\n| Slug | Crate | Role |\n|---|---|---|\n| `auth` | `rustok-auth` | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | — | demo |\n| `ghost` | `rustok-ghost` | — | ghost |\n",
+    )
+    .expect("temporary registry.md should be writable");
+    let manifest_path = base.join("modules.toml");
+    std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+        .expect("temporary modules.toml should be writable");
+
+    let manifest = Manifest {
+        schema: 2,
+        app: "rustok-server".to_string(),
+        build: None,
+        modules: HashMap::from([(
+            "demo".to_string(),
+            ModuleSpec {
+                crate_name: "rustok-demo".to_string(),
+                source: "path".to_string(),
+                path: Some("crates/rustok-demo".to_string()),
+                required: false,
+                version: None,
+                git: None,
+                rev: None,
+                depends_on: None,
+                features: None,
+            },
+        )]),
+        settings: None,
+    };
+
+    let error = validate_central_module_registry_inventory_contract(&manifest_path, &manifest)
+        .expect_err("extra registry rows must fail");
+    assert!(error
+        .to_string()
+        .contains("contains module rows not present in modules.toml"));
+
+    let _ = std::fs::remove_file(docs_modules_dir.join("registry.md"));
+    let _ = std::fs::remove_file(&manifest_path);
+    let _ = std::fs::remove_dir(&docs_modules_dir);
+    let _ = std::fs::remove_dir(base.join("docs"));
+    let _ = std::fs::remove_dir(&base);
+}
+
+#[test]
 fn validate_module_ui_surface_contract_rejects_declared_missing_subcrate() {
     let error = validate_module_ui_surface_contract(
         "blog",

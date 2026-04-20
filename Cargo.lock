@@ -6988,6 +6988,7 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "rustok-region",
+ "rustok-seo",
  "rustok-taxonomy",
  "rustok-test-utils",
  "rustok-workflow",
@@ -9653,6 +9654,8 @@ dependencies = [
  "rustok-region-admin",
  "rustok-search",
  "rustok-search-admin",
+ "rustok-seo",
+ "rustok-seo-admin",
  "rustok-storage",
  "rustok-tenant",
  "rustok-tenant-admin",
@@ -9827,6 +9830,8 @@ dependencies = [
  "rustok-api",
  "rustok-blog",
  "rustok-core",
+ "rustok-seo",
+ "rustok-seo-admin-support",
  "serde",
  "serde_json",
 ]
@@ -10260,6 +10265,8 @@ dependencies = [
  "leptos-ui-routing",
  "reqwest 0.13.2",
  "rustok-api",
+ "rustok-seo",
+ "rustok-seo-admin-support",
  "serde",
  "serde_json",
 ]
@@ -10582,6 +10589,8 @@ dependencies = [
  "leptos-graphql",
  "leptos-ui-routing",
  "rustok-api",
+ "rustok-seo",
+ "rustok-seo-admin-support",
  "serde",
 ]
 
@@ -10727,6 +10736,8 @@ dependencies = [
  "leptos-ui-routing",
  "rustok-api",
  "rustok-core",
+ "rustok-seo",
+ "rustok-seo-admin-support",
  "serde",
  "serde_json",
 ]
@@ -10904,6 +10915,82 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-seo"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-trait",
+ "axum",
+ "chrono",
+ "loco-rs",
+ "moka",
+ "once_cell",
+ "rustok-api",
+ "rustok-blog",
+ "rustok-commerce-foundation",
+ "rustok-content",
+ "rustok-core",
+ "rustok-forum",
+ "rustok-outbox",
+ "rustok-pages",
+ "rustok-product",
+ "rustok-taxonomy",
+ "rustok-tenant",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-seo-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-core",
+ "rustok-seo",
+ "rustok-tenant",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "rustok-seo-admin-support"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "rustok-core",
+ "rustok-seo",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-seo-render"
+version = "0.1.0"
+dependencies = [
+ "rustok-core",
+ "rustok-seo",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-server"
 version = "0.1.0"
 dependencies = [
@@ -10969,6 +11056,7 @@ dependencies = [
  "rustok-rbac",
  "rustok-region",
  "rustok-search",
+ "rustok-seo",
  "rustok-storage",
  "rustok-storefront",
  "rustok-taxonomy",
@@ -11031,6 +11119,7 @@ dependencies = [
  "leptos-use",
  "leptos-zod",
  "leptos-zustand",
+ "leptos_axum",
  "leptos_i18n",
  "leptos_i18n_build",
  "leptos_query",
@@ -11041,12 +11130,15 @@ dependencies = [
  "rustok-cart-storefront",
  "rustok-commerce-storefront",
  "rustok-content",
+ "rustok-core",
  "rustok-forum-storefront",
  "rustok-pages-storefront",
  "rustok-pricing-storefront",
  "rustok-product-storefront",
  "rustok-region-storefront",
  "rustok-search-storefront",
+ "rustok-seo",
+ "rustok-seo-render",
  "rustok-tenant",
  "serde",
  "serde_json",

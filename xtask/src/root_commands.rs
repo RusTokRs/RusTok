@@ -98,6 +98,7 @@ pub(crate) fn validate_manifest() -> Result<()> {
 
     validate_default_enabled_server_contract(&manifest_path, &manifest)?;
     validate_host_ui_inventory_contract(&manifest_path, &manifest)?;
+    validate_central_module_registry_inventory_contract(&manifest_path, &manifest)?;
     validate_server_event_runtime_contract(&manifest_path)?;
 
     let mut module_manifest_count = 0usize;

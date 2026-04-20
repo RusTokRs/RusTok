@@ -61,6 +61,7 @@ comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-c
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content"] }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
+seo = { crate = "rustok-seo", source = "path", path = "crates/rustok-seo", depends_on = ["content"] }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
 alloy = { crate = "alloy", source = "path", path = "crates/alloy" }
 flex = { crate = "flex", source = "path", path = "crates/flex" }

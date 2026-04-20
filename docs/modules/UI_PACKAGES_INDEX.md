@@ -86,6 +86,7 @@
 - `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
 - `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
 - `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
+- `rustok-seo` admin UI: [README](../../crates/rustok-seo/admin/README.md)
 - `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
 - `rustok-forum` admin UI: [README](../../crates/rustok-forum/admin/README.md)
 - `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
@@ -109,6 +110,12 @@
   `vendor` остаётся merchandising/display label и не используется как identity.
 - `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
 - `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
+- `rustok-seo` остаётся `admin_only`: storefront SEO runtime живёт в `apps/storefront` и `apps/next-frontend`
+  через shared SEO contract, а не через отдельный module-owned storefront package.
+- Entity-specific SEO UI при этом не централизуется в `rustok-seo-admin`: page/product/blog/forum SEO
+  panels принадлежат owner-модулям, а `rustok-seo-admin` остаётся cross-cutting infrastructure UI.
+- Reusable owner-side SEO widgets и transport helper-ы при этом живут в support crate
+  `rustok-seo-admin-support`, а не в host application code.
 
 ### Large capability/admin surfaces
 

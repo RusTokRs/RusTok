@@ -26,6 +26,7 @@ pub enum Resource {
     Pages,
     Nodes,
     Media,
+    Seo,
     Comments,
     Tags,
     Taxonomy,
@@ -80,6 +81,7 @@ impl fmt::Display for Resource {
             Self::Pages => "pages",
             Self::Nodes => "nodes",
             Self::Media => "media",
+            Self::Seo => "seo",
             Self::Comments => "comments",
             Self::Tags => "tags",
             Self::Taxonomy => "taxonomy",
@@ -135,6 +137,7 @@ impl FromStr for Resource {
             "pages" => Ok(Self::Pages),
             "nodes" => Ok(Self::Nodes),
             "media" => Ok(Self::Media),
+            "seo" => Ok(Self::Seo),
             "comments" => Ok(Self::Comments),
             "tags" => Ok(Self::Tags),
             "taxonomy" => Ok(Self::Taxonomy),
@@ -367,6 +370,12 @@ impl Permission {
     pub const SETTINGS_READ: Self = Self::new(Resource::Settings, Action::Read);
     pub const SETTINGS_UPDATE: Self = Self::new(Resource::Settings, Action::Update);
     pub const SETTINGS_MANAGE: Self = Self::new(Resource::Settings, Action::Manage);
+
+    pub const SEO_READ: Self = Self::new(Resource::Seo, Action::Read);
+    pub const SEO_UPDATE: Self = Self::new(Resource::Seo, Action::Update);
+    pub const SEO_PUBLISH: Self = Self::new(Resource::Seo, Action::Publish);
+    pub const SEO_GENERATE: Self = Self::new(Resource::Seo, Action::Execute);
+    pub const SEO_MANAGE: Self = Self::new(Resource::Seo, Action::Manage);
 
     pub const FLEX_SCHEMAS_CREATE: Self = Self::new(Resource::FlexSchemas, Action::Create);
     pub const FLEX_SCHEMAS_READ: Self = Self::new(Resource::FlexSchemas, Action::Read);

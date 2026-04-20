@@ -282,6 +282,7 @@ Core modules:
 Optional modules:
 
 - Content and community: `content`, `blog`, `comments`, `forum`, `pages`, `media`, `workflow`
+- Cross-cutting experience/runtime: `seo`
 - Commerce family: `cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `commerce`
 
 Support and capability crates sit outside the `Core` / `Optional` taxonomy:

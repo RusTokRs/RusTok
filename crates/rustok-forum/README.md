@@ -34,6 +34,10 @@
   forum topic tags.
 - Category slugs are translation-local, while topic slugs remain stable thread
   labels; current public forum lookup stays ID-based.
+- Shares SEO target ownership with `rustok-seo`: the shared SEO runtime now resolves
+  `forum_category` and `forum_topic`, while owner-side SEO authoring stays embedded
+  in `rustok-forum-admin`; public SEO for channel-restricted topics is resolved only
+  when the host passes the matching request channel slug into the shared SEO contract.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.

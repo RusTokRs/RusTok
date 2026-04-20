@@ -18,11 +18,13 @@ hydrate = [
   "rustok-ai-admin/hydrate",
   "rustok-channel-admin/hydrate",
   "rustok-comments-admin/hydrate",
+  "rustok-commerce-admin/hydrate",
   "rustok-customer-admin/hydrate",
   "rustok-region-admin/hydrate",
   "rustok-index-admin/hydrate",
   "rustok-media-admin/hydrate",
   "rustok-outbox-admin/hydrate",
+  "rustok-seo-admin/hydrate",
   "rustok-fulfillment-admin/hydrate",
   "rustok-inventory-admin/hydrate",
   "rustok-order-admin/hydrate",
@@ -42,6 +44,7 @@ ssr = [
   "dep:rustok-comments",
   "dep:rustok-core",
   "dep:rustok-media",
+  "dep:rustok-seo",
   "dep:rustok-rbac",
   "dep:rustok-search",
   "dep:rustok-storage",
@@ -52,11 +55,13 @@ ssr = [
   "rustok-ai-admin/ssr",
   "rustok-channel-admin/ssr",
   "rustok-comments-admin/ssr",
+  "rustok-commerce-admin/ssr",
   "rustok-customer-admin/ssr",
   "rustok-region-admin/ssr",
   "rustok-index-admin/ssr",
   "rustok-media-admin/ssr",
   "rustok-outbox-admin/ssr",
+  "rustok-seo-admin/ssr",
   "rustok-fulfillment-admin/ssr",
   "rustok-inventory-admin/ssr",
   "rustok-order-admin/ssr",
@@ -107,6 +112,7 @@ rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
+rustok-seo = { workspace = true, optional = true }
 rustok-rbac = { workspace = true, optional = true }
 rustok-search = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
@@ -132,6 +138,7 @@ rustok-product-admin = { path = "../../crates/rustok-product/admin", default-fea
 rustok-region-admin = { path = "../../crates/rustok-region/admin", default-features = false }
 rustok-rbac-admin = { path = "../../crates/rustok-rbac/admin", default-features = false }
 rustok-search-admin = { path = "../../crates/rustok-search/admin", default-features = false }
+rustok-seo-admin = { path = "../../crates/rustok-seo/admin", default-features = false }
 rustok-tenant-admin = { path = "../../crates/rustok-tenant/admin", default-features = false }
 rustok-workflow-admin = { path = "../../crates/rustok-workflow/admin", default-features = false }
 
@@ -169,6 +176,8 @@ normal = [
   "rustok-core",
   "rustok-media",
   "rustok-media-admin",
+  "rustok-seo",
+  "rustok-seo-admin",
   "rustok-order-admin",
   "rustok-region-admin",
   "rustok-tenant",

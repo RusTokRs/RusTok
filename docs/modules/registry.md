@@ -64,6 +64,7 @@ graph TD
         FORUM["rustok-forum"]
         COMMENTS["rustok-comments"]
         PAGES["rustok-pages"]
+        SEO["rustok-seo"]
         TAXONOMY["rustok-taxonomy"]
         MEDIA["rustok-media"]
         WORKFLOW["rustok-workflow"]
@@ -110,6 +111,7 @@ graph TD
     SERVER --> FORUM
     SERVER --> COMMENTS
     SERVER --> PAGES
+    SERVER --> SEO
     SERVER --> TAXONOMY
     SERVER --> MEDIA
     SERVER --> WORKFLOW
@@ -129,6 +131,7 @@ graph TD
     BLOG --> TAXONOMY
     FORUM --> CONTENT
     FORUM --> TAXONOMY
+    SEO --> CONTENT
     PRODUCT --> COMMERCE_FOUNDATION
     PRICING --> COMMERCE_FOUNDATION
     INVENTORY --> COMMERCE_FOUNDATION
@@ -171,16 +174,16 @@ graph TD
 | `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
 | `region` | `rustok-region` | — | Region, country, currency, tax baseline, region-owned admin CRUD UI и storefront discovery UI |
 | `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI и storefront pricing atlas UI |
-| `tax` | `rustok-tax` | — | Tax domain foundation, provider seam, default `region_default` tax runtime и typed `provider_id` tax-line contract |
 | `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline и inventory-owned admin visibility UI |
 | `order` | `rustok-order` | — | Order lifecycle, order snapshots with canonical `seller_id`, typed order adjustments, и order-owned admin operations UI |
 | `payment` | `rustok-payment` | — | Payment collections и payments |
 | `fulfillment` | `rustok-fulfillment` | — | Shipping options, fulfillments и fulfillment-owned shipping-option admin UI |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `tax`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration, typed shipping-profile registry, aggregate cart-promotion operator surface и marketplace foundation вокруг canonical `seller_id` |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration, typed shipping-profile registry, aggregate cart-promotion operator surface и marketplace foundation вокруг canonical `seller_id` |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
 | `comments` | `rustok-comments` | — | Generic comments domain |
 | `pages` | `rustok-pages` | `content` | Pages, menus, page-builder surfaces |
+| `seo` | `rustok-seo` | `content` | Tenant-aware SEO runtime: explicit metadata overrides, redirects, sitemap/robots generation, shared SEO capability contracts, cross-cutting SEO infrastructure UI, storefront-facing SSR page context and headless REST read path `/api/seo/page-context`; entity SEO authoring belongs to owner modules |
 | `taxonomy` | `rustok-taxonomy` | `content` | Shared vocabulary/dictionary layer |
 | `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
 | `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |

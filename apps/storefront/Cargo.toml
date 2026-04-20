@@ -13,6 +13,8 @@ ssr = [
   "leptos_i18n/ssr",
   "dep:loco-rs",
   "dep:rustok-content",
+  "dep:rustok-seo",
+  "dep:rustok-seo-render",
   "dep:rustok-tenant",
   "rustok-blog-storefront/ssr",
   "rustok-cart-storefront/ssr",
@@ -29,6 +31,7 @@ ssr = [
 axum.workspace = true
 tokio.workspace = true
 leptos = { workspace = true, features = ["ssr"] }
+leptos_axum = { workspace = true }
 leptos_router = { workspace = true }
 leptos-auth = { workspace = true }
 leptos-graphql = { workspace = true }
@@ -46,10 +49,13 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_urlencoded.workspace = true
 futures = "0.3"
+rustok-core.workspace = true
 rustok-api.workspace = true
 thiserror.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
+rustok-seo = { workspace = true, optional = true }
+rustok-seo-render = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false }
 rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false }

@@ -101,7 +101,7 @@ pub(crate) fn validate_module_kind_contract(
     Ok(())
 }
 
-fn normalize_dependency_set(dependencies: &[String]) -> HashSet<String> {
+pub(crate) fn normalize_dependency_set(dependencies: &[String]) -> HashSet<String> {
     dependencies
         .iter()
         .map(|dependency| dependency.trim())

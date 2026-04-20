@@ -102,5 +102,11 @@
   "forum.render.replies": "Ответы",
   "forum.render.opened": "Открыто",
   "forum.render.openThread": "Открыть тред",
-  "forum.render.openTopicForReplies": "Откройте карточку темы, чтобы просмотреть ответы."
+  "forum.render.openTopicForReplies": "Откройте карточку темы, чтобы просмотреть ответы.",
+  "forum.categories.seo.title": "SEO категории",
+  "forum.categories.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранной категории форума.",
+  "forum.categories.seo.empty": "Сначала создайте или откройте категорию. SEO остаётся частью редактора категории форума.",
+  "forum.topics.seo.title": "SEO темы",
+  "forum.topics.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранной темы форума.",
+  "forum.topics.seo.empty": "Сначала создайте или откройте тему. SEO остаётся частью редактора треда форума."
 }

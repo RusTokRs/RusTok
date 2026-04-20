@@ -104,6 +104,7 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_fulfillment::migrations::migrations());
         all.extend(rustok_commerce::migrations::migrations());
         all.extend(rustok_content::migrations::migrations());
+        all.extend(rustok_seo::migrations::migrations());
         all.extend(rustok_forum::migrations::migrations());
         all.extend(rustok_index::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());

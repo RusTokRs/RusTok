@@ -47,6 +47,7 @@ Build-time wiring генерируется из `modules.toml` и `rustok-module
 
 - `list-enabled-modules`
 - `resolve-canonical-route`
+- `storefront/seo-page-context`
 - `pages/storefront-data`
 - `blog/storefront-data`
 - `cart/storefront-data`
@@ -72,8 +73,12 @@ GraphQL path при этом остаётся рабочим и поддержи
 ## Canonical routing и locale
 
 - Canonical и alias state хранится в backend/domain слоях, а не в storefront host.
-- Storefront использует canonical preflight перед рендером страницы.
+- Storefront использует SEO preflight перед рендером страницы: сначала читает `SeoPageContext`, а canonical-only path остаётся fallback-веткой.
+- `SeoPageContext` разделён на `route` и `document`: route-часть отвечает за redirect/canonical/hreflang, document-часть — за typed SSR head metadata.
+- `storefront/seo-page-context` на SSR теперь также передаёт host `RequestContext.channel_slug` в `rustok-seo`, поэтому channel-restricted forum topics получают SEO head только в совпавшем публичном канале.
+- Rust-side head serialization вынесен в `rustok-seo-render`, поэтому host не держит собственный второй renderer поверх того же SEO contract.
 - Locale-prefixed routes являются основным route contract.
+- Host locale normalization идёт через shared `rustok_core::normalize_locale_tag`, а не через package-local правила.
 - Legacy query-based locale fallback допускается только как backward-compatible path.
 
 ## Взаимодействия

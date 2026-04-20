@@ -1,0 +1,43 @@
+[module]
+slug = "seo"
+name = "SEO"
+version = "0.1.0"
+description = "SEO metadata, routing resolution, redirects, sitemaps, and robots runtime"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "content"
+tags = ["seo", "metadata", "sitemaps"]
+
+[dependencies]
+content = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "SeoModule"
+
+[provides.graphql]
+query = "graphql::SeoQuery"
+mutation = "graphql::SeoMutation"
+
+[provides.http]
+routes = "controllers::routes"
+
+[provides.admin_ui]
+leptos_crate = "rustok-seo-admin"
+route_segment = "seo"
+nav_label = "SEO"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[settings]
+default_robots = { type = "array", item_type = "string", default = ["index", "follow"] }
+sitemap_enabled = { type = "boolean", default = true }
+allowed_redirect_hosts = { type = "array", item_type = "string", default = [] }
+allowed_canonical_hosts = { type = "array", item_type = "string", default = [] }
+x_default_locale = { type = "string", default = "" }

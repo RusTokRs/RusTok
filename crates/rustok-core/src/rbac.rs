@@ -25,6 +25,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Pages,
         Resource::Nodes,
         Resource::Media,
+        Resource::Seo,
         Resource::Comments,
         Resource::Taxonomy,
         Resource::Analytics,
@@ -70,6 +71,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Pages,
         Resource::Nodes,
         Resource::Media,
+        Resource::Seo,
         Resource::Comments,
         Resource::Taxonomy,
         Resource::Analytics,
@@ -183,6 +185,10 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::BLOG_POSTS_DELETE);
     permissions.insert(Permission::BLOG_POSTS_LIST);
     permissions.insert(Permission::BLOG_POSTS_PUBLISH);
+    permissions.insert(Permission::SEO_READ);
+    permissions.insert(Permission::SEO_UPDATE);
+    permissions.insert(Permission::SEO_PUBLISH);
+    permissions.insert(Permission::SEO_GENERATE);
     permissions.insert(Permission::AI_PROVIDERS_READ);
     permissions.insert(Permission::AI_TASK_PROFILES_READ);
     permissions.insert(Permission::AI_SESSIONS_READ);

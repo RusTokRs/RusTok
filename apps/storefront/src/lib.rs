@@ -16,10 +16,11 @@ use leptos::view;
 use crate::app::{StorefrontModulePage, StorefrontShell};
 use crate::shared::context::canonical_route::{build_redirect_location, fetch_canonical_route};
 use crate::shared::context::enabled_modules::fetch_enabled_modules;
+use crate::shared::context::seo_page_context::{fetch_seo_page_context, ResolvedSeoPageContext};
 
 const DEFAULT_STOREFRONT_LOCALE: &str = "en";
 
-fn render_document(locale: &str, title: &str, app_html: String) -> String {
+fn render_document(locale: &str, title: &str, extra_head: &str, app_html: String) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html lang="{locale}">
@@ -27,6 +28,7 @@ fn render_document(locale: &str, title: &str, app_html: String) -> String {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title}</title>
+  {extra_head}
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
@@ -34,7 +36,8 @@ fn render_document(locale: &str, title: &str, app_html: String) -> String {
 </body>
 </html>"#,
         locale = locale,
-        title = title,
+        title = rustok_core::html_escape(title),
+        extra_head = extra_head,
         app_html = app_html
     )
 }
@@ -69,7 +72,7 @@ pub async fn render_shell(
         .collect::<String>()
         .await
     };
-    render_document(locale, "RusToK Storefront", app_html)
+    render_document(locale, "RusToK Storefront", "", app_html)
 }
 
 async fn render_shell_response(
@@ -83,6 +86,7 @@ pub async fn render_module_page(
     locale: &str,
     route_segment: &str,
     query_params: std::collections::HashMap<String, String>,
+    seo_context: Option<&ResolvedSeoPageContext>,
 ) -> String {
     let locale_owned = locale.to_string();
     let route_segment_owned = route_segment.to_string();
@@ -103,7 +107,17 @@ pub async fn render_module_page(
         .collect::<String>()
         .await
     };
-    render_document(locale, "RusToK Module Storefront", app_html)
+    let title = seo_context
+        .map(|context| {
+            if context.document.title.trim().is_empty() {
+                "RusToK Module Storefront".to_string()
+            } else {
+                context.document.title.clone()
+            }
+        })
+        .unwrap_or_else(|| "RusToK Module Storefront".to_string());
+    let head_html = seo_context.map(build_seo_head).unwrap_or_default();
+    render_document(locale, title.as_str(), head_html.as_str(), app_html)
 }
 
 async fn render_module_page_response(
@@ -112,55 +126,55 @@ async fn render_module_page_response(
     query_params: std::collections::HashMap<String, String>,
     locale_path_prefix: Option<&str>,
 ) -> Response {
-    match fetch_canonical_route(locale, route_segment, &query_params).await {
-        Ok(Some(resolved)) if resolved.redirect_required => Redirect::permanent(
-            build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
+    match fetch_seo_page_context(locale, route_segment, &query_params).await {
+        Ok(Some(resolved)) if resolved.route.redirect.is_some() => {
+            let redirect = resolved
+                .route
+                .redirect
+                .as_ref()
+                .expect("checked is_some above");
+            redirect_response(redirect.target_url.as_str(), Some(redirect.status_code))
+        }
+        Ok(seo_context) => Html(
+            render_module_page(locale, route_segment, query_params, seo_context.as_ref()).await,
         )
         .into_response(),
-        Ok(_) => {
-            Html(render_module_page(locale, route_segment, query_params).await).into_response()
-        }
         Err(err) => {
-            eprintln!("failed to resolve canonical module route for storefront SSR: {err}");
-            Html(render_module_page(locale, route_segment, query_params).await).into_response()
+            eprintln!("failed to resolve SEO page context for storefront SSR: {err}");
+            match fetch_canonical_route(locale, route_segment, &query_params).await {
+                Ok(Some(resolved)) if resolved.redirect_required => Redirect::permanent(
+                    build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
+                )
+                .into_response(),
+                _ => Html(render_module_page(locale, route_segment, query_params, None).await)
+                    .into_response(),
+            }
         }
     }
 }
 
-fn normalize_storefront_locale(raw: &str) -> Option<String> {
-    let candidate = raw.trim().replace('_', "-");
-    if candidate.is_empty() || candidate.len() > 16 {
-        return None;
+fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
+    match status_code.unwrap_or(308) {
+        301 | 308 => Redirect::permanent(location).into_response(),
+        _ => Redirect::temporary(location).into_response(),
     }
+}
 
-    if !candidate
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+fn build_seo_head(context: &ResolvedSeoPageContext) -> String {
+    #[cfg(feature = "ssr")]
     {
-        return None;
+        let context = crate::shared::context::seo_page_context::to_seo_page_context(context);
+        rustok_seo_render::render_head_html(&context)
     }
-
-    let mut parts = candidate.split('-');
-    let language = parts.next()?.trim();
-    if language.len() < 2 || language.len() > 8 {
-        return None;
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = context;
+        String::new()
     }
+}
 
-    let mut normalized = language.to_ascii_lowercase();
-    for part in parts {
-        if part.is_empty() || part.len() > 8 {
-            return None;
-        }
-
-        normalized.push('-');
-        if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
-            normalized.push_str(&part.to_ascii_uppercase());
-        } else {
-            normalized.push_str(&part.to_ascii_lowercase());
-        }
-    }
-
-    Some(normalized)
+fn normalize_storefront_locale(raw: &str) -> Option<String> {
+    rustok_core::normalize_locale_tag(raw)
 }
 
 fn resolve_storefront_locale(

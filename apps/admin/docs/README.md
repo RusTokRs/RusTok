@@ -55,6 +55,18 @@
 - Route-selection contract тоже host-owned: `apps/admin` санитизирует query по typed schema из
   `rustok-api`, отдаёт модульным пакетам уже canonical route context и предоставляет generic
   Leptos query plumbing через `leptos-ui-routing`.
+- `rustok-seo-admin` после cutover уже не держит entity selection/state вообще: route `seo`
+  использует только `tab` для control-plane navigation, а page/product/blog/forum SEO authoring
+  живёт в owner-module пакетах.
+- Тот же `rustok-seo-admin` держит route/query orchestration в shell-компоненте, а redirects и
+  sitemaps/robots/defaults/diagnostics рендерит через отдельные section components внутри пакета,
+  не перенося этот UI split в host.
+- Canonical ownership при этом зафиксирован отдельно: entity SEO authoring должно жить в owner-module
+  admin packages (`pages`, `product`, `blog`, `forum`), а `rustok-seo-admin` после cutover остаётся
+  только cross-cutting SEO infrastructure surface.
+- Этот cutover уже начат в коде: `rustok-pages/admin`, `rustok-product/admin` и `rustok-blog/admin`
+  встраивают owner-side SEO panels через `rustok-seo-admin-support`, а `rustok-forum/admin`
+  держит capability slot до появления forum targets в shared runtime.
 - Для module-owned admin pages selection state живёт только в URL; отсутствие валидного key ведёт к
   empty state, а invalid/missing entity не должен оставлять stale detail/form state.
 

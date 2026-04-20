@@ -67,6 +67,7 @@ mod contract_tests {
     const FORUM_README: &str = include_str!("../../../../crates/rustok-forum/README.md");
     const MEDIA_README: &str = include_str!("../../../../crates/rustok-media/README.md");
     const PAGES_README: &str = include_str!("../../../../crates/rustok-pages/README.md");
+    const SEO_README: &str = include_str!("../../../../crates/rustok-seo/README.md");
     const TAXONOMY_README: &str = include_str!("../../../../crates/rustok-taxonomy/README.md");
     const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
     const ALLOY_README: &str = include_str!("../../../../crates/alloy/README.md");
@@ -98,6 +99,7 @@ mod contract_tests {
             ("forum", FORUM_README),
             ("media", MEDIA_README),
             ("pages", PAGES_README),
+            ("seo", SEO_README),
             ("taxonomy", TAXONOMY_README),
             ("workflow", WORKFLOW_README),
             ("alloy", ALLOY_README),
@@ -129,6 +131,7 @@ mod contract_tests {
         let region = registry.get("region").expect("region module");
         let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let pages = registry.get("pages").expect("pages module");
+        let seo = registry.get("seo").expect("seo module");
         let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
         let alloy = registry.get("alloy").expect("alloy module");
@@ -162,6 +165,7 @@ mod contract_tests {
             .permissions()
             .contains(&Permission::new(Resource::Media, Action::Manage)));
         assert!(pages.permissions().contains(&Permission::PAGES_MANAGE));
+        assert!(seo.permissions().contains(&Permission::SEO_MANAGE));
         assert!(taxonomy
             .permissions()
             .contains(&Permission::TAXONOMY_MANAGE));
@@ -192,6 +196,7 @@ mod contract_tests {
         let outbox = registry.get("outbox").expect("outbox module");
         let forum = registry.get("forum").expect("forum module");
         let pages = registry.get("pages").expect("pages module");
+        let seo = registry.get("seo").expect("seo module");
         let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
         let alloy = registry.get("alloy").expect("alloy module");
@@ -224,6 +229,7 @@ mod contract_tests {
         );
         assert_eq!(forum.dependencies(), &["content", "taxonomy"]);
         assert_eq!(pages.dependencies(), &["content"]);
+        assert_eq!(seo.dependencies(), &["content"]);
         assert_eq!(taxonomy.dependencies(), &["content"]);
         assert!(workflow.dependencies().is_empty());
         assert!(alloy.dependencies().is_empty());

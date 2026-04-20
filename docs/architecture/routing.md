@@ -79,7 +79,8 @@ contract.
 
 - selection state хранится в query string и считается URL-owned source of truth;
 - используются только typed `snake_case` query keys вроде `product_id`, `cart_id`, `order_id`, `thread_id`,
-  `media_id`, `channel_id`, `topic_id`, `provider_slug`, `tool_profile_slug`, `task_profile_slug`;
+  `media_id`, `channel_id`, `topic_id`, `provider_slug`, `tool_profile_slug`, `task_profile_slug`,
+  а для SEO route — `target_kind`, `target_id`, `locale`, `tab`;
 - generic `id`, camelCase keys и прочие legacy aliases не читаются и не canonicalize’ятся;
 - отсутствие валидного selection key означает empty state, а не auto-select-first;
 - invalid nested keys очищаются локально и не должны ломать соседние selection domains;

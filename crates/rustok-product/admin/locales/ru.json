@@ -71,5 +71,8 @@
   "product.summary.unassigned": "не назначен",
   "product.summary.untitled": "Без названия",
   "product.summary.vendor": "вендор",
-  "product.title": "Product Catalog"
+  "product.title": "Product Catalog",
+  "product.seo.title": "SEO товара",
+  "product.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранного товара.",
+  "product.seo.empty": "Сначала создайте или откройте товар. SEO-панель остаётся частью редактора товара."
 }

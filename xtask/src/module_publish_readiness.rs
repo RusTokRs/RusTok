@@ -34,6 +34,7 @@ pub(crate) fn validate_module_publish_readiness(
     validate_module_event_ingress_contract(manifest_path, slug, module_root)?;
     validate_module_index_search_boundary_contract(slug, module_root)?;
     validate_module_search_operator_surface_contract(slug, module_root)?;
+    validate_module_registry_docs_contract(manifest_path, slug, spec)?;
     validate_module_server_registry_contract(
         manifest_path,
         slug,

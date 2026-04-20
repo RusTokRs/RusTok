@@ -26,6 +26,7 @@ rustok-payment = { path = "../../../crates/rustok-payment" }
 rustok-fulfillment = { path = "../../../crates/rustok-fulfillment" }
 rustok-commerce = { path = "../../../crates/rustok-commerce" }
 rustok-content = { path = "../../../crates/rustok-content" }
+rustok-seo = { path = "../../../crates/rustok-seo" }
 rustok-forum = { path = "../../../crates/rustok-forum" }
 rustok-index = { path = "../../../crates/rustok-index" }
 rustok-taxonomy = { path = "../../../crates/rustok-taxonomy" }

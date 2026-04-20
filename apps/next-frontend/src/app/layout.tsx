@@ -4,12 +4,11 @@ import type { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 
+import { buildSeoMetadata } from "@/shared/seo/metadata";
+
 import { EnabledModulesProvider } from "./providers/enabled-modules-provider";
 
-export const metadata: Metadata = {
-  title: "RusToK Storefront",
-  description: "Next.js storefront for RusToK",
-};
+export const metadata: Metadata = buildSeoMetadata();
 
 export default async function RootLayout({
   children,

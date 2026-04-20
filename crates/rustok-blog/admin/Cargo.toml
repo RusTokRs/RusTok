@@ -16,3 +16,5 @@ rustok-api.workspace = true
 leptos-ui-routing.workspace = true
 rustok-core.workspace = true
 rustok-blog.workspace = true
+rustok-seo.workspace = true
+rustok-seo-admin-support.workspace = true
