@@ -137,7 +137,7 @@ sha2.workspace = true
 moka = { workspace = true, features = ["future"] }
 once_cell.workspace = true
 utoipa = { workspace = true, features = ["axum_extras", "uuid", "chrono", "yaml"] }
-redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
 futures-util = "0.3"
 rust-embed = { version = "8.0", features = ["interpolate-folder-path"], optional = true }
 tower-http = { workspace = true, features = ["fs"] }
@@ -147,7 +147,7 @@ semver = "1.0"
 rand.workspace = true
 subtle = "2"
 bytes = "1.0"
-ipnet = "2.11"
+ipnet = "2.12"
 
 # Loco extras
 migration = { path = "migration" }
