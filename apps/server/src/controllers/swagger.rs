@@ -32,83 +32,6 @@ use utoipa::OpenApi;
         crate::controllers::auth::accept_invite,
         crate::controllers::auth::request_verification,
         crate::controllers::auth::confirm_verification,
-        // Blog
-        crate::controllers::blog::posts::list_posts,
-        crate::controllers::blog::posts::get_post,
-        crate::controllers::blog::posts::create_post,
-        crate::controllers::blog::posts::update_post,
-        crate::controllers::blog::posts::delete_post,
-        crate::controllers::blog::posts::publish_post,
-        crate::controllers::blog::posts::unpublish_post,
-        // Forum
-        crate::controllers::forum::categories::list_categories,
-        crate::controllers::forum::categories::get_category,
-        crate::controllers::forum::categories::create_category,
-        crate::controllers::forum::categories::update_category,
-        crate::controllers::forum::categories::delete_category,
-        crate::controllers::forum::topics::list_topics,
-        crate::controllers::forum::topics::get_topic,
-        crate::controllers::forum::topics::create_topic,
-        crate::controllers::forum::topics::update_topic,
-        crate::controllers::forum::topics::delete_topic,
-        crate::controllers::forum::replies::list_replies,
-        crate::controllers::forum::replies::get_reply,
-        crate::controllers::forum::replies::create_reply,
-        crate::controllers::forum::replies::update_reply,
-        crate::controllers::forum::replies::delete_reply,
-        // Pages
-        crate::controllers::pages::get_page,
-        crate::controllers::pages::create_page,
-        crate::controllers::pages::update_page,
-        crate::controllers::pages::delete_page,
-        crate::controllers::pages::create_block,
-        crate::controllers::pages::update_block,
-        crate::controllers::pages::delete_block,
-        crate::controllers::pages::reorder_blocks,
-        // Commerce
-        crate::controllers::commerce::store::list_products,
-        crate::controllers::commerce::store::show_product,
-        crate::controllers::commerce::store::list_regions,
-        crate::controllers::commerce::store::list_shipping_options,
-        crate::controllers::commerce::store::create_cart,
-        crate::controllers::commerce::store::get_cart,
-        crate::controllers::commerce::store::add_cart_line_item,
-        crate::controllers::commerce::store::update_cart_line_item,
-        crate::controllers::commerce::store::remove_cart_line_item,
-        crate::controllers::commerce::store::create_payment_collection,
-        crate::controllers::commerce::store::complete_cart_checkout,
-        crate::controllers::commerce::store::get_order,
-        crate::controllers::commerce::store::get_me,
-        crate::controllers::commerce::admin::list_products,
-        crate::controllers::commerce::admin::create_product,
-        crate::controllers::commerce::admin::show_product,
-        crate::controllers::commerce::admin::update_product,
-        crate::controllers::commerce::admin::delete_product,
-        crate::controllers::commerce::admin::publish_product,
-        crate::controllers::commerce::admin::unpublish_product,
-        crate::controllers::commerce::admin::list_orders,
-        crate::controllers::commerce::admin::show_order,
-        crate::controllers::commerce::admin::mark_order_paid,
-        crate::controllers::commerce::admin::ship_order,
-        crate::controllers::commerce::admin::deliver_order,
-        crate::controllers::commerce::admin::cancel_order,
-        crate::controllers::commerce::admin::list_payment_collections,
-        crate::controllers::commerce::admin::show_payment_collection,
-        crate::controllers::commerce::admin::authorize_payment_collection,
-        crate::controllers::commerce::admin::capture_payment_collection,
-        crate::controllers::commerce::admin::cancel_payment_collection,
-        crate::controllers::commerce::admin::create_refund,
-        crate::controllers::commerce::admin::list_refunds,
-        crate::controllers::commerce::admin::show_refund,
-        crate::controllers::commerce::admin::complete_refund,
-        crate::controllers::commerce::admin::cancel_refund,
-        crate::controllers::commerce::admin::list_fulfillments,
-        crate::controllers::commerce::admin::show_fulfillment,
-        crate::controllers::commerce::admin::ship_fulfillment,
-        crate::controllers::commerce::admin::deliver_fulfillment,
-        crate::controllers::commerce::admin::reopen_fulfillment,
-        crate::controllers::commerce::admin::reship_fulfillment,
-        crate::controllers::commerce::admin::cancel_fulfillment,
         // Health
         crate::controllers::health::health,
         crate::controllers::health::live,
@@ -164,8 +87,67 @@ use utoipa::OpenApi;
             // Common
             crate::common::PaginationMeta,
             crate::common::ApiError,
+            // Marketplace
+            crate::services::marketplace_catalog::RegistryCatalogResponse,
+            crate::services::marketplace_catalog::RegistryCatalogModule,
+            crate::services::marketplace_catalog::RegistryCatalogVersion,
+            crate::services::marketplace_catalog::RegistryMutationResponse,
+            crate::services::marketplace_catalog::RegistryPublishRequest,
+            crate::services::marketplace_catalog::RegistryPublishDecisionRequest,
+            crate::services::marketplace_catalog::RegistryPublishStatusResponse,
+            crate::services::marketplace_catalog::RegistryPublishModuleRequest,
+            crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest,
+            crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
+            crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
+            crate::services::marketplace_catalog::RegistryYankRequest,
+            crate::modules::ModuleSettingSpec,
 
-            // Blog
+            // Health
+            crate::controllers::health::HealthResponse,
+            crate::controllers::health::ModuleHealth,
+            crate::controllers::health::ModulesHealthResponse,
+
+            // Admin Events
+            crate::controllers::admin_events::DlqEventItem,
+            crate::controllers::admin_events::DlqListResponse,
+            crate::controllers::admin_events::DlqReplayResponse,
+
+            // Flex standalone
+            crate::controllers::flex::CreateFlexSchemaRequest,
+            crate::controllers::flex::UpdateFlexSchemaRequest,
+            crate::controllers::flex::CreateFlexEntryRequest,
+            crate::controllers::flex::UpdateFlexEntryRequest,
+            crate::controllers::flex::FlexSchemaResponse,
+            crate::controllers::flex::FlexEntryResponse,
+            crate::controllers::flex::DeleteFlexResponse,
+        )
+    ),
+    modifiers(&SecurityAddon),
+    tags(
+        (name = "auth", description = "Authentication endpoints"),
+        (name = "marketplace", description = "Marketplace registry and catalog endpoints"),
+        (name = "flex", description = "Flex standalone schemas and entries endpoints"),
+        (name = "health", description = "Health check endpoints"),
+        (name = "observability", description = "Observability and metrics endpoints"),
+        (name = "admin", description = "Admin operations")
+    )
+)]
+pub struct ApiDoc;
+
+#[cfg(feature = "mod-blog")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::controllers::blog::posts::list_posts,
+        crate::controllers::blog::posts::get_post,
+        crate::controllers::blog::posts::create_post,
+        crate::controllers::blog::posts::update_post,
+        crate::controllers::blog::posts::delete_post,
+        crate::controllers::blog::posts::publish_post,
+        crate::controllers::blog::posts::unpublish_post,
+    ),
+    components(
+        schemas(
             rustok_blog::dto::CreatePostInput,
             rustok_blog::dto::UpdatePostInput,
             rustok_blog::dto::PostResponse,
@@ -173,8 +155,34 @@ use utoipa::OpenApi;
             rustok_blog::dto::PostListQuery,
             rustok_blog::dto::PostListResponse,
             rustok_blog::state_machine::BlogPostStatus,
+        )
+    ),
+    tags((name = "blog", description = "Blog endpoints"))
+)]
+pub struct BlogApiDoc;
 
-            // Forum
+#[cfg(feature = "mod-forum")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::controllers::forum::categories::list_categories,
+        crate::controllers::forum::categories::get_category,
+        crate::controllers::forum::categories::create_category,
+        crate::controllers::forum::categories::update_category,
+        crate::controllers::forum::categories::delete_category,
+        crate::controllers::forum::topics::list_topics,
+        crate::controllers::forum::topics::get_topic,
+        crate::controllers::forum::topics::create_topic,
+        crate::controllers::forum::topics::update_topic,
+        crate::controllers::forum::topics::delete_topic,
+        crate::controllers::forum::replies::list_replies,
+        crate::controllers::forum::replies::get_reply,
+        crate::controllers::forum::replies::create_reply,
+        crate::controllers::forum::replies::update_reply,
+        crate::controllers::forum::replies::delete_reply,
+    ),
+    components(
+        schemas(
             rustok_forum::CreateCategoryInput,
             rustok_forum::UpdateCategoryInput,
             rustok_forum::CategoryResponse,
@@ -189,8 +197,27 @@ use utoipa::OpenApi;
             rustok_forum::ListRepliesFilter,
             rustok_forum::ReplyResponse,
             rustok_forum::ReplyListItem,
+        )
+    ),
+    tags((name = "forum", description = "Forum endpoints"))
+)]
+pub struct ForumApiDoc;
 
-            // Pages
+#[cfg(feature = "mod-pages")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::controllers::pages::get_page,
+        crate::controllers::pages::create_page,
+        crate::controllers::pages::update_page,
+        crate::controllers::pages::delete_page,
+        crate::controllers::pages::create_block,
+        crate::controllers::pages::update_block,
+        crate::controllers::pages::delete_block,
+        crate::controllers::pages::reorder_blocks,
+    ),
+    components(
+        schemas(
             rustok_pages::CreatePageInput,
             rustok_pages::UpdatePageInput,
             rustok_pages::CreateBlockInput,
@@ -199,8 +226,62 @@ use utoipa::OpenApi;
             rustok_pages::PageResponse,
             crate::controllers::pages::GetPageParams,
             crate::controllers::pages::ReorderBlocksInput,
+        )
+    ),
+    tags((name = "pages", description = "Pages endpoints"))
+)]
+pub struct PagesApiDoc;
 
-            // Commerce
+#[cfg(feature = "mod-commerce")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::controllers::commerce::store::list_products,
+        crate::controllers::commerce::store::show_product,
+        crate::controllers::commerce::store::list_regions,
+        crate::controllers::commerce::store::list_shipping_options,
+        crate::controllers::commerce::store::create_cart,
+        crate::controllers::commerce::store::get_cart,
+        crate::controllers::commerce::store::add_cart_line_item,
+        crate::controllers::commerce::store::update_cart_line_item,
+        crate::controllers::commerce::store::remove_cart_line_item,
+        crate::controllers::commerce::store::create_payment_collection,
+        crate::controllers::commerce::store::complete_cart_checkout,
+        crate::controllers::commerce::store::get_order,
+        crate::controllers::commerce::store::get_me,
+        crate::controllers::commerce::admin::list_products,
+        crate::controllers::commerce::admin::create_product,
+        crate::controllers::commerce::admin::show_product,
+        crate::controllers::commerce::admin::update_product,
+        crate::controllers::commerce::admin::delete_product,
+        crate::controllers::commerce::admin::publish_product,
+        crate::controllers::commerce::admin::unpublish_product,
+        crate::controllers::commerce::admin::list_orders,
+        crate::controllers::commerce::admin::show_order,
+        crate::controllers::commerce::admin::mark_order_paid,
+        crate::controllers::commerce::admin::ship_order,
+        crate::controllers::commerce::admin::deliver_order,
+        crate::controllers::commerce::admin::cancel_order,
+        crate::controllers::commerce::admin::list_payment_collections,
+        crate::controllers::commerce::admin::show_payment_collection,
+        crate::controllers::commerce::admin::authorize_payment_collection,
+        crate::controllers::commerce::admin::capture_payment_collection,
+        crate::controllers::commerce::admin::cancel_payment_collection,
+        crate::controllers::commerce::admin::create_refund,
+        crate::controllers::commerce::admin::list_refunds,
+        crate::controllers::commerce::admin::show_refund,
+        crate::controllers::commerce::admin::complete_refund,
+        crate::controllers::commerce::admin::cancel_refund,
+        crate::controllers::commerce::admin::list_fulfillments,
+        crate::controllers::commerce::admin::show_fulfillment,
+        crate::controllers::commerce::admin::ship_fulfillment,
+        crate::controllers::commerce::admin::deliver_fulfillment,
+        crate::controllers::commerce::admin::reopen_fulfillment,
+        crate::controllers::commerce::admin::reship_fulfillment,
+        crate::controllers::commerce::admin::cancel_fulfillment,
+    ),
+    components(
+        schemas(
             rustok_commerce::dto::CreateProductInput,
             rustok_commerce::dto::UpdateProductInput,
             rustok_commerce::dto::ProductResponse,
@@ -254,58 +335,14 @@ use utoipa::OpenApi;
             rustok_commerce::dto::CompleteCheckoutInput,
             rustok_commerce::dto::CompleteCheckoutResponse,
             crate::controllers::commerce::admin::AdminOrderDetailResponse,
-
-            // Marketplace
-            crate::services::marketplace_catalog::RegistryCatalogResponse,
-            crate::services::marketplace_catalog::RegistryCatalogModule,
-            crate::services::marketplace_catalog::RegistryCatalogVersion,
-            crate::services::marketplace_catalog::RegistryMutationResponse,
-            crate::services::marketplace_catalog::RegistryPublishRequest,
-            crate::services::marketplace_catalog::RegistryPublishDecisionRequest,
-            crate::services::marketplace_catalog::RegistryPublishStatusResponse,
-            crate::services::marketplace_catalog::RegistryPublishModuleRequest,
-            crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest,
-            crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
-            crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
-            crate::services::marketplace_catalog::RegistryYankRequest,
-            crate::modules::ModuleSettingSpec,
-
-            // Health
-            crate::controllers::health::HealthResponse,
-            crate::controllers::health::ModuleHealth,
-            crate::controllers::health::ModulesHealthResponse,
-
-            // Admin Events
-            crate::controllers::admin_events::DlqEventItem,
-            crate::controllers::admin_events::DlqListResponse,
-            crate::controllers::admin_events::DlqReplayResponse,
-
-            // Flex standalone
-            crate::controllers::flex::CreateFlexSchemaRequest,
-            crate::controllers::flex::UpdateFlexSchemaRequest,
-            crate::controllers::flex::CreateFlexEntryRequest,
-            crate::controllers::flex::UpdateFlexEntryRequest,
-            crate::controllers::flex::FlexSchemaResponse,
-            crate::controllers::flex::FlexEntryResponse,
-            crate::controllers::flex::DeleteFlexResponse,
         )
     ),
-    modifiers(&SecurityAddon),
     tags(
-        (name = "auth", description = "Authentication endpoints"),
-        (name = "blog", description = "Blog endpoints"),
-        (name = "forum", description = "Forum endpoints"),
-        (name = "pages", description = "Pages endpoints"),
         (name = "commerce", description = "Ecommerce endpoints"),
-        (name = "store", description = "Storefront ecommerce endpoints"),
-        (name = "marketplace", description = "Marketplace registry and catalog endpoints"),
-        (name = "flex", description = "Flex standalone schemas and entries endpoints"),
-        (name = "health", description = "Health check endpoints"),
-        (name = "observability", description = "Observability and metrics endpoints"),
-        (name = "admin", description = "Admin operations")
+        (name = "store", description = "Storefront ecommerce endpoints")
     )
 )]
-pub struct ApiDoc;
+pub struct CommerceApiDoc;
 
 const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
     "/health",
@@ -322,6 +359,14 @@ const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
 
 fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
     let mut openapi = ApiDoc::openapi();
+    #[cfg(feature = "mod-blog")]
+    openapi.merge(BlogApiDoc::openapi());
+    #[cfg(feature = "mod-forum")]
+    openapi.merge(ForumApiDoc::openapi());
+    #[cfg(feature = "mod-pages")]
+    openapi.merge(PagesApiDoc::openapi());
+    #[cfg(feature = "mod-commerce")]
+    openapi.merge(CommerceApiDoc::openapi());
     if settings.runtime.is_registry_only() {
         openapi
             .paths
@@ -562,5 +607,81 @@ mod tests {
         assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
         assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));
         assert!(!openapi.paths.paths.contains_key("/api/v1/flex/schemas"));
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    #[test]
+    fn openapi_merges_commerce_surface_when_mod_commerce_enabled() {
+        let openapi = build_openapi_document(&RustokSettings::default());
+
+        assert!(
+            openapi.paths.paths.contains_key("/store/carts"),
+            "OpenAPI spec must include store cart create path when mod-commerce is enabled"
+        );
+        assert!(
+            openapi.paths.paths.contains_key("/admin/products"),
+            "OpenAPI spec must include admin product path when mod-commerce is enabled"
+        );
+        assert!(
+            openapi
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.iter().any(|tag| tag.name == "commerce")),
+            "OpenAPI spec must advertise commerce tag when mod-commerce is enabled"
+        );
+    }
+
+    #[cfg(not(feature = "mod-commerce"))]
+    #[test]
+    fn openapi_excludes_commerce_surface_when_mod_commerce_disabled() {
+        let openapi = build_openapi_document(&RustokSettings::default());
+
+        assert!(
+            !openapi.paths.paths.contains_key("/store/carts"),
+            "Reduced OpenAPI must not include store cart paths when mod-commerce is disabled"
+        );
+        assert!(
+            !openapi.paths.paths.contains_key("/admin/products"),
+            "Reduced OpenAPI must not include admin product paths when mod-commerce is disabled"
+        );
+        assert!(
+            !openapi
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.iter().any(|tag| tag.name == "commerce")),
+            "Reduced OpenAPI must not advertise commerce tag when mod-commerce is disabled"
+        );
+    }
+
+    #[cfg(all(
+        not(feature = "mod-blog"),
+        not(feature = "mod-forum"),
+        not(feature = "mod-pages")
+    ))]
+    #[test]
+    fn openapi_excludes_content_tags_when_content_modules_are_disabled() {
+        let openapi = build_openapi_document(&RustokSettings::default());
+
+        assert!(
+            !openapi
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.iter().any(|tag| tag.name == "blog")),
+            "Reduced OpenAPI must not advertise blog tag when mod-blog is disabled"
+        );
+        assert!(
+            !openapi
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.iter().any(|tag| tag.name == "forum")),
+            "Reduced OpenAPI must not advertise forum tag when mod-forum is disabled"
+        );
+        assert!(
+            !openapi
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.iter().any(|tag| tag.name == "pages")),
+            "Reduced OpenAPI must not advertise pages tag when mod-pages is disabled"
+        );
     }
 }

@@ -8,7 +8,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_seo::SeoTargetKind;
+use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
@@ -720,7 +720,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 </section>
 
                 <SeoEntityPanel
-                    target_kind=SeoTargetKind::BlogPost
+                    target_kind=SeoTargetSlug::new(seo_builtin_slug::BLOG_POST).expect("builtin SEO target slug")
                     target_id=Signal::derive(move || editing_post_id.get())
                     locale=Signal::derive(move || locale.get())
                     panel_title=t(seo_locale.as_deref(), "blog.seo.title", "Post SEO")

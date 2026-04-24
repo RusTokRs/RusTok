@@ -83,6 +83,7 @@ impl From<(StatusCode, &'static str)> for ApiErrorResponse {
     }
 }
 
+#[cfg(feature = "mod-commerce")]
 impl From<rustok_commerce::CommerceError> for ApiErrorResponse {
     fn from(err: rustok_commerce::CommerceError) -> Self {
         let (status, code) = match &err {

@@ -37,7 +37,10 @@ Shared foundation / support crates:
 ## Runtime surface
 
 - `/api/graphql` и `/api/fn/*` являются параллельными transport-слоями; Leptos server functions не заменяют GraphQL API.
+- Embedded UI больше не считается безусловной частью backend binary: `rustok-admin` и `rustok-storefront` линкуются только при compile-time feature-флагах `embed-admin` / `embed-storefront`, а не просто по факту наличия кода в workspace.
 - Commerce OpenAPI/REST surface на `/admin/*` теперь включает первый post-order refund contract поверх `payment-collections`; host публикует эти routes, но refund lifecycle остаётся domain-owned в `rustok-payment` и `rustok-commerce`.
+- Commerce surface больше не является compile-time baseline для любого server build: `controllers::commerce`, commerce-specific error mapping и commerce fragment в OpenAPI живут только при `mod-commerce`, так что reduced/headless host может собираться без ecommerce transport слоя.
+- Content REST/OpenAPI surface для `blog`, `forum` и `pages` тоже больше не считается unconditional частью host binary: соответствующие server controllers и OpenAPI fragments подключаются только при `mod-blog`, `mod-forum` и `mod-pages`, так что module-sliced build не обязан тянуть чужие content transport-зависимости.
 - `flex` standalone schemas/entries сейчас публикуются через `/api/graphql` и `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
@@ -79,6 +82,7 @@ Shared foundation / support crates:
 Минимальный локальный verification path для изменений в `apps/server`:
 
 - точечные `cargo check` и `cargo test` по затронутым crates и transport slices;
+- для изменений build/profile wiring отдельно проверять хотя бы один reduced build без embedded UI и один module-sliced профиль вроде `mod-commerce`-only или no-commerce content host, чтобы server binary не тащил лишние surface-зависимости;
 - `cargo xtask module validate <slug>` для модулей, чей host wiring или manifest contract изменился;
 - targeted contract checks для GraphQL, REST, server functions и health/runtime surface;
 - отдельная проверка health/runtime paths, если затронуты deployment profile, `host_mode` или remote executor/runtime guardrails.

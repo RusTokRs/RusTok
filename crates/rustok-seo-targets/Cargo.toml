@@ -1,0 +1,19 @@
+[package]
+name = "rustok-seo-targets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Runtime SEO target capability registry for owner modules"
+
+[dependencies]
+anyhow.workspace = true
+async-graphql.workspace = true
+async-trait.workspace = true
+sea-orm.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+rustok-core.workspace = true
+rustok-outbox.workspace = true

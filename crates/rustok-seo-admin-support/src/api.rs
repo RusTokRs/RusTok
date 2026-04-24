@@ -1,14 +1,14 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use rustok_seo::SeoTargetKind;
+use rustok_seo::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{SeoMetaMutationInput, SeoMetaView, SeoRevisionView};
 
 pub type ApiError = GraphqlHttpError;
 
-const SEO_META_QUERY: &str = "query SeoEntityPanelMeta($targetKind: SeoTargetKind!, $targetId: UUID!, $locale: String) { seoMeta(targetKind: $targetKind, targetId: $targetId, locale: $locale) { targetKind targetId requestedLocale effectiveLocale availableLocales noindex nofollow canonicalUrl source translation { locale title description keywords ogTitle ogDescription ogImage } structuredData } }";
+const SEO_META_QUERY: &str = "query SeoEntityPanelMeta($targetKind: SeoTargetSlug!, $targetId: UUID!, $locale: String) { seoMeta(targetKind: $targetKind, targetId: $targetId, locale: $locale) { targetKind targetId requestedLocale effectiveLocale availableLocales noindex nofollow canonicalUrl source translation { locale title description keywords ogTitle ogDescription ogImage } structuredData } }";
 const UPSERT_SEO_META_MUTATION: &str = "mutation SeoEntityPanelUpsert($input: SeoMetaInput!) { upsertSeoMeta(input: $input) { targetKind targetId requestedLocale effectiveLocale availableLocales noindex nofollow canonicalUrl source translation { locale title description keywords ogTitle ogDescription ogImage } structuredData } }";
-const PUBLISH_REVISION_MUTATION: &str = "mutation SeoEntityPanelPublish($targetKind: SeoTargetKind!, $targetId: UUID!, $note: String) { publishSeoRevision(targetKind: $targetKind, targetId: $targetId, note: $note) { revision } }";
+const PUBLISH_REVISION_MUTATION: &str = "mutation SeoEntityPanelPublish($targetKind: SeoTargetSlug!, $targetId: UUID!, $note: String) { publishSeoRevision(targetKind: $targetKind, targetId: $targetId, note: $note) { revision } }";
 
 #[derive(Debug, Deserialize)]
 struct SeoMetaResponse {
@@ -31,7 +31,7 @@ struct PublishSeoRevisionResponse {
 #[derive(Debug, Serialize)]
 struct SeoMetaVariables {
     #[serde(rename = "targetKind")]
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     #[serde(rename = "targetId")]
     target_id: String,
     locale: Option<String>,
@@ -45,7 +45,7 @@ struct UpsertSeoMetaVariables {
 #[derive(Debug, Serialize)]
 struct PublishSeoRevisionVariables {
     #[serde(rename = "targetKind")]
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     #[serde(rename = "targetId")]
     target_id: String,
     note: Option<String>,
@@ -92,7 +92,7 @@ where
 }
 
 fn seo_meta_request(
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     target_id: String,
     locale: Option<String>,
 ) -> GraphqlRequest<SeoMetaVariables> {
@@ -114,7 +114,7 @@ fn upsert_seo_meta_request(input: SeoMetaMutationInput) -> GraphqlRequest<Upsert
 }
 
 fn publish_seo_revision_request(
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     target_id: String,
     note: Option<String>,
 ) -> GraphqlRequest<PublishSeoRevisionVariables> {
@@ -131,7 +131,7 @@ fn publish_seo_revision_request(
 pub async fn fetch_seo_meta(
     token: Option<String>,
     tenant_slug: Option<String>,
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     target_id: String,
     locale: Option<String>,
 ) -> Result<Option<SeoMetaView>, ApiError> {
@@ -167,7 +167,7 @@ pub async fn save_seo_meta(
 pub async fn publish_seo_revision(
     token: Option<String>,
     tenant_slug: Option<String>,
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     target_id: String,
     note: Option<String>,
 ) -> Result<SeoRevisionView, ApiError> {
@@ -191,14 +191,14 @@ mod tests {
         PUBLISH_REVISION_MUTATION, SEO_META_QUERY, UPSERT_SEO_META_MUTATION,
     };
     use crate::model::{SeoMetaMutationInput, SeoMetaTranslationMutationInput};
-    use rustok_seo::SeoTargetKind;
+    use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
     use serde_json::json;
     use uuid::Uuid;
 
     #[test]
     fn seo_meta_request_preserves_locale_variable() {
         let request = seo_meta_request(
-            SeoTargetKind::Page,
+            SeoTargetSlug::new(seo_builtin_slug::PAGE).expect("builtin SEO target slug"),
             "target-1".to_string(),
             Some("pt-BR".to_string()),
         );
@@ -217,7 +217,8 @@ mod tests {
     #[test]
     fn upsert_request_embeds_translations_payload() {
         let request = upsert_seo_meta_request(SeoMetaMutationInput {
-            target_kind: SeoTargetKind::BlogPost,
+            target_kind: SeoTargetSlug::new(seo_builtin_slug::BLOG_POST)
+                .expect("builtin SEO target slug"),
             target_id: Uuid::new_v4().to_string(),
             noindex: false,
             nofollow: true,
@@ -248,7 +249,7 @@ mod tests {
     #[test]
     fn publish_request_uses_expected_operation_and_note() {
         let request = publish_seo_revision_request(
-            SeoTargetKind::Product,
+            SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug"),
             "target-2".to_string(),
             Some("ship it".to_string()),
         );

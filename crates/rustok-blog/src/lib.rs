@@ -41,7 +41,8 @@
 
 use async_trait::async_trait;
 use rustok_core::permissions::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
 pub mod controllers;
@@ -51,6 +52,7 @@ pub mod error;
 pub mod graphql;
 pub mod locale;
 pub mod migrations;
+mod seo_targets;
 pub mod services;
 pub mod state_machine;
 
@@ -105,6 +107,11 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_POSTS_PUBLISH,
             Permission::BLOG_POSTS_MANAGE,
         ]
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)
+            .expect("blog SEO target registration should remain unique");
     }
 }
 

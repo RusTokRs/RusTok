@@ -6,12 +6,14 @@ license.workspace = true
 description = "Product domain module extracted from rustok-commerce"
 
 [dependencies]
+anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
+rustok-seo-targets.workspace = true
 flex.workspace = true
 rustok-taxonomy.workspace = true
 rust_decimal.workspace = true
@@ -21,5 +23,6 @@ sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tracing.workspace = true
 unicode-normalization.workspace = true
+url = "2.5"
 uuid.workspace = true
 validator.workspace = true

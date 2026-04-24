@@ -12,6 +12,7 @@ All significant architectural choices should be recorded as ADRs.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [2026-04-20](./2026-04-20-module-runtime-extensions-for-capabilities.md) | Module-owned runtime capability registration through `ModuleRuntimeExtensions` | Accepted |
 | [2026-04-12](./2026-04-12-url-owned-admin-route-selection.md) | URL-owned route selection for module-owned admin UI | Accepted |
 | [2026-04-05](./2026-04-05-multilingual-db-storage-parallel-localized-records.md) | Multilingual DB storage via parallel localized records | Accepted |
 | [2026-03-29](./2026-03-29-taxonomy-module-scope-aware-terms.md) | `rustok-taxonomy` as a shared scope-aware vocabulary module | Accepted |

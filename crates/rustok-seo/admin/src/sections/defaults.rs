@@ -140,6 +140,59 @@ pub fn SeoDefaultsPane(
                     <span class="text-xs text-muted-foreground">"Leave empty to unset the tenant-level x-default hreflang locale."</span>
                 </label>
 
+                <div class="space-y-3 rounded-xl border border-border/80 bg-background/60 px-4 py-4">
+                    <div class="space-y-1">
+                        <h3 class="text-sm font-semibold text-foreground">"Template defaults"</h3>
+                        <p class="text-sm text-muted-foreground">
+                            "Use placeholders like `{{title}}`, `{{description}}`, `{{route}}`, `{{locale}}`, `{{slug}}`, `{{handle}}`, `{{category_id}}`, or `{{topic_id}}`. Effective precedence stays explicit > generated > fallback."
+                        </p>
+                    </div>
+
+                    <label class="grid gap-2 text-sm">
+                        <span class="font-medium text-foreground">"Title template"</span>
+                        <input class="rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_title.clone() on:input=move |ev| settings_form.update(|draft| draft.template_title = event_target_value(&ev)) />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                        <span class="font-medium text-foreground">"Meta description template"</span>
+                        <textarea class="min-h-24 rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_meta_description.clone() on:input=move |ev| settings_form.update(|draft| draft.template_meta_description = event_target_value(&ev)) />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                        <span class="font-medium text-foreground">"Canonical URL template"</span>
+                        <input class="rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_canonical_url.clone() on:input=move |ev| settings_form.update(|draft| draft.template_canonical_url = event_target_value(&ev)) />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                        <span class="font-medium text-foreground">"Keywords template"</span>
+                        <input class="rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_keywords.clone() on:input=move |ev| settings_form.update(|draft| draft.template_keywords = event_target_value(&ev)) />
+                    </label>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label class="grid gap-2 text-sm">
+                            <span class="font-medium text-foreground">"OG title template"</span>
+                            <input class="rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_open_graph_title.clone() on:input=move |ev| settings_form.update(|draft| draft.template_open_graph_title = event_target_value(&ev)) />
+                        </label>
+                        <label class="grid gap-2 text-sm">
+                            <span class="font-medium text-foreground">"OG description template"</span>
+                            <textarea class="min-h-24 rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_open_graph_description.clone() on:input=move |ev| settings_form.update(|draft| draft.template_open_graph_description = event_target_value(&ev)) />
+                        </label>
+                        <label class="grid gap-2 text-sm">
+                            <span class="font-medium text-foreground">"Twitter title template"</span>
+                            <input class="rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_twitter_title.clone() on:input=move |ev| settings_form.update(|draft| draft.template_twitter_title = event_target_value(&ev)) />
+                        </label>
+                        <label class="grid gap-2 text-sm">
+                            <span class="font-medium text-foreground">"Twitter description template"</span>
+                            <textarea class="min-h-24 rounded-lg border border-input bg-background px-3 py-2" prop:value=move || settings_form.get().template_twitter_description.clone() on:input=move |ev| settings_form.update(|draft| draft.template_twitter_description = event_target_value(&ev)) />
+                        </label>
+                    </div>
+                    <label class="grid gap-2 text-sm">
+                        <span class="font-medium text-foreground">"Robots template"</span>
+                        <input class="rounded-lg border border-input bg-background px-3 py-2" placeholder="index, follow" prop:value=move || settings_form.get().template_robots.clone() on:input=move |ev| settings_form.update(|draft| draft.template_robots = event_target_value(&ev)) />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                        <span class="font-medium text-foreground">"Per-target override JSON"</span>
+                        <textarea class="min-h-40 rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs" prop:value=move || settings_form.get().template_overrides_json.clone() on:input=move |ev| settings_form.update(|draft| draft.template_overrides_json = event_target_value(&ev)) />
+                        <span class="text-xs text-muted-foreground">"Example: {\"product\":{\"title\":\"{{title}} | Buy online\"},\"blog_post\":{\"meta_description\":\"{{description}}\"}}"</span>
+                    </label>
+                </div>
+
                 <div class="flex justify-end">
                     <button
                         type="submit"
@@ -180,6 +233,14 @@ pub fn SeoDefaultsPane(
                                     settings.allowed_canonical_hosts.join(", ")
                                 } />
                                 <SettingsValueCard label="x-default locale".to_string() value=settings.x_default_locale.unwrap_or_else(|| "unset".to_string()) />
+                                <SettingsValueCard label="Template title".to_string() value=settings.template_defaults.title.unwrap_or_else(|| "unset".to_string()) />
+                                <SettingsValueCard label="Template description".to_string() value=settings.template_defaults.meta_description.unwrap_or_else(|| "unset".to_string()) />
+                                <SettingsValueCard label="Template canonical".to_string() value=settings.template_defaults.canonical_url.unwrap_or_else(|| "unset".to_string()) />
+                                <SettingsValueCard label="Template override targets".to_string() value=if settings.template_overrides.is_empty() {
+                                    "none".to_string()
+                                } else {
+                                    settings.template_overrides.keys().cloned().collect::<Vec<_>>().join(", ")
+                                } />
                             </dl>
                         }.into_any(),
                         Some(Err(err)) => view! { <p class="text-sm text-destructive">{err.to_string()}</p> }.into_any(),

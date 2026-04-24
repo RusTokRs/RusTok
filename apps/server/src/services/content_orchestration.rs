@@ -1,14 +1,3 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::Arc;
-
-use chrono::Utc;
-use loco_rs::app::AppContext;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, JoinType,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
-};
-use uuid::Uuid;
-
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -16,6 +5,14 @@ use uuid::Uuid;
     feature = "mod-comments"
 ))]
 use async_trait::async_trait;
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use chrono::Utc;
+use loco_rs::app::AppContext;
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -77,6 +74,37 @@ use rustok_taxonomy::{
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus,
 };
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, JoinType,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+};
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use std::collections::{BTreeSet, HashMap, HashSet};
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use std::sync::Arc;
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use uuid::Uuid;
 
 #[cfg(all(
     feature = "mod-content",

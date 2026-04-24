@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use rustok_core::permissions::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
 pub mod entities;
 pub mod migrations;
+mod seo_targets;
 pub mod services;
 
 pub use services::{CatalogService, StorefrontProductList, StorefrontProductListItem};
@@ -42,6 +44,11 @@ impl RusToKModule for ProductModule {
             Permission::PRODUCTS_LIST,
             Permission::PRODUCTS_MANAGE,
         ]
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        register_seo_target_provider(extensions, seo_targets::ProductSeoTargetProvider)
+            .expect("product SEO target registration should remain unique");
     }
 }
 

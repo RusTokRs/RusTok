@@ -1,3 +1,4 @@
+mod bulk;
 mod defaults;
 mod diagnostics;
 mod redirects;
@@ -9,6 +10,7 @@ use leptos::prelude::*;
 use crate::i18n::t;
 use crate::model::SeoAdminTab;
 
+pub use bulk::SeoBulkPane;
 pub use defaults::SeoDefaultsPane;
 pub use diagnostics::SeoDiagnosticsPane;
 pub use redirects::SeoRedirectsPane;
@@ -48,6 +50,7 @@ pub fn SeoAdminTabs(
     active_tab: Signal<SeoAdminTab>,
     on_select: Callback<SeoAdminTab>,
 ) -> impl IntoView {
+    let bulk_label = t(ui_locale.as_deref(), "seo.tab.bulk", "Bulk");
     let redirects_label = t(ui_locale.as_deref(), "seo.tab.redirects", "Redirects");
     let sitemaps_label = t(ui_locale.as_deref(), "seo.tab.sitemaps", "Sitemaps");
     let robots_label = t(ui_locale.as_deref(), "seo.tab.robots", "Robots");
@@ -56,6 +59,12 @@ pub fn SeoAdminTabs(
 
     view! {
         <nav class="flex flex-wrap gap-3">
+            <SeoAdminTabButton
+                label=bulk_label
+                tab=SeoAdminTab::Bulk
+                active_tab=active_tab
+                on_select=on_select
+            />
             <SeoAdminTabButton
                 label=redirects_label
                 tab=SeoAdminTab::Redirects

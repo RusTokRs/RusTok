@@ -1,17 +1,21 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
     has_any_effective_permission, AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::Permission;
+use rustok_core::{ModuleRuntimeExtensions, Permission};
 use rustok_outbox::TransactionalEventBus;
+use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTargetSlug};
 
 use crate::{
-    SeoError, SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput, SeoRedirectRecord,
-    SeoRevisionRecord, SeoService, SeoSitemapStatusRecord, SeoTargetKind,
+    SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
+    SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoDiagnosticsSummaryRecord, SeoError,
+    SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput, SeoRedirectRecord,
+    SeoRevisionRecord, SeoService, SeoSitemapStatusRecord,
 };
 
 const MODULE_SLUG: &str = "seo";
@@ -31,14 +35,12 @@ impl SeoQuery {
         locale: Option<String>,
     ) -> Result<Option<SeoPageContext>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let channel_slug = ctx
             .data_opt::<RequestContext>()
             .and_then(|request| request.channel_slug.as_deref());
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .resolve_page_context_for_channel(tenant, locale.as_str(), route.as_str(), channel_slug)
             .await
             .map_err(map_seo_error)
@@ -47,16 +49,14 @@ impl SeoQuery {
     async fn seo_meta(
         &self,
         ctx: &Context<'_>,
-        target_kind: SeoTargetKind,
+        target_kind: SeoTargetSlug,
         target_id: Uuid,
         locale: Option<String>,
     ) -> Result<Option<SeoMetaRecord>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_READ], "seo:read required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .seo_meta(tenant, target_kind, target_id, locale.as_deref())
             .await
             .map_err(map_seo_error)
@@ -65,10 +65,8 @@ impl SeoQuery {
     async fn seo_redirects(&self, ctx: &Context<'_>) -> Result<Vec<SeoRedirectRecord>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_READ], "seo:read required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .list_redirects(tenant.id)
             .await
             .map_err(map_seo_error)
@@ -81,11 +79,84 @@ impl SeoQuery {
             &[Permission::SEO_READ, Permission::SEO_GENERATE],
             "seo:read or seo:generate required",
         )?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .sitemap_status(tenant)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_bulk_items(
+        &self,
+        ctx: &Context<'_>,
+        input: SeoBulkListInput,
+    ) -> Result<SeoBulkPage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .list_bulk_items(tenant, input)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_bulk_jobs(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+        status: Option<SeoBulkJobStatus>,
+    ) -> Result<Vec<SeoBulkJobRecord>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .list_bulk_jobs(
+                tenant.id,
+                limit.unwrap_or(20).clamp(1, 100) as usize,
+                status,
+            )
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_bulk_job(
+        &self,
+        ctx: &Context<'_>,
+        job_id: Uuid,
+    ) -> Result<Option<SeoBulkJobRecord>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .bulk_job(tenant.id, job_id)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_targets(
+        &self,
+        ctx: &Context<'_>,
+        capability: Option<SeoTargetCapabilityKind>,
+    ) -> Result<Vec<SeoTargetRegistryEntry>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+        Ok(seo_service_from_graphql(ctx)?.target_registry_entries(capability))
+    }
+
+    async fn seo_diagnostics(
+        &self,
+        ctx: &Context<'_>,
+        locale: Option<String>,
+    ) -> Result<SeoDiagnosticsSummaryRecord> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(
+            ctx,
+            &[Permission::SEO_READ, Permission::SEO_MANAGE],
+            "seo:read or seo:manage required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .diagnostics_summary(tenant, locale.as_deref())
             .await
             .map_err(map_seo_error)
     }
@@ -100,10 +171,8 @@ impl SeoMutation {
     ) -> Result<SeoMetaRecord> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .upsert_meta(tenant, input)
             .await
             .map_err(map_seo_error)
@@ -112,16 +181,14 @@ impl SeoMutation {
     async fn publish_seo_revision(
         &self,
         ctx: &Context<'_>,
-        target_kind: SeoTargetKind,
+        target_kind: SeoTargetSlug,
         target_id: Uuid,
         note: Option<String>,
     ) -> Result<SeoRevisionRecord> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_PUBLISH], "seo:publish required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .publish_revision(tenant, target_kind, target_id, note)
             .await
             .map_err(map_seo_error)
@@ -130,16 +197,14 @@ impl SeoMutation {
     async fn rollback_seo_revision(
         &self,
         ctx: &Context<'_>,
-        target_kind: SeoTargetKind,
+        target_kind: SeoTargetSlug,
         target_id: Uuid,
         revision: i32,
     ) -> Result<SeoMetaRecord> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_PUBLISH], "seo:publish required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .rollback_revision(tenant, target_kind, target_id, revision)
             .await
             .map_err(map_seo_error)
@@ -152,10 +217,8 @@ impl SeoMutation {
     ) -> Result<SeoRedirectRecord> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .upsert_redirect(tenant, input)
             .await
             .map_err(map_seo_error)
@@ -164,14 +227,77 @@ impl SeoMutation {
     async fn generate_seo_sitemaps(&self, ctx: &Context<'_>) -> Result<SeoSitemapStatusRecord> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_GENERATE], "seo:generate required")?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        SeoService::new(db.clone(), event_bus.clone())
+        seo_service_from_graphql(ctx)?
             .generate_sitemaps(tenant)
             .await
             .map_err(map_seo_error)
     }
+
+    async fn queue_seo_bulk_apply(
+        &self,
+        ctx: &Context<'_>,
+        mut input: SeoBulkApplyInput,
+    ) -> Result<SeoBulkJobRecord> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = if input.apply_mode == SeoBulkApplyMode::PreviewOnly {
+            input.publish_after_write = false;
+            require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?
+        } else {
+            let auth =
+                require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
+            require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+            if input.publish_after_write {
+                require_seo_permission(ctx, &[Permission::SEO_PUBLISH], "seo:publish required")?;
+            }
+            auth
+        };
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .queue_bulk_apply(tenant, Some(auth.user_id), input)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn queue_seo_bulk_import(
+        &self,
+        ctx: &Context<'_>,
+        input: SeoBulkImportInput,
+    ) -> Result<SeoBulkJobRecord> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
+        require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+        if input.publish_after_write {
+            require_seo_permission(ctx, &[Permission::SEO_PUBLISH], "seo:publish required")?;
+        }
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .queue_bulk_import(tenant, Some(auth.user_id), input)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn queue_seo_bulk_export(
+        &self,
+        ctx: &Context<'_>,
+        input: SeoBulkExportInput,
+    ) -> Result<SeoBulkJobRecord> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .queue_bulk_export(tenant, Some(auth.user_id), input)
+            .await
+            .map_err(map_seo_error)
+    }
+}
+
+fn seo_service_from_graphql(ctx: &Context<'_>) -> Result<SeoService> {
+    let db = ctx.data::<DatabaseConnection>()?;
+    let event_bus = ctx.data::<TransactionalEventBus>()?;
+    let extensions = ctx.data::<Arc<ModuleRuntimeExtensions>>()?;
+    SeoService::from_runtime_extensions(db.clone(), event_bus.clone(), extensions.as_ref())
+        .map_err(map_seo_error)
 }
 
 fn require_seo_permission(
@@ -192,6 +318,7 @@ fn require_seo_permission(
 fn map_seo_error(error: SeoError) -> async_graphql::Error {
     match error {
         SeoError::Validation(message) => <FieldError as GraphQLError>::bad_user_input(&message),
+        SeoError::Configuration(message) => <FieldError as GraphQLError>::internal_error(&message),
         SeoError::NotFound => <FieldError as GraphQLError>::not_found("SEO record not found"),
         SeoError::PermissionDenied => {
             <FieldError as GraphQLError>::permission_denied("Permission denied")
@@ -207,7 +334,7 @@ mod tests {
     use super::SeoQuery;
     use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
     use rustok_api::{AuthContext, RequestContext, TenantContext};
-    use rustok_core::{MemoryTransport, Permission};
+    use rustok_core::{MemoryTransport, ModuleRuntimeExtensions, Permission, RusToKModule};
     use rustok_forum::{
         migrations as forum_migrations, CategoryService, CreateCategoryInput, CreateTopicInput,
         TopicService,
@@ -470,6 +597,15 @@ mod tests {
         TransactionalEventBus::new(Arc::new(MemoryTransport::new()))
     }
 
+    fn test_runtime_extensions() -> Arc<ModuleRuntimeExtensions> {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        rustok_pages::PagesModule.register_runtime_extensions(&mut extensions);
+        rustok_product::ProductModule.register_runtime_extensions(&mut extensions);
+        rustok_blog::BlogModule.register_runtime_extensions(&mut extensions);
+        rustok_forum::ForumModule.register_runtime_extensions(&mut extensions);
+        Arc::new(extensions)
+    }
+
     #[tokio::test]
     async fn graphql_seo_page_context_matches_redirect_service_contract() {
         let db = test_db().await;
@@ -481,15 +617,22 @@ mod tests {
         insert_redirect(&db, tenant_id, "/legacy", "https://example.com/new", 308).await;
 
         let tenant = tenant_context(tenant_id);
-        let expected = SeoService::new_memory(db.clone())
-            .resolve_page_context(&tenant, "en-US", "/legacy")
-            .await
-            .expect("service seo page context should resolve")
-            .expect("redirect route should resolve");
+        let runtime_extensions = test_runtime_extensions();
+        let expected = SeoService::from_runtime_extensions(
+            db.clone(),
+            event_bus(),
+            runtime_extensions.as_ref(),
+        )
+        .expect("runtime extensions should provide SEO registry")
+        .resolve_page_context(&tenant, "en-US", "/legacy")
+        .await
+        .expect("service seo page context should resolve")
+        .expect("redirect route should resolve");
 
         let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus())
+            .data(runtime_extensions)
             .data(tenant.clone())
             .data(request_context(tenant_id, "en-US", None))
             .finish();
@@ -581,14 +724,21 @@ mod tests {
         .await;
 
         let tenant = tenant_context(tenant_id);
-        let expected = SeoService::new_memory(db.clone())
-            .sitemap_status(&tenant)
-            .await
-            .expect("service sitemap status should resolve");
+        let runtime_extensions = test_runtime_extensions();
+        let expected = SeoService::from_runtime_extensions(
+            db.clone(),
+            event_bus(),
+            runtime_extensions.as_ref(),
+        )
+        .expect("runtime extensions should provide SEO registry")
+        .sitemap_status(&tenant)
+        .await
+        .expect("service sitemap status should resolve");
 
         let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus())
+            .data(runtime_extensions)
             .data(tenant.clone())
             .finish();
 
@@ -649,6 +799,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn graphql_seo_targets_exposes_registry_descriptors() {
+        let db = test_db().await;
+        seed_tenant_modules_table(&db).await;
+        let tenant_id = Uuid::new_v4();
+        insert_enabled_seo_module(&db, tenant_id, json!({})).await;
+
+        let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
+            .data(db)
+            .data(event_bus())
+            .data(test_runtime_extensions())
+            .data(tenant_context(tenant_id))
+            .finish();
+
+        let response = schema
+            .execute(
+                Request::new(
+                    r#"
+                        query {
+                            seoTargets(capability: BULK) {
+                                slug
+                                displayName
+                                ownerModuleSlug
+                                capabilities {
+                                    bulk
+                                    routing
+                                }
+                            }
+                        }
+                    "#,
+                )
+                .data(auth_context(tenant_id, vec![Permission::SEO_MANAGE])),
+            )
+            .await;
+        assert!(
+            response.errors.is_empty(),
+            "seoTargets GraphQL query should not error: {:?}",
+            response.errors
+        );
+
+        let data = response
+            .data
+            .into_json()
+            .expect("graphql seo targets should serialize");
+        let targets = data["seoTargets"]
+            .as_array()
+            .expect("seoTargets should serialize as array");
+        let page = targets
+            .iter()
+            .find(|item| item["slug"] == "page")
+            .expect("page target should be present in registry output");
+
+        assert_eq!(page["displayName"], "Page");
+        assert_eq!(page["ownerModuleSlug"], "pages");
+        assert_eq!(page["capabilities"]["bulk"], true);
+        assert_eq!(page["capabilities"]["routing"], true);
+    }
+
+    #[tokio::test]
     async fn graphql_seo_page_context_uses_request_channel_for_restricted_forum_topics() {
         let db = test_db().await;
         seed_tenant_modules_table(&db).await;
@@ -705,9 +913,11 @@ mod tests {
             .await
             .expect("restricted forum topic should be created");
 
+        let runtime_extensions = test_runtime_extensions();
         let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus.clone())
+            .data(runtime_extensions.clone())
             .data(tenant.clone())
             .data(request_context(tenant_id, "en", Some("mobile")))
             .finish();
@@ -746,6 +956,7 @@ mod tests {
             Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
                 .data(db.clone())
                 .data(event_bus)
+                .data(runtime_extensions)
                 .data(tenant)
                 .data(request_context(tenant_id, "en", None))
                 .finish();

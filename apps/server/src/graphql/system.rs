@@ -2,9 +2,9 @@ use async_graphql::{Context, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
-};
+#[cfg(feature = "mod-media")]
+use sea_orm::QuerySelect;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::common::settings::RustokSettings;

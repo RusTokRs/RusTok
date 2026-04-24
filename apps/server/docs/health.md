@@ -18,6 +18,11 @@ surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-ap
 `settings.rustok.runtime.host_mode` описывает только runtime-exposed API surface (`full` или
 `registry_only`).
 
+Отдельный инвариант compile-time profile: `embed-admin` и `embed-storefront` управляют не только routes,
+но и самим linkage соответствующих UI host-ов; аналогично `mod-commerce`, `mod-blog`, `mod-forum`
+и `mod-pages` управляют включением своих REST/OpenAPI transport fragments, так что reduced/headless
+server build не обязан тянуть ecommerce или content surfaces, которые ему не нужны.
+
 ## Readiness модель
 
 `/health/ready` возвращает:
@@ -113,6 +118,13 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 понимают `RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` и optional
 `RUSTOK_REGISTRY_EVIDENCE_DIR`.
 
+Если проверяется именно reduced build matrix, полезно отдельно подтвердить compile-time срез:
+
+- `cargo check -p rustok-server --no-default-features --features redis-cache` для самого узкого headless binary;
+- при server-side SEO/catalog/runtime изменениях дополнительно один module-sliced profile вроде
+  `cargo check -p rustok-server --no-default-features --features mod-commerce` или targeted
+  no-commerce content host, если конкретный deployment не должен тянуть чужой transport surface.
+
 ## Production rollout для `modules.rustok.dev`
 
 Для внешнего dedicated catalog host канонический deployment contract сейчас такой:
@@ -121,6 +133,9 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 - runtime host mode: `RUSTOK_RUNTIME_HOST_MODE=registry_only`;
 - process role: отдельный read-only host для V1 catalog, а не урезанный monolith;
 - write-path V2 на этот host не маршрутизируется и не должен быть доступен после rollout.
+
+Для этого dedicated host `mod-commerce` не является обязательным compile-time dependency, если каталог
+не публикует ecommerce REST/OpenAPI surface.
 
 Минимальный production checklist перед переключением трафика:
 

@@ -1,5 +1,4 @@
-use std::collections::BTreeMap;
-
+use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -8,7 +7,7 @@ use rustok_api::TenantContext;
 
 use crate::dto::{SeoRobotsPreviewRecord, SeoSitemapFileRecord, SeoSitemapStatusRecord};
 use crate::entities::{seo_sitemap_file, seo_sitemap_job};
-use crate::SeoResult;
+use crate::{SeoError, SeoResult};
 
 use super::routing::locale_prefixed_path;
 use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
@@ -211,74 +210,35 @@ impl SeoService {
     async fn collect_sitemap_urls(&self, tenant: &TenantContext) -> SeoResult<Vec<String>> {
         let base_url = public_base_url(tenant);
         let mut urls = Vec::new();
-
-        let page_translations = rustok_pages::entities::page_translation::Entity::find()
-            .filter(rustok_pages::entities::page_translation::Column::TenantId.eq(tenant.id))
-            .all(&self.db)
-            .await?;
-        for translation in page_translations {
-            let locale = normalize_effective_locale(
-                translation.locale.as_str(),
-                tenant.default_locale.as_str(),
-            )?;
-            urls.push(format!(
-                "{base_url}{}",
-                locale_prefixed_path(
-                    locale.as_str(),
-                    format!("/modules/pages?slug={}", translation.slug).as_str(),
+        for provider in self
+            .registry
+            .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
+        {
+            let candidates = provider
+                .sitemap_candidates(
+                    &self.target_runtime(),
+                    SeoTargetSitemapRequest {
+                        tenant_id: tenant.id,
+                        default_locale: tenant.default_locale.as_str(),
+                    },
                 )
-            ));
-        }
-
-        let posts = rustok_blog::entities::blog_post::Entity::find()
-            .filter(rustok_blog::entities::blog_post::Column::TenantId.eq(tenant.id))
-            .filter(rustok_blog::entities::blog_post::Column::Status.eq("published"))
-            .all(&self.db)
-            .await?;
-        let post_slug_map = posts
-            .into_iter()
-            .map(|item| (item.id, item.slug))
-            .collect::<BTreeMap<_, _>>();
-        let post_translations = rustok_blog::entities::blog_post_translation::Entity::find()
-            .filter(
-                rustok_blog::entities::blog_post_translation::Column::PostId
-                    .is_in(post_slug_map.keys().copied().collect::<Vec<_>>()),
-            )
-            .all(&self.db)
-            .await?;
-        for translation in post_translations {
-            let Some(slug) = post_slug_map.get(&translation.post_id) else {
-                continue;
-            };
-            let locale = normalize_effective_locale(
-                translation.locale.as_str(),
-                tenant.default_locale.as_str(),
-            )?;
-            urls.push(format!(
-                "{base_url}{}",
-                locale_prefixed_path(
-                    locale.as_str(),
-                    format!("/modules/blog?slug={slug}").as_str(),
-                )
-            ));
-        }
-
-        let product_translations =
-            rustok_commerce_foundation::entities::product_translation::Entity::find()
-                .all(&self.db)
-                .await?;
-        for translation in product_translations {
-            let locale = normalize_effective_locale(
-                translation.locale.as_str(),
-                tenant.default_locale.as_str(),
-            )?;
-            urls.push(format!(
-                "{base_url}{}",
-                locale_prefixed_path(
-                    locale.as_str(),
-                    format!("/modules/product?handle={}", translation.handle).as_str(),
-                )
-            ));
+                .await
+                .map_err(|error| {
+                    SeoError::validation(format!(
+                        "SEO target provider `{}` failed to collect sitemap candidates: {error}",
+                        provider.slug().as_str()
+                    ))
+                })?;
+            for candidate in candidates {
+                let locale = normalize_effective_locale(
+                    candidate.locale.as_str(),
+                    tenant.default_locale.as_str(),
+                )?;
+                urls.push(format!(
+                    "{base_url}{}",
+                    locale_prefixed_path(locale.as_str(), candidate.route.as_str())
+                ));
+            }
         }
 
         urls.sort();

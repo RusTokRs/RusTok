@@ -1,5 +1,5 @@
 use rustok_core::normalize_locale_tag;
-use rustok_seo::SeoTargetKind;
+use rustok_seo::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -21,7 +21,7 @@ pub struct SeoMetaTranslationView {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SeoMetaView {
     #[serde(rename = "targetKind")]
-    pub target_kind: Option<SeoTargetKind>,
+    pub target_kind: Option<SeoTargetSlug>,
     #[serde(rename = "targetId")]
     pub target_id: Option<String>,
     #[serde(rename = "requestedLocale")]
@@ -48,7 +48,7 @@ pub struct SeoRevisionView {
 #[derive(Clone, Debug, Serialize)]
 pub struct SeoMetaMutationInput {
     #[serde(rename = "targetKind")]
-    pub target_kind: SeoTargetKind,
+    pub target_kind: SeoTargetSlug,
     #[serde(rename = "targetId")]
     pub target_id: String,
     pub noindex: bool,
@@ -146,7 +146,7 @@ impl SeoEntityForm {
 
     pub fn build_input(
         &self,
-        target_kind: SeoTargetKind,
+        target_kind: SeoTargetSlug,
         target_id: &str,
     ) -> Result<SeoMetaMutationInput, String> {
         let target_id = validate_target_id(target_id)?.to_string();
@@ -283,7 +283,7 @@ fn non_empty_option(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{SeoEntityForm, SeoRecommendation};
-    use rustok_seo::SeoTargetKind;
+    use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
     use uuid::Uuid;
 
     #[test]
@@ -292,7 +292,10 @@ mod tests {
         form.title = "Titulo".to_string();
 
         let input = form
-            .build_input(SeoTargetKind::Page, Uuid::new_v4().to_string().as_str())
+            .build_input(
+                SeoTargetSlug::new(seo_builtin_slug::PAGE).expect("builtin SEO target slug"),
+                Uuid::new_v4().to_string().as_str(),
+            )
             .expect("input should build");
 
         assert_eq!(input.translations[0].locale, "pt-BR");
@@ -302,7 +305,10 @@ mod tests {
     fn build_input_rejects_missing_host_locale() {
         let form = SeoEntityForm::new(String::new());
         let error = form
-            .build_input(SeoTargetKind::Page, Uuid::new_v4().to_string().as_str())
+            .build_input(
+                SeoTargetSlug::new(seo_builtin_slug::PAGE).expect("builtin SEO target slug"),
+                Uuid::new_v4().to_string().as_str(),
+            )
             .expect_err("missing locale should fail");
 
         assert_eq!(error, "Host locale is required.");

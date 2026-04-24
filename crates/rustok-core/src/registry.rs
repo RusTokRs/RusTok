@@ -4,7 +4,8 @@ use std::sync::Arc;
 use crate::events::EventHandler;
 use crate::migrations::ModuleMigration;
 use crate::module::{
-    ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind, RusToKModule,
+    ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind, ModuleRuntimeExtensions,
+    RusToKModule,
 };
 
 /// Registry of all platform modules.
@@ -51,7 +52,7 @@ impl ModuleRegistry {
         self.core_modules
             .get(slug)
             .or_else(|| self.optional_modules.get(slug))
-            .map(|m| m.as_ref())
+            .map(|module| module.as_ref())
     }
 
     /// Returns `true` if the module is registered as `ModuleKind::Core`.
@@ -64,9 +65,9 @@ impl ModuleRegistry {
             .core_modules
             .values()
             .chain(self.optional_modules.values())
-            .map(|m| m.as_ref())
+            .map(|module| module.as_ref())
             .collect();
-        modules.sort_by_key(|m| m.slug());
+        modules.sort_by_key(|module| module.slug());
         modules
     }
 
@@ -85,6 +86,14 @@ impl ModuleRegistry {
                 migrations: module.migrations(),
             })
             .collect()
+    }
+
+    pub fn build_runtime_extensions(&self) -> ModuleRuntimeExtensions {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        for module in self.list() {
+            module.register_runtime_extensions(&mut extensions);
+        }
+        extensions
     }
 
     pub fn build_event_listeners(
@@ -166,6 +175,12 @@ mod tests {
             "0.1.0"
         }
 
+        fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+            extensions
+                .get_or_insert_with::<Vec<&'static str>, _>(Vec::new)
+                .push(self.slug);
+        }
+
         fn register_event_listeners(
             &self,
             registry: &mut ModuleEventListenerRegistry,
@@ -177,6 +192,22 @@ mod tests {
                 .expect("runtime value should be present");
             registry.register_boxed(Arc::new(TestHandler { name: runtime.0 }));
         }
+    }
+
+    #[test]
+    fn build_runtime_extensions_collects_module_owned_capabilities() {
+        let registry = ModuleRegistry::new()
+            .register(DemoModule { slug: "one" })
+            .register(DemoModule { slug: "two" });
+
+        let extensions = registry.build_runtime_extensions();
+
+        assert_eq!(
+            extensions
+                .get::<Vec<&'static str>>()
+                .expect("runtime extension vector should be present"),
+            &vec!["one", "two"]
+        );
     }
 
     #[tokio::test]

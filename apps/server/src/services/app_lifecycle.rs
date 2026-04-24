@@ -6,12 +6,18 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 use crate::common::settings::RustokSettings;
+#[cfg(feature = "mod-seo")]
+use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_executor::BuildExecutionService;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
 use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::release_backend::ReleaseDeploymentService;
+#[cfg(feature = "mod-seo")]
+use rustok_api::loco::transactional_event_bus_from_context;
+#[cfg(feature = "mod-seo")]
+use rustok_seo::SeoService;
 
 // ── Graceful-shutdown handle ──────────────────────────────────────────────────
 
@@ -46,8 +52,12 @@ impl StopHandle {
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static BUILD_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "mod-seo")]
+static SEO_BULK_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
+#[cfg(feature = "mod-seo")]
+const SEO_BULK_WORKER_POLL_INTERVAL_MS: u64 = 2_000;
 
 pub struct OutboxRelayWorkerHandle {
     instance_id: u64,
@@ -77,6 +87,19 @@ pub struct RemoteExecutorReaperHandle {
 }
 
 impl RemoteExecutorReaperHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+}
+
+#[cfg(feature = "mod-seo")]
+pub struct SeoBulkWorkerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+#[cfg(feature = "mod-seo")]
+impl SeoBulkWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
@@ -150,6 +173,12 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
         ));
     }
 
+    #[cfg(feature = "mod-seo")]
+    if !ctx.shared_store.contains::<SeoBulkWorkerHandle>() {
+        ctx.shared_store
+            .insert(spawn_seo_bulk_worker_handle(ctx.clone(), stop_rx.clone()));
+    }
+
     Ok(())
 }
 
@@ -182,6 +211,17 @@ fn spawn_remote_executor_reaper_handle(
     RemoteExecutorReaperHandle {
         instance_id: REMOTE_EXECUTOR_REAPER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
         _handle: tokio::spawn(remote_executor_reaper_loop(ctx, scan_interval_ms, stop_rx)),
+    }
+}
+
+#[cfg(feature = "mod-seo")]
+fn spawn_seo_bulk_worker_handle(
+    ctx: AppContext,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
+) -> SeoBulkWorkerHandle {
+    SeoBulkWorkerHandle {
+        instance_id: SEO_BULK_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        _handle: tokio::spawn(seo_bulk_worker_loop(ctx, stop_rx)),
     }
 }
 
@@ -291,6 +331,50 @@ async fn remote_executor_reaper_loop(
             _ = tokio::time::sleep(poll_interval) => {}
             _ = stop_rx.changed() => {
                 tracing::info!("Remote executor reaper received shutdown signal, exiting");
+                return;
+            }
+        }
+    }
+}
+
+#[cfg(feature = "mod-seo")]
+async fn seo_bulk_worker_loop(ctx: AppContext, mut stop_rx: tokio::sync::watch::Receiver<bool>) {
+    let event_bus = transactional_event_bus_from_context(&ctx);
+    let runtime_extensions = module_runtime_extensions_from_ctx(&ctx);
+    let service =
+        match SeoService::from_runtime_extensions(ctx.db.clone(), event_bus, &runtime_extensions) {
+            Ok(service) => service,
+            Err(error) => {
+                tracing::error!(error = %error, "Failed to initialize SEO bulk worker registry");
+                return;
+            }
+        };
+    let poll_interval = Duration::from_millis(SEO_BULK_WORKER_POLL_INTERVAL_MS);
+
+    loop {
+        if *stop_rx.borrow() {
+            tracing::info!("SEO bulk worker received shutdown signal, exiting");
+            return;
+        }
+
+        match service.execute_next_bulk_job().await {
+            Ok(Some(job)) => tracing::info!(
+                job_id = %job.id,
+                operation = %job.operation_kind.as_str(),
+                status = %job.status.as_str(),
+                "Executed queued SEO bulk job"
+            ),
+            Ok(None) => {}
+            Err(error) => tracing::error!(
+                error = %error,
+                "SEO bulk worker failed to execute queued job"
+            ),
+        }
+
+        tokio::select! {
+            _ = tokio::time::sleep(poll_interval) => {}
+            _ = stop_rx.changed() => {
+                tracing::info!("SEO bulk worker received shutdown signal, exiting");
                 return;
             }
         }

@@ -18,10 +18,10 @@ ssr = [
     "dep:rustok-core",
     "dep:rustok-tenant",
     "dep:sea-orm",
-    "dep:serde_json",
 ]
 
 [dependencies]
+async-graphql.workspace = true
 leptos.workspace = true
 leptos-auth.workspace = true
 leptos-ui-routing.workspace = true
@@ -33,7 +33,8 @@ rustok-seo.workspace = true
 rustok-tenant = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, optional = true }
+serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 chrono.workspace = true

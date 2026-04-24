@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use rustok_core::ModuleRuntimeExtensions;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -353,10 +355,18 @@ async fn resolve_seo_page_context(
             .await
             .map_err(ServerFnError::new)?;
 
-        let service = rustok_seo::SeoService::new(
-            ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&ctx),
-        );
+        let event_bus = rustok_api::loco::transactional_event_bus_from_context(&ctx);
+        let extensions = ctx
+            .shared_store
+            .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
+                )
+            })?;
+        let service =
+            rustok_seo::SeoService::from_runtime_extensions(ctx.db.clone(), event_bus, &extensions)
+                .map_err(|err| ServerFnError::new(err.to_string()))?;
         let default_locale = tenant
             .settings
             .get("default_locale")
@@ -547,7 +557,7 @@ pub fn to_seo_page_context(value: &ResolvedSeoPageContext) -> rustok_seo::SeoPag
                 .route
                 .target_kind
                 .as_deref()
-                .and_then(rustok_seo::SeoTargetKind::from_str),
+                .and_then(|item| rustok_seo::SeoTargetSlug::new(item).ok()),
             target_id: value
                 .route
                 .target_id
@@ -692,6 +702,7 @@ pub fn to_seo_page_context(value: &ResolvedSeoPageContext) -> rustok_seo::SeoPag
                     title: item.title.clone(),
                 })
                 .collect(),
+            effective_state: rustok_seo::SeoDocumentEffectiveState::default(),
         },
     }
 }

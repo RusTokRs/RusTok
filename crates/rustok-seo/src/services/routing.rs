@@ -1,17 +1,20 @@
-use url::Url;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
 use rustok_content::{resolve_by_locale_with_fallback, CanonicalUrlService};
+use rustok_seo_targets::{
+    SeoRouteMatchRecord, SeoTargetCapabilityKind, SeoTargetRouteResolveRequest, SeoTargetSlug,
+};
 
 use crate::dto::{
-    SeoAlternateLink, SeoDocument, SeoPageContext, SeoRedirectDecision, SeoRouteContext,
-    SeoTargetKind,
+    SeoAlternateLink, SeoDocument, SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState,
+    SeoPageContext, SeoRedirectDecision, SeoRouteContext,
 };
 use crate::{SeoError, SeoResult};
 
 use super::robots::{apply_robots, build_document, merge_open_graph, robots_from_directives};
-use super::{DirectTarget, LoadedMeta, SeoService, TargetState};
+use super::templates::render_generated_record;
+use super::{LoadedMeta, SeoService, TargetState};
 
 impl SeoService {
     pub async fn resolve_page_context(
@@ -54,7 +57,7 @@ impl SeoService {
             .await
             .map_err(|err| SeoError::validation(err.to_string()))?
         {
-            if let Some(kind) = SeoTargetKind::from_str(resolved.target_kind.as_str()) {
+            if let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str()) {
                 if let Some(mut context) = self
                     .load_target_page_context(
                         tenant,
@@ -134,38 +137,32 @@ impl SeoService {
                     structured_data_blocks: Vec::new(),
                     meta_tags: Vec::new(),
                     link_tags: Vec::new(),
+                    effective_state: SeoDocumentEffectiveState::default(),
                 },
             }));
         }
 
-        let state = match parse_supported_route(route)? {
-            Some(DirectTarget::Page { slug }) => {
-                self.load_page_by_slug(tenant, locale, slug.as_str())
-                    .await?
-            }
-            Some(DirectTarget::Product { handle }) => {
-                self.load_product_by_handle(tenant, locale, handle.as_str())
-                    .await?
-            }
-            Some(DirectTarget::BlogPost { slug }) => {
-                self.load_blog_post_by_slug(tenant, locale, slug.as_str())
-                    .await?
-            }
-            Some(DirectTarget::ForumCategory { id }) => {
-                self.load_forum_category_by_id(tenant, locale, id).await?
-            }
-            Some(DirectTarget::ForumTopic { id }) => {
-                self.load_public_forum_topic_by_id(tenant, locale, id, channel_slug)
-                    .await?
-            }
-            None => None,
+        let state = if let Some(route_match) = self
+            .resolve_registered_route_match(tenant, locale, route, channel_slug)
+            .await?
+        {
+            self.load_route_target_state(
+                tenant,
+                route_match.target_kind,
+                route_match.target_id,
+                locale,
+                channel_slug,
+            )
+            .await?
+        } else {
+            None
         };
 
         let Some(state) = state else {
             return Ok(None);
         };
         let explicit = self
-            .load_explicit_meta(tenant.id, state.target_kind, state.target_id)
+            .load_explicit_meta(tenant.id, state.target_kind.clone(), state.target_id)
             .await?;
         self.merge_page_context(tenant, state, explicit)
             .await
@@ -185,7 +182,7 @@ impl SeoService {
             .await
             .map_err(|err| SeoError::validation(err.to_string()))?
         {
-            if let Some(kind) = SeoTargetKind::from_str(resolved.target_kind.as_str()) {
+            if let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str()) {
                 return self
                     .load_target_page_context(
                         tenant,
@@ -199,33 +196,26 @@ impl SeoService {
             }
         }
 
-        let state = match parse_supported_route(route)? {
-            Some(DirectTarget::Page { slug }) => {
-                self.load_page_by_slug(tenant, locale, slug.as_str())
-                    .await?
-            }
-            Some(DirectTarget::Product { handle }) => {
-                self.load_product_by_handle(tenant, locale, handle.as_str())
-                    .await?
-            }
-            Some(DirectTarget::BlogPost { slug }) => {
-                self.load_blog_post_by_slug(tenant, locale, slug.as_str())
-                    .await?
-            }
-            Some(DirectTarget::ForumCategory { id }) => {
-                self.load_forum_category_by_id(tenant, locale, id).await?
-            }
-            Some(DirectTarget::ForumTopic { id }) => {
-                self.load_public_forum_topic_by_id(tenant, locale, id, channel_slug)
-                    .await?
-            }
-            None => None,
+        let state = if let Some(route_match) = self
+            .resolve_registered_route_match(tenant, locale, route, channel_slug)
+            .await?
+        {
+            self.load_route_target_state(
+                tenant,
+                route_match.target_kind,
+                route_match.target_id,
+                locale,
+                channel_slug,
+            )
+            .await?
+        } else {
+            None
         };
         let Some(state) = state else {
             return Ok(None);
         };
         let explicit = self
-            .load_explicit_meta(tenant.id, state.target_kind, state.target_id)
+            .load_explicit_meta(tenant.id, state.target_kind.clone(), state.target_id)
             .await?;
         self.merge_page_context(tenant, state, explicit)
             .await
@@ -235,7 +225,7 @@ impl SeoService {
     async fn load_target_page_context(
         &self,
         tenant: &TenantContext,
-        target_kind: SeoTargetKind,
+        target_kind: SeoTargetSlug,
         target_id: Uuid,
         requested_locale: Option<String>,
         canonical_override: Option<String>,
@@ -244,7 +234,7 @@ impl SeoService {
         let Some(state) = self
             .load_route_target_state(
                 tenant,
-                target_kind,
+                target_kind.clone(),
                 target_id,
                 requested_locale
                     .as_deref()
@@ -267,6 +257,43 @@ impl SeoService {
             );
         }
         Ok(Some(context))
+    }
+
+    async fn resolve_registered_route_match(
+        &self,
+        tenant: &TenantContext,
+        locale: &str,
+        route: &str,
+        channel_slug: Option<&str>,
+    ) -> SeoResult<Option<SeoRouteMatchRecord>> {
+        for provider in self
+            .registry
+            .providers_with_capability(SeoTargetCapabilityKind::Routing)
+        {
+            let route_match = provider
+                .resolve_route(
+                    &self.target_runtime(),
+                    SeoTargetRouteResolveRequest {
+                        tenant_id: tenant.id,
+                        default_locale: tenant.default_locale.as_str(),
+                        locale,
+                        route,
+                        channel_slug,
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    SeoError::validation(format!(
+                        "SEO target provider `{}` failed to resolve route: {error}",
+                        provider.slug().as_str()
+                    ))
+                })?;
+            if route_match.is_some() {
+                return Ok(route_match);
+            }
+        }
+
+        Ok(None)
     }
 
     async fn merge_page_context(
@@ -352,13 +379,88 @@ impl SeoService {
                         .and_then(|item| super::trimmed_option(item.keywords.clone())),
                     canonical_url.as_str(),
                     effective_locale.as_str(),
+                    SeoDocumentEffectiveState {
+                        title: field_state(SeoFieldSource::Explicit, true),
+                        description: field_state(
+                            SeoFieldSource::Explicit,
+                            effective_translation
+                                .as_ref()
+                                .and_then(|item| super::trimmed_option(item.description.clone()))
+                                .is_some(),
+                        ),
+                        canonical_url: field_state(
+                            SeoFieldSource::Explicit,
+                            explicit
+                                .meta
+                                .canonical_url
+                                .as_deref()
+                                .is_some_and(|value| !value.trim().is_empty()),
+                        ),
+                        keywords: field_state(
+                            SeoFieldSource::Explicit,
+                            effective_translation
+                                .as_ref()
+                                .and_then(|item| super::trimmed_option(item.keywords.clone()))
+                                .is_some(),
+                        ),
+                        robots: field_state(SeoFieldSource::Explicit, true),
+                        open_graph: field_state(SeoFieldSource::Explicit, true),
+                        twitter: field_state(SeoFieldSource::Explicit, true),
+                        structured_data: field_state(
+                            SeoFieldSource::Explicit,
+                            explicit.meta.structured_data.is_some(),
+                        ),
+                    },
+                    None,
+                    None,
                 ),
             });
         }
 
-        let canonical_url = locale_prefixed_path(
+        let generated = render_generated_record(
+            &state,
+            &settings.template_defaults,
+            settings.template_overrides.get(state.target_kind.as_str()),
+        );
+        let generated_source = generated.title.is_some()
+            || generated.description.is_some()
+            || generated.canonical_url.is_some()
+            || generated.keywords.is_some()
+            || generated.robots.is_some()
+            || generated.og_title.is_some()
+            || generated.og_description.is_some()
+            || generated.twitter_title.is_some()
+            || generated.twitter_description.is_some();
+        let source = if generated_source {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let effective_title = generated
+            .title
+            .clone()
+            .unwrap_or_else(|| state.title.clone());
+        let effective_description = generated
+            .description
+            .clone()
+            .or_else(|| state.description.clone());
+        let canonical_url = generated
+            .canonical_url
+            .as_deref()
+            .map(|value| canonical_url_for_locale(state.effective_locale.as_str(), value))
+            .unwrap_or_else(|| {
+                locale_prefixed_path(
+                    state.effective_locale.as_str(),
+                    state.canonical_path.as_str(),
+                )
+            });
+        let open_graph = merge_open_graph(
+            &state.open_graph,
+            generated.og_title.clone(),
+            generated.og_description.clone(),
+            None,
+            canonical_url.as_str(),
             state.effective_locale.as_str(),
-            state.canonical_path.as_str(),
         );
         Ok(SeoPageContext {
             route: SeoRouteContext {
@@ -375,90 +477,52 @@ impl SeoService {
                 ),
             },
             document: build_document(
-                state.title,
-                state.description,
-                robots_from_directives(settings.default_robots.as_slice()),
-                Some(state.open_graph),
+                effective_title,
+                effective_description.clone(),
+                generated
+                    .robots
+                    .as_deref()
+                    .map(robots_from_directives)
+                    .unwrap_or_else(|| robots_from_directives(settings.default_robots.as_slice())),
+                Some(open_graph),
                 state.structured_data,
-                None,
+                generated.keywords.clone(),
                 canonical_url.as_str(),
                 state.effective_locale.as_str(),
+                SeoDocumentEffectiveState {
+                    title: field_state(source, true),
+                    description: field_state(source, effective_description.is_some()),
+                    canonical_url: field_state(source, true),
+                    keywords: field_state(source, generated.keywords.is_some()),
+                    robots: field_state(
+                        if generated.robots.is_some() {
+                            SeoFieldSource::Generated
+                        } else {
+                            SeoFieldSource::Fallback
+                        },
+                        true,
+                    ),
+                    open_graph: field_state(source, true),
+                    twitter: field_state(
+                        source,
+                        generated.twitter_title.is_some()
+                            || generated.twitter_description.is_some(),
+                    ),
+                    structured_data: field_state(SeoFieldSource::Fallback, true),
+                },
+                generated.twitter_title,
+                generated.twitter_description,
             ),
         })
     }
 }
 
-pub(super) fn parse_supported_route(route: &str) -> SeoResult<Option<DirectTarget>> {
-    let parsed = Url::parse(format!("https://rustok.local{route}").as_str())
-        .map_err(|err| SeoError::validation(err.to_string()))?;
-    let mut segments = parsed
-        .path_segments()
-        .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())
-        .unwrap_or_default();
-    if segments.len() > 2
-        && segments
-            .first()
-            .and_then(|item| rustok_core::normalize_locale_tag(item))
-            .is_some()
-        && segments.get(1) == Some(&"modules")
-    {
-        segments.remove(0);
-    }
-
-    if segments.as_slice() == ["modules", "pages"] {
-        return Ok(parsed
-            .query_pairs()
-            .find(|(key, _)| key == "slug")
-            .map(|(_, value)| DirectTarget::Page {
-                slug: value.to_string(),
-            }));
-    }
-    if segments.as_slice() == ["modules", "blog"] {
-        return Ok(parsed
-            .query_pairs()
-            .find(|(key, _)| key == "slug")
-            .map(|(_, value)| DirectTarget::BlogPost {
-                slug: value.to_string(),
-            }));
-    }
-    if segments.as_slice() == ["modules", "product"] {
-        return Ok(parsed
-            .query_pairs()
-            .find(|(key, _)| key == "handle")
-            .map(|(_, value)| DirectTarget::Product {
-                handle: value.to_string(),
-            }));
-    }
-    if segments.as_slice() == ["modules", "forum"] {
-        let category_id = parse_uuid_query(&parsed, "category")?;
-        let topic_id = parse_uuid_query(&parsed, "topic")?;
-        if let Some(topic_id) = topic_id {
-            return Ok(Some(DirectTarget::ForumTopic { id: topic_id }));
-        }
-        if let Some(category_id) = category_id {
-            return Ok(Some(DirectTarget::ForumCategory { id: category_id }));
-        }
-    }
-
-    Ok(None)
-}
-
-fn parse_uuid_query(parsed: &Url, key: &str) -> SeoResult<Option<Uuid>> {
-    let Some((_, value)) = parsed.query_pairs().find(|(query_key, _)| query_key == key) else {
-        return Ok(None);
-    };
-    let raw = value.trim();
-    if raw.is_empty() {
-        return Ok(None);
-    }
-    Uuid::parse_str(raw)
-        .map(Some)
-        .map_err(|_| SeoError::validation(format!("invalid `{key}` query parameter")))
+fn field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
+    SeoFieldState { source, present }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_supported_route, DirectTarget};
     use crate::migrations as seo_migrations;
     use crate::SeoService;
     use rustok_api::TenantContext;
@@ -641,54 +705,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parse_supported_route_recognizes_forum_category_route() {
-        let category_id = Uuid::new_v4();
-        let parsed =
-            parse_supported_route(format!("/modules/forum?category={category_id}").as_str())
-                .expect("forum category route should parse");
-        match parsed {
-            Some(DirectTarget::ForumCategory { id }) => assert_eq!(id, category_id),
-            other => panic!("unexpected parsed route: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_supported_route_recognizes_forum_topic_route() {
-        let topic_id = Uuid::new_v4();
-        let parsed = parse_supported_route(
-            format!(
-                "/modules/forum?category={}&topic={topic_id}",
-                Uuid::new_v4()
-            )
-            .as_str(),
-        )
-        .expect("forum topic route should parse");
-        match parsed {
-            Some(DirectTarget::ForumTopic { id }) => assert_eq!(id, topic_id),
-            other => panic!("unexpected parsed route: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_supported_route_rejects_invalid_forum_uuid_query() {
-        let error = parse_supported_route("/modules/forum?topic=not-a-uuid")
-            .expect_err("invalid topic query should fail");
-        assert!(error
-            .to_string()
-            .contains("invalid `topic` query parameter"));
-    }
-
-    #[test]
-    fn parse_supported_route_keeps_modules_prefix_without_locale() {
-        let parsed =
-            parse_supported_route("/modules/pages?slug=home").expect("page route should parse");
-        match parsed {
-            Some(DirectTarget::Page { slug }) => assert_eq!(slug, "home"),
-            other => panic!("unexpected parsed route: {other:?}"),
-        }
-    }
-
     #[tokio::test]
     async fn resolve_page_context_supports_forum_direct_routes() {
         let db = test_db().await;
@@ -755,7 +771,7 @@ mod tests {
             .await
             .expect("forum topic should be created");
 
-        let service = SeoService::new(db.clone(), event_bus);
+        let service = SeoService::with_builtin_registry(db.clone(), event_bus);
         assert!(
             service
                 .is_enabled(tenant.id)
@@ -766,7 +782,8 @@ mod tests {
         let category_meta = service
             .seo_meta(
                 &tenant,
-                crate::SeoTargetKind::ForumCategory,
+                crate::SeoTargetSlug::new(crate::seo_builtin_slug::FORUM_CATEGORY)
+                    .expect("builtin forum category slug must stay valid"),
                 category.id,
                 Some("en"),
             )
@@ -788,7 +805,10 @@ mod tests {
             .expect("forum category SEO context should exist");
         assert_eq!(
             category_context.route.target_kind,
-            Some(crate::SeoTargetKind::ForumCategory)
+            Some(
+                crate::SeoTargetSlug::new(crate::seo_builtin_slug::FORUM_CATEGORY)
+                    .expect("builtin forum category slug must stay valid")
+            )
         );
         assert_eq!(category_context.document.title, "General");
 
@@ -803,7 +823,10 @@ mod tests {
             .expect("forum topic SEO context should exist");
         assert_eq!(
             topic_context.route.target_kind,
-            Some(crate::SeoTargetKind::ForumTopic)
+            Some(
+                crate::SeoTargetSlug::new(crate::seo_builtin_slug::FORUM_TOPIC)
+                    .expect("builtin forum topic slug must stay valid")
+            )
         );
         assert_eq!(topic_context.document.title, "Welcome thread");
         assert!(topic_context.route.canonical_url.ends_with(
@@ -867,7 +890,7 @@ mod tests {
             .await
             .expect("restricted forum topic should be created");
 
-        let service = SeoService::new(db.clone(), event_bus);
+        let service = SeoService::with_builtin_registry(db.clone(), event_bus);
         let route = format!("/modules/forum?category={}&topic={}", category.id, topic.id);
 
         let without_channel = service
@@ -886,7 +909,10 @@ mod tests {
             .expect("restricted forum topic should resolve for matching channel");
         assert_eq!(
             with_channel.route.target_kind,
-            Some(crate::SeoTargetKind::ForumTopic)
+            Some(
+                crate::SeoTargetSlug::new(crate::seo_builtin_slug::FORUM_TOPIC)
+                    .expect("builtin forum topic slug must stay valid")
+            )
         );
         assert_eq!(with_channel.document.title, "Mobile release notes");
     }

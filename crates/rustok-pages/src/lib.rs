@@ -37,6 +37,7 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
+mod seo_targets;
 pub mod services;
 
 pub use dto::*;
@@ -47,7 +48,8 @@ pub use services::{BlockService, MenuService, PageService};
 
 use async_trait::async_trait;
 use rustok_core::permissions::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
 /// Pages module instance.
@@ -85,6 +87,11 @@ impl RusToKModule for PagesModule {
             Permission::new(Resource::Pages, Action::Publish),
             Permission::new(Resource::Pages, Action::Manage),
         ]
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider)
+            .expect("pages SEO target registration should remain unique");
     }
 }
 

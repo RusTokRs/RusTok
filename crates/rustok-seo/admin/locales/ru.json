@@ -2,13 +2,18 @@
   "seo": {
     "badge": "seo",
     "title": "SEO Hub",
-    "subtitle": "Кросс-модульная control-plane поверхность для tenant defaults, redirects, robots и sitemaps. Entity SEO authoring живёт в owner-module редакторах.",
+    "subtitle": "Кросс-модульная control-plane поверхность для tenant defaults, bulk jobs, redirects, robots и sitemaps. Entity SEO authoring живёт в owner-module редакторах.",
     "tab": {
+      "bulk": "Bulk",
       "redirects": "Редиректы",
       "sitemaps": "Sitemaps",
       "robots": "Robots",
       "defaults": "Defaults",
       "diagnostics": "Diagnostics"
+    },
+    "bulk": {
+      "title": "Bulk Editor",
+      "subtitle": "Central SEO operator surface для одного target kind и одной locale на job. Entity SEO authoring по-прежнему живёт в owner-module editors."
     },
     "redirects": {
       "title": "Редиректы",

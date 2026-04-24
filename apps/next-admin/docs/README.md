@@ -19,6 +19,8 @@
 - canonical FSD-слои для host: `app`, `shared`, `entities`, `features`, `widgets`;
 - backend integration идёт через `apps/server` и shared transport packages;
 - глобальный admin search использует `rustok-search` как host-level capability;
+- shared SEO operator/headless contract тоже должен идти через backend surface:
+  registry-backed target descriptors читаются из GraphQL `seoTargets`, а не из host-local slug mapping;
 - legacy import paths допускаются только как временный compatibility layer;
 - новый код должен идти через canonical FSD paths и shared package boundaries.
 
@@ -37,6 +39,7 @@
 - shared UI и frontend contracts идут через `UI/next` и внутренние transport/auth packages;
 - backend — `apps/server`;
 - module-owned Next admin packages живут в `apps/next-admin/packages/*`;
+- shared API helper `src/shared/api/seo.ts` даёт typed доступ к `seoTargets` для будущих SEO control-plane screens;
 - package naming contract для module-owned admin UI остаётся `@rustok/*-admin`.
 
 ## Взаимодействия

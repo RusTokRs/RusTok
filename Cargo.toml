@@ -196,6 +196,7 @@ rustok-taxonomy = { path = "crates/rustok-taxonomy" }
 rustok-index = { path = "crates/rustok-index" }
 rustok-search = { path = "crates/rustok-search" }
 rustok-seo = { path = "crates/rustok-seo" }
+rustok-seo-targets = { path = "crates/rustok-seo-targets" }
 rustok-seo-render = { path = "crates/rustok-seo/render" }
 rustok-seo-admin-support = { path = "crates/rustok-seo-admin-support" }
 rustok-auth = { path = "crates/rustok-auth" }

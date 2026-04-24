@@ -33,6 +33,13 @@ impl ModuleRuntimeExtensions {
         self.entries.insert(TypeId::of::<T>(), Arc::new(value));
     }
 
+    pub fn contains<T>(&self) -> bool
+    where
+        T: Any + Send + Sync,
+    {
+        self.entries.contains_key(&TypeId::of::<T>())
+    }
+
     pub fn get<T>(&self) -> Option<&T>
     where
         T: Any + Send + Sync,
@@ -40,6 +47,29 @@ impl ModuleRuntimeExtensions {
         self.entries
             .get(&TypeId::of::<T>())
             .and_then(|value| value.as_ref().downcast_ref::<T>())
+    }
+
+    pub fn get_mut<T>(&mut self) -> Option<&mut T>
+    where
+        T: Any + Send + Sync,
+    {
+        self.entries
+            .get_mut(&TypeId::of::<T>())
+            .and_then(Arc::get_mut)
+            .and_then(|value| value.downcast_mut::<T>())
+    }
+
+    pub fn get_or_insert_with<T, F>(&mut self, init: F) -> &mut T
+    where
+        T: Any + Send + Sync,
+        F: FnOnce() -> T,
+    {
+        if !self.contains::<T>() {
+            self.insert(init());
+        }
+
+        self.get_mut::<T>()
+            .expect("runtime extension should be uniquely owned during registration")
     }
 }
 
@@ -134,6 +164,8 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
     ) {
     }
 
+    fn register_runtime_extensions(&self, _extensions: &mut ModuleRuntimeExtensions) {}
+
     async fn on_enable(&self, _ctx: ModuleContext<'_>) -> crate::Result<()> {
         Ok(())
     }
@@ -165,5 +197,25 @@ mod tests {
 
         assert_eq!(value, &DemoRuntimeValue("demo"));
         assert!(extensions.get::<String>().is_none());
+    }
+
+    #[test]
+    fn module_runtime_extensions_support_mutation_and_seeded_registration() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(Vec::<&'static str>::new());
+        extensions
+            .get_mut::<Vec<&'static str>>()
+            .expect("vector should be present")
+            .push("one");
+        extensions
+            .get_or_insert_with::<Vec<&'static str>, _>(Vec::new)
+            .push("two");
+
+        assert_eq!(
+            extensions
+                .get::<Vec<&'static str>>()
+                .expect("vector should stay registered"),
+            &vec!["one", "two"]
+        );
     }
 }

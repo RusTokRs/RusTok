@@ -32,6 +32,7 @@ rustok-forum.workspace = true
 rustok-outbox.workspace = true
 rustok-pages.workspace = true
 rustok-product.workspace = true
+rustok-seo-targets.workspace = true
 rustok-tenant.workspace = true
 
 [dev-dependencies]

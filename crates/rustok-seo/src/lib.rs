@@ -11,15 +11,26 @@ use rustok_core::{MigrationSource, Permission, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    SeoAlternateLink, SeoDocument, SeoImageAsset, SeoLinkTag, SeoMetaInput, SeoMetaRecord,
-    SeoMetaTag, SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
+    SeoAlternateLink, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkArtifactRecord,
+    SeoBulkBoolFieldPatch, SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput,
+    SeoBulkItem, SeoBulkJobOperationKind, SeoBulkJobRecord, SeoBulkJobStatus,
+    SeoBulkJsonFieldPatch, SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkPage,
+    SeoBulkSelectionInput, SeoBulkSelectionMode, SeoBulkSelectionPreviewRecord, SeoBulkSource,
+    SeoBulkStringFieldPatch, SeoDiagnosticIssueRecord, SeoDiagnosticSeverity,
+    SeoDiagnosticsSummaryRecord, SeoDocument, SeoDocumentEffectiveState, SeoFieldSource,
+    SeoFieldState, SeoImageAsset, SeoLinkTag, SeoMetaInput, SeoMetaRecord, SeoMetaTag,
+    SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
     SeoPageContext, SeoPagination, SeoRedirectDecision, SeoRedirectInput, SeoRedirectMatchType,
     SeoRedirectRecord, SeoRevisionRecord, SeoRobots, SeoRobotsPreviewRecord, SeoRouteContext,
-    SeoSitemapFileRecord, SeoSitemapStatusRecord, SeoStructuredDataBlock, SeoTargetKind,
+    SeoSitemapFileRecord, SeoSitemapStatusRecord, SeoStructuredDataBlock, SeoTemplateRuleSet,
     SeoTwitterCard, SeoVerification, SeoVerificationTag,
 };
 pub use error::{SeoError, SeoResult};
 pub use graphql::{SeoMutation, SeoQuery};
+pub use rustok_seo_targets::{
+    builtin_slug as seo_builtin_slug, SeoTargetCapabilities, SeoTargetCapabilityKind,
+    SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
+};
 pub use services::SeoService;
 
 pub struct SeoModule;

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_core::permissions::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
 pub mod constants;
@@ -11,6 +12,7 @@ pub mod error;
 pub mod graphql;
 pub mod locale;
 pub mod migrations;
+mod seo_targets;
 pub mod services;
 pub mod state_machine;
 
@@ -72,6 +74,13 @@ impl RusToKModule for ForumModule {
             Permission::FORUM_REPLIES_MODERATE,
             Permission::FORUM_REPLIES_MANAGE,
         ]
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        register_seo_target_provider(extensions, seo_targets::ForumCategorySeoTargetProvider)
+            .expect("forum category SEO target registration should remain unique");
+        register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider)
+            .expect("forum topic SEO target registration should remain unique");
     }
 }
 

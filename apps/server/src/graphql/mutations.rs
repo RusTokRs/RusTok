@@ -4,14 +4,34 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, Tran
 use crate::auth::hash_password;
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
 use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
 use crate::graphql::schema::module_slug;
 use crate::graphql::types::{
-    BuildJob, ContentOrchestrationPayload, CreateUserInput, DeleteUserPayload,
-    DemotePostToTopicInput as GqlDemotePostToTopicInput, MergeTopicsInput as GqlMergeTopicsInput,
-    PromoteTopicToPostInput as GqlPromoteTopicToPostInput, SplitTopicInput as GqlSplitTopicInput,
-    TenantModule, UpdateUserInput, User,
+    BuildJob, CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User,
+};
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use crate::graphql::types::{
+    ContentOrchestrationPayload, DemotePostToTopicInput as GqlDemotePostToTopicInput,
+    MergeTopicsInput as GqlMergeTopicsInput, PromoteTopicToPostInput as GqlPromoteTopicToPostInput,
+    SplitTopicInput as GqlSplitTopicInput,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
@@ -184,7 +204,12 @@ fn parse_build_id(build_id: &str) -> Result<Uuid> {
     Uuid::parse_str(build_id).map_err(|_| FieldError::new("Invalid build ID"))
 }
 
-#[cfg(feature = "mod-content")]
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
 fn map_content_error(err: rustok_content::ContentError) -> FieldError {
     match err {
         rustok_content::ContentError::Validation(message)

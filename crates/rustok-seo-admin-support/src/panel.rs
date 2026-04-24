@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_core::normalize_locale_tag;
-use rustok_seo::SeoTargetKind;
+use rustok_seo::SeoTargetSlug;
 
 use crate::api;
 use crate::components::{SeoSnippetPreviewCard, SeoSummaryTile};
@@ -14,7 +14,7 @@ use crate::model::{validate_target_id, SeoCompletenessReport, SeoEntityForm, Seo
 
 #[component]
 pub fn SeoEntityPanel(
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     target_id: Signal<Option<String>>,
     locale: Signal<String>,
     #[prop(optional)] panel_title: Option<String>,
@@ -61,7 +61,9 @@ pub fn SeoEntityPanel(
         })
     });
 
+    let load_target_kind = target_kind.clone();
     let load_meta = Callback::new(move |(entity_id, next_locale): (String, String)| {
+        let target_kind = load_target_kind.clone();
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         busy_key.set(Some("load".to_string()));
@@ -70,7 +72,7 @@ pub fn SeoEntityPanel(
             match api::fetch_seo_meta(
                 token_value,
                 tenant_value,
-                target_kind,
+                target_kind.clone(),
                 entity_id,
                 Some(next_locale.clone()),
             )
@@ -153,6 +155,7 @@ pub fn SeoEntityPanel(
     });
 
     let completeness = Memo::new(move |_| form.get().completeness_report());
+    let save_target_kind = target_kind.clone();
     let save_meta = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         status_message.set(None);
@@ -172,7 +175,7 @@ pub fn SeoEntityPanel(
 
         let input = match form
             .get_untracked()
-            .build_input(target_kind, entity_id.as_str())
+            .build_input(save_target_kind.clone(), entity_id.as_str())
         {
             Ok(input) => input,
             Err(err) => {
@@ -205,6 +208,7 @@ pub fn SeoEntityPanel(
     });
 
     let publish_locale = locale.clone();
+    let publish_target_kind = target_kind.clone();
     let publish_revision = Callback::new(move |_| {
         status_message.set(None);
         let ui_locale = publish_locale.get_untracked();
@@ -228,9 +232,16 @@ pub fn SeoEntityPanel(
         busy_key.set(Some("publish".to_string()));
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let publish_target_kind = publish_target_kind.clone();
         spawn_local(async move {
-            match api::publish_seo_revision(token_value, tenant_value, target_kind, entity_id, None)
-                .await
+            match api::publish_seo_revision(
+                token_value,
+                tenant_value,
+                publish_target_kind,
+                entity_id,
+                None,
+            )
+            .await
             {
                 Ok(revision) => {
                     status_message.set(Some(format!(

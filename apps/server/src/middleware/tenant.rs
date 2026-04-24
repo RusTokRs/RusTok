@@ -10,7 +10,9 @@ use loco_rs::app::AppContext;
 use redis::AsyncCommands;
 use rustok_cache::CacheService;
 use rustok_core::tenant_validation::TenantIdentifierValidator;
-use rustok_core::{CacheBackend, EventConsumerRuntime};
+use rustok_core::CacheBackend;
+#[cfg(feature = "redis-cache")]
+use rustok_core::EventConsumerRuntime;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -27,10 +29,12 @@ use crate::context::{TenantContext, TenantContextExtension};
 use crate::models::tenants;
 
 const TENANT_CACHE_VERSION: &str = "v1";
+#[cfg(feature = "redis-cache")]
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
 const TENANT_CACHE_MAX_CAPACITY: u64 = 1_000;
+#[cfg(feature = "redis-cache")]
 const TENANT_INVALIDATION_RETRY_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy)]
@@ -153,20 +157,20 @@ struct TenantInvalidationPublisher {
 }
 
 impl TenantInvalidationPublisher {
-    fn new(cache_service: &CacheService) -> Self {
+    fn new(_cache_service: &CacheService) -> Self {
         Self {
             #[cfg(feature = "redis-cache")]
-            redis_client: cache_service.redis_client().cloned(),
+            redis_client: _cache_service.redis_client().cloned(),
         }
     }
 
-    async fn publish(&self, cache_key: &str) {
+    async fn publish(&self, _cache_key: &str) {
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
             if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
                 let _: redis::RedisResult<()> = redis::cmd("PUBLISH")
                     .arg(TENANT_INVALIDATION_CHANNEL)
-                    .arg(cache_key)
+                    .arg(_cache_key)
                     .query_async(&mut conn)
                     .await;
             }
@@ -246,6 +250,7 @@ impl TenantInvalidationListenerState {
         *self.last_error.write().await = Some(reason.into());
     }
 
+    #[cfg(feature = "redis-cache")]
     async fn mark_starting(&self) {
         self.status.store(
             TenantInvalidationListenerStatus::Starting.as_u8(),
@@ -254,6 +259,7 @@ impl TenantInvalidationListenerState {
         *self.last_error.write().await = None;
     }
 
+    #[cfg(feature = "redis-cache")]
     async fn mark_healthy(&self) {
         self.status.store(
             TenantInvalidationListenerStatus::Healthy.as_u8(),
@@ -262,6 +268,7 @@ impl TenantInvalidationListenerState {
         *self.last_error.write().await = None;
     }
 
+    #[cfg(feature = "redis-cache")]
     async fn mark_degraded(&self, reason: impl Into<String>) {
         self.status.store(
             TenantInvalidationListenerStatus::Degraded.as_u8(),
@@ -279,7 +286,7 @@ impl TenantInvalidationListenerState {
 }
 
 impl TenantCacheMetricsStore {
-    fn new(cache_service: &CacheService) -> Self {
+    fn new(_cache_service: &CacheService) -> Self {
         Self {
             local_hits: Arc::new(AtomicU64::new(0)),
             local_misses: Arc::new(AtomicU64::new(0)),
@@ -288,17 +295,17 @@ impl TenantCacheMetricsStore {
             local_negative_inserts: Arc::new(AtomicU64::new(0)),
             coalesced_requests: Arc::new(AtomicU64::new(0)),
             #[cfg(feature = "redis-cache")]
-            redis_client: cache_service.redis_client().cloned(),
+            redis_client: _cache_service.redis_client().cloned(),
         }
     }
 
-    async fn incr(&self, key: &str, local: &AtomicU64) {
+    async fn incr(&self, _key: &str, local: &AtomicU64) {
         local.fetch_add(1, Ordering::Relaxed);
 
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
             if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
+                let redis_key = format!("tenant_metrics:{}:{_key}", TENANT_CACHE_VERSION);
                 let _: redis::RedisResult<u64> = conn.incr(redis_key, 1).await;
             }
         }
@@ -332,11 +339,11 @@ impl TenantCacheMetricsStore {
         }
     }
 
-    async fn read_metric(&self, key: &str, local: &AtomicU64) -> u64 {
+    async fn read_metric(&self, _key: &str, local: &AtomicU64) -> u64 {
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
             if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
+                let redis_key = format!("tenant_metrics:{}:{_key}", TENANT_CACHE_VERSION);
                 let value: redis::RedisResult<Option<u64>> = conn.get(redis_key).await;
                 if let Ok(Some(metric)) = value {
                     return metric;
@@ -545,13 +552,13 @@ pub async fn init_tenant_cache_infrastructure(ctx: &AppContext, cache_service: &
 }
 
 async fn spawn_invalidation_listener(
-    infra: Arc<TenantCacheInfrastructure>,
-    cache_service: &CacheService,
+    _infra: Arc<TenantCacheInfrastructure>,
+    _cache_service: &CacheService,
 ) -> Option<JoinHandle<()>> {
     #[cfg(feature = "redis-cache")]
     {
-        let client = cache_service.redis_client()?.clone();
-        let listener_state = infra.invalidation_listener_state.clone();
+        let client = _cache_service.redis_client()?.clone();
+        let listener_state = _infra.invalidation_listener_state.clone();
         let task = tokio::spawn(async move {
             let runtime = EventConsumerRuntime::new("tenant_invalidation_listener");
             let mut reason = "startup";
@@ -562,7 +569,7 @@ async fn spawn_invalidation_listener(
 
                 if let Err(error) = consume_tenant_invalidation_messages(
                     &client,
-                    infra.clone(),
+                    _infra.clone(),
                     listener_state.clone(),
                 )
                 .await
@@ -640,6 +647,7 @@ async fn consume_tenant_invalidation_messages(
     Err("pubsub stream closed".to_string())
 }
 
+#[cfg(feature = "redis-cache")]
 fn parse_invalidation_payload(payload: &str) -> Option<(&str, &str)> {
     let mut parts = payload.split('|');
     let cache_key = parts.next()?;
@@ -1004,10 +1012,14 @@ async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, val
 
 #[cfg(test)]
 mod invalidation_tests {
+    #[cfg(feature = "redis-cache")]
     use super::{
-        parse_invalidation_payload, resolve_identifier, should_bypass_tenant_resolution,
-        subdomain_identifier, tenant_context_from_model, CachedTenantMiss,
-        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
+        parse_invalidation_payload, TenantInvalidationListenerState,
+        TenantInvalidationListenerStatus,
+    };
+    use super::{
+        resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
+        tenant_context_from_model, CachedTenantMiss,
     };
     use crate::common::{RustokSettings, TenantFallbackMode};
     use crate::models::tenants;
@@ -1029,6 +1041,7 @@ mod invalidation_tests {
         }
     }
 
+    #[cfg(feature = "redis-cache")]
     #[test]
     fn parse_invalidation_payload_returns_both_keys() {
         let payload = "tenant:v1:slug:demo|tenant_negative:v1:slug:demo";
@@ -1040,6 +1053,7 @@ mod invalidation_tests {
         );
     }
 
+    #[cfg(feature = "redis-cache")]
     #[test]
     fn parse_invalidation_payload_rejects_malformed_payload() {
         assert_eq!(parse_invalidation_payload("tenant:v1:slug:demo"), None);
@@ -1050,6 +1064,7 @@ mod invalidation_tests {
         assert_eq!(parse_invalidation_payload("tenant:v1:slug:demo|"), None);
     }
 
+    #[cfg(feature = "redis-cache")]
     #[tokio::test]
     async fn listener_state_snapshot_reflects_degraded_status() {
         let state = TenantInvalidationListenerState::new();

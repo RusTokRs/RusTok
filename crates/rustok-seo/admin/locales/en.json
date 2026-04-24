@@ -4,11 +4,16 @@
     "title": "SEO Hub",
     "subtitle": "Cross-cutting SEO control plane for tenant defaults, redirects, robots, and sitemaps. Entity SEO authoring now lives in owner-module editors.",
     "tab": {
+      "bulk": "Bulk",
       "redirects": "Redirects",
       "sitemaps": "Sitemaps",
       "robots": "Robots",
       "defaults": "Defaults",
       "diagnostics": "Diagnostics"
+    },
+    "bulk": {
+      "title": "Bulk Editor",
+      "subtitle": "Central SEO operator surface for one target kind and one locale per run. Owner-module SEO editors stay responsible for per-entity authoring."
     },
     "redirects": {
       "title": "Redirects",

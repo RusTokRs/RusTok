@@ -34,6 +34,17 @@
 
 Support/crate/capability слой может жить рядом с модулем, но это не делает его tenant-toggled модулем автоматически. Это особенно важно для `rustok-core`, `rustok-api`, `rustok-storage`, `rustok-mcp`, `rustok-ai`, `alloy`, `flex` и похожих foundation-слоёв.
 
+Если support/capability crate публикует runtime seam, канонический способ подключения теперь один:
+
+- module-owned backend crate регистрирует capability через `RusToKModule::register_runtime_extensions(...)`;
+- host строит единый `ModuleRuntimeExtensions` и прокидывает его во все shared entrypoints;
+- consumer entrypoints, которые зависят от такой capability, должны падать явно при отсутствии shared registry, а не тихо fallback-иться к hardcoded built-ins;
+- если capability introspect-ится общими operator/admin surface-ами, provider должен публиковать owner-aware metadata вместо того, чтобы заставлять host жёстко маппить slugs в labels;
+- capability crate не получает из-за этого собственный slug в `modules.toml` автоматически.
+
+Для SEO-capable модулей действует дополнительное правило: provider в `rustok-seo-targets` отдаёт только typed target records и безопасный `template_fields` map (`title`, `description`, `route`, `locale`, slug/handle/id поля). Шаблоны для `title`, `meta_description`, canonical, robots, Open Graph и Twitter рендерит только `rustok-seo`; owner module не должен вводить собственный SEO-template runtime или передавать сырой HTML/JSON в template context.
+Если target участвует в bulk SEO, provider должен давать стабильные summaries и fields, достаточные для safe remediation: `preview_only`, `apply_missing_only`, `overwrite_generated_only` и `force_overwrite_explicit` выполняются в `rustok-seo`, а не в owner module.
+
 ## Backend
 
 ### 1. Сначала зафиксируйте runtime contract
@@ -59,6 +70,8 @@ Backend модуля должен встраиваться в общий platfor
 - Leptos `#[server]` — default internal data layer для Leptos surfaces, но GraphQL остаётся параллельно;
 - REST нужен только там, где действительно нужен явный HTTP contract: integrations, webhooks, ops, module-owned routes;
 - нельзя делать package-local auth, locale, tenant или RBAC shortcuts.
+- runtime registries и provider seams должны регистрироваться через общий `ModuleRuntimeExtensions`,
+  а не через host-specific глобалы или ad-hoc singleton wiring.
 
 Канон:
 
@@ -91,6 +104,8 @@ Backend модуля должен встраиваться в общий platfor
 - строить live authority из display labels;
 - держать canonical read contract в произвольном `details` JSON, если уже есть typed schema;
 - смешивать public contract и internal audit storage.
+- прятать module-owned runtime capability registration внутри host app так, чтобы новый provider
+  требовал ручной правки central feature-модуля вместо `register_runtime_extensions(...)`.
 
 Если нужен actor/principal/read-model, делайте typed contract, а не строковые эвристики.
 

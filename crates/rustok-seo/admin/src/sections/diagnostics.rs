@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use rustok_seo::{
-    SeoModuleSettings, SeoRedirectRecord, SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
+    SeoDiagnosticsSummaryRecord, SeoModuleSettings, SeoRedirectRecord, SeoRobotsPreviewRecord,
+    SeoSitemapStatusRecord,
 };
 
 use crate::api::ApiError;
@@ -13,6 +14,7 @@ pub fn SeoDiagnosticsPane(
     redirects: Resource<Result<Vec<SeoRedirectRecord>, ApiError>>,
     sitemap_status: Resource<Result<SeoSitemapStatusRecord, ApiError>>,
     robots_preview: Resource<Result<SeoRobotsPreviewRecord, ApiError>>,
+    diagnostics: Resource<Result<SeoDiagnosticsSummaryRecord, ApiError>>,
 ) -> impl IntoView {
     let title = t(ui_locale.as_deref(), "seo.diagnostics.title", "Diagnostics");
     let subtitle = t(
@@ -29,12 +31,61 @@ pub fn SeoDiagnosticsPane(
             </div>
 
             <div class="grid gap-6 xl:grid-cols-2">
+                <DiagnosticsHealthCard diagnostics=diagnostics />
                 <DiagnosticsSettingsCard settings=settings />
                 <DiagnosticsRedirectsCard redirects=redirects />
                 <DiagnosticsSitemapCard sitemap_status=sitemap_status />
                 <DiagnosticsRobotsCard robots_preview=robots_preview />
             </div>
         </section>
+    }
+}
+
+#[component]
+fn DiagnosticsHealthCard(
+    diagnostics: Resource<Result<SeoDiagnosticsSummaryRecord, ApiError>>,
+) -> impl IntoView {
+    view! {
+        <div class="space-y-3 rounded-xl border border-border/80 bg-background/60 p-4">
+            <h3 class="text-base font-semibold text-card-foreground">"SEO health"</h3>
+            <Suspense fallback=move || view! { <p class="text-sm text-muted-foreground">"Loading diagnostics..."</p> }>
+                {move || match diagnostics.get() {
+                    Some(Ok(summary)) => {
+                        let issues = summary.issues.clone();
+                        let has_issues = !issues.is_empty();
+                        view! {
+                            <div class="space-y-3 text-sm text-foreground">
+                                <ul class="space-y-2">
+                                    <li>{format!("Readiness score: {}", summary.readiness_score)}</li>
+                                    <li>{format!("Tracked targets: {}", summary.total_targets)}</li>
+                                    <li>{format!("Issues: {} ({} errors, {} warnings)", summary.issue_count, summary.error_count, summary.warning_count)}</li>
+                                    <li>{format!("Effective sources: {} explicit, {} generated, {} fallback", summary.explicit_count, summary.generated_count, summary.fallback_count)}</li>
+                                </ul>
+                                <Show when=move || has_issues>
+                                    <div class="space-y-2">
+                                        <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">"Top issues"</h4>
+                                        <ul class="space-y-2">
+                                            {issues.iter().take(8).map(|issue| {
+                                                view! {
+                                                    <li class="rounded-lg border border-border/70 px-3 py-2">
+                                                        <div class="font-medium text-foreground">{format!("[{}] {}", issue.code, issue.message)}</div>
+                                                        <div class="mt-1 text-xs text-muted-foreground">
+                                                            {format!("{} / {} / {}", issue.target_kind.as_str(), issue.target_id, issue.source)}
+                                                        </div>
+                                                    </li>
+                                                }
+                                            }).collect_view()}
+                                        </ul>
+                                    </div>
+                                </Show>
+                            </div>
+                        }.into_any()
+                    },
+                    Some(Err(err)) => view! { <p class="text-sm text-destructive">{err.to_string()}</p> }.into_any(),
+                    None => view! { <p class="text-sm text-muted-foreground">"No diagnostics available."</p> }.into_any(),
+                }}
+            </Suspense>
+        </div>
     }
 }
 

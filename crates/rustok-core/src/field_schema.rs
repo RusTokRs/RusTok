@@ -872,7 +872,7 @@ pub fn is_valid_field_key(key: &str) -> bool {
 
 /// Returns `true` if `key` is a valid normalized BCP 47-style locale tag.
 pub fn is_valid_locale_key(key: &str) -> bool {
-    crate::locale::is_valid_locale_tag(key)
+    crate::locale::normalize_locale_tag(key).as_deref() == Some(key)
 }
 
 // ---------------------------------------------------------------------------
@@ -1873,9 +1873,9 @@ mod tests {
     #[test]
     fn locale_key_guardrail_invalid() {
         assert!(!is_valid_locale_key("EN")); // uppercase lang
-        assert!(!is_valid_locale_key("english")); // too long
+        assert!(!is_valid_locale_key("englishxx")); // too long
         assert!(!is_valid_locale_key("e")); // too short
-        assert!(is_valid_locale_key("en_US")); // normalized before validation
+        assert!(!is_valid_locale_key("en_US")); // must already be canonicalized
     }
 
     #[test]

@@ -7,6 +7,8 @@ pub type SeoResult<T> = Result<T, SeoError>;
 pub enum SeoError {
     #[error("{0}")]
     Validation(String),
+    #[error("SEO runtime configuration error: {0}")]
+    Configuration(String),
     #[error("SEO target not found")]
     NotFound,
     #[error("Permission denied")]
@@ -18,5 +20,9 @@ pub enum SeoError {
 impl SeoError {
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
+    }
+
+    pub fn configuration(message: impl Into<String>) -> Self {
+        Self::Configuration(message.into())
     }
 }

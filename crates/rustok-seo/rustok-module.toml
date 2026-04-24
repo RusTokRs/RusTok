@@ -41,3 +41,5 @@ sitemap_enabled = { type = "boolean", default = true }
 allowed_redirect_hosts = { type = "array", item_type = "string", default = [] }
 allowed_canonical_hosts = { type = "array", item_type = "string", default = [] }
 x_default_locale = { type = "string", default = "" }
+template_defaults = { type = "object", default = {}, shape = { title = { type = "string" }, meta_description = { type = "string" }, canonical_url = { type = "string" }, keywords = { type = "string" }, robots = { type = "string" }, open_graph_title = { type = "string" }, open_graph_description = { type = "string" }, twitter_title = { type = "string" }, twitter_description = { type = "string" } } }
+template_overrides = { type = "object", default = {}, additional_properties = { type = "object", shape = { title = { type = "string" }, meta_description = { type = "string" }, canonical_url = { type = "string" }, keywords = { type = "string" }, robots = { type = "string" }, open_graph_title = { type = "string" }, open_graph_description = { type = "string" }, twitter_title = { type = "string" }, twitter_description = { type = "string" } } } }

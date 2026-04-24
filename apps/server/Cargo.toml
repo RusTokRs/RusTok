@@ -35,9 +35,9 @@ default = [
     "mod-workflow",
 ]
 redis-cache = []
-embed-admin = ["embed-admin-assets"]
+embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
 embed-admin-assets = ["dep:rust-embed"]
-embed-storefront = []
+embed-storefront = ["dep:rustok-storefront"]
 # Domain module feature flags — compile the module into the binary;
 # resolvers additionally check is_enabled(tenant_id) at runtime.
 mod-cart      = ["dep:rustok-cart"]
@@ -72,8 +72,8 @@ rustok-channel.workspace = true
 rustok-email.workspace = true
 rustok-events.workspace = true
 flex.workspace = true
-rustok-admin = { path = "../admin", default-features = false, features = ["ssr"] }
-rustok-storefront = { path = "../storefront", default-features = false, features = ["ssr"] }
+rustok-admin = { path = "../admin", default-features = false, features = ["ssr"], optional = true }
+rustok-storefront = { path = "../storefront", default-features = false, features = ["ssr"], optional = true }
 rustok-cart      = { workspace = true, optional = true }
 rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
@@ -159,6 +159,7 @@ serial_test = "3.4"
 rustok-test-utils.workspace = true
 tempfile = "3.27"
 tower.workspace = true
+url = "2.5"
 
 [build-dependencies]
 serde.workspace = true

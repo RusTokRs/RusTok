@@ -58,7 +58,7 @@
 - `rustok-seo-admin` после cutover уже не держит entity selection/state вообще: route `seo`
   использует только `tab` для control-plane navigation, а page/product/blog/forum SEO authoring
   живёт в owner-module пакетах.
-- Тот же `rustok-seo-admin` держит route/query orchestration в shell-компоненте, а redirects и
+- Тот же `rustok-seo-admin` держит route/query orchestration в shell-компоненте, а bulk/redirects и
   sitemaps/robots/defaults/diagnostics рендерит через отдельные section components внутри пакета,
   не перенося этот UI split в host.
 - Canonical ownership при этом зафиксирован отдельно: entity SEO authoring должно жить в owner-module

@@ -38,11 +38,19 @@
   и storefront-facing `SeoPageContext` для host SSR metadata generation без отдельного storefront UI package;
   canonical UI ownership при этом разделён: entity SEO authoring должно жить в owner-модулях
   (`pages/product/blog/forum`), а `rustok-seo-admin` держит cross-cutting SEO infrastructure surface;
-  текущий control-plane уже покрывает redirects, sitemaps, robots preview, tenant defaults и diagnostics;
-  headless read-side теперь также включает REST endpoint `/api/seo/page-context` поверх canonical request locale resolution,
+  текущий control-plane уже покрывает bulk editor/remediation modes, redirects, sitemaps, robots preview, tenant defaults,
+  template defaults/target overrides и diagnostics;
+  `rustok-seo` теперь использует precedence `explicit SEO > template-generated SEO > domain/entity fallback`,
+  а `SeoPageContext.document` и `seoMeta` явно показывают source state для generated vs explicit значений;
+  headless read-side теперь также включает REST endpoints `/api/seo/page-context` и `/api/seo/targets`
+  плюс GraphQL queries `seoTargets` и `seoDiagnostics`
+  поверх canonical request locale resolution и shared registry descriptors, так что headless/admin hosts
+  не должны держать локальные mapping-и target slug-ов поверх SEO runtime,
   а forum topic SEO routing уже учитывает host-provided request channel slug для channel-restricted public topics;
   Rust-host rendering при этом уже вынесен в support crate `crates/rustok-seo/render`,
-  а owner-side admin widgets — в `crates/rustok-seo-admin-support`.
+  а owner-side admin widgets — в `crates/rustok-seo-admin-support`;
+  target extensibility теперь идёт не через hardcoded enum внутри `rustok-seo`, а через capability crate
+  `crates/rustok-seo-targets` и module-owned runtime registration providers в `pages/product/blog/forum`.
 - UI split ecommerce family уже начат: `rustok-product/admin` стал первым
   module-owned admin route, `rustok-fulfillment/admin` забрал shipping options,
   `rustok-order/admin` забрал order operations, `rustok-inventory/admin` забрал
@@ -221,7 +229,10 @@
 ## Документация приложений
 
 - [Документация Server](../apps/server/docs/README.md)
-  Server docs теперь фиксируют live `flex` standalone GraphQL + REST surfaces и их tenant-scoped RBAC contract.
+  Server docs теперь фиксируют live `flex` standalone GraphQL + REST surfaces, их tenant-scoped RBAC contract,
+  а также reduced/headless build matrix без обязательного `mod-commerce` и с compile-time feature ownership
+  для embedded admin/storefront host-ов; content REST/OpenAPI fragments `blog/forum/pages` там тоже
+  зафиксированы как module-owned compile-time surfaces, а не как безусловный baseline `apps/server`.
 - [Документация Admin](../apps/admin/docs/README.md)
 - [Документация Storefront](../apps/storefront/docs/README.md)
 - [Документация Next Admin](../apps/next-admin/docs/README.md)
@@ -231,7 +242,7 @@
 
 - Для platform modules: `crates/rustok-*` согласно [реестру модулей и приложений](./modules/registry.md).
 - Для foundation и shared libraries: `crates/rustok-core`, `crates/rustok-api`, `crates/rustok-events`, `crates/rustok-storage`, `crates/rustok-test-utils`, `crates/rustok-commerce-foundation`, `crates/rustok-seo/render`, `crates/rustok-seo-admin-support`.
-- Для infrastructure и capability crates: `crates/rustok-iggy`, `crates/rustok-iggy-connector`, `crates/rustok-telemetry`, `crates/rustok-mcp`, `crates/rustok-ai`, `crates/alloy`, `crates/flex`.
+- Для infrastructure и capability crates: `crates/rustok-iggy`, `crates/rustok-iggy-connector`, `crates/rustok-telemetry`, `crates/rustok-mcp`, `crates/rustok-ai`, `crates/alloy`, `crates/flex`, `crates/rustok-seo-targets`.
 - Для UI-библиотек и host-shared UI support: `crates/leptos-*`, `crates/leptos-ui`.
 - У каждого crate должен быть актуальный `README.md`, а при необходимости и `docs/`.
 

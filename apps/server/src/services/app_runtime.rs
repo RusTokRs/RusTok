@@ -21,9 +21,12 @@ use crate::services::graphql_schema::init_graphql_schema;
 use crate::services::marketplace_catalog::{
     MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
-use crate::services::module_event_dispatcher::spawn_module_event_dispatcher;
+use crate::services::module_event_dispatcher::{
+    build_shared_runtime_extensions, spawn_module_event_dispatcher,
+};
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 use rustok_cache::CacheService;
+use rustok_core::ModuleRuntimeExtensions;
 
 pub struct AppRuntimeBootstrap {
     pub deployment_surfaces: DeploymentSurfaceContract,
@@ -84,6 +87,8 @@ pub async fn bootstrap_app_runtime(
     };
 
     let registry = modules::build_registry();
+    let runtime_extensions = build_shared_runtime_extensions(&registry, settings);
+    ctx.shared_store.insert(runtime_extensions.clone());
     ctx.shared_store
         .insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));
     ManifestManager::validate(&manifest)
@@ -92,7 +97,7 @@ pub async fn bootstrap_app_runtime(
     if !settings.runtime.is_registry_only() {
         let event_runtime = build_event_runtime(ctx).await?;
         ctx.shared_store.insert(event_runtime.transport.clone());
-        spawn_module_event_dispatcher(ctx, settings, &registry);
+        spawn_module_event_dispatcher(ctx, &registry, runtime_extensions.clone());
         ctx.shared_store.insert(Arc::new(event_runtime));
         ctx.shared_store
             .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
@@ -125,6 +130,12 @@ pub async fn bootstrap_app_runtime(
     })
 }
 
+pub fn module_runtime_extensions_from_ctx(ctx: &AppContext) -> Arc<ModuleRuntimeExtensions> {
+    ctx.shared_store
+        .get::<Arc<ModuleRuntimeExtensions>>()
+        .expect("ModuleRuntimeExtensions not initialized; bootstrap_app_runtime must run first")
+}
+
 async fn init_storage(ctx: &AppContext, settings: &RustokSettings) -> Result<()> {
     use rustok_storage::StorageService;
 
@@ -148,10 +159,10 @@ fn init_marketplace_catalog(ctx: &AppContext) {
         .insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
 
-fn init_alloy_runtime(ctx: &AppContext) {
+fn init_alloy_runtime(_ctx: &AppContext) {
     #[cfg(feature = "mod-alloy")]
     {
-        alloy::init(ctx);
+        alloy::init(_ctx);
     }
 }
 
@@ -353,6 +364,17 @@ mod tests {
         };
 
         assert!(validate_compiled_surface_contract(&contract, true, true).is_ok());
+    }
+
+    #[test]
+    fn compiled_surface_contract_allows_headless_profile_without_embedded_ui_features() {
+        let contract = DeploymentSurfaceContract {
+            profile: DeploymentProfile::HeadlessApi,
+            embed_admin: false,
+            embed_storefront: false,
+        };
+
+        assert!(validate_compiled_surface_contract(&contract, false, false).is_ok());
     }
 
     #[tokio::test]

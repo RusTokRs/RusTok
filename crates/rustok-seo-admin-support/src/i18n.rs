@@ -58,6 +58,7 @@ pub(crate) fn recommendation(locale: Option<&str>, item: &SeoRecommendation) -> 
 pub(crate) fn source_label(locale: Option<&str>, source: &str) -> String {
     match source {
         "explicit" => tr(locale, "Explicit SEO", "Явное SEO"),
+        "generated" => tr(locale, "Generated template SEO", "Шаблонное SEO"),
         "page_fallback" => tr(locale, "Page fallback", "Фоллбек страницы"),
         "product_fallback" => tr(locale, "Product fallback", "Фоллбек товара"),
         "blog_fallback" => tr(locale, "Blog fallback", "Фоллбек блога"),

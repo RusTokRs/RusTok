@@ -28,9 +28,9 @@ impl Task for MediaCleanupTask {
         }
     }
 
-    async fn run(&self, app_context: &AppContext, _vars: &Vars) -> Result<()> {
+    async fn run(&self, _app_context: &AppContext, _vars: &Vars) -> Result<()> {
         #[cfg(feature = "mod-media")]
-        run_media_cleanup(app_context).await?;
+        run_media_cleanup(_app_context).await?;
 
         #[cfg(not(feature = "mod-media"))]
         tracing::info!("mod-media not enabled — media cleanup is a no-op");

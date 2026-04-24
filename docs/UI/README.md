@@ -35,7 +35,7 @@ Leptos hosts являются основным runtime-путём для platfor
   locale field внутри panel UI: owner-side SEO widgets обязаны брать host-provided effective locale
   и только canonicalize-ить его под platform i18n contract.
 - Сам `rustok-seo-admin` после cutover больше не держит metadata editor и использует только `tab`
-  как route-owned query state для redirects/sitemaps/robots/defaults/diagnostics control-plane.
+  как route-owned query state для bulk/redirects/sitemaps/robots/defaults/diagnostics control-plane.
 - Для module-owned Leptos storefront UI query/state plumbing тоже должно идти через общий слой:
   `leptos-ui-routing` переиспользуется и в admin, и в storefront, а прямой package-local доступ
   к `UiRouteContext.query_value(...)` не считается каноническим паттерном.
@@ -44,6 +44,8 @@ Leptos hosts являются основным runtime-путём для platfor
 
 - Для Leptos hosts GraphQL и native `#[server]` functions сосуществуют параллельно; добавление `#[server]` не заменяет `/api/graphql`.
 - Backend source of truth для UI hosts — `apps/server`.
+- Для headless/admin host-ов registry-backed capability descriptors тоже должны читаться из backend contract:
+  для SEO это GraphQL `seoTargets` или REST `/api/seo/targets`, а не host-local mappings target slug-ов.
 - Contract parity между Leptos и Next.js оценивается на уровне маршрутов, auth, locale, module wiring и transport surface, а не на уровне буквального совпадения внутренней реализации.
 
 ## Разделы документации

@@ -188,7 +188,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(SeoBulkJobArtifacts::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(SeoBulkJobArtifacts::JobId).uuid().not_null())
                     .col(
                         ColumnDef::new(SeoBulkJobArtifacts::Kind)
@@ -205,7 +209,11 @@ impl MigrationTrait for Migration {
                             .string_len(128)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(SeoBulkJobArtifacts::Content).text().not_null())
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::Content)
+                            .text()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(SeoBulkJobArtifacts::CreatedAt)
                             .timestamp_with_time_zone()

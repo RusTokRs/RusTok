@@ -38,6 +38,7 @@
 
 ## Проверка
 
+- контрактные тесты покрывают все публичные use-case
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
 - targeted tests для primitives, validation, security и compatibility exports

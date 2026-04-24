@@ -9,7 +9,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
-use rustok_seo::SeoTargetKind;
+use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
@@ -706,7 +706,7 @@ pub fn ProductAdmin() -> impl IntoView {
                     </section>
 
                     <SeoEntityPanel
-                        target_kind=SeoTargetKind::Product
+                        target_kind=SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug")
                         target_id=Signal::derive(move || editing_id.get())
                         locale=Signal::derive({
                             let effective_locale = effective_locale.clone();

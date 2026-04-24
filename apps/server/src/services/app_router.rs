@@ -5,8 +5,11 @@ use axum::Router as AxumRouter;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use loco_rs::app::AppContext;
+
+#[cfg(feature = "embed-admin")]
 #[allow(unused_imports)]
 use rustok_admin as _;
+#[cfg(feature = "embed-storefront")]
 #[allow(unused_imports)]
 use rustok_storefront as _;
 

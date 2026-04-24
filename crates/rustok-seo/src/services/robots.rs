@@ -1,8 +1,8 @@
 use serde_json::Value;
 
 use crate::dto::{
-    SeoDocument, SeoImageAsset, SeoMetaTag, SeoOpenGraph, SeoRobots, SeoStructuredDataBlock,
-    SeoTwitterCard,
+    SeoDocument, SeoDocumentEffectiveState, SeoImageAsset, SeoMetaTag, SeoOpenGraph, SeoRobots,
+    SeoStructuredDataBlock, SeoTwitterCard,
 };
 
 pub(super) fn normalize_robots(defaults: &[String]) -> Vec<String> {
@@ -150,6 +150,9 @@ pub(super) fn build_document(
     keywords: Option<String>,
     canonical_url: &str,
     effective_locale: &str,
+    effective_state: SeoDocumentEffectiveState,
+    twitter_title: Option<String>,
+    twitter_description: Option<String>,
 ) -> SeoDocument {
     if let Some(open_graph_value) = open_graph.as_mut() {
         if open_graph_value.url.is_none() {
@@ -159,7 +162,18 @@ pub(super) fn build_document(
             open_graph_value.locale = Some(effective_locale.to_string());
         }
     }
-    let twitter = open_graph.as_ref().map(twitter_from_open_graph);
+    let twitter = open_graph
+        .as_ref()
+        .map(twitter_from_open_graph)
+        .map(|mut twitter| {
+            if twitter_title.is_some() {
+                twitter.title = twitter_title;
+            }
+            if twitter_description.is_some() {
+                twitter.description = twitter_description;
+            }
+            twitter
+        });
     let mut meta_tags = Vec::new();
     if let Some(keywords) = keywords.filter(|value| !value.trim().is_empty()) {
         meta_tags.push(SeoMetaTag {
@@ -188,6 +202,7 @@ pub(super) fn build_document(
         }],
         meta_tags,
         link_tags: Vec::new(),
+        effective_state,
     }
 }
 

@@ -347,7 +347,9 @@ mod tests {
         AuthContext, AuthContextExtension, ChannelContext, ChannelContextExtension,
         ChannelResolutionSource, TenantContext, TenantContextExtension,
     };
-    use rustok_core::{MemoryTransport, Permission};
+    use rustok_core::{
+        events::EventTransport, MemoryTransport, ModuleRuntimeExtensions, Permission,
+    };
     use rustok_outbox::TransactionalEventBus;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
     use sea_orm_migration::MigratorTrait;
@@ -435,6 +437,18 @@ mod tests {
 
     fn governance_auth() -> AuthContext {
         publish_status_auth(uuid::Uuid::new_v4(), true)
+    }
+
+    fn seo_auth(tenant_id: uuid::Uuid, permissions: Vec<Permission>) -> AuthContext {
+        AuthContext {
+            user_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "session".to_string(),
+        }
     }
 
     fn oauth_service_token_auth() -> AuthContext {
@@ -564,6 +578,29 @@ mod tests {
         (category.id, topic.id)
     }
 
+    async fn build_runtime_router(ctx: &loco_rs::app::AppContext) -> axum::Router {
+        let settings = crate::common::settings::RustokSettings::from_settings(&ctx.config.settings)
+            .expect("rustok settings should parse for test runtime");
+
+        if !ctx.shared_store.contains::<Arc<ModuleRuntimeExtensions>>() {
+            let registry = crate::modules::build_registry();
+            let extensions =
+                crate::services::module_event_dispatcher::build_shared_runtime_extensions(
+                    &registry, &settings,
+                );
+            ctx.shared_store.insert(extensions);
+        }
+
+        if !ctx.shared_store.contains::<Arc<dyn EventTransport>>() {
+            let transport: Arc<dyn EventTransport> = Arc::new(MemoryTransport::new());
+            ctx.shared_store.insert(transport);
+        }
+
+        App::routes(ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build")
+    }
+
     #[tokio::test]
     #[serial]
     async fn startup_smoke_builds_router_and_runtime_shared_state() {
@@ -645,9 +682,7 @@ mod tests {
             .expect("seo module should enable");
         insert_seo_redirect(&ctx, tenant.id, "/legacy", "https://example.com/new", 308).await;
 
-        let base_router = App::routes(&ctx)
-            .to_router::<App>(ctx.clone(), axum::Router::new())
-            .expect("base router should build");
+        let base_router = build_runtime_router(&ctx).await;
         let mut request = Request::builder()
             .uri("/api/seo/page-context?route=%2Flegacy&locale=en")
             .body(Body::empty())
@@ -706,9 +741,7 @@ mod tests {
 
         let tenant = insert_tenant(&ctx, "seo-disabled", Some("seo-disabled.example.com")).await;
 
-        let base_router = App::routes(&ctx)
-            .to_router::<App>(ctx.clone(), axum::Router::new())
-            .expect("base router should build");
+        let base_router = build_runtime_router(&ctx).await;
         let mut request = Request::builder()
             .uri("/api/seo/page-context?route=%2Flegacy&locale=en")
             .body(Body::empty())
@@ -749,9 +782,7 @@ mod tests {
             .await
             .expect("seo module should enable");
 
-        let base_router = App::routes(&ctx)
-            .to_router::<App>(ctx.clone(), axum::Router::new())
-            .expect("base router should build");
+        let base_router = build_runtime_router(&ctx).await;
         let mut request = Request::builder()
             .uri("/api/seo/page-context?route=%2Fbad%20route&locale=en")
             .body(Body::empty())
@@ -803,9 +834,7 @@ mod tests {
         let (category_id, topic_id) =
             insert_forum_topic(&ctx, tenant.id, Some(vec!["mobile".to_string()])).await;
 
-        let base_router = App::routes(&ctx)
-            .to_router::<App>(ctx.clone(), axum::Router::new())
-            .expect("base router should build");
+        let base_router = build_runtime_router(&ctx).await;
         let route = format!("/modules/forum?category={category_id}&topic={topic_id}");
         let encoded_route: String =
             url::form_urlencoded::byte_serialize(route.as_bytes()).collect();
@@ -872,6 +901,194 @@ mod tests {
             .await
             .expect("seo page-context without channel should complete");
         assert_eq!(no_channel_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_targets_rest_endpoint_returns_registry_descriptors_for_enabled_tenant() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for seo targets route");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(&ctx, "seo-targets", Some("seo-targets.example.com")).await;
+        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
+            .await
+            .expect("seo module should enable");
+
+        let base_router = build_runtime_router(&ctx).await;
+        let mut request = Request::builder()
+            .uri("/api/seo/targets?capability=bulk")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+        request
+            .extensions_mut()
+            .insert(AuthContextExtension(seo_auth(
+                tenant.id,
+                vec![Permission::SEO_MANAGE],
+            )));
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("seo targets request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("seo targets body should read");
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /api/seo/targets response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("seo targets response should be valid json");
+        let targets = payload
+            .as_array()
+            .expect("seo targets response should be an array");
+        assert!(
+            !targets.is_empty(),
+            "bulk-filtered seo target list should not be empty"
+        );
+        assert!(
+            targets
+                .iter()
+                .all(|item| item["capabilities"]["bulk"] == true),
+            "capability=bulk should return only bulk-capable registry entries"
+        );
+        let page = targets
+            .iter()
+            .find(|item| item["slug"] == "page")
+            .expect("page target should stay visible through REST registry output");
+        assert_eq!(page["display_name"], "Page");
+        assert_eq!(page["owner_module_slug"], "pages");
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_targets_rest_endpoint_returns_not_found_when_module_is_disabled() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for seo targets disabled check");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(
+            &ctx,
+            "seo-targets-disabled",
+            Some("seo-targets-disabled.example.com"),
+        )
+        .await;
+
+        let base_router = build_runtime_router(&ctx).await;
+        let mut request = Request::builder()
+            .uri("/api/seo/targets")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+        request
+            .extensions_mut()
+            .insert(AuthContextExtension(seo_auth(
+                tenant.id,
+                vec![Permission::SEO_MANAGE],
+            )));
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("disabled seo targets request should complete");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[cfg(feature = "mod-seo")]
+    async fn seo_targets_rest_endpoint_requires_manage_permission() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for seo targets permission check");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let tenant = insert_tenant(
+            &ctx,
+            "seo-targets-permission",
+            Some("seo-targets-permission.example.com"),
+        )
+        .await;
+        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
+            .await
+            .expect("seo module should enable");
+
+        let base_router = build_runtime_router(&ctx).await;
+        let mut request = Request::builder()
+            .uri("/api/seo/targets")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant_context(&tenant)));
+        request
+            .extensions_mut()
+            .insert(AuthContextExtension(seo_auth(
+                tenant.id,
+                vec![Permission::SEO_READ],
+            )));
+
+        let response = base_router
+            .oneshot(request)
+            .await
+            .expect("seo targets permission request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("seo targets permission body should read");
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(
+            String::from_utf8_lossy(&body).contains("\"error\":\"unauthorized\""),
+            "permission failure should stay on the unauthorized HTTP contract: {}",
+            String::from_utf8_lossy(&body)
+        );
     }
 
     #[tokio::test]

@@ -4,11 +4,18 @@ use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "ssr")]
 use rustok_seo::SeoService;
+#[cfg(feature = "ssr")]
+use rustok_seo::SeoTargetCapabilityKind;
 use rustok_seo::{
-    SeoModuleSettings, SeoRedirectInput, SeoRedirectRecord, SeoRobotsPreviewRecord,
-    SeoSitemapStatusRecord,
+    SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
+    SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoBulkSelectionInput,
+    SeoBulkSelectionPreviewRecord, SeoDiagnosticsSummaryRecord, SeoModuleSettings,
+    SeoRedirectInput, SeoRedirectRecord, SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
+    SeoTargetRegistryEntry,
 };
 
+#[cfg(feature = "ssr")]
+use rustok_core::ModuleRuntimeExtensions;
 #[cfg(feature = "ssr")]
 use rustok_tenant::entities::tenant_module;
 #[cfg(feature = "ssr")]
@@ -66,6 +73,70 @@ pub async fn save_settings(settings: SeoModuleSettings) -> Result<SeoModuleSetti
 
 pub async fn fetch_robots_preview() -> Result<SeoRobotsPreviewRecord, ApiError> {
     seo_robots_preview_native().await.map_err(Into::into)
+}
+
+pub async fn fetch_diagnostics(
+    locale: Option<String>,
+) -> Result<SeoDiagnosticsSummaryRecord, ApiError> {
+    seo_diagnostics_native(locale).await.map_err(Into::into)
+}
+
+pub async fn fetch_bulk_items(input: SeoBulkListInput) -> Result<SeoBulkPage, ApiError> {
+    seo_bulk_items_native(input).await.map_err(Into::into)
+}
+
+pub async fn fetch_bulk_targets() -> Result<Vec<SeoTargetRegistryEntry>, ApiError> {
+    seo_bulk_targets_native().await.map_err(Into::into)
+}
+
+pub async fn preview_bulk_selection(
+    input: SeoBulkSelectionInput,
+) -> Result<SeoBulkSelectionPreviewRecord, ApiError> {
+    seo_bulk_selection_preview_native(input)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn fetch_bulk_jobs(
+    limit: Option<i32>,
+    status: Option<SeoBulkJobStatus>,
+) -> Result<Vec<SeoBulkJobRecord>, ApiError> {
+    seo_bulk_jobs_native(limit, status)
+        .await
+        .map_err(Into::into)
+}
+
+#[allow(dead_code)]
+pub async fn fetch_bulk_job(job_id: String) -> Result<Option<SeoBulkJobRecord>, ApiError> {
+    seo_bulk_job_native(job_id).await.map_err(Into::into)
+}
+
+pub async fn queue_bulk_apply(input: SeoBulkApplyInput) -> Result<SeoBulkJobRecord, ApiError> {
+    let input = normalize_preview_bulk_apply_input(input);
+    seo_queue_bulk_apply_native(input).await.map_err(Into::into)
+}
+
+fn normalize_preview_bulk_apply_input(mut input: SeoBulkApplyInput) -> SeoBulkApplyInput {
+    if input.apply_mode == SeoBulkApplyMode::PreviewOnly {
+        input.publish_after_write = false;
+    }
+    input
+}
+
+pub async fn queue_bulk_import(input: SeoBulkImportInput) -> Result<SeoBulkJobRecord, ApiError> {
+    seo_queue_bulk_import_native(input)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn queue_bulk_export(input: SeoBulkExportInput) -> Result<SeoBulkJobRecord, ApiError> {
+    seo_queue_bulk_export_native(input)
+        .await
+        .map_err(Into::into)
+}
+
+pub fn bulk_artifact_download_path(job_id: &str, artifact_id: &str) -> String {
+    format!("/api/seo/bulk/jobs/{job_id}/artifacts/{artifact_id}")
 }
 
 #[cfg(feature = "ssr")]
@@ -138,10 +209,19 @@ async fn seo_service_from_context() -> Result<
         .map_err(ServerFnError::new)?;
 
     Ok((
-        SeoService::new(
-            app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
-        ),
+        {
+            let event_bus = rustok_api::loco::transactional_event_bus_from_context(&app_ctx);
+            let extensions = app_ctx
+                .shared_store
+                .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+                .ok_or_else(|| {
+                    ServerFnError::new(
+                        "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
+                    )
+                })?;
+            SeoService::from_runtime_extensions(app_ctx.db.clone(), event_bus, &extensions)
+                .map_err(|err| ServerFnError::new(err.to_string()))?
+        },
         auth,
         tenant,
     ))
@@ -330,6 +410,274 @@ async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord, ServerFnE
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "seo/diagnostics")]
+async fn seo_diagnostics_native(
+    locale: Option<String>,
+) -> Result<SeoDiagnosticsSummaryRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[
+                rustok_core::Permission::SEO_READ,
+                rustok_core::Permission::SEO_MANAGE,
+            ],
+            "seo:read or seo:manage required",
+        )?;
+
+        service
+            .diagnostics_summary(&tenant, locale.as_deref())
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = locale;
+        Err(ServerFnError::new(
+            "seo/diagnostics requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/bulk-items")]
+async fn seo_bulk_items_native(input: SeoBulkListInput) -> Result<SeoBulkPage, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        service
+            .list_bulk_items(&tenant, input)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "seo/bulk-items requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/bulk-targets")]
+async fn seo_bulk_targets_native() -> Result<Vec<SeoTargetRegistryEntry>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, _tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        Ok(service.target_registry_entries(Some(SeoTargetCapabilityKind::Bulk)))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "seo/bulk-targets requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/bulk-selection-preview")]
+async fn seo_bulk_selection_preview_native(
+    input: SeoBulkSelectionInput,
+) -> Result<SeoBulkSelectionPreviewRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        service
+            .preview_bulk_selection_count(&tenant, input)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "seo/bulk-selection-preview requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/bulk-jobs")]
+async fn seo_bulk_jobs_native(
+    limit: Option<i32>,
+    status: Option<SeoBulkJobStatus>,
+) -> Result<Vec<SeoBulkJobRecord>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        service
+            .list_bulk_jobs(
+                tenant.id,
+                limit.unwrap_or(20).clamp(1, 100) as usize,
+                status,
+            )
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (limit, status);
+        Err(ServerFnError::new(
+            "seo/bulk-jobs requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/bulk-job")]
+async fn seo_bulk_job_native(job_id: String) -> Result<Option<SeoBulkJobRecord>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+        let job_id =
+            Uuid::parse_str(job_id.as_str()).map_err(|err| ServerFnError::new(err.to_string()))?;
+
+        service
+            .bulk_job(tenant.id, job_id)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = job_id;
+        Err(ServerFnError::new(
+            "seo/bulk-job requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn require_bulk_write_permissions(
+    auth: &rustok_api::AuthContext,
+    publish_after_write: bool,
+) -> Result<(), ServerFnError> {
+    require_permission(
+        auth,
+        &[rustok_core::Permission::SEO_MANAGE],
+        "seo:manage required",
+    )?;
+    require_permission(
+        auth,
+        &[rustok_core::Permission::SEO_UPDATE],
+        "seo:update required",
+    )?;
+    if publish_after_write {
+        require_permission(
+            auth,
+            &[rustok_core::Permission::SEO_PUBLISH],
+            "seo:publish required",
+        )?;
+    }
+    Ok(())
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/queue-bulk-apply")]
+async fn seo_queue_bulk_apply_native(
+    input: SeoBulkApplyInput,
+) -> Result<SeoBulkJobRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        if input.apply_mode == SeoBulkApplyMode::PreviewOnly {
+            require_permission(
+                &auth,
+                &[rustok_core::Permission::SEO_MANAGE],
+                "seo:manage required",
+            )?;
+        } else {
+            require_bulk_write_permissions(&auth, input.publish_after_write)?;
+        }
+
+        service
+            .queue_bulk_apply(&tenant, Some(auth.user_id), input)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "seo/queue-bulk-apply requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/queue-bulk-import")]
+async fn seo_queue_bulk_import_native(
+    input: SeoBulkImportInput,
+) -> Result<SeoBulkJobRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_bulk_write_permissions(&auth, input.publish_after_write)?;
+
+        service
+            .queue_bulk_import(&tenant, Some(auth.user_id), input)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "seo/queue-bulk-import requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/queue-bulk-export")]
+async fn seo_queue_bulk_export_native(
+    input: SeoBulkExportInput,
+) -> Result<SeoBulkJobRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        service
+            .queue_bulk_export(&tenant, Some(auth.user_id), input)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "seo/queue-bulk-export requires the `ssr` feature",
+        ))
+    }
+}
+
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
     use super::{persist_seo_settings, require_permission, MODULE_SLUG};
@@ -494,6 +842,7 @@ mod tests {
                     "blog.example.com".to_string(),
                 ],
                 x_default_locale: Some(" EN-us ".to_string()),
+                ..SeoModuleSettings::default()
             },
         )
         .await

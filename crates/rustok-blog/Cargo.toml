@@ -6,6 +6,7 @@ license.workspace = true
 description.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
 async-trait.workspace = true
 axum.workspace = true
@@ -20,6 +21,7 @@ rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
+rustok-seo-targets.workspace = true
 rustok-taxonomy.workspace = true
 rustok-telemetry.workspace = true
 sea-orm.workspace = true
@@ -30,6 +32,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
+url = "2.5"
 uuid.workspace = true
 
 [dev-dependencies]

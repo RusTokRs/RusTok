@@ -10,7 +10,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_seo::SeoTargetKind;
+use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
@@ -1003,7 +1003,7 @@ fn CategoriesPage(
 
                 <div class="mt-6">
                     <SeoEntityPanel
-                        target_kind=SeoTargetKind::ForumCategory
+                        target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_CATEGORY).expect("builtin SEO target slug")
                         target_id=Signal::derive(move || editing_id.get())
                         locale=Signal::derive(move || locale.get())
                         panel_title=t(
@@ -1441,7 +1441,7 @@ fn TopicsPage(
                 </section>
 
                 <SeoEntityPanel
-                    target_kind=SeoTargetKind::ForumTopic
+                    target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_TOPIC).expect("builtin SEO target slug")
                     target_id=Signal::derive(move || editing_id.get())
                     locale=Signal::derive(move || locale.get())
                     panel_title=t(

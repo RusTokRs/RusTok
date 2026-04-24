@@ -1,9 +1,12 @@
+mod bulk;
+mod diagnostics;
 mod meta;
 mod redirects;
 mod robots;
 mod routing;
 mod sitemaps;
 mod targets;
+mod templates;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,11 +17,17 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use rustok_content::normalize_locale_code;
-use rustok_core::{normalize_locale_tag, MemoryTransport};
+use rustok_core::{normalize_locale_tag, ModuleRuntimeExtensions};
+#[cfg(test)]
+use rustok_core::{MemoryTransport, RusToKModule};
 use rustok_outbox::TransactionalEventBus;
+use rustok_seo_targets::{
+    seo_target_registry_from_extensions, SeoTargetCapabilityKind, SeoTargetRegistry,
+    SeoTargetRegistryEntry, SeoTargetSlug,
+};
 use rustok_tenant::entities::tenant_module;
 
-use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph, SeoTargetKind};
+use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
 use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
 use crate::{SeoError, SeoResult};
 
@@ -41,6 +50,7 @@ static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<Vec<seo_redirect::Model>>>> = Lazy::
 pub struct SeoService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    registry: Arc<SeoTargetRegistry>,
 }
 
 #[derive(Clone)]
@@ -51,7 +61,7 @@ struct LoadedMeta {
 
 #[derive(Clone)]
 struct TargetState {
-    target_kind: SeoTargetKind,
+    target_kind: SeoTargetSlug,
     target_id: Uuid,
     requested_locale: Option<String>,
     effective_locale: String,
@@ -61,28 +71,47 @@ struct TargetState {
     alternates: Vec<SeoAlternateLink>,
     open_graph: SeoOpenGraph,
     structured_data: serde_json::Value,
-    fallback_source: &'static str,
-}
-
-#[derive(Clone, Debug)]
-enum DirectTarget {
-    Page { slug: String },
-    Product { handle: String },
-    BlogPost { slug: String },
-    ForumCategory { id: Uuid },
-    ForumTopic { id: Uuid },
+    fallback_source: String,
+    template_fields: std::collections::BTreeMap<String, String>,
 }
 
 impl SeoService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
-    }
-
-    pub fn new_memory(db: DatabaseConnection) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        registry: Arc<SeoTargetRegistry>,
+    ) -> Self {
         Self {
             db,
-            event_bus: TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
+            event_bus,
+            registry,
         }
+    }
+
+    pub fn from_runtime_extensions(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        extensions: &ModuleRuntimeExtensions,
+    ) -> SeoResult<Self> {
+        let registry = seo_target_registry_from_extensions(extensions)
+            .ok_or_else(|| SeoError::configuration("SEO target registry is not initialized"))?;
+        Ok(Self::new(db, event_bus, registry))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_builtin_registry(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> Self {
+        Self::new(db, event_bus, built_in_target_registry())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_memory(db: DatabaseConnection) -> Self {
+        Self::with_builtin_registry(
+            db,
+            TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
+        )
     }
 
     pub async fn is_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
@@ -116,8 +145,41 @@ impl SeoService {
             .x_default_locale
             .as_deref()
             .and_then(normalize_locale_tag);
+        settings.template_defaults = templates::normalize_rule_set(settings.template_defaults);
+        settings.template_overrides = settings
+            .template_overrides
+            .into_iter()
+            .filter_map(|(slug, rules)| {
+                let normalized_slug = slug.trim().to_ascii_lowercase();
+                if normalized_slug.is_empty() {
+                    return None;
+                }
+                Some((normalized_slug, templates::normalize_rule_set(rules)))
+            })
+            .collect();
         settings
     }
+
+    pub fn target_registry_entries(
+        &self,
+        capability: Option<SeoTargetCapabilityKind>,
+    ) -> Vec<SeoTargetRegistryEntry> {
+        match capability {
+            Some(capability) => self.registry.entries_with_capability(capability),
+            None => self.registry.entries(),
+        }
+    }
+}
+
+#[cfg(test)]
+fn built_in_target_registry() -> Arc<SeoTargetRegistry> {
+    let mut extensions = ModuleRuntimeExtensions::default();
+    rustok_pages::PagesModule.register_runtime_extensions(&mut extensions);
+    rustok_product::ProductModule.register_runtime_extensions(&mut extensions);
+    rustok_blog::BlogModule.register_runtime_extensions(&mut extensions);
+    rustok_forum::ForumModule.register_runtime_extensions(&mut extensions);
+    seo_target_registry_from_extensions(&extensions)
+        .unwrap_or_else(|| Arc::new(SeoTargetRegistry::default()))
 }
 
 pub(super) fn trimmed_option(value: Option<String>) -> Option<String> {

@@ -1,6 +1,7 @@
 use async_graphql::{
     dataloader::DataLoader, extensions::Analyzer, MergedObject, MergedSubscription, Schema,
 };
+use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
@@ -89,6 +90,7 @@ pub fn build_schema(
     transactional_event_bus: TransactionalEventBus,
     build_event_hub: Arc<BuildEventHub>,
     field_definition_cache: FieldDefinitionCache,
+    runtime_extensions: Arc<ModuleRuntimeExtensions>,
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
     let builder = Schema::build(
@@ -128,7 +130,8 @@ pub fn build_schema(
         .data(transactional_event_bus)
         .data(build_event_hub)
         .data(build_field_def_registry())
-        .data(field_definition_cache);
+        .data(field_definition_cache)
+        .data(runtime_extensions);
 
     #[cfg(feature = "mod-media")]
     let builder = builder.data(storage);
