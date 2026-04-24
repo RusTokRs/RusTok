@@ -72,8 +72,9 @@ slot = "home_after_catalog"
 
 Для Leptos module-owned UI действует такой baseline:
 
-- internal data layer по умолчанию строится на `#[server]` functions;
+- product runtime для Leptos hosts считается SSR-first: internal data layer по умолчанию строится на `#[server]` functions в `ssr`/`hydrate` профилях;
 - GraphQL не удаляется и остаётся параллельным transport-контрактом;
+- CSR/WASM standalone остаётся обязательным debug/compatibility профилем для UI package, поэтому package должен иметь GraphQL/REST fallback и не требовать `/api/fn/*` в `csr`;
 - locale берётся из host/runtime-контракта, а не из локальных cookie/header/query
   fallback chains;
 - UI package не тащит в себя ownership доменной логики, который должен жить в
@@ -84,6 +85,8 @@ slot = "home_after_catalog"
 - Для Leptos storefront-пакетов query/state plumbing тоже должно идти через общий reusable слой:
   читайте route query через `leptos-ui-routing`, не вводите package-local helper поверх
   `UiRouteContext.query_value(...)` и не расходите storefront contract с host-level route semantics.
+
+Почему такой split: module-owned UI package должен жить в двух режимах одновременно. В product monolith host монтирует его через SSR/hydrate и предпочитает `#[server]`, а для standalone debug/headless parity тот же package обязан иметь GraphQL/REST fallback и не зависеть от `/api/fn/*` в CSR.
 
 Для Next.js host integration:
 
@@ -132,6 +135,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 - не оставлять `admin/` или `storefront/` без manifest wiring;
 - не вводить отдельный i18n-контракт на уровне UI package;
 - не inventить package-local route-selection contract поверх host schema;
+- не описывать standalone CSR/Trunk как production default для Leptos hosts;
 - не считать старые инструкции по установке и деплою canonical source of truth;
 - не заменять GraphQL на `#[server]` и не заменять `#[server]` на GraphQL там,
   где нужен параллельный transport-контракт.
@@ -142,4 +146,5 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 - [Контракт `rustok-module.toml`](./manifest.md)
 - [Шаблон документации модуля](../templates/module_contract.md)
 - [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI README](../UI/README.md)

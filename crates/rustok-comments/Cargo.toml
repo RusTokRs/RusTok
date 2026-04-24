@@ -5,18 +5,32 @@ edition.workspace = true
 license.workspace = true
 description = "Generic comments domain for blog and other opt-in non-forum discussion surfaces"
 
+[features]
+default = ["server"]
+server = [
+  "dep:async-trait",
+  "dep:chrono",
+  "dep:rustok-content",
+  "dep:rustok-core",
+  "dep:rustok-telemetry",
+  "dep:sea-orm",
+  "dep:sea-orm-migration",
+  "dep:thiserror",
+  "dep:tracing",
+]
+
 [dependencies]
-async-trait.workspace = true
-chrono.workspace = true
-rustok-content.workspace = true
-rustok-core.workspace = true
-rustok-telemetry.workspace = true
-sea-orm.workspace = true
-sea-orm-migration.workspace = true
+async-trait = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+rustok-content = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-telemetry = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
+thiserror = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]

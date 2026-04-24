@@ -5,15 +5,26 @@ edition.workspace = true
 license.workspace = true
 description = "Shared RusToK web/API contracts for server adapters and module-facing GraphQL/HTTP integration"
 
+[features]
+default = []
+server = [
+  "dep:async-graphql",
+  "dep:axum",
+  "dep:rustok-core",
+  "dep:rustok-tenant",
+  "dep:sea-orm",
+]
+loco-adapter = ["server", "dep:loco-rs", "dep:rustok-outbox"]
+
 [dependencies]
-async-graphql.workspace = true
-axum.workspace = true
+async-graphql = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
 base64.workspace = true
-loco-rs.workspace = true
-rustok-core.workspace = true
-rustok-tenant.workspace = true
-rustok-outbox.workspace = true
-sea-orm.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

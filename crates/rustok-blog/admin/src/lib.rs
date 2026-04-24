@@ -8,11 +8,23 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
+use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
+
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
 
 #[component]
 pub fn BlogAdmin() -> impl IntoView {
@@ -105,7 +117,7 @@ pub fn BlogAdmin() -> impl IntoView {
         }
     });
 
-    let posts_resource = Resource::new(
+    let posts_resource = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get(), locale.get()),
         move |(token_value, tenant_value, _, locale_value)| async move {
             api::fetch_posts(token_value, tenant_value, Some(locale_value)).await

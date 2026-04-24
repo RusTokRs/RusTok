@@ -6,6 +6,18 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use crate::app::modules::core_module_slugs;
 use crate::features::modules::api;
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone)]
 pub struct EnabledModulesContext {
     pub modules: RwSignal<HashSet<String>>,
@@ -54,7 +66,7 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
-    let resource = Resource::new(
+    let resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             if token_value.is_none() || tenant_value.is_none() {

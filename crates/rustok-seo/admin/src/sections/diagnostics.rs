@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use rustok_seo::{
-    SeoDiagnosticsSummaryRecord, SeoModuleSettings, SeoRedirectRecord, SeoRobotsPreviewRecord,
-    SeoSitemapStatusRecord,
+    SeoDiagnosticCountRecord, SeoDiagnosticsSummaryRecord, SeoModuleSettings, SeoRedirectRecord,
+    SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
 };
 
 use crate::api::ApiError;
@@ -61,6 +61,10 @@ fn DiagnosticsHealthCard(
                                     <li>{format!("Issues: {} ({} errors, {} warnings)", summary.issue_count, summary.error_count, summary.warning_count)}</li>
                                     <li>{format!("Effective sources: {} explicit, {} generated, {} fallback", summary.explicit_count, summary.generated_count, summary.fallback_count)}</li>
                                 </ul>
+                                <div class="grid gap-3 lg:grid-cols-2">
+                                    <IssueCounts title="By issue code".to_string() counts=summary.issue_counts_by_code.clone() />
+                                    <IssueCounts title="By target kind".to_string() counts=summary.issue_counts_by_target_kind.clone() />
+                                </div>
                                 <Show when=move || has_issues>
                                     <div class="space-y-2">
                                         <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">"Top issues"</h4>
@@ -70,7 +74,7 @@ fn DiagnosticsHealthCard(
                                                     <li class="rounded-lg border border-border/70 px-3 py-2">
                                                         <div class="font-medium text-foreground">{format!("[{}] {}", issue.code, issue.message)}</div>
                                                         <div class="mt-1 text-xs text-muted-foreground">
-                                                            {format!("{} / {} / {}", issue.target_kind.as_str(), issue.target_id, issue.source)}
+                                                            {format!("{} / {} / {} / {}", issue.target_kind.as_str(), issue.target_label, issue.route, issue.source)}
                                                         </div>
                                                     </li>
                                                 }
@@ -85,6 +89,34 @@ fn DiagnosticsHealthCard(
                     None => view! { <p class="text-sm text-muted-foreground">"No diagnostics available."</p> }.into_any(),
                 }}
             </Suspense>
+        </div>
+    }
+}
+
+#[component]
+fn IssueCounts(title: String, counts: Vec<SeoDiagnosticCountRecord>) -> impl IntoView {
+    let counts_view = if counts.is_empty() {
+        view! { <p class="text-xs text-muted-foreground">"none"</p> }.into_any()
+    } else {
+        view! {
+            <ul class="space-y-1">
+                {counts.into_iter().take(6).map(|item| {
+                    view! {
+                        <li class="flex items-center justify-between gap-3 text-xs">
+                            <span class="truncate text-muted-foreground">{item.key}</span>
+                            <span class="font-medium text-foreground">{item.count}</span>
+                        </li>
+                    }
+                }).collect_view()}
+            </ul>
+        }
+        .into_any()
+    };
+
+    view! {
+        <div class="rounded-lg border border-border/70 px-3 py-2">
+            <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+            {counts_view}
         </div>
     }
 }

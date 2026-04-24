@@ -28,7 +28,7 @@ leptos-auth.workspace = true
 leptos-graphql.workspace = true
 loco-rs = { workspace = true, optional = true, features = ["testing"] }
 rustok-cart = { workspace = true, optional = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

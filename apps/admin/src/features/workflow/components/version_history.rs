@@ -3,6 +3,18 @@ use leptos::task::spawn_local;
 
 use crate::features::workflow::api::{self, WorkflowVersionSummaryDto};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn VersionHistory(
     workflow_id: String,
@@ -16,7 +28,7 @@ pub fn VersionHistory(
     let wf_id = workflow_id.clone();
     let tok = token.clone();
     let ts = tenant_slug.clone();
-    let versions_resource = Resource::new_blocking(
+    let versions_resource = local_resource(
         move || (tok.clone(), ts.clone(), wf_id.clone()),
         move |(tok, ts, id)| async move { api::fetch_versions(tok, ts, id).await },
     );

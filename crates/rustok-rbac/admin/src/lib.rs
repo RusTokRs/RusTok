@@ -8,13 +8,25 @@ use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn RbacAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |_| async move { api::fetch_bootstrap().await },
     );

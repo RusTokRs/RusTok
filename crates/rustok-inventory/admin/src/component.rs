@@ -3,14 +3,29 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_core::locale_tags_match;
 
 use crate::i18n::t;
 use crate::model::{
     InventoryAdminBootstrap, InventoryProductDetail, InventoryProductListItem, InventoryVariant,
 };
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 const LOW_STOCK_THRESHOLD: i32 = 5;
+
+fn locale_tags_match(left: &str, right: &str) -> bool {
+    left.trim().replace('_', "-").eq_ignore_ascii_case(&right.trim().replace('_', "-"))
+}
 
 #[component]
 pub fn InventoryAdmin() -> impl IntoView {
@@ -32,14 +47,14 @@ pub fn InventoryAdmin() -> impl IntoView {
     let effective_locale_for_products = effective_locale.clone();
     let effective_locale_for_open = effective_locale.clone();
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             crate::api::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let products = Resource::new(
+    let products = local_resource(
         move || {
             (
                 token.get(),

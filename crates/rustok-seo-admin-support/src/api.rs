@@ -1,5 +1,7 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use rustok_seo::SeoTargetSlug;
+#[cfg(target_arch = "wasm32")]
+use leptos::web_sys;
+use rustok_seo_targets::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{SeoMetaMutationInput, SeoMetaView, SeoRevisionView};
@@ -191,7 +193,7 @@ mod tests {
         PUBLISH_REVISION_MUTATION, SEO_META_QUERY, UPSERT_SEO_META_MUTATION,
     };
     use crate::model::{SeoMetaMutationInput, SeoMetaTranslationMutationInput};
-    use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
+    use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
     use serde_json::json;
     use uuid::Uuid;
 

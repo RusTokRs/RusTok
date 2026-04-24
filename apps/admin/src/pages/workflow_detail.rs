@@ -10,6 +10,18 @@ use crate::features::workflow::{
 };
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Params, PartialEq)]
 struct WorkflowParams {
     id: Option<String>,
@@ -37,7 +49,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
         })
     };
 
-    let data_resource = Resource::new(
+    let data_resource = local_resource(
         move || (token.get(), tenant.get(), workflow_id()),
         move |(token_val, tenant_val, wf_id): (Option<String>, Option<String>, String)| async move {
             if wf_id.is_empty() {

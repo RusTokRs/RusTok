@@ -153,7 +153,7 @@ pub fn compose_application_router(
 
     mount_application_shell(
         router.route(
-            "/api/fn/*fn_name",
+            "/api/fn/{*fn_name}",
             post(move |req| {
                 let ctx = server_fn_ctx.clone();
                 let registry = server_fn_registry.clone();

@@ -146,6 +146,7 @@ impl MigrationTrait for Migration {
 
 #[derive(Iden)]
 pub enum OAuthApps {
+    #[iden = "oauth_apps"]
     Table,
     Id,
     TenantId,

@@ -7,6 +7,18 @@ use crate::shared::api::{request, ApiError};
 use crate::shared::ui::{Alert, AlertVariant, PageHeader};
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct GraphqlRolesResponse {
     roles: Vec<RoleInfo>,
@@ -116,7 +128,7 @@ pub fn RolesPage() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
-    let roles_resource = Resource::new(
+    let roles_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move { fetch_roles(token_value, tenant_value).await },
     );

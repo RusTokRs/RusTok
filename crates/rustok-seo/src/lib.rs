@@ -1,13 +1,22 @@
+#[cfg(feature = "server")]
 pub mod controllers;
 pub mod dto;
+#[cfg(feature = "server")]
 pub mod entities;
+#[cfg(feature = "server")]
 pub mod error;
+#[cfg(feature = "server")]
 pub mod graphql;
+#[cfg(feature = "server")]
 pub mod migrations;
+#[cfg(feature = "server")]
 pub mod services;
 
+#[cfg(feature = "server")]
 use async_trait::async_trait;
+#[cfg(feature = "server")]
 use rustok_core::{MigrationSource, Permission, RusToKModule};
+#[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
@@ -16,25 +25,32 @@ pub use dto::{
     SeoBulkItem, SeoBulkJobOperationKind, SeoBulkJobRecord, SeoBulkJobStatus,
     SeoBulkJsonFieldPatch, SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkPage,
     SeoBulkSelectionInput, SeoBulkSelectionMode, SeoBulkSelectionPreviewRecord, SeoBulkSource,
-    SeoBulkStringFieldPatch, SeoDiagnosticIssueRecord, SeoDiagnosticSeverity,
-    SeoDiagnosticsSummaryRecord, SeoDocument, SeoDocumentEffectiveState, SeoFieldSource,
-    SeoFieldState, SeoImageAsset, SeoLinkTag, SeoMetaInput, SeoMetaRecord, SeoMetaTag,
-    SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
+    SeoBulkStringFieldPatch, SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord,
+    SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoDocument, SeoDocumentEffectiveState,
+    SeoFieldSource, SeoFieldState, SeoImageAsset, SeoLinkTag, SeoMetaInput, SeoMetaRecord,
+    SeoMetaTag, SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
     SeoPageContext, SeoPagination, SeoRedirectDecision, SeoRedirectInput, SeoRedirectMatchType,
     SeoRedirectRecord, SeoRevisionRecord, SeoRobots, SeoRobotsPreviewRecord, SeoRouteContext,
     SeoSitemapFileRecord, SeoSitemapStatusRecord, SeoStructuredDataBlock, SeoTemplateRuleSet,
     SeoTwitterCard, SeoVerification, SeoVerificationTag,
 };
+#[cfg(feature = "server")]
 pub use error::{SeoError, SeoResult};
+#[cfg(feature = "server")]
 pub use graphql::{SeoMutation, SeoQuery};
 pub use rustok_seo_targets::{
     builtin_slug as seo_builtin_slug, SeoTargetCapabilities, SeoTargetCapabilityKind,
-    SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
+    SeoTargetRegistryEntry, SeoTargetSlug,
 };
+#[cfg(feature = "server")]
+pub use rustok_seo_targets::SeoTargetRegistry;
+#[cfg(feature = "server")]
 pub use services::SeoService;
 
+#[cfg(feature = "server")]
 pub struct SeoModule;
 
+#[cfg(feature = "server")]
 #[async_trait]
 impl RusToKModule for SeoModule {
     fn slug(&self) -> &'static str {
@@ -68,6 +84,7 @@ impl RusToKModule for SeoModule {
     }
 }
 
+#[cfg(feature = "server")]
 impl MigrationSource for SeoModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()

@@ -715,7 +715,14 @@ pub async fn sync_app_connections(
 ) -> Result<()> {
     let existing = OAuthApps::find_by_tenant(db, tenant_id)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                error = %error,
+                "Failed to load OAuth apps for tenant during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
 
     let mut active_slugs = std::collections::HashSet::new();
 
@@ -786,10 +793,25 @@ pub async fn sync_manifest_managed_apps_for_all_tenants(
 ) -> Result<()> {
     let tenants = tenants::Entity::find_active(db)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| {
+            tracing::error!(
+                error = %error,
+                "Failed to load active tenants during manifest OAuth sync"
+            );
+            Error::InternalServerError
+        })?;
 
     for tenant in tenants {
-        sync_app_connections(db, tenant.id, manifest).await?;
+        sync_app_connections(db, tenant.id, manifest)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    tenant_id = %tenant.id,
+                    error = %error,
+                    "Failed to sync manifest OAuth apps for tenant"
+                );
+                error
+            })?;
     }
 
     Ok(())
@@ -810,7 +832,15 @@ async fn upsert_embedded_app(
         )
         .one(db)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to find embedded OAuth app during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
 
     if let Some(app) = existing {
         // Re-activate if it was deactivated
@@ -822,7 +852,15 @@ async fn upsert_embedded_app(
             active
                 .update(db)
                 .await
-                .map_err(|_| Error::InternalServerError)?;
+                .map_err(|error| {
+                    tracing::error!(
+                        tenant_id = %tenant_id,
+                        slug = slug,
+                        error = %error,
+                        "Failed to reactivate embedded OAuth app during manifest sync"
+                    );
+                    Error::InternalServerError
+                })?;
         }
     } else {
         let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
@@ -851,7 +889,15 @@ async fn upsert_embedded_app(
         }
         .insert(db)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to create embedded OAuth app during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
     }
 
     Ok(())
@@ -888,7 +934,15 @@ async fn upsert_first_party_app(
         )
         .one(db)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to find first-party OAuth app during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
 
     if let Some(app) = existing {
         // Re-activate if deactivated; update scopes/grant_types
@@ -911,7 +965,15 @@ async fn upsert_first_party_app(
         active
             .update(db)
             .await
-            .map_err(|_| Error::InternalServerError)?;
+            .map_err(|error| {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    error = %error,
+                    "Failed to update first-party OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?;
     } else {
         let client_secret_plain = generate_client_secret();
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;
@@ -945,7 +1007,15 @@ async fn upsert_first_party_app(
         }
         .insert(db)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to create first-party OAuth app during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
 
         // Log the credentials (in production, these should go to a secure channel)
         tracing::info!(

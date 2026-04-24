@@ -15,13 +15,14 @@ ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-core",
+  "dep:rustok-rbac",
 ]
 
 [dependencies]
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
-rustok-rbac.workspace = true
+rustok-rbac = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

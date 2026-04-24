@@ -183,7 +183,7 @@ graph TD
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
 | `comments` | `rustok-comments` | — | Generic comments domain |
 | `pages` | `rustok-pages` | `content` | Pages, menus, page-builder surfaces |
-| `seo` | `rustok-seo` | `content` | Tenant-aware SEO runtime: explicit metadata overrides, template-generated SEO, bulk remediation modes, redirects, sitemap/robots generation, diagnostics, shared SEO capability contracts, cross-cutting SEO infrastructure UI, storefront-facing SSR page context and headless REST read path `/api/seo/page-context`; entity SEO authoring belongs to owner modules |
+| `seo` | `rustok-seo` | `content` | Tenant-aware SEO runtime: explicit metadata overrides, template-generated SEO, bulk remediation modes, redirects, sitemap/robots generation, diagnostics/readiness scoring, shared SEO capability contracts, cross-cutting SEO infrastructure UI, storefront-facing SSR page context and headless REST read path `/api/seo/page-context`; entity SEO authoring belongs to owner modules |
 | `taxonomy` | `rustok-taxonomy` | `content` | Shared vocabulary/dictionary layer |
 | `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
 | `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |

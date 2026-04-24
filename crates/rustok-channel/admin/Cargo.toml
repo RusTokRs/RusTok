@@ -26,7 +26,7 @@ leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 leptos_router.workspace = true
 loco-rs = { workspace = true, optional = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }

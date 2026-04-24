@@ -10,6 +10,18 @@ use rustok_comments::{CommentStatus, CommentThreadStatus};
 
 use crate::i18n::t;
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn CommentsAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -92,7 +104,7 @@ pub fn CommentsAdmin() -> impl IntoView {
     let detail_error_locale = ui_locale.clone();
     let route_effect_locale = ui_locale.clone();
 
-    let threads = Resource::new(
+    let threads = local_resource(
         move || {
             (
                 token.get(),
@@ -116,7 +128,7 @@ pub fn CommentsAdmin() -> impl IntoView {
         },
     );
 
-    let detail = Resource::new(
+    let detail = local_resource(
         move || {
             (
                 token.get(),

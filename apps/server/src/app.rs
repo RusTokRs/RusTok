@@ -148,17 +148,23 @@ impl Hooks for App {
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
+        tracing::info!("RusTok after_routes bootstrap started");
         let rustok_settings = RustokSettings::from_settings(&ctx.config.settings)
             .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
         let runtime = bootstrap_app_runtime(ctx, &rustok_settings).await?;
+        tracing::info!("RusTok app runtime bootstrap completed");
         connect_runtime_workers(ctx).await?;
+        tracing::info!("RusTok runtime workers connected");
 
-        Ok(compose_application_router(
+        let router = compose_application_router(
             router,
             ctx,
             runtime,
             &rustok_settings,
-        ))
+        );
+        tracing::info!("RusTok application router composed");
+
+        Ok(router)
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {

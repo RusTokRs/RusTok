@@ -19,6 +19,7 @@ Thumbs.db
 
 # Environment files
 .env
+.env.dev
 .env.local
 .env.*.local
 
@@ -106,4 +107,5 @@ dump.rdb
 # Local configuration overrides
 config.local.toml
 config.*.local.toml
+modules.local.toml
 /target_codex_permissions/

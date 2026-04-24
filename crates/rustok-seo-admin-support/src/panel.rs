@@ -2,14 +2,14 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_core::normalize_locale_tag;
-use rustok_seo::SeoTargetSlug;
+use rustok_seo_targets::SeoTargetSlug;
 
 use crate::api;
 use crate::components::{SeoSnippetPreviewCard, SeoSummaryTile};
 use crate::i18n::{
     recommendation, recommendations_count_label, source_label, tr, validation_error, working_label,
 };
+use crate::locale::normalize_locale_tag;
 use crate::model::{validate_target_id, SeoCompletenessReport, SeoEntityForm, SeoMetaView};
 
 #[component]

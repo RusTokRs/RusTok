@@ -7,7 +7,12 @@ use rustok_telemetry::{LogFormat, TelemetryConfig};
 async fn main() -> eyre::Result<()> {
     let telemetry_cfg = telemetry_config();
     let has_otel = telemetry_cfg.otel.is_some();
-    let _telemetry = rustok_telemetry::init(telemetry_cfg)?;
+    let _telemetry = if has_otel {
+        rustok_telemetry::init(telemetry_cfg)?
+    } else {
+        // Loco owns the global tracing subscriber for CLI commands.
+        rustok_telemetry::init_metrics(telemetry_cfg.metrics)?
+    };
     let result = cli::main::<App, Migrator>().await;
     if has_otel {
         rustok_telemetry::otel::shutdown().await;

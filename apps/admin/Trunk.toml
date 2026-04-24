@@ -6,12 +6,14 @@ public_url = "/"
 [watch]
 ignore = ["./dist"]
 
+[[proxy]]
+backend = "http://localhost:5150/api/"
+rewrite = "/api/"
+ws = true
+
 [[hooks]]
 stage = "build"
 command = "npx"
 command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", "--minify"]
 
-[[hooks]]
-stage = "watch"
-command = "npx"
-command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css"]
+

@@ -18,6 +18,18 @@ use crate::model::{
     SearchQueryRulePayload, SearchStopWordPayload, SearchSynonymPayload,
 };
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone)]
 struct SearchPreviewLabels {
     title: String,
@@ -128,31 +140,31 @@ pub fn SearchAdmin() -> impl IntoView {
     let (settings_feedback, set_settings_feedback) = signal(Option::<String>::None);
     let preview_query_writer = query_writer.clone();
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_bootstrap(token_value, tenant_value).await
         },
     );
-    let lagging_documents = Resource::new(
+    let lagging_documents = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_lagging_documents(token_value, tenant_value, Some(25)).await
         },
     );
-    let consistency_issues = Resource::new(
+    let consistency_issues = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_consistency_issues(token_value, tenant_value, Some(25)).await
         },
     );
-    let search_analytics = Resource::new(
+    let search_analytics = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_search_analytics(token_value, tenant_value, Some(7), Some(10)).await
         },
     );
-    let filter_presets = Resource::new(
+    let filter_presets = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_filter_presets(token_value, tenant_value, "search_preview").await
@@ -705,7 +717,7 @@ fn playground_view(
     set_ranking_profile: WriteSignal<String>,
     preset_key: ReadSignal<String>,
     set_preset_key: WriteSignal<String>,
-    filter_presets: Resource<Result<Vec<SearchFilterPresetPayload>, api::ApiError>>,
+    filter_presets: LocalResource<Result<Vec<SearchFilterPresetPayload>, api::ApiError>>,
     preview: ReadSignal<Option<SearchPreviewPayload>>,
     preview_error: ReadSignal<Option<String>>,
     busy: ReadSignal<bool>,
@@ -834,9 +846,9 @@ fn playground_view(
 fn analytics_view(
     ui_locale: Option<String>,
     diagnostics: SearchDiagnosticsPayload,
-    lagging_documents: Resource<Result<Vec<LaggingSearchDocumentPayload>, api::ApiError>>,
-    consistency_issues: Resource<Result<Vec<SearchConsistencyIssuePayload>, api::ApiError>>,
-    search_analytics: Resource<Result<SearchAnalyticsPayload, api::ApiError>>,
+    lagging_documents: LocalResource<Result<Vec<LaggingSearchDocumentPayload>, api::ApiError>>,
+    consistency_issues: LocalResource<Result<Vec<SearchConsistencyIssuePayload>, api::ApiError>>,
+    search_analytics: LocalResource<Result<SearchAnalyticsPayload, api::ApiError>>,
 ) -> impl IntoView {
     let locale = ui_locale.clone();
     let locale_ref = locale.as_deref();
@@ -1325,7 +1337,7 @@ fn DictionariesView() -> impl IntoView {
         "Failed to load search dictionaries",
     );
 
-    let snapshot = Resource::new(
+    let snapshot = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_dictionary_snapshot(token_value, tenant_value).await

@@ -1,14 +1,20 @@
 use std::collections::BTreeMap;
 use std::fmt;
+#[cfg(feature = "server")]
 use std::sync::Arc;
 
+#[cfg(feature = "server")]
 use anyhow::Result as AnyResult;
 use async_graphql::{
     Enum, InputValueError, InputValueResult, Scalar, ScalarType, SimpleObject, Value,
 };
+#[cfg(feature = "server")]
 use async_trait::async_trait;
+#[cfg(feature = "server")]
 use rustok_core::ModuleRuntimeExtensions;
+#[cfg(feature = "server")]
 use rustok_outbox::TransactionalEventBus;
+#[cfg(feature = "server")]
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -169,18 +175,21 @@ pub enum SeoTargetCapabilityKind {
     Sitemaps,
 }
 
+#[cfg(feature = "server")]
 #[derive(Clone)]
 pub struct SeoTargetRuntimeContext {
     pub db: DatabaseConnection,
     pub event_bus: TransactionalEventBus,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum SeoTargetLoadScope {
     Authoring,
     PublicRoute,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetLoadRequest<'a> {
     pub tenant_id: Uuid,
@@ -191,6 +200,7 @@ pub struct SeoTargetLoadRequest<'a> {
     pub channel_slug: Option<&'a str>,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetRouteResolveRequest<'a> {
     pub tenant_id: Uuid,
@@ -200,6 +210,7 @@ pub struct SeoTargetRouteResolveRequest<'a> {
     pub channel_slug: Option<&'a str>,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetBulkListRequest<'a> {
     pub tenant_id: Uuid,
@@ -207,6 +218,7 @@ pub struct SeoTargetBulkListRequest<'a> {
     pub locale: &'a str,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetSitemapRequest<'a> {
     pub tenant_id: Uuid,
@@ -303,12 +315,14 @@ pub struct SeoSitemapCandidateRecord {
     pub route: String,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum SeoTargetRegistryError {
     #[error("SEO target slug `{0}` is already registered")]
     DuplicateSlug(SeoTargetSlug),
 }
 
+#[cfg(feature = "server")]
 #[async_trait]
 pub trait SeoTargetProvider: Send + Sync {
     fn slug(&self) -> SeoTargetSlug;
@@ -350,11 +364,13 @@ pub trait SeoTargetProvider: Send + Sync {
     }
 }
 
+#[cfg(feature = "server")]
 #[derive(Clone, Default)]
 pub struct SeoTargetRegistry {
     providers: BTreeMap<SeoTargetSlug, Arc<dyn SeoTargetProvider>>,
 }
 
+#[cfg(feature = "server")]
 impl SeoTargetRegistry {
     pub fn register<P>(&mut self, provider: P) -> Result<(), SeoTargetRegistryError>
     where
@@ -419,6 +435,7 @@ impl SeoTargetRegistry {
     }
 }
 
+#[cfg(feature = "server")]
 pub fn register_seo_target_provider<P>(
     extensions: &mut ModuleRuntimeExtensions,
     provider: P,
@@ -431,6 +448,7 @@ where
     Arc::make_mut(registry).register(provider)
 }
 
+#[cfg(feature = "server")]
 pub fn seo_target_registry_from_extensions(
     extensions: &ModuleRuntimeExtensions,
 ) -> Option<Arc<SeoTargetRegistry>> {

@@ -1,8 +1,9 @@
-use rustok_core::normalize_locale_tag;
-use rustok_seo::SeoTargetSlug;
+use rustok_seo_targets::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
+
+use crate::locale::normalize_locale_tag;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SeoMetaTranslationView {
@@ -283,7 +284,7 @@ fn non_empty_option(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{SeoEntityForm, SeoRecommendation};
-    use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
+    use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
     use uuid::Uuid;
 
     #[test]

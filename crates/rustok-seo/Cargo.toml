@@ -5,35 +5,60 @@ edition.workspace = true
 license.workspace = true
 description = "SEO runtime, metadata, redirects, sitemaps, and robots module"
 
+[features]
+default = ["server"]
+server = [
+  "dep:async-trait",
+  "dep:axum",
+  "dep:csv",
+  "dep:loco-rs",
+  "dep:moka",
+  "dep:rustok-api",
+  "dep:rustok-blog",
+  "dep:rustok-commerce-foundation",
+  "dep:rustok-content",
+  "dep:rustok-core",
+  "dep:rustok-forum",
+  "dep:rustok-outbox",
+  "dep:rustok-pages",
+  "dep:rustok-product",
+  "dep:rustok-tenant",
+  "dep:sea-orm",
+  "dep:sea-orm-migration",
+  "dep:thiserror",
+  "dep:tracing",
+  "dep:url",
+]
+
 [dependencies]
 async-graphql.workspace = true
-async-trait.workspace = true
-axum.workspace = true
+async-trait = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
 chrono.workspace = true
-csv.workspace = true
-loco-rs.workspace = true
-moka.workspace = true
+csv = { workspace = true, optional = true }
+loco-rs = { workspace = true, optional = true }
+moka = { workspace = true, optional = true }
 once_cell.workspace = true
-sea-orm.workspace = true
-sea-orm-migration.workspace = true
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-url = "2.5"
+thiserror = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+url = { version = "2.5", optional = true }
 uuid.workspace = true
 
-rustok-api.workspace = true
-rustok-blog.workspace = true
-rustok-commerce-foundation.workspace = true
-rustok-content.workspace = true
-rustok-core.workspace = true
-rustok-forum.workspace = true
-rustok-outbox.workspace = true
-rustok-pages.workspace = true
-rustok-product.workspace = true
-rustok-seo-targets.workspace = true
-rustok-tenant.workspace = true
+rustok-api = { workspace = true, optional = true }
+rustok-blog = { workspace = true, optional = true }
+rustok-commerce-foundation = { workspace = true, optional = true }
+rustok-content = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-forum = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+rustok-pages = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
+rustok-seo-targets = { path = "../rustok-seo-targets", default-features = false }
+rustok-tenant = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true

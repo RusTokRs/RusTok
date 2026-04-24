@@ -14,6 +14,18 @@ use crate::helpers::{
 use crate::i18n::t;
 use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn OrderAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -36,14 +48,14 @@ pub fn OrderAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             crate::api::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let orders = Resource::new(
+    let orders = local_resource(
         move || {
             (
                 token.get(),

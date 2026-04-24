@@ -23,7 +23,7 @@ ssr = [
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 loco-rs = { workspace = true, optional = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-region = { workspace = true, optional = true }

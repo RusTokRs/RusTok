@@ -11,6 +11,7 @@
 - keep public forum topic SEO resolution channel-aware when a topic is restricted by forum channel access
 - resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
 - run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite
+- expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, and canonical redirect chain/loop detection
 - manage manual redirects and canonical overrides
 - generate sitemap files and serve `robots.txt`
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context

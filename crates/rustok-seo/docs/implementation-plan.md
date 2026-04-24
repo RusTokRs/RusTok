@@ -20,7 +20,7 @@
 - `rustok-seo-admin` разбит на `lib/component/model/api/i18n/sections` и больше не содержит central entity metadata editor;
 - owner-side SEO panels встроены в `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin`;
 - target extensibility идёт через `rustok-seo-targets` и runtime registration providers;
-- tenant templates и diagnostics уже являются first-class read/control-plane слоями.
+- tenant templates и diagnostics уже являются first-class read/control-plane слоями; diagnostics покрывает issue aggregates, canonical redirect chains/loops и hreflang gaps.
 
 ## Этапы
 
@@ -66,6 +66,9 @@
 #### Diagnostics
 
 - [x] `seoDiagnostics` возвращает readiness score, issue list и source counts.
+- [x] `seoDiagnostics` возвращает counts by issue code и target kind для admin filters/remediation entrypoints.
+- [x] Diagnostics ловит canonical redirect targets/chains/loops.
+- [x] Diagnostics ловит missing hreflang alternates и missing `x-default` для localized targets.
 - [x] Admin diagnostics pane показывает tenant SEO health без переноса entity editors в SEO module.
 
 ### Следующий scope

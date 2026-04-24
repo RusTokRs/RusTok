@@ -222,6 +222,10 @@ fn get_api_url() -> String {
         return url.trim_end_matches("/api/graphql").to_string();
     }
 
+    if let Some(url) = option_env!("RUSTOK_API_URL") {
+        return url.trim_end_matches('/').to_string();
+    }
+
     #[cfg(target_arch = "wasm32")]
     {
         web_sys::window()

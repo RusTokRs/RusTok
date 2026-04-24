@@ -19,7 +19,7 @@ Entity-specific SEO authoring now lives in owner-module admin packages.
 - manage tenant-scoped SEO template defaults and per-target template overrides
 - preview tenant-level `robots.txt` and linked public URLs
 - trigger sitemap generation and show the latest sitemap status
-- surface cross-cutting SEO diagnostics, readiness scoring, and explicit/generated/fallback source counts without taking over entity editors
+- surface cross-cutting SEO diagnostics, readiness scoring, issue aggregates, canonical redirect issues, hreflang gaps, and explicit/generated/fallback source counts without taking over entity editors
 - keep the control-plane route state URL-owned through the typed `tab` query key
 - stay out of page/product/blog/forum entity editors
 

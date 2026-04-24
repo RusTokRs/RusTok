@@ -27,9 +27,9 @@ leptos-auth.workspace = true
 leptos-ui-routing.workspace = true
 leptos_axum = { workspace = true, optional = true }
 loco-rs = { workspace = true, optional = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
-rustok-seo.workspace = true
+rustok-seo = { path = "..", default-features = false }
 rustok-tenant = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

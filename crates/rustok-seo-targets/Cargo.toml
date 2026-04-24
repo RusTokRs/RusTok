@@ -5,15 +5,25 @@ edition.workspace = true
 license.workspace = true
 description = "Runtime SEO target capability registry for owner modules"
 
+[features]
+default = ["server"]
+server = [
+  "dep:anyhow",
+  "dep:async-trait",
+  "dep:rustok-core",
+  "dep:rustok-outbox",
+  "dep:sea-orm",
+]
+
 [dependencies]
-anyhow.workspace = true
+anyhow = { workspace = true, optional = true }
 async-graphql.workspace = true
-async-trait.workspace = true
-sea-orm.workspace = true
+async-trait = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
-rustok-core.workspace = true
-rustok-outbox.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }

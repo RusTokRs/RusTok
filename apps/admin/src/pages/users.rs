@@ -17,6 +17,18 @@ use crate::shared::api::{request, request_with_persisted, ApiError};
 use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct CreateUserVariables {
     input: CreateUserInput,
@@ -465,7 +477,7 @@ pub fn Users() -> impl IntoView {
         navigate(&format!("/users{}", search_string), Default::default());
     });
 
-    let users_resource = Resource::new(
+    let users_resource = local_resource(
         move || {
             (
                 refresh_counter.get(),

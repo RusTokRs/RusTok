@@ -7,6 +7,18 @@ use crate::features::workflow::{api, TemplateGallery, WorkflowList};
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn Workflows() -> impl IntoView {
     let i18n = use_i18n();
@@ -16,7 +28,7 @@ pub fn Workflows() -> impl IntoView {
 
     let (show_templates, set_show_templates) = signal(false);
 
-    let workflows_resource = Resource::new(
+    let workflows_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_val, tenant_val)| async move { api::fetch_workflows(token_val, tenant_val).await },
     );

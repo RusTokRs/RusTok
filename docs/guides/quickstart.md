@@ -77,6 +77,31 @@ Password: admin12345
 
 ## 🔧 Ручной запуск без Docker
 
+### Bootstrap без Docker Compose
+
+Канонический путь локальной установки без Docker Compose:
+
+```bash
+cargo xtask install-dev --create-db
+```
+
+Если PostgreSQL admin-пользователь отличается от `postgres:postgres`, передайте его явно:
+
+```bash
+cargo xtask install-dev --create-db --pg-admin-url postgres://postgres:<password>@localhost:5432/postgres
+```
+
+Команда проверяет локальные инструменты, готовит `.env.dev`, `apps/next-admin/.env.local`,
+создаёт `modules.local.toml` для standalone UI, применяет миграции и запускает dev seed.
+После bootstrap сервер и админки запускаются отдельно, чтобы логи и debug-сессии не смешивались.
+
+Если `target/debug/rustok-server` ещё не собран, сначала выполните:
+
+```bash
+cargo build -p rustok-server --bin rustok-server
+cargo xtask install-dev
+```
+
 ### Требования
 - Rust toolchain (см. `rust-toolchain.toml`)
 - Node.js/Bun для Next.js приложений
@@ -99,6 +124,10 @@ bun run dev
 cd apps/admin
 trunk serve --port 3001
 ```
+
+`apps/admin/Trunk.toml` проксирует `/api/*` в `http://localhost:5150/api/*`, поэтому standalone
+CSR-debug не должен зависеть от Leptos `#[server]` endpoints. SSR/monolith профили продолжают
+использовать `/api/fn/*` как native transport.
 
 ## 📚 Связанные документы
 

@@ -109,8 +109,19 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_index::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
-        all.sort_by(|a, b| a.name().cmp(b.name()));
+        all.sort_by(|a, b| migration_sort_key(a.name()).cmp(&migration_sort_key(b.name())));
         all
+    }
+}
+
+fn migration_sort_key(name: &str) -> String {
+    match name {
+        // Product tags has an FK to taxonomy_terms. Both migrations were added
+        // with the same timestamp prefix, so plain lexical ordering is wrong.
+        "m20260329_000001_create_taxonomy_tables" => {
+            "m20260329_000000_create_taxonomy_tables".to_string()
+        }
+        _ => name.to_string(),
     }
 }
 
@@ -137,10 +148,32 @@ mod tests {
         );
 
         let mut sorted = names.clone();
-        sorted.sort();
+        sorted.sort_by_key(|name| super::migration_sort_key(name));
         assert_eq!(
             names, sorted,
-            "server migrator must remain globally sorted by migration name"
+            "server migrator must remain globally sorted by migration dependency order"
+        );
+    }
+
+    #[test]
+    fn migrator_orders_taxonomy_before_product_tags() {
+        let names: Vec<String> = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect();
+
+        let taxonomy = names
+            .iter()
+            .position(|name| name == "m20260329_000001_create_taxonomy_tables")
+            .expect("taxonomy migration must be present");
+        let product_tags = names
+            .iter()
+            .position(|name| name == "m20260329_000001_create_product_tags")
+            .expect("product tags migration must be present");
+
+        assert!(
+            taxonomy < product_tags,
+            "taxonomy_terms must exist before product_tags adds its FK"
         );
     }
 

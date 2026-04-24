@@ -17,6 +17,18 @@ use crate::{t_string, use_i18n};
 
 // ── GQL types ────────────────────────────────────────────────────────────────
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct EventsStatusResponse {
     #[serde(rename = "eventsStatus")]
@@ -417,13 +429,13 @@ pub fn EventsPage() -> impl IntoView {
     let enabled_modules = use_enabled_modules();
 
     // Runtime status from server
-    let status_resource = Resource::new(
+    let status_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(t, tn)| async move { fetch_events_status(t, tn).await },
     );
 
     // Desired settings from DB
-    let settings_resource = Resource::new(
+    let settings_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(t, tn)| async move { fetch_platform_settings(t, tn).await },
     );

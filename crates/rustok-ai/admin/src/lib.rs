@@ -26,6 +26,18 @@ use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
 use crate::i18n::t;
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn AiAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -138,12 +150,12 @@ pub fn AiAdmin() -> impl IntoView {
 
     let reply_message = RwSignal::new(String::new());
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || refresh_nonce.get(),
         move |_| async move { api::fetch_bootstrap().await },
     );
 
-    let session_detail = Resource::new(
+    let session_detail = local_resource(
         move || (selected_session.get(), refresh_nonce.get()),
         move |(session_id, _)| async move {
             match session_id {
@@ -515,10 +527,14 @@ pub fn AiAdmin() -> impl IntoView {
         }
     });
 
+    #[cfg(target_arch = "wasm32")]
+    let live_ui_locale = ui_locale.clone();
     Effect::new(move |_| {
         let session_id = selected_session.get();
         let token_value = token.get();
         let tenant_value = tenant.get();
+        #[cfg(target_arch = "wasm32")]
+        let ui_locale_value = live_ui_locale.clone();
         if session_id.is_none() {
             set_live_stream.set(None);
             #[cfg(target_arch = "wasm32")]

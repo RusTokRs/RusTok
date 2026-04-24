@@ -7,6 +7,18 @@ use rustok_api::{AdminQueryKey, UiRouteContext};
 use crate::i18n::t;
 use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionListItem};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn RegionAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -28,12 +40,12 @@ pub fn RegionAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || refresh_nonce.get(),
         move |_| async move { crate::api::fetch_bootstrap().await },
     );
 
-    let regions = Resource::new(
+    let regions = local_resource(
         move || refresh_nonce.get(),
         move |_| async move { crate::api::fetch_regions().await },
     );

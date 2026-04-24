@@ -1,5 +1,4 @@
-use rustok_core::locale_primary_language;
-
+use crate::locale::locale_primary_language;
 use crate::model::SeoRecommendation;
 
 pub(crate) fn tr(locale: Option<&str>, en: &str, ru: &str) -> String {

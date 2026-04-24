@@ -15,7 +15,7 @@ loco-rs.workspace = true
 proptest = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-channel.workspace = true
-rustok-comments.workspace = true
+rustok-comments = { workspace = true, features = ["server"] }
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true

@@ -1,28 +1,32 @@
-use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[cfg(feature = "server")]
+use sea_orm::entity::prelude::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(EnumIter, DeriveActiveEnum))]
+#[cfg_attr(feature = "server", sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))"))]
 #[serde(rename_all = "snake_case")]
 pub enum CommentThreadStatus {
-    #[sea_orm(string_value = "open")]
+    #[cfg_attr(feature = "server", sea_orm(string_value = "open"))]
     Open,
-    #[sea_orm(string_value = "closed")]
+    #[cfg_attr(feature = "server", sea_orm(string_value = "closed"))]
     Closed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(EnumIter, DeriveActiveEnum))]
+#[cfg_attr(feature = "server", sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))"))]
 #[serde(rename_all = "snake_case")]
 pub enum CommentStatus {
-    #[sea_orm(string_value = "pending")]
+    #[cfg_attr(feature = "server", sea_orm(string_value = "pending"))]
     Pending,
-    #[sea_orm(string_value = "approved")]
+    #[cfg_attr(feature = "server", sea_orm(string_value = "approved"))]
     Approved,
-    #[sea_orm(string_value = "spam")]
+    #[cfg_attr(feature = "server", sea_orm(string_value = "spam"))]
     Spam,
-    #[sea_orm(string_value = "trash")]
+    #[cfg_attr(feature = "server", sea_orm(string_value = "trash"))]
     Trash,
 }
 

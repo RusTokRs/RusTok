@@ -15,6 +15,7 @@ ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:loco-rs",
+  "rustok-comments/server",
 ]
 
 [dependencies]
@@ -22,8 +23,8 @@ leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 loco-rs = { workspace = true, optional = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
-rustok-comments.workspace = true
+rustok-comments = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true

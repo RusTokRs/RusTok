@@ -83,6 +83,7 @@ impl MigrationTrait for Migration {
 
 #[derive(Iden)]
 pub enum OAuthConsents {
+    #[iden = "oauth_consents"]
     Table,
     Id,
     AppId,

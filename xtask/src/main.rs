@@ -14,6 +14,7 @@ use std::time::Duration;
 use toml::Value as TomlValue;
 
 mod docs_registry_contracts;
+mod install_dev;
 mod manifest_io;
 mod manifest_validation;
 mod module_boundary_contracts;
@@ -67,6 +68,7 @@ mod xtask_types;
 use crate::manifest_validation::to_pascal_case;
 use crate::xtask_types::*;
 use docs_registry_contracts::*;
+use install_dev::*;
 use manifest_io::*;
 use module_boundary_contracts::*;
 use module_cli_args::*;
@@ -126,6 +128,7 @@ fn main() -> Result<()> {
     match args[1].as_str() {
         "generate-registry" => generate_registry()?,
         "validate-manifest" => validate_manifest()?,
+        "install-dev" => install_dev(&args[2..])?,
         "list-modules" => list_modules()?,
         "module" => module_command(&args[2..])?,
         _ => {
@@ -144,6 +147,7 @@ fn print_usage() {
     println!("Commands:");
     println!("  generate-registry   Generate ModuleRegistry from modules.toml");
     println!("  validate-manifest   Validate modules.toml and rustok-module.toml files");
+    println!("  install-dev         Bootstrap local non-Docker development install");
     println!("  list-modules        List all configured modules");
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");

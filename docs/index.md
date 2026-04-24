@@ -39,7 +39,7 @@
   canonical UI ownership при этом разделён: entity SEO authoring должно жить в owner-модулях
   (`pages/product/blog/forum`), а `rustok-seo-admin` держит cross-cutting SEO infrastructure surface;
   текущий control-plane уже покрывает bulk editor/remediation modes, redirects, sitemaps, robots preview, tenant defaults,
-  template defaults/target overrides и diagnostics;
+  template defaults/target overrides и diagnostics с issue aggregates, hreflang gap checks и canonical redirect chain/loop checks;
   `rustok-seo` теперь использует precedence `explicit SEO > template-generated SEO > domain/entity fallback`,
   а `SeoPageContext.document` и `seoMeta` явно показывают source state для generated vs explicit значений;
   headless read-side теперь также включает REST endpoints `/api/seo/page-context` и `/api/seo/targets`
@@ -156,6 +156,7 @@
 
 - [Обзор UI](./UI/README.md)
 - [GraphQL и Leptos server functions](./UI/graphql-architecture.md)
+- Leptos admin/storefront runtime зафиксирован как SSR-first для product monolith с обязательной headless GraphQL/REST parity и CSR/Trunk только как debug/compatibility profile; решение и причина описаны в [ADR](../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md).
 - [Контракт storefront](./UI/storefront.md)
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
 - Route-selection contract для module-owned admin UI теперь жёстко закреплён как URL-owned:

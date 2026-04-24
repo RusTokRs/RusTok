@@ -1,5 +1,7 @@
 pub mod queries;
 
+#[cfg(target_arch = "wasm32")]
+use gloo_storage::Storage as GlooStorage;
 use leptos::prelude::*;
 use leptos_graphql::{
     execute as execute_graphql, persisted_query_extension, GraphqlHttpError, GraphqlRequest,
@@ -25,6 +27,10 @@ struct ServerGraphqlRequest {
 pub fn get_graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
         return url.to_string();
+    }
+
+    if let Some(base) = option_env!("RUSTOK_API_URL") {
+        return format!("{}/api/graphql", base.trim_end_matches('/'));
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -102,6 +108,19 @@ async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, 
     .await
 }
 
+async fn execute_admin_graphql(request: ServerGraphqlRequest) -> Result<Value, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        execute_server_graphql(request).await.map_err(ApiError::from)
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    {
+        admin_graphql(request).await.map_err(map_server_fn_error)
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
 fn map_server_fn_error(error: ServerFnError) -> ApiError {
     let message = error.to_string();
 
@@ -159,15 +178,14 @@ where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
 {
-    let response = admin_graphql(ServerGraphqlRequest {
+    let response = execute_admin_graphql(ServerGraphqlRequest {
         query: query.to_string(),
         variables: serde_json::to_value(variables)
             .map_err(|err| ApiError::Graphql(err.to_string()))?,
         persisted_query_sha256: None,
         context: build_request_context(token, tenant_slug),
     })
-    .await
-    .map_err(map_server_fn_error)?;
+    .await?;
 
     serde_json::from_value(response).map_err(|err| ApiError::Graphql(err.to_string()))
 }
@@ -183,15 +201,14 @@ where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
 {
-    let response = admin_graphql(ServerGraphqlRequest {
+    let response = execute_admin_graphql(ServerGraphqlRequest {
         query: query.to_string(),
         variables: serde_json::to_value(variables)
             .map_err(|err| ApiError::Graphql(err.to_string()))?,
         persisted_query_sha256: Some(sha256_hash.to_string()),
         context: build_request_context(token, tenant_slug),
     })
-    .await
-    .map_err(map_server_fn_error)?;
+    .await?;
 
     serde_json::from_value(response).map_err(|err| ApiError::Graphql(err.to_string()))
 }

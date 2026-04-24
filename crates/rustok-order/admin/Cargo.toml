@@ -17,7 +17,7 @@ ssr = ["leptos/ssr"]
 leptos = { workspace = true, features = ["csr"] }
 leptos-auth.workspace = true
 leptos-graphql.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

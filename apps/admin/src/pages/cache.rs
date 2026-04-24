@@ -7,6 +7,18 @@ use crate::shared::api::{request, ApiError};
 use crate::shared::ui::{Alert, AlertVariant, PageHeader};
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct GraphqlCacheHealthResponse {
     #[serde(rename = "cacheHealth")]
@@ -109,7 +121,7 @@ pub fn CachePage() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
-    let health_resource = Resource::new(
+    let health_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             fetch_cache_health(token_value, tenant_value).await

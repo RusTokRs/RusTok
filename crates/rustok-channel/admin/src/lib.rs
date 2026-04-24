@@ -18,6 +18,18 @@ use crate::model::{
     CreateResolutionPolicySetPayload, CreateResolutionRulePayload,
 };
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn ChannelAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -78,7 +90,7 @@ pub fn ChannelAdmin() -> impl IntoView {
     let create_name = RwSignal::new(String::new());
     let create_busy = RwSignal::new(false);
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_bootstrap(token_value, tenant_value).await

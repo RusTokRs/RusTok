@@ -192,34 +192,49 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
         tracing::info!("Telemetry initialized (OpenTelemetry disabled)");
     }
 
-    let metrics_handle = if config.metrics {
-        let handle = Arc::new(MetricsHandle::new());
-        let registry = handle.registry();
-
-        // Register all metrics
-        registry.register(Box::new(CONTENT_OPERATIONS_TOTAL.clone()))?;
-        registry.register(Box::new(CONTENT_OPERATION_DURATION_SECONDS.clone()))?;
-        registry.register(Box::new(CONTENT_NODES_TOTAL.clone()))?;
-        registry.register(Box::new(COMMERCE_OPERATIONS_TOTAL.clone()))?;
-        registry.register(Box::new(COMMERCE_OPERATION_DURATION_SECONDS.clone()))?;
-        registry.register(Box::new(COMMERCE_PRODUCTS_TOTAL.clone()))?;
-        registry.register(Box::new(COMMERCE_ORDERS_TOTAL.clone()))?;
-        registry.register(Box::new(HTTP_REQUESTS_TOTAL.clone()))?;
-        registry.register(Box::new(HTTP_REQUEST_DURATION_SECONDS.clone()))?;
-
-        // Register all custom metrics
-        metrics::register_all(registry)?;
-
-        let _ = REGISTRY.set(registry.clone());
-        let _ = METRICS_HANDLE.set(handle.clone());
-        Some(handle)
-    } else {
-        None
-    };
+    let metrics_handle = init_metrics_handle(config.metrics)?;
 
     Ok(TelemetryHandles {
         metrics: metrics_handle,
     })
+}
+
+pub fn init_metrics(metrics: bool) -> Result<TelemetryHandles, TelemetryError> {
+    let metrics_handle = init_metrics_handle(metrics)?;
+    Ok(TelemetryHandles {
+        metrics: metrics_handle,
+    })
+}
+
+fn init_metrics_handle(metrics: bool) -> Result<Option<Arc<MetricsHandle>>, TelemetryError> {
+    if !metrics {
+        return Ok(None);
+    }
+
+    if let Some(handle) = METRICS_HANDLE.get() {
+        return Ok(Some(handle.clone()));
+    }
+
+    let handle = Arc::new(MetricsHandle::new());
+    let registry = handle.registry();
+
+    // Register all metrics
+    registry.register(Box::new(CONTENT_OPERATIONS_TOTAL.clone()))?;
+    registry.register(Box::new(CONTENT_OPERATION_DURATION_SECONDS.clone()))?;
+    registry.register(Box::new(CONTENT_NODES_TOTAL.clone()))?;
+    registry.register(Box::new(COMMERCE_OPERATIONS_TOTAL.clone()))?;
+    registry.register(Box::new(COMMERCE_OPERATION_DURATION_SECONDS.clone()))?;
+    registry.register(Box::new(COMMERCE_PRODUCTS_TOTAL.clone()))?;
+    registry.register(Box::new(COMMERCE_ORDERS_TOTAL.clone()))?;
+    registry.register(Box::new(HTTP_REQUESTS_TOTAL.clone()))?;
+    registry.register(Box::new(HTTP_REQUEST_DURATION_SECONDS.clone()))?;
+
+    // Register all custom metrics
+    metrics::register_all(registry)?;
+
+    let _ = REGISTRY.set(registry.clone());
+    let _ = METRICS_HANDLE.set(handle.clone());
+    Ok(Some(handle))
 }
 
 pub fn metrics_handle() -> Option<Arc<MetricsHandle>> {

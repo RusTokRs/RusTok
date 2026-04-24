@@ -2,10 +2,10 @@
 
 RusToK поддерживает два storefront host-приложения:
 
-- `apps/storefront` — основной Leptos SSR host;
+- `apps/storefront` — основной Leptos SSR-first host;
 - `apps/next-frontend` — параллельный Next.js host.
 
-Обе реализации должны сохранять единый backend, routing, locale и module contract. Leptos storefront остаётся основным Rust-host путём, Next.js storefront — headless-параллелью.
+Обе реализации должны сохранять единый backend, routing, locale и module contract. Leptos storefront остаётся основным Rust SSR/hydrate host путём, Next.js storefront — headless-параллелью.
 
 ## Host contract
 
@@ -18,10 +18,11 @@ RusToK поддерживает два storefront host-приложения:
 
 ## Data-layer contract
 
-- Для Leptos storefront путь по умолчанию: `UI -> local API -> #[server] -> service layer`.
+- Для Leptos storefront путь по умолчанию в product runtime: `UI -> local API -> #[server] -> service layer`.
 - Внешний GraphQL contract `/api/graphql` остаётся обязательным и поддерживаемым параллельным путём.
 - Host сначала использует native `#[server]` surface там, где он уже есть, и только затем откатывается к GraphQL, если это предусмотрено runtime contract.
 - Новый module-owned storefront UI не должен проектироваться как GraphQL-only, если может жить через `#[server]`.
+- Standalone CSR для Leptos storefront package считается debug/compatibility профилем: такой package должен иметь GraphQL/REST fallback и не должен требовать `/api/fn/*`.
 - Module-owned storefront packages не должны схлопывать typed business snapshots до summary-only UI state:
   если backend уже отдаёт typed adjustments, delivery ownership или другие language-agnostic business keys,
   package API и UI обязаны сохранять эти поля, а не отбрасывать `scope`/metadata на последней миле.
@@ -52,5 +53,6 @@ RusToK поддерживает два storefront host-приложения:
 - [Leptos storefront docs](../../apps/storefront/docs/README.md)
 - [Next.js storefront docs](../../apps/next-frontend/docs/README.md)
 - [Контракты manifest-слоя](../modules/manifest.md)
+- [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI index](./README.md)
 - [Карта документации](../index.md)

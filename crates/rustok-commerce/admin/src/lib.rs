@@ -16,6 +16,18 @@ use crate::model::{
     ShippingProfile, ShippingProfileDraft,
 };
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn CommerceAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -276,14 +288,14 @@ pub fn CommerceAdmin() -> impl IntoView {
     let ui_locale_for_promotion_preview = ui_locale.clone();
     let ui_locale_for_promotion_result = ui_locale.clone();
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             api::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let shipping_profiles = Resource::new(
+    let shipping_profiles = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get(), search.get()),
         move |(token_value, tenant_value, _, search_value)| async move {
             let bootstrap = api::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;

@@ -10,7 +10,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
+use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
@@ -18,6 +18,18 @@ use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
 };
+
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
 
 #[component]
 pub fn ForumAdmin() -> impl IntoView {
@@ -127,7 +139,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let (topic_tags, set_topic_tags) = signal(String::new());
     let (topic_filter_category_id, set_topic_filter_category_id) = signal(String::new());
 
-    let categories = Resource::new(
+    let categories = local_resource(
         move || {
             (
                 token.get(),
@@ -141,7 +153,7 @@ pub fn ForumAdmin() -> impl IntoView {
         },
     );
 
-    let topics = Resource::new(
+    let topics = local_resource(
         move || {
             (
                 token.get(),
@@ -162,7 +174,7 @@ pub fn ForumAdmin() -> impl IntoView {
         },
     );
 
-    let replies = Resource::new(
+    let replies = local_resource(
         move || {
             (
                 token.get(),
@@ -681,7 +693,7 @@ fn CountChip(label: String, value: i32) -> impl IntoView {
 
 #[component]
 fn CategoriesPage(
-    categories: Resource<Result<Vec<CategoryListItem>, String>>,
+    categories: LocalResource<Result<Vec<CategoryListItem>, String>>,
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
     locale: ReadSignal<String>,
@@ -1030,9 +1042,9 @@ fn CategoriesPage(
 
 #[component]
 fn TopicsPage(
-    categories: Resource<Result<Vec<CategoryListItem>, String>>,
-    topics: Resource<Result<Vec<TopicListItem>, String>>,
-    replies: Resource<Result<Vec<ReplyListItem>, String>>,
+    categories: LocalResource<Result<Vec<CategoryListItem>, String>>,
+    topics: LocalResource<Result<Vec<TopicListItem>, String>>,
+    replies: LocalResource<Result<Vec<ReplyListItem>, String>>,
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
     locale: ReadSignal<String>,

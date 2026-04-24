@@ -8,14 +8,29 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_core::locale_tags_match;
-use rustok_seo::{seo_builtin_slug, SeoTargetSlug};
+use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
 
 use crate::i18n::t;
 use crate::model::{
     ProductAdminBootstrap, ProductDetail, ProductDraft, ProductPricingDetail, ShippingProfile,
 };
+
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
+fn locale_tags_match(left: &str, right: &str) -> bool {
+    left.trim().replace('_', "-").eq_ignore_ascii_case(&right.trim().replace('_', "-"))
+}
 
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
@@ -52,14 +67,14 @@ pub fn ProductAdmin() -> impl IntoView {
     let effective_locale_for_selected_pricing = effective_locale.clone();
     let effective_locale_for_initial_open = effective_locale.clone();
 
-    let bootstrap = Resource::new(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             api::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let products = Resource::new(
+    let products = local_resource(
         move || {
             (
                 token.get(),
@@ -84,7 +99,7 @@ pub fn ProductAdmin() -> impl IntoView {
         },
     );
 
-    let shipping_profiles = Resource::new(
+    let shipping_profiles = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             let bootstrap = api::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
@@ -92,7 +107,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 .await
         },
     );
-    let selected_pricing = Resource::new(
+    let selected_pricing = local_resource(
         move || {
             (
                 token.get(),

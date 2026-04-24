@@ -17,6 +17,18 @@ use crate::shared::ui::{Button, LanguageToggle, PageHeader};
 use crate::widgets::stats_card::StatsCard;
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStatsResponse {
     #[serde(rename = "dashboardStats")]
@@ -270,14 +282,14 @@ pub fn Dashboard() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
-    let dashboard_stats = Resource::new(
+    let dashboard_stats = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             fetch_dashboard_stats(token_value, tenant_value).await
         },
     );
 
-    let recent_activity = Resource::new(
+    let recent_activity = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             fetch_recent_activity(token_value, tenant_value, 10).await

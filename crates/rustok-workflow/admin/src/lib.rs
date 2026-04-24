@@ -11,6 +11,18 @@ use rustok_api::UiRouteContext;
 use crate::i18n::t;
 use crate::model::{WorkflowStatus, WorkflowSummary, WorkflowTemplateDto};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn WorkflowAdmin() -> impl IntoView {
     let token = use_token();
@@ -53,7 +65,7 @@ pub fn WorkflowAdmin() -> impl IntoView {
     );
     let showing_templates = route_context.subpath_matches("templates");
 
-    let workflows_resource = Resource::new(
+    let workflows_resource = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             api::fetch_workflows(token_value, tenant_value).await
@@ -294,7 +306,7 @@ fn TemplateGallery(
 
     let token_for_templates = token.clone();
     let tenant_for_templates = tenant_slug.clone();
-    let templates_resource = Resource::new_blocking(
+    let templates_resource = local_resource(
         move || (token_for_templates.clone(), tenant_for_templates.clone()),
         move |(token_value, tenant_value)| async move {
             api::fetch_templates(token_value, tenant_value).await

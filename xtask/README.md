@@ -25,6 +25,7 @@ cargo xtask validate-manifest
 cargo xtask module validate
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
+cargo xtask install-dev --create-db
 cargo xtask generate-registry
 cargo xtask list-modules
 ```
@@ -43,6 +44,31 @@ cargo xtask module yank <slug> <version> --dry-run --auth-token <token> --reason
 ```
 
 Use `--dry-run` first for commands that would contact the registry or mutate publish lifecycle state.
+
+## Local Non-Docker Install
+
+`cargo xtask install-dev` is the canonical local bootstrap path when Docker Compose is not available. It prepares a reproducible development install instead of relying on manual SQL snippets or ad-hoc environment variables.
+
+```powershell
+cargo xtask install-dev --create-db --pg-admin-url postgres://postgres:postgres@localhost:5432/postgres
+```
+
+The command:
+
+- checks local tools (`cargo`, `npm`, `trunk`) and PostgreSQL reachability;
+- optionally creates the `rustok` PostgreSQL role and `rustok_dev` database;
+- writes `.env.dev` and `apps/next-admin/.env.local` with local API/auth paths;
+- creates `modules.local.toml` with standalone frontend surfaces so the server does not require embedded UI features;
+- runs server migrations and the dev seed through the compiled `target/debug/rustok-server` Loco CLI.
+
+Because `cargo xtask` itself is launched by Cargo, `install-dev` intentionally does not call nested `cargo run` during bootstrap. If `target/debug/rustok-server` is missing, build it once:
+
+```powershell
+cargo build -p rustok-server --bin rustok-server
+cargo xtask install-dev
+```
+
+Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the actions without writing files or running migrations.
 
 ## Module Coverage
 

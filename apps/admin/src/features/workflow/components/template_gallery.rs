@@ -3,6 +3,18 @@ use leptos::task::spawn_local;
 
 use crate::features::workflow::api::{self, WorkflowTemplateDto};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[component]
 pub fn TemplateGallery(
     token: Option<String>,
@@ -15,7 +27,7 @@ pub fn TemplateGallery(
 
     let tok = token.clone();
     let ts = tenant_slug.clone();
-    let templates_resource = Resource::new_blocking(
+    let templates_resource = local_resource(
         move || (tok.clone(), ts.clone()),
         move |(tok, ts)| async move { api::fetch_templates(tok, ts).await },
     );

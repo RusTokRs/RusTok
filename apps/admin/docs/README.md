@@ -4,7 +4,7 @@
 
 ## Назначение
 
-`apps/admin` является host/composition root для административного интерфейса RusToK. Приложение:
+`apps/admin` является host/composition root для административного интерфейса RusToK. Preferred product runtime для Leptos admin — SSR/hydrate в monolith deployment, при этом standalone CSR сохраняется как debug/compatibility профиль. Приложение:
 
 - монтирует host-owned экраны и module-owned admin surfaces;
 - держит единый shell, навигацию, RBAC-aware routing и search entrypoint;
@@ -29,7 +29,19 @@
 
 ## Runtime contract
 
+- `apps/admin` поддерживает три разных runtime-профиля, которые нельзя смешивать:
+  `csr` для standalone Trunk/WASM, `hydrate` для клиентской половины SSR и `ssr` для server-side
+  половины/monolith.
+- Preferred product path для Leptos admin — `ssr` + `hydrate` поверх `apps/server` как same-origin backend. В этом профиле native `#[server]` transport является preferred internal data-layer.
+- В `csr` profile базовый transport не должен требовать Leptos `#[server]`: GraphQL, auth и REST идут
+  напрямую в `apps/server` через `/api/graphql`, `/api/auth/*` и module-owned REST endpoints. Локальный
+  `trunk serve` обязан проксировать `/api/*` в `http://localhost:5150/api/*`. Этот профиль нужен для debug/compatibility, а не как production default.
+- В `hydrate`/`ssr` и monolith profile native `#[server]` endpoints `/api/fn/*` считаются доступными
+  на том же backend origin и могут быть preferred path для surfaces, где нужен server-side runtime.
+- Если surface поддерживает dual-path модель, fallback в GraphQL/REST обязан реально работать в `csr`;
+  `#[server]` не может быть единственным critical transport для standalone debug.
 - GraphQL и native Leptos `#[server]` path должны сосуществовать параллельно; `#[server]` не заменяет `/api/graphql`.
+- Причина split-а: monolith admin выигрывает от same-origin SSR/hydrate, server-side auth/session/policy и короткого Rust-пути через `#[server]`, но headless и standalone debug требуют живой GraphQL/REST fallback.
 - Текущий data-layer для admin поддерживает dual-path модель: host сначала использует native `#[server]` surface там, где он уже есть, и только затем откатывается к GraphQL или legacy REST, если это предусмотрено конкретной поверхностью.
 - `rustok-pricing/admin` теперь относится к таким dual-path surfaces: pricing package
   по умолчанию ходит в native `#[server]` pricing runtime, оставляя GraphQL
@@ -37,7 +49,7 @@
   `currency + optional region_id + optional price_list_id + optional quantity`,
   включая pricing-owned selector активных price lists, а также выполняет base-price
   variant updates через module-owned server-function transport.
-- `apps/admin` остаётся CSR-first host; наличие feature-профилей `hydrate` и `ssr` не означает, что runtime уже перешёл на полноценный SSR/service-layer contract.
+- `apps/admin` не считается CSR-first host. CSR остаётся обязательным standalone debug профилем, но архитектурный target для Leptos admin — SSR-first host с headless GraphQL/REST parity.
 - WebSocket transport `/api/graphql/ws` остаётся действующим путём для live update сценариев, включая build/progress и subscription-based surfaces.
 - Для целей `module-system` `/modules` считается закрытым repo-side operator surface: установка, удаление, upgrade/deploy модулей и progress feedback доступны из Admin UI без отдельного ручного backend workflow.
 - Host-owned `/modules` governance UI не держит локальные policy-эвристики: `registryLifecycle` остаётся summary/read-model, но actor-agnostic `governanceActions` там теперь сведены только к release-management hints (`owner-transfer`, `yank`), а authoritative request-level contract для interactive governance читается отдельным bearer-auth fetch к `GET /v2/catalog/publish/{request_id}`; `reason` / `reason_code` и request-level availability берутся только из этого статуса.
@@ -51,6 +63,7 @@
 - Publishable Leptos admin surface обязан объявлять `[provides.admin_ui].leptos_crate`; наличие `admin/Cargo.toml` само по себе не считается интеграцией.
 - Host монтирует module-owned страницы через `/modules/:module_slug` и nested variant `/modules/:module_slug/*module_path`.
 - Host прокидывает effective locale через `UiRouteContext.locale`; module-owned Leptos packages обязаны использовать это значение и не должны вводить собственную query/header/cookie fallback-цепочку.
+- Module-owned admin packages обязаны поддерживать тот же runtime split: `#[server]` preferred в SSR/hydrate, GraphQL/REST fallback для standalone CSR/debug. Пакет не должен становиться ни GraphQL-only для monolith, ни `#[server]`-only для headless/debug.
 - Core modules с UI подчиняются тому же ownership rule, что и optional modules: наличие UI не делает host владельцем модульной поверхности.
 - Route-selection contract тоже host-owned: `apps/admin` санитизирует query по typed schema из
   `rustok-api`, отдаёт модульным пакетам уже canonical route context и предоставляет generic
@@ -92,4 +105,5 @@
 - [Контракты manifest-слоя](../../../docs/modules/manifest.md)
 - [Реестр модулей и приложений](../../../docs/modules/registry.md)
 - [Каталог Rust UI-компонентов](../../../docs/UI/rust-ui-component-catalog.md)
+- [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [Карта документации](../../../docs/index.md)

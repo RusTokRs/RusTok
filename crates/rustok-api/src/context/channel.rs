@@ -1,3 +1,4 @@
+#[cfg(feature = "server")]
 use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
@@ -70,13 +71,16 @@ pub struct ChannelContext {
     pub resolution_trace: Vec<ChannelResolutionTraceStep>,
 }
 
+#[cfg(feature = "server")]
 #[derive(Clone)]
 pub struct ChannelContextExtension(pub ChannelContext);
 
+#[cfg(feature = "server")]
 pub trait ChannelContextExt {
     fn channel_context(&self) -> Option<&ChannelContext>;
 }
 
+#[cfg(feature = "server")]
 impl ChannelContextExt for Parts {
     fn channel_context(&self) -> Option<&ChannelContext> {
         self.extensions
@@ -85,6 +89,7 @@ impl ChannelContextExt for Parts {
     }
 }
 
+#[cfg(feature = "server")]
 impl<S> FromRequestParts<S> for ChannelContext
 where
     S: Send + Sync,
@@ -103,8 +108,10 @@ where
     }
 }
 
+#[cfg(feature = "server")]
 pub struct OptionalChannel(pub Option<ChannelContext>);
 
+#[cfg(feature = "server")]
 impl<S> FromRequestParts<S> for OptionalChannel
 where
     S: Send + Sync,

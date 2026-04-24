@@ -660,7 +660,7 @@ pub fn ModulesList(
             let subscribed_for_message = subscribed.clone();
             let token_for_message = token_value.clone();
             let tenant_for_message = tenant_value.clone();
-            let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |event| {
+            let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
                 let Some(text) = event.data().as_string() else {
                     return;
                 };
@@ -732,18 +732,10 @@ pub fn ModulesList(
             ws.set_onerror(Some(on_error.as_ref().unchecked_ref()));
             ws.set_onclose(Some(on_close.as_ref().unchecked_ref()));
 
-            on_cleanup(move || {
-                set_live_subscription_connected.set(false);
-                ws.set_onopen(None);
-                ws.set_onmessage(None);
-                ws.set_onerror(None);
-                ws.set_onclose(None);
-                let _ = ws.close();
-                drop(on_open);
-                drop(on_message);
-                drop(on_error);
-                drop(on_close);
-            });
+            on_open.forget();
+            on_message.forget();
+            on_error.forget();
+            on_close.forget();
         }
     });
 

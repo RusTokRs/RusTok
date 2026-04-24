@@ -16,7 +16,9 @@ ssr = [
   "dep:leptos_axum",
   "dep:loco-rs",
   "dep:rustok-core",
+  "dep:rustok-media",
   "dep:rustok-storage",
+  "dep:sea-orm",
 ]
 
 [dependencies]
@@ -28,12 +30,12 @@ leptos-auth.workspace = true
 leptos-graphql.workspace = true
 loco-rs = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "multipart"] }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-core = { workspace = true, optional = true }
-rustok-media.workspace = true
+rustok-media = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
-sea-orm.workspace = true
+sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
 wasm-bindgen = "0.2"

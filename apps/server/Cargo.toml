@@ -54,7 +54,7 @@ mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product
 mod-content   = ["dep:rustok-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy"]
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy"]
-mod-comments  = ["dep:rustok-comments"]
+mod-comments  = ["dep:rustok-comments", "rustok-comments/server"]
 mod-pages     = ["dep:rustok-pages", "mod-content"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy     = ["dep:alloy"]
@@ -65,7 +65,7 @@ mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["loco-adapter"] }
 rustok-auth.workspace = true
 rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-channel.workspace = true

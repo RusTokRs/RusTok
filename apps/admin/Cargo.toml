@@ -42,6 +42,7 @@ ssr = [
   "dep:sea-orm",
   "dep:rustok-cache",
   "dep:rustok-comments",
+  "rustok-comments/server",
   "dep:rustok-core",
   "dep:rustok-media",
   "dep:rustok-seo",
@@ -88,7 +89,6 @@ leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
 leptos_i18n = { workspace = true, features = ["csr"] }
-leptos-next-metadata = { workspace = true }
 leptos_query = { workspace = true }
 leptos-chartistry = { workspace = true }
 gloo-storage = { workspace = true }
@@ -106,7 +106,7 @@ sea-orm = { workspace = true, optional = true }
 base64 = { workspace = true }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
-rustok-api.workspace = true
+rustok-api = { path = "../../crates/rustok-api", default-features = false }
 loco-rs = { workspace = true, optional = true }
 rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
@@ -159,7 +159,6 @@ normal = [
   "leptos-shadcn-pagination",
   "leptos-use",
   "leptos_i18n",
-  "leptos-next-metadata",
   "leptos_query",
   "leptos-chartistry",
   "gloo-storage",

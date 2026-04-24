@@ -15,7 +15,7 @@ Entity-specific SEO authoring не живёт в `rustok-seo-admin`: стран�
 - tenant-scoped `template_defaults` и per-target `template_overrides`;
 - bulk editor и remediation jobs поверх `seo_bulk_jobs`, `seo_bulk_job_items`, `seo_bulk_job_artifacts`;
 - manual redirects, sitemap jobs/files и `robots.txt`;
-- diagnostics read model: readiness score, issue list и source counts;
+- diagnostics read model: readiness score, issue list, issue aggregates и source counts;
 - shared capability registry через `rustok-seo-targets`;
 - support crates `rustok-seo-render` и `rustok-seo-admin-support`.
 
@@ -53,11 +53,13 @@ CSV export/import остаются scoped по одному `SeoTargetSlug` и �
 - missing title / description;
 - duplicate canonical URL;
 - noindex + canonical conflicts;
+- canonical URLs pointing to redirect targets, chains or loops;
+- missing hreflang alternates and missing `x-default`;
 - missing structured data;
 - missing sitemap candidates;
 - fallback-only targets, где policy ожидает template или explicit SEO.
 
-Readiness score считается производным от issue set. Diagnostics не заменяет owner-module editors, а даёт entrypoint для remediation.
+Readiness score считается производным от issue set. Summary также отдаёт counts by issue code и target kind, чтобы admin UI мог строить фильтры и remediation entrypoints без локальной классификации ошибок. Diagnostics не заменяет owner-module editors, а даёт entrypoint для remediation.
 
 ## Интеграция
 

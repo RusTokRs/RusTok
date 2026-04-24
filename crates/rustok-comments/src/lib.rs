@@ -1,24 +1,37 @@
 pub mod dto;
+#[cfg(feature = "server")]
 pub mod entities;
+#[cfg(feature = "server")]
 pub mod error;
+#[cfg(feature = "server")]
 pub mod migrations;
+#[cfg(feature = "server")]
 pub mod services;
 
+#[cfg(feature = "server")]
 use async_trait::async_trait;
+#[cfg(feature = "server")]
 use rustok_core::permissions::{Action, Permission, Resource};
+#[cfg(feature = "server")]
 use rustok_core::{MigrationSource, RusToKModule};
+#[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
     CommentListItem, CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus,
     CommentThreadSummary, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
 };
+#[cfg(feature = "server")]
 pub use entities::*;
+#[cfg(feature = "server")]
 pub use error::{CommentsError, CommentsResult};
+#[cfg(feature = "server")]
 pub use services::CommentsService;
 
+#[cfg(feature = "server")]
 pub struct CommentsModule;
 
+#[cfg(feature = "server")]
 #[async_trait]
 impl RusToKModule for CommentsModule {
     fn slug(&self) -> &'static str {
@@ -50,12 +63,14 @@ impl RusToKModule for CommentsModule {
     }
 }
 
+#[cfg(feature = "server")]
 impl MigrationSource for CommentsModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
     }
 }
 
+#[cfg(feature = "server")]
 #[cfg(test)]
 mod tests {
     use super::*;

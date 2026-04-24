@@ -16,6 +16,18 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_hook_form::FormState;
 use leptos_ui::{Select, SelectOption};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Params, PartialEq)]
 struct UserParams {
     id: Option<String>,
@@ -285,7 +297,7 @@ pub fn UserDetails() -> impl IntoView {
     let navigate = use_navigate();
     let params = use_params::<UserParams>();
 
-    let user_resource = Resource::new(
+    let user_resource = local_resource(
         move || params.with(|params| params.as_ref().ok().and_then(|params| params.id.clone())),
         move |_| {
             let token_value = token.get();

@@ -708,10 +708,18 @@ pub struct SeoDiagnosticIssueRecord {
     pub severity: SeoDiagnosticSeverity,
     pub target_kind: SeoTargetSlug,
     pub target_id: Uuid,
+    pub target_label: String,
+    pub route: String,
     pub locale: String,
     pub message: String,
     pub canonical_url: Option<String>,
     pub source: String,
+}
+
+#[derive(SimpleObject, Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SeoDiagnosticCountRecord {
+    pub key: String,
+    pub count: i32,
 }
 
 #[derive(SimpleObject, Serialize, Deserialize, Debug, Clone, Default)]
@@ -725,6 +733,8 @@ pub struct SeoDiagnosticsSummaryRecord {
     pub generated_count: i32,
     pub explicit_count: i32,
     pub fallback_count: i32,
+    pub issue_counts_by_code: Vec<SeoDiagnosticCountRecord>,
+    pub issue_counts_by_target_kind: Vec<SeoDiagnosticCountRecord>,
     pub issues: Vec<SeoDiagnosticIssueRecord>,
 }
 

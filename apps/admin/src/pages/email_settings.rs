@@ -11,6 +11,18 @@ use crate::shared::api::request;
 use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
 
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct PlatformSettingsVariables {
     category: String,
@@ -196,7 +208,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
     let (save_result, set_save_result) = signal(Option::<Result<bool, String>>::None);
     let (loaded, set_loaded) = signal(false);
 
-    let settings_resource = Resource::new(
+    let settings_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             fetch_email_settings(token_value, tenant_value).await

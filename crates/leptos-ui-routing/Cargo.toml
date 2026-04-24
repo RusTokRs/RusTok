@@ -16,5 +16,5 @@ ssr = ["leptos/ssr"]
 [dependencies]
 leptos = { workspace = true, features = ["csr"] }
 leptos_router.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 serde_urlencoded.workspace = true
