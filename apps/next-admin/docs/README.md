@@ -28,6 +28,8 @@
 
 - Если модуль поставляет admin UI, он остаётся module-owned package рядом с модулем или в `packages/*`.
 - Host `apps/next-admin` выступает только composition root.
+- Core navigation `apps/next-admin` не должен содержать module-owned business routes. Каждый модуль или capability подключает свой Next UX через `src/features/<module>/index.ts` или mounted `@rustok/*-admin` package, а shell фильтрует пункты по enabled module slug.
+- Если у tenant включён только `blog`, ecommerce/catalog/product UX не должен появляться в navigation и не должен жить как host-owned starter page.
 - То же правило действует для core-modules, optional-modules и capability packages.
 - Capability-owned surface `rustok-ai` монтируется как package-owned UI, а не как ad-hoc host feature.
 - Route-selection contract обязан быть в parity с `apps/admin`: selection state URL-owned,

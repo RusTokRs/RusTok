@@ -6,14 +6,15 @@ public_url = "/"
 [watch]
 ignore = ["./dist"]
 
+[[hooks]]
+stage = "post_build"
+command = "scripts\\tailwind-build.cmd"
+
 [[proxy]]
 backend = "http://localhost:5150/api/"
 rewrite = "/api/"
+
+[[proxy]]
+backend = "ws://localhost:5150/api/graphql/ws"
+rewrite = "/api/graphql/ws"
 ws = true
-
-[[hooks]]
-stage = "build"
-command = "npx"
-command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", "--minify"]
-
-

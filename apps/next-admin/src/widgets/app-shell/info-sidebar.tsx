@@ -14,19 +14,14 @@ import {
   useInfobar
 } from '@/shared/ui/shadcn/infobar';
 
-// Default/fallback data when no content is set
 const defaultData = {
-  title: 'Documentation',
+  title: 'RusTok Admin',
   sections: [
     {
-      title: 'Getting Started',
-      description: 'Learn how to get started with this application.',
-      links: [
-        {
-          title: 'Installation Guide',
-          url: '#'
-        }
-      ]
+      title: 'Operator context',
+      description:
+        'This sidebar shows page-specific operator notes when a module provides them. If no module context is selected, use the main navigation to open enabled RusTok platform surfaces.',
+      links: []
     }
   ]
 };

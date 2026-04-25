@@ -56,6 +56,47 @@
 - `/modules` больше не читает legacy registry audit shape: lifecycle/event read-side работает только с typed payload (`stage_key`, nested `owner_transition`, structured principal objects) и не парсит historical `*_actor` keys.
 - Для `apps/admin` это считается конечным repo-side contract: дальше здесь не нужен новый client-owned lifecycle, а только targeted verification mapping и периодическая сверка `/modules` UX с server-driven policy surface.
 
+## Локальный debug-запуск
+
+Для локальной отладки без Docker используйте `localhost`, а не `127.0.0.1`: на Windows loopback через `127.0.0.1`
+может принимать TCP-соединение и не отдавать HTTP-ответ. Рабочий профиль:
+
+```powershell
+# backend уже должен слушать http://localhost:5150
+$env:RUSTOK_MODULES_MANIFEST = (Resolve-Path ..\..\modules.local.toml)
+$env:PATH="$env:USERPROFILE\.rustok\tools\trunk;$env:PATH"
+trunk serve --address ::1 --port 3001
+```
+
+Для этого профиля backend запускается с `modules.local.toml`, где embedded admin/storefront отключены. Корневой
+`modules.toml` описывает monolith/release composition и требует `embed-admin`; в текущем Windows debug-окружении
+SSR-сборка embedded `apps/admin` падает по памяти (`rustc-LLVM ERROR: out of memory`), поэтому локальный debug
+разделяет backend и внешний Trunk host.
+
+`apps/admin` в standalone debug работает как CSR host, поэтому Trunk должен собирать именно binary artifact
+`rustok-admin`, а не library artifact `rustok_admin`. Это зафиксировано в `index.html` через
+`data-target-name="rustok-admin"`: binary запускает `main()` и монтирует shell в `body`.
+
+Tailwind CSS для этого debug-профиля собирается Trunk post-build hook-ом `scripts\tailwind-build.cmd`.
+Hook пишет `output.css` в `TRUNK_STAGING_DIR`, поэтому CSS переживает очистку `dist` внутри Trunk pipeline.
+Локально команду можно прогнать отдельно только для быстрой проверки CSS:
+
+```powershell
+npm.cmd install
+npm.cmd run tw:build
+```
+
+`apps/admin/input.css` использует Tailwind v4 `@import "tailwindcss"` и явные `@source` entries. `tailwind.config.js`
+должен включать `apps/admin/src`, shared Leptos UI crates и module-owned admin UI packages
+`crates/**/admin/src/**/*.rs`. Если `dist/output.css` отсутствует или source globs не покрывают модульные UI-пакеты,
+shell загрузится частично или без стилей. Это не меняет production target: архитектурный путь для Leptos admin остаётся
+SSR/hydrate поверх `apps/server`, а CSR нужен для standalone debug и проверки module-owned UI packages.
+
+Leptos admin не должен визуально расходиться с Next admin как отдельный продукт. Auth shell, navigation shell,
+route-selection UX и контейнеры module-owned UI должны следовать общему admin UI contract. Next admin остаётся
+параллельным React/Next host, а Leptos admin — canonical operator surface для SSR/monolith пути; найденные
+расхождения оформляются как parity debt и чинятся точечно.
+
 ## Contract для module-owned admin UI
 
 - Источник правды для подключения UI-модулей: `modules.toml` плюс `rustok-module.toml`.

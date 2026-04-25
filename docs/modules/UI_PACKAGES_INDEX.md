@@ -39,6 +39,10 @@
   domain logic в приложении;
 - host-приложения отвечают только за mount/wiring/navigation, а не за
   ownership UI-функциональности модуля.
+- В `apps/next-admin` module-owned navigation не живёт в core nav: каждый Next UX-пакет
+  регистрируется из `src/features/<module>/index.ts` или mounted `@rustok/*-admin`,
+  получает `moduleSlug` через registry и скрывается, если модуль не включён у tenant.
+  Это сохраняет сценарий, где tenant использует только `blog`, без показа product/commerce UX.
 
 ## Куда смотреть
 
@@ -139,4 +143,5 @@
 ### Next.js admin showcase
 
 - `rustok-blog`: `apps/next-admin/packages/blog/`
+- `rustok-product`: `apps/next-admin/packages/rustok-product/` как текущий Next UX package поверх GraphQL product read-side; `apps/next-admin/src/features/products/` остаётся только registration shim.
 - `rustok-search`: `apps/next-admin/packages/search/`

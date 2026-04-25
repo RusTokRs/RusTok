@@ -1,14 +1,14 @@
 import { EnabledModulesProvider } from '@/app/providers/enabled-modules-provider';
-import { KBar } from '@/widgets/command-palette';
 import { AppSidebar, Header, InfoSidebar } from '@/widgets/app-shell';
+import { KBar } from '@/widgets/command-palette';
 import { InfobarProvider } from '@/shared/ui/shadcn/infobar';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/shadcn/sidebar';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 
 export const metadata: Metadata = {
-  title: 'Next Shadcn Dashboard Starter',
-  description: 'Basic dashboard with Next.js and Shadcn'
+  title: 'RusTok Admin',
+  description: 'RusTok administration console'
 };
 
 export default async function DashboardLayout({

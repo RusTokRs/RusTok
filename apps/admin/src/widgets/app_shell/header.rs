@@ -262,10 +262,13 @@ pub fn Header() -> impl IntoView {
     });
 
     view! {
-        <header class="h-14 bg-background border-b border-border flex items-center justify-between px-6 shrink-0">
-            <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                <span class="font-medium text-foreground">{t_string!(i18n, app.brand.title)}</span>
-                <span>"/"</span>
+        <header class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4">
+            <div class="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                <A href="/dashboard" attr:class="flex items-center gap-2 font-medium text-foreground md:hidden">
+                    <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">"R"</span>
+                    <span>{t_string!(i18n, app.brand.title)}</span>
+                </A>
+                <span class="hidden h-4 w-px bg-border md:block"></span>
                 {{
                     let crumbs = breadcrumbs.get();
                     let last_index = crumbs.len().saturating_sub(1);
@@ -293,7 +296,7 @@ pub fn Header() -> impl IntoView {
                 }}
             </div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex shrink-0 items-center gap-2">
                 <HeaderGlobalSearch />
                 <LanguageToggle />
                 <UserMenu />

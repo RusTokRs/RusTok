@@ -134,6 +134,11 @@ export default function AdminGlobalSearchActions() {
   const [queryLogId, setQueryLogId] = React.useState<string | null>(null);
   const requestSeq = React.useRef(0);
 
+  const resetSearchState = React.useCallback(() => {
+    setResults((current) => (current.length === 0 ? current : []));
+    setQueryLogId((current) => (current === null ? current : null));
+  }, []);
+
   const fetchSearchResults = useEffectEvent(async (query: string) => {
     if (!token || !tenantSlug) {
       return null;
@@ -201,8 +206,7 @@ export default function AdminGlobalSearchActions() {
 
   React.useEffect(() => {
     if (currentRootActionId || deferredSearch.length < 2) {
-      setResults([]);
-      setQueryLogId(null);
+      resetSearchState();
       return;
     }
 
@@ -220,12 +224,11 @@ export default function AdminGlobalSearchActions() {
         setQueryLogId(data.adminGlobalSearch.queryLogId);
       } catch {
         if (requestSeq.current === currentRequest) {
-          setResults([]);
-          setQueryLogId(null);
+          resetSearchState();
         }
       }
     })();
-  }, [currentRootActionId, deferredSearch, fetchSearchResults]);
+  }, [currentRootActionId, deferredSearch, fetchSearchResults, resetSearchState]);
 
   const actions = React.useMemo(() => {
     if (currentRootActionId || deferredSearch.length < 2) {

@@ -1,8 +1,12 @@
-@import "../../UI/tokens/base.css";
+@import "tailwindcss";
+@config "./tailwind.config.js";
+@source "./index.html";
+@source "./src/**/*.rs";
+@source "../../crates/**/admin/src/**/*.rs";
+@source "../../crates/leptos-ui/src/**/*.rs";
+@source "../../crates/leptos-*/src/**/*.rs";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "../../UI/tokens/base.css";
 
 @layer base {
   :root {

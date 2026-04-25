@@ -20,22 +20,6 @@ const coreNavItems: NavItem[] = [
     access: { role: 'manager' }
   },
   {
-    title: 'Product',
-    url: '/dashboard/product',
-    icon: 'product',
-    shortcut: ['p', 'p'],
-    isActive: false,
-    items: []
-  },
-  {
-    title: 'Kanban',
-    url: '/dashboard/kanban',
-    icon: 'kanban',
-    shortcut: ['k', 'k'],
-    isActive: false,
-    items: []
-  },
-  {
     title: 'App Connections',
     url: '/dashboard/apps',
     icon: 'post',

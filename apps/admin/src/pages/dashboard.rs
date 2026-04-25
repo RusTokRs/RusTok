@@ -316,7 +316,7 @@ pub fn Dashboard() -> impl IntoView {
     });
 
     view! {
-        <section class="px-10 py-8">
+        <section class="p-4 md:p-8">
             <PageHeader
                 title=title
                 eyebrow=t_string!(i18n, app.nav.dashboard).to_string()

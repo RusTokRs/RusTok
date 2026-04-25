@@ -28,11 +28,6 @@ export function InfoButton({
 }: InfoButtonProps) {
   const { setContent, setOpen } = useInfobar();
 
-  // Automatically set content when component mounts (e.g., on page load/refresh)
-  React.useEffect(() => {
-    setContent(content);
-  }, [content, setContent]);
-
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     setContent(content);
     setOpen(true);

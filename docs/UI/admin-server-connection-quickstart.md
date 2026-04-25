@@ -98,6 +98,57 @@ Next helpers. Legacy keys вроде `id`, `pageId`, `topicId` не поддер
 - что `apps/server` поднят на ожидаемом порту;
 - что выбранный UI host использует корректный transport contract для текущего runtime mode.
 
+## Локальный debug-stack без Docker
+
+Для локальной отладки без `docker compose` минимальный стек поднимается как отдельные процессы:
+
+```powershell
+# 1. apps/server
+$env:RUSTOK_MODULES_MANIFEST = (Resolve-Path .\modules.local.toml)
+target\debug\rustok-server.exe start --no-banner --binding localhost --port 5150
+
+# 2. apps/next-admin
+cd apps\next-admin
+npm.cmd run dev -- --hostname localhost --port 3000 --webpack
+
+# 3. apps/admin
+cd ..\admin
+trunk serve --address ::1 --port 3001
+```
+
+Для локального debug без Docker сервер должен читать `modules.local.toml`, где embedded admin/storefront выключены.
+Корневой `modules.toml` описывает monolith/release composition и требует `embed-admin`/`embed-storefront`.
+В текущем Windows debug-окружении сборка `apps/admin` как SSR embedded artifact падает по памяти (`rustc-LLVM ERROR: out of memory`),
+поэтому внешний стек `apps/server -> apps/next-admin -> apps/admin` запускается через `modules.local.toml`.
+
+Tenant contract для standalone admin hosts slug-based: UI отправляет `X-Tenant-Slug`, backend в header-mode обязан принимать этот
+header как публичный admin contract. `X-Tenant-ID` остаётся допустимым внутренним/legacy header, но не должен требоваться от UI host.
+
+Решение по binding: canonical URL остаётся `http://localhost:5150`. На этой Windows-машине `127.0.0.1`
+даёт зависание HTTP-ответов даже для простого Node server, а `localhost` уходит в `::1` и работает стабильно.
+Поэтому локальный debug-stack должен использовать `localhost`/`::1`, а не `127.0.0.1`.
+
+Решение по Next admin: для Next.js 16 локальный `next dev` на Turbopack зависал на компиляции
+`/auth/sign-in`, поэтому debug-команда использует `--webpack`. Это startup/debug choice, не изменение
+публичного API.
+
+Решение по Leptos admin: standalone `csr` профиль нужен для debug и headless parity, но продуктовый target
+остаётся SSR-first/hydrate. `#[server]` остаётся preferred internal path в SSR/monolith, GraphQL/REST остаётся
+обязательным fallback для headless/CSR. `trunk serve` должен собирать binary artifact `rustok-admin`, потому что
+library artifact `rustok_admin` не запускает `main()` и не монтирует shell.
+
+Визуальный контракт: Leptos admin и Next admin не должны расходиться как независимые продукты. Host-level auth shell,
+navigation, route-selection UX и module-owned surface containers должны идти через общий admin UI contract/tokens.
+Next admin может оставаться React/Next host для Next-пакетов, но Leptos admin является canonical operator surface для
+монолитного/SSR пути; расхождения фиксируются как parity debt, а не как допустимый fork дизайна.
+
+Для standalone `trunk serve` CSS является частью startup contract. `apps/admin/input.css` использует Tailwind v4
+`@import "tailwindcss"` + `@source`, а `tailwind.config.js` обязан сканировать не только `apps/admin/src`, но и
+module-owned admin UI packages в `crates/**/admin/src/**/*.rs`, а также shared Leptos UI crates. Иначе host shell может
+загрузиться, но module-owned страницы останутся без spacing/layout utilities и визуально разойдутся с Next admin.
+Trunk post-build hook `scripts\tailwind-build.cmd` кладёт `output.css` в staging/dist; отсутствие `dist/output.css`
+считается startup blocker для Leptos admin debug.
+
 ## Scope этого quickstart
 
 Этот документ намеренно не хранит:

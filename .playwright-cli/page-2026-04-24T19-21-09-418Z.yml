@@ -1,0 +1,36 @@
+- generic [active] [ref=e1]:
+  - region "Notifications alt+T"
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e6]
+        - text: RusTok Admin
+      - img [ref=e8]
+      - blockquote [ref=e586]:
+        - paragraph [ref=e587]: “RusTok — a modern multi-tenant CMS built with Rust and WebAssembly.”
+        - contentinfo [ref=e588]: RusTok Team
+    - generic [ref=e590]:
+      - generic [ref=e591]:
+        - heading "Sign in to your account" [level=1] [ref=e592]
+        - paragraph [ref=e593]: Enter your email, password and workspace to sign in
+      - generic [ref=e594]:
+        - generic [ref=e595]:
+          - generic [ref=e596]: Workspace
+          - textbox "Workspace" [ref=e597]:
+            - /placeholder: demo
+            - text: demo
+        - generic [ref=e598]:
+          - generic [ref=e599]: Email
+          - textbox "Email" [ref=e600]:
+            - /placeholder: admin@rustok.io
+        - generic [ref=e601]:
+          - generic [ref=e602]: Password
+          - textbox "Password" [ref=e603]:
+            - /placeholder: ••••••••
+        - button "Sign In" [ref=e604]
+      - paragraph [ref=e605]:
+        - text: Don't have an account?
+        - link "Sign up" [ref=e606] [cursor=pointer]:
+          - /url: /auth/sign-up
+  - button "Open Next.js Dev Tools" [ref=e612] [cursor=pointer]:
+    - img [ref=e613]

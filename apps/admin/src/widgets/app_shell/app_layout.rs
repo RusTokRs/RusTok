@@ -13,9 +13,9 @@ pub fn app_layout() -> impl IntoView {
 
     view! {
         <EnabledModulesProvider>
-            <div class="flex h-screen bg-background text-foreground">
+            <div class="min-h-svh bg-background text-foreground md:flex">
                 <Sidebar />
-                <div class="flex flex-1 flex-col overflow-hidden">
+                <div class="flex min-w-0 flex-1 flex-col">
                     <Header />
                     <main class="flex-1 overflow-y-auto">
                         <Outlet />

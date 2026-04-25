@@ -762,12 +762,17 @@ pub fn resolve_identifier(
 
     match settings.tenant.resolution.as_str() {
         "header" => {
-            let header_value = req
+            let primary_header_value = req
                 .headers()
                 .get(&settings.tenant.header_name)
                 .and_then(|value| value.to_str().ok());
+            let slug_header_value = (settings.tenant.header_name != "X-Tenant-Slug")
+                .then(|| req.headers().get("X-Tenant-Slug"))
+                .flatten()
+                .and_then(|value| value.to_str().ok());
 
-            let identifier = header_value
+            let identifier = primary_header_value
+                .or(slug_header_value)
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
 

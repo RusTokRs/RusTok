@@ -15,6 +15,13 @@ function normalizeModules(modules: string[]): string[] {
   return Array.from(new Set(modules)).sort();
 }
 
+function modulesEqual(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((module, index) => module === right[index])
+  );
+}
+
 export function EnabledModulesClientProvider({
   initialModules,
   children
@@ -31,7 +38,11 @@ export function EnabledModulesClientProvider({
   );
 
   React.useEffect(() => {
-    setEnabledModules(normalizedInitialModules);
+    setEnabledModules((prev) =>
+      modulesEqual(prev, normalizedInitialModules)
+        ? prev
+        : normalizedInitialModules
+    );
   }, [normalizedInitialModules]);
 
   const value = React.useMemo<EnabledModulesContextValue>(

@@ -51,71 +51,87 @@ pub fn Login() -> impl IntoView {
     };
 
     view! {
-        <section class="grid min-h-screen grid-cols-1 lg:grid-cols-[1.2fr_1fr]">
-            <aside class="flex flex-col justify-center gap-6 bg-primary p-12 text-primary-foreground lg:p-16">
-                <span class="inline-flex w-fit items-center rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-semibold text-primary-foreground/80">
-                    {move || t_string!(i18n, auth.badge)}
-                </span>
-                <h1 class="text-4xl font-semibold">{move || t_string!(i18n, auth.heroTitle)}</h1>
-                <p class="text-lg text-primary-foreground/80">{move || t_string!(i18n, auth.heroSubtitle)}</p>
-                <div class="grid gap-2">
-                    <p class="text-sm font-semibold">
-                        {move || t_string!(i18n, auth.heroListTitle)}
+        <section class="relative h-screen flex-col items-center justify-center bg-background md:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+            <aside class="relative hidden h-full flex-col overflow-hidden bg-zinc-900 p-10 text-white lg:flex">
+                <div class="relative z-20 flex items-center text-lg font-medium">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="mr-2 h-6 w-6"
+                    >
+                        <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+                    </svg>
+                    "RusTok Admin"
+                </div>
+                <div class="absolute inset-0 opacity-40 [background-image:linear-gradient(to_right,rgba(255,255,255,.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.12)_1px,transparent_1px)] [background-size:34px_34px] [mask-image:radial-gradient(420px_circle_at_center,white,transparent)]" />
+                <div class="relative z-20 mt-auto space-y-2">
+                    <p class="text-lg">
+                        "\"RusTok - a modern multi-tenant CMS built with Rust and WebAssembly.\""
                     </p>
-                    <p class="text-sm text-primary-foreground/75">
-                        {move || t_string!(i18n, auth.heroListSubtitle)}
-                    </p>
+                    <p class="text-sm text-white/70">"RusTok Team"</p>
                 </div>
             </aside>
-            <div class="flex flex-col justify-center gap-7 bg-background p-12 lg:p-20">
-                <div class="flex flex-col gap-5 rounded-xl border border-border bg-card p-8 shadow-md">
-                    <div>
-                        <h2 class="text-2xl font-semibold text-card-foreground">
+
+            <div class="flex h-full items-center justify-center p-4 lg:p-8">
+                <div class="flex w-full max-w-md flex-col items-center justify-center space-y-6">
+                    <div class="flex flex-col space-y-2 text-center">
+                        <h1 class="text-2xl font-semibold tracking-tight">
                             {move || t_string!(i18n, auth.title)}
-                        </h2>
-                        <p class="text-muted-foreground">
+                        </h1>
+                        <p class="text-sm text-muted-foreground">
                             {move || t_string!(i18n, auth.subtitle)}
                         </p>
                     </div>
-                    <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+
+                    <div class="flex w-full items-center justify-center gap-3 text-sm text-muted-foreground">
                         <span>{move || t_string!(i18n, auth.languageLabel)}</span>
                         <LanguageToggle />
                     </div>
-                    <Show when=move || form_state.get().form_error.is_some()>
-                        <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                            {move || form_state.get().form_error.unwrap_or_default()}
-                        </div>
-                    </Show>
-                    <Input
-                        value=tenant
-                        set_value=set_tenant
-                        placeholder="demo"
-                        label=move || t_string!(i18n, auth.tenantLabel)
-                    />
-                    <Input
-                        value=email
-                        set_value=set_email
-                        placeholder="admin@rustok.io"
-                        label=move || t_string!(i18n, auth.emailLabel)
-                    />
-                    <Input
-                        value=password
-                        set_value=set_password
-                        placeholder="••••••••"
-                        type_="password"
-                        label=move || t_string!(i18n, auth.passwordLabel)
-                    />
-                    <Button on_click=on_submit class="w-full">
-                        {move || t_string!(i18n, auth.submit)}
-                    </Button>
-                    <div class="flex justify-between gap-3 text-sm">
-                        <a class="text-primary hover:underline underline-offset-4" href="/register">
+
+                    <div class="w-full space-y-4">
+                        <Show when=move || form_state.get().form_error.is_some()>
+                            <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
+                                {move || form_state.get().form_error.unwrap_or_default()}
+                            </div>
+                        </Show>
+                        <Input
+                            value=tenant
+                            set_value=set_tenant
+                            placeholder="demo"
+                            label=move || t_string!(i18n, auth.tenantLabel)
+                        />
+                        <Input
+                            value=email
+                            set_value=set_email
+                            placeholder="admin@rustok.io"
+                            label=move || t_string!(i18n, auth.emailLabel)
+                        />
+                        <Input
+                            value=password
+                            set_value=set_password
+                            placeholder="********"
+                            type_="password"
+                            label=move || t_string!(i18n, auth.passwordLabel)
+                        />
+                        <Button on_click=on_submit class="w-full">
+                            {move || t_string!(i18n, auth.submit)}
+                        </Button>
+                    </div>
+
+                    <p class="px-8 text-center text-sm text-muted-foreground">
+                        <a class="hover:text-primary underline underline-offset-4" href="/register">
                             {move || t_string!(i18n, auth.registerLink)}
                         </a>
-                        <a class="text-primary hover:underline underline-offset-4" href="/reset">
+                        " · "
+                        <a class="hover:text-primary underline underline-offset-4" href="/reset">
                             {move || t_string!(i18n, auth.resetLink)}
                         </a>
-                    </div>
+                    </p>
                 </div>
             </div>
         </section>

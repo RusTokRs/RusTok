@@ -19,17 +19,20 @@ pub fn Sidebar() -> impl IntoView {
     });
 
     view! {
-        <aside class="w-64 bg-sidebar border-r border-sidebar-border h-screen flex flex-col shrink-0">
-            <div class="p-5 border-b border-sidebar-border">
-                <A href="/dashboard" attr:class="flex items-center gap-2">
-                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                        <span class="text-primary-foreground font-bold text-sm">"R"</span>
+        <aside class="hidden min-h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+            <div class="flex h-16 items-center px-2">
+                <A href="/dashboard" attr:class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                        <span class="text-sm font-semibold">"R"</span>
                     </div>
-                    <span class="text-sm font-semibold text-sidebar-foreground">{t_string!(i18n, app.brand.title)}</span>
+                    <div class="grid flex-1 text-left text-sm leading-tight">
+                        <span class="truncate font-semibold">{t_string!(i18n, app.brand.title)}</span>
+                        <span class="truncate text-xs text-sidebar-foreground/60">"Admin"</span>
+                    </div>
                 </A>
             </div>
 
-            <nav class="flex-1 px-3 py-4 overflow-y-auto">
+            <nav class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
                 <NavGroupLabel label=t_string!(i18n, app.nav.group.overview).to_string() />
                 <NavLink href="/dashboard" icon="grid" label=t_string!(i18n, app.nav.dashboard).to_string() />
 
@@ -72,13 +75,13 @@ pub fn Sidebar() -> impl IntoView {
                 </div>
             </nav>
 
-            <div class="border-t border-border p-4">
-                <div class="flex items-center gap-3 px-2">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+            <div class="border-t border-sidebar-border p-2">
+                <div class="flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground">
                         {move || current_user.get().and_then(|u| u.name.as_ref().and_then(|n| n.chars().next())).unwrap_or('?')}
                     </div>
                     <div class="grid flex-1 min-w-0 text-left text-sm leading-tight">
-                        <span class="truncate font-semibold text-sidebar-foreground text-xs">
+                        <span class="truncate font-semibold">
                             {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| t_string!(i18n, app.menu.defaultUser).to_string())}
                         </span>
                         <span class="truncate text-xs text-sidebar-foreground/60">
@@ -94,7 +97,7 @@ pub fn Sidebar() -> impl IntoView {
 #[component]
 fn NavGroupLabel(label: String) -> impl IntoView {
     view! {
-        <p class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <p class="mt-2 px-2 py-1 text-xs font-medium text-sidebar-foreground/70 first:mt-0">
             {label}
         </p>
     }
@@ -116,8 +119,8 @@ fn NavLink(href: &'static str, icon: &'static str, label: String) -> impl IntoVi
         <A
             href=href
             attr:class=move || format!(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground {}",
-                if is_active() { "bg-accent text-accent-foreground shadow-sm" } else { "text-muted-foreground" }
+                "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {}",
+                if is_active() { "bg-sidebar-accent text-sidebar-accent-foreground font-medium" } else { "text-sidebar-foreground/80" }
             )
         >
             <NavIcon d=icon />
@@ -128,9 +131,16 @@ fn NavLink(href: &'static str, icon: &'static str, label: String) -> impl IntoVi
 
 #[component]
 fn NavIcon(d: &'static str) -> impl IntoView {
+    let path = match d {
+        "grid" => "M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 0h7v7h-7v-7z",
+        "user" => "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+        "lock" => "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5V11z",
+        value => value,
+    };
+
     view! {
         <svg class="h-4 w-4 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d=d />
+            <path d=path />
         </svg>
     }
 }

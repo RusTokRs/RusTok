@@ -1,7 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
-  content: ["./src/**/*.rs", "./index.html"],
+  content: [
+    "./src/**/*.rs",
+    "./index.html",
+    "../../crates/**/admin/src/**/*.rs",
+    "../../crates/leptos-ui/src/**/*.rs",
+    "../../crates/leptos-*/src/**/*.rs",
+  ],
   theme: {
     extend: {
       colors: {
