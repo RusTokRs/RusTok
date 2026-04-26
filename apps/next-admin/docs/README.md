@@ -30,6 +30,7 @@
 - Host `apps/next-admin` выступает только composition root.
 - Core navigation `apps/next-admin` не должен содержать module-owned business routes. Каждый модуль или capability подключает свой Next UX через `apps/next-admin/packages/*` / `@rustok/*-admin` entrypoint, а shell фильтрует пункты по enabled module slug.
 - Если у tenant включён только `blog`, ecommerce/catalog/product UX не должен появляться в navigation и не должен жить как host-owned starter page.
+- Starter-only routes `billing`, `exclusive`, `workspaces` и `workspaces/team` не являются публичной админской поверхностью RusTok и должны возвращать `notFound()`, а не placeholder UI.
 - То же правило действует для core-modules, optional-modules и capability packages.
 - Capability-owned surface `rustok-ai` монтируется как package-owned UI, а не как ad-hoc host feature.
 - Route-selection contract обязан быть в parity с `apps/admin`: selection state URL-owned,
@@ -60,6 +61,6 @@
 
 - [Implementation Plan](./implementation-plan.md)
 - [Navigation RBAC](./nav-rbac.md)
-- [Clerk setup](./clerk_setup.md)
+- [Устаревшая starter-справка Clerk](./clerk_setup.md) — не является активным auth contract RusTok.
 - [Themes](./themes.md)
 - [Карта документации](../../../docs/index.md)

@@ -1,4 +1,5 @@
 import { Providers } from '@/widgets/app-shell';
+import { auth } from '@/auth';
 import { Toaster } from '@/shared/ui/shadcn/sonner';
 import { fontVariables } from '@/shared/lib/themes/font.config';
 import { DEFAULT_THEME } from '@/shared/lib/themes/theme.config';
@@ -34,6 +35,7 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const activeThemeValue = cookieStore.get('active_theme')?.value;
   const themeToApply = activeThemeValue || DEFAULT_THEME;
+  const session = await auth();
   const locale = await getLocale();
   const messages = await getMessages();
 
@@ -69,7 +71,7 @@ export default async function RootLayout({
               disableTransitionOnChange
               enableColorScheme
             >
-              <Providers activeThemeValue={themeToApply}>
+              <Providers activeThemeValue={themeToApply} session={session}>
                 <Toaster />
                 {children}
               </Providers>

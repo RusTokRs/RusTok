@@ -49,6 +49,8 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumCategories,
         Resource::ForumTopics,
         Resource::ForumReplies,
+        Resource::Workflows,
+        Resource::WorkflowExecutions,
     ]
     .into_iter()
     .map(|resource| Permission::new(resource, Action::Manage))
@@ -109,6 +111,11 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::ForumCategories, Action::Manage));
     permissions.insert(Permission::new(Resource::ForumTopics, Action::Manage));
     permissions.insert(Permission::new(Resource::ForumReplies, Action::Manage));
+    permissions.insert(Permission::new(Resource::Workflows, Action::Manage));
+    permissions.insert(Permission::new(
+        Resource::WorkflowExecutions,
+        Action::Manage,
+    ));
 
     permissions
 });
@@ -409,5 +416,34 @@ fn permission_scope_for_set(
 impl Rbac {
     pub fn get_scope(role: &UserRole, permission: &Permission) -> PermissionScope {
         permission_scope_for_set(Self::permissions_for_role(role), permission, role.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn super_admin_can_manage_workflow_module_surface() {
+        assert!(Rbac::has_permission(
+            &UserRole::SuperAdmin,
+            &Permission::WORKFLOWS_LIST
+        ));
+        assert!(Rbac::has_permission(
+            &UserRole::SuperAdmin,
+            &Permission::WORKFLOW_EXECUTIONS_LIST
+        ));
+    }
+
+    #[test]
+    fn admin_can_manage_workflow_module_surface() {
+        assert!(Rbac::has_permission(
+            &UserRole::Admin,
+            &Permission::WORKFLOWS_LIST
+        ));
+        assert!(Rbac::has_permission(
+            &UserRole::Admin,
+            &Permission::WORKFLOW_EXECUTIONS_LIST
+        ));
     }
 }

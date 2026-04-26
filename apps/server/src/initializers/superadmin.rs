@@ -66,14 +66,19 @@ impl Initializer for SuperAdminInitializer {
         let tenant =
             tenants::Entity::find_or_create(&ctx.db, &tenant_name, &tenant_slug, None).await?;
 
-        if users::Entity::find_by_email(&ctx.db, tenant.id, &email)
-            .await?
-            .is_some()
-        {
+        if let Some(user) = users::Entity::find_by_email(&ctx.db, tenant.id, &email).await? {
+            RbacService::assign_role_permissions(
+                &ctx.db,
+                &user.id,
+                &tenant.id,
+                rustok_core::UserRole::SuperAdmin,
+            )
+            .await?;
+
             tracing::debug!(
                 email = %email,
                 tenant = %tenant_slug,
-                "Default superadmin already exists — skipping"
+                "Default superadmin already exists - synchronized role permissions"
             );
             return Ok(());
         }

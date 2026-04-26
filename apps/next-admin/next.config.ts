@@ -6,6 +6,15 @@ import path from 'path';
 
 // Define the base Next.js configuration
 const baseConfig: NextConfig = {
+  async rewrites() {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+    return [
+      {
+        source: '/api/graphql',
+        destination: `${apiBaseUrl}/api/graphql`
+      }
+    ];
+  },
   images: {
     remotePatterns: [
       {

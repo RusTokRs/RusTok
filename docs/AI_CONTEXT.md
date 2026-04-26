@@ -129,6 +129,12 @@
 - `JwtAlgorithm::HS256` (default) — симметричный, `AuthConfig::secret`
 - `JwtAlgorithm::RS256` — асимметричный, `AuthConfig::with_rs256(private_pem, public_pem)`
 
+Server runtime reads auth overrides only through `settings.rustok.auth` in
+`apps/server/src/auth.rs`: `algorithm`, `rsa_private_key_env`,
+`rsa_public_key_env`, `rsa_private_key_pem`, and `rsa_public_key_pem`.
+`HS256` remains the default. `RS256` requires both RSA keys and must fail
+config assembly instead of silently downgrading to `HS256`.
+
 ### `crates/rustok-cache`
 
 `Core` module управления кэшем: Redis-клиент (одна точка подключения), in-memory fallback (Moka), `CacheService::health()` с PING-проверкой. **Заменяет** `ctx.config.cache`. Инициализируется в `bootstrap_app_runtime`, доступен через `ctx.shared_store.get::<CacheService>()`.

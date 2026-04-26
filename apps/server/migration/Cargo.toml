@@ -26,9 +26,13 @@ rustok-payment = { path = "../../../crates/rustok-payment" }
 rustok-fulfillment = { path = "../../../crates/rustok-fulfillment" }
 rustok-commerce = { path = "../../../crates/rustok-commerce" }
 rustok-content = { path = "../../../crates/rustok-content" }
+rustok-blog = { path = "../../../crates/rustok-blog" }
+rustok-comments = { path = "../../../crates/rustok-comments" }
+rustok-pages = { path = "../../../crates/rustok-pages" }
 rustok-seo = { path = "../../../crates/rustok-seo" }
 rustok-forum = { path = "../../../crates/rustok-forum" }
 rustok-index = { path = "../../../crates/rustok-index" }
+rustok-search = { path = "../../../crates/rustok-search" }
 rustok-taxonomy = { path = "../../../crates/rustok-taxonomy" }
 rustok-workflow = { path = "../../../crates/rustok-workflow" }
 

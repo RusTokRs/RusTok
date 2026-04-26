@@ -15,7 +15,7 @@ database:
   connect_timeout: 500
   idle_timeout: 500
   min_connections: 1
-  max_connections: 10
+  max_connections: 30
   auto_migrate: true
 
 auth:
@@ -63,3 +63,7 @@ settings:
       allow_relay_target_fallback: true
       relay_interval_ms: 1000
       channel_capacity: 256
+    runtime:
+      background_workers:
+        workflow_cron_enabled: false
+        seo_bulk_enabled: false

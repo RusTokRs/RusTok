@@ -9,7 +9,8 @@ import {
 } from '@tabler/icons-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { startTransition, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { startTransition, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useEnabledModulesActions } from '@/shared/hooks/use-enabled-modules';
@@ -208,6 +209,14 @@ export function ModulesList({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const t = useTranslations('modules');
+  const { data: session } = useSession();
+  const apiOpts = useMemo(
+    () => ({
+      token: session?.user?.rustokToken ?? null,
+      tenantSlug: session?.user?.tenantSlug ?? null
+    }),
+    [session?.user?.rustokToken, session?.user?.tenantSlug]
+  );
   const { setModuleEnabled } = useEnabledModulesActions();
 
   const coreModules = modules.filter((module) => module.kind === 'core');
@@ -268,7 +277,7 @@ export function ModulesList({
     const loadModuleDetail = async () => {
       setModuleDetailLoading(true);
       try {
-        const detail = await getMarketplaceModule(selectedModuleSlug);
+        const detail = await getMarketplaceModule(selectedModuleSlug, apiOpts);
         if (!cancelled) {
           setSelectedModuleDetail(detail);
         }
@@ -290,7 +299,7 @@ export function ModulesList({
     return () => {
       cancelled = true;
     };
-  }, [selectedModuleSlug]);
+  }, [apiOpts, selectedModuleSlug]);
 
   const refreshMarketplaceCatalog = async (
     nextFilters: CatalogFilters,
@@ -308,7 +317,8 @@ export function ModulesList({
         normalized.source,
         normalized.trustLevel,
         normalized.onlyCompatible,
-        normalized.installedOnly
+        normalized.installedOnly,
+        apiOpts
       );
       setMarketplaceCatalog(modules);
       setKnownCategories((prev) =>
@@ -338,16 +348,17 @@ export function ModulesList({
       const normalized = normalizeCatalogFilters(filters);
       const [nextActiveBuild, nextActiveRelease, nextBuildHistory, nextMarketplaceCatalog] =
         await Promise.all([
-          getActiveBuild(),
-          getActiveRelease(),
-          getBuildHistory(10, 0),
+          getActiveBuild(apiOpts),
+          getActiveRelease(apiOpts),
+          getBuildHistory(10, 0, apiOpts),
           listMarketplaceModules(
             normalized.search,
             normalized.category,
             normalized.source,
             normalized.trustLevel,
             normalized.onlyCompatible,
-            normalized.installedOnly
+            normalized.installedOnly,
+            apiOpts
           )
         ]);
       setActiveBuild(nextActiveBuild);
@@ -389,16 +400,17 @@ export function ModulesList({
         const normalized = normalizeCatalogFilters(appliedCatalogFilters);
         const [nextActiveBuild, nextActiveRelease, nextBuildHistory, nextMarketplaceCatalog] =
           await Promise.all([
-            getActiveBuild(),
-            getActiveRelease(),
-            getBuildHistory(10, 0),
+            getActiveBuild(apiOpts),
+            getActiveRelease(apiOpts),
+            getBuildHistory(10, 0, apiOpts),
             listMarketplaceModules(
               normalized.search,
               normalized.category,
               normalized.source,
               normalized.trustLevel,
               normalized.onlyCompatible,
-              normalized.installedOnly
+              normalized.installedOnly,
+              apiOpts
             )
           ]);
         if (cancelled) {
@@ -425,7 +437,7 @@ export function ModulesList({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeBuild?.id, activeBuild?.status, appliedCatalogFilters]);
+  }, [activeBuild?.id, activeBuild?.status, apiOpts, appliedCatalogFilters]);
 
   const upsertInstalledModule = (slug: string, version: string) => {
     const registryModule = modules.find((module) => module.moduleSlug === slug);
@@ -455,7 +467,7 @@ export function ModulesList({
   const handleToggle = async (slug: string, enabled: boolean) => {
     setLoading(slug);
     try {
-      const updated = await toggleModule(slug, enabled);
+      const updated = await toggleModule(slug, enabled, apiOpts);
       setModules((prev) =>
         prev.map((module) =>
           module.moduleSlug === slug ? { ...module, enabled: updated.enabled } : module
@@ -474,7 +486,7 @@ export function ModulesList({
   const handleInstall = async (slug: string, version: string) => {
     setPlatformLoading(slug);
     try {
-      const build = await installModule(slug, version);
+      const build = await installModule(slug, version, apiOpts);
       upsertInstalledModule(slug, version);
       setActiveBuild(build);
       setBuildHistory((prev) => upsertBuildJob(prev, build));
@@ -491,7 +503,7 @@ export function ModulesList({
   const handleUninstall = async (slug: string) => {
     setPlatformLoading(slug);
     try {
-      const build = await uninstallModule(slug);
+      const build = await uninstallModule(slug, apiOpts);
       setInstalledModules((prev) => prev.filter((item) => item.slug !== slug));
       setModules((prev) =>
         prev.map((module) =>
@@ -514,7 +526,7 @@ export function ModulesList({
   const handleUpgrade = async (slug: string, version: string) => {
     setPlatformLoading(slug);
     try {
-      const build = await upgradeModule(slug, version);
+      const build = await upgradeModule(slug, version, apiOpts);
       upsertInstalledModule(slug, version);
       setActiveBuild(build);
       setBuildHistory((prev) => upsertBuildJob(prev, build));
@@ -531,7 +543,7 @@ export function ModulesList({
   const handleRollback = async (buildId: string) => {
     setRollbackLoading(buildId);
     try {
-      const restoredBuild = await rollbackBuild(buildId);
+      const restoredBuild = await rollbackBuild(buildId, apiOpts);
       setActiveBuild(null);
       setBuildHistory((prev) => upsertBuildJob(prev, restoredBuild));
       toast.success(`Rollback completed for ${buildId}`);

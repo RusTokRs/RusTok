@@ -26,6 +26,9 @@
 - Declares permissions via `rustok-core::Permission`.
 - REST and GraphQL adapters enforce permissions from `AuthContext.permissions` before invoking
   workflow services.
+- The default platform RBAC role sets grant `workflows:*` and `workflow_executions:*`
+  management to `SuperAdmin` and `Admin`; startup superadmin seeding re-syncs those
+  role permissions so newly added workflow permissions are available in local debug stacks.
 
 ## Entry points
 

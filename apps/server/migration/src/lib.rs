@@ -104,9 +104,13 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_fulfillment::migrations::migrations());
         all.extend(rustok_commerce::migrations::migrations());
         all.extend(rustok_content::migrations::migrations());
+        all.extend(rustok_blog::migrations::migrations());
+        all.extend(rustok_comments::migrations::migrations());
+        all.extend(rustok_pages::migrations::migrations());
         all.extend(rustok_seo::migrations::migrations());
         all.extend(rustok_forum::migrations::migrations());
         all.extend(rustok_index::migrations::migrations());
+        all.extend(rustok_search::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
         all.sort_by(|a, b| migration_sort_key(a.name()).cmp(&migration_sort_key(b.name())));
@@ -174,6 +178,48 @@ mod tests {
         assert!(
             taxonomy < product_tags,
             "taxonomy_terms must exist before product_tags adds its FK"
+        );
+    }
+
+    #[test]
+    fn migrator_includes_search_storage_migrations() {
+        let names: Vec<String> = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect();
+
+        assert!(
+            names.contains(&"m20260324_000001_create_search_settings".to_string()),
+            "server migrator must include search settings migration"
+        );
+        assert!(
+            names.contains(&"m20260324_000002_create_search_documents".to_string()),
+            "server migrator must include search documents migration"
+        );
+        assert!(
+            names.contains(&"m20260325_000006_add_search_typo_tolerance_indexes".to_string()),
+            "server migrator must include search typo-tolerance indexes migration"
+        );
+    }
+
+    #[test]
+    fn migrator_includes_content_module_migrations() {
+        let names: Vec<String> = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect();
+
+        assert!(
+            names.contains(&"m20260328_000001_create_blog_post_tables".to_string()),
+            "server migrator must include blog post tables"
+        );
+        assert!(
+            names.contains(&"m20260328_000001_create_pages_tables".to_string()),
+            "server migrator must include pages tables"
+        );
+        assert!(
+            names.contains(&"m20260328_000001_create_comments_tables".to_string()),
+            "server migrator must include comments tables"
         );
     }
 

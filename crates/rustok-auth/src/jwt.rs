@@ -93,7 +93,7 @@ pub fn encode_access_token(
         grant_type: "direct".to_string(),
     };
 
-    encode(&Header::default(), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config), &claims, &encoding_key(config)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -124,7 +124,7 @@ pub fn encode_oauth_access_token(
         grant_type: grant_type.to_string(),
     };
 
-    encode(&Header::default(), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config), &claims, &encoding_key(config)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -157,7 +157,7 @@ pub fn encode_password_reset_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(&Header::default(), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config), &claims, &encoding_key(config)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -197,7 +197,7 @@ pub fn encode_email_verification_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(&Header::default(), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config), &claims, &encoding_key(config)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -235,6 +235,17 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
 // ─── Key helpers ─────────────────────────────────────────────────────
 
 /// Build the encoding key for the configured algorithm.
+fn jwt_header(config: &AuthConfig) -> Header {
+    Header::new(jwt_algorithm(config))
+}
+
+fn jwt_algorithm(config: &AuthConfig) -> Algorithm {
+    match config.algorithm {
+        JwtAlgorithm::HS256 => Algorithm::HS256,
+        JwtAlgorithm::RS256 => Algorithm::RS256,
+    }
+}
+
 fn encoding_key(config: &AuthConfig) -> Result<EncodingKey> {
     match config.algorithm {
         JwtAlgorithm::HS256 => Ok(EncodingKey::from_secret(config.secret.as_bytes())),
@@ -265,11 +276,7 @@ fn decoding_key(config: &AuthConfig) -> Result<DecodingKey> {
 // ─── Validation ──────────────────────────────────────────────────────
 
 fn strict_jwt_validation(config: &AuthConfig) -> Validation {
-    let algorithm = match config.algorithm {
-        JwtAlgorithm::HS256 => Algorithm::HS256,
-        JwtAlgorithm::RS256 => Algorithm::RS256,
-    };
-    let mut validation = Validation::new(algorithm);
+    let mut validation = Validation::new(jwt_algorithm(config));
     validation.validate_exp = true;
     validation.leeway = 0;
     // RFC 7519: token MUST NOT be accepted on or after `exp`.
@@ -285,6 +292,45 @@ fn strict_jwt_validation(config: &AuthConfig) -> Validation {
 mod tests {
     use super::*;
 
+    const TEST_RSA_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDdua49SRdQT5tH
+privGhGOztfH1Tor39Zq1fm+oM2v9DksP3GLsllHP8UklUPWQbZTMtsJyoPlPqjH
+UDcBMTyGkiAHvIDEgRz741z6uOrJkZNH2wyV7EFjWhdaDcNausVTof5nOyOXOZLQ
+6Z5WBg4YxiBFRFPMrk284gUdy+ibmZ7Pj6VGPbB4Z0pTD+mkQZUXmebQsoIS7MUi
+rP1DZa0aB75Ys/fD9tJ8Xu51Jyn3EtcynDLbXHczBNTvFakXo1mMQnGozkelNwKI
+mJT08HoN4CRzWzUhd/72xwmSLUbalpmZY1ZBV6Bl2gbtyQeQOOfsqePHpWbUcNSy
+1DGq7GjHAgMBAAECggEAJ5jZfShoeXc+C/XCVcMaD57w+kciNGOtLzc3esvM7/d1
+nmlWJdScDRVeZ8Igc0sY/JLAe2cnVvFxwuaYbCYW4RGHltobRPyp6HIaUMxlYcoV
+u2drP/sJUmzsbrC2iqWASAdOH7F4EbG+foC6PjKmodYAPV6OeKdISssyjrezutXH
+ZGSQyXM/5+T+fiZEaJr1X0MEXKDU/GhmVLJ7PqPSRjZJFTYuD53uYqG4QjJBdOSI
+ttShhImjkbIbDjVlF6Ok3CgNScOfsObSGnv4ajvjVKpNtBLw+eN4JF3l0o8yI0dl
+sRrEaZ3qxYvQNRtjFzzB5yM3cWaQesZpVMJTubjOAQKBgQDxRvI+9RuwJSw3brkt
+Im0qxd0jFU9uzYLEEE28eo/+2KLxMo+7JllgEXj5ZDCMt+sjn1kOw55RtQ//CDcx
+V0XQ140icmQPiMAray+WVGv6BXfnQFF2xzqo24UQsuCJ+mtQAeQZYWJjaPSKvOd9
+ysY/cNdmje0qmwfnAc9usbJhYQKBgQDrQU9rQoVcpbcsBU50ye/Bwx4mmubNVp6d
+OFNbAeZIuIt87inDwCygbP7qqBf0wbx9Qcc+1u4W5T9GO+aeqZn6zJLOYqpn9SAo
+dBGdYDRpReDAH0A6T0sdlzBAQVr70LytUjGZhRdDj7zwLzpAC8tZey9vpppFpN+m
+7dUn2aFzJwKBgQDebIjlgRAFUj9w2qHa+eGpjL5PmVWgz9O860q+dj5IsW2E7ReT
+b8b0ySa8waAAGYyrSjrPYYaRzFjywqAe3FWAMTXqi4myyF5fqHA2JZ1k36WpiaGP
+3ho1kCkbO8vDZxeGqjedLimFezv0qjC9xjD8SwpHgI8it8iRLRoM8cOAAQKBgHlV
+eOmgKHpNOfjpT7qqgA7WXJGaqNlVCH+cElnI1AXDsKWhjEbasemX7a4HPjvNRDLy
+HxpI7gk++XB26o4AeVtB8aGif7MYWRqkKoWZnc6B7NYKCC1KwjojxQ4O5ycjVHyr
+/MrqOsJsuwzBvvBTZPDkuOWD7uNmkrdcyOhBtaRXAoGBAO/Cxvk7kLKxBctjSijt
+burjOIQ5oN/HmeSHm+QHXffXEzBWfQR5Yc4VXIuxsXb4+RdiUqswLzF+hXMa8/O5
+BR1yuIKlL4tKQxmoOx3+TfCbRAOwSfdvsxzIfFBrm1aavh/7Y5TNOzDnYlfD38S6
+t18YRhvA80STyqQJWI3Tg7sg
+-----END PRIVATE KEY-----"#;
+
+    const TEST_RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3bmuPUkXUE+bR6a4rxoR
+js7Xx9U6K9/WatX5vqDNr/Q5LD9xi7JZRz/FJJVD1kG2UzLbCcqD5T6ox1A3ATE8
+hpIgB7yAxIEc++Nc+rjqyZGTR9sMlexBY1oXWg3DWrrFU6H+ZzsjlzmS0OmeVgYO
+GMYgRURTzK5NvOIFHcvom5mez4+lRj2weGdKUw/ppEGVF5nm0LKCEuzFIqz9Q2Wt
+Gge+WLP3w/bSfF7udScp9xLXMpwy21x3MwTU7xWpF6NZjEJxqM5HpTcCiJiU9PB6
+DeAkc1s1IXf+9scJki1G2paZmWNWQVegZdoG7ckHkDjn7Knjx6Vm1HDUstQxquxo
+xwIDAQAB
+-----END PUBLIC KEY-----"#;
+
     fn test_config() -> AuthConfig {
         AuthConfig {
             secret: "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
@@ -296,6 +342,10 @@ mod tests {
             rsa_private_key_pem: None,
             rsa_public_key_pem: None,
         }
+    }
+
+    fn rs256_test_config() -> AuthConfig {
+        test_config().with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY)
     }
 
     #[test]
@@ -316,6 +366,72 @@ mod tests {
         assert_eq!(claims.aud, "rustok-admin");
         assert!(claims.exp > claims.iat);
         assert!(claims.iat > 0);
+    }
+
+    #[test]
+    fn hs256_access_token_header_matches_config() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let header = jsonwebtoken::decode_header(&token).unwrap();
+        assert_eq!(header.alg, Algorithm::HS256);
+    }
+
+    #[test]
+    fn rs256_access_token_round_trips_and_header_matches_config() {
+        let config = rs256_test_config();
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let session_id = Uuid::new_v4();
+        let token =
+            encode_access_token(&config, user_id, tenant_id, UserRole::Admin, session_id).unwrap();
+
+        let header = jsonwebtoken::decode_header(&token).unwrap();
+        assert_eq!(header.alg, Algorithm::RS256);
+
+        let claims = decode_access_token(&config, &token).unwrap();
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.tenant_id, tenant_id);
+        assert_eq!(claims.session_id, session_id);
+    }
+
+    #[test]
+    fn rs256_access_token_is_not_accepted_as_hs256() {
+        let rs256_config = rs256_test_config();
+        let token = encode_access_token(
+            &rs256_config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        assert!(decode_access_token(&test_config(), &token).is_err());
+    }
+
+    #[test]
+    fn rs256_special_purpose_tokens_round_trip() {
+        let config = rs256_test_config();
+        let tenant_id = Uuid::new_v4();
+
+        let password_token =
+            encode_password_reset_token(&config, tenant_id, "USER@example.com", 900).unwrap();
+        let password_claims = decode_password_reset_token(&config, &password_token).unwrap();
+        assert_eq!(password_claims.sub, "user@example.com");
+
+        let verification_token =
+            encode_email_verification_token(&config, tenant_id, "USER@example.com", 900).unwrap();
+        let verification_claims =
+            decode_email_verification_token(&config, &verification_token).unwrap();
+        assert_eq!(verification_claims.sub, "user@example.com");
     }
 
     #[test]

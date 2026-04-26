@@ -83,6 +83,11 @@ pub struct AuthSettingsOverrides {
     pub refresh_expiration: Option<u64>,
     pub issuer: Option<String>,
     pub audience: Option<String>,
+    pub algorithm: Option<JwtAlgorithm>,
+    pub rsa_private_key_pem: Option<String>,
+    pub rsa_public_key_pem: Option<String>,
+    pub rsa_private_key_env: Option<String>,
+    pub rsa_public_key_env: Option<String>,
 }
 
 impl AuthSettingsOverrides {
@@ -96,6 +101,15 @@ impl AuthSettingsOverrides {
         }
         if let Some(v) = self.audience {
             config.audience = v;
+        }
+        if let Some(v) = self.algorithm {
+            config.algorithm = v;
+        }
+        if let Some(v) = self.rsa_private_key_pem {
+            config.rsa_private_key_pem = Some(v);
+        }
+        if let Some(v) = self.rsa_public_key_pem {
+            config.rsa_public_key_pem = Some(v);
         }
     }
 }

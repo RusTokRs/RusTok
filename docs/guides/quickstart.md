@@ -94,6 +94,8 @@ cargo xtask install-dev --create-db --pg-admin-url postgres://postgres:<password
 Команда проверяет локальные инструменты, готовит `.env.dev`, `apps/next-admin/.env.local`,
 создаёт `modules.local.toml` для standalone UI, применяет миграции и запускает dev seed.
 После bootstrap сервер и админки запускаются отдельно, чтобы логи и debug-сессии не смешивались.
+Локальный `development.yaml` при этом оставляет full backend surface, но отключает maintenance workers
+`workflow_cron_enabled` и `seo_bulk_enabled`, чтобы интерактивная отладка админок не конкурировала с cron/bulk loops за DB pool.
 
 Если `target/debug/rustok-server` ещё не собран, сначала выполните:
 

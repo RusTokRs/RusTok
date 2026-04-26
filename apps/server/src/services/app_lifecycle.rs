@@ -120,6 +120,7 @@ pub fn apply_boot_database_fallback(config: &mut Config) -> bool {
 pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     let settings = RustokSettings::from_settings(&ctx.config.settings)
         .map_err(|error| Error::Message(format!("Invalid rustok settings: {error}")))?;
+    let seo_bulk_worker_enabled = settings.runtime.background_workers.seo_bulk_enabled;
 
     if settings.runtime.is_registry_only() {
         tracing::info!("Skipping background workers for registry-only host mode");
@@ -174,9 +175,11 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     }
 
     #[cfg(feature = "mod-seo")]
-    if !ctx.shared_store.contains::<SeoBulkWorkerHandle>() {
+    if seo_bulk_worker_enabled && !ctx.shared_store.contains::<SeoBulkWorkerHandle>() {
         ctx.shared_store
             .insert(spawn_seo_bulk_worker_handle(ctx.clone(), stop_rx.clone()));
+    } else if !seo_bulk_worker_enabled {
+        tracing::info!("SEO bulk worker disabled by runtime.background_workers config");
     }
 
     Ok(())

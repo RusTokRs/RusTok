@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import { Form } from '@/shared/ui/shadcn/form';
 
 import { FormInput } from './form-input';
 import { FormTextarea } from './form-textarea';
@@ -129,7 +130,11 @@ export default function DemoForm() {
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+          <Form
+            form={form}
+            onSubmit={form.handleSubmit(onSubmit)}
+            className='space-y-6'
+          >
             {/* Basic Inputs */}
             <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
               <FormInput
@@ -283,7 +288,7 @@ export default function DemoForm() {
                 Reset
               </Button>
             </div>
-          </form>
+          </Form>
         </CardContent>
       </Card>
 

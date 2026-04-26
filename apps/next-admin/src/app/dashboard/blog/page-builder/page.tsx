@@ -27,14 +27,25 @@ export default async function Page(props: PageProps) {
   const tenantSlug = session?.user?.tenantSlug ?? null;
   const tenantId = session?.user?.tenantId ?? null;
   const gqlOpts = { token, tenantSlug, tenantId: tenantId ?? undefined };
-  const pages = tenantId ? await listPages(gqlOpts) : [];
+  let loadError: string | null = null;
+  const pages = tenantId
+    ? await listPages(gqlOpts).catch((error) => {
+        loadError =
+          error instanceof Error ? error.message : 'Failed to load pages.';
+        return [];
+      })
+    : [];
   const requestedPageId = readRouteSelection(searchParams, 'page_id');
   const selectedPageId =
     requestedPageId && pages.some((page) => page.id === requestedPageId)
       ? requestedPageId
       : undefined;
   const selectedPage = selectedPageId
-    ? await getPage(selectedPageId, gqlOpts)
+    ? await getPage(selectedPageId, gqlOpts).catch((error) => {
+        loadError =
+          error instanceof Error ? error.message : 'Failed to load page.';
+        return null;
+      })
     : null;
   const preservedQueryEntries = listRouteQueryEntries(searchParams, ['page_id']);
 
@@ -86,7 +97,12 @@ export default async function Page(props: PageProps) {
         </form>
       }
     >
-      {selectedPageId ? (
+      {loadError ? (
+        <div className='rounded-md border border-destructive/30 bg-destructive/5 p-6 text-sm'>
+          <h2 className='font-medium'>Page builder data is unavailable</h2>
+          <p className='mt-2 text-muted-foreground'>{loadError}</p>
+        </div>
+      ) : selectedPageId ? (
         <PageBuilder
           key={selectedPageId}
           pageId={selectedPageId}

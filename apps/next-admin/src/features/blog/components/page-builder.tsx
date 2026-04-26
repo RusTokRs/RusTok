@@ -236,7 +236,7 @@ function buildDefaultMarkup(pageTitle?: string | null): string {
         <div class="rtk-container">
           <span class="rtk-kicker">RusToK Pages</span>
           <h1>${title}</h1>
-          <p>Start building this page visually with GrapesJS. Replace this starter section with your own layout, content, and calls to action.</p>
+          <p>Start building this page visually with GrapesJS. Replace this initial section with the page layout, content, and calls to action for this tenant.</p>
           <div class="rtk-actions">
             <a class="rtk-button rtk-button--primary" href="#content">Explore</a>
             <a class="rtk-button rtk-button--secondary" href="#contact">Contact us</a>

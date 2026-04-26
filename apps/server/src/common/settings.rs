@@ -391,9 +391,19 @@ pub struct RuntimeSettings {
     #[serde(default)]
     pub host_mode: RuntimeHostMode,
     #[serde(default)]
+    pub background_workers: RuntimeBackgroundWorkerSettings,
+    #[serde(default)]
     pub guardrails: RuntimeGuardrailSettings,
     #[serde(default)]
     pub request_trust: RequestTrustSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RuntimeBackgroundWorkerSettings {
+    #[serde(default = "default_true")]
+    pub workflow_cron_enabled: bool,
+    #[serde(default = "default_true")]
+    pub seo_bulk_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
@@ -580,8 +590,18 @@ impl Default for RuntimeSettings {
     fn default() -> Self {
         Self {
             host_mode: RuntimeHostMode::Full,
+            background_workers: RuntimeBackgroundWorkerSettings::default(),
             guardrails: RuntimeGuardrailSettings::default(),
             request_trust: RequestTrustSettings::default(),
+        }
+    }
+}
+
+impl Default for RuntimeBackgroundWorkerSettings {
+    fn default() -> Self {
+        Self {
+            workflow_cron_enabled: true,
+            seo_bulk_enabled: true,
         }
     }
 }

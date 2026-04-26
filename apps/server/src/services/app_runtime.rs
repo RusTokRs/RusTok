@@ -114,7 +114,11 @@ pub async fn bootstrap_app_runtime(
         init_storage(ctx, settings).await?;
 
         #[cfg(feature = "mod-workflow")]
-        init_workflow_runtime(ctx);
+        if settings.runtime.background_workers.workflow_cron_enabled {
+            init_workflow_runtime(ctx);
+        } else {
+            tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
+        }
 
         init_alloy_runtime(ctx);
     }

@@ -24,14 +24,12 @@ export async function listForumTopics(
   const query = `
     query ForumTopics($tenantId: UUID!, $locale: String, $pagination: PaginationInput!) {
       forumTopics(tenantId: $tenantId, locale: $locale, pagination: $pagination) {
-        edges {
-          node {
-            id
-            title
-            slug
-            categoryId
-            replyCount
-          }
+        items {
+          id
+          title
+          slug
+          categoryId
+          replyCount
         }
       }
     }
@@ -44,7 +42,7 @@ export async function listForumTopics(
       pagination: { first: number };
     },
     {
-      forumTopics: { edges: Array<{ node: ForumTopicSummary }> };
+      forumTopics: { items: ForumTopicSummary[] };
     }
   >(
     query,
@@ -57,7 +55,7 @@ export async function listForumTopics(
     opts.tenantSlug
   );
 
-  return data.forumTopics.edges.map((edge) => edge.node);
+  return data.forumTopics.items;
 }
 
 export async function createForumReply(

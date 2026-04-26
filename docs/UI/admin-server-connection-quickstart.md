@@ -121,6 +121,10 @@ trunk serve --address ::1 --port 3001
 Корневой `modules.toml` описывает monolith/release composition и требует `embed-admin`/`embed-storefront`.
 В текущем Windows debug-окружении сборка `apps/admin` как SSR embedded artifact падает по памяти (`rustc-LLVM ERROR: out of memory`),
 поэтому внешний стек `apps/server -> apps/next-admin -> apps/admin` запускается через `modules.local.toml`.
+В `apps/server/config/development.yaml` для этого debug-профиля отключены только maintenance workers
+`runtime.background_workers.workflow_cron_enabled=false` и `runtime.background_workers.seo_bulk_enabled=false`.
+Это сохраняет full HTTP/GraphQL/module surface для админок, но не даёт cron/bulk loops забирать DB pool во время
+интерактивной отладки. Production/default runtime остаётся с включёнными workers.
 
 Tenant contract для standalone admin hosts slug-based: UI отправляет `X-Tenant-Slug`, backend в header-mode обязан принимать этот
 header как публичный admin contract. `X-Tenant-ID` остаётся допустимым внутренним/legacy header, но не должен требоваться от UI host.

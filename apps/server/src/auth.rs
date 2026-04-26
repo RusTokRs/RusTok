@@ -1,7 +1,7 @@
 // Re-export types from rustok-auth (these don't need error conversion).
 pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, EmailVerificationClaims, InviteClaims,
-    PasswordResetClaims,
+    JwtAlgorithm, PasswordResetClaims,
 };
 
 use loco_rs::app::AppContext;
@@ -30,32 +30,68 @@ pub fn auth_config_from_ctx(ctx: &AppContext) -> Result<AuthConfig> {
         .as_ref()
         .and_then(|value| serde_json::from_value::<AppSettings>(value.clone()).ok());
 
-    let auth_settings = app_settings.and_then(|s| s.auth);
+    let auth_settings = app_settings.and_then(|s| s.auth).unwrap_or_default();
 
+    auth_config_from_parts(auth.secret.clone(), auth.expiration, auth_settings)
+}
+
+fn auth_config_from_parts(
+    secret: String,
+    access_expiration: u64,
+    auth_settings: AuthSettingsOverrides,
+) -> Result<AuthConfig> {
     let refresh_expiration = auth_settings
-        .as_ref()
-        .and_then(|a| a.refresh_expiration)
+        .refresh_expiration
         .unwrap_or(DEFAULT_REFRESH_EXPIRATION_SECS);
 
-    let issuer = auth_settings
-        .as_ref()
-        .and_then(|a| a.issuer.clone())
-        .unwrap_or_else(|| "rustok".to_string());
+    let mut config = AuthConfig::new(secret).with_expiration(access_expiration, refresh_expiration);
 
-    let audience = auth_settings
-        .and_then(|a| a.audience)
-        .unwrap_or_else(|| "rustok-admin".to_string());
+    if let Some(issuer) = auth_settings.issuer {
+        config = config.with_issuer(issuer);
+    }
+    if let Some(audience) = auth_settings.audience {
+        config = config.with_audience(audience);
+    }
+    if let Some(algorithm) = auth_settings.algorithm {
+        config.algorithm = algorithm;
+    }
 
-    Ok(AuthConfig {
-        secret: auth.secret.clone(),
-        access_expiration: auth.expiration,
-        refresh_expiration,
-        issuer,
-        audience,
-        algorithm: rustok_auth::JwtAlgorithm::HS256,
-        rsa_private_key_pem: None,
-        rsa_public_key_pem: None,
-    })
+    config.rsa_private_key_pem = resolve_key_material(
+        auth_settings.rsa_private_key_pem,
+        auth_settings.rsa_private_key_env,
+    )?;
+    config.rsa_public_key_pem = resolve_key_material(
+        auth_settings.rsa_public_key_pem,
+        auth_settings.rsa_public_key_env,
+    )?;
+
+    validate_auth_config(&config)?;
+    Ok(config)
+}
+
+fn resolve_key_material(
+    inline_pem: Option<String>,
+    env_name: Option<String>,
+) -> Result<Option<String>> {
+    if let Some(env_name) = env_name.filter(|name| !name.trim().is_empty()) {
+        let value = std::env::var(&env_name).map_err(|_| Error::InternalServerError)?;
+        if value.trim().is_empty() {
+            return Err(Error::InternalServerError);
+        }
+        return Ok(Some(value));
+    }
+
+    Ok(inline_pem.filter(|pem| !pem.trim().is_empty()))
+}
+
+fn validate_auth_config(config: &AuthConfig) -> Result<()> {
+    if config.algorithm == JwtAlgorithm::RS256
+        && (config.rsa_private_key_pem.is_none() || config.rsa_public_key_pem.is_none())
+    {
+        return Err(Error::InternalServerError);
+    }
+
+    Ok(())
 }
 
 // ─── Token functions ─────────────────────────────────────────────────
@@ -175,4 +211,90 @@ pub fn auth_err(err: AuthError) -> Error {
 struct AppSettings {
     #[serde(default)]
     auth: Option<AuthSettingsOverrides>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    fn secret() -> String {
+        "test-secret-key-for-unit-tests-only-32bytes!".to_string()
+    }
+
+    #[test]
+    fn auth_config_defaults_to_hs256() {
+        let config = auth_config_from_parts(secret(), 900, AuthSettingsOverrides::default())
+            .expect("auth config");
+
+        assert_eq!(config.algorithm, JwtAlgorithm::HS256);
+        assert_eq!(config.access_expiration, 900);
+        assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
+        assert!(config.rsa_private_key_pem.is_none());
+        assert!(config.rsa_public_key_pem.is_none());
+    }
+
+    #[test]
+    fn auth_config_accepts_inline_rs256_keys() {
+        let config = auth_config_from_parts(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                rsa_private_key_pem: Some("private".to_string()),
+                rsa_public_key_pem: Some("public".to_string()),
+                ..AuthSettingsOverrides::default()
+            },
+        )
+        .expect("auth config");
+
+        assert_eq!(config.algorithm, JwtAlgorithm::RS256);
+        assert_eq!(config.rsa_private_key_pem.as_deref(), Some("private"));
+        assert_eq!(config.rsa_public_key_pem.as_deref(), Some("public"));
+    }
+
+    #[test]
+    fn auth_config_rejects_rs256_without_keys() {
+        let result = auth_config_from_parts(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                ..AuthSettingsOverrides::default()
+            },
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn auth_config_resolves_rs256_keys_from_env() {
+        std::env::set_var("RUSTOK_TEST_RSA_PRIVATE", "private-from-env");
+        std::env::set_var("RUSTOK_TEST_RSA_PUBLIC", "public-from-env");
+
+        let config = auth_config_from_parts(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                rsa_private_key_env: Some("RUSTOK_TEST_RSA_PRIVATE".to_string()),
+                rsa_public_key_env: Some("RUSTOK_TEST_RSA_PUBLIC".to_string()),
+                ..AuthSettingsOverrides::default()
+            },
+        )
+        .expect("auth config");
+
+        assert_eq!(
+            config.rsa_private_key_pem.as_deref(),
+            Some("private-from-env")
+        );
+        assert_eq!(
+            config.rsa_public_key_pem.as_deref(),
+            Some("public-from-env")
+        );
+
+        std::env::remove_var("RUSTOK_TEST_RSA_PRIVATE");
+        std::env::remove_var("RUSTOK_TEST_RSA_PUBLIC");
+    }
 }

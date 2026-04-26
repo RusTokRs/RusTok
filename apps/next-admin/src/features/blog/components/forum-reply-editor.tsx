@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormInput } from '@/shared/ui/forms';
+import { Form } from '@/shared/ui/shadcn/form';
 import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { useState } from 'react';
@@ -54,16 +55,16 @@ export function ForumReplyEditor({
       <CardHeader>
         <CardTitle>Forum reply composer</CardTitle>
       </CardHeader>
-      <CardContent className='space-y-4'>
-        <FormInput control={form.control} name='locale' label='Locale' />
-        <RtJsonEditor label='Reply content' value={doc} onChange={setDoc} />
-        <pre className='bg-muted max-h-44 overflow-auto rounded-md border p-3 text-xs'>
-          {stringifyRtDoc(doc, form.watch('locale') || hostLocale)}
-        </pre>
-        <Button type='button' onClick={form.handleSubmit(submit)}>
-          Send reply
-        </Button>
-      </CardContent>
+      <Form form={form} onSubmit={form.handleSubmit(submit)}>
+        <CardContent className='space-y-4'>
+          <FormInput control={form.control} name='locale' label='Locale' />
+          <RtJsonEditor label='Reply content' value={doc} onChange={setDoc} />
+          <pre className='bg-muted max-h-44 overflow-auto rounded-md border p-3 text-xs'>
+            {stringifyRtDoc(doc, form.watch('locale') || hostLocale)}
+          </pre>
+          <Button type='submit'>Send reply</Button>
+        </CardContent>
+      </Form>
     </Card>
   );
 }

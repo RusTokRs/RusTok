@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Form } from '@/shared/ui/shadcn/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -244,7 +245,11 @@ export default function PostForm({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
+        <Form
+          form={form}
+          onSubmit={form.handleSubmit(onSubmit)}
+          className='space-y-8'
+        >
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormInput
               control={form.control}
@@ -380,7 +385,7 @@ export default function PostForm({
           <Button type='submit'>
             {initialData ? 'Update Post' : 'Create Post'}
           </Button>
-        </form>
+        </Form>
       </CardContent>
     </Card>
   );
