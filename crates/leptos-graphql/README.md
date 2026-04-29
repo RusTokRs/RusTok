@@ -8,7 +8,7 @@
 
 - Execute GraphQL requests over HTTP.
 - Provide reactive query and mutation hooks for Leptos UI packages.
-- Apply shared auth, tenant, and locale headers without duplicating transport glue across hosts.
+- Apply shared auth, tenant, and host-provided `UiRouteContext.locale` headers without duplicating transport glue across hosts.
 
 ## Entry points
 
@@ -25,6 +25,7 @@
 - Used by Leptos UI packages and apps that talk to RusToK GraphQL surfaces.
 - Used by `leptos-auth` as the fallback transport path for auth flows.
 - Talks to `apps/server` GraphQL endpoints while staying free from module-specific schema ownership.
+- Does not read locale from browser storage; hosts provide the effective locale through `UiRouteContext`.
 
 ## Docs
 

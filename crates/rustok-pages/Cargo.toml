@@ -13,7 +13,7 @@ axum.workspace = true
 base64.workspace = true
 chrono.workspace = true
 loco-rs.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["loco-adapter"] }
 rustok-channel.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true

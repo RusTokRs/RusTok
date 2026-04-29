@@ -78,8 +78,8 @@
 
 ### 5.1 Обязательные targeted gates
 
-- [ ] `npm.cmd run verify:i18n:ui`
-- [ ] `npm.cmd run verify:i18n:contract`
+- [ ] `npm run verify:i18n:ui`
+- [ ] `npm run verify:i18n:contract`
 - [ ] `npm.cmd run verify:storefront:routes`
 
 Если менялся host wiring или UI contract, эти проверки считаются обязательными.

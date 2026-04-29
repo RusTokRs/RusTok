@@ -26,15 +26,15 @@ pub fn Sidebar() -> impl IntoView {
                         <span class="text-sm font-semibold">"R"</span>
                     </div>
                     <div class="grid flex-1 text-left text-sm leading-tight">
-                        <span class="truncate font-semibold">{t_string!(i18n, app.brand.title)}</span>
+                        <span class="truncate font-semibold">{move || t_string!(i18n, app.brand.title).to_string()}</span>
                         <span class="truncate text-xs text-sidebar-foreground/60">"Admin"</span>
                     </div>
                 </A>
             </div>
 
             <nav class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
-                <NavGroupLabel label=t_string!(i18n, app.nav.group.overview).to_string() />
-                <NavLink href="/dashboard" icon="grid" label=t_string!(i18n, app.nav.dashboard).to_string() />
+                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.overview).to_string() />
+                <NavLink href="/dashboard" icon="grid" label=move || t_string!(i18n, app.nav.dashboard).to_string() />
 
                 {move || {
                     let role = current_user.get()
@@ -44,20 +44,21 @@ pub fn Sidebar() -> impl IntoView {
                     if is_admin {
                         view! {
                             <div class="pt-3">
-                                <NavGroupLabel label=t_string!(i18n, app.nav.group.management).to_string() />
-                                <NavLink href="/users" icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" label=t_string!(i18n, app.nav.users).to_string() />
-                                <NavLink href="/roles" icon="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" label="Roles & Permissions".to_string() />
-                                <NavLink href="/modules" icon="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" label=t_string!(i18n, app.nav.modules).to_string() />
-                                <NavLink href="/modules/search" icon="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" label=t_string!(i18n, app.nav.search).to_string() />
-                                <NavLink href="/apps" icon="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" label=t_string!(i18n, app.nav.apps).to_string() />
-                                <NavLink href="/ai" icon="M9.5 3h5M12 3v3m-7 6a7 7 0 1114 0c0 1.947-.794 3.709-2.076 4.977L18 21h-2.5l-1.154-1.154A6.965 6.965 0 0112 20a6.965 6.965 0 01-2.346-.154L8.5 21H6l1.076-4.023A6.965 6.965 0 015 12z" label="AI".to_string() />
-                                <NavLink href="/email" icon="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" label="Email Settings".to_string() />
-                                <NavLink href="/cache" icon="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" label="Cache".to_string() />
-                                <NavLink href="/events" icon="M13 10V3L4 14h7v7l9-11h-7z" label=t_string!(i18n, events.title).to_string() />
+                                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.management).to_string() />
+                                <NavLink href="/users" icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" label=move || t_string!(i18n, app.nav.users).to_string() />
+                                <NavLink href="/roles" icon="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" label="Roles & Permissions" />
+                                <NavLink href="/modules" icon="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" label=move || t_string!(i18n, app.nav.modules).to_string() />
+                                <NavLink href="/modules/search" icon="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" label=move || t_string!(i18n, app.nav.search).to_string() />
+                                <NavLink href="/apps" icon="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" label=move || t_string!(i18n, app.nav.apps).to_string() />
+                                <NavLink href="/ai" icon="M9.5 3h5M12 3v3m-7 6a7 7 0 1114 0c0 1.947-.794 3.709-2.076 4.977L18 21h-2.5l-1.154-1.154A6.965 6.965 0 0112 20a6.965 6.965 0 01-2.346-.154L8.5 21H6l1.076-4.023A6.965 6.965 0 015 12z" label="AI" />
+                                <NavLink href="/email" icon="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" label="Email Settings" />
+                                <NavLink href="/cache" icon="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" label="Cache" />
+                                <NavLink href="/events" icon="M13 10V3L4 14h7v7l9-11h-7z" label=move || t_string!(i18n, events.title).to_string() />
+                                <NavLink href="/install" icon="M12 3v18m7-7-7 7-7-7M5 3h14" label="Installer" />
 
                                 <Show when=move || !module_nav_items.get().is_empty()>
                                     <div class="pt-3">
-                                        <NavGroupLabel label=t_string!(i18n, app.nav.modulePlugins).to_string() />
+                                        <NavGroupLabel label=move || t_string!(i18n, app.nav.modulePlugins).to_string() />
                                         {move || module_nav_items.get().into_iter().map(|item| (item.render)()).collect_view()}
                                     </div>
                                 </Show>
@@ -69,9 +70,9 @@ pub fn Sidebar() -> impl IntoView {
                 }}
 
                 <div class="pt-3">
-                    <NavGroupLabel label=t_string!(i18n, app.nav.group.account).to_string() />
-                    <NavLink href="/profile" icon="user" label=t_string!(i18n, app.nav.profile).to_string() />
-                    <NavLink href="/security" icon="lock" label=t_string!(i18n, app.nav.security).to_string() />
+                    <NavGroupLabel label=move || t_string!(i18n, app.nav.group.account).to_string() />
+                    <NavLink href="/profile" icon="user" label=move || t_string!(i18n, app.nav.profile).to_string() />
+                    <NavLink href="/security" icon="lock" label=move || t_string!(i18n, app.nav.security).to_string() />
                 </div>
             </nav>
 
@@ -95,16 +96,16 @@ pub fn Sidebar() -> impl IntoView {
 }
 
 #[component]
-fn NavGroupLabel(label: String) -> impl IntoView {
+fn NavGroupLabel(#[prop(into)] label: TextProp) -> impl IntoView {
     view! {
         <p class="mt-2 px-2 py-1 text-xs font-medium text-sidebar-foreground/70 first:mt-0">
-            {label}
+            {move || label.get()}
         </p>
     }
 }
 
 #[component]
-fn NavLink(href: &'static str, icon: &'static str, label: String) -> impl IntoView {
+fn NavLink(href: &'static str, icon: &'static str, #[prop(into)] label: TextProp) -> impl IntoView {
     let location = use_location();
     let is_active = move || {
         let path = location.pathname.get();
@@ -124,7 +125,7 @@ fn NavLink(href: &'static str, icon: &'static str, label: String) -> impl IntoVi
             )
         >
             <NavIcon d=icon />
-            {label}
+            {move || label.get()}
         </A>
     }
 }

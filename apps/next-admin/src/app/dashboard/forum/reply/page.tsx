@@ -5,7 +5,10 @@ import { cn } from '@/shared/lib/utils';
 import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
 import { ForumReplyEditor } from '../../../../../packages/blog/src';
-import { listRouteQueryEntries, readRouteSelection } from '@/shared/lib/route-selection';
+import {
+  listRouteQueryEntries,
+  readRouteSelection
+} from '@/shared/lib/route-selection';
 
 export const metadata = {
   title: 'Dashboard: Forum Reply Composer'
@@ -25,9 +28,11 @@ export default async function Page(props: PageProps) {
   const topics = tenantId ? await listForumTopics(gqlOpts) : [];
   const requestedTopicId = readRouteSelection(searchParams, 'topic_id');
   const selectedTopic = requestedTopicId
-    ? topics.find((topic) => topic.id === requestedTopicId) ?? null
+    ? (topics.find((topic) => topic.id === requestedTopicId) ?? null)
     : null;
-  const preservedQueryEntries = listRouteQueryEntries(searchParams, ['topic_id']);
+  const preservedQueryEntries = listRouteQueryEntries(searchParams, [
+    'topic_id'
+  ]);
 
   return (
     <PageContainer
@@ -41,12 +46,17 @@ export default async function Page(props: PageProps) {
       pageHeaderAction={
         <form method='get' className='flex items-center gap-2'>
           {preservedQueryEntries.map(([key, value]) => (
-            <input key={`${key}:${value}`} type='hidden' name={key} value={value} />
+            <input
+              key={`${key}:${value}`}
+              type='hidden'
+              name={key}
+              value={value}
+            />
           ))}
           <select
             name='topic_id'
             defaultValue={selectedTopic?.id ?? ''}
-            className='h-9 min-w-60 rounded-md border border-input bg-background px-3 text-sm'
+            className='border-input bg-background h-9 min-w-60 rounded-md border px-3 text-sm'
           >
             {topics.length === 0 ? (
               <option value=''>No topics available</option>
@@ -58,7 +68,10 @@ export default async function Page(props: PageProps) {
               ))
             )}
           </select>
-          <button className={cn(buttonVariants({ variant: 'outline' }), 'h-9')} type='submit'>
+          <button
+            className={cn(buttonVariants({ variant: 'outline' }), 'h-9')}
+            type='submit'
+          >
             Open
           </button>
         </form>
@@ -68,7 +81,8 @@ export default async function Page(props: PageProps) {
         <ForumReplyEditor topicId={selectedTopic.id} gqlOpts={gqlOpts} />
       ) : (
         <div className='text-muted-foreground rounded-md border border-dashed p-6 text-sm'>
-          Forum module has no selectable topics yet. Create a topic first, then reopen the reply editor.
+          Forum module has no selectable topics yet. Create a topic first, then
+          reopen the reply editor.
         </div>
       )}
     </PageContainer>

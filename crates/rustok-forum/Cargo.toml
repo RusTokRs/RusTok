@@ -13,7 +13,7 @@ axum.workspace = true
 chrono.workspace = true
 flex.workspace = true
 loco-rs.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-channel.workspace = true
 rustok-telemetry.workspace = true
 serde.workspace = true

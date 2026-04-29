@@ -14,9 +14,17 @@ export default async function Page() {
   const tenantId = session?.user?.tenantId ?? null;
 
   return (
-    <PageContainer scrollable pageTitle="Workflows" pageDescription="Manage automated workflows">
+    <PageContainer
+      scrollable
+      pageTitle='Workflows'
+      pageDescription='Manage automated workflows'
+    >
       <Suspense fallback={<div>Loading workflows...</div>}>
-        <WorkflowsPage token={token} tenantSlug={tenantSlug} tenantId={tenantId} />
+        <WorkflowsPage
+          token={token}
+          tenantSlug={tenantSlug}
+          tenantId={tenantId}
+        />
       </Suspense>
     </PageContainer>
   );

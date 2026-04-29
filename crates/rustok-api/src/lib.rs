@@ -8,16 +8,16 @@ pub mod request;
 pub mod route_selection;
 pub mod ui;
 
-pub use context::{
-    ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
-    ChannelResolutionTraceStep,
-};
 #[cfg(feature = "server")]
 pub use context::{
     has_any_effective_permission, has_effective_permission, infer_user_role_from_permissions,
     scope_matches, AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
     OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
     TenantContextExtension, TenantError,
+};
+pub use context::{
+    ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
+    ChannelResolutionTraceStep,
 };
 #[cfg(feature = "server")]
 pub use request::RequestContext;

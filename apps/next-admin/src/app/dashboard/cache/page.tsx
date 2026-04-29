@@ -18,7 +18,9 @@ export default async function Page() {
       pageTitle='Cache'
       pageDescription='Cache backend health and configuration'
     >
-      <Suspense fallback={<div className='h-40 animate-pulse rounded-xl bg-muted' />}>
+      <Suspense
+        fallback={<div className='bg-muted h-40 animate-pulse rounded-xl' />}
+      >
         <CachePage token={token} tenantSlug={tenantSlug} />
       </Suspense>
     </PageContainer>

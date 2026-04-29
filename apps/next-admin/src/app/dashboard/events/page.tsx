@@ -21,7 +21,9 @@ export default async function Page() {
       pageTitle={t('title')}
       pageDescription={t('subtitle')}
     >
-      <Suspense fallback={<div className='h-64 animate-pulse rounded-xl bg-muted' />}>
+      <Suspense
+        fallback={<div className='bg-muted h-64 animate-pulse rounded-xl' />}
+      >
         <EventsPage token={token} tenantSlug={tenantSlug} />
       </Suspense>
     </PageContainer>

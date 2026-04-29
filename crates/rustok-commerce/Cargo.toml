@@ -27,7 +27,7 @@ sea-orm.workspace = true
 sea-orm-migration.workspace = true
 chrono.workspace = true
 loco-rs.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["loco-adapter"] }
 rustok-channel.workspace = true
 rustok-telemetry.workspace = true
 serde.workspace = true

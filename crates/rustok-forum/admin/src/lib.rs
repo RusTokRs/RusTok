@@ -10,8 +10,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
+use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::i18n::t;
 use crate::model::{
@@ -1018,17 +1018,17 @@ fn CategoriesPage(
                         target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_CATEGORY).expect("builtin SEO target slug")
                         target_id=Signal::derive(move || editing_id.get())
                         locale=Signal::derive(move || locale.get())
-                        panel_title=t(
+                        panel_title=move || t(
                             locale.get().as_str().into(),
                             "forum.categories.seo.title",
                             "Category SEO",
                         )
-                        panel_subtitle=t(
+                        panel_subtitle=move || t(
                             locale.get().as_str().into(),
                             "forum.categories.seo.subtitle",
                             "Explicit metadata, social tags and diagnostics for the selected forum category.",
                         )
-                        empty_message=t(
+                        empty_message=move || t(
                             locale.get().as_str().into(),
                             "forum.categories.seo.empty",
                             "Create or open a category first. SEO stays attached to the forum category editor.",
@@ -1456,17 +1456,17 @@ fn TopicsPage(
                     target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_TOPIC).expect("builtin SEO target slug")
                     target_id=Signal::derive(move || editing_id.get())
                     locale=Signal::derive(move || locale.get())
-                    panel_title=t(
+                    panel_title=move || t(
                         locale.get().as_str().into(),
                         "forum.topics.seo.title",
                         "Topic SEO",
                     )
-                    panel_subtitle=t(
+                    panel_subtitle=move || t(
                         locale.get().as_str().into(),
                         "forum.topics.seo.subtitle",
                         "Explicit metadata, social tags and diagnostics for the selected forum topic.",
                     )
-                    empty_message=t(
+                    empty_message=move || t(
                         locale.get().as_str().into(),
                         "forum.topics.seo.empty",
                         "Create or open a topic first. SEO stays attached to the forum thread editor.",

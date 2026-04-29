@@ -41,6 +41,7 @@ mod m20260410_000001_cleanup_flex_attached_legacy_inline_metadata;
 mod m20260412_000001_reset_registry_identity_and_artifacts;
 mod m20260412_000002_split_registry_localized_metadata;
 mod m20260419_000001_normalize_registry_governance_event_payloads;
+mod m20260426_000001_create_install_sessions;
 
 pub struct Migrator;
 
@@ -86,6 +87,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260412_000001_reset_registry_identity_and_artifacts::Migration),
             Box::new(m20260412_000002_split_registry_localized_metadata::Migration),
             Box::new(m20260419_000001_normalize_registry_governance_event_payloads::Migration),
+            Box::new(m20260426_000001_create_install_sessions::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

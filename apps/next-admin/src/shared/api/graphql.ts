@@ -32,16 +32,17 @@ export class GraphqlError extends Error {
   }
 }
 
-/** Read the admin UI locale from the browser cookie (client-side only). */
+/** Read the host-resolved admin UI locale from the rendered document. */
 function getClientLocale(): string | undefined {
   if (typeof document === 'undefined') return undefined;
-  const match = document.cookie.match(/rustok-admin-locale=([^;]+)/);
-  return match?.[1];
+  return document.documentElement.lang || undefined;
 }
 
 function resolveGraphqlUrl(explicit?: string): string {
   if (explicit) return explicit;
-  return typeof window === 'undefined' ? SERVER_GRAPHQL_URL : CLIENT_GRAPHQL_URL;
+  return typeof window === 'undefined'
+    ? SERVER_GRAPHQL_URL
+    : CLIENT_GRAPHQL_URL;
 }
 
 function decodeBase64UrlJson(value: string): Record<string, unknown> | null {

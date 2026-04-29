@@ -7,9 +7,7 @@ export const profileSchema = z.object({
   lastname: z
     .string()
     .min(3, { message: 'Last name must be at least 3 characters' }),
-  email: z
-    .string()
-    .email({ message: 'Enter a valid email address' }),
+  email: z.string().email({ message: 'Enter a valid email address' }),
   contactno: z.coerce.number(),
   country: z.string().min(1, { message: 'Please select a country' }),
   city: z.string().min(1, { message: 'Please select a city' }),

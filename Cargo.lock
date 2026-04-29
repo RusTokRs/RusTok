@@ -6029,9 +6029,9 @@ dependencies = [
 name = "leptos-graphql"
 version = "0.1.0"
 dependencies = [
- "gloo-storage",
  "leptos 0.8.17",
  "reqwest 0.13.2",
+ "rustok-api",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -9830,6 +9830,7 @@ dependencies = [
  "rustok-forum-admin",
  "rustok-fulfillment-admin",
  "rustok-index-admin",
+ "rustok-installer",
  "rustok-inventory-admin",
  "rustok-media",
  "rustok-media-admin",
@@ -10576,6 +10577,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-installer"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-inventory"
 version = "0.1.0"
 dependencies = [
@@ -11258,6 +11272,7 @@ dependencies = [
  "rustok-fulfillment",
  "rustok-iggy",
  "rustok-index",
+ "rustok-installer",
  "rustok-inventory",
  "rustok-mcp",
  "rustok-media",
@@ -11323,6 +11338,7 @@ name = "rustok-storefront"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "console_error_panic_hook",
  "futures",
  "leptos 0.8.17",
  "leptos-auth",
@@ -11362,6 +11378,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml 1.0.7+spec-1.1.0",
+ "web-sys",
 ]
 
 [[package]]

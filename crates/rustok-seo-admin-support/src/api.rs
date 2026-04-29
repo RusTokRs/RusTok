@@ -1,6 +1,6 @@
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
+use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use rustok_seo_targets::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 

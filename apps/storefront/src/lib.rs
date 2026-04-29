@@ -7,19 +7,28 @@ pub mod pages;
 pub mod shared;
 pub mod widgets;
 
+#[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
+#[cfg(feature = "ssr")]
 use axum::{extract::Path, routing::get, Router};
-use futures::StreamExt;
-use leptos::prelude::RenderHtml;
+#[cfg(feature = "ssr")]
+use leptos::prelude::{Owner, RenderHtml};
+#[cfg(feature = "ssr")]
 use leptos::view;
 
+#[cfg(feature = "ssr")]
 use crate::app::{StorefrontModulePage, StorefrontShell};
+#[cfg(feature = "ssr")]
 use crate::shared::context::canonical_route::{build_redirect_location, fetch_canonical_route};
+#[cfg(feature = "ssr")]
 use crate::shared::context::enabled_modules::fetch_enabled_modules;
+#[cfg(feature = "ssr")]
 use crate::shared::context::seo_page_context::{fetch_seo_page_context, ResolvedSeoPageContext};
 
+#[cfg(feature = "ssr")]
 const DEFAULT_STOREFRONT_LOCALE: &str = "en";
 
+#[cfg(feature = "ssr")]
 fn render_document(locale: &str, title: &str, extra_head: &str, app_html: String) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -42,6 +51,7 @@ fn render_document(locale: &str, title: &str, extra_head: &str, app_html: String
     )
 }
 
+#[cfg(feature = "ssr")]
 async fn enabled_modules_or_empty() -> Vec<String> {
     match fetch_enabled_modules().await {
         Ok(modules) => modules,
@@ -52,6 +62,7 @@ async fn enabled_modules_or_empty() -> Vec<String> {
     }
 }
 
+#[cfg(feature = "ssr")]
 pub async fn render_shell(
     locale: &str,
     query_params: std::collections::HashMap<String, String>,
@@ -59,7 +70,8 @@ pub async fn render_shell(
     let locale_owned = locale.to_string();
     let enabled_modules = enabled_modules_or_empty().await;
 
-    let app_html = {
+    let owner = Owner::new();
+    let app_html = owner.with(|| {
         let locale = locale_owned.clone();
         view! {
             <StorefrontShell
@@ -68,13 +80,12 @@ pub async fn render_shell(
                 query_params=query_params
             />
         }
-        .to_html_stream_in_order()
-        .collect::<String>()
-        .await
-    };
+        .to_html()
+    });
     render_document(locale, "RusToK Storefront", "", app_html)
 }
 
+#[cfg(feature = "ssr")]
 async fn render_shell_response(
     locale: &str,
     query_params: std::collections::HashMap<String, String>,
@@ -82,6 +93,7 @@ async fn render_shell_response(
     Html(render_shell(locale, query_params).await).into_response()
 }
 
+#[cfg(feature = "ssr")]
 pub async fn render_module_page(
     locale: &str,
     route_segment: &str,
@@ -92,7 +104,8 @@ pub async fn render_module_page(
     let route_segment_owned = route_segment.to_string();
     let enabled_modules = enabled_modules_or_empty().await;
 
-    let app_html = {
+    let owner = Owner::new();
+    let app_html = owner.with(|| {
         let locale = locale_owned.clone();
         let route_segment = route_segment_owned.clone();
         view! {
@@ -103,10 +116,8 @@ pub async fn render_module_page(
                 query_params=query_params
             />
         }
-        .to_html_stream_in_order()
-        .collect::<String>()
-        .await
-    };
+        .to_html()
+    });
     let title = seo_context
         .map(|context| {
             if context.document.title.trim().is_empty() {
@@ -120,6 +131,7 @@ pub async fn render_module_page(
     render_document(locale, title.as_str(), head_html.as_str(), app_html)
 }
 
+#[cfg(feature = "ssr")]
 async fn render_module_page_response(
     locale: &str,
     route_segment: &str,
@@ -153,6 +165,7 @@ async fn render_module_page_response(
     }
 }
 
+#[cfg(feature = "ssr")]
 fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
     match status_code.unwrap_or(308) {
         301 | 308 => Redirect::permanent(location).into_response(),
@@ -160,6 +173,7 @@ fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
     }
 }
 
+#[cfg(feature = "ssr")]
 fn build_seo_head(context: &ResolvedSeoPageContext) -> String {
     #[cfg(feature = "ssr")]
     {
@@ -173,10 +187,12 @@ fn build_seo_head(context: &ResolvedSeoPageContext) -> String {
     }
 }
 
+#[cfg(feature = "ssr")]
 fn normalize_storefront_locale(raw: &str) -> Option<String> {
     rustok_core::normalize_locale_tag(raw)
 }
 
+#[cfg(feature = "ssr")]
 fn resolve_storefront_locale(
     locale_path_prefix: Option<&str>,
     query_params: &std::collections::HashMap<String, String>,
@@ -191,6 +207,7 @@ fn resolve_storefront_locale(
         .unwrap_or_else(|| DEFAULT_STOREFRONT_LOCALE.to_string())
 }
 
+#[cfg(feature = "ssr")]
 pub fn router() -> Router {
     Router::new()
         .route(
@@ -256,6 +273,7 @@ pub fn router() -> Router {
         )
 }
 
+#[cfg(feature = "ssr")]
 #[cfg(test)]
 mod tests {
     use super::{normalize_storefront_locale, resolve_storefront_locale};

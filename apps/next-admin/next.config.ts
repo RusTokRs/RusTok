@@ -7,7 +7,8 @@ import path from 'path';
 // Define the base Next.js configuration
 const baseConfig: NextConfig = {
   async rewrites() {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+    const apiBaseUrl =
+      process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
     return [
       {
         source: '/api/graphql',
@@ -29,10 +30,10 @@ const baseConfig: NextConfig = {
   // (e.g. @rustok/blog-admin at file:../../crates/...) can resolve node_modules
   // from the workspace junction at the repo root.
   turbopack: {
-    root: path.resolve(__dirname, '../..'),
+    root: path.resolve(__dirname, '../..')
   },
   experimental: {
-    turbopackUseSystemTlsCerts: true,
+    turbopackUseSystemTlsCerts: true
   },
   webpack(config) {
     // Allow @rustok/blog-admin (and other local crate UI packages) to resolve
@@ -50,7 +51,7 @@ const baseConfig: NextConfig = {
       '@/components': path.resolve(__dirname, 'src/components'),
       '@/config': path.resolve(__dirname, 'src/config'),
       '@/constants': path.resolve(__dirname, 'src/constants'),
-      '@/hooks': path.resolve(__dirname, 'src/hooks'),
+      '@/hooks': path.resolve(__dirname, 'src/hooks')
     };
     return config;
   }

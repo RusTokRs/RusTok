@@ -1,7 +1,12 @@
 'use client';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { graphqlRequest } from '@/shared/api/graphql';
@@ -52,12 +57,10 @@ export default function UserDetailView({ userId }: { userId: string }) {
     if (!token) return;
     (async () => {
       try {
-        const data = await graphqlRequest<{ id: string }, { user: UserDetail | null }>(
-          USER_QUERY,
-          { id: userId },
-          token,
-          tenantSlug
-        );
+        const data = await graphqlRequest<
+          { id: string },
+          { user: UserDetail | null }
+        >(USER_QUERY, { id: userId }, token, tenantSlug);
         setUser(data.user);
         if (data.user) {
           setEditName(data.user.name ?? '');
@@ -77,7 +80,10 @@ export default function UserDetailView({ userId }: { userId: string }) {
     try {
       const data = await graphqlRequest<object, { updateUser: UserDetail }>(
         UPDATE_USER_MUTATION,
-        { id: userId, input: { name: editName.trim() || null, role: editRole || undefined } },
+        {
+          id: userId,
+          input: { name: editName.trim() || null, role: editRole || undefined }
+        },
         token,
         tenantSlug
       );
@@ -94,20 +100,21 @@ export default function UserDetailView({ userId }: { userId: string }) {
   const handleDisable = async () => {
     if (!token || !user) return;
     try {
-      const data = await graphqlRequest<{ id: string }, { disableUser: UserDetail }>(
-        DISABLE_USER_MUTATION,
-        { id: userId },
-        token,
-        tenantSlug
-      );
+      const data = await graphqlRequest<
+        { id: string },
+        { disableUser: UserDetail }
+      >(DISABLE_USER_MUTATION, { id: userId }, token, tenantSlug);
       setUser(data.disableUser);
       toast.success('User deactivated');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to disable user');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to disable user'
+      );
     }
   };
 
-  if (isLoading) return <p className='text-muted-foreground text-sm'>Loading...</p>;
+  if (isLoading)
+    return <p className='text-muted-foreground text-sm'>Loading...</p>;
   if (!user) return <p className='text-sm text-red-600'>User not found.</p>;
 
   return (
@@ -133,7 +140,11 @@ export default function UserDetailView({ userId }: { userId: string }) {
             <Button size='sm' onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Saving...' : 'Save'}
             </Button>
-            <Button size='sm' variant='outline' onClick={() => setIsEditing(false)}>
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={() => setIsEditing(false)}
+            >
               Cancel
             </Button>
           </>
@@ -180,17 +191,27 @@ export default function UserDetailView({ userId }: { userId: string }) {
                 {
                   label: 'Status',
                   value: (
-                    <Badge variant={user.status === 'ACTIVE' ? 'default' : 'secondary'}>
+                    <Badge
+                      variant={
+                        user.status === 'ACTIVE' ? 'default' : 'secondary'
+                      }
+                    >
                       {user.status}
                     </Badge>
                   )
                 },
                 { label: 'Workspace', value: user.tenantName || '—' },
-                { label: 'Member Since', value: new Date(user.createdAt).toLocaleDateString() },
-                { label: 'ID', value: <span className='font-mono text-xs'>{user.id}</span> }
+                {
+                  label: 'Member Since',
+                  value: new Date(user.createdAt).toLocaleDateString()
+                },
+                {
+                  label: 'ID',
+                  value: <span className='font-mono text-xs'>{user.id}</span>
+                }
               ].map(({ label, value }) => (
                 <div key={label}>
-                  <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                  <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                     {label}
                   </p>
                   <div className='mt-1 text-sm font-medium'>{value}</div>

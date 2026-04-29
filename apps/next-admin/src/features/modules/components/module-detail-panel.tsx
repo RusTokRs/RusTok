@@ -96,28 +96,42 @@ export function ModuleDetailPanel({
               <div className='flex flex-wrap items-center gap-2'>
                 <h3 className='text-lg font-semibold'>{module.name}</h3>
                 <Badge variant='outline'>v{module.latestVersion}</Badge>
-                <Badge variant='secondary'>{humanizeToken(module.source)}</Badge>
-                <Badge variant='outline'>{humanizeToken(module.category)}</Badge>
+                <Badge variant='secondary'>
+                  {humanizeToken(module.source)}
+                </Badge>
+                <Badge variant='outline'>
+                  {humanizeToken(module.category)}
+                </Badge>
                 <Badge variant={module.compatible ? 'outline' : 'destructive'}>
                   {module.compatible ? 'Compatible' : 'Compatibility risk'}
                 </Badge>
-                {module.signaturePresent && <Badge variant='secondary'>Signed</Badge>}
+                {module.signaturePresent && (
+                  <Badge variant='secondary'>Signed</Badge>
+                )}
                 {module.installed && (
                   <Badge variant='secondary'>
                     Installed
-                    {module.installedVersion ? ` v${module.installedVersion}` : ''}
+                    {module.installedVersion
+                      ? ` v${module.installedVersion}`
+                      : ''}
                   </Badge>
                 )}
                 {module.updateAvailable && (
                   <Badge variant='outline'>Update available</Badge>
                 )}
               </div>
-              <p className='text-muted-foreground text-sm'>{module.description}</p>
+              <p className='text-muted-foreground text-sm'>
+                {module.description}
+              </p>
             </div>
 
             <div className='flex flex-wrap items-center gap-2 text-xs'>
-              <Badge variant='secondary'>{humanizeToken(module.ownership)}</Badge>
-              <Badge variant='outline'>{humanizeToken(module.trustLevel)}</Badge>
+              <Badge variant='secondary'>
+                {humanizeToken(module.ownership)}
+              </Badge>
+              <Badge variant='outline'>
+                {humanizeToken(module.trustLevel)}
+              </Badge>
               <Badge variant='outline'>
                 {matchesPrimary
                   ? 'Primary for this admin'
@@ -128,46 +142,57 @@ export function ModuleDetailPanel({
             </div>
 
             <div className='grid gap-4 lg:grid-cols-2'>
-              <div className='rounded-lg border bg-background/70 p-4 text-sm'>
-                <p className='text-muted-foreground text-xs uppercase tracking-wide'>
+              <div className='bg-background/70 rounded-lg border p-4 text-sm'>
+                <p className='text-muted-foreground text-xs tracking-wide uppercase'>
                   Package metadata
                 </p>
                 <dl className='mt-3 space-y-2'>
                   <div className='flex items-start justify-between gap-3'>
                     <dt className='text-muted-foreground'>Slug</dt>
-                    <dd className='font-mono text-right'>{module.slug}</dd>
+                    <dd className='text-right font-mono'>{module.slug}</dd>
                   </div>
                   <div className='flex items-start justify-between gap-3'>
                     <dt className='text-muted-foreground'>Crate</dt>
-                    <dd className='font-mono text-right'>{module.crateName}</dd>
+                    <dd className='text-right font-mono'>{module.crateName}</dd>
                   </div>
                   <div className='flex items-start justify-between gap-3'>
                     <dt className='text-muted-foreground'>Publisher</dt>
-                    <dd className='text-right'>{module.publisher ?? 'Workspace / unknown'}</dd>
+                    <dd className='text-right'>
+                      {module.publisher ?? 'Workspace / unknown'}
+                    </dd>
                   </div>
                   <div className='flex items-start justify-between gap-3'>
                     <dt className='text-muted-foreground'>RusTok range</dt>
                     <dd className='text-right'>
-                      {module.rustokMinVersion ? `>= ${module.rustokMinVersion}` : 'no min'}
-                      {module.rustokMaxVersion ? `, <= ${module.rustokMaxVersion}` : ', no max'}
+                      {module.rustokMinVersion
+                        ? `>= ${module.rustokMinVersion}`
+                        : 'no min'}
+                      {module.rustokMaxVersion
+                        ? `, <= ${module.rustokMaxVersion}`
+                        : ', no max'}
                     </dd>
                   </div>
                   <div className='flex items-start justify-between gap-3'>
                     <dt className='text-muted-foreground'>Checksum</dt>
-                    <dd className='font-mono text-right'>{checksum ?? 'Not published'}</dd>
+                    <dd className='text-right font-mono'>
+                      {checksum ?? 'Not published'}
+                    </dd>
                   </div>
                 </dl>
               </div>
 
-              <div className='rounded-lg border bg-background/70 p-4 text-sm'>
-                <p className='text-muted-foreground text-xs uppercase tracking-wide'>
+              <div className='bg-background/70 rounded-lg border p-4 text-sm'>
+                <p className='text-muted-foreground text-xs tracking-wide uppercase'>
                   Surface policy
                 </p>
                 <div className='mt-3 space-y-3'>
                   <div className='flex flex-wrap gap-2'>
                     {module.recommendedAdminSurfaces.length > 0 ? (
                       module.recommendedAdminSurfaces.map((surface) => (
-                        <Badge key={`${module.slug}-${surface}`} variant='outline'>
+                        <Badge
+                          key={`${module.slug}-${surface}`}
+                          variant='outline'
+                        >
                           Primary: {humanizeToken(surface)}
                         </Badge>
                       ))
@@ -202,9 +227,9 @@ export function ModuleDetailPanel({
               </div>
             </div>
 
-            <div className='rounded-lg border bg-background/70 p-4'>
+            <div className='bg-background/70 rounded-lg border p-4'>
               <div className='flex items-center gap-2'>
-                <p className='text-muted-foreground text-xs uppercase tracking-wide'>
+                <p className='text-muted-foreground text-xs tracking-wide uppercase'>
                   Version history
                 </p>
                 {loading && <Badge variant='outline'>Refreshing</Badge>}
@@ -218,7 +243,9 @@ export function ModuleDetailPanel({
                     >
                       <div className='flex flex-wrap items-center gap-2'>
                         <Badge variant='outline'>v{version.version}</Badge>
-                        {version.yanked && <Badge variant='destructive'>Yanked</Badge>}
+                        {version.yanked && (
+                          <Badge variant='destructive'>Yanked</Badge>
+                        )}
                         {version.signaturePresent && (
                           <Badge variant='secondary'>Signed</Badge>
                         )}
@@ -227,7 +254,9 @@ export function ModuleDetailPanel({
                         </span>
                       </div>
                       {version.changelog && (
-                        <p className='text-muted-foreground text-sm'>{version.changelog}</p>
+                        <p className='text-muted-foreground text-sm'>
+                          {version.changelog}
+                        </p>
                       )}
                       {version.checksumSha256 && (
                         <div className='text-muted-foreground flex items-center gap-2 text-xs'>
@@ -249,7 +278,8 @@ export function ModuleDetailPanel({
           </>
         ) : (
           <p className='text-muted-foreground text-sm'>
-            The selected module is not available in the current catalog snapshot.
+            The selected module is not available in the current catalog
+            snapshot.
           </p>
         )}
       </CardContent>

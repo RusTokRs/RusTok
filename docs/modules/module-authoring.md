@@ -185,7 +185,7 @@ Module-owned UI package не имеет права invent-ить свою locale
 
 1. `cargo xtask module validate <slug>`
 2. targeted `cargo check` для UI crate и host app
-3. `npm.cmd run verify:i18n:ui`, если тронуты locale bundles или locale wiring
+3. `npm run verify:i18n:ui`, если тронуты locale bundles или locale wiring
 4. UI package docs и host docs обновлены, если поменялся surface contract
 
 ## Что запрещено

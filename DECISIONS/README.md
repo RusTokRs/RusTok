@@ -12,6 +12,7 @@ All significant architectural choices should be recorded as ADRs.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [2026-04-26](./2026-04-26-hybrid-installer-architecture.md) | Гибридный установщик RusTok | Accepted |
 | [2026-04-24](./2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md) | SSR-first Leptos hosts with headless parity | Accepted |
 | [2026-04-20](./2026-04-20-module-runtime-extensions-for-capabilities.md) | Module-owned runtime capability registration through `ModuleRuntimeExtensions` | Accepted |
 | [2026-04-12](./2026-04-12-url-owned-admin-route-selection.md) | URL-owned route selection for module-owned admin UI | Accepted |

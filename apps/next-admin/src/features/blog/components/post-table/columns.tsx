@@ -49,7 +49,10 @@ export const columns: ColumnDef<PostSummary>[] = [
     cell: ({ cell }) => {
       const status = cell.getValue<string>();
       return (
-        <Badge variant={statusVariant[status] ?? 'outline'} className='capitalize'>
+        <Badge
+          variant={statusVariant[status] ?? 'outline'}
+          className='capitalize'
+        >
           <CircleDot className='mr-1 h-3 w-3' />
           {statusLabel[status] ?? status}
         </Badge>

@@ -9,4 +9,8 @@ import '../../packages/cache/src';
 import '../../packages/events/src';
 
 export type { AdminModule } from './types';
-export { registerAdminModule, getAdminModules, getAdminNavItems } from './registry';
+export {
+  registerAdminModule,
+  getAdminModules,
+  getAdminNavItems
+} from './registry';

@@ -450,15 +450,44 @@ fn run_server_bootstrap(options: &InstallDevOptions) -> Result<()> {
     envs.insert("SEED_TENANT_SLUG".to_string(), options.tenant_slug.clone());
     envs.insert("SEED_TENANT_NAME".to_string(), options.tenant_name.clone());
 
-    run_server_binary(&["db", "migrate"], &envs, options.dry_run)?;
-    run_server_binary(&["db", "seed", "--from", "dev"], &envs, options.dry_run)?;
+    let args = vec![
+        "install".to_string(),
+        "apply".to_string(),
+        "--environment".to_string(),
+        "local".to_string(),
+        "--profile".to_string(),
+        "dev-local".to_string(),
+        "--database-engine".to_string(),
+        "postgres".to_string(),
+        "--database-url".to_string(),
+        options.database_url.clone(),
+        "--admin-email".to_string(),
+        options.admin_email.clone(),
+        "--admin-password".to_string(),
+        options.admin_password.clone(),
+        "--tenant-slug".to_string(),
+        options.tenant_slug.clone(),
+        "--tenant-name".to_string(),
+        options.tenant_name.clone(),
+        "--seed-profile".to_string(),
+        "dev".to_string(),
+        "--secrets-mode".to_string(),
+        "dotenv-file".to_string(),
+        "--lock-owner".to_string(),
+        "xtask-install-dev".to_string(),
+    ];
+    run_server_binary(&args, &envs, options.dry_run)?;
 
     Ok(())
 }
 
-fn run_server_binary(args: &[&str], envs: &BTreeMap<String, String>, dry_run: bool) -> Result<()> {
+fn run_server_binary(
+    args: &[String],
+    envs: &BTreeMap<String, String>,
+    dry_run: bool,
+) -> Result<()> {
     let binary = server_binary_path();
-    let rendered = format!("{} {}", binary.display(), args.join(" "));
+    let rendered = format!("{} {}", binary.display(), render_command_args(args));
     if dry_run {
         println!("[dry-run] {rendered}");
         return Ok(());
@@ -484,6 +513,23 @@ fn run_server_binary(args: &[&str], envs: &BTreeMap<String, String>, dry_run: bo
         bail!("Command failed with status {status}: {rendered}");
     }
     Ok(())
+}
+
+fn render_command_args(args: &[String]) -> String {
+    let mut rendered = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            rendered.push("<redacted>".to_string());
+            redact_next = false;
+            continue;
+        }
+        rendered.push(arg.clone());
+        if arg == "--admin-password" {
+            redact_next = true;
+        }
+    }
+    rendered.join(" ")
 }
 
 fn server_binary_path() -> PathBuf {

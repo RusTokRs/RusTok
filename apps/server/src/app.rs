@@ -128,6 +128,7 @@ impl Hooks for App {
                 .add_route(controllers::channel::routes())
                 .add_route(controllers::flex::routes())
                 .add_route(controllers::graphql::routes())
+                .add_route(controllers::installer::routes())
                 .add_route(controllers::mcp::routes())
                 .add_route(controllers::oauth::routes())
                 .add_route(controllers::oauth_metadata::routes())
@@ -156,12 +157,7 @@ impl Hooks for App {
         connect_runtime_workers(ctx).await?;
         tracing::info!("RusTok runtime workers connected");
 
-        let router = compose_application_router(
-            router,
-            ctx,
-            runtime,
-            &rustok_settings,
-        );
+        let router = compose_application_router(router, ctx, runtime, &rustok_settings);
         tracing::info!("RusTok application router composed");
 
         Ok(router)
@@ -349,13 +345,16 @@ mod tests {
     use axum::http::{Method, Request, StatusCode};
     use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
     use migration::Migrator;
+    use rustok_api::context::{AuthContext, AuthContextExtension};
+    #[cfg(feature = "mod-seo")]
     use rustok_api::context::{
-        AuthContext, AuthContextExtension, ChannelContext, ChannelContextExtension,
-        ChannelResolutionSource, TenantContext, TenantContextExtension,
+        ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContext,
+        TenantContextExtension,
     };
-    use rustok_core::{
-        events::EventTransport, MemoryTransport, ModuleRuntimeExtensions, Permission,
-    };
+    use rustok_core::Permission;
+    #[cfg(feature = "mod-seo")]
+    use rustok_core::{events::EventTransport, MemoryTransport, ModuleRuntimeExtensions};
+    #[cfg(feature = "mod-seo")]
     use rustok_outbox::TransactionalEventBus;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
     use sea_orm_migration::MigratorTrait;
@@ -445,6 +444,7 @@ mod tests {
         publish_status_auth(uuid::Uuid::new_v4(), true)
     }
 
+    #[cfg(feature = "mod-seo")]
     fn seo_auth(tenant_id: uuid::Uuid, permissions: Vec<Permission>) -> AuthContext {
         AuthContext {
             user_id: uuid::Uuid::new_v4(),
@@ -584,6 +584,7 @@ mod tests {
         (category.id, topic.id)
     }
 
+    #[cfg(feature = "mod-seo")]
     async fn build_runtime_router(ctx: &loco_rs::app::AppContext) -> axum::Router {
         let settings = crate::common::settings::RustokSettings::from_settings(&ctx.config.settings)
             .expect("rustok settings should parse for test runtime");

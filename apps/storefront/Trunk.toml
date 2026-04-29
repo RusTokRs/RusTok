@@ -1,0 +1,22 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/"
+no_default_features = true
+features = ["csr"]
+
+[watch]
+ignore = ["./dist"]
+
+[[hooks]]
+stage = "post_build"
+command = "scripts\\tailwind-build.cmd"
+
+[[proxy]]
+backend = "http://localhost:5150/api/"
+rewrite = "/api/"
+
+[[proxy]]
+backend = "ws://localhost:5150/api/graphql/ws"
+rewrite = "/api/graphql/ws"
+ws = true

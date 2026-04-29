@@ -305,11 +305,6 @@ pub fn Dashboard() -> impl IntoView {
 
     let enabled_modules = use_enabled_modules();
 
-    let title = current_user
-        .get()
-        .and_then(|user| user.name)
-        .unwrap_or_else(|| "Dashboard".to_string());
-
     let module_sections = Signal::derive(move || {
         let enabled = enabled_modules.get();
         components_for_slot(AdminSlot::DashboardSection, Some(&enabled))
@@ -318,9 +313,14 @@ pub fn Dashboard() -> impl IntoView {
     view! {
         <section class="p-4 md:p-8">
             <PageHeader
-                title=title
-                eyebrow=t_string!(i18n, app.nav.dashboard).to_string()
-                subtitle=t_string!(i18n, app.dashboard.subtitle).to_string()
+                title=move || {
+                    current_user
+                        .get()
+                        .and_then(|user| user.name)
+                        .unwrap_or_else(|| "Dashboard".to_string())
+                }
+                eyebrow=move || t_string!(i18n, app.nav.dashboard).to_string()
+                subtitle=move || t_string!(i18n, app.dashboard.subtitle).to_string()
                 actions=view! {
                     <LanguageToggle />
                     <Button

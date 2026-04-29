@@ -176,7 +176,7 @@ pub async fn fetch_posts(
     tenant_slug: Option<String>,
     locale: Option<String>,
 ) -> Result<BlogPostList, ApiError> {
-    let response: BlogPostsResponse = request(
+    let response: BlogPostsResponse = match request(
         BLOG_POSTS_QUERY,
         BlogPostsVariables {
             filter: PostsFilter {
@@ -188,9 +188,24 @@ pub async fn fetch_posts(
         token,
         tenant_slug,
     )
-    .await?;
+    .await
+    {
+        Ok(response) => response,
+        Err(error) if is_posts_contract_unavailable(&error) => {
+            return Ok(BlogPostList {
+                items: Vec::new(),
+                total: 0,
+            });
+        }
+        Err(error) => return Err(error),
+    };
 
     Ok(response.posts)
+}
+
+pub(crate) fn is_posts_contract_unavailable(error: &ApiError) -> bool {
+    let message = error.to_string();
+    message.contains("Unknown type \"PostsFilter\"") || message.contains("Unknown field \"posts\"")
 }
 
 pub async fn fetch_post(

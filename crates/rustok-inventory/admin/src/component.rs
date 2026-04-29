@@ -24,7 +24,9 @@ where
 const LOW_STOCK_THRESHOLD: i32 = 5;
 
 fn locale_tags_match(left: &str, right: &str) -> bool {
-    left.trim().replace('_', "-").eq_ignore_ascii_case(&right.trim().replace('_', "-"))
+    left.trim()
+        .replace('_', "-")
+        .eq_ignore_ascii_case(&right.trim().replace('_', "-"))
 }
 
 #[component]

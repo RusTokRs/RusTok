@@ -228,7 +228,12 @@ export default function AdminGlobalSearchActions() {
         }
       }
     })();
-  }, [currentRootActionId, deferredSearch, fetchSearchResults, resetSearchState]);
+  }, [
+    currentRootActionId,
+    deferredSearch,
+    fetchSearchResults,
+    resetSearchState
+  ]);
 
   const actions = React.useMemo(() => {
     if (currentRootActionId || deferredSearch.length < 2) {

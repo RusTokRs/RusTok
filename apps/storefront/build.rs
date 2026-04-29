@@ -83,6 +83,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
+    if std::env::var_os("CARGO_FEATURE_CSR").is_some()
+        && std::env::var_os("CARGO_FEATURE_SSR").is_none()
+    {
+        let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
+        fs::write(out_dir.join("module_ui_codegen.rs"), empty_storefront_codegen())?;
+        return Ok(());
+    }
+
     let manifest_path = workspace_root().join("modules.toml");
     println!("cargo::rerun-if-changed={}", manifest_path.display());
 
@@ -135,6 +143,10 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
     )?;
 
     Ok(())
+}
+
+fn empty_storefront_codegen() -> String {
+    "pub fn register_generated_components() {}\n".to_string()
 }
 
 fn validate_storefront_ui_wiring(

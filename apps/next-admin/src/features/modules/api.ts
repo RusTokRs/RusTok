@@ -466,12 +466,7 @@ export async function getBuildHistory(
   const data = await graphqlRequest<
     { limit: number; offset: number },
     BuildHistoryResponse
-  >(
-    BUILD_HISTORY_QUERY,
-    { limit, offset },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(BUILD_HISTORY_QUERY, { limit, offset }, opts.token, opts.tenantSlug);
   return data.buildHistory;
 }
 
@@ -540,12 +535,7 @@ export async function installModule(
   const data = await graphqlRequest<
     { slug: string; version: string },
     InstallModuleResponse
-  >(
-    INSTALL_MODULE_MUTATION,
-    { slug, version },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(INSTALL_MODULE_MUTATION, { slug, version }, opts.token, opts.tenantSlug);
 
   return data.installModule;
 }
@@ -572,12 +562,7 @@ export async function upgradeModule(
   const data = await graphqlRequest<
     { slug: string; version: string },
     UpgradeModuleResponse
-  >(
-    UPGRADE_MODULE_MUTATION,
-    { slug, version },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(UPGRADE_MODULE_MUTATION, { slug, version }, opts.token, opts.tenantSlug);
 
   return data.upgradeModule;
 }
@@ -586,10 +571,7 @@ export async function rollbackBuild(
   buildId: string,
   opts: GqlOpts = {}
 ): Promise<BuildJob> {
-  const data = await graphqlRequest<
-    { buildId: string },
-    RollbackBuildResponse
-  >(
+  const data = await graphqlRequest<{ buildId: string }, RollbackBuildResponse>(
     ROLLBACK_BUILD_MUTATION,
     { buildId },
     opts.token,

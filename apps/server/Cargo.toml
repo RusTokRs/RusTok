@@ -6,6 +6,11 @@ license.workspace = true
 description.workspace = true
 build = "build.rs"
 
+[[bin]]
+name = "migrate_legacy_richtext"
+path = "src/bin/migrate_legacy_richtext.rs"
+required-features = ["mod-content"]
+
 [features]
 default = [
     "redis-cache",
@@ -103,6 +108,7 @@ rustok-ai = { workspace = true, features = ["server"] }
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox.workspace = true
+rustok-installer = { path = "../../crates/rustok-installer" }
 alloy            = { workspace = true, optional = true }
 rustok-workflow  = { workspace = true, optional = true }
 
@@ -148,6 +154,7 @@ rand.workspace = true
 subtle = "2"
 bytes = "1.0"
 ipnet = "2.11"
+url = "2.5"
 
 # Loco extras
 migration = { path = "migration" }

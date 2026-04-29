@@ -2,7 +2,12 @@ import { auth } from '@/auth';
 import { getProduct } from '../../../../../packages/rustok-product/src';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import {
   Table,
   TableBody,
@@ -46,8 +51,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <CardContent className='space-y-3 py-6'>
             <p className='text-muted-foreground text-sm'>
               The old demo form has been removed. Product creation must use the
-              module-owned product write contract, not the old demo form
-              fields.
+              module-owned product write contract, not the old demo form fields.
             </p>
             <Button asChild variant='outline'>
               <Link href='/dashboard/product'>Back to catalog</Link>
@@ -140,7 +144,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 </p>
               ) : (
                 product.translations.map((translation) => (
-                  <div key={translation.locale} className='rounded-md border p-3'>
+                  <div
+                    key={translation.locale}
+                    className='rounded-md border p-3'
+                  >
                     <div className='mb-2 flex items-center justify-between gap-2'>
                       <p className='font-medium'>{translation.title}</p>
                       <Badge variant='secondary'>{translation.locale}</Badge>

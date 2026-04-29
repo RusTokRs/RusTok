@@ -16,6 +16,7 @@ ssr = [
   "dep:rustok-content",
   "dep:rustok-core",
   "dep:rustok-tenant",
+  "rustok-api/loco-adapter",
 ]
 
 [dependencies]
@@ -26,7 +27,7 @@ leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 rustok-channel = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }

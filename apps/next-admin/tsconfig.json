@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "es5",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,24 +15,12 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@iu/*": [
-        "../../UI/next/components/*"
-      ],
-      "@/shared/*": [
-        "./src/shared/*"
-      ],
-      "@/entities/*": [
-        "./src/entities/*"
-      ],
-      "@/widgets/*": [
-        "./src/widgets/*"
-      ],
-      "~/*": [
-        "./public/*"
-      ]
+      "@/*": ["./src/*"],
+      "@iu/*": ["../../UI/next/components/*"],
+      "@/shared/*": ["./src/shared/*"],
+      "@/entities/*": ["./src/entities/*"],
+      "@/widgets/*": ["./src/widgets/*"],
+      "~/*": ["./public/*"]
     },
     "incremental": true,
     "plugins": [
@@ -52,8 +36,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "__CLEANUP__"
-  ]
+  "exclude": ["node_modules", "__CLEANUP__"]
 }

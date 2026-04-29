@@ -315,29 +315,33 @@ docker-compose -f docker-compose.observability.yml down -v
 
 Для event reliability трека добавьте наблюдение за outbox/DLQ метриками:
 
-- `outbox_backlog_size` (gauge) — размер очереди необработанных событий.
-- `outbox_retries_total` (counter) — количество retry попыток relay.
-- `outbox_dlq_total` (counter) — количество событий, попавших в DLQ.
+- `rustok_outbox_backlog_size` (gauge) — размер очереди необработанных событий.
+- `rustok_outbox_retries_total` (counter) — количество retry попыток relay.
+- `rustok_outbox_dlq_total` (counter) — количество событий, попавших в DLQ.
+
+Старые имена `outbox_backlog_size`, `outbox_retries_total` и `outbox_dlq_total`
+пока отдаются как compatibility aliases. Новые dashboard/runbook правила должны
+использовать только `rustok_*` имена.
 
 ### Recommended PromQL
 
 ```promql
 # Backlog current size
-outbox_backlog_size
+rustok_outbox_backlog_size
 
 # Retry rate (5m)
-rate(outbox_retries_total[5m])
+rate(rustok_outbox_retries_total[5m])
 
 # DLQ growth (15m)
-increase(outbox_dlq_total[15m])
+increase(rustok_outbox_dlq_total[15m])
 ```
 
 ### Alerting policy (baseline)
 
-- **Warning:** `outbox_backlog_size > 500` в течение 10 минут.
-- **Critical:** `outbox_backlog_size > 2000` в течение 15 минут.
-- **Warning:** `rate(outbox_retries_total[5m])` стабильно выше baseline 30 минут.
-- **Critical:** `increase(outbox_dlq_total[15m]) > 0` для production tenant'ов.
+- **Warning:** `rustok_outbox_backlog_size > 500` в течение 10 минут.
+- **Critical:** `rustok_outbox_backlog_size > 2000` в течение 15 минут.
+- **Warning:** `rate(rustok_outbox_retries_total[5m])` стабильно выше baseline 30 минут.
+- **Critical:** `increase(rustok_outbox_dlq_total[15m]) > 0` для production tenant'ов.
 
 ### Triage checklist
 

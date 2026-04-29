@@ -17,9 +17,9 @@ pub fn SeoEntityPanel(
     target_kind: SeoTargetSlug,
     target_id: Signal<Option<String>>,
     locale: Signal<String>,
-    #[prop(optional)] panel_title: Option<String>,
-    #[prop(optional)] panel_subtitle: Option<String>,
-    #[prop(optional)] empty_message: Option<String>,
+    #[prop(optional, into)] panel_title: Option<TextProp>,
+    #[prop(optional, into)] panel_subtitle: Option<TextProp>,
+    #[prop(optional, into)] empty_message: Option<TextProp>,
 ) -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
@@ -30,17 +30,18 @@ pub fn SeoEntityPanel(
     let status_message = RwSignal::new(Option::<String>::None);
 
     let title_locale = locale.clone();
-    let title_override = panel_title.clone();
+    let title_override = panel_title;
     let panel_title = Memo::new(move |_| {
         title_override
-            .clone()
+            .as_ref()
+            .map(|text| text.get().to_string())
             .unwrap_or_else(|| tr(Some(title_locale.get().as_str()), "SEO", "SEO"))
     });
 
     let subtitle_locale = locale.clone();
-    let subtitle_override = panel_subtitle.clone();
+    let subtitle_override = panel_subtitle;
     let panel_subtitle = Memo::new(move |_| {
-        subtitle_override.clone().unwrap_or_else(|| {
+        subtitle_override.as_ref().map(|text| text.get().to_string()).unwrap_or_else(|| {
             tr(
                 Some(subtitle_locale.get().as_str()),
                 "This entity-owned panel persists explicit SEO overrides through the shared rustok-seo runtime.",
@@ -50,9 +51,9 @@ pub fn SeoEntityPanel(
     });
 
     let empty_locale = locale.clone();
-    let empty_override = empty_message.clone();
+    let empty_override = empty_message;
     let empty_message = Memo::new(move |_| {
-        empty_override.clone().unwrap_or_else(|| {
+        empty_override.as_ref().map(|text| text.get().to_string()).unwrap_or_else(|| {
             tr(
                 Some(empty_locale.get().as_str()),
                 "Open or create an entity first, then configure its explicit SEO metadata here.",

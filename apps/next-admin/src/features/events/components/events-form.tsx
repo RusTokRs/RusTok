@@ -2,7 +2,12 @@
 
 import { useTranslations } from 'next-intl';
 import { useTransition, useState, type ChangeEvent } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Button } from '@/shared/ui/shadcn/button';
@@ -13,7 +18,11 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/shared/ui/shadcn/select';
-import { saveEventsSettings, type EventsSettings, type EventsStatus } from '../api/events';
+import {
+  saveEventsSettings,
+  type EventsSettings,
+  type EventsStatus
+} from '../api/events';
 
 interface EventsFormProps {
   status: EventsStatus;
@@ -37,14 +46,25 @@ const DEFAULT_SETTINGS: EventsSettings = {
   iggy_replication: 1
 };
 
-export function EventsForm({ status, initialSettings, token, tenantSlug }: EventsFormProps) {
+export function EventsForm({
+  status,
+  initialSettings,
+  token,
+  tenantSlug
+}: EventsFormProps) {
   const t = useTranslations('events');
   const [isPending, startTransition] = useTransition();
-  const [result, setResult] = useState<{ ok: boolean; msg?: string } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; msg?: string } | null>(
+    null
+  );
 
   const merged = { ...DEFAULT_SETTINGS, ...initialSettings };
-  const [transport, setTransport] = useState(merged.transport || status.configuredTransport);
-  const [relayIntervalMs, setRelayIntervalMs] = useState(String(merged.relay_interval_ms));
+  const [transport, setTransport] = useState(
+    merged.transport || status.configuredTransport
+  );
+  const [relayIntervalMs, setRelayIntervalMs] = useState(
+    String(merged.relay_interval_ms)
+  );
   const [maxAttempts, setMaxAttempts] = useState(String(merged.max_attempts));
   const [dlqEnabled, setDlqEnabled] = useState(merged.dlq_enabled);
   const [iggyAddresses, setIggyAddresses] = useState(merged.iggy_addresses);
@@ -53,11 +73,17 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
   const [iggyPassword, setIggyPassword] = useState(merged.iggy_password);
   const [iggyTls, setIggyTls] = useState(merged.iggy_tls);
   const [iggyStream, setIggyStream] = useState(merged.iggy_stream);
-  const [iggyPartitions, setIggyPartitions] = useState(String(merged.iggy_partitions));
-  const [iggyReplication, setIggyReplication] = useState(String(merged.iggy_replication));
+  const [iggyPartitions, setIggyPartitions] = useState(
+    String(merged.iggy_partitions)
+  );
+  const [iggyReplication, setIggyReplication] = useState(
+    String(merged.iggy_replication)
+  );
 
   // All 4 transports always shown; warn when iggy is selected but module not registered
-  const iggyAvailable = status.availableTransports.some(t => t.startsWith('iggy'));
+  const iggyAvailable = status.availableTransports.some((t) =>
+    t.startsWith('iggy')
+  );
   const transportOptions = [
     { value: 'memory', label: t('transport.memory') },
     { value: 'outbox', label: t('transport.outbox') },
@@ -66,7 +92,8 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
   ];
   const showIggyWarning = transport.startsWith('iggy') && !iggyAvailable;
 
-  const showOutboxSettings = transport === 'outbox' || transport.startsWith('iggy');
+  const showOutboxSettings =
+    transport === 'outbox' || transport.startsWith('iggy');
   const showIggyExternal = transport === 'iggy_external';
   const transportChanged = transport !== status.configuredTransport;
 
@@ -110,7 +137,7 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {transportOptions.map(opt => (
+              {transportOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -118,7 +145,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
             </SelectContent>
           </Select>
           {transportChanged && (
-            <p className='text-xs text-amber-600'>{t('transport.restartRequired')}</p>
+            <p className='text-xs text-amber-600'>
+              {t('transport.restartRequired')}
+            </p>
           )}
           {showIggyWarning && (
             <div className='flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200'>
@@ -148,7 +177,7 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
             <CardTitle className='text-base'>{t('outbox.title')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className='grid gap-4 sm:grid-cols-2 max-w-xl'>
+            <div className='grid max-w-xl gap-4 sm:grid-cols-2'>
               <div className='space-y-1.5'>
                 <Label>{t('outbox.relayIntervalMs')}</Label>
                 <Input
@@ -173,7 +202,7 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <input
                   type='checkbox'
                   id='dlq-enabled'
-                  className='h-4 w-4 rounded border-input'
+                  className='border-input h-4 w-4 rounded'
                   checked={dlqEnabled}
                   onChange={(e: ChangeEvent<HTMLInputElement>) =>
                     setDlqEnabled(e.target.checked)
@@ -193,7 +222,7 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
             <CardTitle className='text-base'>{t('iggy.title')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className='grid gap-4 sm:grid-cols-2 max-w-xl'>
+            <div className='grid max-w-xl gap-4 sm:grid-cols-2'>
               <div className='space-y-1.5 sm:col-span-2'>
                 <Label>{t('iggy.addresses')}</Label>
                 <Input
@@ -203,7 +232,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                   }
                   placeholder='127.0.0.1:8090'
                 />
-                <p className='text-xs text-muted-foreground'>Comma-separated list of addresses</p>
+                <p className='text-muted-foreground text-xs'>
+                  Comma-separated list of addresses
+                </p>
               </div>
               <div className='space-y-1.5'>
                 <Label>{t('iggy.protocol')}</Label>
@@ -242,7 +273,7 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
                 <input
                   type='checkbox'
                   id='iggy-tls'
-                  className='h-4 w-4 rounded border-input'
+                  className='border-input h-4 w-4 rounded'
                   checked={iggyTls}
                   onChange={(e: ChangeEvent<HTMLInputElement>) =>
                     setIggyTls(e.target.checked)
@@ -294,7 +325,9 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
           <span className='text-sm text-green-600'>{t('saved')}</span>
         )}
         {result && !result.ok && (
-          <span className='text-sm text-destructive'>{result.msg ?? t('error')}</span>
+          <span className='text-destructive text-sm'>
+            {result.msg ?? t('error')}
+          </span>
         )}
       </div>
 
@@ -304,14 +337,20 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
           <CardTitle className='text-base'>{t('status.title')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <dl className='grid grid-cols-2 gap-x-4 gap-y-2 text-sm max-w-sm'>
+          <dl className='grid max-w-sm grid-cols-2 gap-x-4 gap-y-2 text-sm'>
             <dt className='text-muted-foreground'>{t('status.transport')}</dt>
-            <dd className='font-mono font-medium'>{status.configuredTransport}</dd>
-            <dt className='text-muted-foreground'>{t('status.pendingEvents')}</dt>
+            <dd className='font-mono font-medium'>
+              {status.configuredTransport}
+            </dd>
+            <dt className='text-muted-foreground'>
+              {t('status.pendingEvents')}
+            </dt>
             <dd className='font-medium'>{status.pendingEvents}</dd>
             <dt className='text-muted-foreground'>{t('status.dlqEvents')}</dt>
             <dd className='font-medium'>{status.dlqEvents}</dd>
-            <dt className='text-muted-foreground'>{t('status.relayInterval')}</dt>
+            <dt className='text-muted-foreground'>
+              {t('status.relayInterval')}
+            </dt>
             <dd className='font-medium'>{status.relayIntervalMs} ms</dd>
           </dl>
         </CardContent>

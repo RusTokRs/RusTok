@@ -184,6 +184,7 @@
 
 - [Диаграмма платформы](./architecture/diagram.md)
 - [База данных](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
+- [ADR гибридного установщика](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
 - [Каналы](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
 - [Контракт event flow](./architecture/event-flow-contract.md)
@@ -231,9 +232,11 @@
 
 - [Документация Server](../apps/server/docs/README.md)
   Server docs теперь фиксируют live `flex` standalone GraphQL + REST surfaces, их tenant-scoped RBAC contract,
-  а также reduced/headless build matrix без обязательного `mod-commerce` и с compile-time feature ownership
-  для embedded admin/storefront host-ов; content REST/OpenAPI fragments `blog/forum/pages` там тоже
-  зафиксированы как module-owned compile-time surfaces, а не как безусловный baseline `apps/server`.
+  а также reduced/headless build matrix с минимальным `--no-default-features` profile, optional `redis-cache`
+  для Redis-backed runtime integrations, без обязательного `mod-commerce` и с compile-time feature ownership
+  для embedded admin/storefront host-ов; content REST/OpenAPI fragments `blog/forum/pages` и content-only
+  maintenance binary `migrate_legacy_richtext` там тоже зафиксированы как module-owned compile-time surfaces,
+  а не как безусловный baseline `apps/server`.
 - [Документация Admin](../apps/admin/docs/README.md)
 - [Документация Storefront](../apps/storefront/docs/README.md)
 - [Документация Next Admin](../apps/next-admin/docs/README.md)
@@ -243,7 +246,7 @@
 
 - Для platform modules: `crates/rustok-*` согласно [реестру модулей и приложений](./modules/registry.md).
 - Для foundation и shared libraries: `crates/rustok-core`, `crates/rustok-api`, `crates/rustok-events`, `crates/rustok-storage`, `crates/rustok-test-utils`, `crates/rustok-commerce-foundation`, `crates/rustok-seo/render`, `crates/rustok-seo-admin-support`.
-- Для infrastructure и capability crates: `crates/rustok-iggy`, `crates/rustok-iggy-connector`, `crates/rustok-telemetry`, `crates/rustok-mcp`, `crates/rustok-ai`, `crates/alloy`, `crates/flex`, `crates/rustok-seo-targets`.
+- Для infrastructure и capability crates: `crates/rustok-installer`, `crates/rustok-iggy`, `crates/rustok-iggy-connector`, `crates/rustok-telemetry`, `crates/rustok-mcp`, `crates/rustok-ai`, `crates/alloy`, `crates/flex`, `crates/rustok-seo-targets`.
 - Для UI-библиотек и host-shared UI support: `crates/leptos-*`, `crates/leptos-ui`.
 - У каждого crate должен быть актуальный `README.md`, а при необходимости и `docs/`.
 

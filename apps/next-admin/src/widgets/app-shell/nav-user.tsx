@@ -10,10 +10,10 @@ import {
   IconSparkles
 } from '@tabler/icons-react';
 import { signOut } from 'next-auth/react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useTransition } from 'react';
 
-import { setLocale } from '@/shared/lib/set-locale-action';
 import { type Locale } from '@/i18n/request';
 import { Avatar, AvatarFallback, AvatarImage } from '@/shared/ui/shadcn/avatar';
 import {
@@ -47,13 +47,19 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const t = useTranslations('app.nav');
   const locale = useLocale() as Locale;
   const [, startTransition] = useTransition();
 
   function handleLocaleChange(value: string) {
-    startTransition(async () => {
-      await setLocale(value as Locale);
+    startTransition(() => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set('locale', value);
+      router.replace(`${pathname}?${nextParams.toString()}`);
+      router.refresh();
     });
   }
 
@@ -124,14 +130,23 @@ export function NavUser({
                 {t('language')}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup value={locale} onValueChange={handleLocaleChange}>
-                  <DropdownMenuRadioItem value='en'>{t('languageEn')}</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value='ru'>{t('languageRu')}</DropdownMenuRadioItem>
+                <DropdownMenuRadioGroup
+                  value={locale}
+                  onValueChange={handleLocaleChange}
+                >
+                  <DropdownMenuRadioItem value='en'>
+                    {t('languageEn')}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value='ru'>
+                    {t('languageRu')}
+                  </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/auth/sign-in' })}>
+            <DropdownMenuItem
+              onClick={() => signOut({ callbackUrl: '/auth/sign-in' })}
+            >
               <IconLogout className='mr-2 h-4 w-4' />
               Log out
             </DropdownMenuItem>

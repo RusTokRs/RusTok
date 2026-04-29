@@ -20,7 +20,9 @@ mod schema_codegen {
 use super::ai::{AiMutation, AiQuery, AiSubscription};
 use super::auth::{AuthMutation, AuthQuery};
 use super::flex::{FlexMutation, FlexQuery};
-use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
+use super::loaders::TenantNameLoader;
+#[cfg(feature = "mod-content")]
+use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
 use super::mcp::{McpMutation, McpQuery};
 use super::mutations::RootMutation;
 use super::oauth::{OAuthMutation, OAuthQuery};
@@ -107,16 +109,19 @@ pub fn build_schema(
     .data(DataLoader::new(
         TenantNameLoader::new(db.clone()),
         tokio::spawn,
-    ))
-    .data(DataLoader::new(NodeLoader::new(db.clone()), tokio::spawn))
-    .data(DataLoader::new(
-        NodeTranslationLoader::new(db.clone()),
-        tokio::spawn,
-    ))
-    .data(DataLoader::new(
-        NodeBodyLoader::new(db.clone()),
-        tokio::spawn,
     ));
+
+    #[cfg(feature = "mod-content")]
+    let builder = builder
+        .data(DataLoader::new(NodeLoader::new(db.clone()), tokio::spawn))
+        .data(DataLoader::new(
+            NodeTranslationLoader::new(db.clone()),
+            tokio::spawn,
+        ))
+        .data(DataLoader::new(
+            NodeBodyLoader::new(db.clone()),
+            tokio::spawn,
+        ));
 
     #[cfg(feature = "mod-profiles")]
     let builder = builder.data(DataLoader::new(

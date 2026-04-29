@@ -19,7 +19,7 @@ export default async function Page({ params }: PageProps) {
   const tenantId = session?.user?.tenantId ?? null;
 
   return (
-    <PageContainer scrollable pageTitle="Workflow">
+    <PageContainer scrollable pageTitle='Workflow'>
       <Suspense fallback={<div>Loading workflow...</div>}>
         <WorkflowDetailPage
           id={workflowId}

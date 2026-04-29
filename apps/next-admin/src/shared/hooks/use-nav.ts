@@ -31,20 +31,26 @@ export function useFilteredNavItems(items: NavItem[]) {
         }
         if (!item.access) return true;
         if (item.access.requireOrg) return false;
-        if (item.access.role && !hasMinRole(role, item.access.role)) return false;
+        if (item.access.role && !hasMinRole(role, item.access.role))
+          return false;
         return true;
       })
       .map((item) => ({
         ...item,
-        items: item.items?.filter((child) => {
-          if (child.moduleSlug && !enabledModules.includes(child.moduleSlug)) {
-            return false;
-          }
-          if (!child.access) return true;
-          if (child.access.requireOrg) return false;
-          if (child.access.role && !hasMinRole(role, child.access.role)) return false;
-          return true;
-        }) ?? []
+        items:
+          item.items?.filter((child) => {
+            if (
+              child.moduleSlug &&
+              !enabledModules.includes(child.moduleSlug)
+            ) {
+              return false;
+            }
+            if (!child.access) return true;
+            if (child.access.requireOrg) return false;
+            if (child.access.role && !hasMinRole(role, child.access.role))
+              return false;
+            return true;
+          }) ?? []
       }));
   }, [enabledModules, items, role]);
 }

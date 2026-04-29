@@ -19,9 +19,7 @@ export async function EventsPage({ token, tenantSlug }: EventsPageProps) {
       getEventsSettings(opts)
     ]);
   } catch {
-    return (
-      <p className='text-sm text-destructive'>{t('error')}</p>
-    );
+    return <p className='text-destructive text-sm'>{t('error')}</p>;
   }
 
   return (

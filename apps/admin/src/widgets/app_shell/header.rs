@@ -266,10 +266,10 @@ pub fn Header() -> impl IntoView {
             <div class="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
                 <A href="/dashboard" attr:class="flex items-center gap-2 font-medium text-foreground md:hidden">
                     <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">"R"</span>
-                    <span>{t_string!(i18n, app.brand.title)}</span>
+                    <span>{move || t_string!(i18n, app.brand.title).to_string()}</span>
                 </A>
                 <span class="hidden h-4 w-px bg-border md:block"></span>
-                {{
+                {move || {
                     let crumbs = breadcrumbs.get();
                     let last_index = crumbs.len().saturating_sub(1);
                     crumbs
@@ -419,7 +419,7 @@ fn HeaderGlobalSearch() -> impl IntoView {
             <input
                 type="search"
                 prop:value=query
-                placeholder=t_string!(i18n, app.search.placeholder)
+                placeholder=move || t_string!(i18n, app.search.placeholder).to_string()
                 class="h-9 w-72 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring xl:w-96"
                 on:focus=move |_| set_is_open.set(true)
                 on:blur=move |_| set_is_open.set(false)

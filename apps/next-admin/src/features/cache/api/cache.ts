@@ -27,7 +27,9 @@ interface CacheHealthResponse {
   cacheHealth: CacheHealthPayload;
 }
 
-export async function getCacheHealth(opts: GqlOpts = {}): Promise<CacheHealthPayload> {
+export async function getCacheHealth(
+  opts: GqlOpts = {}
+): Promise<CacheHealthPayload> {
   const data = await graphqlRequest<Record<string, never>, CacheHealthResponse>(
     CACHE_HEALTH_QUERY,
     {},

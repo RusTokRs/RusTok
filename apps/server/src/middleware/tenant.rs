@@ -745,6 +745,8 @@ pub async fn resolve(
 fn should_bypass_tenant_resolution(path: &str) -> bool {
     matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
         || path == "/api/graphql/ws"
+        || path == "/api/install"
+        || path.starts_with("/api/install/")
         || path.starts_with("/health")
 }
 
@@ -1088,7 +1090,12 @@ mod invalidation_tests {
         assert!(should_bypass_tenant_resolution("/metrics"));
         assert!(should_bypass_tenant_resolution("/api/openapi.json"));
         assert!(should_bypass_tenant_resolution("/api/graphql/ws"));
+        assert!(should_bypass_tenant_resolution("/api/install/status"));
+        assert!(should_bypass_tenant_resolution(
+            "/api/install/jobs/018f2b7a-9d07-7f0a-9f71-0c9960e9168a"
+        ));
         assert!(!should_bypass_tenant_resolution("/api/blog/posts"));
+        assert!(!should_bypass_tenant_resolution("/api/installer/status"));
     }
 
     #[test]

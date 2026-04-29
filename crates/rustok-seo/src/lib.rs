@@ -38,12 +38,12 @@ pub use dto::{
 pub use error::{SeoError, SeoResult};
 #[cfg(feature = "server")]
 pub use graphql::{SeoMutation, SeoQuery};
+#[cfg(feature = "server")]
+pub use rustok_seo_targets::SeoTargetRegistry;
 pub use rustok_seo_targets::{
     builtin_slug as seo_builtin_slug, SeoTargetCapabilities, SeoTargetCapabilityKind,
     SeoTargetRegistryEntry, SeoTargetSlug,
 };
-#[cfg(feature = "server")]
-pub use rustok_seo_targets::SeoTargetRegistry;
 #[cfg(feature = "server")]
 pub use services::SeoService;
 

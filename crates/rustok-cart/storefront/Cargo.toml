@@ -15,6 +15,7 @@ ssr = [
   "dep:rustok-cart",
   "dep:rustok-customer",
   "dep:rustok-pricing",
+  "rustok-api/loco-adapter",
 ]
 
 [dependencies]
@@ -23,7 +24,7 @@ leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
 leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 rustok-cart = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }

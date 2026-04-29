@@ -90,7 +90,10 @@ query EnabledModules {
 }
 `;
 
-async function loadOverviewData(token?: string | null, tenantSlug?: string | null) {
+async function loadOverviewData(
+  token?: string | null,
+  tenantSlug?: string | null
+) {
   if (!token || !tenantSlug) {
     return {
       stats: null,
@@ -133,13 +136,14 @@ async function loadOverviewData(token?: string | null, tenantSlug?: string | nul
       stats: null,
       recentActivity: [],
       enabledModules: [],
-      error: error instanceof Error ? error.message : 'Failed to load dashboard data'
+      error:
+        error instanceof Error ? error.message : 'Failed to load dashboard data'
     };
   }
 }
 
 function formatChange(value: number | undefined): string {
-  const next = Number.isFinite(value) ? value ?? 0 : 0;
+  const next = Number.isFinite(value) ? (value ?? 0) : 0;
   return `${next >= 0 ? '+' : ''}${next.toFixed(1)}%`;
 }
 
@@ -178,13 +182,13 @@ function StatCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className='@container/card bg-gradient-to-t from-primary/5 to-card shadow-xs'>
+    <Card className='from-primary/5 to-card @container/card bg-gradient-to-t shadow-xs'>
       <CardHeader>
         <CardDescription>{title}</CardDescription>
         <CardTitle className='text-2xl font-semibold tabular-nums @[250px]/card:text-3xl'>
           {value}
         </CardTitle>
-        <div className='col-start-2 row-span-2 row-start-1 self-start justify-self-end rounded-lg bg-muted p-3 text-muted-foreground'>
+        <div className='bg-muted text-muted-foreground col-start-2 row-span-2 row-start-1 self-start justify-self-end rounded-lg p-3'>
           {icon}
         </div>
       </CardHeader>
@@ -203,10 +207,8 @@ export default async function OverViewLayout() {
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
   const userName = session?.user?.name ?? session?.user?.email ?? 'Admin';
-  const { stats, recentActivity, enabledModules, error } = await loadOverviewData(
-    token,
-    tenantSlug
-  );
+  const { stats, recentActivity, enabledModules, error } =
+    await loadOverviewData(token, tenantSlug);
 
   return (
     <PageContainer
@@ -264,7 +266,7 @@ export default async function OverViewLayout() {
             </CardHeader>
             <CardContent>
               {recentActivity.length === 0 ? (
-                <div className='rounded-lg border border-dashed p-6 text-sm text-muted-foreground'>
+                <div className='text-muted-foreground rounded-lg border border-dashed p-6 text-sm'>
                   No recent activity yet.
                 </div>
               ) : (
@@ -281,11 +283,11 @@ export default async function OverViewLayout() {
                             {item.description}
                           </span>
                         </div>
-                        <p className='mt-1 text-sm text-muted-foreground'>
+                        <p className='text-muted-foreground mt-1 text-sm'>
                           by {item.user?.name ?? 'System'}
                         </p>
                       </div>
-                      <span className='shrink-0 text-xs text-muted-foreground'>
+                      <span className='text-muted-foreground shrink-0 text-xs'>
                         {formatTimeAgo(item.timestamp)}
                       </span>
                     </div>
@@ -309,11 +311,11 @@ export default async function OverViewLayout() {
                     <div className='text-3xl font-semibold'>
                       {enabledModules.length}
                     </div>
-                    <p className='text-sm text-muted-foreground'>
+                    <p className='text-muted-foreground text-sm'>
                       modules currently enabled
                     </p>
                   </div>
-                  <IconPackage className='size-8 text-muted-foreground' />
+                  <IconPackage className='text-muted-foreground size-8' />
                 </div>
                 <div className='mt-4 flex flex-wrap gap-2'>
                   {enabledModules.slice(0, 10).map((slug) => (
@@ -322,7 +324,9 @@ export default async function OverViewLayout() {
                     </Badge>
                   ))}
                   {enabledModules.length > 10 && (
-                    <Badge variant='secondary'>+{enabledModules.length - 10}</Badge>
+                    <Badge variant='secondary'>
+                      +{enabledModules.length - 10}
+                    </Badge>
                   )}
                 </div>
               </CardContent>

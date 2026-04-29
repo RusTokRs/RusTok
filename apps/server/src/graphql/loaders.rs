@@ -5,6 +5,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::models::_entities::tenants;
+#[cfg(feature = "mod-content")]
 use rustok_content::entities::{self, body, node, node_translation};
 
 /// Loader for Tenant names
@@ -47,17 +48,20 @@ impl Loader<Uuid> for TenantNameLoader {
 }
 
 /// Loader for Node entities - prevents N+1 queries when loading multiple nodes
+#[cfg(feature = "mod-content")]
 #[derive(Clone)]
 pub struct NodeLoader {
     db: DatabaseConnection,
 }
 
+#[cfg(feature = "mod-content")]
 impl NodeLoader {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 }
 
+#[cfg(feature = "mod-content")]
 impl Loader<Uuid> for NodeLoader {
     type Value = node::Model;
     type Error = async_graphql::Error;
@@ -83,17 +87,20 @@ impl Loader<Uuid> for NodeLoader {
 }
 
 /// Loader for NodeTranslation entities - batches translation queries
+#[cfg(feature = "mod-content")]
 #[derive(Clone)]
 pub struct NodeTranslationLoader {
     db: DatabaseConnection,
 }
 
+#[cfg(feature = "mod-content")]
 impl NodeTranslationLoader {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 }
 
+#[cfg(feature = "mod-content")]
 impl Loader<Uuid> for NodeTranslationLoader {
     type Value = Vec<node_translation::Model>;
     type Error = async_graphql::Error;
@@ -133,17 +140,20 @@ impl Loader<Uuid> for NodeTranslationLoader {
 }
 
 /// Loader for NodeBody entities - batches body queries
+#[cfg(feature = "mod-content")]
 #[derive(Clone)]
 pub struct NodeBodyLoader {
     db: DatabaseConnection,
 }
 
+#[cfg(feature = "mod-content")]
 impl NodeBodyLoader {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 }
 
+#[cfg(feature = "mod-content")]
 impl Loader<Uuid> for NodeBodyLoader {
     type Value = Vec<body::Model>;
     type Error = async_graphql::Error;

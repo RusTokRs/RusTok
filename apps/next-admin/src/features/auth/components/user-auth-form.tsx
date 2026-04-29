@@ -34,7 +34,9 @@ export default function UserAuthForm() {
       });
 
       if (result?.error) {
-        toast.error('Invalid credentials. Check your email, password and workspace.');
+        toast.error(
+          'Invalid credentials. Check your email, password and workspace.'
+        );
       } else {
         toast.success('Signed in successfully');
         router.push(callbackUrl);

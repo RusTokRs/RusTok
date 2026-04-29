@@ -9,6 +9,7 @@
 - Provide shared button, input, badge, alert, card, and other UI primitives.
 - Re-export selected `iu_leptos` components behind a consistent RusToK package boundary.
 - Keep common Leptos UI building blocks out of app-local duplication.
+- Keep presentational helpers host-driven; locale controls receive their available locales from the caller.
 
 ## Entry points
 

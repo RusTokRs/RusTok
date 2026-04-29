@@ -122,6 +122,8 @@ Host application не должен становиться canonical owner module
 
 - `rustok-outbox` — это `Core` platform module, а не просто support crate
 - `rustok-core` и `rustok-events` — shared contract crates, а не tenant-toggled modules
+- `rustok-installer` — support crate для installer-core contracts, а не
+  tenant-toggled module и не module lifecycle registry entry
 - `alloy`, `rustok-ai`, `rustok-mcp`, `flex` — capability layers, а не `Core/Optional`
   modules
 
@@ -129,7 +131,7 @@ Host application не должен становиться canonical owner module
 
 ## Install/uninstall и tenant lifecycle
 
-Нужно различать два уровня:
+Нужно различать три уровня:
 
 ### Platform-level composition
 
@@ -141,6 +143,14 @@ registration. Здесь решается:
 - какие path-modules обязаны иметь `rustok-module.toml`
 - какой scoped-контракт должен пройти `xtask`
 
+### Schema composition
+
+Schema composition в текущей версии определяется серверным `Migrator` в
+`apps/server/migration`, который объединяет platform-core и module-owned
+migrations в один глобально отсортированный список. Installer v1 не должен
+обещать физическое исключение schema artifacts optional-модулей из БД только
+потому, что модуль выключен на уровне tenant.
+
 ### Tenant-level enable/disable
 
 Tenant lifecycle применяется только к `Optional` modules и работает поверх уже
@@ -149,6 +159,7 @@ Tenant lifecycle применяется только к `Optional` modules и р
 - переключать `Core` modules
 - превращать capability crate в platform module
 - ломать dependency graph, описанный в `modules.toml`
+- удалять или скрывать уже применённые module-owned schema artifacts
 
 ## Связанные документы
 

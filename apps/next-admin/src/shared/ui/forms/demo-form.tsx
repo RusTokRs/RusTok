@@ -4,7 +4,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/shared/ui/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { Form } from '@/shared/ui/shadcn/form';
 
 import { FormInput } from './form-input';

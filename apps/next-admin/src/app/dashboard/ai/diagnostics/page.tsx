@@ -21,7 +21,11 @@ export default async function Page() {
       pageDescription='Inspect router decisions, run health, execution targets and AI runtime diagnostics'
     >
       <Suspense fallback={<div>Loading AI diagnostics...</div>}>
-        <AiAdminPage token={token} tenantSlug={tenantSlug} section='diagnostics' />
+        <AiAdminPage
+          token={token}
+          tenantSlug={tenantSlug}
+          section='diagnostics'
+        />
       </Suspense>
     </PageContainer>
   );

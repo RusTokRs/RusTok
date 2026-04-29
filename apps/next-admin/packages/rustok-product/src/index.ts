@@ -191,11 +191,7 @@ export async function listProducts(
   return data.products;
 }
 
-export async function getProduct(
-  opts: GqlOpts,
-  id: string,
-  locale?: string
-) {
+export async function getProduct(opts: GqlOpts, id: string, locale?: string) {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage products.');
   }

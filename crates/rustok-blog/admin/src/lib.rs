@@ -8,8 +8,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 use rustok_seo_admin_support::SeoEntityPanel;
+use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
@@ -536,6 +536,18 @@ pub fn BlogAdmin() -> impl IntoView {
                                         <BlogPostsTable
                                             items=post_list.items
                                             total=post_list.total
+                                            editing_post_id=editing_post_id.get()
+                                            busy_key=busy_key.get()
+                                            on_edit=open_post
+                                            on_toggle_publish=toggle_publish
+                                            on_archive=archive_post
+                                            on_delete=delete_post
+                                        />
+                                    }.into_any(),
+                                    Err(err) if api::is_posts_contract_unavailable(&err) => view! {
+                                        <BlogPostsTable
+                                            items=Vec::new()
+                                            total=0
                                             editing_post_id=editing_post_id.get()
                                             busy_key=busy_key.get()
                                             on_edit=open_post

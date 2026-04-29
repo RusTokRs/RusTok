@@ -43,7 +43,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isRtDoc(value: unknown): value is RtDoc {
-  return isObject(value) && value.type === 'doc' && Array.isArray(value.content);
+  return (
+    isObject(value) && value.type === 'doc' && Array.isArray(value.content)
+  );
 }
 
 function isRtJsonV1Payload(value: unknown): value is RtJsonV1Payload {

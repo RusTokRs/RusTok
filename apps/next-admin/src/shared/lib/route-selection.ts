@@ -39,7 +39,9 @@ export function buildRouteSelectionHref(
   key: string,
   value: string
 ): string {
-  const params = new URLSearchParams(listRouteQueryEntries(searchParams, [key]));
+  const params = new URLSearchParams(
+    listRouteQueryEntries(searchParams, [key])
+  );
   params.set(key, value);
   return `${pathname}?${params.toString()}`;
 }

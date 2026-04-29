@@ -38,7 +38,6 @@
 - Увеличить unit/component coverage для shared UI и form logic.
 - Держать `pnpm --filter next-admin type-check` и `pnpm --filter next-admin build` в зелёном baseline после каждого изменения FSD/UI структуры.
 
-
 ## Готовность Blog/Forum к rich-text (Tiptap) и Pages к GrapesJS Builder
 
 - [x] Production-форма постов использует реальный Tiptap-based `RtJsonEditor` и сериализует rich-text в канонический `rt_json_v1`.
@@ -73,4 +72,3 @@
 - **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (production blog/forum уже используют реальный Tiptap-based editor и канонический `rt_json_v1`, pages переведены на `GrapesJS` + `grapesjs_v1`, forum flow использует live entity selection, остаётся parity-check с Leptos и storefront rendering slice).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-

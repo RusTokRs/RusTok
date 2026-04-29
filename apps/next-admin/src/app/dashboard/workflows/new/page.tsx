@@ -14,7 +14,7 @@ export default async function Page() {
   const tenantId = session?.user?.tenantId ?? null;
 
   return (
-    <PageContainer scrollable pageTitle="New Workflow">
+    <PageContainer scrollable pageTitle='New Workflow'>
       <Suspense fallback={<div>Loading...</div>}>
         <WorkflowFormPage opts={{ token, tenantSlug, tenantId }} />
       </Suspense>

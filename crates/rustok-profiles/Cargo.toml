@@ -9,7 +9,7 @@ description = "Universal public profile domain module for RusToK"
 async-graphql = { workspace = true, features = ["dataloader"] }
 async-trait.workspace = true
 chrono.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true

@@ -45,6 +45,8 @@ Foundation storage включает:
 - `tenants`
 - `users`
 - `sessions`
+- `install_sessions`
+- `install_step_receipts`
 - `platform_settings`
 - `tenant_modules`
 - `tenant_locales`
@@ -55,8 +57,27 @@ Foundation storage включает:
 
 - `tenants` и `tenant_locales` задают tenant и locale policy layer
 - `sessions` и auth-related tables поддерживают auth/session lifecycle
+- `install_sessions` и `install_step_receipts` фиксируют resumable installer
+  state, checksum-и входов, outcomes и diagnostics; сами секреты там не хранятся
 - `platform_settings` и `tenant_modules` хранят platform/module settings
 - `sys_events` остаётся transactional outbox table, а не generic audit dump
+
+## Installer storage
+
+Гибридный установщик использует `rustok-installer` как support crate для
+typed plan/state/receipt contracts. Его persistence в `apps/server` должна
+следовать таким правилам:
+
+- `install_sessions` хранит session-level state, profile, environment,
+  redacted plan snapshot и текущий статус;
+- `install_step_receipts` хранит step outcome, input checksum, installer
+  version, timestamp и diagnostic payload;
+- финальный installed/adopted marker и deployment metadata можно отражать в
+  `platform_settings` под категорией `installer`;
+- plaintext secrets не пишутся в installer tables; допустимы только redacted
+  values или ссылки на secret backend;
+- production installs требуют explicit PostgreSQL engine, а SQLite остаётся
+  local/demo/test режимом.
 
 ## RBAC-таблицы
 

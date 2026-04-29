@@ -6,16 +6,29 @@ import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Switch } from '@/shared/ui/shadcn/switch';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { toast } from 'sonner';
-import { updateEmailSettings, type EmailSettings, type GqlOpts } from '../api/email';
+import {
+  updateEmailSettings,
+  type EmailSettings,
+  type GqlOpts
+} from '../api/email';
 
 interface EmailSettingsFormProps {
   initialSettings: EmailSettings;
   opts: GqlOpts;
 }
 
-export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormProps) {
+export function EmailSettingsForm({
+  initialSettings,
+  opts
+}: EmailSettingsFormProps) {
   const t = useTranslations('email');
   const [settings, setSettings] = useState<EmailSettings>(initialSettings);
   const [isPending, startTransition] = useTransition();
@@ -56,7 +69,9 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
               id='email-from'
               type='email'
               value={settings.from}
-              onChange={(e) => setSettings((s) => ({ ...s, from: e.target.value }))}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, from: e.target.value }))
+              }
               placeholder='noreply@example.com'
             />
           </div>
@@ -85,7 +100,9 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
             <Input
               id='smtp-host'
               value={settings.smtpHost}
-              onChange={(e) => setSettings((s) => ({ ...s, smtpHost: e.target.value }))}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, smtpHost: e.target.value }))
+              }
               placeholder='smtp.example.com'
             />
           </div>

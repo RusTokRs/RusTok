@@ -20,8 +20,9 @@ surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-ap
 
 Отдельный инвариант compile-time profile: `embed-admin` и `embed-storefront` управляют не только routes,
 но и самим linkage соответствующих UI host-ов; аналогично `mod-commerce`, `mod-blog`, `mod-forum`
-и `mod-pages` управляют включением своих REST/OpenAPI transport fragments, так что reduced/headless
-server build не обязан тянуть ecommerce или content surfaces, которые ему не нужны.
+и `mod-pages` управляют включением своих REST/OpenAPI transport fragments, а content-only maintenance
+binary `migrate_legacy_richtext` требует `mod-content`. Reduced/headless server build не обязан
+тянуть ecommerce или content surfaces, которые ему не нужны.
 
 ## Readiness модель
 
@@ -120,7 +121,8 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 
 Если проверяется именно reduced build matrix, полезно отдельно подтвердить compile-time срез:
 
-- `cargo check -p rustok-server --no-default-features --features redis-cache` для самого узкого headless binary;
+- `cargo check -p rustok-server --no-default-features` для самого узкого headless compile-time binary;
+- `cargo check -p rustok-server --no-default-features --features redis-cache` для headless binary с Redis-backed runtime integrations;
 - при server-side SEO/catalog/runtime изменениях дополнительно один module-sliced profile вроде
   `cargo check -p rustok-server --no-default-features --features mod-commerce` или targeted
   no-commerce content host, если конкретный deployment не должен тянуть чужой transport surface.
@@ -129,7 +131,7 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 
 Для внешнего dedicated catalog host канонический deployment contract сейчас такой:
 
-- build profile: `headless-api` (`--no-default-features --features redis-cache`);
+- build profile: `headless-api` (`--no-default-features`; добавлять `redis-cache` только если deployment реально использует Redis-backed runtime integrations);
 - runtime host mode: `RUSTOK_RUNTIME_HOST_MODE=registry_only`;
 - process role: отдельный read-only host для V1 catalog, а не урезанный monolith;
 - write-path V2 на этот host не маршрутизируется и не должен быть доступен после rollout.

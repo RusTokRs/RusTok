@@ -6,8 +6,10 @@ import { Button } from '@/shared/ui/shadcn/button';
 import { useInfobar, type InfobarContent } from '@/shared/ui/shadcn/infobar';
 import { cn } from '@/shared/lib/utils';
 
-interface InfoButtonProps
-  extends Omit<React.ComponentProps<typeof Button>, 'content'> {
+interface InfoButtonProps extends Omit<
+  React.ComponentProps<typeof Button>,
+  'content'
+> {
   content: InfobarContent;
   variant?:
     | 'default'

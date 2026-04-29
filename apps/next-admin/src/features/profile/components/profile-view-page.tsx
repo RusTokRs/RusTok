@@ -1,7 +1,12 @@
 'use client';
 import { PageContainer } from '@/widgets/app-shell';
 import { Button } from '@/shared/ui/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { graphqlRequest } from '@/shared/api/graphql';
@@ -50,7 +55,9 @@ export default function ProfileViewPage() {
       await update({ name: name.trim() || undefined });
       toast.success('Profile updated');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update profile');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to update profile'
+      );
     } finally {
       setIsSavingProfile(false);
     }
@@ -75,7 +82,9 @@ export default function ProfileViewPage() {
       setNewPassword('');
       toast.success('Password changed. You will need to sign in again.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to change password');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to change password'
+      );
     } finally {
       setIsChangingPassword(false);
     }
@@ -104,22 +113,24 @@ export default function ProfileViewPage() {
                     />
                   </div>
                   <div>
-                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                    <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                       Email
                     </p>
                     <p className='mt-1 text-sm font-medium'>{user.email}</p>
                   </div>
                   <div>
-                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                    <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                       Role
                     </p>
                     <p className='mt-1 text-sm font-medium'>{user.role}</p>
                   </div>
                   <div>
-                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                    <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                       Workspace
                     </p>
-                    <p className='mt-1 text-sm font-medium'>{user.tenantSlug || '—'}</p>
+                    <p className='mt-1 text-sm font-medium'>
+                      {user.tenantSlug || '—'}
+                    </p>
                   </div>
                   <Button type='submit' disabled={isSavingProfile}>
                     {isSavingProfile ? 'Saving...' : 'Save changes'}

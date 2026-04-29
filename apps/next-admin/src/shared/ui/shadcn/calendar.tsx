@@ -9,7 +9,10 @@ import { buttonVariants } from '@/shared/ui/shadcn/button';
 import { ChevronLeftIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
 // react-day-picker v9: single Chevron component used for both directions
-const ChevronIcon: CustomComponents['Chevron'] = ({ orientation, ...props }) => {
+const ChevronIcon: CustomComponents['Chevron'] = ({
+  orientation,
+  ...props
+}) => {
   if (orientation === 'left') {
     return <ChevronLeftIcon className='size-4' {...props} />;
   }

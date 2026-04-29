@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod installer;
 pub mod modules;
 pub mod oauth_apps;
 pub mod profile;

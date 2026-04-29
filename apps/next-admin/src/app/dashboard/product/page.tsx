@@ -2,7 +2,12 @@ import { auth } from '@/auth';
 import { listProducts } from '../../../../packages/rustok-product/src';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import {
   Table,
@@ -82,7 +87,10 @@ export default async function ProductPage({ searchParams }: PageProps) {
             <CardTitle className='text-base'>Catalog filters</CardTitle>
           </CardHeader>
           <CardContent>
-            <form className='grid gap-3 md:grid-cols-[1fr_auto]' action='/dashboard/product'>
+            <form
+              className='grid gap-3 md:grid-cols-[1fr_auto]'
+              action='/dashboard/product'
+            >
               <Input
                 name='search'
                 defaultValue={search ?? ''}
@@ -109,7 +117,8 @@ export default async function ProductPage({ searchParams }: PageProps) {
                 Products ({total.toLocaleString()})
               </CardTitle>
               <p className='text-muted-foreground text-xs'>
-                Page {result?.page ?? page}, {result?.perPage ?? perPage} per page
+                Page {result?.page ?? page}, {result?.perPage ?? perPage} per
+                page
               </p>
             </CardHeader>
             <CardContent>
@@ -157,7 +166,9 @@ export default async function ProductPage({ searchParams }: PageProps) {
                           <TableCell className='text-muted-foreground text-xs'>
                             {product.sellerId ?? '—'}
                           </TableCell>
-                          <TableCell>{formatDate(product.publishedAt)}</TableCell>
+                          <TableCell>
+                            {formatDate(product.publishedAt)}
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -166,7 +177,12 @@ export default async function ProductPage({ searchParams }: PageProps) {
               </div>
 
               <div className='mt-4 flex items-center justify-end gap-2'>
-                <Button asChild variant='outline' size='sm' disabled={!hasPrevious}>
+                <Button
+                  asChild
+                  variant='outline'
+                  size='sm'
+                  disabled={!hasPrevious}
+                >
                   <Link
                     href={hasPrevious ? pageHref(page - 1) : pageHref(page)}
                     aria-disabled={!hasPrevious}

@@ -11,6 +11,7 @@ pub mod extractors;
 pub mod graphql;
 pub mod guards;
 pub mod initializers;
+pub mod installer_cli;
 pub mod middleware;
 pub mod models;
 pub mod modules;

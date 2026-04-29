@@ -90,7 +90,10 @@ const DEFAULT_FILTERS: CatalogFilters = {
 };
 
 function upsertBuildJob(builds: BuildJob[], nextBuild: BuildJob): BuildJob[] {
-  return [nextBuild, ...builds.filter((build) => build.id !== nextBuild.id)].slice(0, 10);
+  return [
+    nextBuild,
+    ...builds.filter((build) => build.id !== nextBuild.id)
+  ].slice(0, 10);
 }
 
 function humanizeLabel(value: string): string {
@@ -177,16 +180,21 @@ export function ModulesList({
   const [marketplaceCatalog, setMarketplaceCatalog] = useState(
     initialMarketplaceModules
   );
-  const [installedModules, setInstalledModules] = useState(initialInstalledModules);
+  const [installedModules, setInstalledModules] = useState(
+    initialInstalledModules
+  );
   const [activeBuild, setActiveBuild] = useState(initialActiveBuild);
   const [activeRelease, setActiveRelease] = useState(initialActiveRelease);
   const [buildHistory, setBuildHistory] = useState(initialBuildHistory);
-  const [selectedModuleSlug, setSelectedModuleSlug] = useState<string | null>(null);
+  const [selectedModuleSlug, setSelectedModuleSlug] = useState<string | null>(
+    null
+  );
   const [selectedModuleDetail, setSelectedModuleDetail] =
     useState<MarketplaceModule | null>(null);
   const [moduleDetailLoading, setModuleDetailLoading] = useState(false);
   const [catalogFilterDraft, setCatalogFilterDraft] = useState(DEFAULT_FILTERS);
-  const [appliedCatalogFilters, setAppliedCatalogFilters] = useState(DEFAULT_FILTERS);
+  const [appliedCatalogFilters, setAppliedCatalogFilters] =
+    useState(DEFAULT_FILTERS);
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [knownCategories, setKnownCategories] = useState(
     Array.from(
@@ -199,7 +207,9 @@ export function ModulesList({
   );
   const [knownSources, setKnownSources] = useState(
     Array.from(
-      new Set(initialMarketplaceModules.map((module) => module.source).filter(Boolean))
+      new Set(
+        initialMarketplaceModules.map((module) => module.source).filter(Boolean)
+      )
     ).sort((left, right) => left.localeCompare(right))
   );
   const [loading, setLoading] = useState<string | null>(null);
@@ -220,27 +230,41 @@ export function ModulesList({
   const { setModuleEnabled } = useEnabledModulesActions();
 
   const coreModules = modules.filter((module) => module.kind === 'core');
-  const optionalModules = modules.filter((module) => module.kind === 'optional');
+  const optionalModules = modules.filter(
+    (module) => module.kind === 'optional'
+  );
   const installedSet = new Set(installedModules.map((module) => module.slug));
-  const installedMap = new Map(installedModules.map((module) => [module.slug, module]));
-  const catalogMap = new Map(marketplaceCatalog.map((module) => [module.slug, module]));
+  const installedMap = new Map(
+    installedModules.map((module) => [module.slug, module])
+  );
+  const catalogMap = new Map(
+    marketplaceCatalog.map((module) => [module.slug, module])
+  );
   const installedOptionalModules = optionalModules.filter((module) =>
     installedSet.has(module.moduleSlug)
   );
-  const marketplaceModules = marketplaceCatalog.filter((module) => !installedSet.has(module.slug));
+  const marketplaceModules = marketplaceCatalog.filter(
+    (module) => !installedSet.has(module.slug)
+  );
   const updateCandidates = marketplaceCatalog
     .map((module) => ({
       module,
       installedModule: installedMap.get(module.slug)
     }))
     .filter(
-      (entry): entry is { module: MarketplaceModule; installedModule: InstalledModule } =>
+      (
+        entry
+      ): entry is {
+        module: MarketplaceModule;
+        installedModule: InstalledModule;
+      } =>
         Boolean(
           entry.installedModule?.version &&
-            entry.installedModule.version !== entry.module.latestVersion
+          entry.installedModule.version !== entry.module.latestVersion
         )
     );
-  const visibleInstalledCount = coreModules.length + installedOptionalModules.length;
+  const visibleInstalledCount =
+    coreModules.length + installedOptionalModules.length;
   const latestBuild = activeBuild ?? buildHistory[0] ?? null;
   const isShowcaseSurface = adminSurface === 'next-admin';
 
@@ -261,7 +285,8 @@ export function ModulesList({
     }
 
     const catalogModule =
-      marketplaceCatalog.find((module) => module.slug === selectedModuleSlug) ?? null;
+      marketplaceCatalog.find((module) => module.slug === selectedModuleSlug) ??
+      null;
     if (catalogModule) {
       setSelectedModuleDetail(catalogModule);
     }
@@ -333,7 +358,10 @@ export function ModulesList({
       );
       setKnownSources((prev) =>
         Array.from(
-          new Set([...prev, ...modules.map((module) => module.source).filter(Boolean)])
+          new Set([
+            ...prev,
+            ...modules.map((module) => module.source).filter(Boolean)
+          ])
         ).sort((left, right) => left.localeCompare(right))
       );
     } finally {
@@ -346,21 +374,25 @@ export function ModulesList({
   const refreshOrchestrationState = async (filters = appliedCatalogFilters) => {
     try {
       const normalized = normalizeCatalogFilters(filters);
-      const [nextActiveBuild, nextActiveRelease, nextBuildHistory, nextMarketplaceCatalog] =
-        await Promise.all([
-          getActiveBuild(apiOpts),
-          getActiveRelease(apiOpts),
-          getBuildHistory(10, 0, apiOpts),
-          listMarketplaceModules(
-            normalized.search,
-            normalized.category,
-            normalized.source,
-            normalized.trustLevel,
-            normalized.onlyCompatible,
-            normalized.installedOnly,
-            apiOpts
-          )
-        ]);
+      const [
+        nextActiveBuild,
+        nextActiveRelease,
+        nextBuildHistory,
+        nextMarketplaceCatalog
+      ] = await Promise.all([
+        getActiveBuild(apiOpts),
+        getActiveRelease(apiOpts),
+        getBuildHistory(10, 0, apiOpts),
+        listMarketplaceModules(
+          normalized.search,
+          normalized.category,
+          normalized.source,
+          normalized.trustLevel,
+          normalized.onlyCompatible,
+          normalized.installedOnly,
+          apiOpts
+        )
+      ]);
       setActiveBuild(nextActiveBuild);
       setActiveRelease(nextActiveRelease);
       setBuildHistory(nextBuildHistory);
@@ -379,7 +411,9 @@ export function ModulesList({
         Array.from(
           new Set([
             ...prev,
-            ...nextMarketplaceCatalog.map((module) => module.source).filter(Boolean)
+            ...nextMarketplaceCatalog
+              .map((module) => module.source)
+              .filter(Boolean)
           ])
         ).sort((left, right) => left.localeCompare(right))
       );
@@ -398,21 +432,25 @@ export function ModulesList({
     const refreshLiveState = async () => {
       try {
         const normalized = normalizeCatalogFilters(appliedCatalogFilters);
-        const [nextActiveBuild, nextActiveRelease, nextBuildHistory, nextMarketplaceCatalog] =
-          await Promise.all([
-            getActiveBuild(apiOpts),
-            getActiveRelease(apiOpts),
-            getBuildHistory(10, 0, apiOpts),
-            listMarketplaceModules(
-              normalized.search,
-              normalized.category,
-              normalized.source,
-              normalized.trustLevel,
-              normalized.onlyCompatible,
-              normalized.installedOnly,
-              apiOpts
-            )
-          ]);
+        const [
+          nextActiveBuild,
+          nextActiveRelease,
+          nextBuildHistory,
+          nextMarketplaceCatalog
+        ] = await Promise.all([
+          getActiveBuild(apiOpts),
+          getActiveRelease(apiOpts),
+          getBuildHistory(10, 0, apiOpts),
+          listMarketplaceModules(
+            normalized.search,
+            normalized.category,
+            normalized.source,
+            normalized.trustLevel,
+            normalized.onlyCompatible,
+            normalized.installedOnly,
+            apiOpts
+          )
+        ]);
         if (cancelled) {
           return;
         }
@@ -441,7 +479,9 @@ export function ModulesList({
 
   const upsertInstalledModule = (slug: string, version: string) => {
     const registryModule = modules.find((module) => module.moduleSlug === slug);
-    const catalogModule = marketplaceCatalog.find((module) => module.slug === slug);
+    const catalogModule = marketplaceCatalog.find(
+      (module) => module.slug === slug
+    );
 
     setInstalledModules((prev) => {
       if (prev.some((module) => module.slug === slug)) {
@@ -455,10 +495,12 @@ export function ModulesList({
         {
           slug,
           source: catalogModule?.source ?? 'path',
-          crateName: catalogModule?.crateName ?? registryModule?.moduleSlug ?? slug,
+          crateName:
+            catalogModule?.crateName ?? registryModule?.moduleSlug ?? slug,
           version,
           required: false,
-          dependencies: catalogModule?.dependencies ?? registryModule?.dependencies ?? []
+          dependencies:
+            catalogModule?.dependencies ?? registryModule?.dependencies ?? []
         }
       ].sort((left, right) => left.slug.localeCompare(right.slug));
     });
@@ -470,7 +512,9 @@ export function ModulesList({
       const updated = await toggleModule(slug, enabled, apiOpts);
       setModules((prev) =>
         prev.map((module) =>
-          module.moduleSlug === slug ? { ...module, enabled: updated.enabled } : module
+          module.moduleSlug === slug
+            ? { ...module, enabled: updated.enabled }
+            : module
         )
       );
       setModuleEnabled(slug, updated.enabled);
@@ -494,7 +538,9 @@ export function ModulesList({
       await refreshOrchestrationState();
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to queue install');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to queue install'
+      );
     } finally {
       setPlatformLoading(null);
     }
@@ -517,7 +563,9 @@ export function ModulesList({
       await refreshOrchestrationState();
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to queue uninstall');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to queue uninstall'
+      );
     } finally {
       setPlatformLoading(null);
     }
@@ -534,7 +582,9 @@ export function ModulesList({
       await refreshOrchestrationState();
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to queue upgrade');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to queue upgrade'
+      );
     } finally {
       setPlatformLoading(null);
     }
@@ -550,7 +600,9 @@ export function ModulesList({
       await refreshOrchestrationState();
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to rollback build');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to rollback build'
+      );
     } finally {
       setRollbackLoading(null);
     }
@@ -567,7 +619,9 @@ export function ModulesList({
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete('module');
     const query = nextParams.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false
+    });
   };
 
   const handleApplyFilters = async () => {
@@ -575,7 +629,9 @@ export function ModulesList({
       setAppliedCatalogFilters(catalogFilterDraft);
       await refreshMarketplaceCatalog(catalogFilterDraft);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to refresh catalog');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to refresh catalog'
+      );
     }
   };
 
@@ -585,7 +641,9 @@ export function ModulesList({
     try {
       await refreshMarketplaceCatalog(DEFAULT_FILTERS);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reset catalog');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to reset catalog'
+      );
     }
   };
 
@@ -598,7 +656,8 @@ export function ModulesList({
               Module data is partially unavailable
             </CardTitle>
             <CardDescription>
-              The admin shell remains usable, but some module registry calls failed.
+              The admin shell remains usable, but some module registry calls
+              failed.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -613,7 +672,9 @@ export function ModulesList({
 
       <Card>
         <CardHeader className='pb-3'>
-          <CardTitle className='text-sm font-medium'>Admin surface policy</CardTitle>
+          <CardTitle className='text-sm font-medium'>
+            Admin surface policy
+          </CardTitle>
           <CardDescription>
             {isShowcaseSurface
               ? 'Next admin is a showcase surface. Dedicated module UI appears only where a module is explicitly marked with Next showcase support.'
@@ -622,7 +683,9 @@ export function ModulesList({
         </CardHeader>
         <CardContent className='flex flex-wrap items-center gap-2 pt-0'>
           <Badge variant='secondary'>
-            {isShowcaseSurface ? 'Current: Next showcase' : 'Current: Leptos canonical'}
+            {isShowcaseSurface
+              ? 'Current: Next showcase'
+              : 'Current: Leptos canonical'}
           </Badge>
           <Badge variant='outline'>Primary modules target Leptos first</Badge>
         </CardContent>
@@ -636,7 +699,8 @@ export function ModulesList({
               Build orchestration
             </CardTitle>
             <CardDescription>
-              Install, uninstall, and upgrade actions queue a shared rebuild for both admin stacks.
+              Install, uninstall, and upgrade actions queue a shared rebuild for
+              both admin stacks.
             </CardDescription>
           </CardHeader>
           <CardContent className='space-y-4'>
@@ -645,24 +709,31 @@ export function ModulesList({
                 <div className='flex items-center justify-between gap-3'>
                   <div className='space-y-1'>
                     <div className='flex items-center gap-2'>
-                      <Badge variant='outline'>{humanizeLabel(latestBuild.status)}</Badge>
+                      <Badge variant='outline'>
+                        {humanizeLabel(latestBuild.status)}
+                      </Badge>
                       <span className='text-muted-foreground text-xs'>
                         {humanizeLabel(latestBuild.stage)}
                       </span>
                     </div>
                     <p className='text-sm font-medium'>
-                      {latestBuild.modulesDelta || latestBuild.reason || 'Platform module rebuild'}
+                      {latestBuild.modulesDelta ||
+                        latestBuild.reason ||
+                        'Platform module rebuild'}
                     </p>
                     <p className='text-muted-foreground text-xs'>
                       Updated {formatTimestamp(latestBuild.updatedAt)}
                     </p>
                     {activeRelease && (
                       <p className='text-muted-foreground text-xs'>
-                        Active release {activeRelease.id} in {activeRelease.environment}
+                        Active release {activeRelease.id} in{' '}
+                        {activeRelease.environment}
                       </p>
                     )}
                   </div>
-                  <span className='text-sm font-semibold'>{latestBuild.progress}%</span>
+                  <span className='text-sm font-semibold'>
+                    {latestBuild.progress}%
+                  </span>
                 </div>
                 <Progress value={latestBuild.progress} />
                 <p className='text-muted-foreground text-xs'>
@@ -672,13 +743,15 @@ export function ModulesList({
                 </p>
                 {isBuildActive(activeBuild) && (
                   <p className='text-muted-foreground text-xs'>
-                    Live refresh is active every 5 seconds while this build is running.
+                    Live refresh is active every 5 seconds while this build is
+                    running.
                   </p>
                 )}
               </>
             ) : (
               <p className='text-muted-foreground text-sm'>
-                No platform builds yet. The first install, uninstall, or upgrade will queue one.
+                No platform builds yet. The first install, uninstall, or upgrade
+                will queue one.
               </p>
             )}
           </CardContent>
@@ -701,7 +774,9 @@ export function ModulesList({
             <CardTitle className='text-sm font-medium'>Marketplace</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className='text-3xl font-semibold'>{marketplaceModules.length}</p>
+            <p className='text-3xl font-semibold'>
+              {marketplaceModules.length}
+            </p>
             <p className='text-muted-foreground mt-2 text-xs'>
               Optional modules available to add into modules.toml.
             </p>
@@ -725,7 +800,8 @@ export function ModulesList({
         <CardHeader className='pb-3'>
           <CardTitle className='text-base'>Catalog filters</CardTitle>
           <CardDescription>
-            Narrow Marketplace and Updates to the modules you actually want to review.
+            Narrow Marketplace and Updates to the modules you actually want to
+            review.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-4'>
@@ -733,7 +809,10 @@ export function ModulesList({
             <Input
               value={catalogFilterDraft.search}
               onChange={(event) =>
-                setCatalogFilterDraft((prev) => ({ ...prev, search: event.target.value }))
+                setCatalogFilterDraft((prev) => ({
+                  ...prev,
+                  search: event.target.value
+                }))
               }
               placeholder='Search by name, slug, or description'
             />
@@ -776,7 +855,10 @@ export function ModulesList({
             <Select
               value={catalogFilterDraft.trustLevel}
               onValueChange={(value) =>
-                setCatalogFilterDraft((prev) => ({ ...prev, trustLevel: value }))
+                setCatalogFilterDraft((prev) => ({
+                  ...prev,
+                  trustLevel: value
+                }))
               }
             >
               <SelectTrigger className='w-full'>
@@ -791,7 +873,9 @@ export function ModulesList({
               </SelectContent>
             </Select>
             <Button
-              variant={catalogFilterDraft.onlyCompatible ? 'default' : 'outline'}
+              variant={
+                catalogFilterDraft.onlyCompatible ? 'default' : 'outline'
+              }
               type='button'
               onClick={() =>
                 setCatalogFilterDraft((prev) => ({
@@ -800,7 +884,9 @@ export function ModulesList({
                 }))
               }
             >
-              {catalogFilterDraft.onlyCompatible ? 'Compatible only' : 'Include risks'}
+              {catalogFilterDraft.onlyCompatible
+                ? 'Compatible only'
+                : 'Include risks'}
             </Button>
             <Button
               variant={catalogFilterDraft.installedOnly ? 'default' : 'outline'}
@@ -812,7 +898,9 @@ export function ModulesList({
                 }))
               }
             >
-              {catalogFilterDraft.installedOnly ? 'Installed only' : 'All install states'}
+              {catalogFilterDraft.installedOnly
+                ? 'Installed only'
+                : 'All install states'}
             </Button>
           </div>
           <div className='flex flex-wrap items-center justify-between gap-3'>
@@ -820,11 +908,14 @@ export function ModulesList({
               <Badge variant='secondary'>
                 {catalogRefreshing ? 'Refreshing catalog' : 'Catalog ready'}
               </Badge>
-              {JSON.stringify(catalogFilterDraft) !== JSON.stringify(appliedCatalogFilters) && (
+              {JSON.stringify(catalogFilterDraft) !==
+                JSON.stringify(appliedCatalogFilters) && (
                 <Badge variant='outline'>Pending changes</Badge>
               )}
               {appliedCatalogFilters.search && (
-                <Badge variant='outline'>Search: {appliedCatalogFilters.search}</Badge>
+                <Badge variant='outline'>
+                  Search: {appliedCatalogFilters.search}
+                </Badge>
               )}
               {appliedCatalogFilters.category !== 'all' && (
                 <Badge variant='outline'>
@@ -910,11 +1001,15 @@ export function ModulesList({
                           {formatBuildSummary(build)}
                         </p>
                         {build.errorMessage && (
-                          <p className='text-xs text-destructive'>{build.errorMessage}</p>
+                          <p className='text-destructive text-xs'>
+                            {build.errorMessage}
+                          </p>
                         )}
                         <div className='flex flex-wrap items-center gap-2 text-xs'>
                           {build.releaseId && (
-                            <Badge variant='secondary'>Release {build.releaseId}</Badge>
+                            <Badge variant='secondary'>
+                              Release {build.releaseId}
+                            </Badge>
                           )}
                           {activeRelease?.id === build.releaseId && (
                             <Badge variant='outline'>Active release</Badge>
@@ -932,7 +1027,9 @@ export function ModulesList({
                         </div>
                       </div>
                       <div className='space-y-2 text-right'>
-                        <Badge variant='outline'>{humanizeLabel(build.status)}</Badge>
+                        <Badge variant='outline'>
+                          {humanizeLabel(build.status)}
+                        </Badge>
                         <p className='text-muted-foreground mt-1 text-xs'>
                           {formatTimestamp(build.createdAt)}
                         </p>
@@ -941,17 +1038,24 @@ export function ModulesList({
                             <button
                               type='button'
                               className='text-primary text-xs font-medium underline-offset-4 hover:underline disabled:no-underline disabled:opacity-50'
-                              disabled={rollbackLoading === build.id || Boolean(activeBuild)}
+                              disabled={
+                                rollbackLoading === build.id ||
+                                Boolean(activeBuild)
+                              }
                               onClick={() => handleRollback(build.id)}
                             >
-                              {rollbackLoading === build.id ? 'Rolling back...' : 'Rollback'}
+                              {rollbackLoading === build.id
+                                ? 'Rolling back...'
+                                : 'Rollback'}
                             </button>
                           )}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className='text-muted-foreground text-sm'>No builds yet.</p>
+                  <p className='text-muted-foreground text-sm'>
+                    No builds yet.
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -1002,7 +1106,9 @@ export function ModulesList({
                     platformLoading={platformLoading === module.moduleSlug}
                     platformInstalled
                     platformBusy={Boolean(activeBuild)}
-                    platformVersion={installedMap.get(module.moduleSlug)?.version}
+                    platformVersion={
+                      installedMap.get(module.moduleSlug)?.version
+                    }
                     recommendedVersion={module.version}
                     onToggle={handleToggle}
                     onInspect={handleInspect}
@@ -1014,7 +1120,8 @@ export function ModulesList({
               <Card>
                 <CardContent className='pt-6'>
                   <p className='text-muted-foreground text-sm'>
-                    No optional modules are installed yet. Use the Marketplace tab to queue the first install.
+                    No optional modules are installed yet. Use the Marketplace
+                    tab to queue the first install.
                   </p>
                 </CardContent>
               </Card>
@@ -1030,7 +1137,8 @@ export function ModulesList({
                 Catalog workspace
               </CardTitle>
               <CardDescription>
-                Modules here are known to the platform registry but not yet present in modules.toml.
+                Modules here are known to the platform registry but not yet
+                present in modules.toml.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -1056,7 +1164,8 @@ export function ModulesList({
             <Card>
               <CardContent className='pt-6'>
                 <p className='text-muted-foreground text-sm'>
-                  All optional registry modules are already installed in the platform manifest.
+                  All optional registry modules are already installed in the
+                  platform manifest.
                 </p>
               </CardContent>
             </Card>
@@ -1071,7 +1180,8 @@ export function ModulesList({
                 Versioned updates
               </CardTitle>
               <CardDescription>
-                Only modules with an explicit installed version and a newer registry version appear here.
+                Only modules with an explicit installed version and a newer
+                registry version appear here.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -1093,9 +1203,12 @@ export function ModulesList({
           ) : (
             <Card>
               <CardContent className='space-y-2 pt-6'>
-                <p className='text-sm font-medium'>No pinned module updates detected.</p>
+                <p className='text-sm font-medium'>
+                  No pinned module updates detected.
+                </p>
                 <p className='text-muted-foreground text-sm'>
-                  Path-based local modules follow the current repository state and therefore do not show a separate version upgrade action.
+                  Path-based local modules follow the current repository state
+                  and therefore do not show a separate version upgrade action.
                 </p>
               </CardContent>
             </Card>

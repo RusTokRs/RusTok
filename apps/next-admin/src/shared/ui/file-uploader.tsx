@@ -15,8 +15,7 @@ import { ScrollArea } from '@/shared/ui/shadcn/scroll-area';
 import { useControllableState } from '@/shared/hooks/use-controllable-state';
 import { cn, formatBytes } from '@/shared/lib/utils';
 
-export interface FileUploaderProps
-  extends React.HTMLAttributes<HTMLDivElement> {
+export interface FileUploaderProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * Value of the uploader.
    * @type File[]

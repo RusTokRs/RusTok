@@ -1,6 +1,10 @@
 'use client';
 
-import { IconPackage, IconPlugConnected, IconPlugConnectedX } from '@tabler/icons-react';
+import {
+  IconPackage,
+  IconPlugConnected,
+  IconPlugConnectedX
+} from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/shared/ui/shadcn/badge';
@@ -65,9 +69,9 @@ export function ModuleCard({
   const tenantEnabled = isCore || (platformInstalled && module.enabled);
   const hasUpdate = Boolean(
     platformInstalled &&
-      platformVersion &&
-      recommendedVersion &&
-      platformVersion !== recommendedVersion
+    platformVersion &&
+    recommendedVersion &&
+    platformVersion !== recommendedVersion
   );
   const versionTrail = catalogModule?.versions.slice(0, 3) ?? [];
   const opacityClass = !tenantEnabled && !isCore ? 'opacity-60' : '';
@@ -119,7 +123,9 @@ export function ModuleCard({
           <Badge variant='secondary'>{humanizeToken(module.ownership)}</Badge>
           <Badge variant='outline'>{humanizeToken(module.trustLevel)}</Badge>
           {catalogModule && (
-            <Badge variant={catalogModule.compatible ? 'outline' : 'destructive'}>
+            <Badge
+              variant={catalogModule.compatible ? 'outline' : 'destructive'}
+            >
               {catalogModule.compatible ? 'Compatible' : 'Compatibility risk'}
             </Badge>
           )}
@@ -132,14 +138,17 @@ export function ModuleCard({
             </Badge>
           ))}
           {module.showcaseAdminSurfaces.map((surface) => (
-            <Badge key={`${module.moduleSlug}-showcase-${surface}`} variant='outline'>
+            <Badge
+              key={`${module.moduleSlug}-showcase-${surface}`}
+              variant='outline'
+            >
               Showcase: {humanizeToken(surface)}
             </Badge>
           ))}
         </div>
 
         {catalogModule && (
-          <div className='grid gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs'>
+          <div className='border-border/60 bg-muted/30 grid gap-2 rounded-lg border p-3 text-xs'>
             <div className='flex flex-wrap items-center gap-2'>
               <span className='text-muted-foreground'>Publisher:</span>
               <span>{catalogModule.publisher ?? 'Workspace / unknown'}</span>
@@ -164,7 +173,10 @@ export function ModuleCard({
               <div className='flex flex-wrap items-center gap-2'>
                 <span className='text-muted-foreground'>Versions:</span>
                 {versionTrail.map((version) => (
-                  <Badge key={`${module.moduleSlug}-${version.version}`} variant='outline'>
+                  <Badge
+                    key={`${module.moduleSlug}-${version.version}`}
+                    variant='outline'
+                  >
                     v{version.version}
                     {version.yanked ? ' yanked' : ''}
                   </Badge>

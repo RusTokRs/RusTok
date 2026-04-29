@@ -47,7 +47,11 @@ export default async function PostDetailPage({
         <p className='text-muted-foreground text-sm'>
           {post.slug}
           {post.publishedAt && (
-            <> &middot; Published {new Date(post.publishedAt).toLocaleDateString()}</>
+            <>
+              {' '}
+              &middot; Published{' '}
+              {new Date(post.publishedAt).toLocaleDateString()}
+            </>
           )}
         </p>
       </CardHeader>
@@ -55,13 +59,13 @@ export default async function PostDetailPage({
         {post.excerpt && (
           <p className='text-muted-foreground italic'>{post.excerpt}</p>
         )}
-        <div className='prose max-w-none whitespace-pre-wrap'>
-          {post.body}
-        </div>
+        <div className='prose max-w-none whitespace-pre-wrap'>{post.body}</div>
         {post.tags.length > 0 && (
           <div className='flex flex-wrap gap-2'>
             {post.tags.map((tag) => (
-              <Badge key={tag} variant='outline'>{tag}</Badge>
+              <Badge key={tag} variant='outline'>
+                {tag}
+              </Badge>
             ))}
           </div>
         )}

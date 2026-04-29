@@ -15,9 +15,7 @@ export default function Providers({
 }) {
   return (
     <ActiveThemeProvider initialTheme={activeThemeValue}>
-      <SessionProvider session={session}>
-        {children}
-      </SessionProvider>
+      <SessionProvider session={session}>{children}</SessionProvider>
     </ActiveThemeProvider>
   );
 }

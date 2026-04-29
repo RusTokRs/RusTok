@@ -206,9 +206,22 @@ export async function addPageBlock(
   `;
 
   const data = await graphqlRequest<
-    { tenantId: string; pageId: string; input: { blockType: string; position: number; data: Record<string, unknown> } },
+    {
+      tenantId: string;
+      pageId: string;
+      input: {
+        blockType: string;
+        position: number;
+        data: Record<string, unknown>;
+      };
+    },
     { addBlock: PageBlock }
-  >(mutation, { tenantId: opts.tenantId!, pageId, input }, opts.token, opts.tenantSlug);
+  >(
+    mutation,
+    { tenantId: opts.tenantId!, pageId, input },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return data.addBlock;
 }
@@ -230,14 +243,27 @@ export async function updatePageBlock(
   `;
 
   const data = await graphqlRequest<
-    { tenantId: string; blockId: string; input: { position?: number; data?: Record<string, unknown> } },
+    {
+      tenantId: string;
+      blockId: string;
+      input: { position?: number; data?: Record<string, unknown> };
+    },
     { updateBlock: PageBlock }
-  >(mutation, { tenantId: opts.tenantId!, blockId, input }, opts.token, opts.tenantSlug);
+  >(
+    mutation,
+    { tenantId: opts.tenantId!, blockId, input },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return data.updateBlock;
 }
 
-export async function reorderPageBlocks(pageId: string, blockIds: string[], opts: GqlOpts = {}): Promise<boolean> {
+export async function reorderPageBlocks(
+  pageId: string,
+  blockIds: string[],
+  opts: GqlOpts = {}
+): Promise<boolean> {
   const mutation = `
     mutation ReorderBlocks($tenantId: UUID!, $pageId: UUID!, $input: ReorderBlocksInput!) {
       reorderBlocks(tenantId: $tenantId, pageId: $pageId, input: $input)
@@ -247,7 +273,12 @@ export async function reorderPageBlocks(pageId: string, blockIds: string[], opts
   const data = await graphqlRequest<
     { tenantId: string; pageId: string; input: { blockIds: string[] } },
     { reorderBlocks: boolean }
-  >(mutation, { tenantId: opts.tenantId!, pageId, input: { blockIds } }, opts.token, opts.tenantSlug);
+  >(
+    mutation,
+    { tenantId: opts.tenantId!, pageId, input: { blockIds } },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return data.reorderBlocks;
 }

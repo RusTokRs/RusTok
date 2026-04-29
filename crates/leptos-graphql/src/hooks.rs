@@ -1,10 +1,9 @@
 // GraphQL Hooks для Leptos
 // Reactive hooks для удобной работы с GraphQL queries и mutations
 
-#[cfg(target_arch = "wasm32")]
-use gloo_storage::Storage;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use rustok_api::UiRouteContext;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -12,14 +11,10 @@ use std::sync::Arc;
 use crate::{execute, GraphqlHttpError, GraphqlRequest};
 
 fn get_locale() -> Option<String> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        gloo_storage::LocalStorage::get::<String>("rustok-admin-locale").ok()
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        None
-    }
+    use_context::<UiRouteContext>()
+        .and_then(|context| context.locale)
+        .map(|locale| locale.trim().to_string())
+        .filter(|locale| !locale.is_empty())
 }
 
 /// Result структура для use_query hook

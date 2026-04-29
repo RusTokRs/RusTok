@@ -11,9 +11,22 @@ interface WorkflowStepEditorProps {
   opts?: GqlOpts;
 }
 
-const STEP_TYPES = ['ACTION', 'CONDITION', 'DELAY', 'ALLOY_SCRIPT', 'EMIT_EVENT', 'HTTP', 'NOTIFY', 'TRANSFORM'] as const;
+const STEP_TYPES = [
+  'ACTION',
+  'CONDITION',
+  'DELAY',
+  'ALLOY_SCRIPT',
+  'EMIT_EVENT',
+  'HTTP',
+  'NOTIFY',
+  'TRANSFORM'
+] as const;
 
-export function WorkflowStepEditor({ workflowId, steps: initialSteps, opts = {} }: WorkflowStepEditorProps) {
+export function WorkflowStepEditor({
+  workflowId,
+  steps: initialSteps,
+  opts = {}
+}: WorkflowStepEditorProps) {
   const [steps, setSteps] = useState<WorkflowStep[]>(initialSteps);
   const [adding, setAdding] = useState(false);
   const [newStep, setNewStep] = useState<Partial<CreateStepInput>>({
@@ -38,7 +51,11 @@ export function WorkflowStepEditor({ workflowId, steps: initialSteps, opts = {} 
       );
       toast.success('Step added');
       // Optimistically refresh would need router.refresh(); for now show message
-      setNewStep({ stepType: 'ACTION', onError: 'STOP', position: (steps.length + 2) * 10 });
+      setNewStep({
+        stepType: 'ACTION',
+        onError: 'STOP',
+        position: (steps.length + 2) * 10
+      });
     } catch {
       toast.error('Failed to add step');
     } finally {
@@ -57,21 +74,28 @@ export function WorkflowStepEditor({ workflowId, steps: initialSteps, opts = {} 
   }
 
   return (
-    <div className="space-y-3">
+    <div className='space-y-3'>
       {steps.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No steps yet. Add one below.</p>
+        <p className='text-muted-foreground text-sm'>
+          No steps yet. Add one below.
+        </p>
       ) : (
-        <ol className="space-y-2">
+        <ol className='space-y-2'>
           {steps.map((step, idx) => (
-            <li key={step.id} className="flex items-center gap-3 rounded border px-4 py-3 text-sm">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
+            <li
+              key={step.id}
+              className='flex items-center gap-3 rounded border px-4 py-3 text-sm'
+            >
+              <span className='bg-muted flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium'>
                 {idx + 1}
               </span>
-              <span className="flex-1 font-mono">{step.stepType}</span>
-              <span className="text-xs text-muted-foreground">on_error: {step.onError}</span>
+              <span className='flex-1 font-mono'>{step.stepType}</span>
+              <span className='text-muted-foreground text-xs'>
+                on_error: {step.onError}
+              </span>
               <button
                 onClick={() => handleDelete(step.id)}
-                className="text-xs text-red-500 hover:underline"
+                className='text-xs text-red-500 hover:underline'
               >
                 Remove
               </button>
@@ -80,35 +104,51 @@ export function WorkflowStepEditor({ workflowId, steps: initialSteps, opts = {} 
         </ol>
       )}
 
-      <div className="flex items-end gap-2 pt-2">
+      <div className='flex items-end gap-2 pt-2'>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Type</label>
+          <label className='text-muted-foreground mb-1 block text-xs font-medium'>
+            Type
+          </label>
           <select
             value={newStep.stepType}
-            onChange={(e) => setNewStep((p) => ({ ...p, stepType: e.target.value as CreateStepInput['stepType'] }))}
-            className="rounded border px-2 py-1.5 text-sm"
+            onChange={(e) =>
+              setNewStep((p) => ({
+                ...p,
+                stepType: e.target.value as CreateStepInput['stepType']
+              }))
+            }
+            className='rounded border px-2 py-1.5 text-sm'
           >
             {STEP_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>
+                {t}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">On Error</label>
+          <label className='text-muted-foreground mb-1 block text-xs font-medium'>
+            On Error
+          </label>
           <select
             value={newStep.onError}
-            onChange={(e) => setNewStep((p) => ({ ...p, onError: e.target.value as CreateStepInput['onError'] }))}
-            className="rounded border px-2 py-1.5 text-sm"
+            onChange={(e) =>
+              setNewStep((p) => ({
+                ...p,
+                onError: e.target.value as CreateStepInput['onError']
+              }))
+            }
+            className='rounded border px-2 py-1.5 text-sm'
           >
-            <option value="STOP">Stop</option>
-            <option value="SKIP">Skip</option>
-            <option value="RETRY">Retry</option>
+            <option value='STOP'>Stop</option>
+            <option value='SKIP'>Skip</option>
+            <option value='RETRY'>Retry</option>
           </select>
         </div>
         <button
           onClick={handleAdd}
           disabled={adding}
-          className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          className='bg-primary text-primary-foreground rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50'
         >
           {adding ? 'Adding…' : '+ Add Step'}
         </button>

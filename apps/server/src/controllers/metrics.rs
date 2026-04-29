@@ -235,7 +235,7 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
     let retries_total = ctx
         .db
         .query_one(Statement::from_string(
-            DbBackend::Postgres,
+            ctx.db.get_database_backend(),
             "SELECT COALESCE(SUM(retry_count), 0) AS total FROM sys_events".to_string(),
         ))
         .await
@@ -244,8 +244,15 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
         .and_then(|row| row.try_get::<i64>("", "total").ok())
         .unwrap_or(0);
 
+    format_outbox_metrics(backlog_size, dlq_total, retries_total)
+}
+
+fn format_outbox_metrics(backlog_size: u64, dlq_total: u64, retries_total: i64) -> String {
     format!(
-        "outbox_backlog_size {backlog_size}\n\
+        "rustok_outbox_backlog_size {backlog_size}\n\
+rustok_outbox_dlq_total {dlq_total}\n\
+rustok_outbox_retries_total {retries_total}\n\
+outbox_backlog_size {backlog_size}\n\
 outbox_dlq_total {dlq_total}\n\
 outbox_retries_total {retries_total}\n",
     )
@@ -404,7 +411,11 @@ fn search_metrics_snapshot_query(backend: DbBackend) -> &'static str {
 fn render_auth_lifecycle_metrics() -> String {
     let stats = AuthLifecycleService::metrics_snapshot();
     format!(
-        "auth_password_reset_sessions_revoked_total {password_reset_sessions_revoked_total}\n\
+        "rustok_auth_password_reset_sessions_revoked_total {password_reset_sessions_revoked_total}\n\
+rustok_auth_change_password_sessions_revoked_total {change_password_sessions_revoked_total}\n\
+rustok_auth_flow_inconsistency_total {flow_inconsistency_total}\n\
+rustok_auth_login_inactive_user_attempt_total {login_inactive_user_attempt_total}\n\
+auth_password_reset_sessions_revoked_total {password_reset_sessions_revoked_total}\n\
 auth_change_password_sessions_revoked_total {change_password_sessions_revoked_total}\n\
 auth_flow_inconsistency_total {flow_inconsistency_total}\n\
 auth_login_inactive_user_attempt_total {login_inactive_user_attempt_total}\n",
@@ -478,7 +489,8 @@ fn format_rbac_metrics(
 #[cfg(test)]
 mod tests {
     use super::{
-        format_rbac_metrics, format_runtime_guardrail_metrics, render_auth_lifecycle_metrics,
+        format_outbox_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
+        render_auth_lifecycle_metrics,
     };
     use crate::services::auth_lifecycle::AuthLifecycleService;
     use crate::services::rbac_service::RbacService;
@@ -568,10 +580,29 @@ mod tests {
 
         let payload = render_auth_lifecycle_metrics();
 
+        assert!(payload.contains("rustok_auth_password_reset_sessions_revoked_total"));
+        assert!(payload.contains("rustok_auth_change_password_sessions_revoked_total"));
+        assert!(payload.contains("rustok_auth_flow_inconsistency_total"));
+        assert!(payload.contains("rustok_auth_login_inactive_user_attempt_total"));
         assert!(payload.contains("auth_password_reset_sessions_revoked_total"));
         assert!(payload.contains("auth_change_password_sessions_revoked_total"));
         assert!(payload.contains("auth_flow_inconsistency_total"));
         assert!(payload.contains("auth_login_inactive_user_attempt_total"));
+    }
+
+    #[test]
+    fn outbox_metrics_include_canonical_names_and_compatibility_aliases() {
+        let payload = format_outbox_metrics(11, 2, 7);
+
+        assert_metric_line(&payload, "rustok_outbox_backlog_size");
+        assert_metric_line(&payload, "rustok_outbox_dlq_total");
+        assert_metric_line(&payload, "rustok_outbox_retries_total");
+        assert_metric_line(&payload, "outbox_backlog_size");
+        assert_metric_line(&payload, "outbox_dlq_total");
+        assert_metric_line(&payload, "outbox_retries_total");
+        assert!(payload.contains("rustok_outbox_backlog_size 11"));
+        assert!(payload.contains("rustok_outbox_dlq_total 2"));
+        assert!(payload.contains("rustok_outbox_retries_total 7"));
     }
 
     #[test]

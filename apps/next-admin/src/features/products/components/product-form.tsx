@@ -1,8 +1,18 @@
 'use client';
 
-import { FormFileUpload, FormInput, FormSelect, FormTextarea } from '@/shared/ui/forms';
+import {
+  FormFileUpload,
+  FormInput,
+  FormSelect,
+  FormTextarea
+} from '@/shared/ui/forms';
 import { Button } from '@/shared/ui/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from '@/shared/ui/shadcn/card';
 import { Form } from '@/shared/ui/shadcn/form';
 import { Product } from '@/shared/constants/mock-api';
 import { zodResolver } from '@hookform/resolvers/zod';

@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
     "lint:fix": "eslint src --fix && bun format",
     "lint:strict": "eslint src --max-warnings=0",
     "format": "prettier --write .",

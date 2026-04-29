@@ -6,7 +6,10 @@ interface EmailSettingsPageProps {
   tenantSlug?: string | null;
 }
 
-export default async function EmailSettingsPage({ token, tenantSlug }: EmailSettingsPageProps) {
+export default async function EmailSettingsPage({
+  token,
+  tenantSlug
+}: EmailSettingsPageProps) {
   const opts: GqlOpts = { token, tenantSlug };
   const settings = await getEmailSettings(opts);
 

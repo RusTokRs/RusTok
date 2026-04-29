@@ -86,7 +86,7 @@ export function ModuleUpdateCard({
           ))}
         </div>
 
-        <div className='grid gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs'>
+        <div className='border-border/60 bg-muted/30 grid gap-2 rounded-lg border p-3 text-xs'>
           <div className='flex flex-wrap items-center gap-2'>
             <span className='text-muted-foreground'>Publisher:</span>
             <span>{module.publisher ?? 'Workspace / unknown'}</span>
@@ -99,15 +99,22 @@ export function ModuleUpdateCard({
           <div className='flex flex-wrap items-center gap-2'>
             <span className='text-muted-foreground'>RusTok:</span>
             <span>
-              {module.rustokMinVersion ? `>= ${module.rustokMinVersion}` : 'no min'}
-              {module.rustokMaxVersion ? `, <= ${module.rustokMaxVersion}` : ', no max'}
+              {module.rustokMinVersion
+                ? `>= ${module.rustokMinVersion}`
+                : 'no min'}
+              {module.rustokMaxVersion
+                ? `, <= ${module.rustokMaxVersion}`
+                : ', no max'}
             </span>
           </div>
           {versionTrail.length > 0 && (
             <div className='flex flex-wrap items-center gap-2'>
               <span className='text-muted-foreground'>Versions:</span>
               {versionTrail.map((version) => (
-                <Badge key={`${module.slug}-${version.version}`} variant='outline'>
+                <Badge
+                  key={`${module.slug}-${version.version}`}
+                  variant='outline'
+                >
                   v{version.version}
                   {version.yanked ? ' yanked' : ''}
                 </Badge>

@@ -10,6 +10,7 @@ pub mod flex;
 pub mod forum;
 pub mod graphql;
 pub mod health;
+pub mod installer;
 pub mod marketplace_registry;
 pub mod mcp;
 #[cfg(feature = "mod-media")]

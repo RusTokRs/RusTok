@@ -47,7 +47,9 @@ export default async function Page(props: PageProps) {
         return null;
       })
     : null;
-  const preservedQueryEntries = listRouteQueryEntries(searchParams, ['page_id']);
+  const preservedQueryEntries = listRouteQueryEntries(searchParams, [
+    'page_id'
+  ]);
 
   return (
     <PageContainer
@@ -61,12 +63,17 @@ export default async function Page(props: PageProps) {
       pageHeaderAction={
         <form method='get' className='flex items-center gap-2'>
           {preservedQueryEntries.map(([key, value]) => (
-            <input key={`${key}:${value}`} type='hidden' name={key} value={value} />
+            <input
+              key={`${key}:${value}`}
+              type='hidden'
+              name={key}
+              value={value}
+            />
           ))}
           <select
             name='page_id'
             defaultValue={selectedPageId ?? ''}
-            className='h-9 min-w-60 rounded-md border border-input bg-background px-3 text-sm'
+            className='border-input bg-background h-9 min-w-60 rounded-md border px-3 text-sm'
           >
             {pages.length === 0 ? (
               <option value=''>No pages available</option>
@@ -78,7 +85,10 @@ export default async function Page(props: PageProps) {
               ))
             )}
           </select>
-          <button className={cn(buttonVariants({ variant: 'outline' }), 'h-9')} type='submit'>
+          <button
+            className={cn(buttonVariants({ variant: 'outline' }), 'h-9')}
+            type='submit'
+          >
             Open
           </button>
           {selectedPageId && (
@@ -98,9 +108,9 @@ export default async function Page(props: PageProps) {
       }
     >
       {loadError ? (
-        <div className='rounded-md border border-destructive/30 bg-destructive/5 p-6 text-sm'>
+        <div className='border-destructive/30 bg-destructive/5 rounded-md border p-6 text-sm'>
           <h2 className='font-medium'>Page builder data is unavailable</h2>
-          <p className='mt-2 text-muted-foreground'>{loadError}</p>
+          <p className='text-muted-foreground mt-2'>{loadError}</p>
         </div>
       ) : selectedPageId ? (
         <PageBuilder
@@ -114,7 +124,8 @@ export default async function Page(props: PageProps) {
         />
       ) : (
         <div className='text-muted-foreground rounded-md border border-dashed p-6 text-sm'>
-          Pages module has no selectable pages yet. Create a page first, then reopen the builder.
+          Pages module has no selectable pages yet. Create a page first, then
+          reopen the builder.
         </div>
       )}
     </PageContainer>

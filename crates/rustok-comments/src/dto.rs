@@ -6,7 +6,10 @@ use sea_orm::entity::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(EnumIter, DeriveActiveEnum))]
-#[cfg_attr(feature = "server", sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))"))]
+#[cfg_attr(
+    feature = "server",
+    sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CommentThreadStatus {
     #[cfg_attr(feature = "server", sea_orm(string_value = "open"))]
@@ -17,7 +20,10 @@ pub enum CommentThreadStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(EnumIter, DeriveActiveEnum))]
-#[cfg_attr(feature = "server", sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))"))]
+#[cfg_attr(
+    feature = "server",
+    sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CommentStatus {
     #[cfg_attr(feature = "server", sea_orm(string_value = "pending"))]

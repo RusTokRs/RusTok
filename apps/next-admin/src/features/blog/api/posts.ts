@@ -221,12 +221,7 @@ export async function getPost(
   const data = await graphqlRequest<
     { tenantId: string; id: string },
     PostQueryResponse
-  >(
-    POST_QUERY,
-    { tenantId: opts.tenantId!, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(POST_QUERY, { tenantId: opts.tenantId!, id }, opts.token, opts.tenantSlug);
   return data.post;
 }
 
@@ -274,10 +269,7 @@ export async function deletePost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<
-    { id: string; tenantId: string },
-    DeletePostResponse
-  >(
+  await graphqlRequest<{ id: string; tenantId: string }, DeletePostResponse>(
     DELETE_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
@@ -289,10 +281,7 @@ export async function publishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<
-    { id: string; tenantId: string },
-    PublishPostResponse
-  >(
+  await graphqlRequest<{ id: string; tenantId: string }, PublishPostResponse>(
     PUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
@@ -304,10 +293,7 @@ export async function unpublishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<
-    { id: string; tenantId: string },
-    UnpublishPostResponse
-  >(
+  await graphqlRequest<{ id: string; tenantId: string }, UnpublishPostResponse>(
     UNPUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,

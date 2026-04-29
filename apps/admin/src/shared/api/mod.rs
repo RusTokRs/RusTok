@@ -3,6 +3,15 @@ pub mod queries;
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::Storage as GlooStorage;
 use leptos::prelude::*;
+#[cfg(not(any(
+    all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
+    feature = "ssr"
+)))]
+use leptos_graphql::GraphqlHttpError;
+#[cfg(any(
+    all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
+    feature = "ssr"
+))]
 use leptos_graphql::{
     execute as execute_graphql, persisted_query_extension, GraphqlHttpError, GraphqlRequest,
 };
@@ -91,6 +100,10 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     }
 }
 
+#[cfg(any(
+    all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
+    feature = "ssr"
+))]
 async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, GraphqlHttpError> {
     let mut graphql_request = GraphqlRequest::new(request.query, Some(request.variables));
 
@@ -111,7 +124,9 @@ async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, 
 async fn execute_admin_graphql(request: ServerGraphqlRequest) -> Result<Value, ApiError> {
     #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
     {
-        execute_server_graphql(request).await.map_err(ApiError::from)
+        execute_server_graphql(request)
+            .await
+            .map_err(ApiError::from)
     }
 
     #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]

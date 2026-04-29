@@ -41,6 +41,7 @@ Shared foundation / support crates:
 - Commerce OpenAPI/REST surface на `/admin/*` теперь включает первый post-order refund contract поверх `payment-collections`; host публикует эти routes, но refund lifecycle остаётся domain-owned в `rustok-payment` и `rustok-commerce`.
 - Commerce surface больше не является compile-time baseline для любого server build: `controllers::commerce`, commerce-specific error mapping и commerce fragment в OpenAPI живут только при `mod-commerce`, так что reduced/headless host может собираться без ecommerce transport слоя.
 - Content REST/OpenAPI surface для `blog`, `forum` и `pages` тоже больше не считается unconditional частью host binary: соответствующие server controllers и OpenAPI fragments подключаются только при `mod-blog`, `mod-forum` и `mod-pages`, так что module-sliced build не обязан тянуть чужие content transport-зависимости.
+- Maintenance binary `migrate_legacy_richtext` принадлежит content storage migration path и собирается только при `mod-content`; headless server profiles без content module не должны линковать этот инструмент.
 - `flex` standalone schemas/entries сейчас публикуются через `/api/graphql` и `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
@@ -56,6 +57,39 @@ Shared foundation / support crates:
 - `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без bearer auth он возвращает status-driven superset `governanceActions`, а при session-backed user bearer режет request-level действия до реально разрешённых для этого principal.
 - Registry artifacts больше не читаются и не записываются через прямой filesystem path внутри governance service: persisted state хранит только `artifact_storage_key`, upload/validation идут через `StorageService`, а `GET /v2/catalog/publish/{request_id}/artifact/download` уже работает как storage-backed private download route с presign-or-stream fallback.
 - Repo-side surface для текущего `module-system` считается закрытым для цели Admin-driven install/uninstall/upgrade/deploy с progress feedback; дальше остаётся поддерживать targeted verification и docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
+- Гибридный product installer вводится через support crate `rustok-installer`:
+  CLI `rustok-server install ...` и `/api/install/*` endpoints должны
+  делегировать plan/state/receipt/preflight semantics в этот crate. Web wizard
+  не должен становиться отдельной реализацией bootstrap logic.
+- Текущий начальный CLI surface уже доступен как offline pre-apply слой:
+  `rustok-server install preflight ...` валидирует install plan и возвращает
+  JSON report, а `rustok-server install plan ...` печатает redacted plan snapshot
+  без подключения к БД и без запуска миграций.
+- `rustok-server install apply ...` выполняет текущий CLI bootstrap end-to-end:
+  preflight, при `--create-database` может создать PostgreSQL database/role
+  через `--pg-admin-url`, проверяет target DB через `SELECT 1`, запускает server
+  `Migrator::up`, создаёт `install_sessions`, ставит session lock, выполняет
+  tenant/module seed, создаёт или синхронизирует superadmin, проверяет результат,
+  пишет `Preflight` / `Config` / `Database` / `Migrate` / `Seed` / `Admin` /
+  `Verify` / `Finalize` receipts и переводит session в `completed`.
+  `apply` резолвит локальные secret refs `env:<VAR>`, `file:<path>`,
+  `mounted-file:<path>`, `dotenv:<path>#<VAR>` и `dotenv:<VAR>`; external
+  backends вроде `vault:*`, `kubernetes:*` и cloud secret managers пока
+  принимаются только как contract-level refs для `plan`/`preflight` и fail-fast
+  на `apply` до подключения внешнего resolver-а.
+- HTTP adapter для Leptos wizard доступен как thin surface поверх того же
+  pipeline: `GET /api/install/status`, `POST /api/install/plan`,
+  `POST /api/install/preflight`, `POST /api/install/apply`,
+  `GET /api/install/jobs/{job_id}` и
+  `GET /api/install/sessions/{session_id}/receipts`. HTTP `apply` стартует
+  background job и возвращает `202 Accepted` с `job_id`; wizard должен poll-ить
+  job status и читать persisted receipts для progress UI. Mutating HTTP install
+  requests поддерживают setup-token guard через
+  `RUSTOK_INSTALL_SETUP_TOKEN` и header `x-rustok-setup-token` или
+  `Authorization: Bearer <token>`; production HTTP apply без setup token
+  отклоняется. `/api/install/*` намеренно обходит tenant resolution middleware,
+  потому что первый install запускается до создания tenant context. CLI остаётся
+  canonical automation path.
 
 ## Границы ответственности
 
@@ -65,6 +99,8 @@ Shared foundation / support crates:
 - общий GraphQL schema surface и Leptos server-function entrypoints;
 - bootstrap общего module-owned event runtime через `ModuleRegistry` и `EventDispatcher`;
 - health/runtime guardrails, build/release orchestration и operator control-plane endpoints;
+- installer HTTP/CLI adapters поверх `rustok-installer`, install locks и
+  persistence installer session receipts;
 - RBAC enforcement, auth/session integration и host-level observability.
 
 `apps/server` не должен:

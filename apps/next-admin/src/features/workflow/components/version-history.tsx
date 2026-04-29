@@ -11,21 +11,26 @@ interface VersionHistoryProps {
   onRestored?: () => void;
 }
 
-export function VersionHistory({ workflowId, versions, opts, onRestored }: VersionHistoryProps) {
+export function VersionHistory({
+  workflowId,
+  versions,
+  opts,
+  onRestored
+}: VersionHistoryProps) {
   if (versions.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">No saved versions yet.</p>
+      <p className='text-muted-foreground text-sm'>No saved versions yet.</p>
     );
   }
 
   return (
-    <div className="rounded-md border">
-      <table className="w-full text-sm">
+    <div className='rounded-md border'>
+      <table className='w-full text-sm'>
         <thead>
-          <tr className="border-b bg-muted/50 text-left">
-            <th className="px-4 py-2 font-medium">Version</th>
-            <th className="px-4 py-2 font-medium">Saved</th>
-            <th className="px-4 py-2 font-medium" />
+          <tr className='bg-muted/50 border-b text-left'>
+            <th className='px-4 py-2 font-medium'>Version</th>
+            <th className='px-4 py-2 font-medium'>Saved</th>
+            <th className='px-4 py-2 font-medium' />
           </tr>
         </thead>
         <tbody>
@@ -48,7 +53,7 @@ function VersionRow({
   workflowId,
   version,
   opts,
-  onRestored,
+  onRestored
 }: {
   workflowId: string;
   version: WorkflowVersionSummary;
@@ -71,17 +76,19 @@ function VersionRow({
   }
 
   return (
-    <tr className="border-b last:border-0 hover:bg-muted/30">
-      <td className="px-4 py-2 font-mono text-xs">v{version.version}</td>
-      <td className="px-4 py-2 text-muted-foreground">
+    <tr className='hover:bg-muted/30 border-b last:border-0'>
+      <td className='px-4 py-2 font-mono text-xs'>v{version.version}</td>
+      <td className='text-muted-foreground px-4 py-2'>
         {new Date(version.createdAt).toLocaleString()}
       </td>
-      <td className="px-4 py-2 text-right">
-        {error && <span className="mr-2 text-xs text-destructive">{error}</span>}
+      <td className='px-4 py-2 text-right'>
+        {error && (
+          <span className='text-destructive mr-2 text-xs'>{error}</span>
+        )}
         <button
           onClick={handleRestore}
           disabled={pending}
-          className="rounded border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+          className='hover:bg-muted rounded border px-2 py-1 text-xs disabled:opacity-50'
         >
           {pending ? '…' : 'Restore'}
         </button>

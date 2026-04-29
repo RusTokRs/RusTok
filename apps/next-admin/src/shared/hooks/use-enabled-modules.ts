@@ -11,7 +11,8 @@ export function useIsModuleEnabled(slug: string): boolean {
 }
 
 export function useEnabledModulesActions() {
-  const { replaceEnabledModules, setModuleEnabled } = useEnabledModulesContext();
+  const { replaceEnabledModules, setModuleEnabled } =
+    useEnabledModulesContext();
 
   return {
     replaceEnabledModules,

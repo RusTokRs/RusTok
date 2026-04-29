@@ -118,8 +118,8 @@ cargo xtask module test <slug>
 Если затронут host/UI layer, дополнительно обычно нужны:
 
 ```powershell
-npm.cmd run verify:i18n:ui
-npm.cmd run verify:i18n:contract
+npm run verify:i18n:ui
+npm run verify:i18n:contract
 npm.cmd run verify:storefront:routes
 ```
 

@@ -103,7 +103,7 @@ impl AuthContext {
     pub async fn sign_out(&self) -> Result<(), AuthError> {
         self.is_loading.set(true);
 
-        if let Some(session) = self.session.get() {
+        if let Some(session) = self.session.get_untracked() {
             let _ = api::sign_out(
                 session.token.clone(),
                 session.refresh_token.clone(),
@@ -134,8 +134,15 @@ impl AuthContext {
             .unwrap_or(0)
     }
 
+    fn secs_until_expiry_untracked(&self) -> i64 {
+        self.session
+            .get_untracked()
+            .map(|s| s.expires_at - now_unix_secs())
+            .unwrap_or(0)
+    }
+
     pub async fn refresh_session(&self) -> Result<(), AuthError> {
-        if let Some(session) = self.session.get() {
+        if let Some(session) = self.session.get_untracked() {
             let (new_session, new_user) =
                 api::refresh_token(session.refresh_token.clone(), session.tenant.clone()).await?;
             let _ = storage::save_session(&new_session);
@@ -149,7 +156,7 @@ impl AuthContext {
     }
 
     pub async fn fetch_current_user(&self) -> Result<(), AuthError> {
-        if let Some(session) = self.session.get() {
+        if let Some(session) = self.session.get_untracked() {
             let user =
                 api::fetch_current_user(session.token.clone(), session.tenant.clone()).await?;
             if let Some(ref u) = user {
@@ -206,10 +213,10 @@ pub fn AuthProvider(children: Children) -> impl IntoView {
         move || {
             let auth = auth_for_interval.clone();
             spawn_local(async move {
-                if auth.session.get().is_none() {
+                if auth.session.get_untracked().is_none() {
                     return;
                 }
-                let secs = auth.secs_until_expiry();
+                let secs = auth.secs_until_expiry_untracked();
                 if secs <= 0 {
                     let _ = auth.sign_out().await;
                 } else if secs < 300 {

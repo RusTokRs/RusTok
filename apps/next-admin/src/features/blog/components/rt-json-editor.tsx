@@ -110,8 +110,8 @@ export function RtJsonEditor({
   return (
     <div className='space-y-2'>
       <Label>{label}</Label>
-      <div className='rounded-md border border-input'>
-        <div className='flex flex-wrap gap-2 border-b border-input p-2'>
+      <div className='border-input rounded-md border'>
+        <div className='border-input flex flex-wrap gap-2 border-b p-2'>
           <ToolbarButton
             editor={editor}
             label='Bold'
@@ -190,14 +190,16 @@ export function RtJsonEditor({
           <ToolbarButton
             editor={editor}
             label='Clear'
-            onClick={() => editor?.chain().focus().unsetAllMarks().clearNodes().run()}
+            onClick={() =>
+              editor?.chain().focus().unsetAllMarks().clearNodes().run()
+            }
           />
         </div>
         <EditorContent
           editor={editor}
           className={cn(
             'prose prose-sm max-w-none',
-            '[&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3'
+            '[&_pre]:bg-muted [&_ol]:list-decimal [&_ol]:pl-6 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-6'
           )}
         />
       </div>

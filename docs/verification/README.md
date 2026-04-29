@@ -48,8 +48,8 @@ cargo xtask validate-manifest
 ```powershell
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
-npm.cmd run verify:i18n:ui
-npm.cmd run verify:i18n:contract
+npm run verify:i18n:ui
+npm run verify:i18n:contract
 npm.cmd run verify:storefront:routes
 powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 ```

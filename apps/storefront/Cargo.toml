@@ -5,33 +5,51 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [features]
 default = ["ssr"]
+csr = ["leptos/csr", "leptos_i18n/csr"]
 hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]
 ssr = [
+  "dep:axum",
   "leptos/ssr",
   "leptos_i18n/ssr",
+  "dep:leptos_axum",
+  "dep:leptos-next-metadata",
   "dep:loco-rs",
   "dep:rustok-content",
+  "dep:rustok-core",
   "dep:rustok-seo",
   "dep:rustok-seo-render",
   "dep:rustok-tenant",
+  "dep:tokio",
+  "dep:rustok-blog-storefront",
   "rustok-blog-storefront/ssr",
+  "dep:rustok-cart-storefront",
   "rustok-cart-storefront/ssr",
+  "dep:rustok-commerce-storefront",
   "rustok-commerce-storefront/ssr",
+  "dep:rustok-forum-storefront",
   "rustok-forum-storefront/ssr",
+  "dep:rustok-pages-storefront",
   "rustok-pages-storefront/ssr",
+  "dep:rustok-pricing-storefront",
   "rustok-pricing-storefront/ssr",
+  "dep:rustok-product-storefront",
   "rustok-product-storefront/ssr",
+  "dep:rustok-region-storefront",
   "rustok-region-storefront/ssr",
+  "dep:rustok-search-storefront",
   "rustok-search-storefront/ssr",
 ]
 
 [dependencies]
-axum.workspace = true
-tokio.workspace = true
-leptos = { workspace = true, features = ["ssr"] }
-leptos_axum = { workspace = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+leptos = { workspace = true }
+leptos_axum = { workspace = true, optional = true }
 leptos_router = { workspace = true }
 leptos-auth = { workspace = true }
 leptos-graphql = { workspace = true }
@@ -42,14 +60,14 @@ leptos-table = { workspace = true }
 leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
-leptos_i18n = { workspace = true, features = ["ssr"] }
-leptos-next-metadata = { workspace = true }
+leptos_i18n = { workspace = true }
+leptos-next-metadata = { workspace = true, optional = true }
 leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_urlencoded.workspace = true
 futures = "0.3"
-rustok-core.workspace = true
+rustok-core = { workspace = true, optional = true }
 rustok-api.workspace = true
 thiserror.workspace = true
 loco-rs = { workspace = true, optional = true }
@@ -57,15 +75,17 @@ rustok-content = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-seo-render = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
-rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false }
-rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false }
-rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false }
-rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront", default-features = false }
-rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false }
-rustok-pricing-storefront = { path = "../../crates/rustok-pricing/storefront", default-features = false }
-rustok-product-storefront = { path = "../../crates/rustok-product/storefront", default-features = false }
-rustok-region-storefront = { path = "../../crates/rustok-region/storefront", default-features = false }
-rustok-search-storefront = { path = "../../crates/rustok-search/storefront", default-features = false }
+rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false, optional = true }
+rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false, optional = true }
+rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false, optional = true }
+rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront", default-features = false, optional = true }
+rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }
+rustok-pricing-storefront = { path = "../../crates/rustok-pricing/storefront", default-features = false, optional = true }
+rustok-product-storefront = { path = "../../crates/rustok-product/storefront", default-features = false, optional = true }
+rustok-region-storefront = { path = "../../crates/rustok-region/storefront", default-features = false, optional = true }
+rustok-search-storefront = { path = "../../crates/rustok-search/storefront", default-features = false, optional = true }
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = ["Location", "Window"] }
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }

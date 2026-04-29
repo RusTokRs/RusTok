@@ -13,6 +13,13 @@ async fn main() -> eyre::Result<()> {
         // Loco owns the global tracing subscriber for CLI commands.
         rustok_telemetry::init_metrics(telemetry_cfg.metrics)?
     };
+    let args = std::env::args().collect::<Vec<_>>();
+    if rustok_server::installer_cli::try_handle(&args).await? {
+        if has_otel {
+            rustok_telemetry::otel::shutdown().await;
+        }
+        return Ok(());
+    }
     let result = cli::main::<App, Migrator>().await;
     if has_otel {
         rustok_telemetry::otel::shutdown().await;

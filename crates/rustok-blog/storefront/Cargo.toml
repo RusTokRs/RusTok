@@ -13,6 +13,7 @@ ssr = [
   "dep:loco-rs",
   "dep:rustok-channel",
   "dep:rustok-tenant",
+  "rustok-api/loco-adapter",
 ]
 
 [dependencies]
@@ -24,6 +25,6 @@ loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 rustok-core.workspace = true
 rustok-blog.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, default-features = false }
 rustok-channel = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }

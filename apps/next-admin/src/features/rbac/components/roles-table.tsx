@@ -22,7 +22,10 @@ interface RolesTableProps {
   roles: RoleInfo[];
 }
 
-const ROLE_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
+const ROLE_BADGE_VARIANT: Record<
+  string,
+  'default' | 'secondary' | 'outline' | 'destructive'
+> = {
   super_admin: 'destructive',
   admin: 'default',
   manager: 'secondary',
@@ -38,7 +41,9 @@ export function RolesTable({ roles }: RolesTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead className='w-[180px]'>{t('list.role')}</TableHead>
-            <TableHead className='w-[100px]'>{t('list.permissionsCount')}</TableHead>
+            <TableHead className='w-[100px]'>
+              {t('list.permissionsCount')}
+            </TableHead>
             <TableHead>{t('list.permissionList')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -55,14 +60,18 @@ export function RolesTable({ roles }: RolesTableProps) {
               </TableCell>
               <TableCell>
                 <Collapsible>
-                  <CollapsibleTrigger className='flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground'>
+                  <CollapsibleTrigger className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm'>
                     {t('list.showPermissions')}
                     <ChevronDown className='h-3 w-3' />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <div className='mt-2 flex flex-wrap gap-1'>
                       {role.permissions.map((perm) => (
-                        <Badge key={perm} variant='outline' className='text-xs font-mono'>
+                        <Badge
+                          key={perm}
+                          variant='outline'
+                          className='font-mono text-xs'
+                        >
                           {perm}
                         </Badge>
                       ))}

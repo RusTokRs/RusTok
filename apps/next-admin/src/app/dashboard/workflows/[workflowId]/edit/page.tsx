@@ -1,6 +1,9 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { WorkflowFormPage, getWorkflow } from '../../../../../../packages/workflow/src';
+import {
+  WorkflowFormPage,
+  getWorkflow
+} from '../../../../../../packages/workflow/src';
 import { Suspense } from 'react';
 
 export const metadata = {
@@ -22,7 +25,7 @@ export default async function Page({ params }: PageProps) {
   const workflow = await getWorkflow(workflowId, opts);
 
   return (
-    <PageContainer scrollable pageTitle="Edit Workflow">
+    <PageContainer scrollable pageTitle='Edit Workflow'>
       <Suspense fallback={<div>Loading...</div>}>
         <WorkflowFormPage workflow={workflow ?? undefined} opts={opts} />
       </Suspense>

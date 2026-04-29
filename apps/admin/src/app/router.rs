@@ -6,10 +6,10 @@ use leptos_router::path;
 
 use crate::pages::{
     cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage, events::EventsPage,
-    login::Login, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
-    oauth_apps::OAuthAppsPage, profile::Profile, register::Register, reset::ResetPassword,
-    roles::RolesPage, security::Security, user_details::UserDetails, users::Users,
-    workflow_detail::WorkflowDetailPage, workflows::Workflows,
+    installer::InstallerPage, login::Login, module_admin::ModuleAdminPage, modules::Modules,
+    not_found::NotFound, oauth_apps::OAuthAppsPage, profile::Profile, register::Register,
+    reset::ResetPassword, roles::RolesPage, security::Security, user_details::UserDetails,
+    users::Users, workflow_detail::WorkflowDetailPage, workflows::Workflows,
 };
 use crate::widgets::app_shell::AppLayout;
 use crate::I18nContextProvider;
@@ -24,6 +24,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/login") view=Login />
                         <Route path=path!("/register") view=Register />
                         <Route path=path!("/reset") view=ResetPassword />
+                        <Route path=path!("/install") view=InstallerPage />
 
                         <ParentRoute path=path!("") view=ProtectedRoute>
                             <ParentRoute path=path!("") view=AppLayout>

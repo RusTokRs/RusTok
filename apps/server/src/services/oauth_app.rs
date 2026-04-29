@@ -791,15 +791,13 @@ pub async fn sync_manifest_managed_apps_for_all_tenants(
     db: &DatabaseConnection,
     manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
-    let tenants = tenants::Entity::find_active(db)
-        .await
-        .map_err(|error| {
-            tracing::error!(
-                error = %error,
-                "Failed to load active tenants during manifest OAuth sync"
-            );
-            Error::InternalServerError
-        })?;
+    let tenants = tenants::Entity::find_active(db).await.map_err(|error| {
+        tracing::error!(
+            error = %error,
+            "Failed to load active tenants during manifest OAuth sync"
+        );
+        Error::InternalServerError
+    })?;
 
     for tenant in tenants {
         sync_app_connections(db, tenant.id, manifest)
@@ -849,18 +847,15 @@ async fn upsert_embedded_app(
             active.is_active = Set(true);
             active.revoked_at = Set(None);
             active.updated_at = Set(Utc::now().into());
-            active
-                .update(db)
-                .await
-                .map_err(|error| {
-                    tracing::error!(
-                        tenant_id = %tenant_id,
-                        slug = slug,
-                        error = %error,
-                        "Failed to reactivate embedded OAuth app during manifest sync"
-                    );
-                    Error::InternalServerError
-                })?;
+            active.update(db).await.map_err(|error| {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    error = %error,
+                    "Failed to reactivate embedded OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?;
         }
     } else {
         let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
@@ -962,18 +957,15 @@ async fn upsert_first_party_app(
         active.manifest_ref = Set(Some(slug.to_string()));
         active.auto_created = Set(true);
         active.updated_at = Set(Utc::now().into());
-        active
-            .update(db)
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    tenant_id = %tenant_id,
-                    slug = slug,
-                    error = %error,
-                    "Failed to update first-party OAuth app during manifest sync"
-                );
-                Error::InternalServerError
-            })?;
+        active.update(db).await.map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to update first-party OAuth app during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
     } else {
         let client_secret_plain = generate_client_secret();
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;

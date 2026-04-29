@@ -8,7 +8,12 @@ import {
   CardTitle,
   CardAction
 } from '@/shared/ui/shadcn/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/shadcn/tabs';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger
+} from '@/shared/ui/shadcn/tabs';
 import { AreaGraph } from './area-graph';
 import { BarGraph } from './bar-graph';
 import { PieGraph } from './pie-graph';

@@ -49,22 +49,29 @@ mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
   updatePlatformSettings(input: $input) { success category }
 }`;
 
-export async function getEventsStatus(opts: GqlOpts = {}): Promise<EventsStatus> {
-  const data = await graphqlRequest<Record<string, never>, { eventsStatus: EventsStatus }>(
-    EVENTS_STATUS_QUERY,
-    {},
-    opts.token,
-    opts.tenantSlug
-  );
+export async function getEventsStatus(
+  opts: GqlOpts = {}
+): Promise<EventsStatus> {
+  const data = await graphqlRequest<
+    Record<string, never>,
+    { eventsStatus: EventsStatus }
+  >(EVENTS_STATUS_QUERY, {}, opts.token, opts.tenantSlug);
   return data.eventsStatus;
 }
 
-export async function getEventsSettings(opts: GqlOpts = {}): Promise<EventsSettings | null> {
+export async function getEventsSettings(
+  opts: GqlOpts = {}
+): Promise<EventsSettings | null> {
   try {
     const data = await graphqlRequest<
       { category: string },
       { platformSettings: { settings: string } }
-    >(PLATFORM_SETTINGS_QUERY, { category: 'events' }, opts.token, opts.tenantSlug);
+    >(
+      PLATFORM_SETTINGS_QUERY,
+      { category: 'events' },
+      opts.token,
+      opts.tenantSlug
+    );
     return JSON.parse(data.platformSettings.settings) as EventsSettings;
   } catch {
     return null;

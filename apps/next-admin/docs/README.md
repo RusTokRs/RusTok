@@ -18,6 +18,8 @@
 
 - canonical FSD-слои для host: `app`, `shared`, `entities`, `features`, `widgets`;
 - backend integration идёт через `apps/server` и shared transport packages;
+- effective locale выбирается host/runtime слоем через `x-rustok-effective-locale`
+  и `next-intl`; module-owned packages читают host-provided locale, а не cookie/query fallback chain;
 - глобальный admin search использует `rustok-search` как host-level capability;
 - shared SEO operator/headless contract тоже должен идти через backend surface:
   registry-backed target descriptors читаются из GraphQL `seoTargets`, а не из host-local slug mapping;

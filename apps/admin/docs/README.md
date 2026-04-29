@@ -51,6 +51,19 @@
   variant updates через module-owned server-function transport.
 - `apps/admin` не считается CSR-first host. CSR остаётся обязательным standalone debug профилем, но архитектурный target для Leptos admin — SSR-first host с headless GraphQL/REST parity.
 - WebSocket transport `/api/graphql/ws` остаётся действующим путём для live update сценариев, включая build/progress и subscription-based surfaces.
+- Host-owned `/install` является Leptos wizard-слоем для гибридного установщика.
+  Он не содержит собственной bootstrap-логики: экран собирает `InstallPlan`,
+  вызывает `/api/install/preflight`, запускает `/api/install/apply`, poll-ит
+  `/api/install/jobs/{job_id}` и показывает persisted receipts из
+  `/api/install/sessions/{session_id}/receipts`. CLI `rustok-server install ...`
+  остаётся canonical automation/operator path, а web слой работает как thin
+  facade поверх `apps/server` и `rustok-installer`. Этот route доступен до
+  обычной admin-auth, потому что первый install ещё может не иметь созданного
+  superadmin; mutating install-запросы защищаются setup-token guard на
+  `/api/install/*`. Wizard не подставляет sample admin password и admin
+  PostgreSQL URL по умолчанию: production-like secret values должны приходить
+  через secret refs, а database creation является явным opt-in с обязательным
+  `pg_admin_url`.
 - Для целей `module-system` `/modules` считается закрытым repo-side operator surface: установка, удаление, upgrade/deploy модулей и progress feedback доступны из Admin UI без отдельного ручного backend workflow.
 - Host-owned `/modules` governance UI не держит локальные policy-эвристики: `registryLifecycle` остаётся summary/read-model, но actor-agnostic `governanceActions` там теперь сведены только к release-management hints (`owner-transfer`, `yank`), а authoritative request-level contract для interactive governance читается отдельным bearer-auth fetch к `GET /v2/catalog/publish/{request_id}`; `reason` / `reason_code` и request-level availability берутся только из этого статуса.
 - `/modules` больше не читает legacy registry audit shape: lifecycle/event read-side работает только с typed payload (`stage_key`, nested `owner_transition`, structured principal objects) и не парсит historical `*_actor` keys.
@@ -127,6 +140,7 @@ route-selection UX и контейнеры module-owned UI должны след
 ## Взаимодействия
 
 - С [документацией `apps/server`](../../server/docs/README.md): backend runtime, GraphQL, `#[server]`, auth/session, registry и health surfaces.
+- С [ADR гибридного установщика](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md): installer-core, canonical CLI, HTTP adapter и thin Leptos wizard layering.
 - С [контрактом manifest-слоя](../../../docs/modules/manifest.md): module registration, UI ownership и settings schema.
 - С [реестром модулей и приложений](../../../docs/modules/registry.md): карта platform modules, support crates и host applications.
 - С module-owned admin packages: host знает только registration contract, route context и secondary nav metadata; внутренний sub-routing и domain UI остаются внутри пакета.
@@ -137,7 +151,7 @@ route-selection UX и контейнеры module-owned UI должны след
 
 - `cargo xtask module validate <slug>` для модулей, чьи admin surfaces затронуты;
 - точечные `cargo check` или `cargo test` для затронутых Leptos crates;
-- `npm.cmd run verify:i18n:ui` и related contract checks, если затронуты locale bundles или host-provided translations;
+- `npm run verify:i18n:ui` и related contract checks, если затронуты locale bundles или host-provided translations;
 - точечная проверка host routing и permission-aware navigation для затронутых экранов.
 
 ## Связанные документы

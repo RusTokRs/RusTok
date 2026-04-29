@@ -74,7 +74,12 @@ export async function createForumReply(
   const data = await graphqlRequest<
     { tenantId: string; topicId: string; input: CreateForumReplyInput },
     { createForumReply: { id: string } }
-  >(mutation, { tenantId: opts.tenantId!, topicId, input }, opts.token, opts.tenantSlug);
+  >(
+    mutation,
+    { tenantId: opts.tenantId!, topicId, input },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return data.createForumReply.id;
 }

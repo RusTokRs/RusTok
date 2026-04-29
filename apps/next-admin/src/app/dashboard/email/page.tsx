@@ -18,7 +18,9 @@ export default async function Page() {
       pageTitle='Email Settings'
       pageDescription='Configure email delivery and SMTP settings'
     >
-      <Suspense fallback={<div className='h-64 animate-pulse rounded-xl bg-muted' />}>
+      <Suspense
+        fallback={<div className='bg-muted h-64 animate-pulse rounded-xl' />}
+      >
         <EmailSettingsPage token={token} tenantSlug={tenantSlug} />
       </Suspense>
     </PageContainer>

@@ -46,16 +46,27 @@ interface PlatformSettingsResponse {
 }
 
 interface UpdateSettingsResponse {
-  updatePlatformSettings: { success: boolean; category: string; settings: string };
+  updatePlatformSettings: {
+    success: boolean;
+    category: string;
+    settings: string;
+  };
 }
 
 // ---------- API functions ----------
 
-export async function getEmailSettings(opts: GqlOpts = {}): Promise<EmailSettings> {
+export async function getEmailSettings(
+  opts: GqlOpts = {}
+): Promise<EmailSettings> {
   const data = await graphqlRequest<
     { category: string },
     PlatformSettingsResponse
-  >(PLATFORM_SETTINGS_QUERY, { category: 'email' }, opts.token, opts.tenantSlug);
+  >(
+    PLATFORM_SETTINGS_QUERY,
+    { category: 'email' },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return JSON.parse(data.platformSettings.settings) as EmailSettings;
 }

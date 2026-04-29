@@ -21,6 +21,8 @@
 - backend API идёт через `apps/server`;
 - auth и transport contracts переиспользуются через shared packages, а не через ad-hoc clients;
 - storefront host должен оставаться синхронизированным с `apps/storefront` по route/i18n/auth contracts.
+- locale-aware middleware должен матчить весь storefront surface без hardcoded `/en|/ru`
+  filter; поддерживаемые locales берутся из host-owned message loaders.
 - query semantics для module-owned storefront surfaces должны оставаться в parity с `apps/storefront`;
   host не inventит отдельную schema/policy поверх backend и Leptos host contract.
 

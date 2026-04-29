@@ -21,7 +21,9 @@ export function ProductCard({ product, className }: ProductCardProps) {
       <div className='p-3'>
         <p className='truncate text-sm font-medium'>{product.name}</p>
         <p className='text-muted-foreground text-xs'>{product.category}</p>
-        <p className='mt-1 text-sm font-semibold'>${product.price.toFixed(2)}</p>
+        <p className='mt-1 text-sm font-semibold'>
+          ${product.price.toFixed(2)}
+        </p>
       </div>
     </div>
   );

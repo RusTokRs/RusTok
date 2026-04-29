@@ -17,7 +17,7 @@ pub mod success_message;
 
 pub use card::{Card, CardContent, CardFooter, CardHeader};
 pub use label::Label;
-pub use language_toggle::LanguageToggle as ui_language_toggle;
+pub use language_toggle::{LanguageToggle as ui_language_toggle, LanguageToggleOption};
 pub use separator::Separator;
 pub use success_message::SuccessMessage as ui_success_message;
 

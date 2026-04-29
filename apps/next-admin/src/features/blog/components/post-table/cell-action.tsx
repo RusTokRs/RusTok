@@ -28,7 +28,10 @@ interface CellActionProps {
   gqlOpts?: GqlOpts;
 }
 
-export const CellAction: React.FC<CellActionProps> = ({ data, gqlOpts = {} }) => {
+export const CellAction: React.FC<CellActionProps> = ({
+  data,
+  gqlOpts = {}
+}) => {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const router = useRouter();

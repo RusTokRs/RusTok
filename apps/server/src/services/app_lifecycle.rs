@@ -120,6 +120,7 @@ pub fn apply_boot_database_fallback(config: &mut Config) -> bool {
 pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     let settings = RustokSettings::from_settings(&ctx.config.settings)
         .map_err(|error| Error::Message(format!("Invalid rustok settings: {error}")))?;
+    #[cfg(feature = "mod-seo")]
     let seo_bulk_worker_enabled = settings.runtime.background_workers.seo_bulk_enabled;
 
     if settings.runtime.is_registry_only() {

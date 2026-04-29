@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   description: 'View user details'
 };
 
-export default async function UserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
+export default async function UserDetailPage({
+  params
+}: {
+  params: Promise<{ userId: string }>;
+}) {
   const { userId } = await params;
   return (
     <PageContainer

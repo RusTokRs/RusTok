@@ -6,7 +6,11 @@ interface UserAvatarProfileProps {
   user: { email: string; name: string | null; role?: string } | null;
 }
 
-export function UserAvatarProfile({ className, showInfo = false, user }: UserAvatarProfileProps) {
+export function UserAvatarProfile({
+  className,
+  showInfo = false,
+  user
+}: UserAvatarProfileProps) {
   const displayName = user?.name || user?.email || '';
   const initials = displayName.slice(0, 2).toUpperCase() || 'U';
 
@@ -17,7 +21,9 @@ export function UserAvatarProfile({ className, showInfo = false, user }: UserAva
       </Avatar>
       {showInfo && (
         <div className='grid flex-1 text-left text-sm leading-tight'>
-          <span className='truncate font-semibold'>{user?.name || user?.email || ''}</span>
+          <span className='truncate font-semibold'>
+            {user?.name || user?.email || ''}
+          </span>
           <span className='truncate text-xs'>{user?.email || ''}</span>
         </div>
       )}

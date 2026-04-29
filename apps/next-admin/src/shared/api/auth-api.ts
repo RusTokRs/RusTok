@@ -162,7 +162,12 @@ export async function signUp(
   const data = await graphqlRequest<
     { input: { email: string; password: string; name?: string } },
     SignUpResponse
-  >(SIGN_UP_MUTATION, { input: { email, password, name } }, undefined, tenantSlug);
+  >(
+    SIGN_UP_MUTATION,
+    { input: { email, password, name } },
+    undefined,
+    tenantSlug
+  );
   return {
     accessToken: data.signUp.accessToken,
     refreshToken: data.signUp.refreshToken,
@@ -170,7 +175,10 @@ export async function signUp(
   };
 }
 
-export async function signOut(token: string, tenantSlug?: string | null): Promise<void> {
+export async function signOut(
+  token: string,
+  tenantSlug?: string | null
+): Promise<void> {
   try {
     await graphqlRequest(SIGN_OUT_MUTATION, undefined, token, tenantSlug);
   } catch {
@@ -219,7 +227,12 @@ export async function refreshToken(
   const data = await graphqlRequest<
     { input: { refreshToken: string } },
     RefreshTokenResponse
-  >(REFRESH_TOKEN_MUTATION, { input: { refreshToken: currentRefreshToken } }, undefined, tenantSlug);
+  >(
+    REFRESH_TOKEN_MUTATION,
+    { input: { refreshToken: currentRefreshToken } },
+    undefined,
+    tenantSlug
+  );
   return {
     accessToken: data.refreshToken.accessToken,
     refreshToken: data.refreshToken.refreshToken,

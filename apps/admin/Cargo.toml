@@ -107,6 +107,7 @@ base64 = { workspace = true }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
+rustok-installer = { path = "../../crates/rustok-installer" }
 loco-rs = { workspace = true, optional = true }
 rustok-cache = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
@@ -168,6 +169,7 @@ normal = [
   "leptos-forms",
   "uuid",
   "rustok-api",
+  "rustok-installer",
   "rustok-cache",
   "rustok-comments",
   "rustok-comments-admin",

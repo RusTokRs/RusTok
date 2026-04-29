@@ -82,3 +82,7 @@ pub async fn toggle(
 ) -> Result<Model, DbErr> {
     Entity::toggle(db, tenant_id, module_slug, enabled).await
 }
+
+pub async fn find_enabled(db: &DatabaseConnection, tenant_id: Uuid) -> Result<Vec<String>, DbErr> {
+    Entity::find_enabled(db, tenant_id).await
+}

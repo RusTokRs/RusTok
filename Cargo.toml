@@ -55,7 +55,7 @@ edition = "2021"
 rust-version = "1.80"
 license = "MIT"
 description = "High-performance, modular headless CMS and e-commerce platform built with Rust"
-repository = "https://github.com/RustokCMS/RusToK"
+repository = "https://github.com/RusTokRs/RusTok"
 
 [workspace.dependencies]
 # Loco Framework

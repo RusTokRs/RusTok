@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "format:next-admin": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --write packages/search/src/index.tsx",
-    "format:next-admin:check": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --check packages/search/src/index.tsx",
+    "format:next-admin": "npm --prefix apps/next-admin run format",
+    "format:next-admin:check": "npm --prefix apps/next-admin run format:check",
     "verify:flex:contract": "node scripts/verify/verify-flex-multilingual-contract.mjs",
     "verify:i18n:ui": "node scripts/verify/verify-ui-i18n-parity.mjs",
     "verify:i18n:contract": "node scripts/verify/verify-i18n-contract.mjs",
