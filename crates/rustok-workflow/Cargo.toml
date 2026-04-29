@@ -10,7 +10,7 @@ async-graphql.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
-cron = "0.15"
+cron = "0.16"
 loco-rs.workspace = true
 reqwest = { workspace = true }
 rustok-api.workspace = true

@@ -9,7 +9,7 @@ description = "MCP adapter server for RusToK modules"
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-rmcp = { version = "1.2.0", features = ["macros", "server", "transport-io"] }
+rmcp = { version = "1.5.0", features = ["macros", "server", "transport-io"] }
 serde.workspace = true
 serde_json.workspace = true
 schemars = "1.2"
