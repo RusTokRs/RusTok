@@ -582,7 +582,7 @@ impl ChannelService {
         .insert(&self.db)
         .await?;
 
-        Ok(to_channel_resolution_rule_response(model)?)
+        to_channel_resolution_rule_response(model)
     }
 
     #[instrument(skip(self), fields(policy_set_id = %policy_set_id))]

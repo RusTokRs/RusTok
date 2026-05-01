@@ -140,7 +140,7 @@ impl NodeService {
         let node_id = match result {
             Ok(id) => id,
             Err(e) => {
-                metrics::record_span_error("content.node.create", &e.kind());
+                metrics::record_span_error("content.node.create", e.kind());
                 return Err(e);
             }
         };

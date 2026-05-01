@@ -526,6 +526,7 @@ impl TaxonomyService {
     }
 
     #[instrument(skip(self, security))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn resolve_term_for_module(
         &self,
         tenant_id: Uuid,
@@ -628,6 +629,7 @@ impl TaxonomyService {
         Ok(map)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn ensure_canonical_key_available_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -655,6 +657,7 @@ impl TaxonomyService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn ensure_translation_slug_available_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -686,6 +689,7 @@ impl TaxonomyService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn ensure_aliases_available_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -756,6 +760,7 @@ impl TaxonomyService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn find_term_id_by_localized_slug_or_alias(
         &self,
         tenant_id: Uuid,
@@ -854,6 +859,7 @@ impl TaxonomyService {
         Ok(None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn create_module_term_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -939,6 +945,7 @@ impl TaxonomyService {
             .map(|term| term.id))
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn find_term_id_by_localized_slug_or_alias_in_tx(
         &self,
         txn: &DatabaseTransaction,
