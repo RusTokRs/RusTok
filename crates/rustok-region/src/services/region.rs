@@ -426,12 +426,12 @@ fn resolve_translation<'a>(
 
     if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
         if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some((*found).locale.clone()));
+            return (Some(*found), Some(found.locale.clone()));
         }
     }
     if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
         if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some((*found).locale.clone()));
+            return (Some(*found), Some(found.locale.clone()));
         }
     }
     translations

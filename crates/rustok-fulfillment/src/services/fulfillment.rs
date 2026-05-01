@@ -1209,9 +1209,9 @@ fn reopened_status_for_cancelled(
     items: &[entities::fulfillment_item::Model],
     fulfillment: &entities::fulfillment::ActiveModel,
 ) -> &'static str {
-    if items.iter().any(|item| item.shipped_quantity > 0) {
-        STATUS_SHIPPED
-    } else if fulfillment.shipped_at.clone().take().is_some() {
+    if items.iter().any(|item| item.shipped_quantity > 0)
+        || fulfillment.shipped_at.clone().take().is_some()
+    {
         STATUS_SHIPPED
     } else {
         STATUS_PENDING
@@ -1382,12 +1382,12 @@ fn resolve_translation<'a>(
 
     if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
         if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some((*found).locale.clone()));
+            return (Some(*found), Some(found.locale.clone()));
         }
     }
     if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
         if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some((*found).locale.clone()));
+            return (Some(*found), Some(found.locale.clone()));
         }
     }
     translations

@@ -73,18 +73,18 @@ where
 {
     let exact_locale = canonical_locale(locale);
     let localized_by_locale =
-        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id).await?;
-    let existing_localized =
-        load_exact_locale_values(
-            db,
-            entity.tenant_id,
-            entity.entity_type,
-            entity.entity_id,
-            exact_locale.as_str(),
-        )
-            .await?
-            .or_else(|| first_available_localized_values(localized_by_locale))
-            .unwrap_or_else(|| Value::Object(Map::new()));
+        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id)
+            .await?;
+    let existing_localized = load_exact_locale_values(
+        db,
+        entity.tenant_id,
+        entity.entity_type,
+        entity.entity_id,
+        exact_locale.as_str(),
+    )
+    .await?
+    .or_else(|| first_available_localized_values(localized_by_locale))
+    .unwrap_or_else(|| Value::Object(Map::new()));
 
     prepare_write(
         schema,
@@ -113,7 +113,8 @@ where
     let (_, localized_keys) = split_definitions(&schema);
     let (shared_values, _) = split_existing_metadata(shared_metadata, &localized_keys);
     let localized_by_locale =
-        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id).await?;
+        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id)
+            .await?;
 
     let candidates = build_locale_candidates(
         [

@@ -213,8 +213,6 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
         ProfileError::ProfileNotFound(_) | ProfileError::ProfileByHandleNotFound(_) => {
             <FieldError as GraphQLError>::not_found(&err.to_string())
         }
-        ProfileError::Database(_) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
-        }
+        ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&err.to_string()),
     }
 }
