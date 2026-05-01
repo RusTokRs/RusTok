@@ -957,9 +957,11 @@ impl TopicService {
         let (_, existing_flex_metadata) = split_topic_metadata_payload(&schema, existing_metadata);
         prepare_attached_values_update(
             &self.db,
-            tenant_id,
-            "topic",
-            topic_id,
+            flex::AttachedEntityRef {
+                tenant_id,
+                entity_type: "topic",
+                entity_id: topic_id,
+            },
             schema,
             locale,
             &Value::Object(existing_flex_metadata),
@@ -1014,9 +1016,11 @@ impl TopicService {
         );
         resolve_attached_payload(
             &self.db,
-            tenant_id,
-            "topic",
-            topic_id,
+            flex::AttachedEntityRef {
+                tenant_id,
+                entity_type: "topic",
+                entity_id: topic_id,
+            },
             schema,
             metadata,
             locale,

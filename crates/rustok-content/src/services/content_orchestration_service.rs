@@ -156,6 +156,15 @@ pub struct ContentOrchestrationService {
     bridge: Arc<dyn ContentOrchestrationBridge>,
 }
 
+struct PersistOrchestrationRecordInput<'a> {
+    tenant_id: Uuid,
+    operation: &'a str,
+    idempotency_key: &'a str,
+    actor_id: Option<Uuid>,
+    result: &'a OrchestrationResult,
+    payload: Value,
+}
+
 impl ContentOrchestrationService {
     pub fn new(
         db: DatabaseConnection,
@@ -230,16 +239,18 @@ impl ContentOrchestrationService {
 
         self.persist_orchestration_record(
             &txn,
-            tenant_id,
-            "promote_topic_to_post",
-            &input.idempotency_key,
-            security.user_id,
-            &result,
-            json!({
-                "locale": bridge_result.effective_locale,
-                "blog_category_id": input.blog_category_id,
-                "reason": input.reason,
-            }),
+            PersistOrchestrationRecordInput {
+                tenant_id,
+                operation: "promote_topic_to_post",
+                idempotency_key: &input.idempotency_key,
+                actor_id: security.user_id,
+                result: &result,
+                payload: json!({
+                    "locale": bridge_result.effective_locale,
+                    "blog_category_id": input.blog_category_id,
+                    "reason": input.reason,
+                }),
+            },
         )
         .await?;
 
@@ -308,16 +319,18 @@ impl ContentOrchestrationService {
 
         self.persist_orchestration_record(
             &txn,
-            tenant_id,
-            "demote_post_to_topic",
-            &input.idempotency_key,
-            security.user_id,
-            &result,
-            json!({
-                "locale": bridge_result.effective_locale,
-                "forum_category_id": input.forum_category_id,
-                "reason": input.reason,
-            }),
+            PersistOrchestrationRecordInput {
+                tenant_id,
+                operation: "demote_post_to_topic",
+                idempotency_key: &input.idempotency_key,
+                actor_id: security.user_id,
+                result: &result,
+                payload: json!({
+                    "locale": bridge_result.effective_locale,
+                    "forum_category_id": input.forum_category_id,
+                    "reason": input.reason,
+                }),
+            },
         )
         .await?;
 
@@ -386,17 +399,19 @@ impl ContentOrchestrationService {
 
         self.persist_orchestration_record(
             &txn,
-            tenant_id,
-            "split_topic",
-            &input.idempotency_key,
-            security.user_id,
-            &result,
-            json!({
-                "locale": input.locale,
-                "reason": input.reason,
-                "reply_ids": bridge_result.moved_reply_ids,
-                "new_title": input.new_title,
-            }),
+            PersistOrchestrationRecordInput {
+                tenant_id,
+                operation: "split_topic",
+                idempotency_key: &input.idempotency_key,
+                actor_id: security.user_id,
+                result: &result,
+                payload: json!({
+                    "locale": input.locale,
+                    "reason": input.reason,
+                    "reply_ids": bridge_result.moved_reply_ids,
+                    "new_title": input.new_title,
+                }),
+            },
         )
         .await?;
 
@@ -462,15 +477,17 @@ impl ContentOrchestrationService {
 
         self.persist_orchestration_record(
             &txn,
-            tenant_id,
-            "merge_topics",
-            &input.idempotency_key,
-            security.user_id,
-            &result,
-            json!({
-                "reason": input.reason,
-                "source_topic_ids": bridge_result.source_topic_ids,
-            }),
+            PersistOrchestrationRecordInput {
+                tenant_id,
+                operation: "merge_topics",
+                idempotency_key: &input.idempotency_key,
+                actor_id: security.user_id,
+                result: &result,
+                payload: json!({
+                    "reason": input.reason,
+                    "source_topic_ids": bridge_result.source_topic_ids,
+                }),
+            },
         )
         .await?;
 
@@ -776,23 +793,18 @@ impl ContentOrchestrationService {
     async fn persist_orchestration_record(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        operation: &str,
-        idempotency_key: &str,
-        actor_id: Option<Uuid>,
-        result: &OrchestrationResult,
-        payload: Value,
+        input: PersistOrchestrationRecordInput<'_>,
     ) -> ContentResult<()> {
         let now = Utc::now();
 
         orchestration_operation::ActiveModel {
             id: Set(rustok_core::generate_id()),
-            tenant_id: Set(tenant_id),
-            operation: Set(operation.to_string()),
-            idempotency_key: Set(idempotency_key.to_string()),
-            source_id: Set(result.source_id),
-            target_id: Set(result.target_id),
-            moved_comments: Set(result.moved_comments as i64),
+            tenant_id: Set(input.tenant_id),
+            operation: Set(input.operation.to_string()),
+            idempotency_key: Set(input.idempotency_key.to_string()),
+            source_id: Set(input.result.source_id),
+            target_id: Set(input.result.target_id),
+            moved_comments: Set(input.result.moved_comments as i64),
             created_at: Set(now.into()),
         }
         .insert(txn)
@@ -800,13 +812,13 @@ impl ContentOrchestrationService {
 
         orchestration_audit_log::ActiveModel {
             id: Set(rustok_core::generate_id()),
-            tenant_id: Set(tenant_id),
-            operation: Set(operation.to_string()),
-            idempotency_key: Set(idempotency_key.to_string()),
-            actor_id: Set(actor_id),
-            source_id: Set(result.source_id),
-            target_id: Set(result.target_id),
-            payload: Set(payload),
+            tenant_id: Set(input.tenant_id),
+            operation: Set(input.operation.to_string()),
+            idempotency_key: Set(input.idempotency_key.to_string()),
+            actor_id: Set(input.actor_id),
+            source_id: Set(input.result.source_id),
+            target_id: Set(input.result.target_id),
+            payload: Set(input.payload),
             created_at: Set(now.into()),
         }
         .insert(txn)

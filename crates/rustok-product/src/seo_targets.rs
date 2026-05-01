@@ -275,7 +275,7 @@ fn map_product_response(
         effective_locale: effective_locale.clone(),
         title: title.clone(),
         description: description.clone(),
-        canonical_route: canonical_route,
+        canonical_route,
         alternates: product
             .translations
             .iter()

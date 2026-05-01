@@ -821,10 +821,8 @@ impl OrderService {
     ) -> OrderResult<flex::PreparedAttachedValuesWrite> {
         let schema = load_order_custom_fields_schema(&self.db, tenant_id).await?;
         if schema.active_definitions().is_empty() {
-            return Ok(
-                prepare_attached_values_create(schema, Some(metadata), locale)
-                    .map_err(|error| OrderError::Validation(error.to_string()))?,
-            );
+            return prepare_attached_values_create(schema, Some(metadata), locale)
+                .map_err(|error| OrderError::Validation(error.to_string()));
         }
 
         let (reserved_metadata, custom_fields) = split_order_metadata_payload(&schema, &metadata);
@@ -853,9 +851,11 @@ impl OrderService {
         let schema = load_order_custom_fields_schema(&self.db, tenant_id).await?;
         let resolved = resolve_attached_payload(
             &self.db,
-            tenant_id,
-            "order",
-            order_id,
+            flex::AttachedEntityRef {
+                tenant_id,
+                entity_type: "order",
+                entity_id: order_id,
+            },
             schema,
             metadata,
             preferred_locale,

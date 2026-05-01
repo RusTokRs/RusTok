@@ -173,7 +173,7 @@ impl ProfilesMutation {
 fn require_auth(ctx: &Context<'_>) -> Result<AuthContext> {
     ctx.data::<AuthContext>()
         .cloned()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated().into())
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
 }
 
 async fn publish_profile_updated(
@@ -193,7 +193,7 @@ async fn publish_profile_updated(
             },
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()).into())
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
 
 fn map_profile_error(err: ProfileError) -> async_graphql::Error {
@@ -208,13 +208,13 @@ fn map_profile_error(err: ProfileError) -> async_graphql::Error {
         | ProfileError::InvalidLocale(_)
         | ProfileError::Validation(_)
         | ProfileError::DuplicateHandle(_) => {
-            <FieldError as GraphQLError>::bad_user_input(&err.to_string()).into()
+            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
         }
         ProfileError::ProfileNotFound(_) | ProfileError::ProfileByHandleNotFound(_) => {
-            <FieldError as GraphQLError>::not_found(&err.to_string()).into()
+            <FieldError as GraphQLError>::not_found(&err.to_string())
         }
         ProfileError::Database(_) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string()).into()
+            <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
     }
 }

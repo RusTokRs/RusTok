@@ -326,6 +326,7 @@ impl ProfileService {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn backfill_profile(
         &self,
         tenant_id: Uuid,
@@ -956,11 +957,12 @@ fn slugify_handle_seed(seed: &str) -> Option<String> {
         if ch.is_ascii_alphanumeric() {
             slug.push(ch.to_ascii_lowercase());
             last_was_separator = false;
-        } else if (ch == ' ' || ch == '-' || ch == '_' || !ch.is_ascii()) && !last_was_separator {
-            if !slug.is_empty() {
-                slug.push('-');
-                last_was_separator = true;
-            }
+        } else if (ch == ' ' || ch == '-' || ch == '_' || !ch.is_ascii())
+            && !last_was_separator
+            && !slug.is_empty()
+        {
+            slug.push('-');
+            last_was_separator = true;
         }
     }
 

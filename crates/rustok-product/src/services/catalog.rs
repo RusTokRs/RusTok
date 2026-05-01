@@ -1424,9 +1424,11 @@ impl CatalogService {
             split_product_metadata_payload(&schema, existing_metadata);
         prepare_attached_values_update(
             conn,
-            tenant_id,
-            "product",
-            product_id,
+            flex::AttachedEntityRef {
+                tenant_id,
+                entity_type: "product",
+                entity_id: product_id,
+            },
             schema,
             locale,
             &Value::Object(existing_flex_metadata),
@@ -1455,9 +1457,11 @@ impl CatalogService {
         let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
         resolve_attached_payload(
             &self.db,
-            tenant_id,
-            "product",
-            product_id,
+            flex::AttachedEntityRef {
+                tenant_id,
+                entity_type: "product",
+                entity_id: product_id,
+            },
             schema,
             &shared_metadata,
             locale,
@@ -1880,6 +1884,7 @@ impl CatalogService {
             .collect()
     }
 
+    #[allow(clippy::result_large_err)]
     fn normalize_option_translations(
         translations: &[ProductOptionTranslationInput],
     ) -> CommerceResult<Vec<ProductOptionTranslationInput>> {
@@ -1924,6 +1929,7 @@ impl CatalogService {
         Ok(normalized)
     }
 
+    #[allow(clippy::result_large_err)]
     fn ensure_option_values_consistent(
         translations: &[ProductOptionTranslationInput],
         base_values: &[String],

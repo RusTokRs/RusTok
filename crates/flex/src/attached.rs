@@ -39,6 +39,13 @@ pub struct PreparedAttachedValuesWrite {
     pub locale: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct AttachedEntityRef<'a> {
+    pub tenant_id: Uuid,
+    pub entity_type: &'a str,
+    pub entity_id: Uuid,
+}
+
 pub fn prepare_attached_values_create(
     schema: CustomFieldsSchema,
     payload: Option<Value>,
@@ -55,9 +62,7 @@ pub fn prepare_attached_values_create(
 
 pub async fn prepare_attached_values_update<C>(
     db: &C,
-    tenant_id: Uuid,
-    entity_type: &str,
-    entity_id: Uuid,
+    entity: AttachedEntityRef<'_>,
     schema: CustomFieldsSchema,
     locale: &str,
     existing_metadata: &Value,
@@ -68,9 +73,15 @@ where
 {
     let exact_locale = canonical_locale(locale);
     let localized_by_locale =
-        load_localized_values_by_locale(db, tenant_id, entity_type, entity_id).await?;
+        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id).await?;
     let existing_localized =
-        load_exact_locale_values(db, tenant_id, entity_type, entity_id, exact_locale.as_str())
+        load_exact_locale_values(
+            db,
+            entity.tenant_id,
+            entity.entity_type,
+            entity.entity_id,
+            exact_locale.as_str(),
+        )
             .await?
             .or_else(|| first_available_localized_values(localized_by_locale))
             .unwrap_or_else(|| Value::Object(Map::new()));
@@ -86,9 +97,7 @@ where
 
 pub async fn resolve_attached_payload<C>(
     db: &C,
-    tenant_id: Uuid,
-    entity_type: &str,
-    entity_id: Uuid,
+    entity: AttachedEntityRef<'_>,
     schema: CustomFieldsSchema,
     shared_metadata: &Value,
     preferred_locale: &str,
@@ -104,7 +113,7 @@ where
     let (_, localized_keys) = split_definitions(&schema);
     let (shared_values, _) = split_existing_metadata(shared_metadata, &localized_keys);
     let localized_by_locale =
-        load_localized_values_by_locale(db, tenant_id, entity_type, entity_id).await?;
+        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id).await?;
 
     let candidates = build_locale_candidates(
         [

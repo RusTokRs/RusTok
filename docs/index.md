@@ -270,3 +270,5 @@
 ## Architecture Decisions
 
 - [Индекс ADR](../DECISIONS/README.md)
+
+- [Security: RUSTSEC-2026-0045 remediation note](./security/aws-lc-rustsec-2026-0045.md)
