@@ -71,7 +71,7 @@ pub fn Login() -> impl IntoView {
                 <div class="absolute inset-0 opacity-40 [background-image:linear-gradient(to_right,rgba(255,255,255,.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.12)_1px,transparent_1px)] [background-size:34px_34px] [mask-image:radial-gradient(420px_circle_at_center,white,transparent)]" />
                 <div class="relative z-20 mt-auto space-y-2">
                     <p class="text-lg">
-                        "\"RusTok - a modern multi-tenant CMS built with Rust and WebAssembly.\""
+                        "\"RusTok - a multi-tenant language agnostic highload platform built with Rust and WebAssembly.\""
                     </p>
                     <p class="text-sm text-white/70">"RusTok Team"</p>
                 </div>

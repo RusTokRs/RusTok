@@ -42,6 +42,9 @@
   template defaults/target overrides и diagnostics с issue aggregates, hreflang gap checks и canonical redirect chain/loop checks;
   `rustok-seo` теперь использует precedence `explicit SEO > template-generated SEO > domain/entity fallback`,
   а `SeoPageContext.document` и `seoMeta` явно показывают source state для generated vs explicit значений;
+  rich-snippet foundation уже переведён на typed `SeoStructuredDataBlock` contract:
+  JSON-LD `@graph` разворачивается в schema blocks с `schema_kind`, `schema_type`, legacy `kind`, `source` и payload,
+  без отдельного host-local schema.org classifier;
   headless read-side теперь также включает REST endpoints `/api/seo/page-context` и `/api/seo/targets`
   плюс GraphQL queries `seoTargets` и `seoDiagnostics`
   поверх canonical request locale resolution и shared registry descriptors, так что headless/admin hosts

@@ -294,9 +294,9 @@ fn render_link_tag(head: &mut String, tag: &SeoLinkTag) {
 #[cfg(test)]
 mod tests {
     use rustok_seo::{
-        SeoAlternateLink, SeoDocument, SeoImageAsset, SeoLinkTag, SeoMetaTag, SeoOpenGraph,
-        SeoPageContext, SeoRobots, SeoRouteContext, SeoStructuredDataBlock, SeoTwitterCard,
-        SeoVerification, SeoVerificationTag,
+        SeoAlternateLink, SeoDocument, SeoFieldSource, SeoImageAsset, SeoLinkTag, SeoMetaTag,
+        SeoOpenGraph, SeoPageContext, SeoRobots, SeoRouteContext, SeoSchemaBlockKind,
+        SeoStructuredDataBlock, SeoTwitterCard, SeoVerification, SeoVerificationTag,
     };
 
     use super::{render_head_html, robots_directives};
@@ -389,7 +389,10 @@ mod tests {
                 }],
                 structured_data_blocks: vec![SeoStructuredDataBlock {
                     id: Some("product".to_string()),
+                    schema_kind: SeoSchemaBlockKind::Product,
+                    schema_type: Some("Product".to_string()),
                     kind: Some("Product".to_string()),
+                    source: SeoFieldSource::Fallback,
                     payload: serde_json::json!({
                         "@context": "https://schema.org",
                         "@type": "Product",

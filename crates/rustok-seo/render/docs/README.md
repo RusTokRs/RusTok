@@ -5,13 +5,14 @@
 ## Назначение
 
 - убрать дублирование Rust-side SEO head rendering между host-приложениями;
-- держать один renderer для canonical, robots, hreflang, Open Graph, Twitter, verification tags, pagination links, generic meta/link tags и JSON-LD;
+- держать один renderer для canonical, robots, hreflang, Open Graph, Twitter, verification tags, pagination links, generic meta/link tags и typed JSON-LD schema blocks;
 - не создавать второй source of truth поверх `rustok-seo`.
 
 ## Зона ответственности
 
 - pure rendering helpers без доступа к storage, redirect runtime и tenant policy;
 - сериализация typed `SeoRobots` в строку directives для `<meta name="robots">`;
+- сериализация `SeoStructuredDataBlock.payload` в `<script type="application/ld+json">` без повторной классификации schema.org типа;
 - HTML escaping и сборка SSR head string для Rust-host приложений.
 
 ## Что не входит

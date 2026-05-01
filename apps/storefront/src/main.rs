@@ -67,7 +67,11 @@ fn main() {
 }
 
 #[cfg(feature = "csr")]
-fn browser_route_context() -> (String, Option<String>, std::collections::HashMap<String, String>) {
+fn browser_route_context() -> (
+    String,
+    Option<String>,
+    std::collections::HashMap<String, String>,
+) {
     let location = web_sys::window()
         .expect("window is available in the storefront CSR runtime")
         .location();
@@ -85,7 +89,11 @@ fn browser_route_context() -> (String, Option<String>, std::collections::HashMap
         .copied()
         .unwrap_or("en")
         .to_string();
-    let route_offset = usize::from(segments.first().is_some_and(|segment| looks_like_locale(segment)));
+    let route_offset = usize::from(
+        segments
+            .first()
+            .is_some_and(|segment| looks_like_locale(segment)),
+    );
     let route_segment = match segments.as_slice().get(route_offset..route_offset + 2) {
         Some(["modules", segment]) => Some((*segment).to_string()),
         _ => None,
@@ -114,7 +122,10 @@ fn parse_query_params(search: &str) -> std::collections::HashMap<String, String>
 #[cfg(feature = "csr")]
 fn looks_like_locale(segment: &str) -> bool {
     let len = segment.len();
-    (len == 2 || len == 5) && segment.chars().all(|ch| ch.is_ascii_alphabetic() || ch == '-')
+    (len == 2 || len == 5)
+        && segment
+            .chars()
+            .all(|ch| ch.is_ascii_alphabetic() || ch == '-')
 }
 
 #[cfg(feature = "csr")]

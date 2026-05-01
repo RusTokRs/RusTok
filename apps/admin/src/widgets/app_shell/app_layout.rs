@@ -14,11 +14,11 @@ pub fn app_layout() -> impl IntoView {
 
     view! {
         <EnabledModulesProvider>
-            <div class="min-h-svh bg-background text-foreground md:flex">
+            <div class="h-svh overflow-hidden bg-background text-foreground md:flex">
                 <Sidebar sidebar_open=sidebar_open />
-                <div class="flex min-w-0 flex-1 flex-col">
+                <div class="flex min-h-0 min-w-0 flex-1 flex-col">
                     <Header sidebar_open=sidebar_open set_sidebar_open=set_sidebar_open />
-                    <main class="flex-1 overflow-y-auto">
+                    <main class="min-h-0 flex-1 overflow-y-auto">
                         <Outlet />
                     </main>
                 </div>

@@ -36,6 +36,7 @@
   те же key semantics и canonical behavior, что и Leptos storefront.
 - SEO runtime не дублируется в host: canonical source of truth живёт в `rustok-seo`, а Next host выступает только adapter-слоем поверх `SeoPageContext = route + document`.
 - built-in Next Metadata API считается основным render target для SEO head; shared metadata builder должен маппить туда typed robots, Open Graph, Twitter, verification и alternates без собственного SEO source-of-truth в host.
+- `SeoStructuredDataBlock` в shared TypeScript contract сохраняет backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` и payload; Next host не классифицирует schema.org types локально.
 - Rust-host путь при этом вынесен в отдельный support crate `rustok-seo-render`; Next host остаётся TypeScript adapter-слоем и не пытается делить с ним source-of-truth.
 
 ## Взаимодействия

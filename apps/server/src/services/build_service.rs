@@ -652,5 +652,5 @@ fn compute_manifest_hash(modules: &HashMap<String, ModuleSpec>) -> String {
 
     let mut hasher = Sha256::new();
     hasher.update(json.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }

@@ -87,7 +87,10 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
         && std::env::var_os("CARGO_FEATURE_SSR").is_none()
     {
         let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
-        fs::write(out_dir.join("module_ui_codegen.rs"), empty_storefront_codegen())?;
+        fs::write(
+            out_dir.join("module_ui_codegen.rs"),
+            empty_storefront_codegen(),
+        )?;
         return Ok(());
     }
 

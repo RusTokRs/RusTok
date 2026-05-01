@@ -573,7 +573,10 @@ pub fn ModulesList(
         };
 
     Effect::new(move |_| {
-        let module_from_query = query.get().get("module");
+        let current_query = query.get();
+        let module_from_query = current_query
+            .get("module_slug")
+            .or_else(|| current_query.get("module"));
         if module_from_query != selected_module_slug.get() {
             set_selected_module_slug.set(module_from_query.clone());
             if module_from_query.is_none() {
@@ -1086,7 +1089,10 @@ pub fn ModulesList(
                 .into_iter()
                 .find(|module| module.slug == slug),
         );
-        navigate_for_inspect(&format!("/modules?module={}", slug), Default::default());
+        navigate_for_inspect(
+            &format!("/modules?module_slug={}", slug),
+            Default::default(),
+        );
     });
     let navigate_for_close = navigate.clone();
     let on_close_detail = Callback::new(move |_| {

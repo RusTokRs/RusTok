@@ -265,7 +265,7 @@ pub fn Header(
     });
 
     view! {
-        <header class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4">
+        <header class="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4">
             <div class="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
                 <button
                     type="button"

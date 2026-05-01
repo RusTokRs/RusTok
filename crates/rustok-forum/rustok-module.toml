@@ -47,7 +47,12 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
 
-[[provides.admin_ui.pages]]
+[[provides.admin_ui.child_pages]]
+subpath = "topics"
+title = "Forum Topics"
+nav_label = "Topics"
+
+[[provides.admin_ui.child_pages]]
 subpath = "categories"
 title = "Forum Categories"
 nav_label = "Categories"

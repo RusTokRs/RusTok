@@ -35,6 +35,11 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
+[[provides.admin_ui.child_pages]]
+subpath = "overview"
+title = "SEO Overview"
+nav_label = "Overview"
+
 [settings]
 default_robots = { type = "array", item_type = "string", default = ["index", "follow"] }
 sitemap_enabled = { type = "boolean", default = true }

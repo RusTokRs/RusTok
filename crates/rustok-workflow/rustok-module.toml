@@ -29,7 +29,7 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
-[[provides.admin_ui.pages]]
+[[provides.admin_ui.child_pages]]
 subpath = "templates"
 title = "Workflow Templates"
 nav_label = "Templates"

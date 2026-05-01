@@ -69,7 +69,10 @@ export type SeoPagination = {
 
 export type SeoStructuredDataBlock = {
   id?: string | null;
+  schemaKind?: string | null;
+  schemaType?: string | null;
   kind?: string | null;
+  source?: "explicit" | "generated" | "fallback" | string | null;
   payload: unknown;
 };
 

@@ -105,10 +105,107 @@ pub struct SeoPagination {
     pub next_url: Option<String>,
 }
 
+#[derive(Enum, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[graphql(rename_items = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum SeoSchemaBlockKind {
+    Product,
+    Offer,
+    AggregateOffer,
+    AggregateRating,
+    Review,
+    BreadcrumbList,
+    ItemList,
+    Organization,
+    LocalBusiness,
+    WebSite,
+    SearchAction,
+    Article,
+    BlogPosting,
+    NewsArticle,
+    FAQPage,
+    HowTo,
+    VideoObject,
+    ImageObject,
+    DiscussionForumPosting,
+    Question,
+    Answer,
+    WebPage,
+    CollectionPage,
+    Other,
+    #[default]
+    Unknown,
+}
+
+impl SeoSchemaBlockKind {
+    pub fn from_schema_type(value: &str) -> Self {
+        match value.trim() {
+            "Product" => Self::Product,
+            "Offer" => Self::Offer,
+            "AggregateOffer" => Self::AggregateOffer,
+            "AggregateRating" => Self::AggregateRating,
+            "Review" => Self::Review,
+            "BreadcrumbList" => Self::BreadcrumbList,
+            "ItemList" => Self::ItemList,
+            "Organization" => Self::Organization,
+            "LocalBusiness" => Self::LocalBusiness,
+            "WebSite" => Self::WebSite,
+            "SearchAction" => Self::SearchAction,
+            "Article" => Self::Article,
+            "BlogPosting" => Self::BlogPosting,
+            "NewsArticle" => Self::NewsArticle,
+            "FAQPage" => Self::FAQPage,
+            "HowTo" => Self::HowTo,
+            "VideoObject" => Self::VideoObject,
+            "ImageObject" => Self::ImageObject,
+            "DiscussionForumPosting" => Self::DiscussionForumPosting,
+            "Question" => Self::Question,
+            "Answer" => Self::Answer,
+            "WebPage" => Self::WebPage,
+            "CollectionPage" => Self::CollectionPage,
+            "" => Self::Unknown,
+            _ => Self::Other,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Product => "product",
+            Self::Offer => "offer",
+            Self::AggregateOffer => "aggregate_offer",
+            Self::AggregateRating => "aggregate_rating",
+            Self::Review => "review",
+            Self::BreadcrumbList => "breadcrumb_list",
+            Self::ItemList => "item_list",
+            Self::Organization => "organization",
+            Self::LocalBusiness => "local_business",
+            Self::WebSite => "web_site",
+            Self::SearchAction => "search_action",
+            Self::Article => "article",
+            Self::BlogPosting => "blog_posting",
+            Self::NewsArticle => "news_article",
+            Self::FAQPage => "faq_page",
+            Self::HowTo => "how_to",
+            Self::VideoObject => "video_object",
+            Self::ImageObject => "image_object",
+            Self::DiscussionForumPosting => "discussion_forum_posting",
+            Self::Question => "question",
+            Self::Answer => "answer",
+            Self::WebPage => "web_page",
+            Self::CollectionPage => "collection_page",
+            Self::Other => "other",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 #[derive(SimpleObject, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SeoStructuredDataBlock {
     pub id: Option<String>,
+    pub schema_kind: SeoSchemaBlockKind,
+    pub schema_type: Option<String>,
     pub kind: Option<String>,
+    pub source: SeoFieldSource,
     pub payload: Json<Value>,
 }
 

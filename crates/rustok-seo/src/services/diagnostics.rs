@@ -10,6 +10,7 @@ use crate::dto::{
 };
 use crate::{SeoError, SeoResult};
 
+use super::robots::schema_blocks_from_value;
 use super::SeoService;
 
 const MAX_EXPOSED_ISSUES: usize = 50;
@@ -234,12 +235,35 @@ impl SeoService {
                     ));
                 }
 
-                if meta.structured_data.is_none() {
+                let schema_blocks = meta
+                    .structured_data
+                    .as_ref()
+                    .map(|value| {
+                        schema_blocks_from_value(
+                            value.0.clone(),
+                            meta.effective_state.structured_data.source,
+                        )
+                    })
+                    .unwrap_or_default();
+                if schema_blocks.is_empty() {
                     issues.push(issue(
                         "missing_schema",
                         SeoDiagnosticSeverity::Warning,
                         &summary,
-                        "Structured data is missing for the effective SEO document.",
+                        "Typed structured data blocks are missing for the effective SEO document.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                } else if schema_blocks
+                    .iter()
+                    .any(|block| block.schema_kind == crate::dto::SeoSchemaBlockKind::Unknown)
+                {
+                    issues.push(issue(
+                        "unknown_schema_type",
+                        SeoDiagnosticSeverity::Info,
+                        &summary,
+                        "Structured data is present but at least one block has no recognized schema.org type.",
                         effective_canonical.clone(),
                         meta.source.clone(),
                         locale.as_str(),

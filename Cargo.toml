@@ -45,9 +45,6 @@ members = [
 [patch.crates-io]
 utoipa-swagger-ui-vendored = { path = "crates/utoipa-swagger-ui-vendored" }
 leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
-# Temporary workaround for iggy_common 0.9.0 on Windows; remove after upstream
-# publishes a release with the corrected cfg guard around posix_fadvise usage.
-iggy_common = { path = "vendor/iggy_common" }
 
 [workspace.package]
 version = "0.1.0"

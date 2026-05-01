@@ -394,7 +394,7 @@ impl IggyConnector for RemoteConnector {
 
         #[cfg(feature = "iggy")]
         {
-            use iggy::prelude::{BytesSerializable, IggyMessage, Partitioning};
+            use iggy::prelude::{IggyMessage, Partitioning};
 
             let client_guard = self.client.read().await;
             let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
@@ -410,7 +410,9 @@ impl IggyConnector for RemoteConnector {
                 .await
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?;
 
-            let message = IggyMessage::from_bytes(request.payload.clone().into())
+            let message = IggyMessage::builder()
+                .payload(request.payload.clone().into())
+                .build()
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?;
 
             producer

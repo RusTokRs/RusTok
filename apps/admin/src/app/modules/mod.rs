@@ -7,6 +7,7 @@ mod registry;
 use std::cell::Cell;
 
 pub use generated_ui_codegen::core_module_slugs;
+pub use generated_ui_codegen::module_navigation_entries;
 pub use generated_ui_codegen::module_runtime_metadata;
 pub use registry::{
     components_for_slot, page_for_route_segment, register_component, register_page,
@@ -19,6 +20,17 @@ pub struct GeneratedModuleRuntimeMetadata {
     pub trust_level: &'static str,
     pub recommended_admin_surfaces: &'static [&'static str],
     pub showcase_admin_surfaces: &'static [&'static str],
+}
+
+#[derive(Clone, Copy)]
+pub struct GeneratedModuleNavigationEntry {
+    pub module_slug: &'static str,
+    pub route_segment: &'static str,
+    pub nav_label: &'static str,
+    pub nav_group: &'static str,
+    pub nav_order: usize,
+    pub has_settings: bool,
+    pub child_pages: &'static [AdminChildPageRegistration],
 }
 
 thread_local! {

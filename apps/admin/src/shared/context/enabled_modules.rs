@@ -89,7 +89,8 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
             context_for_effect.is_loading.set(false);
         }
         Some(Err(err)) => {
-            context_for_effect.modules.set(HashSet::new());
+            context_for_effect
+                .replace_modules(core_module_slugs().iter().map(|slug| slug.to_string()));
             context_for_effect.error.set(Some(format!("{}", err)));
             context_for_effect.is_loading.set(false);
         }

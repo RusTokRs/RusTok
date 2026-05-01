@@ -162,6 +162,9 @@
 - wiring для `admin/` и `storefront/` согласован с `[provides.admin_ui]` и `[provides.storefront_ui]`;
 - если UI sub-crate объявлен в manifest, его `Cargo.toml` реально существует и версия совпадает с версией основного модуля.
 - `[provides.admin_ui]` требует не только `leptos_crate`, но и непустые `route_segment`, `nav_label` и `[provides.admin_ui.i18n]` с `default_locale`, `supported_locales`, `leptos_locales_path`.
+- `[provides.admin_ui].nav_group` и `nav_order` являются optional navigation metadata для host sidebar. Если они не заданы, `apps/admin` использует стандартные группы `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
+- `[[provides.admin_ui.child_pages]]` является canonical metadata для nested admin navigation: каждый пункт объявляет `subpath`, `title`, `nav_label` и монтируется под `/modules/:route_segment/:subpath`. Старое имя `[[provides.admin_ui.pages]]` допускается только как compatibility alias.
+- Наличие `[settings]` в `rustok-module.toml` не создаёт module-owned settings page. Host показывает contextual settings link в `/modules?module_slug=<slug>` и использует существующий tenant settings editor.
 - `[provides.storefront_ui]` требует не только `leptos_crate`, но и непустые `slot`, `route_segment`, `page_title` и `[provides.storefront_ui.i18n]` с `default_locale`, `supported_locales`, `leptos_locales_path`.
 - если UI sub-crate объявлен в manifest, соответствующий host (`apps/admin` или `apps/storefront`) реально подключает его как dependency и прокидывает обязательные host feature links (`/hydrate`, `/ssr`) там, где sub-crate их экспортирует.
 - host dependency на UI sub-crate указывает на канонический путь модуля (`crates/<module>/admin` или `crates/<module>/storefront`), а не на произвольный совместимый crate с тем же именем.
@@ -226,6 +229,18 @@ routes = "controllers::routes"
 leptos_crate = "rustok-blog-admin"
 route_segment = "blog"
 nav_label = "Blog"
+nav_group = "Content"
+nav_order = 20
+
+[[provides.admin_ui.child_pages]]
+subpath = "posts"
+title = "All Blog Posts"
+nav_label = "All Posts"
+
+[[provides.admin_ui.child_pages]]
+subpath = "new"
+title = "Add Blog Post"
+nav_label = "Add Post"
 
 [provides.storefront_ui]
 leptos_crate = "rustok-blog-storefront"

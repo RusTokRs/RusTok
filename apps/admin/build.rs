@@ -179,12 +179,24 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
 
         let slug = package_manifest.module.slug;
         let name = package_manifest.module.name;
+        let nav_group = admin_ui
+            .nav_group
+            .as_deref()
+            .map(normalize_nav_group)
+            .unwrap_or_else(|| default_nav_group(&slug).to_string());
+        let nav_order = admin_ui
+            .nav_order
+            .unwrap_or_else(|| default_nav_order(&slug));
+        let has_settings = !package_manifest.settings.is_empty();
         entries.push(AdminUiEntry {
             component_name: format!("{}Admin", pascal_case(&slug)),
             route_segment: admin_ui.route_segment.unwrap_or_else(|| slug.clone()),
             nav_label: admin_ui.nav_label.unwrap_or_else(|| name.clone()),
+            nav_group,
+            nav_order,
+            has_settings,
             child_pages: admin_ui
-                .pages
+                .child_pages
                 .into_iter()
                 .filter_map(|page| {
                     let subpath = page.subpath.trim_matches('/').to_string();
@@ -283,6 +295,27 @@ fn render_admin_registry_codegen(
         }
         out.push_str("];\n\n");
     }
+
+    out.push_str("pub fn module_navigation_entries() -> &'static [super::GeneratedModuleNavigationEntry] {\n");
+    out.push_str("    &[\n");
+    for entry in entries {
+        out.push_str(&format!(
+            "        super::GeneratedModuleNavigationEntry {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", nav_label: \"{nav_label}\", nav_group: \"{nav_group}\", nav_order: {nav_order}, has_settings: {has_settings}, child_pages: {child_pages} }},\n",
+            slug = entry.slug,
+            route_segment = entry.route_segment,
+            nav_label = entry.nav_label,
+            nav_group = entry.nav_group,
+            nav_order = entry.nav_order,
+            has_settings = entry.has_settings,
+            child_pages = if entry.child_pages.is_empty() {
+                "&[]".to_string()
+            } else {
+                admin_child_pages_const_name(&entry.slug)
+            },
+        ));
+    }
+    out.push_str("    ]\n");
+    out.push_str("}\n\n");
 
     out.push_str("pub fn module_runtime_metadata(slug: &str) -> Option<super::GeneratedModuleRuntimeMetadata> {\n");
     out.push_str("    match slug {\n");
@@ -446,6 +479,58 @@ fn default_module_ownership() -> String {
 
 fn default_module_trust_level() -> String {
     "unverified".to_string()
+}
+
+fn normalize_nav_group(group: &str) -> String {
+    match group.trim().to_ascii_lowercase().as_str() {
+        "content" => "Content",
+        "commerce" => "Commerce",
+        "runtime" => "Runtime",
+        "governance" => "Governance",
+        "automation" => "Automation",
+        "other" => "Other",
+        _ => "Other",
+    }
+    .to_string()
+}
+
+fn default_nav_group(slug: &str) -> &'static str {
+    match slug {
+        "pages" | "blog" | "forum" | "comments" | "media" | "seo" => "Content",
+        "product" | "pricing" | "inventory" | "order" | "customer" | "commerce" | "fulfillment"
+        | "region" => "Commerce",
+        "search" | "channel" | "index" | "outbox" => "Runtime",
+        "tenant" | "rbac" => "Governance",
+        "workflow" => "Automation",
+        _ => "Other",
+    }
+}
+
+fn default_nav_order(slug: &str) -> usize {
+    match slug {
+        "pages" => 10,
+        "blog" => 20,
+        "forum" => 30,
+        "comments" => 40,
+        "media" => 50,
+        "seo" => 60,
+        "product" => 10,
+        "pricing" => 20,
+        "inventory" => 30,
+        "order" => 40,
+        "customer" => 50,
+        "commerce" => 60,
+        "fulfillment" => 70,
+        "region" => 80,
+        "search" => 10,
+        "channel" => 20,
+        "index" => 30,
+        "outbox" => 40,
+        "tenant" => 10,
+        "rbac" => 20,
+        "workflow" => 10,
+        _ => 500,
+    }
 }
 
 fn admin_render_fn_name(slug: &str) -> String {

@@ -1,8 +1,8 @@
 use serde_json::Value;
 
 use crate::dto::{
-    SeoDocument, SeoDocumentEffectiveState, SeoImageAsset, SeoMetaTag, SeoOpenGraph, SeoRobots,
-    SeoStructuredDataBlock, SeoTwitterCard,
+    SeoDocument, SeoDocumentEffectiveState, SeoFieldSource, SeoImageAsset, SeoMetaTag,
+    SeoOpenGraph, SeoRobots, SeoSchemaBlockKind, SeoStructuredDataBlock, SeoTwitterCard,
 };
 
 pub(super) fn normalize_robots(defaults: &[String]) -> Vec<String> {
@@ -192,18 +192,93 @@ pub(super) fn build_document(
         twitter,
         verification: None,
         pagination: None,
-        structured_data_blocks: vec![SeoStructuredDataBlock {
-            id: None,
-            kind: structured_data
-                .get("@type")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned),
-            payload: async_graphql::Json(structured_data),
-        }],
+        structured_data_blocks: schema_blocks_from_value(
+            structured_data,
+            effective_state.structured_data.source,
+        ),
         meta_tags,
         link_tags: Vec::new(),
         effective_state,
     }
+}
+
+pub(super) fn schema_blocks_from_value(
+    value: Value,
+    source: SeoFieldSource,
+) -> Vec<SeoStructuredDataBlock> {
+    let inherited_context = value.get("@context").cloned();
+    let mut blocks = Vec::new();
+    collect_schema_blocks(value, source, inherited_context.as_ref(), &mut blocks);
+    blocks
+}
+
+fn collect_schema_blocks(
+    value: Value,
+    source: SeoFieldSource,
+    inherited_context: Option<&Value>,
+    blocks: &mut Vec<SeoStructuredDataBlock>,
+) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_schema_blocks(item, source, inherited_context, blocks);
+            }
+        }
+        Value::Object(mut object) => {
+            if let Some(Value::Array(graph)) = object.remove("@graph") {
+                let graph_context = object.get("@context").or(inherited_context).cloned();
+                for item in graph {
+                    collect_schema_blocks(item, source, graph_context.as_ref(), blocks);
+                }
+                return;
+            }
+
+            if !object.contains_key("@context") {
+                if let Some(context) = inherited_context {
+                    object.insert("@context".to_string(), context.clone());
+                } else {
+                    object.insert(
+                        "@context".to_string(),
+                        Value::String("https://schema.org".to_string()),
+                    );
+                }
+            }
+
+            let value = Value::Object(object);
+            let schema_type = first_schema_type(&value);
+            let schema_kind = schema_type
+                .as_deref()
+                .map(SeoSchemaBlockKind::from_schema_type)
+                .unwrap_or(SeoSchemaBlockKind::Unknown);
+            let id = value
+                .get("@id")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
+            blocks.push(SeoStructuredDataBlock {
+                id,
+                schema_kind,
+                schema_type: schema_type.clone(),
+                kind: schema_type,
+                source,
+                payload: async_graphql::Json(value),
+            });
+        }
+        _ => {}
+    }
+}
+
+fn first_schema_type(value: &Value) -> Option<String> {
+    let raw = value.get("@type")?;
+    if let Some(schema_type) = raw.as_str() {
+        return Some(schema_type.to_string()).filter(|value| !value.trim().is_empty());
+    }
+    raw.as_array().and_then(|items| {
+        items
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|value| !value.trim().is_empty())
+            .map(ToOwned::to_owned)
+    })
 }
 
 pub(super) fn twitter_from_open_graph(open_graph: &SeoOpenGraph) -> SeoTwitterCard {
@@ -218,5 +293,51 @@ pub(super) fn twitter_from_open_graph(open_graph: &SeoOpenGraph) -> SeoTwitterCa
         site: None,
         creator: None,
         images: open_graph.images.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use crate::dto::{SeoFieldSource, SeoSchemaBlockKind};
+
+    use super::schema_blocks_from_value;
+
+    #[test]
+    fn schema_blocks_flatten_graph_and_keep_typed_kinds() {
+        let blocks = schema_blocks_from_value(
+            json!({
+                "@context": "https://schema.org",
+                "@graph": [
+                    {"@id": "#product", "@type": "Product", "name": "Demo"},
+                    {"@type": "BreadcrumbList", "itemListElement": []}
+                ]
+            }),
+            SeoFieldSource::Fallback,
+        );
+
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].id.as_deref(), Some("#product"));
+        assert_eq!(blocks[0].schema_kind, SeoSchemaBlockKind::Product);
+        assert_eq!(blocks[0].schema_type.as_deref(), Some("Product"));
+        assert_eq!(blocks[0].kind.as_deref(), Some("Product"));
+        assert_eq!(blocks[0].source, SeoFieldSource::Fallback);
+        assert_eq!(blocks[1].schema_kind, SeoSchemaBlockKind::BreadcrumbList);
+        assert_eq!(
+            blocks[1]
+                .payload
+                .0
+                .get("@context")
+                .and_then(|value| value.as_str()),
+            Some("https://schema.org")
+        );
+    }
+
+    #[test]
+    fn schema_blocks_ignore_non_object_json_ld_payloads() {
+        let blocks = schema_blocks_from_value(json!("not-json-ld"), SeoFieldSource::Explicit);
+
+        assert!(blocks.is_empty());
     }
 }

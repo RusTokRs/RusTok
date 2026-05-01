@@ -86,7 +86,10 @@ const SEO_PAGE_CONTEXT_QUERY: &str = r#"
                 }
                 structuredDataBlocks {
                     id
+                    schemaKind
+                    schemaType
                     kind
+                    source
                     payload
                 }
                 metaTags {
@@ -209,7 +212,12 @@ pub struct ResolvedSeoPagination {
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ResolvedSeoStructuredDataBlock {
     pub id: Option<String>,
+    #[serde(rename = "schemaKind")]
+    pub schema_kind: String,
+    #[serde(rename = "schemaType")]
+    pub schema_type: Option<String>,
     pub kind: Option<String>,
+    pub source: String,
     pub payload: Value,
 }
 
@@ -464,7 +472,10 @@ async fn resolve_seo_page_context(
                     .into_iter()
                     .map(|item| ResolvedSeoStructuredDataBlock {
                         id: item.id,
+                        schema_kind: item.schema_kind.as_str().to_string(),
+                        schema_type: item.schema_type,
                         kind: item.kind,
+                        source: item.source.as_str().to_string(),
                         payload: item.payload.0,
                     })
                     .collect(),
@@ -674,7 +685,10 @@ pub fn to_seo_page_context(value: &ResolvedSeoPageContext) -> rustok_seo::SeoPag
                 .iter()
                 .map(|item| rustok_seo::SeoStructuredDataBlock {
                     id: item.id.clone(),
+                    schema_kind: resolved_schema_kind(item.schema_kind.as_str()),
+                    schema_type: item.schema_type.clone(),
                     kind: item.kind.clone(),
+                    source: resolved_field_source(item.source.as_str()),
                     payload: item.payload.clone().into(),
                 })
                 .collect(),
@@ -704,6 +718,46 @@ pub fn to_seo_page_context(value: &ResolvedSeoPageContext) -> rustok_seo::SeoPag
                 .collect(),
             effective_state: rustok_seo::SeoDocumentEffectiveState::default(),
         },
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn resolved_schema_kind(value: &str) -> rustok_seo::SeoSchemaBlockKind {
+    match value {
+        "product" => rustok_seo::SeoSchemaBlockKind::Product,
+        "offer" => rustok_seo::SeoSchemaBlockKind::Offer,
+        "aggregate_offer" => rustok_seo::SeoSchemaBlockKind::AggregateOffer,
+        "aggregate_rating" => rustok_seo::SeoSchemaBlockKind::AggregateRating,
+        "review" => rustok_seo::SeoSchemaBlockKind::Review,
+        "breadcrumb_list" => rustok_seo::SeoSchemaBlockKind::BreadcrumbList,
+        "item_list" => rustok_seo::SeoSchemaBlockKind::ItemList,
+        "organization" => rustok_seo::SeoSchemaBlockKind::Organization,
+        "local_business" => rustok_seo::SeoSchemaBlockKind::LocalBusiness,
+        "web_site" => rustok_seo::SeoSchemaBlockKind::WebSite,
+        "search_action" => rustok_seo::SeoSchemaBlockKind::SearchAction,
+        "article" => rustok_seo::SeoSchemaBlockKind::Article,
+        "blog_posting" => rustok_seo::SeoSchemaBlockKind::BlogPosting,
+        "news_article" => rustok_seo::SeoSchemaBlockKind::NewsArticle,
+        "faq_page" => rustok_seo::SeoSchemaBlockKind::FAQPage,
+        "how_to" => rustok_seo::SeoSchemaBlockKind::HowTo,
+        "video_object" => rustok_seo::SeoSchemaBlockKind::VideoObject,
+        "image_object" => rustok_seo::SeoSchemaBlockKind::ImageObject,
+        "discussion_forum_posting" => rustok_seo::SeoSchemaBlockKind::DiscussionForumPosting,
+        "question" => rustok_seo::SeoSchemaBlockKind::Question,
+        "answer" => rustok_seo::SeoSchemaBlockKind::Answer,
+        "web_page" => rustok_seo::SeoSchemaBlockKind::WebPage,
+        "collection_page" => rustok_seo::SeoSchemaBlockKind::CollectionPage,
+        "other" => rustok_seo::SeoSchemaBlockKind::Other,
+        _ => rustok_seo::SeoSchemaBlockKind::Unknown,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn resolved_field_source(value: &str) -> rustok_seo::SeoFieldSource {
+    match value {
+        "explicit" => rustok_seo::SeoFieldSource::Explicit,
+        "generated" => rustok_seo::SeoFieldSource::Generated,
+        _ => rustok_seo::SeoFieldSource::Fallback,
     }
 }
 

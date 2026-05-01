@@ -13,8 +13,7 @@ use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
 use crate::shared::api::request;
 use crate::shared::api::ApiError;
 use crate::shared::ui::{
-    Badge, BadgeVariant, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
-    PageHeader,
+    Badge, BadgeVariant, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader,
 };
 use crate::widgets::stats_card::StatsCard;
 use crate::{t_string, use_i18n};
@@ -393,7 +392,7 @@ pub fn Dashboard() -> impl IntoView {
                 }}
             </Suspense>
 
-            <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+            <div class="grid grid-cols-1 gap-4">
                 <Card>
                     <CardHeader>
                         <CardTitle>{move || t_string!(i18n, app.dashboard.activity.title)}</CardTitle>
@@ -460,28 +459,6 @@ pub fn Dashboard() -> impl IntoView {
                         }}
                     </Suspense>
                     </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>{move || t_string!(i18n, app.dashboard.quick.title)}</CardTitle>
-                        <CardDescription>{move || t_string!(i18n, app.nav.group.account).to_string()}</CardDescription>
-                    </CardHeader>
-                    <CardContent class="grid gap-2">
-                        <a class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80" href="/security">
-                            {move || t_string!(i18n, app.dashboard.quick.security)}
-                        </a>
-                        <a class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80" href="/profile">
-                            {move || t_string!(i18n, app.dashboard.quick.profile)}
-                        </a>
-                        <a class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80" href="/users">
-                            {move || t_string!(i18n, app.dashboard.quick.users)}
-                        </a>
-                    </CardContent>
-                    <CardFooter>
-                        <a class="inline-flex h-9 w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground" href="/modules">
-                            {move || t_string!(i18n, app.nav.modules).to_string()}
-                        </a>
-                    </CardFooter>
                 </Card>
             </div>
 

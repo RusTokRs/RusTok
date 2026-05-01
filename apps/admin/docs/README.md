@@ -116,6 +116,10 @@ route-selection UX и контейнеры module-owned UI должны след
 - `apps/admin/build.rs` читает manifest-слой и генерирует wiring в `OUT_DIR`.
 - Publishable Leptos admin surface обязан объявлять `[provides.admin_ui].leptos_crate`; наличие `admin/Cargo.toml` само по себе не считается интеграцией.
 - Host монтирует module-owned страницы через `/modules/:module_slug` и nested variant `/modules/:module_slug/*module_path`.
+- Sidebar строится из manifest-driven navigation metadata. `[provides.admin_ui].nav_group` и `nav_order` являются optional overrides; если они не заданы, host группирует first-party modules по стандартным buckets `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
+- Canonical source для подменю модуля — `[[provides.admin_ui.child_pages]]`. Legacy `[[provides.admin_ui.pages]]` пока читается только как compatibility alias, новые manifests должны использовать `child_pages`.
+- Каждый module-owned admin surface получает корневой пункт `Overview`; declared child pages становятся nested links под контейнером модуля. Host скрывает disabled tenant modules и пустые containers.
+- Tenant/module settings остаются в host-owned `/modules` governance UI. Если `rustok-module.toml` содержит `[settings]`, sidebar добавляет контекстный link `/modules?module_slug=<slug>`; module-owned packages не дублируют этот editor.
 - Host прокидывает effective locale через `UiRouteContext.locale`; module-owned Leptos packages обязаны использовать это значение и не должны вводить собственную query/header/cookie fallback-цепочку.
 - Module-owned admin packages обязаны поддерживать тот же runtime split: `#[server]` preferred в SSR/hydrate, GraphQL/REST fallback для standalone CSR/debug. Пакет не должен становиться ни GraphQL-only для monolith, ни `#[server]`-only для headless/debug.
 - Core modules с UI подчиняются тому же ownership rule, что и optional modules: наличие UI не делает host владельцем модульной поверхности.

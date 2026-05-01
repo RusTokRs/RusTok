@@ -20,7 +20,8 @@
 - `rustok-seo-admin` разбит на `lib/component/model/api/i18n/sections` и больше не содержит central entity metadata editor;
 - owner-side SEO panels встроены в `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin`;
 - target extensibility идёт через `rustok-seo-targets` и runtime registration providers;
-- tenant templates и diagnostics уже являются first-class read/control-plane слоями; diagnostics покрывает issue aggregates, canonical redirect chains/loops и hreflang gaps.
+- tenant templates и diagnostics уже являются first-class read/control-plane слоями; diagnostics покрывает issue aggregates, canonical redirect chains/loops и hreflang gaps;
+- `SeoDocument.structured_data_blocks` больше не является raw JSON passthrough: JSON-LD нормализуется в typed schema blocks с `schema_kind`, `schema_type`, legacy `kind`, `source` и payload.
 
 ## Этапы
 
@@ -69,11 +70,20 @@
 - [x] `seoDiagnostics` возвращает counts by issue code и target kind для admin filters/remediation entrypoints.
 - [x] Diagnostics ловит canonical redirect targets/chains/loops.
 - [x] Diagnostics ловит missing hreflang alternates и missing `x-default` для localized targets.
+- [x] Diagnostics различает отсутствующие typed schema blocks и present-but-unknown schema.org type.
 - [x] Admin diagnostics pane показывает tenant SEO health без переноса entity editors в SEO module.
+
+#### Rich snippets foundation
+
+- [x] `SeoSchemaBlockKind` фиксирует canonical typed kinds для Product, Offer, AggregateRating, BreadcrumbList, ItemList, Organization, LocalBusiness, WebSite/SearchAction, Article/BlogPosting, FAQ/HowTo, media objects и forum/discussion shapes.
+- [x] `SeoStructuredDataBlock` отдаёт `schema_kind`, `schema_type`, legacy `kind`, `source` и JSON-LD payload без изменения storage schema.
+- [x] JSON-LD `@graph` разворачивается в отдельные typed blocks с наследованием `@context`.
+- [x] `rustok-seo-render`, Leptos storefront GraphQL/server-function contract и Next shared SEO type знают о typed schema-block metadata.
 
 ### Следующий scope
 
-- [ ] Rich snippets как typed schema-block layer внутри `SeoDocument`.
+- [ ] Typed schema generators/editors для Product/Offer/Review, Article/BlogPosting, BreadcrumbList, ItemList, Organization/LocalBusiness, FAQ/HowTo и forum-specific schema.
+- [ ] Rich-snippet preview/validation UI в owner-module panels и diagnostics remediation.
 - [ ] Cross-linking engine с controlled insertion points без silent HTML mutation.
 - [ ] Google Indexing API / sitemap ping и позже Search Console-style diagnostics adapters.
 - [ ] Image SEO hooks через `rustok-media` после стабилизации templates + diagnostics.

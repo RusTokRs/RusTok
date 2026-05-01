@@ -43,7 +43,9 @@ pub fn Modules() -> impl IntoView {
     let modules_resource = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            let modules = api::fetch_modules(token_value.clone(), tenant_value.clone()).await?;
+            let modules = api::fetch_modules(token_value.clone(), tenant_value.clone())
+                .await
+                .unwrap_or_default();
             let marketplace_modules = api::fetch_marketplace_modules(
                 token_value.clone(),
                 tenant_value.clone(),
@@ -57,16 +59,26 @@ pub fn Modules() -> impl IntoView {
                     installed_only: None,
                 },
             )
-            .await?;
+            .await
+            .unwrap_or_default();
             let installed_modules =
-                api::fetch_installed_modules(token_value.clone(), tenant_value.clone()).await?;
+                api::fetch_installed_modules(token_value.clone(), tenant_value.clone())
+                    .await
+                    .unwrap_or_default();
             let tenant_modules =
-                api::fetch_tenant_modules(token_value.clone(), tenant_value.clone()).await?;
-            let active_build =
-                api::fetch_active_build(token_value.clone(), tenant_value.clone()).await?;
+                api::fetch_tenant_modules(token_value.clone(), tenant_value.clone())
+                    .await
+                    .unwrap_or_default();
+            let active_build = api::fetch_active_build(token_value.clone(), tenant_value.clone())
+                .await
+                .unwrap_or_default();
             let active_release =
-                api::fetch_active_release(token_value.clone(), tenant_value.clone()).await?;
-            let build_history = api::fetch_build_history(token_value, tenant_value, 10, 0).await?;
+                api::fetch_active_release(token_value.clone(), tenant_value.clone())
+                    .await
+                    .unwrap_or_default();
+            let build_history = api::fetch_build_history(token_value, tenant_value, 10, 0)
+                .await
+                .unwrap_or_default();
 
             Ok::<ModulesPageData, _>(ModulesPageData {
                 modules,

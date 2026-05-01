@@ -43,6 +43,16 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
+[[provides.admin_ui.child_pages]]
+subpath = "posts"
+title = "All Blog Posts"
+nav_label = "All Posts"
+
+[[provides.admin_ui.child_pages]]
+subpath = "new"
+title = "Add Blog Post"
+nav_label = "Add Post"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-blog-storefront"
 slot = "home_after_catalog"

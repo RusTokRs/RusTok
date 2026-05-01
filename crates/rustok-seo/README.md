@@ -12,6 +12,7 @@
 - resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
 - run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite
 - expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, and canonical redirect chain/loop detection
+- normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
 - generate sitemap files and serve `robots.txt`
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context

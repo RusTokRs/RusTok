@@ -31,8 +31,8 @@ pub use dto::{
     SeoMetaTag, SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
     SeoPageContext, SeoPagination, SeoRedirectDecision, SeoRedirectInput, SeoRedirectMatchType,
     SeoRedirectRecord, SeoRevisionRecord, SeoRobots, SeoRobotsPreviewRecord, SeoRouteContext,
-    SeoSitemapFileRecord, SeoSitemapStatusRecord, SeoStructuredDataBlock, SeoTemplateRuleSet,
-    SeoTwitterCard, SeoVerification, SeoVerificationTag,
+    SeoSchemaBlockKind, SeoSitemapFileRecord, SeoSitemapStatusRecord, SeoStructuredDataBlock,
+    SeoTemplateRuleSet, SeoTwitterCard, SeoVerification, SeoVerificationTag,
 };
 #[cfg(feature = "server")]
 pub use error::{SeoError, SeoResult};

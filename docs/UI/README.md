@@ -46,6 +46,8 @@ Leptos hosts являются основным runtime-путём для platfor
 - Backend source of truth для UI hosts — `apps/server`.
 - Для headless/admin host-ов registry-backed capability descriptors тоже должны читаться из backend contract:
   для SEO это GraphQL `seoTargets` или REST `/api/seo/targets`, а не host-local mappings target slug-ов.
+- Для storefront SEO structured data backend contract также является source of truth: hosts потребляют
+  `SeoStructuredDataBlock.schema_kind/schema_type/source/payload` и не вводят собственный schema.org classifier.
 - Contract parity между Leptos и Next.js оценивается на уровне маршрутов, auth, locale, module wiring и transport surface, а не на уровне буквального совпадения внутренней реализации.
 
 ## Разделы документации

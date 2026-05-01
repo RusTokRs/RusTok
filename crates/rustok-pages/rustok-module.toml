@@ -35,6 +35,16 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
+[[provides.admin_ui.child_pages]]
+subpath = "all"
+title = "All Pages"
+nav_label = "All Pages"
+
+[[provides.admin_ui.child_pages]]
+subpath = "new"
+title = "Add Page"
+nav_label = "Add Page"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-pages-storefront"
 slot = "home_before_footer"

@@ -170,7 +170,7 @@ impl InputValidator {
 
     /// Sanitize HTML content
     pub fn sanitize_html(&self, input: &str) -> String {
-        v_htmlescape::escape(input).to_string()
+        v_htmlescape::escape_fmt(input).to_string()
     }
 
     /// Validate email address
@@ -417,6 +417,16 @@ mod tests {
             validator.validate("javascript:alert(1)"),
             ValidationResult::Invalid { .. }
         ));
+    }
+
+    #[test]
+    fn test_html_sanitization_escapes_dangerous_characters() {
+        let validator = InputValidator::new();
+
+        assert_eq!(
+            validator.sanitize_html(r#"<script src="/x" onload='alert(1)'>&</script>"#),
+            "&lt;script src=&quot;&#x2f;x&quot; onload=&#x27;alert(1)&#x27;&gt;&amp;&lt;&#x2f;script&gt;"
+        );
     }
 
     #[test]
