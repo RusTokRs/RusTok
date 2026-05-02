@@ -494,6 +494,7 @@ impl CommentsService {
     }
 
     #[instrument(skip(self, security))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_threads(
         &self,
         tenant_id: Uuid,
@@ -552,6 +553,7 @@ impl CommentsService {
     }
 
     #[instrument(skip(self, security))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn get_thread_detail(
         &self,
         tenant_id: Uuid,
