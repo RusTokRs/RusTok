@@ -47,11 +47,11 @@ impl WorkflowStep for ConditionStep {
         let result = match operator {
             "eq" => {
                 let expected = config.get("value");
-                actual.as_deref() == expected
+                actual == expected
             }
             "ne" => {
                 let expected = config.get("value");
-                actual.as_deref() != expected
+                actual != expected
             }
             "exists" => actual.is_some(),
             "not_exists" => actual.is_none(),
@@ -82,5 +82,5 @@ impl WorkflowStep for ConditionStep {
 /// Resolves a dot-notation path like "event.status" against a JSON value.
 fn resolve_field<'a>(path: &str, data: &'a Value) -> Option<&'a Value> {
     path.split('.')
-        .fold(Some(data), |current, key| current.and_then(|v| v.get(key)))
+        .try_fold(data, |current, key| current.get(key))
 }
