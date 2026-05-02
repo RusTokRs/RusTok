@@ -22,7 +22,7 @@ impl SeoRedirectMatchType {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "exact" => Some(Self::Exact),
             "wildcard" => Some(Self::Wildcard),
@@ -450,7 +450,7 @@ impl SeoBulkSource {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "any" => Some(Self::Any),
             "explicit" => Some(Self::Explicit),
@@ -477,7 +477,7 @@ impl SeoBulkSelectionMode {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "selected_ids" => Some(Self::SelectedIds),
             "current_filter_scope" => Some(Self::CurrentFilterScope),
@@ -504,7 +504,7 @@ impl SeoBulkFieldPatchMode {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "keep" => Some(Self::Keep),
             "set" => Some(Self::Set),
@@ -532,7 +532,7 @@ impl SeoBulkJobOperationKind {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "apply" => Some(Self::Apply),
             "export_csv" => Some(Self::ExportCsv),
@@ -564,7 +564,7 @@ impl SeoBulkJobStatus {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "queued" => Some(Self::Queued),
             "running" => Some(Self::Running),
@@ -597,7 +597,7 @@ impl SeoBulkApplyMode {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "preview_only" => Some(Self::PreviewOnly),
             "apply_missing_only" => Some(Self::ApplyMissingOnly),

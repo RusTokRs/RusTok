@@ -235,18 +235,18 @@ fn storefront_slot_from_manifest(raw: Option<&str>) -> Result<StorefrontSlot, Bo
         .filter(|value| !value.is_empty())
         .unwrap_or("home_after_hero")
     {
-        "home_after_hero" => Ok(StorefrontSlot::AfterHero),
-        "home_after_catalog" => Ok(StorefrontSlot::AfterCatalog),
-        "home_before_footer" => Ok(StorefrontSlot::BeforeFooter),
+        "home_after_hero" => Ok(StorefrontSlot::HomeAfterHero),
+        "home_after_catalog" => Ok(StorefrontSlot::HomeAfterCatalog),
+        "home_before_footer" => Ok(StorefrontSlot::HomeBeforeFooter),
         other => Err(format!("unsupported storefront slot `{other}`").into()),
     }
 }
 
 fn storefront_slot_expr(slot: StorefrontSlot) -> &'static str {
     match slot {
-        StorefrontSlot::AfterHero => "StorefrontSlot::AfterHero",
-        StorefrontSlot::AfterCatalog => "StorefrontSlot::AfterCatalog",
-        StorefrontSlot::BeforeFooter => "StorefrontSlot::BeforeFooter",
+        StorefrontSlot::HomeAfterHero => "StorefrontSlot::HomeAfterHero",
+        StorefrontSlot::HomeAfterCatalog => "StorefrontSlot::HomeAfterCatalog",
+        StorefrontSlot::HomeBeforeFooter => "StorefrontSlot::HomeBeforeFooter",
     }
 }
 

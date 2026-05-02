@@ -264,9 +264,9 @@ fn map_bulk_job_model(
 ) -> SeoResult<SeoBulkJobRecord> {
     Ok(SeoBulkJobRecord {
         id: model.id,
-        operation_kind: SeoBulkJobOperationKind::from_str(model.operation_kind.as_str())
+        operation_kind: SeoBulkJobOperationKind::parse(model.operation_kind.as_str())
             .ok_or_else(|| SeoError::validation("invalid bulk operation kind"))?,
-        status: SeoBulkJobStatus::from_str(model.status.as_str())
+        status: SeoBulkJobStatus::parse(model.status.as_str())
             .ok_or_else(|| SeoError::validation("invalid bulk job status"))?,
         target_kind: SeoTargetSlug::new(model.target_kind.as_str())
             .map_err(|_| SeoError::validation("invalid bulk target kind"))?,
@@ -1086,7 +1086,7 @@ impl SeoService {
         active.last_error = Set(None);
         let running = active.update(&self.db).await?;
 
-        let result = match SeoBulkJobOperationKind::from_str(running.operation_kind.as_str()) {
+        let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
             Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job(&running).await,
             Some(SeoBulkJobOperationKind::ExportCsv) => self.execute_export_job(&running).await,
             Some(SeoBulkJobOperationKind::ImportCsv) => self.execute_import_job(&running).await,
@@ -1113,7 +1113,7 @@ impl SeoService {
             name: tenant.name,
             slug: tenant.slug,
             domain: tenant.domain,
-            settings: tenant.settings.into(),
+            settings: tenant.settings,
             default_locale: tenant.default_locale,
             is_active: tenant.is_active,
         })
@@ -1546,6 +1546,7 @@ impl SeoService {
             .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn apply_bulk_patch_to_target(
         &self,
         tenant: &TenantContext,

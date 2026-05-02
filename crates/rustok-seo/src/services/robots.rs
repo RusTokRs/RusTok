@@ -141,6 +141,7 @@ pub(super) fn merge_open_graph(
     open_graph
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_document(
     title: String,
     description: Option<String>,

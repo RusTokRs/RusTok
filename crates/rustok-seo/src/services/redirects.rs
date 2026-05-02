@@ -207,7 +207,7 @@ pub(super) fn wildcard_matches(pattern: &str, route: &str) -> bool {
 pub(super) fn map_redirect_record(model: seo_redirect::Model) -> SeoRedirectRecord {
     SeoRedirectRecord {
         id: model.id,
-        match_type: SeoRedirectMatchType::from_str(model.match_type.as_str())
+        match_type: SeoRedirectMatchType::parse(model.match_type.as_str())
             .unwrap_or(SeoRedirectMatchType::Exact),
         source_pattern: model.source_pattern,
         target_url: model.target_url,
