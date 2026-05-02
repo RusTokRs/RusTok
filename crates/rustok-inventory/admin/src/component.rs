@@ -156,7 +156,7 @@ pub fn InventoryAdmin() -> impl IntoView {
     let ui_locale_for_variants = ui_locale.clone();
     let ui_locale_for_empty = ui_locale.clone();
     let effective_locale_for_detail = effective_locale.clone();
-    let initial_open_product = open_product.clone();
+    let initial_open_product = open_product;
     let list_query_writer = query_writer.clone();
     Effect::new(move |_| match selected_product_query.get() {
         Some(product_id) if !product_id.trim().is_empty() => {

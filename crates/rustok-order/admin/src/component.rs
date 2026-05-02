@@ -517,7 +517,7 @@ pub fn OrderAdmin() -> impl IntoView {
     let ui_locale_for_payment = ui_locale.clone();
     let ui_locale_for_fulfillment = ui_locale.clone();
     let ui_locale_for_actions = ui_locale.clone();
-    let initial_open_order = open_order.clone();
+    let initial_open_order = open_order;
     let list_query_writer = query_writer.clone();
     Effect::new(move |_| match selected_order_query.get() {
         Some(order_id) if !order_id.trim().is_empty() => {

@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
@@ -224,6 +226,7 @@ pub async fn fetch_products(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_product(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -393,6 +396,7 @@ async fn fetch_products_graphql(
     Ok(response.products)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_product_graphql(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -1343,6 +1347,7 @@ async fn pricing_admin_products_native(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[server(prefix = "/api/fn", endpoint = "pricing/admin/product")]
 async fn pricing_admin_product_native(
     product_id: String,

@@ -461,7 +461,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     let ui_locale_for_profiles = ui_locale.clone();
     let ui_locale_for_selected_profiles = ui_locale.clone();
     let ui_locale_for_summary = ui_locale.clone();
-    let initial_edit_option = edit_option.clone();
+    let initial_edit_option = edit_option;
     let list_query_writer = query_writer.clone();
     let reset_current_option = Callback::new(move |_| {
         query_writer.clear_key(AdminQueryKey::ShippingOptionId.as_str());
@@ -622,6 +622,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_shipping_option(
     option: &ShippingOption,
     set_editing_id: WriteSignal<Option<String>>,
@@ -648,6 +649,7 @@ fn apply_shipping_option(
     set_metadata_json.set(option.metadata.clone());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn clear_shipping_option_form(
     set_editing_id: WriteSignal<Option<String>>,
     set_selected: WriteSignal<Option<ShippingOption>>,

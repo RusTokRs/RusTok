@@ -229,8 +229,8 @@ pub fn PricingAdmin() -> impl IntoView {
     let ui_locale_for_channel_select = ui_locale.clone();
     let effective_locale_for_detail = effective_locale.clone();
     let product_module_route_base = route_context.module_route_base("product");
-    let refresh_open_product = open_product.clone();
-    let initial_open_product = open_product.clone();
+    let refresh_open_product = open_product;
+    let initial_open_product = open_product;
     let list_query_writer = query_writer.clone();
     let context_query_writer = query_writer.clone();
     let context_query_writer_for_region = query_writer.clone();
@@ -660,7 +660,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                                 locale=ui_locale.clone()
                                                 price_list=price_list
                                                 available_channels=available_channels
-                                                on_saved=refresh_detail.clone()
+                                                on_saved=refresh_detail
                                             />
                                         </div>
                                     }
@@ -820,7 +820,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                                                     selected_price_list_id=applied_resolution_context
                                                                         .get()
                                                                         .and_then(|context| context.price_list_id)
-                                                                    on_saved=open_product.clone()
+                                                                    on_saved=open_product
                                                                 />
                                                             </div>
                                                             <div class="pt-2">
@@ -835,7 +835,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                                                     selected_price_list_id=applied_resolution_context
                                                                         .get()
                                                                         .and_then(|context| context.price_list_id)
-                                                                    on_saved=open_product.clone()
+                                                                    on_saved=open_product
                                                                 />
                                                             </div>
                                                         </div>
@@ -996,8 +996,7 @@ fn format_variant_prices(
             };
             let discount_suffix = format_discount_suffix(price.discount_percent.as_deref());
             format!(
-                "{} [{}]",
-                format!("{amount}{discount_suffix}"),
+                "{amount}{discount_suffix} [{}]",
                 format_price_row_scope(locale, price, price_list_options)
             )
         })
@@ -1031,13 +1030,10 @@ fn pricing_health_badge(variant: &PricingVariant) -> &'static str {
 
 fn format_price_list_option_label(locale: Option<&str>, option: &PricingPriceListOption) -> String {
     let mut label = format!(
-        "{} ({})",
+        "{} ({} {})",
         option.name,
-        format!(
-            "{} {}",
-            t(locale, "pricing.detail.priceListTypeLabel", "type"),
-            option.list_type
-        )
+        t(locale, "pricing.detail.priceListTypeLabel", "type"),
+        option.list_type
     );
     if option.rule_kind.as_deref() == Some("percentage_discount") {
         if let Some(adjustment_percent) = option.adjustment_percent.as_deref() {
@@ -1422,7 +1418,7 @@ fn VariantPriceEditors(
                         max_quantity: price.max_quantity.map(|value| value.to_string()).unwrap_or_default(),
                     }
                     title=title
-                    on_saved=on_saved.clone()
+                    on_saved=on_saved
                 />
             }
         })
@@ -1677,7 +1673,7 @@ fn VariantDiscountEditor(
                         };
                         let variant_id = apply_variant_id.clone();
                         let product_id = product_id.clone();
-                        let on_saved = on_saved.clone();
+                        let on_saved = on_saved;
                         let apply_error_label = t(locale_for_apply.as_deref(), "pricing.adjustment.applyError", "Failed to apply discount");
                         set_busy.set(true);
                         set_error.set(None);
@@ -1798,7 +1794,7 @@ fn PriceListRuleEditor(
                             adjustment_percent: adjustment_percent.get_untracked(),
                         };
                         let price_list_id = save_price_list_id.clone();
-                        let on_saved = on_saved.clone();
+                        let on_saved = on_saved;
                         let save_error_label = t(locale_for_save.as_deref(), "pricing.rule.saveError", "Failed to save price-list rule");
                         set_busy.set(true);
                         set_error.set(None);
@@ -1829,7 +1825,7 @@ fn PriceListRuleEditor(
                             adjustment_percent: String::new(),
                         };
                         let price_list_id = clear_price_list_id.clone();
-                        let on_saved = on_saved.clone();
+                        let on_saved = on_saved;
                         let save_error_label = t(locale_for_clear.as_deref(), "pricing.rule.saveError", "Failed to save price-list rule");
                         set_busy.set(true);
                         set_error.set(None);
@@ -1907,7 +1903,7 @@ fn PriceListRuleEditor(
                             channel_slug: channel_slug.get_untracked(),
                         };
                         let price_list_id = save_scope_price_list_id.clone();
-                        let on_saved = on_saved.clone();
+                        let on_saved = on_saved;
                         let save_error_label = t(locale_for_scope_save.as_deref(), "pricing.rule.scopeSaveError", "Failed to save price-list scope");
                         set_busy.set(true);
                         set_error.set(None);
@@ -2083,7 +2079,7 @@ fn VariantPriceEditor(
                             min_quantity: min_quantity.get_untracked(),
                             max_quantity: max_quantity.get_untracked(),
                         };
-                        let on_saved = on_saved.clone();
+                        let on_saved = on_saved;
                         let save_error_label = t(locale_for_save.as_deref(), "pricing.edit.saveError", "Failed to save price");
                         set_busy.set(true);
                         set_error.set(None);

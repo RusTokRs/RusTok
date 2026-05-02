@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use crate::i18n::t;
 use crate::model::{OrderDetail, OrderDetailEnvelope, OrderLineItem, OrderListItem};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_action_result(
     result: Result<(), crate::api::ApiError>,
     token_value: Option<String>,
@@ -77,6 +78,7 @@ pub async fn handle_action_result(
     set_busy.set(false);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn apply_order_detail(
     detail: &OrderDetailEnvelope,
     set_selected_id: WriteSignal<Option<String>>,
@@ -140,6 +142,7 @@ pub fn apply_order_detail(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn clear_order_detail(
     set_selected_id: WriteSignal<Option<String>>,
     set_selected: WriteSignal<Option<OrderDetailEnvelope>>,
