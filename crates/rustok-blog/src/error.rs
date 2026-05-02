@@ -48,7 +48,7 @@ pub enum BlogError {
     Comments(#[from] rustok_comments::CommentsError),
 
     #[error("Rich error: {0}")]
-    Rich(#[from] RichError),
+    Rich(#[from] Box<RichError>),
 
     #[error("Core error: {0}")]
     Core(#[from] CoreError),
@@ -162,7 +162,7 @@ impl From<BlogError> for RichError {
                         .with_user_message("Invalid comment data")
                 }
             },
-            BlogError::Rich(rich) => rich,
+            BlogError::Rich(rich) => *rich,
             BlogError::Core(core) => core.into(),
         }
     }

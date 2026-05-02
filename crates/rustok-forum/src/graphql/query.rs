@@ -377,8 +377,6 @@ impl ForumQuery {
             filter,
             Some(tenant.default_locale.as_str()),
             public_channel_slug(ctx),
-            offset as usize,
-            limit as usize,
         )
         .await?;
         metrics::record_read_path_query(
@@ -860,8 +858,6 @@ async fn list_public_storefront_topics(
     base_filter: crate::ListTopicsFilter,
     fallback_locale: Option<&str>,
     channel_slug: Option<String>,
-    _offset: usize,
-    _limit: usize,
 ) -> ForumResult<(Vec<TopicListItem>, u64)> {
     service
         .list_storefront_visible_with_locale_fallback(
