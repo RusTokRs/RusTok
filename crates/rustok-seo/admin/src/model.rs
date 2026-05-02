@@ -8,6 +8,7 @@ use rustok_seo::{
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use uuid::Uuid;
 
 pub const ROBOT_DIRECTIVE_PRESETS: &[&str] = &[

@@ -3,6 +3,7 @@ use rustok_seo::{
     SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoBulkJobRecord, SeoBulkPage, SeoBulkSelectionMode,
     SeoBulkSource, SeoTargetRegistryEntry, SeoTargetSlug,
 };
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::api::{self, ApiError};

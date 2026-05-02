@@ -22,7 +22,6 @@ impl SeoRedirectMatchType {
             Self::Wildcard => "wildcard",
         }
     }
-
 }
 impl FromStr for SeoRedirectMatchType {
     type Err = ();
@@ -453,7 +452,6 @@ impl SeoBulkSource {
             Self::Fallback => "fallback",
         }
     }
-
 }
 impl FromStr for SeoBulkSource {
     type Err = ();
@@ -483,7 +481,6 @@ impl SeoBulkSelectionMode {
             Self::CurrentFilterScope => "current_filter_scope",
         }
     }
-
 }
 impl FromStr for SeoBulkSelectionMode {
     type Err = ();
@@ -513,7 +510,6 @@ impl SeoBulkFieldPatchMode {
             Self::Clear => "clear",
         }
     }
-
 }
 impl FromStr for SeoBulkFieldPatchMode {
     type Err = ();
@@ -544,7 +540,6 @@ impl SeoBulkJobOperationKind {
             Self::ImportCsv => "import_csv",
         }
     }
-
 }
 impl FromStr for SeoBulkJobOperationKind {
     type Err = ();
@@ -579,7 +574,6 @@ impl SeoBulkJobStatus {
             Self::Failed => "failed",
         }
     }
-
 }
 impl FromStr for SeoBulkJobStatus {
     type Err = ();
@@ -615,7 +609,6 @@ impl SeoBulkApplyMode {
             Self::ForceOverwriteExplicit => "force_overwrite_explicit",
         }
     }
-
 }
 impl FromStr for SeoBulkApplyMode {
     type Err = ();
