@@ -4,6 +4,7 @@ unmaintained = "workspace"
 unsound = "workspace"
 git-fetch-with-cli = true
 ignore = [
+    "RUSTSEC-2023-0071", # rsa timing side-channel; no patched release available yet
     "RUSTSEC-2026-0098", # rustls-webpki URI name-constraint handling; no patched release in rustls 0.21 dependency chain yet
     "RUSTSEC-2026-0099", # rustls-webpki wildcard name-constraint validation; no patched release in rustls 0.21 dependency chain yet
     "RUSTSEC-2026-0104", # rustls-webpki CRL parsing panic; no patched release in rustls 0.21 dependency chain yet
@@ -25,7 +26,6 @@ allow = [
     "Zlib",
     "MPL-2.0",
     "NCSA",
-    "OpenSSL",
 ]
 confidence-threshold = 0.8
 
