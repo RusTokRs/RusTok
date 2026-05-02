@@ -323,9 +323,10 @@ pub enum RuntimeOutcome {
     },
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AiAlloyOperation {
+    #[default]
     ListScripts,
     GetScript,
     ValidateScript,
@@ -340,12 +341,6 @@ impl AiAlloyOperation {
             Self::ValidateScript => "validate_script",
             Self::RunScript => "run_script",
         }
-    }
-}
-
-impl Default for AiAlloyOperation {
-    fn default() -> Self {
-        Self::ListScripts
     }
 }
 

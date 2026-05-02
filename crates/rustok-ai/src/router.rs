@@ -100,12 +100,7 @@ impl AiRouter {
                 providers
                     .iter()
                     .filter(|candidate| provider_allowed(candidate, profile, actor_role_slugs))
-                    .find(|candidate| {
-                        candidate
-                            .capabilities
-                            .iter()
-                            .any(|capability| *capability == profile.target_capability)
-                    })
+                    .find(|candidate| candidate.capabilities.contains(&profile.target_capability))
                     .ok_or_else(|| {
                         AiError::Validation(format!(
                             "no active provider profile can satisfy task profile `{}`",
@@ -171,8 +166,7 @@ fn provider_allowed(
     }
     if !provider
         .capabilities
-        .iter()
-        .any(|capability| *capability == task_profile.target_capability)
+        .contains(&task_profile.target_capability)
     {
         return false;
     }

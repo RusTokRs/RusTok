@@ -1076,6 +1076,7 @@ async fn generate_blog_draft(
     serde_json::from_value(parsed).map_err(AiError::Json)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn generate_product_copy(
     provider: &Arc<dyn ModelProvider>,
     provider_config: &AiProviderConfig,
@@ -1276,8 +1277,6 @@ fn sanitize_file_stem(value: &str) -> String {
         .map(|ch| {
             if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
                 ch
-            } else if ch.is_whitespace() {
-                '-'
             } else {
                 '-'
             }
@@ -1339,6 +1338,7 @@ fn parse_runtime_payload(payload: Option<String>) -> AiResult<serde_json::Map<St
     Ok(object)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn explain_result(
     provider: &Arc<dyn ModelProvider>,
     provider_config: &AiProviderConfig,

@@ -571,10 +571,10 @@ impl AiManagementService {
             .all(db)
             .await
             .map_err(db_err)?;
-        Ok(profiles
+        profiles
             .into_iter()
             .map(map_task_profile)
-            .collect::<AiResult<Vec<_>>>()?)
+            .collect::<AiResult<Vec<_>>>()
     }
 
     pub async fn create_task_profile(
@@ -1461,6 +1461,7 @@ impl AiManagementService {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn continue_run(
         app_ctx: &AppContext,
         operator: &AiOperatorContext,
@@ -1845,7 +1846,11 @@ impl InProcessMcpAdapter {
             .get::<SharedAiModuleRegistry>()
             .map(|shared| shared.0.clone())
             .ok_or_else(|| AiError::Runtime("AI module registry is not initialized".to_string()))?;
-        let alloy = if let Some(_) = app_ctx.shared_store.get::<alloy::SharedAlloyRuntime>() {
+        let alloy = if app_ctx
+            .shared_store
+            .get::<alloy::SharedAlloyRuntime>()
+            .is_some()
+        {
             let scoped = alloy::scoped_runtime(
                 app_ctx,
                 parse_uuid_str(
