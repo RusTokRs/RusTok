@@ -123,7 +123,7 @@ pub fn SeoBulkPane(
                                 class="rounded-lg border border-input bg-background px-3 py-2"
                                 prop:value=move || bulk_filter_form.get().source.as_str().to_string()
                                 on:change=move |ev| bulk_filter_form.update(|draft| {
-                                    draft.source = SeoBulkSource::from_str(event_target_value(&ev).as_str())
+                                    draft.source = SeoBulkSource::parse(event_target_value(&ev).as_str())
                                         .unwrap_or(SeoBulkSource::Any);
                                 })
                             >
@@ -239,7 +239,7 @@ pub fn SeoBulkPane(
                                 class="rounded-lg border border-input bg-background px-3 py-2"
                                 prop:value=move || bulk_action_form.get().selection_mode.as_str().to_string()
                                 on:change=move |ev| bulk_action_form.update(|draft| {
-                                    draft.selection_mode = SeoBulkSelectionMode::from_str(event_target_value(&ev).as_str())
+                                    draft.selection_mode = SeoBulkSelectionMode::parse(event_target_value(&ev).as_str())
                                         .unwrap_or(SeoBulkSelectionMode::CurrentFilterScope);
                                 })
                             >
@@ -253,7 +253,7 @@ pub fn SeoBulkPane(
                                 class="rounded-lg border border-input bg-background px-3 py-2"
                                 prop:value=move || bulk_action_form.get().apply_mode.as_str().to_string()
                                 on:change=move |ev| bulk_action_form.update(|draft| {
-                                    draft.apply_mode = SeoBulkApplyMode::from_str(event_target_value(&ev).as_str())
+                                    draft.apply_mode = SeoBulkApplyMode::parse(event_target_value(&ev).as_str())
                                         .unwrap_or(SeoBulkApplyMode::ApplyMissingOnly);
                                 })
                             >
@@ -281,7 +281,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().title.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().title.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.title.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.title.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.title.value = value))
                         />
@@ -290,7 +290,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().description.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().description.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.description.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.description.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.description.value = value))
                         />
@@ -299,7 +299,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().keywords.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().keywords.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.keywords.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.keywords.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.keywords.value = value))
                         />
@@ -308,7 +308,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().canonical_url.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().canonical_url.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.canonical_url.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.canonical_url.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.canonical_url.value = value))
                         />
@@ -317,7 +317,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().og_title.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().og_title.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.og_title.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.og_title.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.og_title.value = value))
                         />
@@ -326,7 +326,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().og_description.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().og_description.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.og_description.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.og_description.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.og_description.value = value))
                         />
@@ -335,7 +335,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().og_image.mode.as_str().to_string())
                             value=Signal::derive(move || bulk_action_form.get().og_image.value.clone())
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.og_image.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.og_image.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.og_image.value = value))
                         />
@@ -344,7 +344,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().noindex.mode.as_str().to_string())
                             checked=Signal::derive(move || bulk_action_form.get().noindex.value)
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.noindex.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.noindex.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_checked=Callback::new(move |value: bool| bulk_action_form.update(|draft| draft.noindex.value = value))
                         />
@@ -353,7 +353,7 @@ pub fn SeoBulkPane(
                             mode_value=Signal::derive(move || bulk_action_form.get().nofollow.mode.as_str().to_string())
                             checked=Signal::derive(move || bulk_action_form.get().nofollow.value)
                             on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                                draft.nofollow.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                                draft.nofollow.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                             }))
                             on_checked=Callback::new(move |value: bool| bulk_action_form.update(|draft| draft.nofollow.value = value))
                         />
@@ -364,7 +364,7 @@ pub fn SeoBulkPane(
                         mode_value=Signal::derive(move || bulk_action_form.get().structured_data.mode.as_str().to_string())
                         value=Signal::derive(move || bulk_action_form.get().structured_data.value.clone())
                         on_mode=Callback::new(move |value: String| bulk_action_form.update(|draft| {
-                            draft.structured_data.mode = SeoBulkFieldPatchMode::from_str(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
+                            draft.structured_data.mode = SeoBulkFieldPatchMode::parse(value.as_str()).unwrap_or(SeoBulkFieldPatchMode::Keep);
                         }))
                         on_value=Callback::new(move |value: String| bulk_action_form.update(|draft| draft.structured_data.value = value))
                     />

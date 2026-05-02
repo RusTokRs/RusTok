@@ -309,8 +309,7 @@ impl SeoRedirectForm {
     }
 
     pub fn set_match_type_from_str(&mut self, value: &str) {
-        self.match_type =
-            SeoRedirectMatchType::from_str(value).unwrap_or(SeoRedirectMatchType::Exact);
+        self.match_type = SeoRedirectMatchType::parse(value).unwrap_or(SeoRedirectMatchType::Exact);
     }
 
     pub fn build_input(&self) -> Result<SeoRedirectInput, String> {

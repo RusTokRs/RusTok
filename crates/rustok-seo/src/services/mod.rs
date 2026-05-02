@@ -131,7 +131,7 @@ impl SeoService {
         };
 
         Ok(Self::normalize_settings(
-            serde_json::from_value::<SeoModuleSettings>(module.settings.into()).unwrap_or_default(),
+            serde_json::from_value::<SeoModuleSettings>(module.settings).unwrap_or_default(),
         ))
     }
 

@@ -29,7 +29,7 @@ pub fn SeoEntityPanel(
     let busy_key = RwSignal::new(Option::<String>::None);
     let status_message = RwSignal::new(Option::<String>::None);
 
-    let title_locale = locale.clone();
+    let title_locale = locale;
     let title_override = panel_title;
     let panel_title = Memo::new(move |_| {
         title_override
@@ -38,7 +38,7 @@ pub fn SeoEntityPanel(
             .unwrap_or_else(|| tr(Some(title_locale.get().as_str()), "SEO", "SEO"))
     });
 
-    let subtitle_locale = locale.clone();
+    let subtitle_locale = locale;
     let subtitle_override = panel_subtitle;
     let panel_subtitle = Memo::new(move |_| {
         subtitle_override.as_ref().map(|text| text.get().to_string()).unwrap_or_else(|| {
@@ -50,7 +50,7 @@ pub fn SeoEntityPanel(
         })
     });
 
-    let empty_locale = locale.clone();
+    let empty_locale = locale;
     let empty_override = empty_message;
     let empty_message = Memo::new(move |_| {
         empty_override.as_ref().map(|text| text.get().to_string()).unwrap_or_else(|| {
@@ -117,9 +117,9 @@ pub fn SeoEntityPanel(
         });
     });
 
-    let initial_locale = locale.clone();
-    let initial_target = target_id.clone();
-    let load_meta_for_effect = load_meta.clone();
+    let initial_locale = locale;
+    let initial_target = target_id;
+    let load_meta_for_effect = load_meta;
     Effect::new(move |_| {
         let entity_id = initial_target.get().unwrap_or_default();
         let raw_locale = initial_locale.get();
@@ -208,7 +208,7 @@ pub fn SeoEntityPanel(
         });
     });
 
-    let publish_locale = locale.clone();
+    let publish_locale = locale;
     let publish_target_kind = target_kind.clone();
     let publish_revision = Callback::new(move |_| {
         status_message.set(None);
