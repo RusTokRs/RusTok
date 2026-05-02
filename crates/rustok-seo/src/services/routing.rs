@@ -12,7 +12,9 @@ use crate::dto::{
 };
 use crate::{SeoError, SeoResult};
 
-use super::robots::{apply_robots, build_document, merge_open_graph, robots_from_directives};
+use super::robots::{
+    apply_robots, build_document, merge_open_graph, robots_from_directives, BuildDocumentInput,
+};
 use super::templates::render_generated_record;
 use super::{LoadedMeta, SeoService, TargetState};
 
@@ -360,26 +362,26 @@ impl SeoService {
                         tenant.default_locale.as_str(),
                     ),
                 },
-                document: build_document(
+                document: build_document(BuildDocumentInput {
                     title,
                     description,
-                    apply_robots(
+                    robots: apply_robots(
                         explicit.meta.no_index,
                         explicit.meta.no_follow,
                         settings.default_robots.as_slice(),
                     ),
-                    Some(open_graph),
-                    explicit
+                    open_graph: Some(open_graph),
+                    structured_data: explicit
                         .meta
                         .structured_data
                         .clone()
                         .unwrap_or(state.structured_data),
-                    effective_translation
+                    keywords: effective_translation
                         .as_ref()
                         .and_then(|item| super::trimmed_option(item.keywords.clone())),
-                    canonical_url.as_str(),
-                    effective_locale.as_str(),
-                    SeoDocumentEffectiveState {
+                    canonical_url: canonical_url.clone(),
+                    effective_locale: effective_locale.clone(),
+                    effective_state: SeoDocumentEffectiveState {
                         title: field_state(SeoFieldSource::Explicit, true),
                         description: field_state(
                             SeoFieldSource::Explicit,
@@ -411,9 +413,9 @@ impl SeoService {
                             explicit.meta.structured_data.is_some(),
                         ),
                     },
-                    None,
-                    None,
-                ),
+                    twitter_title: None,
+                    twitter_description: None,
+                }),
             });
         }
 
@@ -476,20 +478,20 @@ impl SeoService {
                     tenant.default_locale.as_str(),
                 ),
             },
-            document: build_document(
-                effective_title,
-                effective_description.clone(),
-                generated
+            document: build_document(BuildDocumentInput {
+                title: effective_title,
+                description: effective_description.clone(),
+                robots: generated
                     .robots
                     .as_deref()
                     .map(robots_from_directives)
                     .unwrap_or_else(|| robots_from_directives(settings.default_robots.as_slice())),
-                Some(open_graph),
-                state.structured_data,
-                generated.keywords.clone(),
-                canonical_url.as_str(),
-                state.effective_locale.as_str(),
-                SeoDocumentEffectiveState {
+                open_graph: Some(open_graph),
+                structured_data: state.structured_data,
+                keywords: generated.keywords.clone(),
+                canonical_url: canonical_url.clone(),
+                effective_locale: state.effective_locale.clone(),
+                effective_state: SeoDocumentEffectiveState {
                     title: field_state(source, true),
                     description: field_state(source, effective_description.is_some()),
                     canonical_url: field_state(source, true),
@@ -510,9 +512,9 @@ impl SeoService {
                     ),
                     structured_data: field_state(SeoFieldSource::Fallback, true),
                 },
-                generated.twitter_title,
-                generated.twitter_description,
-            ),
+                twitter_title: generated.twitter_title,
+                twitter_description: generated.twitter_description,
+            }),
         })
     }
 }

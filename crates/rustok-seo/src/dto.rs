@@ -4,6 +4,7 @@ use rustok_seo_targets::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use uuid::Uuid;
 
 #[derive(Enum, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,11 +23,14 @@ impl SeoRedirectMatchType {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoRedirectMatchType {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "exact" => Some(Self::Exact),
-            "wildcard" => Some(Self::Wildcard),
-            _ => None,
+            "exact" => Ok(Self::Exact),
+            "wildcard" => Ok(Self::Wildcard),
+            _ => Err(()),
         }
     }
 }
@@ -450,13 +454,16 @@ impl SeoBulkSource {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoBulkSource {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "any" => Some(Self::Any),
-            "explicit" => Some(Self::Explicit),
-            "generated" => Some(Self::Generated),
-            "fallback" => Some(Self::Fallback),
-            _ => None,
+            "any" => Ok(Self::Any),
+            "explicit" => Ok(Self::Explicit),
+            "generated" => Ok(Self::Generated),
+            "fallback" => Ok(Self::Fallback),
+            _ => Err(()),
         }
     }
 }
@@ -477,11 +484,14 @@ impl SeoBulkSelectionMode {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoBulkSelectionMode {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "selected_ids" => Some(Self::SelectedIds),
-            "current_filter_scope" => Some(Self::CurrentFilterScope),
-            _ => None,
+            "selected_ids" => Ok(Self::SelectedIds),
+            "current_filter_scope" => Ok(Self::CurrentFilterScope),
+            _ => Err(()),
         }
     }
 }
@@ -504,12 +514,15 @@ impl SeoBulkFieldPatchMode {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoBulkFieldPatchMode {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "keep" => Some(Self::Keep),
-            "set" => Some(Self::Set),
-            "clear" => Some(Self::Clear),
-            _ => None,
+            "keep" => Ok(Self::Keep),
+            "set" => Ok(Self::Set),
+            "clear" => Ok(Self::Clear),
+            _ => Err(()),
         }
     }
 }
@@ -532,12 +545,15 @@ impl SeoBulkJobOperationKind {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoBulkJobOperationKind {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "apply" => Some(Self::Apply),
-            "export_csv" => Some(Self::ExportCsv),
-            "import_csv" => Some(Self::ImportCsv),
-            _ => None,
+            "apply" => Ok(Self::Apply),
+            "export_csv" => Ok(Self::ExportCsv),
+            "import_csv" => Ok(Self::ImportCsv),
+            _ => Err(()),
         }
     }
 }
@@ -564,14 +580,17 @@ impl SeoBulkJobStatus {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoBulkJobStatus {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "queued" => Some(Self::Queued),
-            "running" => Some(Self::Running),
-            "completed" => Some(Self::Completed),
-            "partial" => Some(Self::Partial),
-            "failed" => Some(Self::Failed),
-            _ => None,
+            "queued" => Ok(Self::Queued),
+            "running" => Ok(Self::Running),
+            "completed" => Ok(Self::Completed),
+            "partial" => Ok(Self::Partial),
+            "failed" => Ok(Self::Failed),
+            _ => Err(()),
         }
     }
 }
@@ -597,13 +616,16 @@ impl SeoBulkApplyMode {
         }
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+}
+impl FromStr for SeoBulkApplyMode {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "preview_only" => Some(Self::PreviewOnly),
-            "apply_missing_only" => Some(Self::ApplyMissingOnly),
-            "overwrite_generated_only" => Some(Self::OverwriteGeneratedOnly),
-            "force_overwrite_explicit" => Some(Self::ForceOverwriteExplicit),
-            _ => None,
+            "preview_only" => Ok(Self::PreviewOnly),
+            "apply_missing_only" => Ok(Self::ApplyMissingOnly),
+            "overwrite_generated_only" => Ok(Self::OverwriteGeneratedOnly),
+            "force_overwrite_explicit" => Ok(Self::ForceOverwriteExplicit),
+            _ => Err(()),
         }
     }
 }

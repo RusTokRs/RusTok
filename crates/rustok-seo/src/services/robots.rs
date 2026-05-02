@@ -141,25 +141,40 @@ pub(super) fn merge_open_graph(
     open_graph
 }
 
-pub(super) fn build_document(
-    title: String,
-    description: Option<String>,
-    robots: SeoRobots,
-    mut open_graph: Option<SeoOpenGraph>,
-    structured_data: Value,
-    keywords: Option<String>,
-    canonical_url: &str,
-    effective_locale: &str,
-    effective_state: SeoDocumentEffectiveState,
-    twitter_title: Option<String>,
-    twitter_description: Option<String>,
-) -> SeoDocument {
+pub(super) struct BuildDocumentInput {
+    pub title: String,
+    pub description: Option<String>,
+    pub robots: SeoRobots,
+    pub open_graph: Option<SeoOpenGraph>,
+    pub structured_data: Value,
+    pub keywords: Option<String>,
+    pub canonical_url: String,
+    pub effective_locale: String,
+    pub effective_state: SeoDocumentEffectiveState,
+    pub twitter_title: Option<String>,
+    pub twitter_description: Option<String>,
+}
+
+pub(super) fn build_document(input: BuildDocumentInput) -> SeoDocument {
+    let BuildDocumentInput {
+        title,
+        description,
+        robots,
+        mut open_graph,
+        structured_data,
+        keywords,
+        canonical_url,
+        effective_locale,
+        effective_state,
+        twitter_title,
+        twitter_description,
+    } = input;
     if let Some(open_graph_value) = open_graph.as_mut() {
         if open_graph_value.url.is_none() {
-            open_graph_value.url = Some(canonical_url.to_string());
+            open_graph_value.url = Some(canonical_url.clone());
         }
         if open_graph_value.locale.is_none() {
-            open_graph_value.locale = Some(effective_locale.to_string());
+            open_graph_value.locale = Some(effective_locale.clone());
         }
     }
     let twitter = open_graph

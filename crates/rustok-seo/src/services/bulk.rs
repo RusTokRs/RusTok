@@ -7,6 +7,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
@@ -265,9 +266,9 @@ fn map_bulk_job_model(
     Ok(SeoBulkJobRecord {
         id: model.id,
         operation_kind: SeoBulkJobOperationKind::from_str(model.operation_kind.as_str())
-            .ok_or_else(|| SeoError::validation("invalid bulk operation kind"))?,
+            .map_err(|_| SeoError::validation("invalid bulk operation kind"))?,
         status: SeoBulkJobStatus::from_str(model.status.as_str())
-            .ok_or_else(|| SeoError::validation("invalid bulk job status"))?,
+            .map_err(|_| SeoError::validation("invalid bulk job status"))?,
         target_kind: SeoTargetSlug::new(model.target_kind.as_str())
             .map_err(|_| SeoError::validation("invalid bulk target kind"))?,
         locale: model.locale,
@@ -796,6 +797,16 @@ struct BulkSelectionResolution {
     target_ids: Vec<Uuid>,
 }
 
+struct ApplyBulkPatchRequest<'a> {
+    job_id: Uuid,
+    target_kind: SeoTargetSlug,
+    locale: &'a str,
+    target_id: Uuid,
+    patch: &'a SeoBulkMetaPatchInput,
+    apply_mode: SeoBulkApplyMode,
+    publish_after_write: bool,
+}
+
 #[derive(Debug, Clone)]
 struct BulkImportRow {
     row_number: usize,
@@ -1087,10 +1098,10 @@ impl SeoService {
         let running = active.update(&self.db).await?;
 
         let result = match SeoBulkJobOperationKind::from_str(running.operation_kind.as_str()) {
-            Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job(&running).await,
-            Some(SeoBulkJobOperationKind::ExportCsv) => self.execute_export_job(&running).await,
-            Some(SeoBulkJobOperationKind::ImportCsv) => self.execute_import_job(&running).await,
-            None => Err(SeoError::validation(format!(
+            Ok(SeoBulkJobOperationKind::Apply) => self.execute_apply_job(&running).await,
+            Ok(SeoBulkJobOperationKind::ExportCsv) => self.execute_export_job(&running).await,
+            Ok(SeoBulkJobOperationKind::ImportCsv) => self.execute_import_job(&running).await,
+            Err(_) => Err(SeoError::validation(format!(
                 "unknown bulk operation kind `{}`",
                 running.operation_kind
             ))),
@@ -1113,7 +1124,7 @@ impl SeoService {
             name: tenant.name,
             slug: tenant.slug,
             domain: tenant.domain,
-            settings: tenant.settings.into(),
+            settings: tenant.settings,
             default_locale: tenant.default_locale,
             is_active: tenant.is_active,
         })
@@ -1291,13 +1302,15 @@ impl SeoService {
             match self
                 .apply_bulk_patch_to_target(
                     &tenant,
-                    job.id,
-                    resolution.filter.target_kind.clone(),
-                    resolution.filter.locale.as_str(),
-                    target_id,
-                    &input.patch,
-                    input.apply_mode,
-                    job.publish_after_write,
+                    ApplyBulkPatchRequest {
+                        job_id: job.id,
+                        target_kind: resolution.filter.target_kind.clone(),
+                        locale: resolution.filter.locale.as_str(),
+                        target_id,
+                        patch: &input.patch,
+                        apply_mode: input.apply_mode,
+                        publish_after_write: job.publish_after_write,
+                    },
                 )
                 .await
             {
@@ -1549,14 +1562,17 @@ impl SeoService {
     async fn apply_bulk_patch_to_target(
         &self,
         tenant: &TenantContext,
-        job_id: Uuid,
-        target_kind: SeoTargetSlug,
-        locale: &str,
-        target_id: Uuid,
-        patch: &SeoBulkMetaPatchInput,
-        apply_mode: SeoBulkApplyMode,
-        publish_after_write: bool,
+        request: ApplyBulkPatchRequest<'_>,
     ) -> SeoResult<Option<i32>> {
+        let ApplyBulkPatchRequest {
+            job_id,
+            target_kind,
+            locale,
+            target_id,
+            patch,
+            apply_mode,
+            publish_after_write,
+        } = request;
         let current = self
             .seo_meta(tenant, target_kind.clone(), target_id, Some(locale))
             .await?

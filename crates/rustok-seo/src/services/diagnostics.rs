@@ -14,6 +14,14 @@ use super::robots::schema_blocks_from_value;
 use super::SeoService;
 
 const MAX_EXPOSED_ISSUES: usize = 50;
+type CanonicalUsageEntry = (
+    rustok_seo_targets::SeoTargetSlug,
+    uuid::Uuid,
+    String,
+    String,
+    String,
+);
+type CanonicalUsageMap = HashMap<String, Vec<CanonicalUsageEntry>>;
 
 impl SeoService {
     pub async fn diagnostics_summary(
@@ -26,16 +34,7 @@ impl SeoService {
             tenant.default_locale.as_str(),
         )?;
         let mut issues = Vec::new();
-        let mut canonical_usage: HashMap<
-            String,
-            Vec<(
-                rustok_seo_targets::SeoTargetSlug,
-                uuid::Uuid,
-                String,
-                String,
-                String,
-            )>,
-        > = HashMap::new();
+        let mut canonical_usage: CanonicalUsageMap = HashMap::new();
         let mut sitemap_targets = BTreeSet::new();
         let redirect_graph = self.redirect_graph(tenant.id).await?;
         let mut total_targets = 0_i32;
