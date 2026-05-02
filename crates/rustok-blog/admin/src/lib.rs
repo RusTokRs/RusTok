@@ -110,7 +110,6 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
-        let reset_form_action = reset_form_action;
         move |_| {
             query_writer.clear_key(AdminQueryKey::PostId.as_str());
             reset_form_action.run(());
