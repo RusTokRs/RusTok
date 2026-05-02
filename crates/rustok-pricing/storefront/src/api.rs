@@ -218,18 +218,16 @@ pub async fn fetch_storefront_pricing(
         .as_ref()
         .and_then(|context| context.price_list_id.clone());
     let quantity = resolution_context.as_ref().map(|context| context.quantity);
-    match fetch_storefront_pricing_server(
-        StorefrontPricingQuery {
-            selected_handle: query.selected_handle.clone(),
-            locale: query.locale.clone(),
-            currency_code: currency_code.clone(),
-            region_id: region_id.clone(),
-            price_list_id: price_list_id.clone(),
-            channel_id: channel_id.clone(),
-            channel_slug: channel_slug.clone(),
-            quantity,
-        },
-    )
+    match fetch_storefront_pricing_server(StorefrontPricingQuery {
+        selected_handle: query.selected_handle.clone(),
+        locale: query.locale.clone(),
+        currency_code: currency_code.clone(),
+        region_id: region_id.clone(),
+        price_list_id: price_list_id.clone(),
+        channel_id: channel_id.clone(),
+        channel_slug: channel_slug.clone(),
+        quantity,
+    })
     .await
     {
         Ok(data) => Ok(data),
@@ -265,8 +263,8 @@ pub async fn fetch_storefront_pricing_server(
     query: StorefrontPricingQuery,
 ) -> Result<StorefrontPricingData, ApiError> {
     storefront_pricing_native(query)
-    .await
-    .map_err(ApiError::from)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_storefront_pricing_graphql(

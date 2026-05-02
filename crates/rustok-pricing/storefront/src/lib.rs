@@ -773,31 +773,43 @@ struct PricingRouteParams<'a> {
 fn build_pricing_route_href(module_route_base: &str, params: PricingRouteParams<'_>) -> String {
     let mut query_params = Vec::new();
 
-    if let Some(handle) = params.selected_handle
+    if let Some(handle) = params
+        .selected_handle
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
         query_params.push(format!("handle={handle}"));
     }
-    if let Some(currency_code) = params.currency_code
+    if let Some(currency_code) = params
+        .currency_code
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
         query_params.push(format!("currency={currency_code}"));
     }
-    if let Some(region_id) = params.region_id.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(region_id) = params
+        .region_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         query_params.push(format!("region_id={region_id}"));
     }
-    if let Some(price_list_id) = params.price_list_id
+    if let Some(price_list_id) = params
+        .price_list_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
         query_params.push(format!("price_list_id={price_list_id}"));
     }
-    if let Some(channel_id) = params.channel_id.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(channel_id) = params
+        .channel_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         query_params.push(format!("channel_id={channel_id}"));
     }
-    if let Some(channel_slug) = params.channel_slug
+    if let Some(channel_slug) = params
+        .channel_slug
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
