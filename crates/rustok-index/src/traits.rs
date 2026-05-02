@@ -182,7 +182,7 @@ where
         while join_set.len() >= effective_parallelism {
             drain_reindex_task(&mut join_set, indexer_name, ctx, operation, &mut stats).await;
             drain_count += 1;
-            if drain_count % yield_every == 0 {
+            if drain_count.is_multiple_of(yield_every) {
                 tokio::task::yield_now().await;
             }
         }
@@ -200,7 +200,7 @@ where
     while !join_set.is_empty() {
         drain_reindex_task(&mut join_set, indexer_name, ctx, operation, &mut stats).await;
         drain_count += 1;
-        if drain_count % yield_every == 0 {
+        if drain_count.is_multiple_of(yield_every) {
             tokio::task::yield_now().await;
         }
     }

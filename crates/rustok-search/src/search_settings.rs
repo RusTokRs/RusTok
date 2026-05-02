@@ -88,7 +88,7 @@ impl SearchSettingsService {
                 let mut active: ActiveModel = existing.into();
                 active.active_engine = Set(active_engine.as_str().to_string());
                 active.fallback_engine = Set(fallback_engine.as_str().to_string());
-                active.config = Set(config.into());
+                active.config = Set(config);
                 active.updated_at = Set(now);
                 active.update(db).await?
             }
@@ -98,7 +98,7 @@ impl SearchSettingsService {
                     tenant_id: Set(tenant_id),
                     active_engine: Set(active_engine.as_str().to_string()),
                     fallback_engine: Set(fallback_engine.as_str().to_string()),
-                    config: Set(config.into()),
+                    config: Set(config),
                     updated_at: Set(now),
                 }
                 .insert(db)
