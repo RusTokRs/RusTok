@@ -590,11 +590,11 @@ fn render_bulk_job(job: SeoBulkJobRecord) -> impl IntoView {
     let error_view = if let Some(message) = last_error.clone() {
         view! { <p class="text-sm text-destructive">{message}</p> }.into_any()
     } else {
-        view! { <></> }.into_any()
+        ().into_any()
     };
     let artifacts = job.artifacts.clone();
     let artifacts_view = if artifacts.is_empty() {
-        view! { <></> }.into_any()
+        ().into_any()
     } else {
         view! {
             <div class="flex flex-wrap gap-2">

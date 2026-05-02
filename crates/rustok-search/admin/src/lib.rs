@@ -506,6 +506,7 @@ pub fn SearchAdmin() -> impl IntoView {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn overview_view(
     ui_locale: Option<String>,
     bootstrap: SearchAdminBootstrap,
@@ -703,6 +704,7 @@ fn overview_view(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn playground_view(
     ui_locale: Option<String>,
     query: ReadSignal<String>,
@@ -1833,6 +1835,7 @@ fn extract_surface_presets_json(config: &serde_json::Value, surface: &str) -> St
         .unwrap_or_else(|| "[]".to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn merge_relevance_editor_config(
     locale: Option<&str>,
     config_text: &str,

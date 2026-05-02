@@ -1,3 +1,7 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::single_match)]
+#![allow(clippy::manual_checked_ops)]
+#![allow(clippy::redundant_iter_cloned)]
 mod api;
 mod i18n;
 mod model;

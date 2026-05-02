@@ -110,7 +110,6 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
-        let reset_form_action = reset_form_action.clone();
         move |_| {
             query_writer.clear_key(AdminQueryKey::PostId.as_str());
             reset_form_action.run(());
@@ -203,7 +202,7 @@ pub fn BlogAdmin() -> impl IntoView {
             set_busy_key.set(None);
         });
     });
-    let initial_edit_post = edit_post.clone();
+    let initial_edit_post = edit_post;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| match selected_post_query.get() {
         Some(post_id) if !post_id.trim().is_empty() => {
@@ -585,7 +584,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     <Show when=move || editing_post_id.get().is_some()>
                         <BlogEditBanner
                             banner_text=Signal::derive({
-                                let editing_banner_text = editing_banner_text.clone();
+                                let editing_banner_text = editing_banner_text;
                                 move || editing_banner_text.get()
                             })
                             create_new_label=form_create_new_instead.clone()
@@ -902,7 +901,7 @@ fn BlogPostsTable(
                                                     }}
                                                 </button>
                                                 {if is_archived {
-                                                    view! { <></> }.into_any()
+                                                    ().into_any()
                                                 } else {
                                                     view! {
                                                         <button

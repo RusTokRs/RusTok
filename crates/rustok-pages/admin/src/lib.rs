@@ -137,7 +137,6 @@ pub fn PagesAdmin() -> impl IntoView {
     });
     let reset_current_page = Callback::new({
         let query_writer = query_writer.clone();
-        let reset_form_action = reset_form_action.clone();
         move |_| {
             query_writer.clear_key(AdminQueryKey::PageId.as_str());
             reset_form_action.run(());
@@ -222,7 +221,7 @@ pub fn PagesAdmin() -> impl IntoView {
             set_busy_key.set(None);
         });
     });
-    let initial_edit_page = edit_page.clone();
+    let initial_edit_page = edit_page;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| match selected_page_query.get() {
         Some(page_id) if !page_id.trim().is_empty() => initial_edit_page.run(page_id),
@@ -805,6 +804,7 @@ fn parse_channel_slugs(value: &str) -> Vec<String> {
     items
 }
 
+#[allow(clippy::too_many_arguments)]
 fn reset_page_form(
     set_editing_page_id: WriteSignal<Option<String>>,
     set_title: WriteSignal<String>,

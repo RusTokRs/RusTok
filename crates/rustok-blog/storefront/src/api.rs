@@ -3,7 +3,9 @@ use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlReques
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{BlogPostDetail, BlogPostList, BlogPostListItem, StorefrontBlogData};
+#[cfg(feature = "ssr")]
+use crate::model::BlogPostListItem;
+use crate::model::{BlogPostDetail, BlogPostList, StorefrontBlogData};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -35,7 +37,9 @@ impl From<ServerFnError> for ApiError {
 }
 
 const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
+#[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "blog";
+#[cfg(feature = "ssr")]
 const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
 #[derive(Debug, Deserialize)]

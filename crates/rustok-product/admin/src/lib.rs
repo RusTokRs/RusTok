@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 mod api;
 mod i18n;
 mod model;
@@ -680,7 +681,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                             let label = shipping_profile_choice_label(ui_locale_for_profiles.as_deref(), &profile);
                                             view! { <option value=slug.clone()>{label}</option> }
                                         }).collect_view().into_any(),
-                                        _ => view! { <></> }.into_any(),
+                                        _ => ().into_any(),
                                     }}
                                 </select>
                                 <input type="number" class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.inventoryQuantity", "Inventory quantity") prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(event_target_value(&ev).parse().unwrap_or(0)) />

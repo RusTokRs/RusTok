@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
@@ -314,6 +314,7 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
+#[allow(dead_code)]
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,
@@ -327,6 +328,7 @@ fn resolve_requested_locale(
         .unwrap_or_default()
 }
 
+#[allow(dead_code)]
 fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)

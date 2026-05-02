@@ -14,6 +14,14 @@ use crate::model::{
     StorefrontCheckoutWorkspace, StorefrontCommerceData,
 };
 
+type ShippingSelectCallback = Callback<(
+    StorefrontCheckoutCart,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+)>;
+
 #[component]
 pub fn CommerceView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -147,11 +155,11 @@ pub fn CommerceView() -> impl IntoView {
                 }}
                 <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-2"><div class="h-48 animate-pulse rounded-2xl bg-muted"></div><div class="h-48 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
-                        let resource = resource.clone();
+                        let resource = resource;
                         let load_error = load_error.clone();
-                        let on_create_payment_collection = on_create_payment_collection.clone();
-                        let on_select_shipping_option = on_select_shipping_option.clone();
-                        let on_complete_checkout = on_complete_checkout.clone();
+                        let on_create_payment_collection = on_create_payment_collection;
+                        let on_select_shipping_option = on_select_shipping_option;
+                        let on_complete_checkout = on_complete_checkout;
                         Suspend::new(async move {
                             match resource.await {
                                 Ok(data) => view! {
@@ -180,13 +188,7 @@ fn CommerceShowcase(
     busy: ReadSignal<bool>,
     completion: ReadSignal<Option<StorefrontCheckoutCompletion>>,
     on_create_payment_collection: Callback<String>,
-    on_select_shipping_option: Callback<(
-        StorefrontCheckoutCart,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )>,
+    on_select_shipping_option: ShippingSelectCallback,
     on_complete_checkout: Callback<String>,
 ) -> impl IntoView {
     view! {
@@ -258,13 +260,7 @@ fn CheckoutWorkspace(
     busy: ReadSignal<bool>,
     completion: ReadSignal<Option<StorefrontCheckoutCompletion>>,
     on_create_payment_collection: Callback<String>,
-    on_select_shipping_option: Callback<(
-        StorefrontCheckoutCart,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )>,
+    on_select_shipping_option: ShippingSelectCallback,
     on_complete_checkout: Callback<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -406,13 +402,7 @@ fn DeliveryGroupsCard(
     groups: Vec<StorefrontCheckoutDeliveryGroup>,
     busy: ReadSignal<bool>,
     pending_label: String,
-    on_select_shipping_option: Callback<(
-        StorefrontCheckoutCart,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )>,
+    on_select_shipping_option: ShippingSelectCallback,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let empty_value = t(locale.as_deref(), "commerce.context.empty", "not resolved");

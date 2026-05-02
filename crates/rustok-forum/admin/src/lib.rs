@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 #![recursion_limit = "256"]
 
 mod api;
@@ -270,8 +271,8 @@ pub fn ForumAdmin() -> impl IntoView {
             set_busy_key.set(None);
         });
     });
-    let initial_edit_category = edit_category.clone();
-    let initial_edit_topic = edit_topic.clone();
+    let initial_edit_category = edit_category;
+    let initial_edit_topic = edit_topic;
     Effect::new(move |_| match selected_category_query.get() {
         Some(category_id) if !category_id.trim().is_empty() => {
             initial_edit_category.run(category_id)

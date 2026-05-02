@@ -62,7 +62,7 @@ pub fn PagesView() -> impl IntoView {
                     </div>
                 }>
                     {move || {
-                        let pages_resource = pages_resource.clone();
+                        let pages_resource = pages_resource;
                         let load_error = load_error.clone();
                         Suspend::new(async move {
                             match pages_resource.await {

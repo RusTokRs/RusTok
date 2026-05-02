@@ -321,7 +321,7 @@ impl SeoRedirectForm {
 
         Ok(SeoRedirectInput {
             id: None,
-            match_type: self.match_type.clone(),
+            match_type: self.match_type,
             source_pattern: self.source_pattern.clone(),
             target_url: self.target_url.clone(),
             status_code,

@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use sea_orm::ConnectionTrait;

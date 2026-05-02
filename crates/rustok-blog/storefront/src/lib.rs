@@ -62,7 +62,7 @@ pub fn BlogView() -> impl IntoView {
                     </div>
                 }>
                     {move || {
-                        let posts_resource = posts_resource.clone();
+                        let posts_resource = posts_resource;
                         let load_error = load_error.clone();
                         Suspend::new(async move {
                             match posts_resource.await {
@@ -157,7 +157,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
             <p class="mt-3 text-sm text-muted-foreground">{excerpt}</p>
             <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
             {if tags.is_empty() {
-                view! { <></> }.into_any()
+                ().into_any()
             } else {
                 view! {
                     <div class="mt-5 flex flex-wrap gap-2">
