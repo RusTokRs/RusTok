@@ -61,9 +61,9 @@ struct StorefrontUiEntry {
 
 #[derive(Debug, Clone, Copy)]
 enum StorefrontSlot {
-    AfterHero,
-    AfterCatalog,
-    BeforeFooter,
+    HomeAfterHero,
+    HomeAfterCatalog,
+    HomeBeforeFooter,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
