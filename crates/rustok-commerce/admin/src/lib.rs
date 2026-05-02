@@ -518,7 +518,7 @@ pub fn CommerceAdmin() -> impl IntoView {
 
     let ui_locale_for_list = ui_locale.clone();
     let ui_locale_for_summary = ui_locale.clone();
-    let initial_edit_profile = edit_profile.clone();
+    let initial_edit_profile = edit_profile;
     let list_query_writer = query_writer.clone();
     let reset_query_writer = query_writer.clone();
     let reset_current_profile = Callback::new(move |_| {
