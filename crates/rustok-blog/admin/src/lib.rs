@@ -902,7 +902,7 @@ fn BlogPostsTable(
                                                     }}
                                                 </button>
                                                 {if is_archived {
-                                                    AnyView::default()
+                                                    ().into_any()
                                                 } else {
                                                     view! {
                                                         <button
