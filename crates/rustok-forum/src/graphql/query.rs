@@ -1131,8 +1131,6 @@ mod tests {
             },
             Some("en"),
             Some("web".to_string()),
-            0,
-            2,
         )
         .await
         .expect("storefront topic list should succeed");

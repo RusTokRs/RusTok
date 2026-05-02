@@ -101,7 +101,7 @@ impl WorkflowStep for HttpStep {
         let status = resp.status().as_u16();
         let ok = resp.status().is_success();
 
-        let body: Value = resp.json().await.unwrap_or_else(|_| Value::Null);
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
 
         if !ok {
             return Err(WorkflowError::StepFailed(format!(

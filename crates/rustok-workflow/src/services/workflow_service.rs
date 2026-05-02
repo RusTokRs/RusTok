@@ -405,7 +405,6 @@ impl WorkflowService {
         Ok(execution_to_response(exec, step_execs))
     }
 
-    /// Reset failure counter (call after successful execution).
     // ── Webhook trigger ────────────────────────────────────────────────────────
 
     /// Trigger all active workflows with a matching webhook slug.
