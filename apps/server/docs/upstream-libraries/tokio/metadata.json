@@ -1,7 +1,6 @@
 {
   "crate": "tokio",
-  "version": "1.49.0",
-  "docs_rs_crate": "https://docs.rs/crate/tokio/1.49.0",
-  "docs_rs_rustdoc": "https://docs.rs/tokio/1.49.0/tokio/",
-  "downloaded": false
+  "version": "1.52.1",
+  "docs_rs_crate": "https://docs.rs/crate/tokio/1.52.1",
+  "docs_rs_rustdoc": "https://docs.rs/tokio/1.52.1/tokio/"
 }

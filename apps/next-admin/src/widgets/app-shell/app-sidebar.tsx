@@ -127,9 +127,7 @@ export default function AppSidebar() {
       <SidebarContent className='overflow-x-hidden'>
         {navGroups.map((group) => (
           <SidebarGroup key={group.key}>
-            <SidebarGroupLabel>
-              {tNav(`group.${group.key}`)}
-            </SidebarGroupLabel>
+            <SidebarGroupLabel>{tNav(`group.${group.key}`)}</SidebarGroupLabel>
             <SidebarMenu>
               {group.items.map((item) => {
                 const Icon = item.icon ? Icons[item.icon] : Icons.logo;

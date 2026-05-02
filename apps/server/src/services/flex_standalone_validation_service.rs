@@ -1,7 +1,7 @@
 //! Validation helpers for Flex standalone mode (Phase 5).
 //!
 //! This adapter-layer service converts persisted standalone schema definitions
-//! (`flex_schemas.fields_config`) into [`CustomFieldsSchema`] and validates
+//! (`flex_schemas.fields_config`) into [`rustok_core::field_schema::CustomFieldsSchema`] and validates
 //! entry payloads in a transport-agnostic way.
 
 use serde_json::{Map, Value as JsonValue};

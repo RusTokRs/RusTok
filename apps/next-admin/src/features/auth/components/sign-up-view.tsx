@@ -36,8 +36,8 @@ export default async function SignUpViewPage() {
         <div className='relative z-20 mt-auto'>
           <blockquote className='space-y-2'>
             <p className='text-lg'>
-              "RusTok - a multi-tenant language agnostic highload platform built with Rust and
-              WebAssembly."
+              "RusTok - a multi-tenant language agnostic highload platform built
+              with Rust and WebAssembly."
             </p>
             <footer className='text-sm'>RusTok Team</footer>
           </blockquote>

@@ -32,10 +32,7 @@ export default auth((req) => {
   // Корневой редирект
   if (nextUrl.pathname === '/') {
     return NextResponse.redirect(
-      new URL(
-        isAuthenticated ? '/dashboard' : '/auth/sign-in',
-        nextUrl.origin
-      )
+      new URL(isAuthenticated ? '/dashboard' : '/auth/sign-in', nextUrl.origin)
     );
   }
 

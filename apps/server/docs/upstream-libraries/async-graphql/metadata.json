@@ -2,6 +2,5 @@
   "crate": "async-graphql",
   "version": "7.2.1",
   "docs_rs_crate": "https://docs.rs/crate/async-graphql/7.2.1",
-  "docs_rs_rustdoc": "https://docs.rs/async-graphql/7.2.1/async_graphql/",
-  "downloaded": false
+  "docs_rs_rustdoc": "https://docs.rs/async-graphql/7.2.1/async_graphql/"
 }

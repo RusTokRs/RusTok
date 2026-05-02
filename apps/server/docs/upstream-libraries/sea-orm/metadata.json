@@ -1,7 +1,6 @@
 {
   "crate": "sea-orm",
-  "version": "1.1.19",
-  "docs_rs_crate": "https://docs.rs/crate/sea-orm/1.1.19",
-  "docs_rs_rustdoc": "https://docs.rs/sea-orm/1.1.19/sea_orm/",
-  "downloaded": false
+  "version": "1.1.20",
+  "docs_rs_crate": "https://docs.rs/crate/sea-orm/1.1.20",
+  "docs_rs_rustdoc": "https://docs.rs/sea-orm/1.1.20/sea_orm/"
 }

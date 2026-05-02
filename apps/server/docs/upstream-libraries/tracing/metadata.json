@@ -2,6 +2,5 @@
   "crate": "tracing",
   "version": "0.1.44",
   "docs_rs_crate": "https://docs.rs/crate/tracing/0.1.44",
-  "docs_rs_rustdoc": "https://docs.rs/tracing/0.1.44/tracing/",
-  "downloaded": false
+  "docs_rs_rustdoc": "https://docs.rs/tracing/0.1.44/tracing/"
 }

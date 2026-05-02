@@ -1682,6 +1682,7 @@ fn validate_active_price_list(price_list: &entities::price_list::Model) -> Comme
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_or_inherit_price_list_scope(
     price_list: &entities::price_list::Model,
     channel_id: Option<Uuid>,
@@ -2032,6 +2033,7 @@ fn map_admin_detail(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_price_tier_quantities(
     min_quantity: Option<i32>,
     max_quantity: Option<i32>,

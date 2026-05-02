@@ -24,6 +24,7 @@ env:
   SQLX_OFFLINE: true
   NEXT_TELEMETRY_DISABLED: 1
   NEXT_PUBLIC_SENTRY_DISABLED: 1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   fmt:
@@ -127,13 +128,16 @@ jobs:
   udeps:
     name: Unused Dependencies
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: ""
+      CARGO_ENCODED_RUSTFLAGS: ""
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-udeps
         run: cargo install cargo-udeps --locked
-      - run: cargo udeps --workspace --all-targets --all-features
+      - run: cargo +nightly udeps --workspace --all-targets --all-features
 
   machete:
     name: Cargo Machete

@@ -1,7 +1,6 @@
 {
   "crate": "axum",
-  "version": "0.8.8",
-  "docs_rs_crate": "https://docs.rs/crate/axum/0.8.8",
-  "docs_rs_rustdoc": "https://docs.rs/axum/0.8.8/axum/",
-  "downloaded": false
+  "version": "0.8.9",
+  "docs_rs_crate": "https://docs.rs/crate/axum/0.8.9",
+  "docs_rs_rustdoc": "https://docs.rs/axum/0.8.9/axum/"
 }

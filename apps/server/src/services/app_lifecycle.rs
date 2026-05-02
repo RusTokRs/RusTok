@@ -36,7 +36,7 @@ impl StopHandle {
     /// Create a new `Receiver` subscribed to the shutdown signal.
     ///
     /// The returned receiver immediately sees the current value and will be
-    /// notified when [`stop`] is called.  Clone it once per background worker
+    /// notified when [`StopHandle::stop`] is called.  Clone it once per background worker
     /// so each worker gets its own independent view of the channel.
     pub fn subscribe(&self) -> tokio::sync::watch::Receiver<bool> {
         self.stop_tx.subscribe()

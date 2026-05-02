@@ -1,6 +1,11 @@
 'use client';
 
-import { LOCALE_COOKIE, localeLabels, locales, type Locale } from '@/i18n/config';
+import {
+  LOCALE_COOKIE,
+  localeLabels,
+  locales,
+  type Locale
+} from '@/i18n/config';
 import {
   Select,
   SelectContent,
@@ -47,11 +52,7 @@ export function LanguageSelect() {
 
   return (
     <Select value={value} onValueChange={handleLocaleChange}>
-      <SelectTrigger
-        size='sm'
-        aria-label={t('language')}
-        className='min-w-32'
-      >
+      <SelectTrigger size='sm' aria-label={t('language')} className='min-w-32'>
         <IconLanguage className='size-4' />
         <SelectValue />
       </SelectTrigger>

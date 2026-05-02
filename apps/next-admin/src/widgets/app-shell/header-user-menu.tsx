@@ -10,7 +10,11 @@ import {
   DropdownMenuTrigger
 } from '@/shared/ui/shadcn/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/shared/ui/shadcn/avatar';
-import { IconChevronDown, IconLogout, IconUserCircle } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconLogout,
+  IconUserCircle
+} from '@tabler/icons-react';
 import { signOut, useSession } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -40,31 +44,31 @@ export function HeaderUserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type='button'
-          className='flex items-center gap-2 rounded-lg p-2 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='hover:bg-accent focus-visible:ring-ring flex items-center gap-2 rounded-lg p-2 transition-colors focus-visible:ring-2 focus-visible:outline-none'
           aria-label={tMenu('defaultUser')}
         >
           <Avatar className='h-8 w-8'>
-            <AvatarFallback className='bg-primary text-sm font-semibold text-primary-foreground'>
+            <AvatarFallback className='bg-primary text-primary-foreground text-sm font-semibold'>
               {initial}
             </AvatarFallback>
           </Avatar>
           <div className='hidden text-left md:block'>
-            <p className='text-sm font-medium leading-none text-foreground'>
+            <p className='text-foreground text-sm leading-none font-medium'>
               {displayName}
             </p>
-            <p className='mt-1 text-xs text-muted-foreground'>{role}</p>
+            <p className='text-muted-foreground mt-1 text-xs'>{role}</p>
           </div>
-          <IconChevronDown className='size-4 text-muted-foreground' />
+          <IconChevronDown className='text-muted-foreground size-4' />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-56 rounded-lg'>
         <DropdownMenuLabel className='font-normal'>
           <div className='flex flex-col gap-1'>
-            <p className='truncate text-sm font-medium text-popover-foreground'>
+            <p className='text-popover-foreground truncate text-sm font-medium'>
               {displayName}
             </p>
             {email && (
-              <p className='truncate text-xs text-muted-foreground'>{email}</p>
+              <p className='text-muted-foreground truncate text-xs'>{email}</p>
             )}
           </div>
         </DropdownMenuLabel>

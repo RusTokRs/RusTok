@@ -1,7 +1,7 @@
 //! High-level model helpers for `product_field_definitions`.
 //!
 //! Provides conversion from a DB row to [`FieldDefinition`], the portable
-//! DTO used by [`CustomFieldsSchema`].
+//! DTO used by [`rustok_core::field_schema::CustomFieldsSchema`].
 
 use sea_orm::prelude::*;
 use std::collections::HashMap;
