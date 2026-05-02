@@ -273,3 +273,4 @@
 
 - [Security: RUSTSEC-2026-0045 remediation note](./security/aws-lc-rustsec-2026-0045.md)
 - [Security: RUSTSEC-2026-0098 / 0099 / 0104 remediation note](./security/rustls-webpki-rustsec-2026-0099-0104.md)
+- [Security: RUSTSEC-2023-0071 remediation note](./security/rsa-rustsec-2023-0071.md)
