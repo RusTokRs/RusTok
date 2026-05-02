@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
