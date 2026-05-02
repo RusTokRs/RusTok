@@ -118,13 +118,9 @@ fn matches_event_trigger(trigger_config: &serde_json::Value, event_type: &str) -
         return false;
     }
     match trigger_config.get("event_type").and_then(|v| v.as_str()) {
-        Some(pattern) => {
-            if pattern.ends_with('*') {
-                event_type.starts_with(&pattern[..pattern.len() - 1])
-            } else {
-                event_type == pattern
-            }
-        }
+        Some(pattern) => pattern
+            .strip_suffix('*')
+            .map_or(event_type == pattern, |prefix| event_type.starts_with(prefix)),
         None => false,
     }
 }
