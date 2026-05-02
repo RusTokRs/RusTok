@@ -68,7 +68,7 @@
 
 ### 3.2 Dependency and manifest hygiene
 
-- [ ] `cargo deny`, `cargo audit`, `cargo machete` и аналогичные quality tools трактуются как сигналы качества, согласованные с текущим workflow.
+- [ ] `cargo deny`, `cargo audit` и аналогичные quality tools трактуются как сигналы качества, согласованные с текущим workflow.
 - [ ] Manifest hygiene не дублирует scoped module contract и не конфликтует с `cargo xtask validate-manifest`.
 - [ ] Support tooling не документируется как обязательный gate, если он не воспроизводим в текущем локальном baseline.
 

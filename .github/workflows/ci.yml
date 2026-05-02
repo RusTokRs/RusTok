@@ -139,17 +139,6 @@ jobs:
         run: cargo install cargo-udeps --locked
       - run: cargo +nightly udeps --workspace --all-targets --all-features
 
-  machete:
-    name: Cargo Machete
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-machete
-        run: cargo install cargo-machete --locked
-      - run: cargo machete
 
   coverage:
     name: Code Coverage
