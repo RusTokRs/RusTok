@@ -13,7 +13,7 @@ pub struct FieldDefinitionObject {
     pub id: Uuid,
     /// Tenant-scoped unique key (snake_case, `^[a-z][a-z0-9_]{0,127}$`).
     pub field_key: String,
-    /// Serialised [`FieldType`] value, e.g. `"text"`, `"select"`.
+    /// Serialised field type value, e.g. `"text"`, `"select"`.
     pub field_type: String,
     /// Localised labels as JSON object: `{"en": "Phone", "ru": "Телефон"}`.
     pub label: JsonValue,
