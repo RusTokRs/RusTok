@@ -3267,8 +3267,10 @@ mod tests {
     #[test]
     #[serial]
     fn derives_build_execution_plan_from_manifest() {
-        let mut manifest = ModulesManifest::default();
-        manifest.app = "rustok-server".to_string();
+        let mut manifest = ModulesManifest {
+            app: "rustok-server".to_string(),
+            ..ModulesManifest::default()
+        };
         manifest.build.profile = "release".to_string();
         manifest.build.target = "x86_64-unknown-linux-gnu".to_string();
         manifest.build.server.embed_admin = true;

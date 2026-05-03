@@ -388,10 +388,12 @@ mod tests {
     #[tokio::test]
     async fn bootstrap_registry_only_runtime_forces_headless_surfaces() {
         let ctx = get_app_context().await;
-        let mut settings = RustokSettings::default();
-        settings.runtime = RuntimeSettings {
-            host_mode: RuntimeHostMode::RegistryOnly,
-            ..RuntimeSettings::default()
+        let settings = RustokSettings {
+            runtime: RuntimeSettings {
+                host_mode: RuntimeHostMode::RegistryOnly,
+                ..RuntimeSettings::default()
+            },
+            ..RustokSettings::default()
         };
 
         let runtime = super::bootstrap_app_runtime(&ctx, &settings)

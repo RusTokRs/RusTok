@@ -899,6 +899,7 @@ async fn upsert_embedded_app(
 }
 
 /// Upsert a first-party app (creates credentials on first creation)
+#[allow(clippy::too_many_arguments)]
 async fn upsert_first_party_app(
     db: &DatabaseConnection,
     tenant_id: Uuid,
