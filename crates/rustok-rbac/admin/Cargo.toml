@@ -26,3 +26,6 @@ rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-rbac = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["rustok-rbac"]
