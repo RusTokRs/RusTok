@@ -24,3 +24,6 @@ mime_guess = "2.0"
 # Optional S3 backend
 aws-sdk-s3 = { version = "1", optional = true }
 aws-config  = { version = "1", optional = true }
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["mime_guess"]

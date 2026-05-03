@@ -133,7 +133,6 @@ fn parse_engine_value(field_name: &str, value: &str) -> Result<SearchEngineKind,
 #[cfg(test)]
 mod tests {
     use super::{map_model, Model};
-    use sea_orm::prelude::Json;
     use uuid::Uuid;
 
     #[test]

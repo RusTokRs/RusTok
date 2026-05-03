@@ -26,3 +26,5 @@ sea-orm-migration = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 
+[package.metadata.cargo-udeps.ignore]
+normal = ["password-hash"]

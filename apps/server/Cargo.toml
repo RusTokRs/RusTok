@@ -174,4 +174,4 @@ toml.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant"]
+normal = ["rustok-rbac", "rustok-tenant", "password-hash"]

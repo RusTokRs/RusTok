@@ -16,3 +16,6 @@ rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 rustok-seo-admin-support.workspace = true
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["leptos-ui"]

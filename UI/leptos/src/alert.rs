@@ -10,7 +10,10 @@ use crate::types::AlertVariant;
 ///
 /// # Example
 /// ```rust
-/// view! {
+/// use leptos::prelude::*;
+/// use iu_leptos::{Alert, AlertVariant};
+///
+/// let _ = view! {
 ///     <Alert variant=AlertVariant::Warning>
 ///         "The Iggy module is not enabled."
 ///     </Alert>
@@ -18,7 +21,7 @@ use crate::types::AlertVariant;
 ///     <Alert variant=AlertVariant::Destructive title="Error".to_string()>
 ///         "Failed to save settings."
 ///     </Alert>
-/// }
+/// };
 /// ```
 #[component]
 pub fn Alert(
