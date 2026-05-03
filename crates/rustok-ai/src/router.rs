@@ -366,7 +366,7 @@ mod tests {
 
         let error = AiRouter::resolve(
             Some(&task),
-            &[denied.clone()],
+            std::slice::from_ref(&denied),
             Some(denied.id),
             None,
             &ExecutionOverride::default(),
@@ -391,7 +391,7 @@ mod tests {
 
         let resolved = AiRouter::resolve(
             None,
-            &[provider.clone()],
+            std::slice::from_ref(&provider),
             Some(provider.id),
             None,
             &ExecutionOverride {

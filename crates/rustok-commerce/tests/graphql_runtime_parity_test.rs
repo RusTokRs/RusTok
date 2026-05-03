@@ -380,15 +380,11 @@ fn build_schema(
     auth: Option<AuthContext>,
 ) -> CommerceSchema {
     let event_bus = mock_transactional_event_bus();
-    let mut builder = Schema::build(
-        CommerceQuery,
-        CommerceMutation,
-        EmptySubscription,
-    )
-    .data(db.clone())
-    .data(event_bus)
-    .data(tenant)
-    .data(request_context);
+    let mut builder = Schema::build(CommerceQuery, CommerceMutation, EmptySubscription)
+        .data(db.clone())
+        .data(event_bus)
+        .data(tenant)
+        .data(request_context);
 
     if let Some(auth) = auth {
         builder = builder.data(auth);
@@ -5723,7 +5719,8 @@ async fn storefront_graphql_active_price_lists_respect_scope_update_boundary() {
             .as_array()
             .expect("request-scoped lists should be an array")
             .iter()
-            .any(|item| item["id"] == price_list_id.to_string() && item["channelSlug"] == "web-store"),
+            .any(|item| item["id"] == price_list_id.to_string()
+                && item["channelSlug"] == "web-store"),
         "updated list should be visible in matching channel scope"
     );
     assert!(
