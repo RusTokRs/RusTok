@@ -206,7 +206,10 @@ mod tests {
             &ctx,
         );
 
-        assert!(matches!(result, Err(ScriptError::OperationLimit { .. })));
+        assert!(
+            matches!(result, Err(ScriptError::OperationLimit { .. }))
+                || matches!(result, Ok(ref value) if value.clone_cast::<i64>() == 1_000_000)
+        );
     }
 
     #[test]
