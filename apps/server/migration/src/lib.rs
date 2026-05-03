@@ -119,7 +119,7 @@ impl MigratorTrait for Migrator {
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
         ));
-        all.sort_by(|a, b| a.name().cmp(&b.name()));
+        all.sort_by(|a, b| a.name().cmp(b.name()));
         sort_migrations_by_dependencies(&mut all);
         all
     }
@@ -146,7 +146,7 @@ fn sort_migrations_by_dependencies(
             let deps_satisfied = migration_dependencies(&name).iter().all(|dependency| {
                 sorted
                     .iter()
-                    .any(|migration: &Box<dyn sea_orm_migration::MigrationTrait>| {
+                    .any(|migration: &dyn sea_orm_migration::MigrationTrait| {
                         migration.name() == *dependency
                     })
             });

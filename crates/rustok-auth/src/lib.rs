@@ -12,7 +12,7 @@ pub use jwt::{
     decode_access_token, decode_email_verification_token, decode_invite_token,
     decode_password_reset_token, encode_access_token, encode_email_verification_token,
     encode_oauth_access_token, encode_password_reset_token, Claims, EmailVerificationClaims,
-    InviteClaims, PasswordResetClaims,
+    InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
 };
 
 use async_trait::async_trait;

@@ -1,5 +1,6 @@
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_remote_validation_runner_once(
     registry_url: &str,
     runner_id: &str,
