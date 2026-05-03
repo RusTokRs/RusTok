@@ -609,9 +609,11 @@ mod tests {
 
     #[test]
     fn preview_bulk_action_never_requests_publish() {
-        let mut form = SeoBulkActionForm::default();
-        form.apply_mode = SeoBulkApplyMode::PreviewOnly;
-        form.publish_after_write = true;
+        let form = SeoBulkActionForm {
+            apply_mode: SeoBulkApplyMode::PreviewOnly,
+            publish_after_write: true,
+            ..SeoBulkActionForm::default()
+        };
         let filter = SeoBulkFilterForm::new(Some("en"))
             .build_input()
             .expect("filter input");

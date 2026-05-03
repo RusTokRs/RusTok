@@ -742,6 +742,7 @@ async fn clear_browser_session_handler(
         .into_response()
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn validate_authorize_request(
     ctx: &AppContext,
     tenant_id: Uuid,

@@ -736,7 +736,7 @@ mod tests {
             tenant_id: Set(tenant_id),
             module_slug: Set(MODULE_SLUG.to_string()),
             enabled: Set(enabled),
-            settings: Set(settings.into()),
+            settings: Set(settings),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -864,9 +864,8 @@ mod tests {
             .await
             .expect("load tenant module row")
             .expect("seo module row");
-        let persisted_settings =
-            serde_json::from_value::<SeoModuleSettings>(persisted.settings.into())
-                .expect("deserialize persisted settings");
+        let persisted_settings = serde_json::from_value::<SeoModuleSettings>(persisted.settings)
+            .expect("deserialize persisted settings");
 
         assert_eq!(persisted_settings.default_robots, vec!["index", "follow"]);
         assert!(!persisted_settings.sitemap_enabled);

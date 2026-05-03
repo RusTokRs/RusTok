@@ -37,7 +37,7 @@ pub struct RustokSettings {
     pub storage: StorageConfig,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RegistrySettings {
     #[serde(default)]
     pub validation_runner: RegistryValidationRunnerSettings,
@@ -45,7 +45,7 @@ pub struct RegistrySettings {
     pub remote_executor: RegistryRemoteExecutorSettings,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RegistryValidationRunnerSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -134,21 +134,6 @@ impl Default for EmailSettings {
             from: default_email_from(),
             reset_base_url: default_reset_base_url(),
         }
-    }
-}
-
-impl Default for RegistrySettings {
-    fn default() -> Self {
-        Self {
-            validation_runner: RegistryValidationRunnerSettings::default(),
-            remote_executor: RegistryRemoteExecutorSettings::default(),
-        }
-    }
-}
-
-impl Default for RegistryValidationRunnerSettings {
-    fn default() -> Self {
-        Self { enabled: false }
     }
 }
 

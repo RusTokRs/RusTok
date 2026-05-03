@@ -192,7 +192,7 @@ pub fn SearchView() -> impl IntoView {
                             Ok(presets) if !presets.is_empty() => view! {
                                 <PresetChips presets selected_preset set_selected_preset query=search_input.get() />
                             }.into_any(),
-                            Ok(_) => view! { <></> }.into_any(),
+                            Ok(_) => ().into_any(),
                             Err(err) => view! { <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("{}: {err}", load_presets_error.clone())}</div> }.into_any(),
                         })}
                     </Suspense>
@@ -210,7 +210,6 @@ pub fn SearchView() -> impl IntoView {
                     }
                 }>
                     {move || {
-                        let suggestions = suggestions.clone();
                         let suggestions_empty_label = suggestions_empty_label.clone();
                         let load_suggestions_error = load_suggestions_error.clone();
                         Suspend::new(async move {
@@ -245,7 +244,6 @@ pub fn SearchView() -> impl IntoView {
                     </div>
                 }>
                     {move || {
-                        let results = results.clone();
                         let query = query_for_view.clone();
                         let preset_key = preset_for_view.clone();
                         let empty_results_title = empty_results_title.clone();
@@ -690,7 +688,7 @@ fn navigate_to_search_query(query: &str, preset_key: Option<String>) {
     };
 
     if query.trim().is_empty() {
-        let _ = url.search_params().delete("q");
+        url.search_params().delete("q");
     } else {
         url.search_params().set("q", query.trim());
     }
@@ -702,7 +700,7 @@ fn navigate_to_search_query(query: &str, preset_key: Option<String>) {
     {
         Some(value) => url.search_params().set("preset", value),
         None => {
-            let _ = url.search_params().delete("preset");
+            url.search_params().delete("preset");
         }
     }
 

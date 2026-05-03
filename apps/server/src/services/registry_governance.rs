@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
+
 use anyhow::{anyhow, Context};
 use chrono::{Duration, Utc};
 use rustok_core::{

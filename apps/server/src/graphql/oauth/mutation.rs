@@ -246,8 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn revoke_app_consent_requires_auth_context() {
-        let schema =
-            Schema::build(TestQueryRoot, OAuthMutation::default(), EmptySubscription).finish();
+        let schema = Schema::build(TestQueryRoot, OAuthMutation, EmptySubscription).finish();
 
         let response = schema
             .execute(Request::new(
@@ -261,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn revoke_app_consent_with_auth_context_is_not_unauthenticated() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        let schema = Schema::build(TestQueryRoot, OAuthMutation::default(), EmptySubscription)
+        let schema = Schema::build(TestQueryRoot, OAuthMutation, EmptySubscription)
             .data(db)
             .finish();
 

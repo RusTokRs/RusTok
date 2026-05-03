@@ -942,7 +942,6 @@ fn read_secret_file(path: &str, label: &str) -> Result<String> {
 fn read_dotenv_secret(reference_key: &str, label: &str) -> Result<String> {
     let (path, key) = reference_key
         .split_once('#')
-        .map(|(path, key)| (path, key))
         .unwrap_or((".env", reference_key));
     if path.trim().is_empty() || key.trim().is_empty() {
         bail!("{label} dotenv secret ref must use `dotenv:<path>#<KEY>` or `dotenv:<KEY>`");

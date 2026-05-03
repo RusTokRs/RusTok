@@ -351,7 +351,7 @@ impl OAuthAppService {
         // Generate random 43 character code
         let random_bytes: [u8; 32] = rand::random();
         use base64::{engine::general_purpose, Engine as _};
-        let code = general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes);
+        let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
 
         // Hash it for DB storage
         use sha2::{Digest, Sha256};
@@ -899,6 +899,7 @@ async fn upsert_embedded_app(
 }
 
 /// Upsert a first-party app (creates credentials on first creation)
+#[allow(clippy::too_many_arguments)]
 async fn upsert_first_party_app(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -1730,7 +1731,7 @@ mod tests {
     fn rfc8414_metadata_matches_implementation() {
         // Verify our metadata matches what we actually implement
         let response_types = vec!["code"];
-        let grant_types = vec!["authorization_code", "client_credentials", "refresh_token"];
+        let grant_types = ["authorization_code", "client_credentials", "refresh_token"];
         let code_challenge_methods = vec!["S256"];
         let auth_methods = vec!["client_secret_post"];
 
@@ -1827,7 +1828,7 @@ mod tests {
         // Our auth code uses URL-safe base64 without padding
         use base64::{engine::general_purpose, Engine as _};
         let random_bytes: Vec<u8> = (0..32).map(|i| i as u8).collect();
-        let code = general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes);
+        let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
 
         assert!(!code.contains('='), "Base64URL MUST NOT contain padding");
         assert!(!code.contains('+'), "Base64URL MUST NOT contain '+'");

@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
@@ -654,7 +656,7 @@ mod tests {
             tenant_id: Set(tenant_id),
             module_slug: Set("seo".to_string()),
             enabled: Set(true),
-            settings: Set(serde_json::json!({}).into()),
+            settings: Set(serde_json::json!({})),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }

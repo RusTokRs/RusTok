@@ -96,7 +96,7 @@ impl ProductFieldService {
             });
         }
 
-        let next_position = input.position.unwrap_or_else(|| count as i32);
+        let next_position = input.position.unwrap_or(count as i32);
 
         let field_type_str = serde_json::to_value(input.field_type)
             .ok()

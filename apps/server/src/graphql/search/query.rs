@@ -866,13 +866,8 @@ async fn record_search_query_log(
     took_ms: u64,
     status: &str,
 ) -> Option<i64> {
-    let Some(tenant_id) = search_query.tenant_id else {
-        return None;
-    };
-
-    let Some(engine_kind) = rustok_search::SearchEngineKind::try_from_str(engine) else {
-        return None;
-    };
+    let tenant_id = search_query.tenant_id?;
+    let engine_kind = rustok_search::SearchEngineKind::try_from_str(engine)?;
 
     let record = SearchQueryLogRecord {
         tenant_id,

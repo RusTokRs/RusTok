@@ -212,10 +212,8 @@ impl SearchMutationRoot {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let target_tenant_id = Some(resolve_tenant_scope(
-            tenant,
-            parse_optional_uuid(input.tenant_id.as_deref())?,
-        )?);
+        let target_tenant_id =
+            resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
         let active_engine = parse_requested_engine(&input.active_engine, "active_engine")?;
         let fallback_engine = input
             .fallback_engine
@@ -230,7 +228,7 @@ impl SearchMutationRoot {
 
         let settings = SearchSettingsService::save(
             &app_ctx.db,
-            target_tenant_id,
+            Some(target_tenant_id),
             active_engine,
             fallback_engine,
             config,
@@ -241,7 +239,7 @@ impl SearchMutationRoot {
         let event_bus = transactional_event_bus_from_context(app_ctx);
         if let Err(error) = event_bus
             .publish(
-                target_tenant_id.unwrap_or(tenant.id),
+                target_tenant_id,
                 Some(auth.user_id),
                 DomainEvent::SearchSettingsChanged {
                     active_engine: active_engine.as_str().to_string(),
@@ -253,7 +251,7 @@ impl SearchMutationRoot {
         {
             metrics::record_search_audit_event("update_settings", "publish_failed");
             tracing::warn!(
-                tenant_id = %target_tenant_id.unwrap_or(tenant.id),
+                tenant_id = %target_tenant_id,
                 actor = %auth.user_id,
                 %error,
                 "Failed to publish SearchSettingsChanged event; settings were saved"

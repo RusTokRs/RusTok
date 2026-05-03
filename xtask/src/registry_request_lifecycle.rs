@@ -37,6 +37,7 @@ pub(crate) fn validation_stage_via_registry_live(
     pretty_json(&response)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn publish_request_governance_via_registry(
     registry_url: &str,
     request_id: &str,

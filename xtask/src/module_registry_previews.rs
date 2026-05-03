@@ -10,7 +10,7 @@ pub(crate) fn load_module_publish_preview_for_slug(
         .modules
         .get(slug)
         .with_context(|| format!("Unknown module slug '{slug}'"))?;
-    build_module_publish_preview(&manifest_path, slug, &spec, &workspace_manifest)
+    build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)
 }
 
 pub(crate) fn build_module_yank_preview_for_slug(

@@ -979,6 +979,7 @@ impl RootQuery {
         Ok(modules)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn marketplace(
         &self,
         ctx: &Context<'_>,

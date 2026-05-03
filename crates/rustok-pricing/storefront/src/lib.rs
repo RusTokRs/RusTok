@@ -67,8 +67,8 @@ pub fn PricingView() -> impl IntoView {
             channel_slug,
             quantity,
         )| async move {
-            api::fetch_storefront_pricing(
-                handle,
+            api::fetch_storefront_pricing(api::StorefrontPricingQuery {
+                selected_handle: handle,
                 locale,
                 currency_code,
                 region_id,
@@ -76,7 +76,7 @@ pub fn PricingView() -> impl IntoView {
                 channel_id,
                 channel_slug,
                 quantity,
-            )
+            })
             .await
         },
     );
@@ -91,8 +91,7 @@ pub fn PricingView() -> impl IntoView {
             <div class="mt-8">
                 <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-3"><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
-                        let resource = resource.clone();
-                        let load_error = load_error.clone();
+                                                let load_error = load_error.clone();
                         Suspend::new(async move {
                             match resource.await {
                                 Ok(data) => view! { <PricingShowcase data /> }.into_any(),
@@ -271,25 +270,20 @@ fn ResolutionSelector(
     let current_price_list_id = resolution_context.price_list_id.clone();
     let current_channel_id = resolution_context.channel_id.clone();
     let current_channel_slug = resolution_context.channel_slug.clone();
-    let base_price_list_href = build_pricing_route_href(
-        module_route_base.as_str(),
-        selected_handle.as_deref(),
-        Some(resolution_context.currency_code.as_str()),
-        resolution_context.region_id.as_deref(),
-        None,
-        resolution_context.channel_id.as_deref(),
-        resolution_context.channel_slug.as_deref(),
-        Some(resolution_context.quantity),
-    );
+    let base_params = PricingRouteParams {
+        selected_handle: selected_handle.as_deref(),
+        currency_code: Some(resolution_context.currency_code.as_str()),
+        region_id: resolution_context.region_id.as_deref(),
+        quantity: Some(resolution_context.quantity),
+        ..PricingRouteParams::default()
+    };
+    let base_price_list_href = build_pricing_route_href(module_route_base.as_str(), base_params);
     let global_channel_href = build_pricing_route_href(
         module_route_base.as_str(),
-        selected_handle.as_deref(),
-        Some(resolution_context.currency_code.as_str()),
-        resolution_context.region_id.as_deref(),
-        resolution_context.price_list_id.as_deref(),
-        None,
-        None,
-        Some(resolution_context.quantity),
+        PricingRouteParams {
+            price_list_id: resolution_context.price_list_id.as_deref(),
+            ..base_params
+        },
     );
 
     view! {
@@ -313,16 +307,12 @@ fn ResolutionSelector(
                     {t(locale.as_deref(), "pricing.selected.basePriceListFallback", "base prices")}
                 </a>
                 {active_price_lists.into_iter().map(|option| {
-                    let href = build_pricing_route_href(
-                        module_route_base.as_str(),
-                        selected_handle.as_deref(),
-                        Some(resolution_context.currency_code.as_str()),
-                        resolution_context.region_id.as_deref(),
-                        Some(option.id.as_str()),
-                        resolution_context.channel_id.as_deref(),
-                        resolution_context.channel_slug.as_deref(),
-                        Some(resolution_context.quantity),
-                    );
+                    let href = build_pricing_route_href(module_route_base.as_str(), PricingRouteParams {
+                        price_list_id: Some(option.id.as_str()),
+                        channel_id: resolution_context.channel_id.as_deref(),
+                        channel_slug: resolution_context.channel_slug.as_deref(),
+                        ..base_params
+                    });
                     let is_active = current_price_list_id.as_deref() == Some(option.id.as_str());
                     let label = format_price_list_option_label(locale.as_deref(), &option);
                     view! {
@@ -353,16 +343,12 @@ fn ResolutionSelector(
                     {t(locale.as_deref(), "pricing.selected.globalChannelFallback", "global channel")}
                 </a>
                 {available_channels.into_iter().map(|option| {
-                    let href = build_pricing_route_href(
-                        module_route_base.as_str(),
-                        selected_handle.as_deref(),
-                        Some(resolution_context.currency_code.as_str()),
-                        resolution_context.region_id.as_deref(),
-                        resolution_context.price_list_id.as_deref(),
-                        Some(option.id.as_str()),
-                        Some(option.slug.as_str()),
-                        Some(resolution_context.quantity),
-                    );
+                    let href = build_pricing_route_href(module_route_base.as_str(), PricingRouteParams {
+                        price_list_id: resolution_context.price_list_id.as_deref(),
+                        channel_id: Some(option.id.as_str()),
+                        channel_slug: Some(option.slug.as_str()),
+                        ..base_params
+                    });
                     let is_active =
                         current_channel_id.as_deref() == Some(option.id.as_str())
                             || current_channel_slug.as_deref() == Some(option.slug.as_str());
@@ -409,16 +395,15 @@ fn PricingRail(items: Vec<PricingProductListItem>, total: u64) -> impl IntoView 
             <div class="space-y-3">
                 {items.into_iter().map(|product| {
                     let locale = locale.clone();
-                    let href = build_pricing_route_href(
-                        module_route_base.as_str(),
-                        Some(product.handle.as_str()),
-                        selected_currency_code.as_deref(),
-                        selected_region_id.as_deref(),
-                        selected_price_list_id.as_deref(),
-                        selected_channel_id.as_deref(),
-                        selected_channel_slug.as_deref(),
-                        selected_quantity,
-                    );
+                    let href = build_pricing_route_href(module_route_base.as_str(), PricingRouteParams {
+                        selected_handle: Some(product.handle.as_str()),
+                        currency_code: selected_currency_code.as_deref(),
+                        region_id: selected_region_id.as_deref(),
+                        price_list_id: selected_price_list_id.as_deref(),
+                        channel_id: selected_channel_id.as_deref(),
+                        channel_slug: selected_channel_slug.as_deref(),
+                        quantity: selected_quantity,
+                    });
                     let currencies = if product.currencies.is_empty() {
                         t(locale.as_deref(), "pricing.common.noCurrencies", "no currencies")
                     } else {
@@ -586,13 +571,10 @@ fn pricing_health_badge(variant: &PricingVariant) -> &'static str {
 
 fn format_price_list_option_label(locale: Option<&str>, option: &PricingPriceListOption) -> String {
     let mut label = format!(
-        "{} ({})",
+        "{} ({} {})",
         option.name,
-        format!(
-            "{} {}",
-            t(locale, "pricing.selected.priceListTypeLabel", "type"),
-            option.list_type
-        )
+        t(locale, "pricing.selected.priceListTypeLabel", "type"),
+        option.list_type
     );
     if option.rule_kind.as_deref() == Some("percentage_discount") {
         if let Some(adjustment_percent) = option.adjustment_percent.as_deref() {
@@ -777,56 +759,70 @@ fn selector_badge_class(active: bool) -> &'static str {
     }
 }
 
-fn build_pricing_route_href(
-    module_route_base: &str,
-    selected_handle: Option<&str>,
-    currency_code: Option<&str>,
-    region_id: Option<&str>,
-    price_list_id: Option<&str>,
-    channel_id: Option<&str>,
-    channel_slug: Option<&str>,
+#[derive(Clone, Copy, Default)]
+struct PricingRouteParams<'a> {
+    selected_handle: Option<&'a str>,
+    currency_code: Option<&'a str>,
+    region_id: Option<&'a str>,
+    price_list_id: Option<&'a str>,
+    channel_id: Option<&'a str>,
+    channel_slug: Option<&'a str>,
     quantity: Option<i32>,
-) -> String {
-    let mut params = Vec::new();
+}
 
-    if let Some(handle) = selected_handle
+fn build_pricing_route_href(module_route_base: &str, params: PricingRouteParams<'_>) -> String {
+    let mut query_params = Vec::new();
+
+    if let Some(handle) = params
+        .selected_handle
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        params.push(format!("handle={handle}"));
+        query_params.push(format!("handle={handle}"));
     }
-    if let Some(currency_code) = currency_code
+    if let Some(currency_code) = params
+        .currency_code
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        params.push(format!("currency={currency_code}"));
+        query_params.push(format!("currency={currency_code}"));
     }
-    if let Some(region_id) = region_id.map(str::trim).filter(|value| !value.is_empty()) {
-        params.push(format!("region_id={region_id}"));
-    }
-    if let Some(price_list_id) = price_list_id
+    if let Some(region_id) = params
+        .region_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        params.push(format!("price_list_id={price_list_id}"));
+        query_params.push(format!("region_id={region_id}"));
     }
-    if let Some(channel_id) = channel_id.map(str::trim).filter(|value| !value.is_empty()) {
-        params.push(format!("channel_id={channel_id}"));
-    }
-    if let Some(channel_slug) = channel_slug
+    if let Some(price_list_id) = params
+        .price_list_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        params.push(format!("channel_slug={channel_slug}"));
+        query_params.push(format!("price_list_id={price_list_id}"));
     }
-    if let Some(quantity) = quantity.filter(|value| *value > 0) {
-        params.push(format!("quantity={quantity}"));
+    if let Some(channel_id) = params
+        .channel_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        query_params.push(format!("channel_id={channel_id}"));
+    }
+    if let Some(channel_slug) = params
+        .channel_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        query_params.push(format!("channel_slug={channel_slug}"));
+    }
+    if let Some(quantity) = params.quantity.filter(|value| *value > 0) {
+        query_params.push(format!("quantity={quantity}"));
     }
 
-    if params.is_empty() {
+    if query_params.is_empty() {
         module_route_base.to_string()
     } else {
-        format!("{module_route_base}?{}", params.join("&"))
+        format!("{module_route_base}?{}", query_params.join("&"))
     }
 }
 

@@ -24,6 +24,7 @@ pub enum AppType {
 }
 
 impl AppType {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "embedded" => Self::Embedded,

@@ -99,33 +99,37 @@ pub fn encode_access_token(
 
 pub fn encode_oauth_access_token(
     config: &AuthConfig,
-    app_id: Uuid,
-    tenant_id: Uuid,
-    role: UserRole,
-    client_id: Uuid,
-    scopes: &[String],
-    grant_type: &str,
-    expires_in_secs: u64,
+    input: OauthAccessTokenInput<'_>,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(expires_in_secs as i64);
+    let exp = now + Duration::seconds(input.expires_in_secs as i64);
 
     let claims = Claims {
-        sub: app_id,
-        tenant_id,
-        role,
+        sub: input.app_id,
+        tenant_id: input.tenant_id,
+        role: input.role,
         session_id: Uuid::nil(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
         exp: exp.timestamp() as usize,
         iat: now.timestamp() as usize,
-        client_id: Some(client_id),
-        scopes: scopes.to_vec(),
-        grant_type: grant_type.to_string(),
+        client_id: Some(input.client_id),
+        scopes: input.scopes.to_vec(),
+        grant_type: input.grant_type.to_string(),
     };
 
     encode(&jwt_header(config), &claims, &encoding_key(config)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
+}
+
+pub struct OauthAccessTokenInput<'a> {
+    pub app_id: Uuid,
+    pub tenant_id: Uuid,
+    pub role: UserRole,
+    pub client_id: Uuid,
+    pub scopes: &'a [String],
+    pub grant_type: &'a str,
+    pub expires_in_secs: u64,
 }
 
 pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
@@ -545,13 +549,15 @@ xwIDAQAB
 
         let token = encode_oauth_access_token(
             &config,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            UserRole::Customer,
-            client_id,
-            &scopes,
-            "client_credentials",
-            3600,
+            OauthAccessTokenInput {
+                app_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                role: UserRole::Customer,
+                client_id,
+                scopes: &scopes,
+                grant_type: "client_credentials",
+                expires_in_secs: 3600,
+            },
         )
         .unwrap();
 
@@ -566,13 +572,15 @@ xwIDAQAB
         let config = test_config();
         let token = encode_oauth_access_token(
             &config,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            UserRole::Customer,
-            Uuid::new_v4(),
-            &["catalog:read".to_string()],
-            "client_credentials",
-            3600,
+            OauthAccessTokenInput {
+                app_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &["catalog:read".to_string()],
+                grant_type: "client_credentials",
+                expires_in_secs: 3600,
+            },
         )
         .unwrap();
 

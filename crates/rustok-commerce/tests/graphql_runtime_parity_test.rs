@@ -220,6 +220,7 @@ async fn seed_active_price_list(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn seed_active_price_list_with_window(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -379,15 +380,11 @@ fn build_schema(
     auth: Option<AuthContext>,
 ) -> CommerceSchema {
     let event_bus = mock_transactional_event_bus();
-    let mut builder = Schema::build(
-        CommerceQuery::default(),
-        CommerceMutation::default(),
-        EmptySubscription,
-    )
-    .data(db.clone())
-    .data(event_bus)
-    .data(tenant)
-    .data(request_context);
+    let mut builder = Schema::build(CommerceQuery, CommerceMutation, EmptySubscription)
+        .data(db.clone())
+        .data(event_bus)
+        .data(tenant)
+        .data(request_context);
 
     if let Some(auth) = auth {
         builder = builder.data(auth);
@@ -5601,7 +5598,7 @@ async fn storefront_graphql_pricing_helpers_respect_explicit_channel_override() 
         .as_array()
         .expect("request-scoped lists should be an array")
         .iter()
-        .find(|item| item["id"] == Value::from(global_list_id.to_string()))
+        .find(|item| item["id"] == global_list_id.to_string())
         .expect("global list should be present");
     assert_eq!(global_rule["adjustmentPercent"], Value::from("12.5"));
 }
@@ -5652,7 +5649,7 @@ async fn storefront_graphql_active_price_lists_clear_rule_metadata_without_stale
         .as_array()
         .expect("price lists should be an array")
         .iter()
-        .find(|item| item["id"] == Value::from(price_list_id.to_string()))
+        .find(|item| item["id"] == price_list_id.to_string())
         .expect("cleared price list should stay visible");
 
     assert_eq!(option["ruleKind"], Value::Null);
@@ -5722,8 +5719,8 @@ async fn storefront_graphql_active_price_lists_respect_scope_update_boundary() {
             .as_array()
             .expect("request-scoped lists should be an array")
             .iter()
-            .any(|item| item["id"] == Value::from(price_list_id.to_string())
-                && item["channelSlug"] == Value::from("web-store")),
+            .any(|item| item["id"] == price_list_id.to_string()
+                && item["channelSlug"] == "web-store"),
         "updated list should be visible in matching channel scope"
     );
     assert!(
@@ -5731,7 +5728,7 @@ async fn storefront_graphql_active_price_lists_respect_scope_update_boundary() {
             .as_array()
             .expect("mobile lists should be an array")
             .iter()
-            .any(|item| item["id"] == Value::from(price_list_id.to_string())),
+            .any(|item| item["id"] == price_list_id.to_string()),
         "updated list should not leak into a different channel scope"
     );
 }
@@ -6042,9 +6039,9 @@ async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_cha
         .as_array()
         .expect("prices should be an array");
     assert!(prices.iter().any(|item| {
-        item["channelId"] == Value::from(channel_id.to_string())
-            && item["channelSlug"] == Value::from("web-store")
-            && item["amount"] == Value::from("15.99")
+        item["channelId"] == channel_id.to_string()
+            && item["channelSlug"] == "web-store"
+            && item["amount"] == "15.99"
     }));
 
     assert_eq!(

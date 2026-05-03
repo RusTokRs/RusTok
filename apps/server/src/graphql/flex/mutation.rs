@@ -493,17 +493,13 @@ mod tests {
         tenant: TenantContext,
         auth: AuthContext,
     ) -> FlexTestSchema {
-        Schema::build(
-            FlexQuery::default(),
-            FlexMutation::default(),
-            EmptySubscription,
-        )
-        .data(app_ctx)
-        .data(tenant)
-        .data(auth)
-        .data(build_field_def_registry())
-        .data(FieldDefinitionCache::new())
-        .finish()
+        Schema::build(FlexQuery, FlexMutation, EmptySubscription)
+            .data(app_ctx)
+            .data(tenant)
+            .data(auth)
+            .data(build_field_def_registry())
+            .data(FieldDefinitionCache::new())
+            .finish()
     }
 
     async fn setup_flex_graphql_test_db() -> DatabaseConnection {

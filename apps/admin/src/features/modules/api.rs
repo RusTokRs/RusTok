@@ -1253,7 +1253,7 @@ fn load_runtime_marketplace_modules(
     registry: &rustok_core::ModuleRegistry,
     manifest: &RuntimeModulesManifest,
 ) -> Result<Vec<MarketplaceModule>, ServerFnError> {
-    let module_roots = runtime_module_roots(&manifest)?;
+    let module_roots = runtime_module_roots(manifest)?;
     let mut installed_by_slug = manifest.modules.clone();
     let mut modules = Vec::new();
 
@@ -1451,7 +1451,7 @@ fn load_runtime_module_package_manifest_by_slug(
     module_slug: &str,
     manifest: &RuntimeModulesManifest,
 ) -> Result<Option<RuntimeModulePackageManifest>, ServerFnError> {
-    for module_root in runtime_module_roots(&manifest)? {
+    for module_root in runtime_module_roots(manifest)? {
         let package_manifest: RuntimeModulePackageManifest =
             load_toml_file(&module_root.join("rustok-module.toml"))?;
         if package_manifest.module.slug == module_slug {
@@ -1467,7 +1467,7 @@ fn load_runtime_module_descriptor_by_slug(
     module_slug: &str,
     manifest: &RuntimeModulesManifest,
 ) -> Result<Option<RuntimeModuleDescriptor>, ServerFnError> {
-    for module_root in runtime_module_roots(&manifest)? {
+    for module_root in runtime_module_roots(manifest)? {
         let package_manifest: RuntimeModulePackageManifest =
             load_toml_file(&module_root.join("rustok-module.toml"))?;
         if package_manifest.module.slug == module_slug {
