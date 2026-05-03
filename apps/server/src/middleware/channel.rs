@@ -104,7 +104,7 @@ pub async fn resolve(
         req.headers(),
         req.uri().query(),
         peer_ip_from_extensions(req.extensions()),
-        &settings,
+        settings,
     );
     let cache = channel_cache(&ctx);
     let cache_key = ChannelCacheKey {

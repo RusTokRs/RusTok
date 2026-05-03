@@ -1111,11 +1111,7 @@ fn qualify_module_type_path(crate_name: &str, value: Option<&str>) -> Option<Str
 
     let crate_ident = crate_name.replace('-', "_");
     let relative = value.strip_prefix("crate::").unwrap_or(value);
-    if relative.contains("::") {
-        Some(format!("{crate_ident}::{relative}"))
-    } else {
-        Some(format!("{crate_ident}::{relative}"))
-    }
+    Some(format!("{crate_ident}::{relative}"))
 }
 
 fn qualify_module_member_path(crate_name: &str, value: Option<&str>) -> Option<String> {
@@ -3011,12 +3007,12 @@ impl ManifestManager {
             .list()
             .into_iter()
             .filter_map(|module| {
-                manifest.modules.get(module.slug()).and_then(|spec| {
-                    Some((
+                manifest.modules.get(module.slug()).map(|spec| {
+                    (
                         module.slug(),
                         spec.required,
                         registry.is_core(module.slug()),
-                    ))
+                    )
                 })
             })
             .filter_map(|(slug, required, is_core)| {

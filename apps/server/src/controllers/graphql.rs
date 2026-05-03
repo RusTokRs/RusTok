@@ -25,6 +25,7 @@ use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::graphql::AppSchema;
 use rustok_core::ModuleRegistry;
 
+#[allow(clippy::too_many_arguments)]
 async fn graphql_handler(
     State(ctx): State<AppContext>,
     Extension(registry): Extension<ModuleRegistry>,
@@ -161,7 +162,7 @@ async fn handle_graphql_ws(
             WsMessage::Text(text) => sink.send(Message::Text(text.into())).await,
             WsMessage::Close(code, reason) => {
                 sink.send(Message::Close(Some(CloseFrame {
-                    code: code.into(),
+                    code,
                     reason: reason.into(),
                 })))
                 .await

@@ -301,6 +301,7 @@ async fn request_build_for_manifest(
     Ok(BuildJob::from_model(&build))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn persist_manifest_and_request_build(
     app_ctx: &loco_rs::app::AppContext,
     tenant_id: Uuid,

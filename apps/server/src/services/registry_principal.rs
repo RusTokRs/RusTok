@@ -108,7 +108,7 @@ impl RegistryPrincipalRef {
     }
 
     pub fn to_json_value(&self) -> serde_json::Value {
-        serde_json::to_value(self).unwrap_or_else(|_| serde_json::Value::Null)
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }
 

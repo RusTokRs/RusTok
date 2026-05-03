@@ -374,7 +374,7 @@ mod tests {
             tenant_id: Set(tenant_id),
             module_slug: Set("seo".to_string()),
             enabled: Set(true),
-            settings: Set(settings.into()),
+            settings: Set(settings),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }

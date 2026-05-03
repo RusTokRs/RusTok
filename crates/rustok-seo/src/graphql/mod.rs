@@ -520,7 +520,7 @@ mod tests {
             tenant_id: Set(tenant_id),
             module_slug: Set("seo".to_string()),
             enabled: Set(true),
-            settings: Set(settings.into()),
+            settings: Set(settings),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -629,7 +629,7 @@ mod tests {
         .expect("service seo page context should resolve")
         .expect("redirect route should resolve");
 
-        let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
+        let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus())
             .data(runtime_extensions)
@@ -735,7 +735,7 @@ mod tests {
         .await
         .expect("service sitemap status should resolve");
 
-        let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
+        let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus())
             .data(runtime_extensions)
@@ -805,7 +805,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         insert_enabled_seo_module(&db, tenant_id, json!({})).await;
 
-        let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
+        let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
             .data(db)
             .data(event_bus())
             .data(test_runtime_extensions())
@@ -914,7 +914,7 @@ mod tests {
             .expect("restricted forum topic should be created");
 
         let runtime_extensions = test_runtime_extensions();
-        let schema = Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
+        let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus.clone())
             .data(runtime_extensions.clone())
@@ -952,14 +952,13 @@ mod tests {
         assert_eq!(data["seoPageContext"]["route"]["targetKind"], "forum_topic");
         assert_eq!(data["seoPageContext"]["document"]["title"], "Mobile launch");
 
-        let no_channel_schema =
-            Schema::build(SeoQuery::default(), EmptyMutation, EmptySubscription)
-                .data(db.clone())
-                .data(event_bus)
-                .data(runtime_extensions)
-                .data(tenant)
-                .data(request_context(tenant_id, "en", None))
-                .finish();
+        let no_channel_schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
+            .data(db.clone())
+            .data(event_bus)
+            .data(runtime_extensions)
+            .data(tenant)
+            .data(request_context(tenant_id, "en", None))
+            .finish();
 
         let no_channel = no_channel_schema
             .execute(Request::new(format!(

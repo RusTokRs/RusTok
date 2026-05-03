@@ -186,8 +186,7 @@ mod tests {
 
     #[tokio::test]
     async fn my_authorized_apps_requires_auth_context() {
-        let schema =
-            Schema::build(OAuthQuery::default(), EmptyMutation, EmptySubscription).finish();
+        let schema = Schema::build(OAuthQuery, EmptyMutation, EmptySubscription).finish();
 
         let response = schema
             .execute(Request::new("{ myAuthorizedApps { scopes } }"))
@@ -199,7 +198,7 @@ mod tests {
     #[tokio::test]
     async fn my_authorized_apps_with_auth_context_is_not_unauthenticated() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        let schema = Schema::build(OAuthQuery::default(), EmptyMutation, EmptySubscription)
+        let schema = Schema::build(OAuthQuery, EmptyMutation, EmptySubscription)
             .data(db)
             .finish();
 
