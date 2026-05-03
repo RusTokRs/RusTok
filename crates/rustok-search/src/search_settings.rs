@@ -143,7 +143,7 @@ mod tests {
             tenant_id: None,
             active_engine: "bogus".to_string(),
             fallback_engine: "postgres".to_string(),
-            config: Json::from(serde_json::json!({})),
+            config: serde_json::json!({}),
             updated_at: chrono::Utc::now().into(),
         };
 

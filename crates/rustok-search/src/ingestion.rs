@@ -1,3 +1,5 @@
+#![allow(clippy::items_after_test_module)]
+
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
