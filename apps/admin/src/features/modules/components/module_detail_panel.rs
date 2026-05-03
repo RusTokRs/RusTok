@@ -1,3 +1,12 @@
+#![allow(
+    clippy::clone_on_copy,
+    clippy::if_same_then_else,
+    clippy::needless_return,
+    clippy::redundant_locals,
+    clippy::too_many_arguments,
+    clippy::useless_format
+)]
+
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;

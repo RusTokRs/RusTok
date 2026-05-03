@@ -197,13 +197,7 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
                                                     <Show when=move || sidebar_open.get()>
                                                         <NavGroupLabel label=label.clone() />
                                                     </Show>
-                                                    <div class=move || {
-                                                        if sidebar_open.get() {
-                                                            "space-y-1"
-                                                        } else {
-                                                            "space-y-1"
-                                                        }
-                                                    }>
+                                                    <div class="space-y-1">
                                                         {group.items
                                                             .into_iter()
                                                             .map(|item| {

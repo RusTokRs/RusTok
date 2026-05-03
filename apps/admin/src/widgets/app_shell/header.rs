@@ -529,7 +529,6 @@ fn HeaderGlobalSearch() -> impl IntoView {
                                 .into_iter()
                                 .map(move |item| {
                                     let href = resolve_admin_href(&item, query.get_untracked().as_str());
-                                    let navigate_to_result = navigate_to_result.clone();
                                     let on_select = Callback::new({
                                         let href = href.clone();
                                         move |_| navigate_to_result.run(href.clone())

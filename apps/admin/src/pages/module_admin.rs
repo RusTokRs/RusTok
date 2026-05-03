@@ -122,7 +122,7 @@ fn ModulePageSecondaryNav(
     active_subpath: Option<String>,
 ) -> impl IntoView {
     if page.child_pages.is_empty() {
-        return view! { <></> }.into_any();
+        return ().into_any();
     }
 
     let route_segment = page.route_segment;
