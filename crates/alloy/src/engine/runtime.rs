@@ -27,7 +27,6 @@ impl ScriptEngine {
         engine.set_allow_looping(true);
         engine.set_allow_shadowing(true);
         engine.set_strict_variables(true);
-        engine.set_max_operations(config.max_operations);
 
         Self {
             engine,
