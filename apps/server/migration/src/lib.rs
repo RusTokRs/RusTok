@@ -135,7 +135,8 @@ fn migration_dependencies(name: &str) -> &'static [&'static str] {
 fn sort_migrations_by_dependencies(
     migrations: &mut Vec<Box<dyn sea_orm_migration::MigrationTrait>>,
 ) {
-    let mut sorted = Vec::with_capacity(migrations.len());
+    let mut sorted: Vec<Box<dyn sea_orm_migration::MigrationTrait>> =
+        Vec::with_capacity(migrations.len());
     let mut remaining = std::mem::take(migrations);
 
     while !remaining.is_empty() {
@@ -146,9 +147,7 @@ fn sort_migrations_by_dependencies(
             let deps_satisfied = migration_dependencies(&name).iter().all(|dependency| {
                 sorted
                     .iter()
-                    .any(|migration: &dyn sea_orm_migration::MigrationTrait| {
-                        migration.name() == *dependency
-                    })
+                    .any(|migration| migration.name() == *dependency)
             });
             if deps_satisfied {
                 sorted.push(remaining.remove(index));
