@@ -27,6 +27,7 @@ use crate::services::build_service::BuildEvent;
 /// JSON message sent over the WebSocket for every build event.
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::enum_variant_names)]
 enum WsBuildMessage {
     BuildRequested {
         build_id: Uuid,

@@ -1,4 +1,5 @@
 //! GraphQL module for Flex — custom field definitions (Phase 2).
+#![allow(clippy::items_after_test_module)]
 
 use async_graphql::{Context, FieldError, Result};
 use rustok_core::field_schema::is_valid_field_key;

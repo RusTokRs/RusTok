@@ -106,6 +106,7 @@ pub fn encode_access_token(
     rustok_auth::encode_access_token(config, user_id, tenant_id, role, session_id).map_err(auth_err)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn encode_oauth_access_token(
     config: &AuthConfig,
     app_id: uuid::Uuid,
