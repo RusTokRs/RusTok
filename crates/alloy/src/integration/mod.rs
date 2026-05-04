@@ -169,10 +169,10 @@ mod tests {
         let mut validation_script = Script::new(
             "validate_deal",
             r#"
-                if entity["amount"] < 100 {
+                if entity["amount"] < 100.0 {
                     abort("Minimum deal amount is 100");
                 }
-                if entity["amount"] > 100000 {
+                if entity["amount"] > 100000.0 {
                     entity["status"] = "needs_approval";
                     entity["assigned_to"] = "senior_manager";
                 }
