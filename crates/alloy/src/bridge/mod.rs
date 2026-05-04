@@ -50,14 +50,12 @@ impl Bridge {
         engine.register_fn("validate_min_length", |value: &str, min: i32| -> bool {
             value.len() as i32 >= min
         });
-
         engine.register_fn("validate_max_length", |value: &str, max: i64| -> bool {
             value.len() as i64 <= max
         });
         engine.register_fn("validate_max_length", |value: &str, max: i32| -> bool {
             value.len() as i32 <= max
         });
-
         engine.register_fn("validate_range", |value: i64, min: i64, max: i64| -> bool {
             value >= min && value <= max
         });
