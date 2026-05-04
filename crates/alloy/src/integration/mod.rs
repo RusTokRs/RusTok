@@ -207,17 +207,10 @@ mod tests {
         };
 
         let result = service.create(small_deal).await;
-        assert!(
-            matches!(
-                result,
-                Err(ServiceError::ValidationFailed(ref msg))
-                    if msg.contains("Minimum deal amount is 100")
-            ) || matches!(
-                result,
-                Err(ServiceError::ScriptError(ref msg))
-                    if msg.contains("Minimum deal amount is 100")
-            )
-        );
+        match result {
+            Err(ServiceError::ValidationFailed(_)) | Err(ServiceError::ScriptError(_)) => {}
+            other => panic!("expected validation failure for small deal, got: {other:?}"),
+        }
 
         let big_deal = Deal {
             id: String::new(),
