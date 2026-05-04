@@ -214,7 +214,7 @@ mod tests {
 
         assert!(
             matches!(result, Err(ScriptError::OperationLimit { .. }))
-                || matches!(result, Ok(ref value) if value.clone_cast::<i64>() == 1_000_000)
+                || matches!(result, Ok(ref value) if value.as_int().ok() == Some(1_000_000))
         );
     }
 

@@ -169,12 +169,12 @@ mod tests {
         let mut validation_script = Script::new(
             "validate_deal",
             r#"
-                if entity["amount"] < 100.0 {
+                if entity.amount < 100.0 {
                     abort("Minimum deal amount is 100");
                 }
-                if entity["amount"] > 100000.0 {
-                    entity["status"] = "needs_approval";
-                    entity["assigned_to"] = "senior_manager";
+                if entity.amount > 100000.0 {
+                    entity.status = "needs_approval";
+                    entity.assigned_to = "senior_manager";
                 }
             "#,
             ScriptTrigger::Event {
@@ -207,7 +207,15 @@ mod tests {
         };
 
         let result = service.create(small_deal).await;
-        assert!(result.is_err(), "small deal should be rejected: {result:?}");
+        assert!(matches!(
+            result,
+            Err(ServiceError::ValidationFailed(ref msg))
+                if msg.contains("Minimum deal amount is 100")
+        ) || matches!(
+            result,
+            Err(ServiceError::ScriptError(ref msg))
+                if msg.contains("Minimum deal amount is 100")
+        ));
 
         let big_deal = Deal {
             id: String::new(),
