@@ -35,10 +35,17 @@ impl<T> QueryResult<T> {
 /// Hook для выполнения GraphQL query с reactive state
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
+/// use leptos::prelude::Get;
 /// use leptos_graphql::use_query;
+/// use serde_json::{json, Value};
 ///
-/// let result = use_query(
+/// const USERS_QUERY: &str = "query Users($limit: Int!) { users(limit: $limit) { id email } }";
+///
+/// let token = "demo-token".to_string();
+/// let tenant = "demo-tenant".to_string();
+///
+/// let result = use_query::<Value, Value>(
 ///     "/api/graphql".to_string(),
 ///     USERS_QUERY.to_string(),
 ///     Some(json!({ "limit": 10 })),
@@ -46,16 +53,7 @@ impl<T> QueryResult<T> {
 ///     Some(tenant),
 /// );
 ///
-/// view! {
-///     <Show when=move || result.loading.get()>
-///         "Loading..."
-///     </Show>
-///     <Show when=move || result.data.get().is_some()>
-///         {move || result.data.get().map(|data| view! {
-///             // render data
-///         })}
-///     </Show>
-/// }
+/// let _is_loading = result.loading.get();
 /// ```
 pub fn use_query<V, T>(
     endpoint: String,
@@ -130,33 +128,29 @@ impl<T> MutationResult<T> {
 /// Hook для выполнения GraphQL mutation
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
 /// use leptos_graphql::use_mutation;
+/// use serde_json::{json, Value};
 ///
-/// let create_user = use_mutation(
+/// const CREATE_USER_MUTATION: &str =
+///     "mutation CreateUser($input: CreateUserInput!) { createUser(input: $input) { id } }";
+///
+/// let token = "demo-token".to_string();
+/// let tenant = "demo-tenant".to_string();
+///
+/// let create_user = use_mutation::<Value>(
 ///     "/api/graphql".to_string(),
 ///     CREATE_USER_MUTATION.to_string(),
 ///     Some(token),
 ///     Some(tenant),
 /// );
 ///
-/// let on_submit = move |_| {
-///     create_user.mutate(json!({
-///         "input": {
-///             "email": email.get(),
-///             "name": name.get(),
-///         }
-///     }));
-/// };
-///
-/// view! {
-///     <button
-///         on:click=on_submit
-///         disabled=create_user.loading.get()
-///     >
-///         "Create User"
-///     </button>
-/// }
+/// create_user.mutate(json!({
+///     "input": {
+///         "email": "user@example.com",
+///         "name": "Demo User"
+///     }
+/// }));
 /// ```
 pub fn use_mutation<T>(
     endpoint: String,
