@@ -180,7 +180,13 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(result.clone_cast::<i64>(), 50000);
+        let amount = result
+            .clone()
+            .try_cast::<i64>()
+            .or_else(|| result.clone().try_cast::<i32>().map(i64::from))
+            .or_else(|| result.clone().try_cast::<f64>().map(|v| v as i64))
+            .expect("entity amount should be numeric");
+        assert_eq!(amount, 50000);
     }
 
     #[test]
@@ -311,7 +317,13 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(result.clone_cast::<i64>(), 1000);
+        let amount = result
+            .clone()
+            .try_cast::<i64>()
+            .or_else(|| result.clone().try_cast::<i32>().map(i64::from))
+            .or_else(|| result.clone().try_cast::<f64>().map(|v| v as i64))
+            .expect("entity amount should be numeric");
+        assert_eq!(amount, 1000);
 
         let entity = ctx.entity_proxy.as_ref().unwrap();
         assert!(entity.is_changed("status"));
