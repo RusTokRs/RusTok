@@ -173,7 +173,7 @@ mod tests {
                     abort("Minimum deal amount is 100");
                 }
                 if entity.amount > 100000.0 {
-                    entity.status = "needs_approval";
+                    entity["status"] = "needs_approval";
                     entity["assigned_to"] = "senior_manager";
                 }
             "#,
