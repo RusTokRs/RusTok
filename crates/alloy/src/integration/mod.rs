@@ -174,7 +174,7 @@ mod tests {
                 }
                 if entity.amount > 100000.0 {
                     entity.status = "needs_approval";
-                    entity.assigned_to = "senior_manager";
+                    entity["assigned_to"] = "senior_manager";
                 }
             "#,
             ScriptTrigger::Event {
