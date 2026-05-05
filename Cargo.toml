@@ -59,7 +59,7 @@ repository = "https://github.com/RusTokRs/RusTok"
 loco-rs = "0.16"
 
 # Async Runtime
-tokio = { version = "1.50", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 
 # Web
 axum = { version = "0.8.9", features = ["ws"] }
@@ -151,7 +151,7 @@ opentelemetry-otlp = "0.31"
 tracing-opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 rust_decimal = "1.41"
-utoipa = "5.4"
+utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
 rhai = "1.24"
