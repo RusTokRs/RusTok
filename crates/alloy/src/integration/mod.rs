@@ -162,17 +162,17 @@ mod tests {
     #[tokio::test]
     async fn test_deal_creation_with_scripts() {
         let mut engine = create_default_engine();
-        engine.register_fn("is_below", |value: Dynamic, threshold: i64| -> bool {
-            value
-                .clone()
-                .try_cast::<i64>()
-                .is_some_and(|amount| amount < threshold)
+        engine.register_fn("is_below", |amount: i64, threshold: i64| -> bool {
+            amount < threshold
         });
-        engine.register_fn("is_above", |value: Dynamic, threshold: i64| -> bool {
-            value
-                .clone()
-                .try_cast::<i64>()
-                .is_some_and(|amount| amount > threshold)
+        engine.register_fn("is_below", |amount: i64, threshold: i32| -> bool {
+            amount < i64::from(threshold)
+        });
+        engine.register_fn("is_above", |amount: i64, threshold: i64| -> bool {
+            amount > threshold
+        });
+        engine.register_fn("is_above", |amount: i64, threshold: i32| -> bool {
+            amount > i64::from(threshold)
         });
         let engine = Arc::new(engine);
         let storage = Arc::new(InMemoryStorage::new());
