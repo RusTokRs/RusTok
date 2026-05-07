@@ -81,9 +81,9 @@ impl OtelConfig {
 ///
 /// # Example
 /// ```no_run
-/// use rustok_telemetry::otel::{OtelConfig, init_tracing};
+/// use rustok_telemetry::otel::{init_tracing, OtelConfig};
 ///
-/// # tokio_test::block_on(async {
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = OtelConfig {
 ///     service_name: "my-service".to_string(),
 ///     otlp_endpoint: "http://localhost:4317".to_string(),
@@ -91,7 +91,8 @@ impl OtelConfig {
 /// };
 ///
 /// init_tracing(config).await.expect("Failed to initialize tracing");
-/// # })
+/// # Ok(())
+/// # }
 /// ```
 pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
     if !config.enabled {
@@ -120,18 +121,16 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
 ///
 /// # Example
 /// ```no_run
-/// use rustok_telemetry::otel::{OtelConfig, init_otel_layer};
-/// use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+/// use rustok_telemetry::otel::{init_otel_layer, OtelConfig};
 ///
-/// # tokio_test::block_on(async {
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = OtelConfig::default();
-/// let otel_layer = init_otel_layer(config).await.expect("Failed to create OTel layer");
-///
-/// tracing_subscriber::registry()
-///     .with(EnvFilter::new("info"))
-///     .with(otel_layer)
-///     .init();
-/// # })
+/// let tracer = init_otel_layer(config)
+///     .await
+///     .expect("Failed to create OTel tracer");
+/// # let _ = tracer;
+/// # Ok(())
+/// # }
 /// ```
 pub async fn init_otel_layer(
     config: OtelConfig,
@@ -216,10 +215,15 @@ pub enum OtelError {
 /// let tenant_id = uuid::Uuid::new_v4();
 /// let user_id = uuid::Uuid::new_v4();
 ///
-/// traced_span!("fetch_user", tenant_id = %tenant_id, user_id = %user_id, {
-///     // Your code here
-///     println!("Fetching user...");
-/// }).await;
+/// traced_span!(
+///     "fetch_user",
+///     tenant_id = tenant_id.to_string(),
+///     user_id = user_id.to_string(),
+///     {
+///         // Your code here
+///         println!("Fetching user...");
+///     }
+/// );
 /// # }
 /// ```
 #[macro_export]
