@@ -161,7 +161,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_deal_creation_with_scripts() {
-        let engine = Arc::new(create_default_engine());
+        let mut engine = create_default_engine();
+        engine.register_fn("is_below", |value: Dynamic, threshold: i64| -> bool {
+            value
+                .clone()
+                .try_cast::<i64>()
+                .is_some_and(|amount| amount < threshold)
+        });
+        engine.register_fn("is_above", |value: Dynamic, threshold: i64| -> bool {
+            value
+                .clone()
+                .try_cast::<i64>()
+                .is_some_and(|amount| amount > threshold)
+        });
+        let engine = Arc::new(engine);
         let storage = Arc::new(InMemoryStorage::new());
         let orchestrator = Arc::new(ScriptOrchestrator::new(engine, storage.clone()));
         let service = DealService::new(orchestrator);
@@ -169,10 +182,10 @@ mod tests {
         let mut validation_script = Script::new(
             "validate_deal",
             r#"
-                if entity["amount"] < 100 {
+                if is_below(entity["amount"], 100) {
                     abort("Minimum deal amount is 100");
                 }
-                if entity["amount"] > 100000 {
+                if is_above(entity["amount"], 100000) {
                     entity["status"] = "needs_approval";
                     entity["assigned_to"] = "senior_manager";
                 }
