@@ -8,7 +8,7 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```rust,no_run
 //! use rustok_iggy_connector::{ConnectorConfig, ConnectorMode, IggyConnector, RemoteConnector};
 //!
 //! #[tokio::main]
