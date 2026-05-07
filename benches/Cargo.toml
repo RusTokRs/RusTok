@@ -14,7 +14,7 @@ rustok-content = { workspace = true }
 rustok-commerce = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-rust_decimal = "1.41"
+rust_decimal = "1.42"
 serde = { workspace = true }
 serde_json = { workspace = true }
 futures = "0.3"
