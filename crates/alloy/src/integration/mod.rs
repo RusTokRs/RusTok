@@ -23,7 +23,7 @@ mod tests {
     struct Deal {
         id: String,
         name: String,
-        amount: f64,
+        amount: i64,
         status: String,
         assigned_to: Option<String>,
     }
@@ -58,7 +58,7 @@ mod tests {
                         }
                     }
                     "amount" => {
-                        if let Some(v) = value.clone().try_cast::<f64>() {
+                        if let Some(v) = value.clone().try_cast::<i64>() {
                             self.amount = v;
                         }
                     }
@@ -169,10 +169,10 @@ mod tests {
         let mut validation_script = Script::new(
             "validate_deal",
             r#"
-                if entity["amount"] < 100.0 {
+                if entity["amount"] < 100 {
                     abort("Minimum deal amount is 100");
                 }
-                if entity["amount"] > 100000.0 {
+                if entity["amount"] > 100000 {
                     entity["status"] = "needs_approval";
                     entity["assigned_to"] = "senior_manager";
                 }
@@ -201,21 +201,23 @@ mod tests {
         let small_deal = Deal {
             id: String::new(),
             name: "Small deal".into(),
-            amount: 50.0,
+            amount: 50,
             status: "new".into(),
             assigned_to: None,
         };
 
         let result = service.create(small_deal).await;
         match result {
-            Err(ServiceError::ValidationFailed(_)) | Err(ServiceError::ScriptError(_)) => {}
+            Err(ServiceError::ValidationFailed(msg)) => {
+                assert!(msg.contains("Minimum deal amount is 100"));
+            }
             other => panic!("expected validation failure for small deal, got: {other:?}"),
         }
 
         let big_deal = Deal {
             id: String::new(),
             name: "Big deal".into(),
-            amount: 200000.0,
+            amount: 200000,
             status: "new".into(),
             assigned_to: None,
         };
