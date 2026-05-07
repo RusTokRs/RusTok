@@ -28,7 +28,8 @@
 
 - [ ] продолжать выносить общие telemetry helpers из host-specific layers, если они реально shared;
 - [ ] не тянуть сюда module-owned metrics/runbook semantics;
-- [ ] покрывать новые foundation contracts targeted tests и compatibility checks.
+- [ ] покрывать новые foundation contracts targeted tests и compatibility checks;
+- [ ] контрактные тесты покрывают все публичные use-case telemetry foundation.
 
 ### 3. Operability
 
