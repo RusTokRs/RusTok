@@ -27,7 +27,7 @@ pub mod fixtures;
 pub mod helpers;
 
 pub use db::setup_test_db;
-pub use events::{mock_transactional_event_bus, MockEventBus, MockEventTransport};
+pub use events::{mock_event_bus, mock_transactional_event_bus, MockEventBus, MockEventTransport};
 pub use helpers::*;
 
 #[cfg(test)]

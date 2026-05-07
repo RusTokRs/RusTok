@@ -10,6 +10,7 @@ use uuid::Uuid;
 /// # Example
 ///
 /// ```rust
+/// use rustok_core::UserRole;
 /// use rustok_test_utils::helpers::super_admin_context;
 ///
 /// let ctx = super_admin_context();
@@ -24,6 +25,7 @@ pub fn super_admin_context() -> SecurityContext {
 /// # Example
 ///
 /// ```rust
+/// use rustok_core::UserRole;
 /// use rustok_test_utils::helpers::admin_context;
 ///
 /// let ctx = admin_context();
@@ -38,6 +40,7 @@ pub fn admin_context() -> SecurityContext {
 /// # Example
 ///
 /// ```rust
+/// use rustok_core::UserRole;
 /// use rustok_test_utils::helpers::manager_context;
 ///
 /// let ctx = manager_context();
@@ -52,6 +55,7 @@ pub fn manager_context() -> SecurityContext {
 /// # Example
 ///
 /// ```rust
+/// use rustok_core::UserRole;
 /// use rustok_test_utils::helpers::customer_context;
 ///
 /// let ctx = customer_context();
@@ -82,7 +86,7 @@ pub fn user_context(role: UserRole, user_id: Uuid) -> SecurityContext {
 /// # Example
 ///
 /// ```rust
-/// use rustok_test_utils::helpers::assert_error_type;
+/// use rustok_test_utils::assert_error_type;
 ///
 /// fn may_fail() -> Result<i32, String> {
 ///     Err("error".to_string())
@@ -108,7 +112,7 @@ macro_rules! assert_error_type {
 /// # Example
 ///
 /// ```rust
-/// use rustok_test_utils::helpers::assert_ok;
+/// use rustok_test_utils::assert_ok;
 ///
 /// fn may_succeed() -> Result<i32, String> {
 ///     Ok(42)
@@ -133,7 +137,7 @@ macro_rules! assert_ok {
 /// # Example
 ///
 /// ```rust
-/// use rustok_test_utils::helpers::assert_err;
+/// use rustok_test_utils::assert_err;
 ///
 /// fn may_fail() -> Result<i32, String> {
 ///     Err("error".to_string())
@@ -263,8 +267,8 @@ pub fn json_payload<T: serde::Serialize>(data: T) -> serde_json::Value {
 /// # Example
 ///
 /// ```rust
-/// use rustok_test_utils::helpers::assert_permission_scope;
 /// use rustok_core::PermissionScope;
+/// use rustok_test_utils::assert_permission_scope;
 ///
 /// let scope = PermissionScope::All;
 /// assert_permission_scope!(scope, All);
