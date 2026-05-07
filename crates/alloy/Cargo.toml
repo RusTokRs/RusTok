@@ -20,7 +20,7 @@ reqwest.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 loco-rs.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-telemetry.workspace = true
 parking_lot = "0.12"
