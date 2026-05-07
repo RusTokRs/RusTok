@@ -168,11 +168,23 @@ mod tests {
                 .try_cast::<i64>()
                 .is_some_and(|amount| amount < threshold)
         });
+        engine.register_fn("is_below", |value: Dynamic, threshold: i32| -> bool {
+            value
+                .clone()
+                .try_cast::<i64>()
+                .is_some_and(|amount| amount < i64::from(threshold))
+        });
         engine.register_fn("is_above", |value: Dynamic, threshold: i64| -> bool {
             value
                 .clone()
                 .try_cast::<i64>()
                 .is_some_and(|amount| amount > threshold)
+        });
+        engine.register_fn("is_above", |value: Dynamic, threshold: i32| -> bool {
+            value
+                .clone()
+                .try_cast::<i64>()
+                .is_some_and(|amount| amount > i64::from(threshold))
         });
         let engine = Arc::new(engine);
         let storage = Arc::new(InMemoryStorage::new());

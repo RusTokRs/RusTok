@@ -42,6 +42,7 @@
 - `cargo xtask module validate blog`
 - `cargo xtask module test blog`
 - targeted tests для lifecycle, taxonomy sync, channel visibility и UI-facing read contracts
+- контрактные тесты покрывают все публичные use-case
 
 ## Правила обновления
 
