@@ -212,8 +212,8 @@ pub enum OtelError {
 /// use rustok_telemetry::traced_span;
 ///
 /// # async fn example() {
-/// let tenant_id = uuid::Uuid::new_v4();
-/// let user_id = uuid::Uuid::new_v4();
+/// let tenant_id = "tenant_01";
+/// let user_id = "user_01";
 ///
 /// traced_span!(
 ///     "fetch_user",
