@@ -39,6 +39,7 @@ orchestration и rich-text/locale contract layer.
 
 ## Проверка
 
+- [ ] контрактные тесты покрывают все публичные use-case orchestration и surface contracts
 - `cargo xtask module validate content`
 - `cargo xtask module test content`
 - targeted tests для orchestration lifecycle, canonical URL policy, fallback chain и sanitize contracts
