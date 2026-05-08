@@ -1,5 +1,5 @@
 use rustok_customer::entities::customer;
-use rustok_profiles::entities::{profile, profile_translation};
+use rustok_profiles::entities::{profile, profile_tag, profile_translation};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
 pub async fn ensure_customer_schema(db: &DatabaseConnection) {
@@ -26,6 +26,12 @@ pub async fn ensure_customer_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(profile_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(profile_tag::Entity),
     )
     .await;
 }
