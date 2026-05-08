@@ -974,7 +974,7 @@ mod tests {
         db.execute(Statement::from_string(
             db.get_database_backend(),
             r#"
-            CREATE TABLE o_auth_apps (
+            CREATE TABLE oauth_apps (
                 id TEXT PRIMARY KEY NOT NULL,
                 tenant_id TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -987,7 +987,7 @@ mod tests {
             "#,
         ))
         .await
-        .expect("o_auth_apps table should exist for channel foreign keys");
+        .expect("oauth_apps table should exist for channel foreign keys");
         let manager = SchemaManager::new(&db);
         for migration in migrations::migrations() {
             migration
@@ -1466,7 +1466,7 @@ mod tests {
         let oauth_app_id = Uuid::new_v4();
         db.execute(Statement::from_sql_and_values(
             db.get_database_backend(),
-            "INSERT INTO o_auth_apps (id, tenant_id, name, slug, app_type, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            "INSERT INTO oauth_apps (id, tenant_id, name, slug, app_type, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             [
                 oauth_app_id.into(),
                 tenant_id.into(),
