@@ -199,8 +199,8 @@ async fn category_list_exposes_requested_effective_and_available_locales() {
 
     assert_eq!(total, 1);
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].requested_locale, "fr-fr");
-    assert_eq!(items[0].locale, "fr-fr");
+    assert_eq!(items[0].requested_locale, "fr-FR");
+    assert_eq!(items[0].locale, "fr-FR");
     assert_eq!(items[0].effective_locale, "ru");
     assert_eq!(
         items[0].available_locales,
@@ -293,8 +293,8 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
 
     assert_eq!(total, 1);
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].requested_locale, "fr-fr");
-    assert_eq!(items[0].locale, "fr-fr");
+    assert_eq!(items[0].requested_locale, "fr-FR");
+    assert_eq!(items[0].locale, "fr-FR");
     assert_eq!(items[0].effective_locale, "ru");
     assert_eq!(
         items[0].available_locales,
