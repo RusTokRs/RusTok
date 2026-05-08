@@ -163,7 +163,7 @@ mod tests {
             tenant_id: Set(tenant_id),
             target_kind: Set("blog_post".to_string()),
             target_id: Set(target_id),
-            locale: Set("en-us".to_string()),
+            locale: Set("en-US".to_string()),
             canonical_url: Set("/modules/blog?slug=release-notes".to_string()),
             created_at: Set(now),
             updated_at: Set(now),
@@ -177,7 +177,7 @@ mod tests {
             tenant_id: Set(tenant_id),
             target_kind: Set("blog_post".to_string()),
             target_id: Set(target_id),
-            locale: Set("en-us".to_string()),
+            locale: Set("en-US".to_string()),
             alias_url: Set("/modules/forum?topic=old".to_string()),
             canonical_url: Set("/modules/blog?slug=release-notes".to_string()),
             created_at: Set(now),
@@ -196,7 +196,7 @@ mod tests {
 
         assert_eq!(resolved.target_kind, "blog_post");
         assert_eq!(resolved.target_id, target_id);
-        assert_eq!(resolved.locale, "en-us");
+        assert_eq!(resolved.locale, "en-US");
         assert_eq!(resolved.matched_url, "/modules/forum?topic=old");
         assert_eq!(resolved.canonical_url, "/modules/blog?slug=release-notes");
         assert!(resolved.redirect_required);
