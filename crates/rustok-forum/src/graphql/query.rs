@@ -885,6 +885,7 @@ mod tests {
     use rustok_core::{MemoryTransport, SecurityContext};
     use rustok_outbox::TransactionalEventBus;
     use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
+    use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
     use sea_orm_migration::SchemaManager;
     use std::sync::Arc;
     use uuid::Uuid;
@@ -911,6 +912,20 @@ mod tests {
                 .up(&manager)
                 .await
                 .expect("forum migration should apply");
+        }
+
+        let builder = db.get_database_backend();
+        let schema = sea_orm::Schema::new(builder);
+        for create in [
+            schema.create_table_from_entity(taxonomy_term::Entity),
+            schema.create_table_from_entity(taxonomy_term_translation::Entity),
+            schema.create_table_from_entity(taxonomy_term_alias::Entity),
+        ] {
+            let mut create = create;
+            create.if_not_exists();
+            db.execute(builder.build(&create))
+                .await
+                .expect("taxonomy tables should exist for forum tests");
         }
 
         db.execute(Statement::from_string(
