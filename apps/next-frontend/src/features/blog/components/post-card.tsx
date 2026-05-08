@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import type { PublicPostSummary } from '../api/posts';
 
 export function PostCard({ post }: { post: PublicPostSummary }) {
@@ -8,9 +9,11 @@ export function PostCard({ post }: { post: PublicPostSummary }) {
   return (
     <article className='rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md'>
       {post.featuredImageUrl && (
-        <img
+        <Image
           src={post.featuredImageUrl}
           alt={post.title}
+          width={1200}
+          height={675}
           className='mb-4 aspect-video w-full rounded-lg object-cover'
         />
       )}
