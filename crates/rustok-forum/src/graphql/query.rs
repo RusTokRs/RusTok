@@ -884,8 +884,10 @@ mod tests {
     use rustok_api::{RequestContext, TenantContext};
     use rustok_core::{MemoryTransport, SecurityContext};
     use rustok_outbox::TransactionalEventBus;
+    use rustok_taxonomy::entities::{
+        taxonomy_term, taxonomy_term_alias, taxonomy_term_translation,
+    };
     use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
-    use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
     use sea_orm_migration::SchemaManager;
     use std::sync::Arc;
     use uuid::Uuid;
