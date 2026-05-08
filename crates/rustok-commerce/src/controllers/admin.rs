@@ -2871,8 +2871,11 @@ mod tests {
                     .body(Body::from(
                         json!({
                             "slug": " bulky-freight ",
-                            "name": "Bulky Freight",
-                            "description": "Large parcel handling",
+                            "translations": [{
+                                "locale": "en",
+                                "name": "Bulky Freight",
+                                "description": "Large parcel handling"
+                            }],
                             "metadata": { "source": "admin-shipping-profiles" }
                         })
                         .to_string(),
@@ -3102,7 +3105,10 @@ mod tests {
                     .header("X-Tenant-ID", tenant_id.to_string())
                     .body(Body::from(
                         json!({
-                            "name": "Bulky Freight",
+                            "translations": [{
+                                "locale": "en",
+                                "name": "Bulky Freight"
+                            }],
                             "currency_code": "eur",
                             "amount": "29.99",
                             "provider_id": " manual ",

@@ -13,7 +13,7 @@ pub fn product_translation_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.title LIKE ?1
+                  AND pt.title LIKE ?
             )"
         }
         _ => {

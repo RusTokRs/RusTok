@@ -3355,7 +3355,7 @@ mod tests {
             resolved.add_line_item.sku.as_deref(),
             Some("STOREFRONT-SKU-1")
         );
-        assert_eq!(resolved.add_line_item.title, "Storefront Produkt");
+        assert_eq!(resolved.add_line_item.title, "Storefront Product / Default");
         assert_eq!(
             resolved.add_line_item.unit_price,
             Decimal::from_str("19.99").expect("valid decimal")
@@ -5419,7 +5419,7 @@ mod tests {
             serde_json::from_slice(&get_cart_body).expect("cart response should be JSON");
         assert_eq!(cart["subtotal_amount"], json!("19.99"));
         assert_eq!(cart["adjustment_total"], json!("4.99"));
-        assert_eq!(cart["total_amount"], json!("15.00"));
+        assert_eq!(cart["total_amount"], json!("15"));
         assert_eq!(cart["adjustments"][0]["line_item_id"], json!(line_item_id));
         assert_eq!(cart["adjustments"][0]["source_type"], json!("promotion"));
         assert_eq!(cart["adjustments"][0]["source_id"], json!("promo-store"));

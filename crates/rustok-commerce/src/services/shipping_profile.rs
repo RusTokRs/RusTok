@@ -484,7 +484,7 @@ fn shipping_profile_translation_search_condition(
                 SELECT 1
                 FROM shipping_profile_translations spt
                 WHERE spt.shipping_profile_id = shipping_profiles.id
-                  AND spt.name LIKE ?1
+                  AND spt.name LIKE ?
             )"
         }
         _ => {
