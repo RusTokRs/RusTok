@@ -229,6 +229,7 @@
 - [Известные pitfalls](./ai/KNOWN_PITFALLS.md)
 - [Индекс MCP reference](./references/mcp/README.md)
 - [Сравнение архитектуры RusTok и Medusa](./research/medusa-vs-rustok-architecture.md)
+- [Fluid Frontend Architecture для RusTok](./research/fluid-frontend-architecture.md)
 - [Verified TODO по control plane и module lifecycle](./research/deep-research-report%20(4).md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
 
