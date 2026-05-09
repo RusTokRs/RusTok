@@ -44,6 +44,8 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 - targeted compile/tests при изменении tool surface, access policy, runtime binding или draft-store integration;
 - обязательная сверка с official MCP/rmcp docs при изменении protocol/security assumptions.
 
+- контрактные тесты покрывают все публичные use-case MCP surface.
+
 ## Правила обновления
 
 1. При изменении RusToK-specific MCP contract сначала обновлять этот файл.
