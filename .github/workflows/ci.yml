@@ -258,8 +258,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-nextest
-        run: cargo install cargo-nextest --locked
-      - run: cargo nextest run --workspace --all-targets --all-features
+        uses: taiki-e/install-action@nextest
+      - name: Run nextest and collect logs
+        run: |
+          set -o pipefail
+          cargo nextest run --workspace --all-targets --all-features --no-fail-fast 2>&1 | tee nextest-output.log
+        env:
+          RUST_BACKTRACE: 1
+      - name: Upload nextest logs
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: nextest-logs
+          path: nextest-output.log
 
   doc-tests:
     name: Doc Tests
