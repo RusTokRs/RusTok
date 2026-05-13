@@ -146,17 +146,17 @@ async-trait = "0.1"
 casbin = { version = "2.20.0", default-features = false, features = ["runtime-tokio"] }
 
 # OpenTelemetry
-opentelemetry = "0.31"
-opentelemetry-otlp = "0.31"
+opentelemetry = "0.32"
+opentelemetry-otlp = "0.32"
 tracing-opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 rust_decimal = "1.42"
 utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
 rhai = "1.24"
 argon2 = "0.5"
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 rand = "0.10.1"
 password-hash = "0.6"
 sha2 = "0.11"
