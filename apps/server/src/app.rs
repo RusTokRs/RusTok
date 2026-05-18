@@ -1521,6 +1521,7 @@ mod tests {
                                 "crate_name": "rustok-blog",
                                 "name": "Blog",
                                 "description": "Blog and news module contract preview.",
+                                "default_locale": "en",
                                 "ownership": "first_party",
                                 "trust_level": "verified",
                                 "license": "MIT",
