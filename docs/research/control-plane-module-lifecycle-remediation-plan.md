@@ -1,0 +1,180 @@
+# План устранения недостатков control plane и module lifecycle
+
+Дата перепроверки: 2026-05-18.
+Основание: повторная проверка `docs/research/deep-research-report (4).md` по текущему коду репозитория.
+
+## Резюме перепроверки
+
+Исходный TODO уже частично закрыт. В текущем коде появились `platform_state`, `module_operations`,
+`manifest_revision`/`manifest_snapshot`, DB-backed CAS для состава платформы, effective policy service,
+CI-gates для `xtask`, coverage, SBOM/provenance, а Dependabot больше не ссылается на `/apps/mcp`.
+Оставшиеся риски теперь уже не совпадают один-в-один с исходным списком: главный хвост — атомарность
+операций control plane, единый lifecycle entrypoint для всех admin/runtime поверхностей и формализация
+migration dependency metadata вместо локального hardcoded списка.
+
+## Что подтверждено как уже закрыто
+
+| Исходный пункт | Текущее состояние | Проверенные файлы |
+| --- | --- | --- |
+| Runtime/admin пишут `modules.toml` как runtime target | Закрыто частично: runtime-снимок читается из `platform_state`, а `modules.toml` остаётся bootstrap/dev input. Production Dockerfile по-прежнему не копирует `modules.toml`, что теперь соответствует DB-backed runtime модели. | `apps/server/src/models/_entities/platform_state.rs`, `apps/server/src/services/platform_composition.rs`, `apps/admin/src/features/modules/api.rs`, `apps/server/Dockerfile` |
+| Нет revision/CAS для build enqueue | Закрыто частично: `platform_state.revision` и CAS есть, stale write возвращает conflict. Остался риск неатомарного `platform_state update -> build insert/request_build`. | `apps/server/src/services/platform_composition.rs`, `apps/server/src/graphql/mutations.rs`, `apps/admin/src/features/modules/api.rs` |
+| `settings.default_enabled` расходится с tenant overrides | Закрыто частично: появился `EffectiveModulePolicyService` с правилом `core + manifest.default_enabled + tenant overrides`. Нужно убрать локальные/legacy обходы и расширить тесты parity. | `apps/server/src/services/effective_module_policy.rs`, `apps/server/src/services/module_lifecycle.rs`, `apps/admin/src/features/modules/api.rs` |
+| Enable/disable обходят lifecycle и не пишут journal | Закрыто частично: GraphQL и server seed/installer идут через `ModuleLifecycleService`, journal есть. Остались public model-level `tenant_modules::toggle` и дублированная Leptos SSR реализация toggle в `apps/admin`. | `apps/server/src/services/module_lifecycle.rs`, `apps/server/src/models/tenant_modules.rs`, `apps/server/src/graphql/mutations.rs`, `apps/admin/src/features/modules/api.rs` |
+| Hooks вызываются после записи состояния, rollback только флага | Не закрыто: текущий `ModuleLifecycleService` и Leptos SSR toggle сначала пишут `tenant_modules`, затем вызывают hook и при ошибке откатывают только enabled flag. | `apps/server/src/services/module_lifecycle.rs`, `apps/admin/src/features/modules/api.rs` |
+| Locale rollback сужал `VARCHAR(5)` | Закрыто: down-migration стала irreversible/no-op, чтобы не сужать BCP47-like locale values. | `apps/server/migration/src/m20260405_000001_expand_locale_storage_columns.rs` |
+| Server migrator сортирует lexical + ad-hoc special-case | Закрыто частично: есть dependency-aware pass, но dependency metadata всё ещё зашита в `migration_dependencies()` одним hardcoded match. | `apps/server/migration/src/lib.rs` |
+| CI не запускает manifest/module validation, coverage threshold, SBOM/provenance | Закрыто: `platform-contract`, coverage threshold/artifact и SBOM provenance присутствуют в CI. | `.github/workflows/ci.yml`, `scripts/ci/check-coverage.sh` |
+| Dependabot ссылается на `/apps/mcp` | Закрыто: stale path отсутствует. | `.github/dependabot.yml` |
+| Нет repository-level license policy | Ранее уже было устаревшим: `deny.toml` и `cargo-deny-action` есть. | `deny.toml`, `.github/workflows/ci.yml` |
+
+## Оставшиеся недостатки и план исправления
+
+### P0 — сделать composition update и build enqueue атомарными
+
+**Проблема.** GraphQL path вызывает `PlatformCompositionService::update_manifest()` и затем отдельно
+`BuildService::request_build()`. Leptos SSR path в `apps/admin` делает raw SQL update `platform_state`,
+а затем отдельный insert в `builds`. Если build insert/request падает, активная ревизия платформы уже
+изменена, но build job может не появиться.
+
+**План.**
+
+1. Вынести сценарий `validate manifest -> CAS update platform_state -> enqueue build` в единый сервис
+   `PlatformCompositionBuildService` в server/control-plane слое.
+2. Выполнять CAS-update и создание `builds` в одной DB transaction.
+3. Возвращать conflict-style ошибку до мутации, если `expected_revision` устарел.
+4. Для Leptos SSR заменить raw SQL helper `save_manifest_and_enqueue_build()` на вызов этого сервиса
+   или на тонкий shared adapter, если прямой import server crate невозможен.
+5. Добавить regression tests:
+   - stale revision не создаёт build;
+   - ошибка build insert не меняет `platform_state.revision`;
+   - GraphQL и Leptos SSR возвращают одинаковый `manifest_ref = platform_state:<revision>`.
+
+**Критерии готовности.** Нет кода, где `platform_state` обновляется отдельно от build enqueue; оба public
+admin surfaces проходят один contract-test набор.
+
+### P0 — унифицировать enable/disable lifecycle entrypoint
+
+**Проблема.** `ModuleLifecycleService` уже существует, но Leptos SSR toggle в `apps/admin` содержит
+собственную копию lifecycle logic: dependency checks, journal insert/update, hook invocation и rollback.
+Публичные helpers `tenant_modules::toggle` всё ещё позволяют записать flag без policy/journal/hooks,
+даже если сейчас они почти не используются.
+
+**План.**
+
+1. Оставить один canonical entrypoint: `ModuleLifecycleService::toggle_module_with_actor()`.
+2. Переподключить Leptos SSR `toggle_module_native()` к canonical entrypoint или вынести общий
+   lifecycle adapter в crate, доступный Leptos SSR build-у.
+3. Сделать model-level `tenant_modules::toggle` private/test-only либо переименовать в явно опасный
+   `upsert_flag_without_lifecycle_for_migrations_only` с ограниченной видимостью.
+4. Добавить repo-side `rg` guard/test, который запрещает production-вызовы прямого tenant module toggle.
+5. Расширить tests на parity GraphQL/Leptos SSR: одинаковые ошибки для unknown/core/dependency/dependent
+   cases и обязательная запись `module_operations`.
+
+**Критерии готовности.** Все runtime/admin enable/disable операции проходят через один сервис и всегда
+создают audit/journal record при изменении effective state.
+
+### P0 — пересобрать hook semantics без частичного rollback
+
+**Проблема.** Текущая последовательность остаётся `persist tenant_modules -> run hook -> rollback enabled flag on error`.
+Это не откатывает побочные эффекты hook-а, settings/metadata и внешние события, а journal фиксирует только
+`failed` после уже выполненной компенсации флага.
+
+**План.**
+
+1. Разделить lifecycle на фазы: `validated`, `running`, `committed`, `failed`.
+2. Записывать `module_operations` до мутации tenant state со статусом `running` и correlation id.
+3. Ввести явную hook policy:
+   - `pre_enable`/`pre_disable` — до коммита state, без ожидания enabled state;
+   - `post_enable`/`post_disable` — после коммита, только idempotent side effects;
+   - для существующих `on_enable`/`on_disable` временно задокументировать compat-слой.
+4. Выполнять state mutation и перевод operation в `committed` в одной transaction после успешной pre-фазы.
+5. Для post-фазы хранить retryable failure отдельно, не откатывая committed state без отдельной compensating operation.
+6. Обновить tests на failure modes: pre-hook failure не меняет effective state; post-hook failure создаёт retryable operation issue.
+
+**Критерии готовности.** Hook failure больше не оставляет систему в состоянии “флаг откатили, побочные эффекты неизвестны”,
+а recovery описан через journal/retry/compensation.
+
+### P1 — убрать дубли raw SQL и стабилизировать manifest hash
+
+**Проблема.** В `apps/admin` есть локальные SQL helpers для `platform_state`, `module_operations` и `builds`,
+а server-side `PlatformCompositionService::manifest_hash()` использует короткий hash от отсортированного подмножества
+manifest fields. Это повышает риск drift между surfaces и не даёт сильного immutable artifact hash.
+
+**План.**
+
+1. Описать canonical `ManifestSnapshot` serializer: canonical JSON для всего состава, включая `settings`, build profile,
+   module dependency metadata и source pins.
+2. Заменить текущий short hash на SHA-256 hex (64 chars, совпадает с длиной DB column).
+3. Перевести GraphQL и Leptos SSR на общий serializer/hash builder.
+4. Добавить тест “один manifest -> один hash/ref/snapshot” для GraphQL, Leptos SSR и BuildService.
+5. Удалить или сузить raw SQL helpers после появления shared service.
+
+**Критерии готовности.** `manifest_hash` одинаково считается во всех путях, snapshot является полным immutable
+снимком состава, а DB column length используется по назначению.
+
+### P1 — формализовать dependency-aware migration ordering
+
+**Проблема.** После исправления lexical ordering появился dependency-aware pass, но список зависимостей
+остаётся централизованным hardcoded `match`, сейчас только для `product_tags -> taxonomy_tables`.
+
+**План.**
+
+1. Ввести lightweight metadata contract для migration dependencies: например `MigrationDescriptor { migration, after }`
+   в module-owned migration exporters.
+2. Сохранять lexical ordering как default tie-breaker, но строить полный topological sort по descriptor metadata.
+3. Валидировать missing dependency и cycle как test/runtime error, а не “append remaining”.
+4. Перевести текущую taxonomy/product-tags зависимость на descriptor.
+5. Добавить тесты на missing dependency, cycle и cross-module ordering.
+
+**Критерии готовности.** В `apps/server/migration/src/lib.rs` нет module-specific hardcoded dependency match;
+новые module-owned migrations могут объявлять порядок рядом с владельцем модуля.
+
+### P1 — закрепить CI-gates как non-regression contract
+
+**Проблема.** Исходные CI gaps закрыты, но для предотвращения регресса это нужно считать contract, а не разовой настройкой.
+
+**План.**
+
+1. Добавить в `docs/verification/platform-quality-operations-verification-plan.md` explicit non-regression пункт:
+   `cargo xtask validate-manifest`, `cargo xtask module validate`, coverage threshold, SBOM provenance,
+   `cargo-deny-action`, отсутствие stale Dependabot directories.
+2. Добавить лёгкий script/test, который проверяет, что `.github/dependabot.yml` directories существуют.
+3. Для coverage threshold вынести минимальный процент в один env/constant, чтобы docs и workflow не расходились.
+
+**Критерии готовности.** Изменение CI workflow, удаляющее эти gates, будет заметно в docs/tests review.
+
+### P2 — обновить документацию и ADR по control plane
+
+**Проблема.** `deep-research-report (4).md` больше не является точным backlog-ом: часть пунктов уже закрыта,
+часть переформулирована после перепроверки.
+
+**План.**
+
+1. Оставить research report как historical input и ссылаться из него на этот remediation plan.
+2. Обновить `docs/architecture/modules.md`, `docs/modules/manifest.md` и server/admin local docs после реализации P0/P1.
+3. Если меняется hook contract или migration descriptor contract, оформить ADR в `DECISIONS/`.
+4. Обновить `docs/index.md` при каждом добавлении/переименовании документов.
+
+**Критерии готовности.** Центральная документация описывает фактический runtime control plane, а не устаревшую
+`modules.toml`-как-runtime-source модель.
+
+## Рекомендуемый порядок работ
+
+1. P0.1: atomic `PlatformCompositionBuildService` + tests для GraphQL path.
+2. P0.2: Leptos SSR install/uninstall/upgrade перевод на тот же service.
+3. P0.3: canonical lifecycle entrypoint для enable/disable и удаление прямых bypass helpers.
+4. P0.4: hook semantics redesign + ADR.
+5. P1.1: SHA-256 canonical manifest snapshot/hash.
+6. P1.2: migration descriptors/topological sort.
+7. P1.3: CI non-regression docs/scripts.
+8. P2: финальная синхронизация центральных и локальных docs.
+
+## Минимальный verification набор для каждой итерации
+
+- `cargo fmt --all -- --check`
+- `cargo test -p migration`
+- `cargo test -p rustok-server module_lifecycle`
+- `cargo test -p rustok-server platform_composition`
+- `cargo xtask validate-manifest`
+- `cargo xtask module validate`
+- для изменений CI/coverage: локальная проверка `bash scripts/ci/check-coverage.sh <lcov-file> 75` на сгенерированном LCOV.

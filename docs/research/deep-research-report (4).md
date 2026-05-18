@@ -4,6 +4,9 @@
 сжат, чтобы не перегружать рабочий контекст: оставлены только подтверждённые дефекты,
 устаревшие пункты и порядок исправлений.
 
+> Перепроверено 2026-05-18: часть пунктов уже закрыта в текущем коде. Актуальный
+> remediation plan ведётся в [плане устранения недостатков control plane и module lifecycle](./control-plane-module-lifecycle-remediation-plan.md).
+
 ## Подтверждено по текущему коду
 
 - Runtime/admin paths редактировали локальный `modules.toml` при install/uninstall/upgrade,
