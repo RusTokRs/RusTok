@@ -2,7 +2,13 @@
 set -euo pipefail
 
 lcov_file="${1:?usage: check-coverage.sh <lcov-file> <minimum-percent>}"
-minimum="${2:?usage: check-coverage.sh <lcov-file> <minimum-percent>}"
+if [[ $# -ge 2 ]]; then
+  minimum="$2"
+else
+  # shellcheck source=/dev/null
+  source "$(dirname "$0")/coverage-threshold.env"
+  minimum="${RUSTOK_MIN_COVERAGE_PERCENT:?coverage threshold is not set}"
+fi
 
 if [[ ! -f "$lcov_file" ]]; then
   echo "coverage file not found: $lcov_file" >&2

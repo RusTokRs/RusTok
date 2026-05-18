@@ -121,22 +121,67 @@ impl MigratorTrait for Migrator {
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
         ));
+        let mut dependencies = Vec::new();
+        dependencies.extend(rustok_product::migrations::migration_dependencies());
+
         all.sort_by(|a, b| a.name().cmp(b.name()));
-        sort_migrations_by_dependencies(&mut all);
+        sort_migrations_by_dependencies(&mut all, &dependencies)
+            .expect("migration dependency descriptors must be valid");
         all
     }
 }
 
-fn migration_dependencies(name: &str) -> &'static [&'static str] {
-    match name {
-        "m20260329_000001_create_product_tags" => &["m20260329_000001_create_taxonomy_tables"],
-        _ => &[],
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MigrationDescriptor {
+    migration: String,
+    after: Vec<String>,
+}
+
+impl From<(&'static str, Vec<&'static str>)> for MigrationDescriptor {
+    fn from((migration, after): (&'static str, Vec<&'static str>)) -> Self {
+        Self {
+            migration: migration.to_string(),
+            after: after.into_iter().map(str::to_string).collect(),
+        }
     }
 }
 
 fn sort_migrations_by_dependencies(
     migrations: &mut Vec<Box<dyn sea_orm_migration::MigrationTrait>>,
-) {
+    descriptors: &[(&'static str, Vec<&'static str>)],
+) -> Result<(), String> {
+    let descriptors = descriptors
+        .iter()
+        .cloned()
+        .map(MigrationDescriptor::from)
+        .collect::<Vec<_>>();
+    let names = migrations
+        .iter()
+        .map(|migration| migration.name().to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    for descriptor in &descriptors {
+        if !names.contains(&descriptor.migration) {
+            return Err(format!(
+                "migration descriptor references missing migration {}",
+                descriptor.migration
+            ));
+        }
+        for dependency in &descriptor.after {
+            if !names.contains(dependency) {
+                return Err(format!(
+                    "migration {} depends on missing migration {}",
+                    descriptor.migration, dependency
+                ));
+            }
+        }
+    }
+
+    let after_by_name = descriptors
+        .into_iter()
+        .map(|descriptor| (descriptor.migration, descriptor.after))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
     let mut sorted: Vec<Box<dyn sea_orm_migration::MigrationTrait>> =
         Vec::with_capacity(migrations.len());
     let mut remaining = std::mem::take(migrations);
@@ -146,11 +191,15 @@ fn sort_migrations_by_dependencies(
         let mut index = 0;
         while index < remaining.len() {
             let name = remaining[index].name().to_string();
-            let deps_satisfied = migration_dependencies(&name).iter().all(|dependency| {
-                sorted
-                    .iter()
-                    .any(|migration| migration.name() == *dependency)
-            });
+            let deps_satisfied = after_by_name
+                .get(&name)
+                .into_iter()
+                .flatten()
+                .all(|dependency| {
+                    sorted
+                        .iter()
+                        .any(|migration| migration.name() == dependency.as_str())
+                });
             if deps_satisfied {
                 sorted.push(remaining.remove(index));
             } else {
@@ -159,11 +208,21 @@ fn sort_migrations_by_dependencies(
         }
 
         if remaining.len() == before {
-            sorted.append(&mut remaining);
+            let cycle = remaining
+                .iter()
+                .map(|migration| migration.name().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            *migrations = sorted;
+            migrations.append(&mut remaining);
+            return Err(format!(
+                "migration dependency cycle or unsatisfied dependency: {cycle}"
+            ));
         }
     }
 
     *migrations = sorted;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -193,7 +252,11 @@ mod tests {
                 .iter()
                 .position(|candidate| candidate == name)
                 .expect("migration exists");
-            for dependency in super::migration_dependencies(name) {
+            for dependency in rustok_product::migrations::migration_dependencies()
+                .into_iter()
+                .filter(|(migration, _)| migration == name)
+                .flat_map(|(_, dependencies)| dependencies)
+            {
                 let dependency_index = names
                     .iter()
                     .position(|candidate| candidate == dependency)
@@ -308,6 +371,48 @@ mod tests {
                 &"m20260410_000001_cleanup_flex_attached_legacy_inline_metadata".to_string()
             ),
             "server migrator must include attached legacy metadata cleanup migration"
+        );
+    }
+
+    #[test]
+    fn migration_dependency_sort_rejects_missing_dependency() {
+        let mut migrations = Migrator::migrations();
+        let error = super::sort_migrations_by_dependencies(
+            &mut migrations,
+            &[(
+                "m20260329_000001_create_product_tags",
+                vec!["m20990101_000001_missing"],
+            )],
+        )
+        .expect_err("missing dependency must be rejected");
+
+        assert!(
+            error.contains("depends on missing migration"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn migration_dependency_sort_rejects_cycles() {
+        let mut migrations = Migrator::migrations();
+        let error = super::sort_migrations_by_dependencies(
+            &mut migrations,
+            &[
+                (
+                    "m20260329_000001_create_product_tags",
+                    vec!["m20260329_000001_create_taxonomy_tables"],
+                ),
+                (
+                    "m20260329_000001_create_taxonomy_tables",
+                    vec!["m20260329_000001_create_product_tags"],
+                ),
+            ],
+        )
+        .expect_err("cycle must be rejected");
+
+        assert!(
+            error.contains("cycle or unsatisfied dependency"),
+            "unexpected error: {error}"
         );
     }
 

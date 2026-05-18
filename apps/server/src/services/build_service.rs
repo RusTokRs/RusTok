@@ -171,15 +171,37 @@ impl BuildService {
     }
 
     pub async fn request_build(&self, request: BuildRequest) -> anyhow::Result<Build> {
-        let manifest_hash = compute_manifest_hash(&request.modules);
+        let (build, created) = Self::request_build_on_connection(&self.db, request).await?;
 
-        if let Some(existing) = self.find_build_by_hash(&manifest_hash).await? {
+        if created {
+            info!(build_id = %build.id, "Build requested");
+            self.event_publisher
+                .publish(BuildEvent::BuildRequested {
+                    build_id: build.id,
+                    requested_by: build.requested_by.clone(),
+                })
+                .await?;
+        }
+
+        Ok(build)
+    }
+
+    pub async fn request_build_on_connection<C>(
+        db: &C,
+        request: BuildRequest,
+    ) -> anyhow::Result<(Build, bool)>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let manifest_hash = compute_manifest_snapshot_hash(&request.manifest_snapshot);
+
+        if let Some(existing) = Self::find_build_by_hash_on(db, &manifest_hash).await? {
             if existing.status == BuildStatus::Success {
                 info!(
                     build_id = %existing.id,
                     "Build with same manifest already exists, returning existing build"
                 );
-                return Ok(existing);
+                return Ok((existing, false));
             }
         }
 
@@ -220,18 +242,9 @@ impl BuildService {
             updated_at: Set(build.updated_at),
         };
 
-        active_model.insert(&self.db).await?;
+        active_model.insert(db).await?;
 
-        info!(build_id = %build.id, "Build requested");
-
-        self.event_publisher
-            .publish(BuildEvent::BuildRequested {
-                build_id: build.id,
-                requested_by: build.requested_by.clone(),
-            })
-            .await?;
-
-        Ok(build)
+        Ok((build, true))
     }
 
     pub async fn get_build(&self, build_id: Uuid) -> anyhow::Result<Option<Build>> {
@@ -275,9 +288,16 @@ impl BuildService {
     }
 
     async fn find_build_by_hash(&self, hash: &str) -> anyhow::Result<Option<Build>> {
+        Self::find_build_by_hash_on(&self.db, hash).await
+    }
+
+    async fn find_build_by_hash_on<C>(db: &C, hash: &str) -> anyhow::Result<Option<Build>>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
         Ok(BuildEntity::find()
             .filter(crate::models::build::Column::ManifestHash.eq(hash))
-            .one(&self.db)
+            .one(db)
             .await?)
     }
 
@@ -675,13 +695,10 @@ impl BuildService {
     }
 }
 
-fn compute_manifest_hash(modules: &HashMap<String, ModuleSpec>) -> String {
+fn compute_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
     use sha2::{Digest, Sha256};
-    use std::collections::BTreeMap;
 
-    let sorted: BTreeMap<_, _> = modules.iter().collect();
-    let json = serde_json::to_string(&sorted).unwrap_or_default();
-
+    let json = serde_json::to_string(snapshot).unwrap_or_default();
     let mut hasher = Sha256::new();
     hasher.update(json.as_bytes());
     hex::encode(hasher.finalize())

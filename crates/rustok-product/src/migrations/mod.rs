@@ -29,3 +29,10 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260409_000007_add_product_seller_id::Migration),
     ]
 }
+
+pub fn migration_dependencies() -> Vec<(&'static str, Vec<&'static str>)> {
+    vec![(
+        "m20260329_000001_create_product_tags",
+        vec!["m20260329_000001_create_taxonomy_tables"],
+    )]
+}

@@ -1102,32 +1102,13 @@ fn runtime_deployment_profile(manifest: &RuntimeModulesManifest) -> String {
 
 #[cfg(feature = "ssr")]
 fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String {
-    use std::collections::BTreeMap;
-    use std::hash::{Hash, Hasher};
+    use sha2::{Digest, Sha256};
 
-    let sorted = manifest
-        .modules
-        .iter()
-        .map(|(slug, spec)| {
-            (
-                slug.clone(),
-                (
-                    spec.source.clone(),
-                    spec.crate_name.clone(),
-                    spec.version.clone(),
-                    spec.git.clone(),
-                    spec.rev.clone(),
-                    spec.path.clone(),
-                    spec.required,
-                    spec.depends_on.clone(),
-                ),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let serialized = serde_json::to_string(&sorted).unwrap_or_default();
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    serialized.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    let snapshot = serde_json::to_value(manifest).unwrap_or(serde_json::Value::Null);
+    let serialized = serde_json::to_string(&snapshot).unwrap_or_default();
+    let mut hasher = Sha256::new();
+    hasher.update(serialized.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 #[cfg(feature = "ssr")]
@@ -1493,7 +1474,7 @@ async fn save_manifest_and_enqueue_build(
     reason: String,
     summary: String,
 ) -> Result<BuildJob, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
+    use sea_orm::{ConnectionTrait, Statement, TransactionTrait};
 
     let backend = app_ctx.db.get_database_backend();
     let next_revision = expected_revision + 1;
@@ -1514,8 +1495,11 @@ async fn save_manifest_and_enqueue_build(
             expected_revision.into(),
         ],
     );
-    let update_result = app_ctx
-        .db
+    let txn = app_ctx.db.begin().await.map_err(|err| {
+        server_error(format!("failed to begin manifest/build transaction: {err}"))
+    })?;
+
+    let update_result = txn
         .execute(update)
         .await
         .map_err(|err| server_error(format!("failed to update platform_state: {err}")))?;
@@ -1547,7 +1531,7 @@ async fn save_manifest_and_enqueue_build(
         ],
     );
 
-    app_ctx.db.execute(insert).await.map_err(|err| {
+    txn.execute(insert).await.map_err(|err| {
         server_error(format!(
             "failed to enqueue build after manifest update: {err}"
         ))
@@ -1559,14 +1543,21 @@ async fn save_manifest_and_enqueue_build(
         vec![build_id.into()],
     );
 
-    app_ctx
-        .db
+    let build = txn
         .query_one(select)
         .await
         .map_err(|err| server_error(err.to_string()))?
         .map(map_build_job_row)
         .transpose()?
-        .ok_or_else(|| server_error("build record missing after enqueue"))
+        .ok_or_else(|| server_error("build record missing after enqueue"))?;
+
+    txn.commit().await.map_err(|err| {
+        server_error(format!(
+            "failed to commit manifest/build transaction: {err}"
+        ))
+    })?;
+
+    Ok(build)
 }
 
 #[cfg(feature = "ssr")]

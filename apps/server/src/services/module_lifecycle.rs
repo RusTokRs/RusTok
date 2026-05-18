@@ -117,13 +117,6 @@ impl ModuleLifecycleService {
             return Ok(module);
         }
 
-        let (module, previous_enabled, changed) =
-            Self::persist_module_state(db, tenant_id, module_slug, enabled).await?;
-
-        if !changed {
-            return Ok(module);
-        }
-
         let operation = Self::record_operation(
             db,
             tenant_id,
@@ -134,10 +127,11 @@ impl ModuleLifecycleService {
         )
         .await?;
 
+        let hook_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
         let module_ctx = ModuleContext {
             db,
             tenant_id,
-            config: &module.settings,
+            config: &hook_settings,
         };
 
         let hook_result = if enabled {
@@ -148,20 +142,18 @@ impl ModuleLifecycleService {
 
         if let Err(err) = hook_result {
             tracing::error!(
-                "Module hook failed for {} (enabled={}): {}. Reverting to {}",
+                "Module pre-hook failed for {} (enabled={}): {}; tenant state was not changed",
                 module_slug,
                 enabled,
-                err,
-                previous_enabled
+                err
             );
 
-            let _ =
-                Self::persist_module_state(db, tenant_id, module_slug, previous_enabled).await?;
             Self::mark_operation_failed(db, operation.id, &err.to_string()).await?;
             return Err(ToggleModuleError::HookFailed(err.to_string()));
         }
 
-        Self::mark_operation_done(db, operation.id).await?;
+        let module =
+            Self::commit_module_state(db, operation.id, tenant_id, module_slug, enabled).await?;
         Ok(module)
     }
 
@@ -237,6 +229,55 @@ impl ModuleLifecycleService {
         }
     }
 
+    async fn current_module_settings(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+    ) -> Result<serde_json::Value, DbErr> {
+        Ok(TenantModulesEntity::find()
+            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
+            .filter(tenant_modules::Column::ModuleSlug.eq(module_slug))
+            .one(db)
+            .await?
+            .map(|model| model.settings)
+            .unwrap_or_else(|| serde_json::json!({})))
+    }
+
+    async fn commit_module_state(
+        db: &DatabaseConnection,
+        operation_id: uuid::Uuid,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        enabled: bool,
+    ) -> Result<tenant_modules::Model, DbErr> {
+        let module_slug = module_slug.to_string();
+
+        db.transaction::<_, tenant_modules::Model, DbErr>(move |txn| {
+            let module_slug = module_slug.clone();
+            Box::pin(async move {
+                let (module, _, _) =
+                    Self::persist_module_state_on(txn, tenant_id, &module_slug, enabled).await?;
+
+                if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
+                    .one(txn)
+                    .await?
+                {
+                    let mut active: module_operations::ActiveModel = model.into();
+                    active.status = sea_orm::ActiveValue::Set("done".to_string());
+                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                    active.update(txn).await?;
+                }
+
+                Ok(module)
+            })
+        })
+        .await
+        .map_err(|err| match err {
+            sea_orm::TransactionError::Connection(db_err) => db_err,
+            sea_orm::TransactionError::Transaction(db_err) => db_err,
+        })
+    }
+
     async fn persist_module_state(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -248,40 +289,7 @@ impl ModuleLifecycleService {
         db.transaction::<_, (tenant_modules::Model, bool, bool), DbErr>(move |txn| {
             let module_slug = module_slug.clone();
             Box::pin(async move {
-                let existing = TenantModulesEntity::find()
-                    .filter(tenant_modules::Column::TenantId.eq(tenant_id))
-                    .filter(tenant_modules::Column::ModuleSlug.eq(&module_slug))
-                    .one(txn)
-                    .await?;
-
-                match existing {
-                    Some(model) => {
-                        if model.enabled == enabled {
-                            return Ok((model.clone(), model.enabled, false));
-                        }
-
-                        let previous_enabled = model.enabled;
-                        let mut active: tenant_modules::ActiveModel = model.into();
-                        active.enabled = Set(enabled);
-                        let updated = active.update(txn).await?;
-                        Ok((updated, previous_enabled, true))
-                    }
-                    None => {
-                        let module = tenant_modules::ActiveModel {
-                            id: Set(rustok_core::generate_id()),
-                            tenant_id: Set(tenant_id),
-                            module_slug: Set(module_slug),
-                            enabled: Set(enabled),
-                            settings: Set(serde_json::json!({})),
-                            created_at: sea_orm::ActiveValue::NotSet,
-                            updated_at: sea_orm::ActiveValue::NotSet,
-                        }
-                        .insert(txn)
-                        .await?;
-
-                        Ok((module, !enabled, true))
-                    }
-                }
+                Self::persist_module_state_on(txn, tenant_id, &module_slug, enabled).await
             })
         })
         .await
@@ -289,6 +297,51 @@ impl ModuleLifecycleService {
             sea_orm::TransactionError::Connection(db_err) => db_err,
             sea_orm::TransactionError::Transaction(db_err) => db_err,
         })
+    }
+
+    async fn persist_module_state_on<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        enabled: bool,
+    ) -> Result<(tenant_modules::Model, bool, bool), DbErr>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let existing = TenantModulesEntity::find()
+            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
+            .filter(tenant_modules::Column::ModuleSlug.eq(module_slug))
+            .one(db)
+            .await?;
+
+        match existing {
+            Some(model) => {
+                if model.enabled == enabled {
+                    return Ok((model.clone(), model.enabled, false));
+                }
+
+                let previous_enabled = model.enabled;
+                let mut active: tenant_modules::ActiveModel = model.into();
+                active.enabled = Set(enabled);
+                let updated = active.update(db).await?;
+                Ok((updated, previous_enabled, true))
+            }
+            None => {
+                let module = tenant_modules::ActiveModel {
+                    id: Set(rustok_core::generate_id()),
+                    tenant_id: Set(tenant_id),
+                    module_slug: Set(module_slug.to_string()),
+                    enabled: Set(enabled),
+                    settings: Set(serde_json::json!({})),
+                    created_at: sea_orm::ActiveValue::NotSet,
+                    updated_at: sea_orm::ActiveValue::NotSet,
+                }
+                .insert(db)
+                .await?;
+
+                Ok((module, !enabled, true))
+            }
+        }
     }
 
     async fn record_operation(

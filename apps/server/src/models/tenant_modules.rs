@@ -47,7 +47,7 @@ impl Entity {
         Ok(modules.into_iter().map(|m| m.module_slug).collect())
     }
 
-    pub async fn toggle(
+    pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(
         db: &DatabaseConnection,
         tenant_id: Uuid,
         module_slug: &str,
@@ -74,13 +74,14 @@ impl Entity {
     }
 }
 
-pub async fn toggle(
+pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     module_slug: &str,
     enabled: bool,
 ) -> Result<Model, DbErr> {
-    Entity::toggle(db, tenant_id, module_slug, enabled).await
+    Entity::upsert_flag_without_lifecycle_for_migrations_only(db, tenant_id, module_slug, enabled)
+        .await
 }
 
 pub async fn find_enabled(db: &DatabaseConnection, tenant_id: Uuid) -> Result<Vec<String>, DbErr> {
