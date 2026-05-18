@@ -82,6 +82,75 @@ pub mod schema {
         Value::Object(object)
     }
 
+    pub fn offer(price: f64, price_currency: &str, availability: Option<&str>) -> Value {
+        let mut object = schema_object("Offer");
+        object.insert("price".to_string(), json!(price));
+        insert_string(&mut object, "priceCurrency", Some(price_currency));
+        insert_string(&mut object, "availability", availability);
+        Value::Object(object)
+    }
+
+    pub fn review(
+        author_name: Option<&str>,
+        review_body: Option<&str>,
+        rating_value: Option<f64>,
+        best_rating: Option<f64>,
+    ) -> Value {
+        let mut object = schema_object("Review");
+        insert_string(&mut object, "reviewBody", review_body);
+        if let Some(author_name) = author_name.map(str::trim).filter(|value| !value.is_empty()) {
+            object.insert("author".to_string(), json!({"@type":"Person","name":author_name}));
+        }
+        if rating_value.is_some() || best_rating.is_some() {
+            let mut rating = schema_object("Rating");
+            if let Some(rating_value) = rating_value {
+                rating.insert("ratingValue".to_string(), json!(rating_value));
+            }
+            if let Some(best_rating) = best_rating {
+                rating.insert("bestRating".to_string(), json!(best_rating));
+            }
+            object.insert("reviewRating".to_string(), Value::Object(rating));
+        }
+        Value::Object(object)
+    }
+
+    pub fn breadcrumb_list(items: impl IntoIterator<Item = (&'static str, String)>) -> Value {
+        let mut object = schema_object("BreadcrumbList");
+        let item_list = items
+            .into_iter()
+            .enumerate()
+            .map(|(index, (name, item))| {
+                json!({
+                    "@type": "ListItem",
+                    "position": index + 1,
+                    "name": name,
+                    "item": item
+                })
+            })
+            .collect::<Vec<_>>();
+        object.insert("itemListElement".to_string(), Value::Array(item_list));
+        Value::Object(object)
+    }
+
+    pub fn faq_page(questions_and_answers: impl IntoIterator<Item = (&'static str, String)>) -> Value {
+        let mut object = schema_object("FAQPage");
+        let entities = questions_and_answers
+            .into_iter()
+            .map(|(question, answer)| {
+                json!({
+                    "@type":"Question",
+                    "name": question,
+                    "acceptedAnswer": {
+                        "@type":"Answer",
+                        "text": answer
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        object.insert("mainEntity".to_string(), Value::Array(entities));
+        Value::Object(object)
+    }
+
     fn base_page(kind: &str, name: &str, description: Option<&str>, in_language: &str) -> Value {
         let mut object = schema_object(kind);
         insert_string(&mut object, "name", Some(name));
@@ -634,6 +703,27 @@ mod tests {
         assert_eq!(discussion["articleBody"], json!("Forum body"));
         assert_eq!(discussion["datePublished"], json!("2026-05-01T00:00:00Z"));
         assert!(discussion.get("dateModified").is_none());
+
+        let offer = schema::offer(49.9, "USD", Some("https://schema.org/InStock"));
+        assert_eq!(offer["@type"], json!("Offer"));
+        assert_eq!(offer["price"], json!(49.9));
+        assert_eq!(offer["priceCurrency"], json!("USD"));
+
+        let review = schema::review(Some("Jane"), Some("Great"), Some(5.0), Some(5.0));
+        assert_eq!(review["@type"], json!("Review"));
+        assert_eq!(review["author"]["name"], json!("Jane"));
+        assert_eq!(review["reviewRating"]["ratingValue"], json!(5.0));
+
+        let breadcrumbs = schema::breadcrumb_list([
+            ("Catalog", "https://demo.test/catalog".to_string()),
+            ("Shoes", "https://demo.test/catalog/shoes".to_string()),
+        ]);
+        assert_eq!(breadcrumbs["@type"], json!("BreadcrumbList"));
+        assert_eq!(breadcrumbs["itemListElement"][0]["position"], json!(1));
+
+        let faq = schema::faq_page([("How long is shipping?", "2-3 days".to_string())]);
+        assert_eq!(faq["@type"], json!("FAQPage"));
+        assert_eq!(faq["mainEntity"][0]["@type"], json!("Question"));
     }
 
     #[test]
