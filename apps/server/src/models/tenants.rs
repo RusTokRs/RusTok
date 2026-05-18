@@ -1,4 +1,5 @@
 use sea_orm::prelude::*;
+use chrono::Utc;
 use sea_orm::EntityTrait;
 
 use rustok_core::generate_id;
@@ -16,6 +17,8 @@ impl Model {
 
 impl ActiveModel {
     pub fn new(name: &str, slug: &str) -> Self {
+        let now = Utc::now();
+
         Self {
             id: sea_orm::ActiveValue::Set(generate_id()),
             name: sea_orm::ActiveValue::Set(name.to_string()),
@@ -24,8 +27,8 @@ impl ActiveModel {
             settings: sea_orm::ActiveValue::Set(serde_json::json!({})),
             default_locale: sea_orm::ActiveValue::Set("en".to_string()),
             is_active: sea_orm::ActiveValue::Set(true),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
+            created_at: sea_orm::ActiveValue::Set(now),
+            updated_at: sea_orm::ActiveValue::Set(now),
         }
     }
 }
