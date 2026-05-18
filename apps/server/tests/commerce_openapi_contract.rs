@@ -1,3 +1,5 @@
+#![cfg(feature = "mod-commerce")]
+
 use rustok_server::controllers::swagger::{ApiDoc, SecurityAddon};
 use serde_json::Value;
 use utoipa::{Modify, OpenApi};
