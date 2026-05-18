@@ -79,7 +79,7 @@ pub use locale::{
     normalize_locale_tag, push_locale_candidate, PLATFORM_FALLBACK_LOCALE,
 };
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
-pub use migrations::ModuleMigration;
+pub use migrations::{MigrationDependencyDescriptor, ModuleMigration};
 pub use module::{
     MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,

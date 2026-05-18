@@ -13,6 +13,7 @@ mod m20260405_000006_add_is_localized_to_product_field_definitions;
 mod m20260409_000007_add_product_seller_id;
 
 use sea_orm_migration::MigrationTrait;
+use rustok_core::MigrationDependencyDescriptor;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
@@ -30,8 +31,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ]
 }
 
-pub fn migration_dependencies() -> Vec<(&'static str, Vec<&'static str>)> {
-    vec![(
+pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
+    vec![MigrationDependencyDescriptor::new(
         "m20260329_000001_create_product_tags",
         vec!["m20260329_000001_create_taxonomy_tables"],
     )]
