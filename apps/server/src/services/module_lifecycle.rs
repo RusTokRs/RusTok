@@ -369,6 +369,7 @@ impl ModuleLifecycleService {
         .await
     }
 
+    #[allow(dead_code)]
     async fn mark_operation_done(
         db: &DatabaseConnection,
         operation_id: uuid::Uuid,

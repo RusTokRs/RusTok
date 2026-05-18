@@ -287,6 +287,7 @@ impl BuildService {
         Ok(builds)
     }
 
+    #[allow(dead_code)]
     async fn find_build_by_hash(&self, hash: &str) -> anyhow::Result<Option<Build>> {
         Self::find_build_by_hash_on(&self.db, hash).await
     }

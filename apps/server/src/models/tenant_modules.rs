@@ -47,6 +47,7 @@ impl Entity {
         Ok(modules.into_iter().map(|m| m.module_slug).collect())
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -74,6 +75,7 @@ impl Entity {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(
     db: &DatabaseConnection,
     tenant_id: Uuid,
