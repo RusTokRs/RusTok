@@ -41,6 +41,7 @@
 - `cargo xtask module validate tenant`
 - `cargo xtask module test tenant`
 - targeted tests для CRUD, module toggles, resolver invariants и cache integration path
+- контрактные тесты покрывают все публичные use-case, включая tenant CRUD, module toggles и resolver-facing invariants
 
 ## Правила обновления
 
