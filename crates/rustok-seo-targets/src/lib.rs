@@ -82,6 +82,105 @@ pub mod schema {
         Value::Object(object)
     }
 
+    pub fn offer(price: f64, price_currency: &str, availability: Option<&str>) -> Value {
+        let mut object = schema_object("Offer");
+        insert_number(&mut object, "price", Some(price));
+        let currency = normalize_currency_code(price_currency);
+        insert_string(
+            &mut object,
+            "priceCurrency",
+            currency.as_deref(),
+        );
+        let availability = availability
+            .and_then(normalize_schema_org_availability);
+        insert_string(&mut object, "availability", availability);
+        Value::Object(object)
+    }
+
+    pub fn review(
+        author_name: Option<&str>,
+        review_body: Option<&str>,
+        rating_value: Option<f64>,
+        best_rating: Option<f64>,
+    ) -> Value {
+        let mut object = schema_object("Review");
+        insert_string(&mut object, "reviewBody", review_body);
+        if let Some(author_name) = author_name.map(str::trim).filter(|value| !value.is_empty()) {
+            let mut author = typed_object("Person");
+            author.insert("name".to_string(), json!(author_name));
+            object.insert("author".to_string(), Value::Object(author));
+        }
+        if rating_value.is_some() || best_rating.is_some() {
+            let mut rating = typed_object("Rating");
+            insert_number(&mut rating, "ratingValue", rating_value);
+            insert_number(&mut rating, "bestRating", best_rating);
+            if rating.len() > 1 {
+                object.insert("reviewRating".to_string(), Value::Object(rating));
+            }
+        }
+        Value::Object(object)
+    }
+
+    pub fn breadcrumb_list<I, N, U>(items: I) -> Value
+    where
+        I: IntoIterator<Item = (N, U)>,
+        N: AsRef<str>,
+        U: AsRef<str>,
+    {
+        let mut object = schema_object("BreadcrumbList");
+        let item_list = items
+            .into_iter()
+            .filter_map(|(name, item)| {
+                let name = name.as_ref().trim();
+                let item = item.as_ref().trim();
+                if name.is_empty() || item.is_empty() {
+                    return None;
+                }
+                Some((name.to_string(), item.to_string()))
+            })
+            .enumerate()
+            .map(|(position, (name, item))| {
+                json!({
+                    "@type": "ListItem",
+                    "position": position + 1,
+                    "name": name,
+                    "item": item
+                })
+            })
+            .collect::<Vec<_>>();
+        object.insert("itemListElement".to_string(), Value::Array(item_list));
+        Value::Object(object)
+    }
+
+    pub fn faq_page<I, Q, A>(questions_and_answers: I) -> Value
+    where
+        I: IntoIterator<Item = (Q, A)>,
+        Q: AsRef<str>,
+        A: AsRef<str>,
+    {
+        let mut object = schema_object("FAQPage");
+        let entities = questions_and_answers
+            .into_iter()
+            .filter_map(|(question, answer)| {
+                let question = question.as_ref().trim();
+                let answer = answer.as_ref().trim();
+                if question.is_empty() || answer.is_empty() {
+                    return None;
+                }
+                Some(json!({
+                    "@type":"Question",
+                    "name": question,
+                    "acceptedAnswer": {
+                        "@type":"Answer",
+                        "text": answer
+                    }
+                }))
+            })
+            .collect::<Vec<_>>();
+        object.insert("mainEntity".to_string(), Value::Array(entities));
+        Value::Object(object)
+    }
+
     fn base_page(kind: &str, name: &str, description: Option<&str>, in_language: &str) -> Value {
         let mut object = schema_object(kind);
         insert_string(&mut object, "name", Some(name));
@@ -97,6 +196,12 @@ pub mod schema {
         object
     }
 
+    fn typed_object(kind: &str) -> Map<String, Value> {
+        let mut object = Map::new();
+        object.insert("@type".to_string(), json!(kind));
+        object
+    }
+
     fn insert_string(object: &mut Map<String, Value>, key: &str, value: Option<&str>) {
         if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
             object.insert(key.to_string(), Value::String(value.to_string()));
@@ -107,6 +212,35 @@ pub mod schema {
         if let Some(value) = value.filter(|value| !value.is_null()) {
             object.insert(key.to_string(), value);
         }
+    }
+
+    fn insert_number(object: &mut Map<String, Value>, key: &str, value: Option<f64>) {
+        if let Some(value) = value.filter(|value| value.is_finite()) {
+            object.insert(key.to_string(), json!(value));
+        }
+    }
+
+    fn normalize_currency_code(value: &str) -> Option<String> {
+        let value = value.trim();
+        if value.is_empty() || value.len() != 3 || !value.chars().all(|ch| ch.is_ascii_alphabetic()) {
+            return None;
+        }
+        match value.to_ascii_uppercase().as_str() {
+            "XXX" => None,
+            normalized => Some(normalized.to_string()),
+        }
+    }
+
+    fn normalize_schema_org_availability(value: &str) -> Option<&str> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if trimmed.starts_with("https://schema.org/") || trimmed.starts_with("http://schema.org/")
+        {
+            return Some(trimmed);
+        }
+        None
     }
 }
 
@@ -634,6 +768,53 @@ mod tests {
         assert_eq!(discussion["articleBody"], json!("Forum body"));
         assert_eq!(discussion["datePublished"], json!("2026-05-01T00:00:00Z"));
         assert!(discussion.get("dateModified").is_none());
+
+        let offer = schema::offer(49.9, "USD", Some("https://schema.org/InStock"));
+        assert_eq!(offer["@type"], json!("Offer"));
+        assert_eq!(offer["price"], json!(49.9));
+        assert_eq!(offer["priceCurrency"], json!("USD"));
+        assert_eq!(offer["availability"], json!("https://schema.org/InStock"));
+        let offer_without_valid_price = schema::offer(f64::NAN, " usd ", None);
+        assert!(offer_without_valid_price.get("price").is_none());
+        assert_eq!(offer_without_valid_price["priceCurrency"], json!("USD"));
+        let offer_with_invalid_currency = schema::offer(10.0, "USDT", None);
+        assert!(offer_with_invalid_currency.get("priceCurrency").is_none());
+        let offer_with_no_currency = schema::offer(10.0, "XXX", None);
+        assert!(offer_with_no_currency.get("priceCurrency").is_none());
+        let offer_with_invalid_availability = schema::offer(10.0, "USD", Some("InStock"));
+        assert!(offer_with_invalid_availability.get("availability").is_none());
+        let offer_with_http_availability =
+            schema::offer(10.0, "USD", Some("http://schema.org/InStock"));
+        assert_eq!(
+            offer_with_http_availability["availability"],
+            json!("http://schema.org/InStock")
+        );
+
+        let review = schema::review(Some("Jane"), Some("Great"), Some(5.0), Some(5.0));
+        assert_eq!(review["@type"], json!("Review"));
+        assert_eq!(review["author"]["name"], json!("Jane"));
+        assert_eq!(review["reviewRating"]["ratingValue"], json!(5.0));
+        assert!(review["reviewRating"].get("@context").is_none());
+        let review_with_invalid_rating =
+            schema::review(Some("Jane"), Some("Great"), Some(f64::NAN), Some(f64::INFINITY));
+        assert!(review_with_invalid_rating.get("reviewRating").is_none());
+
+        let breadcrumbs = schema::breadcrumb_list([
+            ("Catalog", "https://demo.test/catalog".to_string()),
+            ("Shoes", "https://demo.test/catalog/shoes".to_string()),
+            (" ", "https://demo.test/catalog/ignored".to_string()),
+        ]);
+        assert_eq!(breadcrumbs["@type"], json!("BreadcrumbList"));
+        assert_eq!(breadcrumbs["itemListElement"][0]["position"], json!(1));
+        assert_eq!(breadcrumbs["itemListElement"].as_array().map(Vec::len), Some(2));
+
+        let faq = schema::faq_page([
+            ("How long is shipping?", "2-3 days".to_string()),
+            ("", "ignored".to_string()),
+        ]);
+        assert_eq!(faq["@type"], json!("FAQPage"));
+        assert_eq!(faq["mainEntity"][0]["@type"], json!("Question"));
+        assert_eq!(faq["mainEntity"].as_array().map(Vec::len), Some(1));
     }
 
     #[test]
