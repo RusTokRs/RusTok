@@ -69,11 +69,17 @@ pub async fn bootstrap_app_runtime(
 
     init_marketplace_catalog(ctx);
 
-    let manifest = PlatformCompositionService::active_manifest(&ctx.db)
-        .await
-        .map_err(|error| {
-            Error::BadRequest(format!("platform composition validation failed: {error}"))
-        })?;
+    let manifest = if settings.runtime.is_registry_only() {
+        ManifestManager::load().map_err(|error| {
+            Error::BadRequest(format!("modules.toml validation failed: {error}"))
+        })?
+    } else {
+        PlatformCompositionService::active_manifest(&ctx.db)
+            .await
+            .map_err(|error| {
+                Error::BadRequest(format!("platform composition validation failed: {error}"))
+            })?
+    };
     let deployment_surfaces = if settings.runtime.is_registry_only() {
         DeploymentSurfaceContract {
             profile: crate::models::build::DeploymentProfile::HeadlessApi,
