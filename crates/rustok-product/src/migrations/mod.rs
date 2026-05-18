@@ -12,8 +12,8 @@ mod m20260405_000005_add_product_shipping_profile_slug;
 mod m20260405_000006_add_is_localized_to_product_field_definitions;
 mod m20260409_000007_add_product_seller_id;
 
-use sea_orm_migration::MigrationTrait;
 use rustok_core::MigrationDependencyDescriptor;
+use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
