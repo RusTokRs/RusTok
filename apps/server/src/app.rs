@@ -645,10 +645,13 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let app = timeout(Duration::from_secs(30), <App as Hooks>::after_routes(base_router, &ctx))
-            .await
-            .expect("after_routes timed out")
-            .expect("after_routes should wire runtime");
+        let app = timeout(
+            Duration::from_secs(30),
+            <App as Hooks>::after_routes(base_router, &ctx),
+        )
+        .await
+        .expect("after_routes timed out")
+        .expect("after_routes should wire runtime");
 
         assert!(ctx.shared_store.contains::<Arc<EventRuntime>>());
         assert!(ctx
