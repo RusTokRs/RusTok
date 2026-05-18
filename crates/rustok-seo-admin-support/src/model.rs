@@ -271,11 +271,35 @@ impl SeoEntityForm {
         };
 
         if schema_type.is_empty() {
+            if let Some(value) = payload_value.as_ref() {
+                if !has_non_empty_json_ld_type(value) {
+                    return Err(
+                        "Structured data payload must contain at least one non-empty @type when schema type is empty."
+                            .to_string(),
+                    );
+                }
+            }
             return Ok(payload_value);
         }
 
         let mut object = match payload_value {
-            Some(Value::Object(object)) => object,
+            Some(Value::Object(mut object)) => {
+                if let Some(existing_type) = object
+                    .get("@type")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if existing_type != schema_type {
+                        return Err(
+                            "Structured data payload @type must match schema type field."
+                                .to_string(),
+                        );
+                    }
+                }
+                object.remove("@type");
+                object
+            }
             Some(_) => {
                 return Err(
                     "Structured data payload must be a JSON object when schema type is set."
@@ -286,6 +310,28 @@ impl SeoEntityForm {
         };
         object.insert("@type".to_string(), Value::String(schema_type.to_string()));
         Ok(Some(Value::Object(object)))
+    }
+}
+
+fn has_non_empty_json_ld_type(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => object
+            .get("@type")
+            .map(has_non_empty_type_value)
+            .unwrap_or(false),
+        Value::Array(values) => values.iter().any(has_non_empty_json_ld_type),
+        _ => false,
+    }
+}
+
+fn has_non_empty_type_value(value: &Value) -> bool {
+    match value {
+        Value::String(raw) => !raw.trim().is_empty(),
+        Value::Array(values) => values
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|raw| !raw.trim().is_empty()),
+        _ => false,
     }
 }
 
@@ -404,6 +450,43 @@ mod tests {
         assert_eq!(
             error,
             "Structured data payload must be a JSON object when schema type is set."
+        );
+    }
+
+    #[test]
+    fn build_input_rejects_payload_without_type_when_schema_type_empty() {
+        let mut form = SeoEntityForm::new("en-US".to_string());
+        form.structured_data_payload = r#"{"name":"No type"}"#.to_string();
+
+        let error = form
+            .build_input(
+                SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug"),
+                Uuid::new_v4().to_string().as_str(),
+            )
+            .expect_err("payload without @type should fail");
+
+        assert_eq!(
+            error,
+            "Structured data payload must contain at least one non-empty @type when schema type is empty."
+        );
+    }
+
+    #[test]
+    fn build_input_rejects_payload_type_mismatch() {
+        let mut form = SeoEntityForm::new("en-US".to_string());
+        form.structured_data_type = "Product".to_string();
+        form.structured_data_payload = r#"{"@type":"Article","name":"Demo"}"#.to_string();
+
+        let error = form
+            .build_input(
+                SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug"),
+                Uuid::new_v4().to_string().as_str(),
+            )
+            .expect_err("mismatched @type should fail");
+
+        assert_eq!(
+            error,
+            "Structured data payload @type must match schema type field."
         );
     }
 }
