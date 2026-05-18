@@ -10,6 +10,15 @@ fn test_register_all_metrics() {
     let result = metrics::register_all(&registry);
     assert!(result.is_ok(), "Should register all metrics successfully");
 
+    // Seed representative metric vectors so gather() exposes their families.
+    metrics::record_event_published("ProductCreated", "tenant-123");
+    metrics::update_queue_depth("in_memory", 1);
+    metrics::record_event_consumer_lagged("event_dispatcher");
+    metrics::record_event_dispatch_latency_ms("event_dispatcher", "ProductCreated", 1.0);
+    metrics::update_circuit_breaker_state("redis", 0);
+    metrics::record_cache_operation("tenant_cache", "get", "hit");
+    metrics::record_module_entrypoint_call("catalog", "create_product", "success");
+
     // Verify metrics are registered
     let metric_families = registry.gather();
     assert!(
