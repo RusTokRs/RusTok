@@ -1,5 +1,6 @@
 use chrono::Utc;
 use sea_orm::prelude::*;
+use chrono::Utc;
 use sea_orm::EntityTrait;
 
 use rustok_core::generate_id;
@@ -17,7 +18,7 @@ impl Model {
 
 impl ActiveModel {
     pub fn new(name: &str, slug: &str) -> Self {
-        let now = Utc::now().fixed_offset();
+        let now = Utc::now();
 
         Self {
             id: sea_orm::ActiveValue::Set(generate_id()),
