@@ -693,7 +693,7 @@ mod tests {
     use migration::Migrator;
     use rustok_core::field_schema::{FieldDefinition, FieldType};
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;

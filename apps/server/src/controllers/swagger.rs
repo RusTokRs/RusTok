@@ -48,7 +48,7 @@ use utoipa::OpenApi;
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
-        crate::controllers::marketplace_registry::record_publish_validation_stage,
+        crate::controllers::marketplace_registry::report_validation_stage,
         crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
         // Swagger

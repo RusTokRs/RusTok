@@ -425,6 +425,7 @@ mod tests {
     use super::{SeoEntityForm, SeoMetaTranslationView, SeoMetaView, SeoRecommendation};
     use serde_json::json;
     use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+    use serde_json::json;
     use uuid::Uuid;
 
     #[test]

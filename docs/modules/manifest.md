@@ -328,3 +328,10 @@ cargo xtask validate-manifest
 - [Главный README по верификации](../verification/README.md)
 
 > Статус документа: актуальный. При изменении правил `xtask`, acceptance-контракта для модулей или состава платформенных модулей обновляйте этот файл вместе с `docs/index.md`.
+
+## Runtime snapshot и manifest hash
+
+`modules.toml` остаётся декларативным bootstrap/dev manifest-ом, но production runtime читает активный состав из
+`platform_state`. При install/uninstall/upgrade control plane сохраняет полный manifest JSON snapshot и SHA-256 hash
+этого snapshot-а. Hash считается по canonical JSON всего manifest-а, а не только по списку модулей, поэтому изменения
+`settings`, build profile, source pins и dependency metadata меняют immutable artifact identity.

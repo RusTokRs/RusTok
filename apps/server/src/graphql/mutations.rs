@@ -41,8 +41,8 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::build_event_hub::{
     build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
 };
+use crate::services::build_service::BuildService;
 use crate::services::build_service::EventBusBuildEventPublisher;
-use crate::services::build_service::{BuildRequest, BuildService};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -58,7 +58,8 @@ use crate::services::module_lifecycle::{
     ModuleLifecycleService, ToggleModuleError, UpdateModuleSettingsError,
 };
 use crate::services::platform_composition::{
-    PlatformCompositionError, PlatformCompositionService, PlatformCompositionSnapshot,
+    PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionError,
+    PlatformCompositionService,
 };
 use crate::services::rbac_service::RbacService;
 use rustok_core::{ModuleRegistry, Permission};
@@ -264,43 +265,6 @@ async fn ensure_modules_manage_permission(
     Ok((auth, tenant))
 }
 
-async fn request_build_for_manifest(
-    app_ctx: &loco_rs::app::AppContext,
-    tenant_id: Uuid,
-    snapshot: &PlatformCompositionSnapshot,
-    manifest_diff: &ManifestDiff,
-    requested_by: &str,
-    reason: &str,
-) -> Result<BuildJob> {
-    let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
-        Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
-            app_ctx,
-        ))),
-        Arc::new(EventBusBuildEventPublisher::new(
-            event_bus_from_context(app_ctx),
-            tenant_id,
-        )),
-    ]));
-
-    let build = BuildService::with_event_publisher(app_ctx.db.clone(), event_publisher)
-        .request_build(BuildRequest {
-            manifest_ref: format!("platform_state:{}", snapshot.revision),
-            manifest_revision: snapshot.revision,
-            manifest_snapshot: serde_json::to_value(&snapshot.manifest)
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?,
-            requested_by: requested_by.to_string(),
-            reason: Some(reason.to_string()),
-            modules_delta: manifest_diff.summary(),
-            modules: ManifestManager::build_modules(&snapshot.manifest),
-            profile: ManifestManager::deployment_profile(&snapshot.manifest),
-            execution_plan: ManifestManager::build_execution_plan(&snapshot.manifest),
-        })
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-    Ok(BuildJob::from_model(&build))
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn persist_manifest_and_request_build(
     app_ctx: &loco_rs::app::AppContext,
@@ -312,25 +276,39 @@ async fn persist_manifest_and_request_build(
     requested_by: &str,
     reason: String,
 ) -> Result<BuildJob> {
-    let snapshot = PlatformCompositionService::update_manifest(
+    let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
+        Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
+            app_ctx,
+        ))),
+        Arc::new(EventBusBuildEventPublisher::new(
+            event_bus_from_context(app_ctx),
+            tenant_id,
+        )),
+    ]));
+
+    let result = PlatformCompositionBuildService::update_manifest_and_request_build(
         &app_ctx.db,
+        event_publisher,
         registry,
         expected_revision,
         manifest,
-        Some(requested_by.to_string()),
+        manifest_diff,
+        requested_by.to_string(),
+        reason,
     )
     .await
-    .map_err(map_platform_composition_error)?;
+    .map_err(map_platform_composition_build_error)?;
 
-    request_build_for_manifest(
-        app_ctx,
-        tenant_id,
-        &snapshot,
-        &manifest_diff,
-        requested_by,
-        &reason,
-    )
-    .await
+    Ok(BuildJob::from_model(&result.build))
+}
+
+fn map_platform_composition_build_error(error: PlatformCompositionBuildError) -> FieldError {
+    match error {
+        PlatformCompositionBuildError::Composition(error) => map_platform_composition_error(error),
+        PlatformCompositionBuildError::Build(error) => {
+            <FieldError as GraphQLError>::internal_error(&error)
+        }
+    }
 }
 
 fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError {

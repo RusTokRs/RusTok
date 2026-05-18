@@ -36,7 +36,7 @@ fn storage_from_ctx(ctx: &AppContext) -> rustok_storage::StorageService {
         return storage;
     }
 
-    let fallback = rustok_storage::StorageService::new(rustok_storage::LocalStorage::new(
+    let fallback = rustok_storage::StorageService::new(rustok_storage::local::LocalStorage::new(
         std::env::temp_dir().join("rustok-media-fallback"),
         "/media",
     ));

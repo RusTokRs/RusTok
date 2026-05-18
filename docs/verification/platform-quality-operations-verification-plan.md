@@ -66,6 +66,13 @@
 - [ ] Tenant isolation, input validation и secret handling не расходятся с central docs и local docs.
 - [ ] Capability crates и automation paths не обходят общий authorization model.
 
+### 3.2.1 CI non-regression gates
+
+- [ ] `platform-contract` workflow содержит `cargo xtask validate-manifest` и `cargo xtask module validate`.
+- [ ] Coverage threshold берётся из `scripts/ci/coverage-threshold.env` (`RUSTOK_MIN_COVERAGE_PERCENT`) и применяется через `scripts/ci/check-coverage.sh`.
+- [ ] CI публикует LCOV artifact, SBOM/provenance job остаётся в required aggregate, а `cargo-deny-action` не удалён из security gates.
+- [ ] `scripts/ci/check-dependabot-directories.py` подтверждает, что все directories из `.github/dependabot.yml` существуют и stale paths не возвращаются.
+
 ### 3.2 Dependency and manifest hygiene
 
 - [ ] `cargo deny`, `cargo audit` и аналогичные quality tools трактуются как сигналы качества, согласованные с текущим workflow.

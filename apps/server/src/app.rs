@@ -361,6 +361,7 @@ mod tests {
     use serde_json::Value;
     use serial_test::serial;
     use std::sync::Arc;
+    use tokio::time::{timeout, Duration};
     use tower::ServiceExt;
 
     #[cfg(feature = "mod-seo")]
@@ -644,9 +645,13 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let app = <App as Hooks>::after_routes(base_router, &ctx)
-            .await
-            .expect("after_routes should wire runtime");
+        let app = timeout(
+            Duration::from_secs(30),
+            <App as Hooks>::after_routes(base_router, &ctx),
+        )
+        .await
+        .expect("after_routes timed out")
+        .expect("after_routes should wire runtime");
 
         assert!(ctx.shared_store.contains::<Arc<EventRuntime>>());
         assert!(ctx
@@ -657,16 +662,18 @@ mod tests {
         assert!(ctx.shared_store.contains::<SharedAuthRateLimiter>());
         assert!(ctx.shared_store.contains::<SharedOAuthRateLimiter>());
 
-        let response = app
-            .clone()
-            .oneshot(
+        let response = timeout(
+            Duration::from_secs(30),
+            app.clone().oneshot(
                 Request::builder()
                     .uri("/health/live")
                     .body(Body::empty())
                     .expect("request"),
-            )
-            .await
-            .expect("health/live request should succeed");
+            ),
+        )
+        .await
+        .expect("health/live request timed out")
+        .expect("health/live request should succeed");
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1279,11 +1286,14 @@ mod tests {
             !modules.is_empty(),
             "filtered v1 catalog should not be empty"
         );
-        assert!(modules.iter().any(|module| {
-            module["slug"]
-                .as_str()
-                .is_some_and(|slug| slug.eq_ignore_ascii_case("blog"))
-        }), "filtered v1 catalog should include blog module");
+        assert!(
+            modules.iter().any(|module| {
+                module["slug"]
+                    .as_str()
+                    .is_some_and(|slug| slug.eq_ignore_ascii_case("blog"))
+            }),
+            "filtered v1 catalog should include blog module"
+        );
     }
 
     #[tokio::test]

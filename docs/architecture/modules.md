@@ -169,3 +169,17 @@ Tenant lifecycle применяется только к `Optional` modules и р
 - [Контракт `rustok-module.toml`](../modules/manifest.md)
 - [Реестр crate-ов модульной платформы](../modules/crates-registry.md)
 - [Шаблон документации модуля](../templates/module_contract.md)
+
+## Runtime control plane и lifecycle
+
+Активный runtime-состав модулей хранится в `platform_state`; `modules.toml` используется как bootstrap/dev input.
+Изменение состава выполняется как atomic control-plane операция: manifest валидируется по registry, `platform_state`
+обновляется через revision/CAS, а build job получает `manifest_ref = platform_state:<revision>` в той же DB transaction.
+Manifest hash — SHA-256 от canonical JSON полного snapshot, включая settings/build/source/dependency metadata.
+
+Tenant enable/disable должен проходить через `ModuleLifecycleService::toggle_module_with_actor()`: operation journal
+пишется до изменения tenant state, compat `on_enable`/`on_disable` hooks выполняются как pre-hooks, а успешное изменение
+state и перевод operation в `done` фиксируются одним commit.
+
+Module-owned migrations могут объявлять ordering metadata рядом со своим exporter-ом; server migrator делает
+topological sort и считает missing dependency/cycle ошибкой runtime/test contract.

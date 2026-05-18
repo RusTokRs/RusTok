@@ -86,13 +86,8 @@ pub mod schema {
         let mut object = schema_object("Offer");
         insert_number(&mut object, "price", Some(price));
         let currency = normalize_currency_code(price_currency);
-        insert_string(
-            &mut object,
-            "priceCurrency",
-            currency.as_deref(),
-        );
-        let availability = availability
-            .and_then(normalize_schema_org_availability);
+        insert_string(&mut object, "priceCurrency", currency.as_deref());
+        let availability = availability.and_then(normalize_schema_org_availability);
         insert_string(&mut object, "availability", availability);
         Value::Object(object)
     }
@@ -222,7 +217,8 @@ pub mod schema {
 
     fn normalize_currency_code(value: &str) -> Option<String> {
         let value = value.trim();
-        if value.is_empty() || value.len() != 3 || !value.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        if value.is_empty() || value.len() != 3 || !value.chars().all(|ch| ch.is_ascii_alphabetic())
+        {
             return None;
         }
         match value.to_ascii_uppercase().as_str() {
@@ -795,7 +791,9 @@ mod tests {
         let offer_with_no_currency = schema::offer(10.0, "XXX", None);
         assert!(offer_with_no_currency.get("priceCurrency").is_none());
         let offer_with_invalid_availability = schema::offer(10.0, "USD", Some("InStock"));
-        assert!(offer_with_invalid_availability.get("availability").is_none());
+        assert!(offer_with_invalid_availability
+            .get("availability")
+            .is_none());
         let offer_with_http_availability =
             schema::offer(10.0, "USD", Some("http://schema.org/InStock"));
         assert_eq!(
@@ -804,15 +802,21 @@ mod tests {
         );
         let offer_with_unknown_availability =
             schema::offer(10.0, "USD", Some("https://schema.org/UnknownAvailability"));
-        assert!(offer_with_unknown_availability.get("availability").is_none());
+        assert!(offer_with_unknown_availability
+            .get("availability")
+            .is_none());
 
         let review = schema::review(Some("Jane"), Some("Great"), Some(5.0), Some(5.0));
         assert_eq!(review["@type"], json!("Review"));
         assert_eq!(review["author"]["name"], json!("Jane"));
         assert_eq!(review["reviewRating"]["ratingValue"], json!(5.0));
         assert!(review["reviewRating"].get("@context").is_none());
-        let review_with_invalid_rating =
-            schema::review(Some("Jane"), Some("Great"), Some(f64::NAN), Some(f64::INFINITY));
+        let review_with_invalid_rating = schema::review(
+            Some("Jane"),
+            Some("Great"),
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+        );
         assert!(review_with_invalid_rating.get("reviewRating").is_none());
 
         let breadcrumbs = schema::breadcrumb_list([
@@ -822,7 +826,10 @@ mod tests {
         ]);
         assert_eq!(breadcrumbs["@type"], json!("BreadcrumbList"));
         assert_eq!(breadcrumbs["itemListElement"][0]["position"], json!(1));
-        assert_eq!(breadcrumbs["itemListElement"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            breadcrumbs["itemListElement"].as_array().map(Vec::len),
+            Some(2)
+        );
 
         let faq = schema::faq_page([
             ("How long is shipping?", "2-3 days".to_string()),
