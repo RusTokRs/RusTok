@@ -130,8 +130,8 @@ impl SeoEntityForm {
         if let Some(structured_data) = meta.structured_data.as_ref() {
             match structured_data {
                 Value::Object(object) => {
-                    if let Some(Value::String(schema_type)) = object.get("@type") {
-                        self.structured_data_type = schema_type.clone();
+                    if let Some(schema_type) = extract_primary_type_value(object.get("@type")) {
+                        self.structured_data_type = schema_type;
                     }
                     let mut payload = object.clone();
                     payload.remove("@type");
@@ -284,11 +284,8 @@ impl SeoEntityForm {
 
         let mut object = match payload_value {
             Some(Value::Object(mut object)) => {
-                if let Some(existing_type) = object
-                    .get("@type")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
+                if let Some(existing_type) =
+                    extract_primary_type_value(object.get("@type")).as_deref()
                 {
                     if existing_type != schema_type {
                         return Err(
@@ -335,6 +332,28 @@ fn has_non_empty_type_value(value: &Value) -> bool {
     }
 }
 
+fn extract_primary_type_value(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::String(raw)) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Some(Value::Array(values)) => values.iter().find_map(Value::as_str).and_then(|raw| {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SeoCompletenessReport {
     pub score: u8,
@@ -372,7 +391,7 @@ fn non_empty_option(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SeoEntityForm, SeoRecommendation};
+    use super::{SeoEntityForm, SeoMetaTranslationView, SeoMetaView, SeoRecommendation};
     use serde_json::json;
     use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
     use uuid::Uuid;
@@ -488,5 +507,30 @@ mod tests {
             error,
             "Structured data payload @type must match schema type field."
         );
+    }
+
+    #[test]
+    fn apply_record_extracts_type_from_type_array() {
+        let mut form = SeoEntityForm::new("en-US".to_string());
+        let record = SeoMetaView {
+            target_kind: None,
+            target_id: None,
+            requested_locale: None,
+            effective_locale: "en-US".to_string(),
+            available_locales: vec!["en-US".to_string()],
+            noindex: false,
+            nofollow: false,
+            canonical_url: None,
+            translation: SeoMetaTranslationView {
+                locale: "en-US".to_string(),
+                ..SeoMetaTranslationView::default()
+            },
+            source: "explicit".to_string(),
+            structured_data: Some(json!({"@type":["Article","Thing"],"name":"Demo"})),
+        };
+
+        form.apply_record(&record);
+
+        assert_eq!(form.structured_data_type, "Article");
     }
 }
