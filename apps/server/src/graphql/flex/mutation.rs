@@ -434,6 +434,7 @@ mod tests {
     use crate::services::field_definition_cache::FieldDefinitionCache;
     use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
     use async_graphql::{EmptySubscription, Request, Schema, Variables};
+    use chrono::Utc;
     use loco_rs::{
         app::{AppContext, SharedStore},
         cache,
@@ -486,6 +487,14 @@ mod tests {
             default_locale: model.default_locale.clone(),
             is_active: model.is_active,
         }
+    }
+
+    fn seeded_tenant(name: &str, slug: &str) -> tenants::ActiveModel {
+        let mut tenant = tenants::ActiveModel::new(name, slug);
+        let now = Utc::now().fixed_offset();
+        tenant.created_at = Set(now);
+        tenant.updated_at = Set(now);
+        tenant
     }
 
     fn build_test_schema(
@@ -589,7 +598,7 @@ mod tests {
     async fn graphql_field_definition_crud_roundtrip_uses_live_registry_routing() {
         let db = setup_flex_graphql_test_db().await;
         let app_ctx = test_app_context(db.clone());
-        let mut tenant = tenants::ActiveModel::new("Flex Tenant", "flex-graphql");
+        let mut tenant = seeded_tenant("Flex Tenant", "flex-graphql");
         tenant.default_locale = Set("en".to_string());
         let tenant = tenant
             .insert(&db)
@@ -930,7 +939,7 @@ mod tests {
     async fn create_field_definition_requires_explicit_flex_permission() {
         let db = setup_flex_graphql_test_db().await;
         let app_ctx = test_app_context(db.clone());
-        let tenant = tenants::ActiveModel::new("Flex Tenant", "flex-graphql-denied")
+        let tenant = seeded_tenant("Flex Tenant", "flex-graphql-denied")
             .insert(&db)
             .await
             .expect("tenant should insert for denied graphql test");
@@ -974,7 +983,7 @@ mod tests {
     async fn field_definitions_query_requires_explicit_flex_list_permission() {
         let db = setup_flex_graphql_test_db().await;
         let app_ctx = test_app_context(db.clone());
-        let tenant = tenants::ActiveModel::new("Flex Tenant", "flex-graphql-list-denied")
+        let tenant = seeded_tenant("Flex Tenant", "flex-graphql-list-denied")
             .insert(&db)
             .await
             .expect("tenant should insert for denied list test");
@@ -1046,7 +1055,7 @@ mod tests {
     async fn field_definition_query_requires_explicit_flex_read_permission() {
         let db = setup_flex_graphql_test_db().await;
         let app_ctx = test_app_context(db.clone());
-        let tenant = tenants::ActiveModel::new("Flex Tenant", "flex-graphql-read-denied")
+        let tenant = seeded_tenant("Flex Tenant", "flex-graphql-read-denied")
             .insert(&db)
             .await
             .expect("tenant should insert for denied read test");
@@ -1129,7 +1138,7 @@ mod tests {
     async fn graphql_standalone_flex_schema_and_entry_roundtrip() {
         let db = setup_flex_graphql_test_db().await;
         let app_ctx = test_app_context(db.clone());
-        let mut tenant = tenants::ActiveModel::new("Flex Tenant", "flex-standalone-graphql");
+        let mut tenant = seeded_tenant("Flex Tenant", "flex-standalone-graphql");
         tenant.default_locale = Set("ru".to_string());
         let tenant = tenant
             .insert(&db)
@@ -1474,7 +1483,7 @@ mod tests {
     async fn create_flex_entry_requires_explicit_entry_permission() {
         let db = setup_flex_graphql_test_db().await;
         let app_ctx = test_app_context(db.clone());
-        let tenant = tenants::ActiveModel::new("Flex Tenant", "flex-standalone-entry-denied")
+        let tenant = seeded_tenant("Flex Tenant", "flex-standalone-entry-denied")
             .insert(&db)
             .await
             .expect("tenant should insert for standalone entry denial test");
