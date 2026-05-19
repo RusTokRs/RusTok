@@ -17,8 +17,6 @@ tracing.workspace = true
 async-trait.workspace = true
 tokio = { workspace = true }
 utoipa.workspace = true
-jsonwebtoken = "10.4.0"
-argon2.workspace = true
 once_cell.workspace = true
 regex = "1.10"
 email_address = "0.2.9"

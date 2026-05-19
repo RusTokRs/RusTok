@@ -12,9 +12,10 @@ contracts, ошибки, security primitives, content helpers и прочие и
 
 ## Зона ответственности
 
-- typed primitives и shared value objects;
+- typed primitives и shared value objects (например, `UserRole`, `UserStatus` для RBAC);
 - базовые error/validation helpers и security contracts;
-- content/rich-text вспомогательные контракты, которые используются несколькими модулями;
+- content/rich-text вспомогательные контракты, которые используются несколькими модулями (`rt_json`, `grapesjs`, `content_format`);
+- flex/custom-fields schema contracts (`field_schema`);
 - compatibility re-exports и shared API surface для foundation layer;
 - отсутствие domain-owned runtime orchestration и transport-specific logic.
 
@@ -23,6 +24,7 @@ contracts, ошибки, security primitives, content helpers и прочие и
 - используется практически всеми `rustok-*` crates как foundation dependency;
 - `apps/server` и runtime-модули зависят от typed contracts, но не должны тащить обратно shared logic в host слой;
 - `rustok-events`, `rustok-rbac`, `rustok-content` и другие foundation/domain crates должны оставаться поверх `rustok-core`, а не наоборот;
+- `rustok-auth` владеет canonical auth lifecycle; `rustok-core` не дублирует auth-specific сервисы, репозитории или миграции;
 - любые новые cross-module primitives должны попадать сюда только если они реально shared и не принадлежат одному bounded context.
 
 ## Проверка

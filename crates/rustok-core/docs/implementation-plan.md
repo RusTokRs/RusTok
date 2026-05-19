@@ -1,7 +1,6 @@
 # План реализации `rustok-core`
 
-Статус: foundation crate уже служит shared contract layer; основной риск сейчас
-не в отсутствии baseline, а в дрейфе ответственности и разрастании surface.
+Статус: foundation crate служит shared contract layer; выполнен sweep boundary hardening — вычищен domain-specific auth logic, синхронизированы docs и public surface.
 
 ## Область работ
 
@@ -11,10 +10,16 @@
 
 ## Текущее состояние
 
-- crate уже используется как базовая зависимость для platform и domain modules;
-- shared typed contracts и foundation helpers уже являются частью live surface;
+- crate используется как базовая зависимость для platform и domain modules;
+- shared typed contracts и foundation helpers являются частью live surface;
 - другие модули строят свои integration contracts поверх `rustok-core`, не размазывая базовые типы по workspace;
-- local docs и root `README.md` теперь должны удерживаться как часть scoped audit path.
+- **boundary hardening**: auth module (user entity, repository, service, migrations) удалён из `rustok-core` — canonical auth lifecycle живёт в `rustok-auth`;
+- **contract sync**: `CRATE_API.md`, `README.md`, `docs/README.md` синхронизированы с актуальным public surface;
+- **deps cleanup**: удалены `jsonwebtoken` и `argon2` из `Cargo.toml` (больше не нужны после удаления auth);
+- **targeted tests**: добавлен `tests/foundation_primitives.rs` с coverage для `UserRole`/`UserStatus` (display, parse, serde), `generate_id`/`parse_id`, locale normalization и field-schema guardrails;
+- **security/validation tests**: добавлен `tests/security_validation.rs` с coverage для `SecurityHeaders`, `RateLimiter`, `InputValidator`, `SsrfProtection` и utils (`is_valid_email`, `is_valid_uuid`, `html_escape`, `slugify`);
+- **contract tests**: расширен `tests/contract_surface.rs` проверками на отсутствие auth re-exports и лишних auth-зависимостей в `Cargo.toml`;
+- local docs и root `README.md` удерживаются как часть scoped audit path.
 
 ## Этапы
 
@@ -22,19 +27,19 @@
 
 - [x] закрепить `rustok-core` как shared foundation layer;
 - [x] удерживать typed primitives и shared helpers вне host/domain buckets;
-- [ ] удерживать sync между public surface, compatibility exports и module metadata.
+- [x] удерживать sync между public surface, compatibility exports и module metadata.
 
 ### 2. Boundary hardening
 
-- [ ] продолжать вычищать domain-specific logic из foundation layer;
-- [ ] переносить shared primitives сюда только при реальной cross-module необходимости;
-- [ ] покрывать новые foundation contracts targeted tests и compatibility checks.
+- [x] продолжать вычищать domain-specific logic из foundation layer;
+- [x] переносить shared primitives сюда только при реальной cross-module необходимости;
+- [x] покрывать новые foundation contracts targeted tests и compatibility checks.
 
 ### 3. Operability
 
-- [ ] документировать изменения foundation contracts одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [ ] обновлять consumer-module docs, если меняются базовые typed contracts.
+- [x] документировать изменения foundation contracts одновременно с изменением runtime surface;
+- [x] удерживать local docs и `README.md` синхронизированными;
+- [x] обновлять consumer-module docs, если меняются базовые typed contracts.
 
 ## Проверка
 

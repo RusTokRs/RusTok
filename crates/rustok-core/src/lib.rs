@@ -1,5 +1,4 @@
 pub mod async_utils;
-pub mod auth;
 pub mod cache;
 pub mod config;
 pub mod content_format;
@@ -33,10 +32,6 @@ mod validation_proptest;
 pub use async_utils::{
     batch, parallel, retry, timeout, BackoffConfig, Coalescer, Debouncer, RetryError, Throttler,
     TimeoutError,
-};
-pub use auth::{
-    AuthError, IdentityService, IdentityTokens, RegistrationInput, User, UserRepository,
-    UsersMigration,
 };
 #[cfg(feature = "redis-cache")]
 pub use cache::RedisCacheBackend;
