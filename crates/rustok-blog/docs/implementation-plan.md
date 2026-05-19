@@ -36,12 +36,22 @@ packages и module metadata синхронизированы.
 ### 2. Product hardening
 
 - [ ] довести rate limiting и performance baseline для public/write paths;
+  - infrastructure: `rustok-core::security::rate_limit::RateLimiter` exists (token bucket, IP/key-based);
+  - task: wire `RateLimiter` into blog REST/GraphQL public endpoints via middleware.
 - [ ] довести search/index integration без размывания blog domain boundary;
+  - blog публикует domain events (`blog.post.created/updated/published/archived/deleted/unpublished`);
+  - events уже помечены `affects_index() = true` — `rustok-index` consumer обрабатывает их;
+  - task: ensure indexer correctly maps events to search schema (проверить маппинг в `rustok-index`).
 - [x] удерживать category/tag/comment semantics покрытыми targeted integration tests.
+- [ ] добавить moderation API endpoints для comment status transitions (approve/spam/trash).
 
 ### 3. Operability
 
 - [x] развивать observability для post lifecycle, visibility filtering и moderation flows;
+  - `#[instrument]` на всех сервисных методах (`PostService`, `CategoryService`, `TagService`);
+  - `metrics::record_read_path_*` на GraphQL/REST read paths;
+  - state machine transitions логируются через `tracing::info!` (Draft→Published, etc.);
+  - `CommentStatus` transitions существуют в `state_machine.rs` (approve, mark_spam, trash).
 - [ ] документировать новые public/runtime guarantees одновременно с изменением сервисов;
 - [x] держать локальные docs, README и manifest metadata синхронизированными.
 
