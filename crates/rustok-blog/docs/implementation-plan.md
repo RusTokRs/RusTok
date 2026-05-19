@@ -1,20 +1,26 @@
 # План реализации `rustok-blog`
 
-Статус: blog-owned storage и transport surfaces уже зафиксированы; модуль
-удерживается в режиме post-split hardening и product semantics rollout.
+Статус: contract stability полностью достигнут; модуль перешёл в режим product
+hardening и operability rollout. Channel-aware semantics и taxonomy sync подтверждены
+интеграционными и unit тестами. GraphQL/REST adapters, Leptos admin/storefront
+packages и module metadata синхронизированы.
 
 ## Область работ
 
 - удерживать `rustok-blog` как самостоятельный blog domain module;
 - синхронизировать post/category/tag/comment contracts, UI packages и local docs;
-- развивать channel-aware и taxonomy-aware semantics без возврата к shared content storage.
+- развивать channel-aware и taxonomy-aware semantics без возврата к shared content storage;
+- обеспечить observability для post lifecycle, visibility filtering и moderation flows.
 
 ## Текущее состояние
 
 - blog posts, translations, categories и typed tag relations уже живут в module-owned storage;
 - GraphQL/REST adapters и Leptos admin/storefront surfaces уже живут внутри модуля;
 - comments runtime contract приходит из `rustok-comments`, а author presentation — из `rustok-profiles`;
-- public read-path уже поддерживает module-level и publication-level channel visibility.
+- public read-path уже поддерживает module-level и publication-level channel visibility;
+- `blog_post_channel_visibility` таблица реализует typed channel allowlists;
+- blog services re-validate RBAC локально для posts, categories и tags;
+- customer read paths restricted to published posts.
 
 ## Этапы
 
@@ -23,13 +29,13 @@
 - [x] закрыть storage split и blog-owned transport boundary;
 - [x] перенести tag vocabulary на shared `rustok-taxonomy`, сохранив blog-owned attachments;
 - [x] встроить channel-aware public visibility contract;
-- [ ] удерживать sync между runtime contracts, UI packages и module metadata.
+- [x] удерживать sync между runtime contracts, UI packages и module metadata.
 
 ### 2. Product hardening
 
 - [ ] довести rate limiting и performance baseline для public/write paths;
 - [ ] довести search/index integration без размывания blog domain boundary;
-- [ ] удерживать category/tag/comment semantics покрытыми targeted integration tests.
+- [x] удерживать category/tag/comment semantics покрытыми targeted integration tests.
 
 ### 3. Operability
 
@@ -39,10 +45,24 @@
 
 ## Проверка
 
-- `cargo xtask module validate blog`
-- `cargo xtask module test blog`
-- targeted tests для lifecycle, taxonomy sync, channel visibility и UI-facing read contracts
-- [ ] контрактные тесты покрывают все публичные use-case
+- [x] `cargo xtask module validate blog`
+- [x] `cargo xtask module test blog`
+- [x] targeted tests для lifecycle, taxonomy sync, channel visibility и UI-facing read contracts
+- [x] контрактные тесты покрывают все публичные use-case
+
+## Контрактные тесты (contract surface)
+
+Тесты в `tests/contract_surface.rs` и `tests/integration.rs` покрывают:
+
+- **Post lifecycle**: create → draft → publish → archive → restore
+- **Locale fallback**: normalize → requested → en → first available
+- **Channel visibility**: typed `blog_post_channel_visibility` allowlists, empty = global
+- **Taxonomy sync**: blog tags ↔ `rustok-taxonomy` vocabulary
+- **RBAC enforcement**: customer не может создавать/читать draft posts
+- **GraphQL read paths**: public vs authenticated channel gating
+- **Events**: blog.post.created/updated/published/archived/deleted/unpublished
+- **Comments**: thread, locale fallback, status transitions, RBAC
+- **State machine**: BlogPost status transitions, CommentStatus transitions
 
 ## Правила обновления
 
@@ -50,3 +70,4 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении dependency graph, UI wiring или metadata синхронизировать `rustok-module.toml`.
 4. При изменении channel/tag semantics обновлять также связанные module docs и central references.
+5. При добавлении новых public use-case добавлять соответствующий contract test в `tests/contract_surface.rs`.
