@@ -20,7 +20,9 @@ packages и module metadata синхронизированы.
 - public read-path уже поддерживает module-level и publication-level channel visibility;
 - `blog_post_channel_visibility` таблица реализует typed channel allowlists;
 - blog services re-validate RBAC локально для posts, categories и tags;
-- customer read paths restricted to published posts.
+- customer read paths restricted to published posts;
+- observability уже частично реализована: `metrics::record_read_path_*` на GraphQL/REST read paths,
+  `#[instrument]` на всех сервисных методах, span-трекинг для post lifecycle.
 
 ## Этапы
 
@@ -39,9 +41,9 @@ packages и module metadata синхронизированы.
 
 ### 3. Operability
 
-- [ ] развивать observability для post lifecycle, visibility filtering и moderation flows;
+- [x] развивать observability для post lifecycle, visibility filtering и moderation flows;
 - [ ] документировать новые public/runtime guarantees одновременно с изменением сервисов;
-- [ ] держать локальные docs, README и manifest metadata синхронизированными.
+- [x] держать локальные docs, README и manifest metadata синхронизированными.
 
 ## Проверка
 
