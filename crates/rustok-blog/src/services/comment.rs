@@ -13,15 +13,17 @@ use rustok_comments::{
     UpdateCommentInput as DomainUpdateCommentInput,
 };
 use rustok_content::PLATFORM_FALLBACK_LOCALE;
-use rustok_core::{prepare_content_payload, SecurityContext};
+use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
+    CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
+    UpdateCommentInput,
 };
 use crate::entities::blog_post;
 use crate::error::{BlogError, BlogResult};
+use crate::services::rbac::enforce_scope;
 
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 
@@ -169,6 +171,52 @@ impl CommentService {
         let record = self
             .comments
             .update_comment(tenant_id, security, comment_id, domain_input)
+            .await
+            .map_err(BlogError::from)?;
+        Self::map_comment_record(record)
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn moderate_comment(
+        &self,
+        tenant_id: Uuid,
+        comment_id: Uuid,
+        security: SecurityContext,
+        input: ModerateCommentInput,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Manage)?;
+
+        let locale = input
+            .locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(PLATFORM_FALLBACK_LOCALE);
+
+        let existing = self
+            .comments
+            .get_comment(
+                tenant_id,
+                SecurityContext::system(),
+                comment_id,
+                locale,
+                fallback_locale,
+            )
+            .await
+            .map_err(BlogError::from)?;
+        Self::ensure_blog_target(&existing)?;
+
+        let record = self
+            .comments
+            .set_comment_status(
+                tenant_id,
+                SecurityContext::system(),
+                comment_id,
+                input.status.into(),
+                locale,
+                fallback_locale,
+            )
             .await
             .map_err(BlogError::from)?;
         Self::map_comment_record(record)

@@ -43,10 +43,10 @@ packages и module metadata синхронизированы.
   - events уже помечены `affects_index() = true` — `rustok-index` consumer обрабатывает их;
   - task: ensure indexer correctly maps events to search schema (проверить маппинг в `rustok-index`).
 - [x] удерживать category/tag/comment semantics покрытыми targeted integration tests.
-- [ ] добавить moderation API endpoints для comment status transitions (approve/spam/trash).
-  - `rustok_comments::CommentsService::set_comment_status` уже существует (RBAC: `enforce_moderation_scope`);
-  - нужно добавить REST endpoints в `controllers/` и/или GraphQL mutations;
-  - tasks: `POST /api/blog/comments/{id}/moderate` → `set_comment_status`, RBAC: `BLOG_POSTS_MANAGE`.
+- [x] добавить moderation API endpoints для comment status transitions (approve/spam/trash).
+  - добавлен REST endpoint `POST /api/blog/comments/{id}/moderate`;
+  - endpoint маршрутизирован через `controllers/` и вызывает `CommentService::moderate_comment`;
+  - moderation RBAC закреплён на `BLOG_POSTS_MANAGE`, статус маппится в `rustok_comments::CommentsService::set_comment_status`.
 
 ### 3. Operability
 

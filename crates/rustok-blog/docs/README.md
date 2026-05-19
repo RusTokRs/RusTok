@@ -18,6 +18,7 @@ taxonomy sync подтверждены интеграционными и unit т
 - `PostService`, `CommentService`, `CategoryService`, `TagService` и blog state machine;
 - blog-owned storage для posts, translations, categories и typed relations;
 - transport surfaces: GraphQL, REST, Leptos admin/storefront packages;
+- moderation REST surface: `POST /api/blog/comments/{id}/moderate` для approve/spam/trash transitions c RBAC `blog_posts:manage`;
 - channel visibility для публикаций и интеграция с `rustok-channel`;
 - reuse shared taxonomy dictionary через `blog_post_tags`, не отдавая attachment ownership наружу;
 - observability через `rustok-telemetry`: `metrics::record_read_path_*` на GraphQL/REST read paths,

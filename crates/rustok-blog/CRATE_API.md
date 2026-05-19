@@ -63,6 +63,7 @@ impl CommentService {
     pub async fn create_comment(tenant_id, security, post_id, input: CreateCommentInput) -> BlogResult<CommentResponse>;
     pub async fn get_comment(tenant_id, comment_id, locale: &str) -> BlogResult<CommentResponse>;
     pub async fn update_comment(tenant_id, comment_id, security, input: UpdateCommentInput) -> BlogResult<CommentResponse>;
+    pub async fn moderate_comment(tenant_id, comment_id, security, input: ModerateCommentInput, fallback_locale: Option<&str>) -> BlogResult<CommentResponse>;
     pub async fn delete_comment(tenant_id, comment_id, security) -> BlogResult<()>;
     pub async fn list_for_post(tenant_id, security, post_id, filter: ListCommentsFilter) -> BlogResult<(Vec<CommentListItem>, u64)>;
 }
@@ -85,6 +86,20 @@ pub struct CreateCommentInput {
 pub struct UpdateCommentInput {
     pub locale: String,
     pub content: Option<String>,
+}
+```
+
+#### ModerateCommentInput
+```rust
+pub enum ModerateCommentStatus {
+    Approved,
+    Spam,
+    Trash,
+}
+
+pub struct ModerateCommentInput {
+    pub status: ModerateCommentStatus,
+    pub locale: Option<String>,
 }
 ```
 

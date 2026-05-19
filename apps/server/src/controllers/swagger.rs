@@ -146,6 +146,7 @@ pub struct ApiDoc;
         crate::controllers::blog::posts::delete_post,
         crate::controllers::blog::posts::publish_post,
         crate::controllers::blog::posts::unpublish_post,
+        crate::controllers::blog::comments::moderate_comment,
     ),
     components(
         schemas(
@@ -155,6 +156,9 @@ pub struct ApiDoc;
             rustok_blog::dto::PostSummary,
             rustok_blog::dto::PostListQuery,
             rustok_blog::dto::PostListResponse,
+            rustok_blog::dto::CommentResponse,
+            rustok_blog::dto::ModerateCommentInput,
+            rustok_blog::dto::ModerateCommentStatus,
             rustok_blog::state_machine::BlogPostStatus,
         )
     ),

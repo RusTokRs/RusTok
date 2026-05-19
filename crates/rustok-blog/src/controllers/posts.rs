@@ -296,7 +296,7 @@ pub async fn unpublish_post(
     Ok(())
 }
 
-fn ensure_blog_permission(
+pub(super) fn ensure_blog_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,

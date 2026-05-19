@@ -9,14 +9,14 @@ use async_trait::async_trait;
 use rustok_blog::dto::CreateCommentInput;
 use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
-    ListTagsFilter, PostListQuery, UpdateCommentInput,
+    ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, UpdateCommentInput,
 };
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
 use rustok_comments::{CommentsError, CommentsModule};
 use rustok_core::{
-    DomainEvent, EventTransport, MemoryTransport, MigrationSource, ReliabilityLevel,
+    DomainEvent, EventTransport, MemoryTransport, MigrationSource, Permission, ReliabilityLevel,
     SecurityContext, UserRole,
 };
 use rustok_events::EventEnvelope;
@@ -957,6 +957,103 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     let event_types = drain_event_types(&mut receiver);
     assert!(event_types.iter().any(|et| et == "blog.post.created"));
     assert!(event_types.iter().any(|et| et == "blog.post.updated"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let comment_service = CommentService::new(db.clone(), event_bus);
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Post for moderation".to_string(),
+                body: "Body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: None,
+                slug: None,
+                publish: true,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let comment = comment_service
+        .create_comment(
+            tenant_id,
+            admin,
+            post_id,
+            CreateCommentInput {
+                locale: "en".to_string(),
+                content: "Needs moderation".to_string(),
+                content_format: "markdown".to_string(),
+                content_json: None,
+                parent_comment_id: None,
+            },
+        )
+        .await?;
+
+    let blog_moderator = SecurityContext::from_permissions(
+        UserRole::Manager,
+        Some(Uuid::new_v4()),
+        [Permission::BLOG_POSTS_MANAGE],
+    );
+
+    let moderated = comment_service
+        .moderate_comment(
+            tenant_id,
+            comment.id,
+            blog_moderator,
+            ModerateCommentInput {
+                status: ModerateCommentStatus::Approved,
+                locale: Some("en".to_string()),
+            },
+            Some("en"),
+        )
+        .await?;
+    assert_eq!(moderated.status, "approved");
+
+    let without_manage = SecurityContext::from_permissions(
+        UserRole::Manager,
+        Some(Uuid::new_v4()),
+        std::iter::empty::<Permission>(),
+    );
+    let forbidden = comment_service
+        .moderate_comment(
+            tenant_id,
+            comment.id,
+            without_manage,
+            ModerateCommentInput {
+                status: ModerateCommentStatus::Spam,
+                locale: Some("en".to_string()),
+            },
+            Some("en"),
+        )
+        .await
+        .expect_err("moderation requires blog_posts:manage");
+    assert!(matches!(forbidden, BlogError::Forbidden(_)));
 
     Ok(())
 }
