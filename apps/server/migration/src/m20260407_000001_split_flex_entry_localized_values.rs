@@ -103,6 +103,8 @@ JOIN LATERAL (
     SELECT definition ->> 'field_key' AS field_key
     FROM jsonb_array_elements(schema_row.fields_config) AS definition
     WHERE COALESCE((definition ->> 'is_localized')::boolean, false)
+      AND (definition ->> 'field_key') IS NOT NULL
+      AND NULLIF(definition ->> 'field_key', '') IS NOT NULL
 ) AS localized_key ON entry_row.data ? localized_key.field_key
 GROUP BY
     entry_row.id,
