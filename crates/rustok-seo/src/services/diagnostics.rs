@@ -253,19 +253,34 @@ impl SeoService {
                         meta.source.clone(),
                         locale.as_str(),
                     ));
-                } else if schema_blocks
-                    .iter()
-                    .any(|block| block.schema_kind == crate::dto::SeoSchemaBlockKind::Unknown)
-                {
-                    issues.push(issue(
-                        "unknown_schema_type",
-                        SeoDiagnosticSeverity::Info,
-                        &summary,
-                        "Structured data is present but at least one block has no recognized schema.org type.",
-                        effective_canonical.clone(),
-                        meta.source.clone(),
-                        locale.as_str(),
-                    ));
+                } else {
+                    if schema_blocks
+                        .iter()
+                        .any(|block| block.schema_kind == crate::dto::SeoSchemaBlockKind::Unknown)
+                    {
+                        issues.push(issue(
+                            "unknown_schema_type",
+                            SeoDiagnosticSeverity::Info,
+                            &summary,
+                            "Structured data is present but at least one block has no recognized schema.org type.",
+                            effective_canonical.clone(),
+                            meta.source.clone(),
+                            locale.as_str(),
+                        ));
+                    }
+                    for block in &schema_blocks {
+                        for validation_issue in super::schema_validation::validate_schema_block(block) {
+                            issues.push(issue(
+                                validation_issue.code,
+                                validation_issue.severity,
+                                &summary,
+                                validation_issue.message.as_str(),
+                                effective_canonical.clone(),
+                                meta.source.clone(),
+                                locale.as_str(),
+                            ));
+                        }
+                    }
                 }
 
                 if meta.noindex && meta.canonical_url.is_some() {

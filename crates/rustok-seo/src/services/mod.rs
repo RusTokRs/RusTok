@@ -4,6 +4,7 @@ mod meta;
 mod redirects;
 mod robots;
 mod routing;
+mod schema_validation;
 mod sitemaps;
 mod targets;
 mod templates;

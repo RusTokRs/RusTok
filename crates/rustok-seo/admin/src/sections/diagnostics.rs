@@ -1,8 +1,9 @@
 use leptos::prelude::*;
 use rustok_seo::{
-    SeoDiagnosticCountRecord, SeoDiagnosticsSummaryRecord, SeoModuleSettings, SeoRedirectRecord,
-    SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
+    SeoBulkApplyMode, SeoDiagnosticCountRecord, SeoDiagnosticsSummaryRecord, SeoModuleSettings,
+    SeoRedirectRecord, SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
 };
+use rustok_seo_targets::{default_schema_payload_for_slug, SeoTargetSlug};
 
 use crate::api::ApiError;
 use crate::i18n::t;
@@ -15,6 +16,7 @@ pub fn SeoDiagnosticsPane(
     sitemap_status: Resource<Result<SeoSitemapStatusRecord, ApiError>>,
     robots_preview: Resource<Result<SeoRobotsPreviewRecord, ApiError>>,
     diagnostics: Resource<Result<SeoDiagnosticsSummaryRecord, ApiError>>,
+    #[prop(into)] on_queue_schema_fix: Callback<(SeoTargetSlug, SeoBulkApplyMode, String)>,
 ) -> impl IntoView {
     let title = t(ui_locale.as_deref(), "seo.diagnostics.title", "Diagnostics");
     let subtitle = t(
@@ -31,7 +33,7 @@ pub fn SeoDiagnosticsPane(
             </div>
 
             <div class="grid gap-6 xl:grid-cols-2">
-                <DiagnosticsHealthCard diagnostics=diagnostics />
+                <DiagnosticsHealthCard diagnostics=diagnostics on_queue_schema_fix=on_queue_schema_fix />
                 <DiagnosticsSettingsCard settings=settings />
                 <DiagnosticsRedirectsCard redirects=redirects />
                 <DiagnosticsSitemapCard sitemap_status=sitemap_status />
@@ -41,9 +43,18 @@ pub fn SeoDiagnosticsPane(
     }
 }
 
+const SCHEMA_ISSUE_CODES: &[&str] = &[
+    "missing_schema",
+    "unknown_schema_type",
+    "missing_required_schema_field",
+    "invalid_schema_shape",
+    "unsupported_schema_source_payload",
+];
+
 #[component]
 fn DiagnosticsHealthCard(
     diagnostics: Resource<Result<SeoDiagnosticsSummaryRecord, ApiError>>,
+    #[prop(into)] on_queue_schema_fix: Callback<(SeoTargetSlug, SeoBulkApplyMode, String)>,
 ) -> impl IntoView {
     view! {
         <div class="space-y-3 rounded-xl border border-border/80 bg-background/60 p-4">
@@ -53,6 +64,10 @@ fn DiagnosticsHealthCard(
                     Some(Ok(summary)) => {
                         let issues = summary.issues.clone();
                         let has_issues = !issues.is_empty();
+                        let schema_issue_counts: Vec<_> = summary.issue_counts_by_code.clone().into_iter()
+                            .filter(|count| SCHEMA_ISSUE_CODES.contains(&count.key.as_str()))
+                            .collect();
+                        let has_schema_issues = !schema_issue_counts.is_empty();
                         view! {
                             <div class="space-y-3 text-sm text-foreground">
                                 <ul class="space-y-2">
@@ -65,6 +80,47 @@ fn DiagnosticsHealthCard(
                                     <IssueCounts title="By issue code".to_string() counts=summary.issue_counts_by_code.clone() />
                                     <IssueCounts title="By target kind".to_string() counts=summary.issue_counts_by_target_kind.clone() />
                                 </div>
+                                <Show when=move || has_schema_issues>
+                                    <div class="space-y-2">
+                                        <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {t(Some("en"), "seo.diagnostics.schema_remediation", "Schema remediation")}
+                                        </h4>
+                                        <ul class="space-y-2">
+                                            {schema_issue_counts.clone().into_iter().map(|count| {
+                                                let first_kind = issues.iter()
+                                                    .find(|issue| issue.code == count.key)
+                                                    .map(|issue| issue.target_kind.clone());
+                                                let fix_button = if let Some(kind) = first_kind {
+                                                    let payload = default_schema_payload_for_slug(&kind).unwrap_or_default();
+                                                    let on_click = on_queue_schema_fix.clone();
+                                                    let kind_clone = kind.clone();
+                                                    view! {
+                                                        <button
+                                                            type="button"
+                                                            class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent"
+                                                            on:click=move |_| on_click.run((kind_clone.clone(), SeoBulkApplyMode::ApplyMissingSchemaOnly, payload.clone()))
+                                                        >
+                                                            {t(Some("en"), "seo.diagnostics.queue_fix", "Queue fix")}
+                                                        </button>
+                                                    }.into_any()
+                                                } else {
+                                                    ().into_any()
+                                                };
+                                                view! {
+                                                    <li class="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
+                                                        <div class="min-w-0">
+                                                            <div class="font-medium text-foreground">{count.key.clone()}</div>
+                                                            <div class="text-xs text-muted-foreground">
+                                                                {t(Some("en"), "seo.diagnostics.affected_targets", "{} affected targets").replace("{}", &count.count.to_string())}
+                                                            </div>
+                                                        </div>
+                                                        {fix_button}
+                                                    </li>
+                                                }
+                                            }).collect_view()}
+                                        </ul>
+                                    </div>
+                                </Show>
                                 <Show when=move || has_issues>
                                     <div class="space-y-2">
                                         <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">"Top issues"</h4>

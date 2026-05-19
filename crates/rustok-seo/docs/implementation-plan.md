@@ -93,9 +93,9 @@
 
 #### Phase B — operator UX и remediation
 
-- [ ] Rich-snippet preview/validation UI в owner-module panels и diagnostics remediation.
-- [ ] Добавить diagnostics issue codes для schema completeness (missing required fields, invalid array/object shape, unsupported source payload).
-- [ ] Добавить bulk-safe remediation actions для schema issues без implicit overwrite explicit SEO.
+- [x] Rich-snippet preview/validation UI в owner-module panels и diagnostics remediation.
+- [x] Добавить diagnostics issue codes для schema completeness (missing required fields, invalid array/object shape, unsupported source payload).
+- [x] Добавить bulk-safe remediation actions для schema issues без implicit overwrite explicit SEO.
 
 #### Phase C — indexing и linking automation
 

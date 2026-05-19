@@ -33,7 +33,10 @@
     },
     "diagnostics": {
       "title": "Diagnostics",
-      "subtitle": "Infrastructure-only summary of current SEO runtime inputs. Per-entity scores and analysis stay in owner-module editors."
+      "subtitle": "Infrastructure-only summary of current SEO runtime inputs. Per-entity scores and analysis stay in owner-module editors.",
+      "schema_remediation": "Schema remediation",
+      "queue_fix": "Queue fix",
+      "affected_targets": "{} affected targets"
     }
   }
 }

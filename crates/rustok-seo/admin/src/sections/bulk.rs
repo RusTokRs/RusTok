@@ -259,6 +259,7 @@ pub fn SeoBulkPane(
                             >
                                 <option value="preview_only">"preview_only"</option>
                                 <option value="apply_missing_only">"apply_missing_only"</option>
+                                <option value="apply_missing_schema_only">"apply_missing_schema_only"</option>
                                 <option value="overwrite_generated_only">"overwrite_generated_only"</option>
                                 <option value="force_overwrite_explicit">"force_overwrite_explicit"</option>
                             </select>

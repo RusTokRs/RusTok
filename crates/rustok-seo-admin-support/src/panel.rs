@@ -5,7 +5,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_seo_targets::SeoTargetSlug;
 
 use crate::api;
-use crate::components::{SeoSnippetPreviewCard, SeoSummaryTile};
+use crate::components::{SeoSchemaPreviewCard, SeoSnippetPreviewCard, SeoSummaryTile};
 use crate::i18n::{
     recommendation, recommendations_count_label, source_label, tr, validation_error, working_label,
 };
@@ -432,6 +432,7 @@ pub fn SeoEntityPanel(
                                     on:input=move |ev| form.update(|draft| draft.structured_data_payload = event_target_value(&ev))
                                 />
                             </label>
+                            <SeoSchemaPreviewCard form=form locale=locale />
                             <div class="mt-4 flex flex-wrap gap-4 text-sm text-card-foreground">
                                 <label class="inline-flex items-center gap-2">
                                     <input

@@ -261,6 +261,22 @@ pub mod builtin_slug {
     pub const FORUM_TOPIC: &str = "forum_topic";
 }
 
+pub fn default_schema_type_for_slug(slug: &SeoTargetSlug) -> Option<&'static str> {
+    match slug.as_str() {
+        builtin_slug::PAGE => Some("WebPage"),
+        builtin_slug::PRODUCT => Some("Product"),
+        builtin_slug::BLOG_POST => Some("BlogPosting"),
+        builtin_slug::FORUM_TOPIC => Some("DiscussionForumPosting"),
+        _ => None,
+    }
+}
+
+pub fn default_schema_payload_for_slug(slug: &SeoTargetSlug) -> Option<String> {
+    default_schema_type_for_slug(slug).map(|schema_type| {
+        format!(r#"{{"@context":"https://schema.org","@type":"{}"}}"#, schema_type)
+    })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SeoTargetSlug(String);

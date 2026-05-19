@@ -30,6 +30,7 @@ loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-seo = { path = "..", default-features = false }
+rustok-seo-targets = { path = "../rustok-seo-targets", default-features = false }
 rustok-tenant = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

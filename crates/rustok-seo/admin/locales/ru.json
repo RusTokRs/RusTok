@@ -33,7 +33,10 @@
     },
     "diagnostics": {
       "title": "Diagnostics",
-      "subtitle": "Только infrastructure summary текущих SEO runtime inputs. Per-entity scores и analysis остаются в owner-module editors."
+      "subtitle": "Только infrastructure summary текущих SEO runtime inputs. Per-entity scores и analysis остаются в owner-module editors.",
+      "schema_remediation": "Исправление схемы",
+      "queue_fix": "В очередь",
+      "affected_targets": "{} затронутых целей"
     }
   }
 }
