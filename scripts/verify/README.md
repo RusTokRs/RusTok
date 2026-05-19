@@ -20,6 +20,7 @@
 ./scripts/verify/verify-tenant-isolation.sh
 ./scripts/verify/verify-deployment-profiles.sh
 node scripts/verify/verify-flex-multilingual-contract.mjs
+node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 ```
 
 ## Когда запускать
@@ -37,6 +38,7 @@ node scripts/verify/verify-flex-multilingual-contract.mjs
 | Аудит безопасности | `./scripts/verify/verify-security.sh` |
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
+| Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
 
 ## Описание скриптов
 
@@ -341,4 +343,3 @@ fi
 - [Forbidden Actions](../../docs/standards/forbidden-actions.md) — запреты с примерами
 - [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — ✅/❌ сравнения
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов
-
