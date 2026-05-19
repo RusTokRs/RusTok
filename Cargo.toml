@@ -64,7 +64,7 @@ tokio = { version = "1.52", features = ["full"] }
 # Web
 axum = { version = "0.8.9", features = ["ws"] }
 tower = "0.5"
-tower-http = { version = "0.6.10", features = ["cors", "fs"] }
+tower-http = { version = "0.6.11", features = ["cors", "fs"] }
 
 # Database (Loco uses SeaORM)
 sea-orm = { version = "1.1", features = [
@@ -148,10 +148,10 @@ casbin = { version = "2.20.0", default-features = false, features = ["runtime-to
 # OpenTelemetry
 # NOTE: tracing-opentelemetry 0.32.x is coupled with opentelemetry 0.31.x.
 # Keep this quartet aligned until upstream crates move to the same major/minor line.
-opentelemetry = "0.31"
-opentelemetry-otlp = "0.31.1"
-tracing-opentelemetry = "0.32.1"
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry = "0.32"
+opentelemetry-otlp = "0.32.0"
+tracing-opentelemetry = "0.33.0"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 rust_decimal = "1.42"
 utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
