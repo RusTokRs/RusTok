@@ -68,12 +68,17 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("tenants"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_flex_entry_localized_values_owner")
-                            .col(FlexEntryLocalizedValues::TenantId)
-                            .col(FlexEntryLocalizedValues::EntryId),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_flex_entry_localized_values_owner")
+                    .table(FlexEntryLocalizedValues::Table)
+                    .col(FlexEntryLocalizedValues::TenantId)
+                    .col(FlexEntryLocalizedValues::EntryId)
                     .to_owned(),
             )
             .await?;
