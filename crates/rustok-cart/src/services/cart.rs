@@ -2177,6 +2177,25 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn channel_tax_provider_id_prefers_provider_id_over_provider_alias() {
+        let channel_id = Uuid::new_v4();
+        let metadata = json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): {
+                    "provider_id": "region_default",
+                    "provider": "external_tax"
+                }
+            }
+        });
+
+        assert_eq!(
+            channel_tax_provider_id(&metadata, Some(channel_id)).as_deref(),
+            Some("region_default")
+        );
+    }
+
     #[test]
     fn channel_tax_provider_id_returns_none_without_channel_context() {
         let metadata = json!({
