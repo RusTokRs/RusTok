@@ -549,6 +549,49 @@ async fn channel_mapping_is_ignored_without_cart_channel_context() {
 }
 
 #[tokio::test]
+async fn channel_tax_provider_mapping_is_normalized_and_overrides_region_provider() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("external_tax"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): "  REGION_DEFAULT  "
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("normalized channel mapping should override invalid region provider");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
+}
+
+#[tokio::test]
 async fn non_string_channel_tax_provider_mapping_falls_back_to_region_provider() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
