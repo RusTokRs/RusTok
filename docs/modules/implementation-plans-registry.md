@@ -49,6 +49,27 @@
 - Last updated at (UTC):
 ```
 
+
+## Первичный аудит покрытия (2026-05-20)
+
+Проверка по каталогу `crates/` показала:
+
+- Всего crate-директорий: `57`.
+- Crate с `docs/implementation-plan.md`: `51`.
+- Crate с `docs/quality-implementation-plan.md`: `0`.
+
+Вывод: quality-трек пока нигде не формализован отдельным планом, его нужно bootstrap-нуть пакетно.
+
+### Bootstrap policy для quality plans
+
+1. Для каждого crate, где уже есть `docs/implementation-plan.md`, добавить `docs/quality-implementation-plan.md`.
+2. В `quality-implementation-plan.md` сразу фиксировать:
+   - baseline тестов (`existing`, `missing`, `target`),
+   - baseline документации (`README`, module docs, examples),
+   - baseline quality gates (`cargo test`, `clippy`, `fmt`, docs).
+3. После создания файла добавить строку `quality_plan` в Global board и выставить `status=not_started`, `progress=0%`.
+4. Первой итерацией каждого quality-плана делать не код, а audit + приоритизацию топ-3 хвостов.
+
 ## Global board
 
 | Module / crate | Plan type | Plan doc | Status | Progress | Owner | Last updated (UTC) | Last checkpoint | Next action | Blockers | Verification gate |
