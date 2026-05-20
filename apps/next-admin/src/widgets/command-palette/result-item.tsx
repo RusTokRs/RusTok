@@ -34,7 +34,7 @@ const ResultItem = React.forwardRef(
           ></div>
         )}
         <div className='relative z-10 flex items-center gap-2'>
-          {action.icon && action.icon}
+          {action.icon}
           <div className='flex flex-col'>
             <div>
               {ancestors.length > 0 &&
