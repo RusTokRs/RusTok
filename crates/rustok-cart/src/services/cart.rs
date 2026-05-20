@@ -1694,7 +1694,10 @@ fn channel_tax_provider_id(metadata: &Value, channel_id: Option<Uuid>) -> Option
 
     match value {
         Value::String(value) => Some(value.as_str()),
-        Value::Object(value) => value.get("provider_id").and_then(Value::as_str),
+        Value::Object(value) => value
+            .get("provider_id")
+            .and_then(Value::as_str)
+            .or_else(|| value.get("provider").and_then(Value::as_str)),
         _ => None,
     }
     .map(str::trim)
@@ -2146,9 +2149,19 @@ mod tests {
         });
         assert_eq!(channel_tax_provider_id(&blank_metadata, Some(channel_id)), None);
 
-        let malformed_metadata = json!({
+        let typed_legacy_metadata = json!({
             "channel_tax_provider_ids": {
                 channel_id.to_string(): {"provider": "external_tax"}
+            }
+        });
+        assert_eq!(
+            channel_tax_provider_id(&typed_legacy_metadata, Some(channel_id)).as_deref(),
+            Some("external_tax")
+        );
+
+        let malformed_metadata = json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): {"unknown_key": "external_tax"}
             }
         });
         assert_eq!(channel_tax_provider_id(&malformed_metadata, Some(channel_id)), None);

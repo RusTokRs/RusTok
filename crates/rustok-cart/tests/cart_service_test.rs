@@ -592,7 +592,7 @@ async fn channel_tax_provider_mapping_is_normalized_and_overrides_region_provide
 }
 
 #[tokio::test]
-async fn object_channel_tax_provider_mapping_uses_provider_id_field() {
+async fn object_channel_tax_provider_mapping_uses_provider_key_alias() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
     let region_id = Uuid::new_v4();
@@ -606,7 +606,7 @@ async fn object_channel_tax_provider_mapping_uses_provider_id_field() {
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
-                channel_id.to_string(): {"provider_id": "external_tax"}
+                channel_id.to_string(): {"provider": "external_tax"}
             }
         }),
     )
