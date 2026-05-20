@@ -904,11 +904,56 @@ impl DirectTaskHandler for ContentModerationHandler {
         _operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
-        let _input: AiContentModerationTaskInput =
-            serde_json::from_value(request.task_input_json).map_err(AiError::Json)?;
-        Err(AiError::Validation(
-            "content_moderation direct handler is not implemented yet".to_string(),
-        ))
+        let input: AiContentModerationTaskInput =
+            serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
+        let started = std::time::Instant::now();
+
+        let generated = generate_content_moderation(
+            &request.provider,
+            &request.provider_config,
+            request.system_prompt.as_deref(),
+            request.resolved_locale.as_str(),
+            &input,
+        )
+        .await?;
+        let operation_payload = serde_json::to_value(&generated).map_err(AiError::Json)?;
+        let summary = format!(
+            "Moderation decision: {} (severity {}).",
+            generated.decision, generated.severity
+        );
+        let trace = ToolTrace {
+            tool_name: "direct.content.moderation".to_string(),
+            input_payload: request.task_input_json.clone(),
+            output_payload: Some(operation_payload.clone()),
+            status: "completed".to_string(),
+            duration_ms: started.elapsed().as_millis() as i64,
+            sensitive: true,
+            error_message: None,
+            created_at: Utc::now(),
+        };
+        let explanation = explain_result(
+            &request.provider,
+            &request.provider_config,
+            request.system_prompt.as_deref(),
+            request.resolved_locale.as_str(),
+            input.assistant_prompt.as_deref(),
+            &summary,
+            &operation_payload,
+            request.stream_emitter.clone(),
+        )
+        .await;
+
+        Ok(DirectExecutionResult {
+            execution_target: DirectExecutionTarget::Moderation,
+            appended_messages: vec![explanation],
+            traces: vec![trace],
+            metadata: json!({
+                "direct_task": request.task_slug,
+                "requested_locale": request.requested_locale,
+                "resolved_locale": request.resolved_locale,
+                "moderation": operation_payload,
+            }),
+        })
     }
 }
 
@@ -1048,6 +1093,17 @@ struct BlogSourceContent {
     seo_description: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GeneratedModerationDecision {
+    decision: String,
+    #[serde(default)]
+    labels: Vec<String>,
+    severity: u8,
+    explanation: String,
+    requires_human: bool,
+    recommended_action: String,
+}
+
 fn resolve_blog_source_content(
     existing_post: Option<&rustok_blog::PostResponse>,
     input: &AiBlogDraftTaskInput,
@@ -1164,6 +1220,109 @@ async fn generate_blog_draft(
     })?;
     let parsed = parse_json_object_from_text(&content)?;
     serde_json::from_value(parsed).map_err(AiError::Json)
+}
+
+async fn generate_content_moderation(
+    provider: &Arc<dyn ModelProvider>,
+    provider_config: &AiProviderConfig,
+    system_prompt: Option<&str>,
+    target_locale: &str,
+    input: &AiContentModerationTaskInput,
+) -> AiResult<GeneratedModerationDecision> {
+    let title = normalize_optional_text(input.title.clone());
+    let body = normalize_optional_text(input.body.clone());
+    if title.is_none() && body.is_none() {
+        return Err(AiError::Validation(
+            "content_moderation requires title or body".to_string(),
+        ));
+    }
+    let locale_instruction = concat!(
+        "Return valid JSON only with keys `decision`, `labels`, `severity`, `explanation`, ",
+        "`requires_human`, `recommended_action`. ",
+        "`decision` must be one of: allow, review, block. ",
+        "`severity` must be an integer from 0 to 100."
+    );
+    let system = match system_prompt {
+        Some(system_prompt) if !system_prompt.trim().is_empty() => {
+            format!("{system_prompt}\n\n{locale_instruction}")
+        }
+        _ => locale_instruction.to_string(),
+    };
+    let prompt = json!({
+        "task": "content_moderation",
+        "target_locale": target_locale,
+        "content": {
+            "id": input.content_id,
+            "type": input.content_type,
+            "locale": input.locale,
+            "title": title,
+            "body": body,
+        }
+    })
+    .to_string();
+
+    let response = provider
+        .complete(
+            provider_config,
+            ProviderChatRequest {
+                model: provider_config.model.clone(),
+                messages: vec![
+                    ChatMessage {
+                        role: ChatMessageRole::System,
+                        content: Some(system),
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: Vec::new(),
+                        metadata: json!({
+                            "locale": target_locale,
+                            "direct_generation": "content_moderation",
+                        }),
+                    },
+                    ChatMessage {
+                        role: ChatMessageRole::User,
+                        content: Some(prompt),
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: Vec::new(),
+                        metadata: json!({
+                            "locale": target_locale,
+                            "direct_generation": "content_moderation",
+                        }),
+                    },
+                ],
+                tools: Vec::new(),
+                temperature: provider_config.temperature,
+                max_tokens: provider_config.max_tokens,
+                locale: Some(target_locale.to_string()),
+            },
+        )
+        .await?;
+
+    let content = response.assistant_message.content.ok_or_else(|| {
+        AiError::Provider("provider returned empty content for content_moderation".to_string())
+    })?;
+    let parsed = parse_json_object_from_text(&content)?;
+    let decision: GeneratedModerationDecision = serde_json::from_value(parsed).map_err(AiError::Json)?;
+
+    let decision_slug = decision.decision.trim().to_ascii_lowercase();
+    if !matches!(decision_slug.as_str(), "allow" | "review" | "block") {
+        return Err(AiError::Validation(
+            "content_moderation decision must be one of: allow, review, block".to_string(),
+        ));
+    }
+    if decision.severity > 100 {
+        return Err(AiError::Validation(
+            "content_moderation severity must be between 0 and 100".to_string(),
+        ));
+    }
+    Ok(GeneratedModerationDecision {
+        decision: decision_slug,
+        labels: decision.labels,
+        severity: decision.severity,
+        explanation: decision.explanation,
+        requires_human: decision.requires_human,
+        recommended_action: decision.recommended_action,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
