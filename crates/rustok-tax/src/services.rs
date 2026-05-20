@@ -11,6 +11,7 @@ pub const REGION_DEFAULT_TAX_PROVIDER_ID: &str = "region_default";
 #[derive(Clone, Debug)]
 pub struct TaxPolicySnapshot {
     pub provider_id: Option<String>,
+    pub channel_provider_id: Option<String>,
     pub country_code: Option<String>,
     pub tax_rate: Decimal,
     pub tax_included: bool,
@@ -35,6 +36,7 @@ pub struct TaxableAmount {
 #[derive(Clone, Debug)]
 pub struct TaxCalculationInput {
     pub currency_code: String,
+    pub channel_id: Option<Uuid>,
     pub policy: TaxPolicySnapshot,
     pub taxable_amounts: Vec<TaxableAmount>,
 }
@@ -132,6 +134,7 @@ impl TaxProvider for RegionTaxProvider {
                     "tax_included": resolved_policy.tax_included,
                     "country_code": resolved_policy.country_code,
                     "policy_scope": resolved_policy.policy_scope,
+                    "channel_id": input.channel_id.map(|value| value.to_string()),
                 }),
             });
         }
@@ -164,13 +167,23 @@ impl TaxService {
     }
 
     pub async fn calculate(&self, input: TaxCalculationInput) -> TaxResult<TaxCalculationResult> {
-        let provider_id = normalize_provider_id(input.policy.provider_id.as_deref())?
-            .unwrap_or_else(|| REGION_DEFAULT_TAX_PROVIDER_ID.to_string());
+        let provider_id = resolve_provider_id(&input.policy)?;
         let provider = self.providers.get(&provider_id).ok_or_else(|| {
             TaxError::Validation(format!("unknown tax provider_id: {provider_id}"))
         })?;
         provider.calculate(input).await
     }
+}
+
+
+fn resolve_provider_id(policy: &TaxPolicySnapshot) -> TaxResult<String> {
+    if let Some(channel_provider_id) = normalize_provider_id(policy.channel_provider_id.as_deref())? {
+        return Ok(channel_provider_id);
+    }
+    if let Some(provider_id) = normalize_provider_id(policy.provider_id.as_deref())? {
+        return Ok(provider_id);
+    }
+    Ok(REGION_DEFAULT_TAX_PROVIDER_ID.to_string())
 }
 
 fn normalize_provider_id(value: Option<&str>) -> TaxResult<Option<String>> {
@@ -296,8 +309,10 @@ mod tests {
         let result = provider
             .calculate(TaxCalculationInput {
                 currency_code: "eur".to_string(),
+                channel_id: None,
                 policy: TaxPolicySnapshot {
                     provider_id: None,
+                    channel_provider_id: None,
                     country_code: None,
                     tax_rate: Decimal::from(20),
                     tax_included: false,
@@ -343,8 +358,10 @@ mod tests {
         let error = service
             .calculate(TaxCalculationInput {
                 currency_code: "usd".to_string(),
+                channel_id: None,
                 policy: TaxPolicySnapshot {
                     provider_id: Some("external_tax".to_string()),
+                    channel_provider_id: None,
                     country_code: None,
                     tax_rate: Decimal::from(10),
                     tax_included: false,
@@ -366,13 +383,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tax_service_prefers_channel_provider_id_over_region_provider_id() {
+        let service = super::TaxService::new();
+        let error = service
+            .calculate(TaxCalculationInput {
+                currency_code: "usd".to_string(),
+                channel_id: Some(Uuid::new_v4()),
+                policy: TaxPolicySnapshot {
+                    provider_id: Some("region_default".to_string()),
+                    channel_provider_id: Some("external_tax".to_string()),
+                    country_code: None,
+                    tax_rate: Decimal::from(10),
+                    tax_included: false,
+                    country_rules: Vec::new(),
+                },
+                taxable_amounts: vec![TaxableAmount {
+                    line_item_id: None,
+                    shipping_option_id: None,
+                    description: Some("line_item".to_string()),
+                    amount: Decimal::from(10),
+                }],
+            })
+            .await
+            .expect_err("unknown channel provider should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("unknown tax provider_id: external_tax"));
+    }
+
+    #[tokio::test]
     async fn region_provider_prefers_country_rule_over_region_baseline() {
         let provider = RegionTaxProvider;
         let result = provider
             .calculate(TaxCalculationInput {
                 currency_code: "eur".to_string(),
+                channel_id: None,
                 policy: TaxPolicySnapshot {
                     provider_id: None,
+                    channel_provider_id: None,
                     country_code: Some("de".to_string()),
                     tax_rate: Decimal::from(20),
                     tax_included: false,

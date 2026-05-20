@@ -1375,8 +1375,10 @@ impl CartService {
             .tax_service
             .calculate(TaxCalculationInput {
                 currency_code: cart.currency_code.clone(),
+                channel_id: cart.channel_id,
                 policy: TaxPolicySnapshot {
                     provider_id: region.tax_provider_id.clone(),
+                    channel_provider_id: None,
                     country_code: cart.country_code.clone(),
                     tax_rate,
                     tax_included: region.tax_included,

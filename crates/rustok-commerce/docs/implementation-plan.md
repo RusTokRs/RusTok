@@ -487,6 +487,13 @@ Deliverables:
 - negative tests на конфликт tax-inclusive/exclusive semantics;
 - contract tests на transport shape tax lines.
 
+Ближайший execution slice (продолжение coding-плана):
+
+- [ ] добавить channel-aware provider mapping (`regions.tax_provider_id` + `channel_id`) без hidden fallback на `region_default`;
+- [ ] расширить `rustok-tax` до typed rule input (`item class`, `shipping class`, `customer tax-exempt`) без возврата налоговой логики в `rustok-cart`;
+- [ ] закрепить admin/store read-side tax breakdown contract (line-item vs shipping vs order aggregate) в REST и GraphQL parity тестах;
+- [ ] добавить migration/contract smoke для backfill `provider_id` в legacy `order_tax_lines` snapshots.
+
 ### Phase 10. Post-order flows: returns, refunds, exchanges, claims, order changes
 
 Статус: `in progress`
