@@ -1687,14 +1687,19 @@ fn net_total(subtotal_amount: Decimal, adjustment_total: Decimal) -> Decimal {
 fn channel_tax_provider_id(metadata: &Value, channel_id: Option<Uuid>) -> Option<String> {
     let channel_id = channel_id?;
     let channel_key = channel_id.to_string();
-    metadata
+    let value = metadata
         .get("channel_tax_provider_ids")
         .and_then(Value::as_object)
-        .and_then(|mapping| mapping.get(&channel_key))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string())
+        .and_then(|mapping| mapping.get(&channel_key))?;
+
+    match value {
+        Value::String(value) => Some(value.as_str()),
+        Value::Object(value) => value.get("provider_id").and_then(Value::as_str),
+        _ => None,
+    }
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .map(|value| value.to_string())
 }
 
 fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
@@ -2131,7 +2136,7 @@ mod tests {
     }
 
     #[test]
-    fn channel_tax_provider_id_ignores_blank_or_non_string_values() {
+    fn channel_tax_provider_id_ignores_blank_or_malformed_values() {
         let channel_id = Uuid::new_v4();
 
         let blank_metadata = json!({
@@ -2141,12 +2146,22 @@ mod tests {
         });
         assert_eq!(channel_tax_provider_id(&blank_metadata, Some(channel_id)), None);
 
-        let non_string_metadata = json!({
+        let malformed_metadata = json!({
             "channel_tax_provider_ids": {
                 channel_id.to_string(): {"provider": "external_tax"}
             }
         });
-        assert_eq!(channel_tax_provider_id(&non_string_metadata, Some(channel_id)), None);
+        assert_eq!(channel_tax_provider_id(&malformed_metadata, Some(channel_id)), None);
+
+        let typed_object_metadata = json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): {"provider_id": "external_tax"}
+            }
+        });
+        assert_eq!(
+            channel_tax_provider_id(&typed_object_metadata, Some(channel_id)).as_deref(),
+            Some("external_tax")
+        );
     }
 
     #[test]
