@@ -107,9 +107,11 @@ LEFT JOIN LATERAL (
     SELECT
         definition ->> 'field_key' AS field_key,
         entry_row.data -> (definition ->> 'field_key') AS field_value
+        definition ->> 'field_key' AS field_key,
+        entry_row.data -> (definition ->> 'field_key') AS field_value
     FROM jsonb_array_elements(schema_row.fields_config) AS definition
     WHERE COALESCE((definition ->> 'is_localized')::boolean, false)
-      AND (definition ->> 'field_key') IS NOT NULL
+) AS localized_kv ON TRUE
       AND NULLIF(definition ->> 'field_key', '') IS NOT NULL
 ) AS localized_kv ON TRUE
 GROUP BY
