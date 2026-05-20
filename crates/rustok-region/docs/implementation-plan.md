@@ -2,7 +2,7 @@
 
 Статус: region boundary выделен; модуль держит country/currency/tax baseline, storefront lookup contract и собственные module-owned admin/storefront UI.
 
-Текущий typed tax policy contract: `region.tax_provider_id` стал first-class полем региона, а metadata-derived hook для выбора tax provider больше не является source of truth.
+Текущий typed tax policy contract: `region.tax_provider_id` стал first-class baseline полем региона; metadata-derived hook больше не является source of truth, но transitional channel override map `metadata.channel_tax_provider_ids` (string или object с `provider_id`/`provider`) допускается для channel-aware cart runtime при явном `channel_id`.
 
 ## Область работ
 
