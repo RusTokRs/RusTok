@@ -1184,6 +1184,13 @@ mod tests {
     }
 
     #[test]
+    fn toggle_error_maps_hook_failure() {
+        let err = map_toggle_module_error(ToggleModuleError::HookFailed("boom".into()));
+        assert!(err.message.contains("Module lifecycle hook failed"));
+        assert!(err.message.contains("boom"));
+    }
+
+    #[test]
     fn manifest_error_maps_validation_errors_to_user_messages() {
         let err = map_manifest_error(ManifestError::RequiredModule("pages".to_string()));
         assert!(err.message.contains("required"));
