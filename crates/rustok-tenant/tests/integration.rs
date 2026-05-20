@@ -136,7 +136,6 @@ async fn reject_invalid_tenant_settings_schema() {
 }
 
 #[tokio::test]
-#[ignore = "legacy deprecated toggle_module flow; migrate coverage to ModuleLifecycleService-based test"]
 async fn module_toggle_flow_legacy() {
     let db = setup_db().await;
     let service = TenantService::new(db);
