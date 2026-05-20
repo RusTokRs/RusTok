@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rustok_core::{ModuleContext, ModuleRegistry, RusToKModule};
-use rustok_server::models::_entities::tenant_modules;
+use rustok_server::models::_entities::{module_operations, tenant_modules};
 use rustok_server::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
@@ -16,6 +16,11 @@ struct TestModule {
     should_fail_disable: bool,
     enable_calls: Arc<AtomicUsize>,
     disable_calls: Arc<AtomicUsize>,
+}
+
+struct DependentModule {
+    slug: &'static str,
+    dependency: &'static str,
 }
 
 impl TestModule {
@@ -36,6 +41,12 @@ impl TestModule {
 }
 
 impl rustok_core::MigrationSource for TestModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
+    }
+}
+
+impl rustok_core::MigrationSource for DependentModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         vec![]
     }
@@ -73,6 +84,29 @@ impl RusToKModule for TestModule {
             return Err(rustok_core::Error::External("disable failed".to_string()));
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl RusToKModule for DependentModule {
+    fn slug(&self) -> &'static str {
+        self.slug
+    }
+
+    fn name(&self) -> &'static str {
+        "dependent-test-module"
+    }
+
+    fn description(&self) -> &'static str {
+        "test dependent module"
+    }
+
+    fn version(&self) -> &'static str {
+        "0.1.0"
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec![self.dependency]
     }
 }
 
@@ -118,6 +152,27 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create tenant_modules");
 
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        r#"
+        CREATE TABLE module_operations (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            requested_enabled BOOLEAN NOT NULL,
+            previous_effective_enabled BOOLEAN NOT NULL,
+            status TEXT NOT NULL,
+            requested_by TEXT NULL,
+            error_message TEXT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+        );
+        "#,
+    ))
+    .await
+    .expect("create module_operations");
+
     db
 }
 
@@ -152,6 +207,19 @@ async fn successful_enable_and_idempotent_retry() {
         .expect("second enable");
     assert!(second.enabled);
     assert_eq!(calls.load(Ordering::SeqCst), 1, "hook should be idempotent");
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("commerce"))
+        .all(&db)
+        .await
+        .expect("load operations");
+
+    assert_eq!(
+        operations.len(),
+        1,
+        "idempotent retry must not create duplicate module_operations journal rows",
+    );
 }
 
 #[tokio::test]
@@ -180,6 +248,21 @@ async fn hook_failure_rolls_back_state() {
         !state.enabled,
         "state should be rolled back after hook failure"
     );
+
+    let operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("forum"))
+        .one(&db)
+        .await
+        .expect("load operation")
+        .expect("operation exists");
+
+    assert_eq!(operation.status, "failed");
+    assert!(operation
+        .error_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("enable failed"));
 }
 
 #[tokio::test]
@@ -211,4 +294,158 @@ async fn concurrent_toggle_requests_keep_consistent_state() {
     assert!(matches!(state.enabled, true | false));
     assert!(enable_calls.load(Ordering::SeqCst) <= 1);
     assert!(disable_calls.load(Ordering::SeqCst) <= 1);
+}
+
+#[tokio::test]
+async fn successful_toggle_writes_done_module_operation() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("pricing"));
+
+    let enabled = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "pricing", true)
+        .await
+        .expect("enable should succeed");
+    assert!(enabled.enabled);
+
+    let operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("pricing"))
+        .one(&db)
+        .await
+        .expect("load operation")
+        .expect("operation exists");
+
+    assert_eq!(operation.status, "done");
+    assert!(operation.error_message.is_none());
+    assert!(operation.requested_enabled);
+    assert!(!operation.previous_effective_enabled);
+}
+
+#[tokio::test]
+async fn successful_toggle_with_actor_persists_requested_by() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("catalog"));
+
+    ModuleLifecycleService::toggle_module_with_actor(
+        &db,
+        &registry,
+        tenant_id,
+        "catalog",
+        true,
+        Some("admin:user-1".to_string()),
+    )
+    .await
+    .expect("enable should succeed");
+
+    let operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("catalog"))
+        .one(&db)
+        .await
+        .expect("load operation")
+        .expect("operation exists");
+
+    assert_eq!(operation.status, "done");
+    assert_eq!(operation.requested_by.as_deref(), Some("admin:user-1"));
+}
+
+#[tokio::test]
+async fn dependency_validation_failure_does_not_create_journal_row() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new()
+        .register(TestModule::new("pricing"))
+        .register(DependentModule {
+            slug: "checkout",
+            dependency: "pricing",
+        });
+
+    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "checkout", true)
+        .await
+        .expect_err("enable should fail because dependency is missing");
+    assert!(matches!(err, ToggleModuleError::MissingDependencies(_)));
+
+    let operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("checkout"))
+        .one(&db)
+        .await
+        .expect("query operations");
+
+    assert!(
+        operation.is_none(),
+        "validation errors before lifecycle execution must not create journal rows",
+    );
+}
+
+#[tokio::test]
+async fn dependent_validation_failure_does_not_create_journal_row() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new()
+        .register(TestModule::new("pricing"))
+        .register(DependentModule {
+            slug: "checkout",
+            dependency: "pricing",
+        });
+
+    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "pricing", true)
+        .await
+        .expect("enable dependency first");
+    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "checkout", true)
+        .await
+        .expect("enable dependent second");
+
+    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "pricing", false)
+        .await
+        .expect_err("disable should fail because module has dependents");
+    assert!(matches!(err, ToggleModuleError::HasDependents(_)));
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("pricing"))
+        .all(&db)
+        .await
+        .expect("query operations");
+
+    assert_eq!(
+        operations.len(),
+        1,
+        "pre-validation dependent failure must not create extra journal rows",
+    );
+    assert_eq!(operations[0].status, "done");
+    assert!(operations[0].requested_enabled);
+}
+
+#[tokio::test]
+async fn unknown_module_failure_does_not_create_journal_row() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("pricing"));
+
+    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "unknown", true)
+        .await
+        .expect_err("unknown module should fail");
+    assert!(matches!(err, ToggleModuleError::UnknownModule));
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .all(&db)
+        .await
+        .expect("query operations");
+    assert!(
+        operations.is_empty(),
+        "unknown module validation must not create module_operations journal rows",
+    );
 }
