@@ -16,7 +16,7 @@ use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap,
     ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord, ChannelTargetRecord,
     CreateChannelPayload, CreateChannelTargetPayload, CreateResolutionPolicySetPayload,
-    CreateResolutionRulePayload,
+    CreateResolutionRulePayload, ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +268,37 @@ pub async fn create_resolution_rule(
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
     post_json(
         &format!("/api/channels/policies/{policy_set_id}/rules"),
+        payload,
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+pub async fn update_resolution_rule(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    policy_set_id: &str,
+    rule_id: &str,
+    payload: &UpdateResolutionRulePayload,
+) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
+    patch_json(
+        &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
+        payload,
+        token,
+        tenant_slug,
+    )
+    .await
+}
+
+pub async fn reorder_resolution_rules(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    policy_set_id: &str,
+    payload: &ReorderResolutionRulesPayload,
+) -> Result<Vec<crate::model::ChannelResolutionRuleRecord>, ApiError> {
+    post_json(
+        &format!("/api/channels/policies/{policy_set_id}/rules/reorder"),
         payload,
         token,
         tenant_slug,

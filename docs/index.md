@@ -31,6 +31,7 @@
 - [Реестр модулей и приложений](./modules/registry.md)
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
 - [Индекс документации по модулям](./modules/_index.md)
+- [Реестр implementation plans (feature + library quality)](./modules/implementation-plans-registry.md)
 - [Шаблон документации модуля](./templates/module_contract.md)
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)

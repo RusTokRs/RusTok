@@ -13,7 +13,8 @@ use crate::dto::{
     ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
     CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, UpdateChannelTargetInput,
+    CreateChannelTargetInput, ReorderChannelResolutionRulesInput,
+    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
 };
 use crate::entities::channel::{self, ActiveModel as ChannelActiveModel};
 use crate::entities::channel_module_binding::{
@@ -585,6 +586,122 @@ impl ChannelService {
         to_channel_resolution_rule_response(model)
     }
 
+    #[instrument(skip(self, input), fields(policy_set_id = %policy_set_id, rule_id = %rule_id))]
+    pub async fn update_resolution_rule(
+        &self,
+        policy_set_id: Uuid,
+        rule_id: Uuid,
+        input: UpdateChannelResolutionRuleInput,
+    ) -> ChannelResult<ChannelResolutionRuleResponse> {
+        if input.priority.is_none() && input.is_active.is_none() {
+            return Err(ChannelError::InvalidPolicyOperation(
+                "provide at least one field to update (priority or is_active)".to_string(),
+            ));
+        }
+
+        let rule = channel_resolution_policy_rule::Entity::find_by_id(rule_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(rule_id))?;
+        if rule.policy_set_id != policy_set_id {
+            return Err(ChannelError::NotFound(rule_id));
+        }
+
+        let mut active: channel_resolution_policy_rule::ActiveModel = rule.into();
+        if let Some(priority) = input.priority {
+            active.priority = Set(priority);
+        }
+        if let Some(is_active) = input.is_active {
+            active.is_active = Set(is_active);
+        }
+        active.updated_at = Set(chrono::Utc::now().into());
+
+        to_channel_resolution_rule_response(active.update(&self.db).await?)
+    }
+
+    #[instrument(skip(self, input), fields(policy_set_id = %policy_set_id))]
+    pub async fn reorder_resolution_rules(
+        &self,
+        policy_set_id: Uuid,
+        input: ReorderChannelResolutionRulesInput,
+    ) -> ChannelResult<Vec<ChannelResolutionRuleResponse>> {
+        if input.rule_ids.is_empty() {
+            return Err(ChannelError::InvalidPolicyOperation(
+                "rule_ids must not be empty".to_string(),
+            ));
+        }
+
+        let rules = channel_resolution_policy_rule::Entity::find()
+            .filter(channel_resolution_policy_rule::Column::PolicySetId.eq(policy_set_id))
+            .order_by_asc(channel_resolution_policy_rule::Column::Priority)
+            .order_by_asc(channel_resolution_policy_rule::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        if rules.is_empty() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
+
+        if rules.len() != input.rule_ids.len() {
+            return Err(ChannelError::InvalidPolicyOperation(format!(
+                "rule_ids length ({}) does not match policy-set rule count ({})",
+                input.rule_ids.len(),
+                rules.len()
+            )));
+        }
+
+        let existing_ids = rules.iter().map(|rule| rule.id).collect::<std::collections::HashSet<_>>();
+        let mut seen = std::collections::HashSet::new();
+        for rule_id in &input.rule_ids {
+            if !existing_ids.contains(rule_id) {
+                return Err(ChannelError::InvalidPolicyOperation(format!(
+                    "rule '{rule_id}' does not belong to policy set '{policy_set_id}'"
+                )));
+            }
+            if !seen.insert(*rule_id) {
+                return Err(ChannelError::InvalidPolicyOperation(format!(
+                    "rule '{rule_id}' is duplicated in reorder payload"
+                )));
+            }
+        }
+
+        let now = chrono::Utc::now().into();
+        let mut order_by_id = std::collections::HashMap::with_capacity(input.rule_ids.len());
+        for (index, rule_id) in input.rule_ids.iter().enumerate() {
+            order_by_id.insert(*rule_id, index as i32);
+        }
+
+        let txn = self.db.begin().await?;
+        for rule in rules {
+            let Some(position) = order_by_id.get(&rule.id).copied() else {
+                return Err(ChannelError::InvalidPolicyOperation(format!(
+                    "rule '{}' is missing from reorder payload",
+                    rule.id
+                )));
+            };
+
+            let new_priority = (position + 1) * 10;
+            if rule.priority == new_priority {
+                continue;
+            }
+
+            let mut active: channel_resolution_policy_rule::ActiveModel = rule.into();
+            active.priority = Set(new_priority);
+            active.updated_at = Set(now);
+            active.update(&txn).await?;
+        }
+        txn.commit().await?;
+
+        channel_resolution_policy_rule::Entity::find()
+            .filter(channel_resolution_policy_rule::Column::PolicySetId.eq(policy_set_id))
+            .order_by_asc(channel_resolution_policy_rule::Column::Priority)
+            .order_by_asc(channel_resolution_policy_rule::Column::CreatedAt)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(to_channel_resolution_rule_response)
+            .collect()
+    }
+
     #[instrument(skip(self), fields(policy_set_id = %policy_set_id))]
     pub async fn set_active_resolution_policy_set(
         &self,
@@ -940,7 +1057,9 @@ mod tests {
     use super::ChannelService;
     use crate::dto::{
         CreateChannelInput, CreateChannelResolutionPolicySetInput,
-        CreateChannelResolutionRuleInput, CreateChannelTargetInput, UpdateChannelTargetInput,
+        CreateChannelResolutionRuleInput, CreateChannelTargetInput,
+        ReorderChannelResolutionRulesInput, UpdateChannelResolutionRuleInput,
+        UpdateChannelTargetInput,
     };
     use crate::migrations;
     use crate::{
@@ -1460,6 +1579,185 @@ mod tests {
             .expect_err("cross-tenant channel should be rejected");
 
         assert!(matches!(error, ChannelError::InvalidPolicyDefinition(_)));
+    }
+
+    #[tokio::test]
+    async fn updates_resolution_rule_priority_and_active_state() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+        let channel_id = create_channel(&service, tenant_id, "policy-target").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+        let rule = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http)],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("policy rule should be created");
+
+        let updated = service
+            .update_resolution_rule(
+                policy_set.id,
+                rule.id,
+                UpdateChannelResolutionRuleInput {
+                    priority: Some(40),
+                    is_active: Some(false),
+                },
+            )
+            .await
+            .expect("policy rule should be updated");
+        let active_rules = service
+            .list_active_resolution_rules(tenant_id)
+            .await
+            .expect("active rules should load");
+
+        assert_eq!(updated.priority, 40);
+        assert!(!updated.is_active);
+        assert!(active_rules.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reorders_resolution_rules_inside_policy_set() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+        let channel_id = create_channel(&service, tenant_id, "policy-target").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+
+        let first = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::HostEquals("shop.example.test".to_string())],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("first rule should be created");
+        let second = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 20,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::HostSuffix("example.test".to_string())],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("second rule should be created");
+        let third = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 30,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::LocaleEquals("ru-by".to_string())],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("third rule should be created");
+
+        let reordered = service
+            .reorder_resolution_rules(
+                policy_set.id,
+                ReorderChannelResolutionRulesInput {
+                    rule_ids: vec![third.id, first.id, second.id],
+                },
+            )
+            .await
+            .expect("rules should be reordered");
+
+        let reordered_ids = reordered.iter().map(|rule| rule.id).collect::<Vec<_>>();
+        let reordered_priorities = reordered
+            .iter()
+            .map(|rule| rule.priority)
+            .collect::<Vec<_>>();
+
+        assert_eq!(reordered_ids, vec![third.id, first.id, second.id]);
+        assert_eq!(reordered_priorities, vec![10, 20, 30]);
+    }
+
+    #[tokio::test]
+    async fn rejects_reorder_payload_with_missing_rule_ids() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+        let channel_id = create_channel(&service, tenant_id, "policy-target").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+
+        let rule = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::HostEquals("shop.example.test".to_string())],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("rule should be created");
+
+        let error = service
+            .reorder_resolution_rules(
+                policy_set.id,
+                ReorderChannelResolutionRulesInput { rule_ids: vec![] },
+            )
+            .await
+            .expect_err("empty reorder payload should be rejected");
+
+        assert!(matches!(error, ChannelError::InvalidPolicyOperation(_)));
+        assert_eq!(rule.priority, 10);
     }
 
     async fn seed_oauth_app(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) -> Uuid {

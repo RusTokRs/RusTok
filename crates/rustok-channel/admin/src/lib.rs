@@ -16,6 +16,7 @@ use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,
     ChannelResolutionPolicySetDetail, CreateChannelPayload, CreateChannelTargetPayload,
     CreateResolutionPolicySetPayload, CreateResolutionRulePayload,
+    ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
 };
 
 fn local_resource<S, Fut, T>(
@@ -587,6 +588,16 @@ fn PolicySetCard(
         "channel.policies.deleteRule",
         "Delete",
     );
+    let move_up_label = t(ui_locale.as_deref(), "channel.policies.moveUp", "Move Up");
+    let move_down_label = t(ui_locale.as_deref(), "channel.policies.moveDown", "Move Down");
+    let enable_rule_label = t(ui_locale.as_deref(), "channel.policies.enableRule", "Enable");
+    let disable_rule_label = t(ui_locale.as_deref(), "channel.policies.disableRule", "Disable");
+    let inactive_rule_badge = t(ui_locale.as_deref(), "channel.policies.inactiveBadge", "Inactive");
+    let policy_rules = policy_set.rules.clone();
+    let rule_order = policy_rules
+        .iter()
+        .map(|rule| rule.id.clone())
+        .collect::<Vec<_>>();
     let rules_ui_locale = ui_locale.clone();
 
     let on_create_rule = move |ev: SubmitEvent| {
@@ -702,7 +713,7 @@ fn PolicySetCard(
                 </Show>
             </div>
 
-            {if policy_set.rules.is_empty() {
+            {if policy_rules.is_empty() {
                 view! {
                     <EmptyState
                         title=empty_rules_title.clone()
@@ -712,67 +723,259 @@ fn PolicySetCard(
             } else {
                 view! {
                     <div class="space-y-2">
-                        {policy_set.rules.into_iter().map(|rule| {
+                        {policy_rules.into_iter().enumerate().map(|(index, rule)| {
                             let summary = policy_rule_summary(&rule, &channels);
-                            let policy_set_id = policy_set.policy_set.id.clone();
-                            let token = token.clone();
-                            let tenant = tenant.clone();
-                            let ui_locale = rules_ui_locale.clone();
-                            let rule_id = rule.id.clone();
-                            let rule_id_for_feedback = rule.id.clone();
+                            let policy_set_id_for_up = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_down = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_toggle = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_delete = policy_set.policy_set.id.clone();
+                            let policy_set_slug_for_up = policy_set.policy_set.slug.clone();
+                            let policy_set_slug_for_down = policy_set.policy_set.slug.clone();
+                            let token_for_up = token.clone();
+                            let tenant_for_up = tenant.clone();
+                            let token_for_down = token.clone();
+                            let tenant_for_down = tenant.clone();
+                            let token_for_toggle = token.clone();
+                            let tenant_for_toggle = tenant.clone();
+                            let token_for_delete = token.clone();
+                            let tenant_for_delete = tenant.clone();
+                            let ui_locale_for_up = rules_ui_locale.clone();
+                            let ui_locale_for_down = rules_ui_locale.clone();
+                            let ui_locale_for_toggle = rules_ui_locale.clone();
+                            let ui_locale_for_delete = rules_ui_locale.clone();
+                            let rule_id_for_toggle = rule.id.clone();
+                            let rule_id_for_delete = rule.id.clone();
+                            let rule_id_for_toggle_feedback = rule.id.clone();
+                            let rule_id_for_delete_feedback = rule.id.clone();
+                            let rule_is_active = rule.is_active;
+                            let rule_ids_for_reorder_up = rule_order.clone();
+                            let rule_ids_for_reorder_down = rule_order.clone();
+                            let can_move_up = index > 0;
+                            let can_move_down = index + 1 < rule_order.len();
                             view! {
                                 <div class="rounded-lg border border-border px-3 py-3 text-sm">
-                                    <div class="flex items-start justify-between gap-3">
+                                    <div class="flex flex-wrap items-start justify-between gap-3">
                                         <div class="space-y-1">
-                                            <div class="font-medium text-card-foreground">
-                                                {format!("#{} · {}", rule.priority, short_id(rule.id.as_str()))}
+                                            <div class="flex items-center gap-2 font-medium text-card-foreground">
+                                                <span>{format!("#{} · {}", rule.priority, short_id(rule.id.as_str()))}</span>
+                                                <Show when=move || !rule_is_active>
+                                                    <span class="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                                        {inactive_rule_badge.clone()}
+                                                    </span>
+                                                </Show>
                                             </div>
                                             <div class="text-muted-foreground">{summary}</div>
                                         </div>
-                                        <button
-                                            type="button"
-                                            class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
-                                            disabled=move || busy.get()
-                                            on:click=move |_| {
-                                                busy.set(true);
-                                                set_feedback.set(None);
-                                                set_error.set(None);
-                                                spawn_local({
-                                                    let token = token.clone();
-                                                    let tenant = tenant.clone();
-                                                    let policy_set_id = policy_set_id.clone();
-                                                    let rule_id = rule_id.clone();
-                                                    let rule_id_for_feedback = rule_id_for_feedback.clone();
-                                                    let ui_locale = ui_locale.clone();
-                                                    async move {
-                                                        let result = api::delete_resolution_rule(
-                                                            token,
-                                                            tenant,
-                                                            policy_set_id.as_str(),
-                                                            rule_id.as_str(),
-                                                        )
-                                                        .await;
-                                                        match result {
-                                                            Ok(_) => {
-                                                                set_feedback.set(Some(
-                                                                    t(
-                                                                        ui_locale.as_deref(),
-                                                                        "channel.policies.feedback.ruleDeleted",
-                                                                        "Rule `{rule}` removed.",
-                                                                    )
-                                                                    .replace("{rule}", short_id(rule_id_for_feedback.as_str()).as_str()),
-                                                                ));
-                                                                set_refresh_nonce.update(|value| *value += 1);
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get() || !can_move_up
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_up.clone();
+                                                        let tenant = tenant_for_up.clone();
+                                                        let policy_set_id = policy_set_id_for_up.clone();
+                                                        let policy_set_slug = policy_set_slug_for_up.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder_up.clone();
+                                                        let ui_locale = ui_locale_for_up.clone();
+                                                        async move {
+                                                            let mut rule_ids = rule_ids_for_reorder;
+                                                            if index == 0 || index >= rule_ids.len() {
+                                                                busy.set(false);
+                                                                return;
                                                             }
-                                                            Err(err) => set_error.set(Some(err.to_string())),
+                                                            rule_ids.swap(index, index - 1);
+                                                            let result = api::reorder_resolution_rules(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                &ReorderResolutionRulesPayload { rule_ids },
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    set_feedback.set(Some(
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleReordered",
+                                                                            "Rule order updated for policy set `{slug}`.",
+                                                                        )
+                                                                        .replace("{slug}", policy_set_slug.as_str()),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
                                                         }
-                                                        busy.set(false);
-                                                    }
-                                                });
-                                            }
-                                        >
-                                            {delete_rule_label.clone()}
-                                        </button>
+                                                    });
+                                                }
+                                            >
+                                                {move_up_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get() || !can_move_down
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_down.clone();
+                                                        let tenant = tenant_for_down.clone();
+                                                        let policy_set_id = policy_set_id_for_down.clone();
+                                                        let policy_set_slug = policy_set_slug_for_down.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder_down.clone();
+                                                        let ui_locale = ui_locale_for_down.clone();
+                                                        async move {
+                                                            let mut rule_ids = rule_ids_for_reorder;
+                                                            if index + 1 >= rule_ids.len() {
+                                                                busy.set(false);
+                                                                return;
+                                                            }
+                                                            rule_ids.swap(index, index + 1);
+                                                            let result = api::reorder_resolution_rules(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                &ReorderResolutionRulesPayload { rule_ids },
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    set_feedback.set(Some(
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleReordered",
+                                                                            "Rule order updated for policy set `{slug}`.",
+                                                                        )
+                                                                        .replace("{slug}", policy_set_slug.as_str()),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {move_down_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_toggle.clone();
+                                                        let tenant = tenant_for_toggle.clone();
+                                                        let policy_set_id = policy_set_id_for_toggle.clone();
+                                                        let rule_id = rule_id_for_toggle.clone();
+                                                        let rule_id_for_feedback = rule_id_for_toggle_feedback.clone();
+                                                        let ui_locale = ui_locale_for_toggle.clone();
+                                                        async move {
+                                                            let next_is_active = !rule_is_active;
+                                                            let result = api::update_resolution_rule(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                rule_id.as_str(),
+                                                                &UpdateResolutionRulePayload {
+                                                                    priority: None,
+                                                                    is_active: Some(next_is_active),
+                                                                },
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    let message = if next_is_active {
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleEnabled",
+                                                                            "Rule `{rule}` enabled.",
+                                                                        )
+                                                                    } else {
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleDisabled",
+                                                                            "Rule `{rule}` disabled.",
+                                                                        )
+                                                                    };
+                                                                    set_feedback.set(Some(
+                                                                        message.replace(
+                                                                            "{rule}",
+                                                                            short_id(rule_id_for_feedback.as_str()).as_str(),
+                                                                        ),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {if rule_is_active {
+                                                    disable_rule_label.clone()
+                                                } else {
+                                                    enable_rule_label.clone()
+                                                }}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_delete.clone();
+                                                        let tenant = tenant_for_delete.clone();
+                                                        let policy_set_id = policy_set_id_for_delete.clone();
+                                                        let rule_id = rule_id_for_delete.clone();
+                                                        let rule_id_for_feedback = rule_id_for_delete_feedback.clone();
+                                                        let ui_locale = ui_locale_for_delete.clone();
+                                                        async move {
+                                                            let result = api::delete_resolution_rule(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                rule_id.as_str(),
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    set_feedback.set(Some(
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleDeleted",
+                                                                            "Rule `{rule}` removed.",
+                                                                        )
+                                                                        .replace("{rule}", short_id(rule_id_for_feedback.as_str()).as_str()),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {delete_rule_label.clone()}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             }

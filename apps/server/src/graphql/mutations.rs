@@ -311,6 +311,29 @@ fn map_platform_composition_build_error(error: PlatformCompositionBuildError) ->
     }
 }
 
+fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
+    match error {
+        ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
+        ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
+            FieldError::new(format!("Core module cannot be disabled: {}", module_slug))
+        }
+        ToggleModuleError::MissingDependencies(missing) => {
+            FieldError::new(format!("Missing module dependencies: {}", missing))
+        }
+        ToggleModuleError::HasDependents(dependents) => {
+            FieldError::new(format!("Module is required by: {}", dependents))
+        }
+        ToggleModuleError::Database(err) => {
+            <FieldError as GraphQLError>::internal_error(&err.to_string())
+        }
+        ToggleModuleError::HookFailed(err) => FieldError::new(format!(
+            "Module lifecycle hook failed before state commit: {}",
+            err
+        )),
+        ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
+    }
+}
+
 fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError {
     match error {
         PlatformCompositionError::RevisionConflict { expected, current } => {
@@ -1008,26 +1031,7 @@ impl RootMutation {
             Some(auth.user_id.to_string()),
         )
         .await
-        .map_err(|err| match err {
-            ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
-            ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
-                FieldError::new(format!("Core module cannot be disabled: {}", module_slug))
-            }
-            ToggleModuleError::MissingDependencies(missing) => {
-                FieldError::new(format!("Missing module dependencies: {}", missing))
-            }
-            ToggleModuleError::HasDependents(dependents) => {
-                FieldError::new(format!("Module is required by: {}", dependents))
-            }
-            ToggleModuleError::Database(err) => {
-                <FieldError as GraphQLError>::internal_error(&err.to_string())
-            }
-            ToggleModuleError::HookFailed(err) => FieldError::new(format!(
-                "Module lifecycle hook failed, state rolled back: {}",
-                err
-            )),
-            ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
-        })?;
+        .map_err(map_toggle_module_error)?;
 
         Ok(TenantModule {
             module_slug: module.module_slug,
@@ -1088,8 +1092,9 @@ impl RootMutation {
 mod tests {
     use super::{
         map_create_user_error, map_manifest_error, map_platform_composition_build_error,
-        map_platform_composition_error, prepare_user_custom_fields_write, validate_custom_fields,
-        AuthLifecycleError, ManifestError, PlatformCompositionBuildError, PlatformCompositionError,
+        map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
+        validate_custom_fields, AuthLifecycleError, ManifestError, PlatformCompositionBuildError,
+        PlatformCompositionError, ToggleModuleError,
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use migration::Migrator;
@@ -1151,6 +1156,52 @@ mod tests {
             crate::error::Error::InternalServerError,
         ));
         assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn toggle_error_maps_unknown_module() {
+        let err = map_toggle_module_error(ToggleModuleError::UnknownModule);
+        assert_eq!(err.message, "Unknown module");
+    }
+
+    #[test]
+    fn toggle_error_maps_core_module_disable() {
+        let err =
+            map_toggle_module_error(ToggleModuleError::CoreModuleCannotBeDisabled("core".into()));
+        assert!(err.message.contains("Core module cannot be disabled"));
+        assert!(err.message.contains("core"));
+    }
+
+    #[test]
+    fn toggle_error_maps_dependency_errors() {
+        let missing =
+            map_toggle_module_error(ToggleModuleError::MissingDependencies("pricing".into()));
+        assert!(missing.message.contains("Missing module dependencies"));
+
+        let dependents =
+            map_toggle_module_error(ToggleModuleError::HasDependents("checkout".into()));
+        assert!(dependents.message.contains("Module is required by"));
+    }
+
+    #[test]
+    fn toggle_error_maps_hook_failure() {
+        let err = map_toggle_module_error(ToggleModuleError::HookFailed("boom".into()));
+        assert!(err
+            .message
+            .contains("Module lifecycle hook failed before state commit"));
+        assert!(err.message.contains("boom"));
+        assert!(!err.message.contains("rolled back"));
+    }
+
+    #[test]
+    fn toggle_error_maps_database_and_policy_to_internal_errors() {
+        let db_err = map_toggle_module_error(ToggleModuleError::Database(sea_orm::DbErr::Custom(
+            "db down".to_string(),
+        )));
+        assert!(!db_err.message.is_empty());
+
+        let policy_err = map_toggle_module_error(ToggleModuleError::Policy("policy".to_string()));
+        assert!(!policy_err.message.is_empty());
     }
 
     #[test]
@@ -1355,5 +1406,4 @@ mod tests {
         assert!(err.message.contains("expected 10"));
         assert!(err.message.contains("current 11"));
     }
-
 }
