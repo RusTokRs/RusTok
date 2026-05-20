@@ -397,7 +397,51 @@ fn PolicyWorkbench(
         "channel.policies.emptyBody",
         "Create the first policy set when channel selection should depend on locale, OAuth app, or richer host matching instead of only explicit selectors and host targets.",
     );
+    let selected_policy_set_query = use_route_query_value(AdminQueryKey::PolicySetId.as_str());
+    let selected_policy_rule_query = use_route_query_value(AdminQueryKey::PolicyRuleId.as_str());
+    let policy_query_writer = use_route_query_writer();
+    let policy_sets_for_selection = policy_sets.clone();
     let create_policy_ctx = StoredValue::new((token.clone(), tenant.clone(), ui_locale.clone()));
+
+    Effect::new(move |_| {
+        let selected_policy_set_id = selected_policy_set_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+        let selected_policy_rule_id = selected_policy_rule_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+
+        match selected_policy_set_id {
+            Some(policy_set_id) => {
+                let maybe_policy_set = policy_sets_for_selection
+                    .iter()
+                    .find(|policy_set| policy_set.policy_set.id == policy_set_id);
+                match maybe_policy_set {
+                    Some(policy_set) => {
+                        if let Some(rule_id) = selected_policy_rule_id.as_deref() {
+                            if !policy_set.rules.iter().any(|rule| rule.id == rule_id) {
+                                policy_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                            }
+                        }
+                    }
+                    None => {
+                        policy_query_writer.update(
+                            vec![
+                                (AdminQueryKey::PolicySetId.as_str().to_string(), None),
+                                (AdminQueryKey::PolicyRuleId.as_str().to_string(), None),
+                            ],
+                            false,
+                        );
+                    }
+                }
+            }
+            None => {
+                if selected_policy_rule_id.is_some() {
+                    policy_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                }
+            }
+        }
+    });
 
     let on_create = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -525,27 +569,30 @@ fn PolicySetCard(
     set_refresh_nonce: WriteSignal<u64>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let selected_policy_set_query = use_route_query_value(AdminQueryKey::PolicySetId.as_str());
+    let selected_policy_rule_query = use_route_query_value(AdminQueryKey::PolicyRuleId.as_str());
+    let query_writer = use_route_query_writer();
+    let policy_selection_query_writer = query_writer.clone();
     let has_channels = !channels.is_empty();
     let busy = RwSignal::new(false);
-    let action_channel_id = RwSignal::new(
-        channels
-            .first()
-            .map(|channel| channel.channel.id.clone())
-            .unwrap_or_default(),
-    );
-    let priority = RwSignal::new(
-        policy_set
-            .rules
-            .last()
-            .map(|rule| rule.priority + 10)
-            .unwrap_or(10),
-    );
-    let is_active = RwSignal::new(true);
-    let host_equals = RwSignal::new(String::new());
-    let host_suffix = RwSignal::new(String::new());
-    let locale = RwSignal::new(String::new());
-    let surface = RwSignal::new("http".to_string());
-    let oauth_app_id = RwSignal::new(String::new());
+    let editing_rule_id = RwSignal::new(Option::<String>::None);
+    let policy_rules = policy_set.rules.clone();
+    let rule_order = policy_rules
+        .iter()
+        .map(|rule| rule.id.clone())
+        .collect::<Vec<_>>();
+    let create_form_state = policy_rule_create_form_state(&policy_rules, &channels);
+    let policy_rules_for_selection = policy_rules.clone();
+    let channels_for_selection = channels.clone();
+    let create_form_state_for_selection = create_form_state.clone();
+    let priority = RwSignal::new(create_form_state.priority);
+    let is_active = RwSignal::new(create_form_state.is_active);
+    let action_channel_id = RwSignal::new(create_form_state.action_channel_id.clone());
+    let host_equals = RwSignal::new(create_form_state.host_equals.clone());
+    let host_suffix = RwSignal::new(create_form_state.host_suffix.clone());
+    let locale = RwSignal::new(create_form_state.locale.clone());
+    let surface = RwSignal::new(create_form_state.surface.clone());
+    let oauth_app_id = RwSignal::new(create_form_state.oauth_app_id.clone());
     let policy_set_id = policy_set.policy_set.id.clone();
     let policy_set_slug = policy_set.policy_set.slug.clone();
     let activate_ctx = StoredValue::new((
@@ -555,13 +602,14 @@ fn PolicySetCard(
         policy_set_slug.clone(),
         ui_locale.clone(),
     ));
-    let create_rule_ctx = StoredValue::new((
+    let submit_rule_ctx = StoredValue::new((
         token.clone(),
         tenant.clone(),
         policy_set_id.clone(),
         policy_set_slug.clone(),
         ui_locale.clone(),
     ));
+
     let active_badge_label = t(
         ui_locale.as_deref(),
         "channel.policies.activeBadge",
@@ -583,24 +631,95 @@ fn PolicySetCard(
         "channel.policies.rules.emptyBody",
         "Add the first rule to connect request facts to a specific channel.",
     );
-    let delete_rule_label = t(
-        ui_locale.as_deref(),
-        "channel.policies.deleteRule",
-        "Delete",
-    );
+    let edit_rule_title = t(ui_locale.as_deref(), "channel.policies.editRuleTitle", "Edit Rule");
+    let add_rule_title = t(ui_locale.as_deref(), "channel.policies.addRuleTitle", "Add Rule");
+    let save_rule_label = t(ui_locale.as_deref(), "channel.policies.saveRule", "Save Rule");
+    let add_rule_label = t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule");
+    let edit_rule_label = t(ui_locale.as_deref(), "channel.policies.editRule", "Edit");
+    let delete_rule_label = t(ui_locale.as_deref(), "channel.policies.deleteRule", "Delete");
     let move_up_label = t(ui_locale.as_deref(), "channel.policies.moveUp", "Move Up");
     let move_down_label = t(ui_locale.as_deref(), "channel.policies.moveDown", "Move Down");
     let enable_rule_label = t(ui_locale.as_deref(), "channel.policies.enableRule", "Enable");
     let disable_rule_label = t(ui_locale.as_deref(), "channel.policies.disableRule", "Disable");
     let inactive_rule_badge = t(ui_locale.as_deref(), "channel.policies.inactiveBadge", "Inactive");
-    let policy_rules = policy_set.rules.clone();
-    let rule_order = policy_rules
-        .iter()
-        .map(|rule| rule.id.clone())
-        .collect::<Vec<_>>();
+    let cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
+    let any_surface_label = t(ui_locale.as_deref(), "channel.policies.surfaceAny", "any surface");
     let rules_ui_locale = ui_locale.clone();
 
-    let on_create_rule = move |ev: SubmitEvent| {
+    Effect::new(move |_| {
+        let selected_policy_set_id = selected_policy_set_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+        let selected_policy_rule_id = selected_policy_rule_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+
+        if selected_policy_set_id.as_deref() != Some(policy_set_id.as_str()) {
+            editing_rule_id.set(None);
+            apply_policy_rule_form_state(
+                priority,
+                is_active,
+                action_channel_id,
+                host_equals,
+                host_suffix,
+                locale,
+                surface,
+                oauth_app_id,
+                &create_form_state_for_selection,
+            );
+            return;
+        }
+
+        match selected_policy_rule_id {
+            Some(rule_id) => {
+                if let Some(rule) = policy_rules_for_selection.iter().find(|rule| rule.id == rule_id) {
+                    editing_rule_id.set(Some(rule.id.clone()));
+                    let edit_form_state = policy_rule_edit_form_state(rule, &channels_for_selection);
+                    apply_policy_rule_form_state(
+                        priority,
+                        is_active,
+                        action_channel_id,
+                        host_equals,
+                        host_suffix,
+                        locale,
+                        surface,
+                        oauth_app_id,
+                        &edit_form_state,
+                    );
+                } else {
+                    policy_selection_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                    editing_rule_id.set(None);
+                    apply_policy_rule_form_state(
+                        priority,
+                        is_active,
+                        action_channel_id,
+                        host_equals,
+                        host_suffix,
+                        locale,
+                        surface,
+                        oauth_app_id,
+                        &create_form_state_for_selection,
+                    );
+                }
+            }
+            None => {
+                editing_rule_id.set(None);
+                apply_policy_rule_form_state(
+                    priority,
+                    is_active,
+                    action_channel_id,
+                    host_equals,
+                    host_suffix,
+                    locale,
+                    surface,
+                    oauth_app_id,
+                    &create_form_state_for_selection,
+                );
+            }
+        }
+    });
+
+    let on_submit_rule = move |ev: SubmitEvent| {
         ev.prevent_default();
         busy.set(true);
         set_feedback.set(None);
@@ -608,41 +727,99 @@ fn PolicySetCard(
 
         spawn_local({
             let (token, tenant, policy_set_id, policy_set_slug, ui_locale) =
-                create_rule_ctx.get_value();
+                submit_rule_ctx.get_value();
+            let editing_rule_id_value = editing_rule_id.get_untracked();
+            let query_writer = query_writer.clone();
             async move {
-                let payload = CreateResolutionRulePayload {
-                    priority: priority.get_untracked(),
-                    is_active: is_active.get_untracked(),
-                    action_channel_id: action_channel_id.get_untracked(),
-                    host_equals: optional_text(host_equals.get_untracked()),
-                    host_suffix: optional_text(host_suffix.get_untracked()),
-                    oauth_app_id: optional_text(oauth_app_id.get_untracked()),
-                    surface: optional_text(surface.get_untracked()),
-                    locale: optional_text(locale.get_untracked()),
-                };
-                let result =
-                    api::create_resolution_rule(token, tenant, policy_set_id.as_str(), &payload)
+                match editing_rule_id_value {
+                    Some(rule_id) => {
+                        let result = api::update_resolution_rule(
+                            token,
+                            tenant,
+                            policy_set_id.as_str(),
+                            rule_id.as_str(),
+                            &UpdateResolutionRulePayload {
+                                priority: Some(priority.get_untracked()),
+                                is_active: Some(is_active.get_untracked()),
+                                action_channel_id: Some(action_channel_id.get_untracked()),
+                                host_equals: Some(host_equals.get_untracked()),
+                                host_suffix: Some(host_suffix.get_untracked()),
+                                oauth_app_id: Some(oauth_app_id.get_untracked()),
+                                surface: Some(surface.get_untracked()),
+                                locale: Some(locale.get_untracked()),
+                            },
+                        )
                         .await;
 
-                match result {
-                    Ok(rule) => {
-                        set_feedback.set(Some(
-                            t(
-                                ui_locale.as_deref(),
-                                "channel.policies.feedback.ruleCreated",
-                                "Rule `{rule}` added to policy set `{slug}`.",
-                            )
-                            .replace("{rule}", short_id(rule.id.as_str()).as_str())
-                            .replace("{slug}", policy_set_slug.as_str()),
-                        ));
-                        host_equals.set(String::new());
-                        host_suffix.set(String::new());
-                        locale.set(String::new());
-                        oauth_app_id.set(String::new());
-                        priority.update(|value| *value += 10);
-                        set_refresh_nonce.update(|value| *value += 1);
+                        match result {
+                            Ok(rule) => {
+                                set_feedback.set(Some(
+                                    t(
+                                        ui_locale.as_deref(),
+                                        "channel.policies.feedback.ruleUpdated",
+                                        "Rule `{rule}` updated in policy set `{slug}`.",
+                                    )
+                                    .replace("{rule}", short_id(rule.id.as_str()).as_str())
+                                    .replace("{slug}", policy_set_slug.as_str()),
+                                ));
+                                query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                                editing_rule_id.set(None);
+                                apply_policy_rule_form_state(
+                                    priority,
+                                    is_active,
+                                    action_channel_id,
+                                    host_equals,
+                                    host_suffix,
+                                    locale,
+                                    surface,
+                                    oauth_app_id,
+                                    &create_form_state,
+                                );
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                            Err(err) => set_error.set(Some(err.to_string())),
+                        }
                     }
-                    Err(err) => set_error.set(Some(err.to_string())),
+                    None => {
+                        let payload = CreateResolutionRulePayload {
+                            priority: priority.get_untracked(),
+                            is_active: is_active.get_untracked(),
+                            action_channel_id: action_channel_id.get_untracked(),
+                            host_equals: optional_text(host_equals.get_untracked()),
+                            host_suffix: optional_text(host_suffix.get_untracked()),
+                            oauth_app_id: optional_text(oauth_app_id.get_untracked()),
+                            surface: optional_text(surface.get_untracked()),
+                            locale: optional_text(locale.get_untracked()),
+                        };
+                        let result =
+                            api::create_resolution_rule(token, tenant, policy_set_id.as_str(), &payload)
+                                .await;
+
+                        match result {
+                            Ok(rule) => {
+                                set_feedback.set(Some(
+                                    t(
+                                        ui_locale.as_deref(),
+                                        "channel.policies.feedback.ruleCreated",
+                                        "Rule `{rule}` added to policy set `{slug}`.",
+                                    )
+                                    .replace("{rule}", short_id(rule.id.as_str()).as_str())
+                                    .replace("{slug}", policy_set_slug.as_str()),
+                                ));
+                                host_equals.set(String::new());
+                                host_suffix.set(String::new());
+                                locale.set(String::new());
+                                oauth_app_id.set(String::new());
+                                priority.update(|value| *value += 10);
+                                query_writer.replace_value(
+                                    AdminQueryKey::PolicySetId.as_str(),
+                                    policy_set_id.clone(),
+                                );
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                            Err(err) => set_error.set(Some(err.to_string())),
+                        }
+                    }
                 }
 
                 busy.set(false);
@@ -725,12 +902,14 @@ fn PolicySetCard(
                     <div class="space-y-2">
                         {policy_rules.into_iter().enumerate().map(|(index, rule)| {
                             let summary = policy_rule_summary(&rule, &channels);
-                            let policy_set_id_for_up = policy_set.policy_set.id.clone();
-                            let policy_set_id_for_down = policy_set.policy_set.id.clone();
-                            let policy_set_id_for_toggle = policy_set.policy_set.id.clone();
-                            let policy_set_id_for_delete = policy_set.policy_set.id.clone();
-                            let policy_set_slug_for_up = policy_set.policy_set.slug.clone();
-                            let policy_set_slug_for_down = policy_set.policy_set.slug.clone();
+                            let rule_is_active = rule.is_active;
+                            let is_editing_rule = Signal::derive({
+                                let rule_id = rule.id.clone();
+                                move || editing_rule_id.get().as_deref() == Some(rule_id.as_str())
+                            });
+                            let rule_ids_for_reorder = rule_order.clone();
+                            let can_move_up = index > 0;
+                            let can_move_down = index + 1 < rule_order.len();
                             let token_for_up = token.clone();
                             let tenant_for_up = tenant.clone();
                             let token_for_down = token.clone();
@@ -739,21 +918,26 @@ fn PolicySetCard(
                             let tenant_for_toggle = tenant.clone();
                             let token_for_delete = token.clone();
                             let tenant_for_delete = tenant.clone();
+                            let policy_set_id_for_up = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_down = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_toggle = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_delete = policy_set.policy_set.id.clone();
+                            let policy_set_slug_for_up = policy_set.policy_set.slug.clone();
+                            let policy_set_slug_for_down = policy_set.policy_set.slug.clone();
                             let ui_locale_for_up = rules_ui_locale.clone();
                             let ui_locale_for_down = rules_ui_locale.clone();
                             let ui_locale_for_toggle = rules_ui_locale.clone();
                             let ui_locale_for_delete = rules_ui_locale.clone();
+                            let query_writer_for_edit = query_writer.clone();
+                            let query_writer_for_delete = query_writer.clone();
                             let rule_id_for_toggle = rule.id.clone();
                             let rule_id_for_delete = rule.id.clone();
-                            let rule_id_for_toggle_feedback = rule.id.clone();
-                            let rule_id_for_delete_feedback = rule.id.clone();
-                            let rule_is_active = rule.is_active;
-                            let rule_ids_for_reorder_up = rule_order.clone();
-                            let rule_ids_for_reorder_down = rule_order.clone();
-                            let can_move_up = index > 0;
-                            let can_move_down = index + 1 < rule_order.len();
+                            let rule_id_for_feedback = rule.id.clone();
                             view! {
-                                <div class="rounded-lg border border-border px-3 py-3 text-sm">
+                                <div
+                                    class="rounded-lg border border-border px-3 py-3 text-sm"
+                                    class=("ring-2 ring-primary/30", move || is_editing_rule.get())
+                                >
                                     <div class="flex flex-wrap items-start justify-between gap-3">
                                         <div class="space-y-1">
                                             <div class="flex items-center gap-2 font-medium text-card-foreground">
@@ -770,6 +954,33 @@ fn PolicySetCard(
                                             <button
                                                 type="button"
                                                 class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let policy_set_id = policy_set.policy_set.id.clone();
+                                                    let rule_id = rule.id.clone();
+                                                    let query_writer = query_writer_for_edit.clone();
+                                                    move |_| {
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::PolicySetId.as_str().to_string(),
+                                                                    Some(policy_set_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::PolicyRuleId.as_str().to_string(),
+                                                                    Some(rule_id.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
+                                                    }
+                                                }
+                                            >
+                                                {edit_rule_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
                                                 disabled=move || busy.get() || !can_move_up
                                                 on:click=move |_| {
                                                     busy.set(true);
@@ -780,15 +991,13 @@ fn PolicySetCard(
                                                         let tenant = tenant_for_up.clone();
                                                         let policy_set_id = policy_set_id_for_up.clone();
                                                         let policy_set_slug = policy_set_slug_for_up.clone();
-                                                        let rule_ids_for_reorder = rule_ids_for_reorder_up.clone();
                                                         let ui_locale = ui_locale_for_up.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder.clone();
                                                         async move {
-                                                            let mut rule_ids = rule_ids_for_reorder;
-                                                            if index == 0 || index >= rule_ids.len() {
+                                                            let Some(rule_ids) = reorder_rule_ids(rule_ids_for_reorder.as_slice(), index, true) else {
                                                                 busy.set(false);
                                                                 return;
-                                                            }
-                                                            rule_ids.swap(index, index - 1);
+                                                            };
                                                             let result = api::reorder_resolution_rules(
                                                                 token,
                                                                 tenant,
@@ -830,15 +1039,13 @@ fn PolicySetCard(
                                                         let tenant = tenant_for_down.clone();
                                                         let policy_set_id = policy_set_id_for_down.clone();
                                                         let policy_set_slug = policy_set_slug_for_down.clone();
-                                                        let rule_ids_for_reorder = rule_ids_for_reorder_down.clone();
                                                         let ui_locale = ui_locale_for_down.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder.clone();
                                                         async move {
-                                                            let mut rule_ids = rule_ids_for_reorder;
-                                                            if index + 1 >= rule_ids.len() {
+                                                            let Some(rule_ids) = reorder_rule_ids(rule_ids_for_reorder.as_slice(), index, false) else {
                                                                 busy.set(false);
                                                                 return;
-                                                            }
-                                                            rule_ids.swap(index, index + 1);
+                                                            };
                                                             let result = api::reorder_resolution_rules(
                                                                 token,
                                                                 tenant,
@@ -880,7 +1087,7 @@ fn PolicySetCard(
                                                         let tenant = tenant_for_toggle.clone();
                                                         let policy_set_id = policy_set_id_for_toggle.clone();
                                                         let rule_id = rule_id_for_toggle.clone();
-                                                        let rule_id_for_feedback = rule_id_for_toggle_feedback.clone();
+                                                        let rule_id_for_feedback = rule_id_for_feedback.clone();
                                                         let ui_locale = ui_locale_for_toggle.clone();
                                                         async move {
                                                             let next_is_active = !rule_is_active;
@@ -892,6 +1099,12 @@ fn PolicySetCard(
                                                                 &UpdateResolutionRulePayload {
                                                                     priority: None,
                                                                     is_active: Some(next_is_active),
+                                                                    action_channel_id: None,
+                                                                    host_equals: None,
+                                                                    host_suffix: None,
+                                                                    oauth_app_id: None,
+                                                                    surface: None,
+                                                                    locale: None,
                                                                 },
                                                             )
                                                             .await;
@@ -944,8 +1157,8 @@ fn PolicySetCard(
                                                         let tenant = tenant_for_delete.clone();
                                                         let policy_set_id = policy_set_id_for_delete.clone();
                                                         let rule_id = rule_id_for_delete.clone();
-                                                        let rule_id_for_feedback = rule_id_for_delete_feedback.clone();
                                                         let ui_locale = ui_locale_for_delete.clone();
+                                                        let query_writer = query_writer_for_delete.clone();
                                                         async move {
                                                             let result = api::delete_resolution_rule(
                                                                 token,
@@ -956,13 +1169,20 @@ fn PolicySetCard(
                                                             .await;
                                                             match result {
                                                                 Ok(_) => {
+                                                                    if editing_rule_id
+                                                                        .get_untracked()
+                                                                        .as_deref()
+                                                                        == Some(rule_id.as_str())
+                                                                    {
+                                                                        query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                                                                    }
                                                                     set_feedback.set(Some(
                                                                         t(
                                                                             ui_locale.as_deref(),
                                                                             "channel.policies.feedback.ruleDeleted",
                                                                             "Rule `{rule}` removed.",
                                                                         )
-                                                                        .replace("{rule}", short_id(rule_id_for_feedback.as_str()).as_str()),
+                                                                        .replace("{rule}", short_id(rule_id.as_str()).as_str()),
                                                                     ));
                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                 }
@@ -984,7 +1204,43 @@ fn PolicySetCard(
                 }.into_any()
             }}
 
-            <form class="grid gap-3 rounded-lg border border-border bg-card p-4 lg:grid-cols-2" on:submit=on_create_rule>
+            <form class="grid gap-3 rounded-lg border border-border bg-card p-4 lg:grid-cols-2" on:submit=on_submit_rule>
+                <div class="flex items-center justify-between gap-3 lg:col-span-2">
+                    <h4 class="text-sm font-semibold text-card-foreground">
+                        {move || if editing_rule_id.get().is_some() {
+                            edit_rule_title.clone()
+                        } else {
+                            add_rule_title.clone()
+                        }}
+                    </h4>
+                    <Show when=move || editing_rule_id.get().is_some()>
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                            on:click={
+                                let query_writer = query_writer.clone();
+                                let create_form_state = create_form_state.clone();
+                                move |_| {
+                                    query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                                    editing_rule_id.set(None);
+                                    apply_policy_rule_form_state(
+                                        priority,
+                                        is_active,
+                                        action_channel_id,
+                                        host_equals,
+                                        host_suffix,
+                                        locale,
+                                        surface,
+                                        oauth_app_id,
+                                        &create_form_state,
+                                    );
+                                }
+                            }
+                        >
+                            {cancel_label.clone()}
+                        </button>
+                    </Show>
+                </div>
                 <input
                     type="number"
                     class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -1032,6 +1288,7 @@ fn PolicySetCard(
                     prop:value=surface
                     on:change=move |ev| surface.set(event_target_value(&ev))
                 >
+                    <option value="">{any_surface_label.clone()}</option>
                     <option value="http">"http"</option>
                 </select>
                 <select
@@ -1059,7 +1316,11 @@ fn PolicySetCard(
                     class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 lg:col-span-2"
                     disabled=move || busy.get() || !has_channels
                 >
-                    {t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule")}
+                    {move || if editing_rule_id.get().is_some() {
+                        save_rule_label.clone()
+                    } else {
+                        add_rule_label.clone()
+                    }}
                 </button>
             </form>
         </section>
@@ -2255,6 +2516,131 @@ fn EmptyState(title: String, body: String) -> impl IntoView {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PolicyRuleFormState {
+    priority: i32,
+    is_active: bool,
+    action_channel_id: String,
+    host_equals: String,
+    host_suffix: String,
+    oauth_app_id: String,
+    surface: String,
+    locale: String,
+}
+
+fn policy_rule_create_form_state(
+    rules: &[crate::model::ChannelResolutionRuleRecord],
+    channels: &[ChannelDetail],
+) -> PolicyRuleFormState {
+    PolicyRuleFormState {
+        priority: rules.last().map(|rule| rule.priority + 10).unwrap_or(10),
+        is_active: true,
+        action_channel_id: channels
+            .first()
+            .map(|channel| channel.channel.id.clone())
+            .unwrap_or_default(),
+        host_equals: String::new(),
+        host_suffix: String::new(),
+        oauth_app_id: String::new(),
+        surface: "http".to_string(),
+        locale: String::new(),
+    }
+}
+
+fn policy_rule_edit_form_state(
+    rule: &crate::model::ChannelResolutionRuleRecord,
+    channels: &[ChannelDetail],
+) -> PolicyRuleFormState {
+    let fallback_action_channel_id = channels
+        .first()
+        .map(|channel| channel.channel.id.clone())
+        .unwrap_or_else(|| rule.action_channel_id.clone());
+
+    let mut host_equals = String::new();
+    let mut host_suffix = String::new();
+    let mut oauth_app_id = String::new();
+    let mut surface = String::new();
+    let mut locale = String::new();
+
+    for predicate in &rule.definition.predicates {
+        match predicate {
+            crate::model::ChannelResolutionPredicateRecord::HostEquals(value) => {
+                host_equals = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::HostSuffix(value) => {
+                host_suffix = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::OAuthAppEquals(value) => {
+                oauth_app_id = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::SurfaceIs(value) => {
+                surface = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::LocaleEquals(value) => {
+                locale = value.clone()
+            }
+        }
+    }
+
+    PolicyRuleFormState {
+        priority: rule.priority,
+        is_active: rule.is_active,
+        action_channel_id: if channels
+            .iter()
+            .any(|channel| channel.channel.id == rule.action_channel_id)
+        {
+            rule.action_channel_id.clone()
+        } else {
+            fallback_action_channel_id
+        },
+        host_equals,
+        host_suffix,
+        oauth_app_id,
+        surface,
+        locale,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_policy_rule_form_state(
+    priority: RwSignal<i32>,
+    is_active: RwSignal<bool>,
+    action_channel_id: RwSignal<String>,
+    host_equals: RwSignal<String>,
+    host_suffix: RwSignal<String>,
+    locale: RwSignal<String>,
+    surface: RwSignal<String>,
+    oauth_app_id: RwSignal<String>,
+    state: &PolicyRuleFormState,
+) {
+    priority.set(state.priority);
+    is_active.set(state.is_active);
+    action_channel_id.set(state.action_channel_id.clone());
+    host_equals.set(state.host_equals.clone());
+    host_suffix.set(state.host_suffix.clone());
+    locale.set(state.locale.clone());
+    surface.set(state.surface.clone());
+    oauth_app_id.set(state.oauth_app_id.clone());
+}
+
+fn reorder_rule_ids(rule_ids: &[String], index: usize, move_up: bool) -> Option<Vec<String>> {
+    if move_up {
+        if index == 0 || index >= rule_ids.len() {
+            return None;
+        }
+    } else if index + 1 >= rule_ids.len() {
+        return None;
+    }
+
+    let mut reordered = rule_ids.to_vec();
+    if move_up {
+        reordered.swap(index, index - 1);
+    } else {
+        reordered.swap(index, index + 1);
+    }
+    Some(reordered)
+}
+
 fn policy_rule_summary(
     rule: &crate::model::ChannelResolutionRuleRecord,
     channels: &[ChannelDetail],
@@ -2386,5 +2772,100 @@ fn resolution_outcome_badge_class(outcome: &ChannelResolutionOutcome) -> &'stati
         ChannelResolutionOutcome::Rejected => {
             "inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-1 font-medium text-rose-700"
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{policy_rule_edit_form_state, reorder_rule_ids};
+    use crate::model::{
+        ChannelDetail, ChannelRecord, ChannelResolutionActionRecord,
+        ChannelResolutionPredicateRecord, ChannelResolutionRuleDefinitionRecord,
+        ChannelResolutionRuleRecord,
+    };
+
+    #[test]
+    fn policy_rule_edit_form_state_prefills_predicates_and_action_channel() {
+        let rule = ChannelResolutionRuleRecord {
+            id: "rule_01".to_string(),
+            policy_set_id: "policy_set_01".to_string(),
+            priority: 30,
+            is_active: false,
+            action_channel_id: "channel_01".to_string(),
+            definition: ChannelResolutionRuleDefinitionRecord {
+                predicates: vec![
+                    ChannelResolutionPredicateRecord::HostEquals("shop.example.test".to_string()),
+                    ChannelResolutionPredicateRecord::OAuthAppEquals(
+                        "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                    ),
+                    ChannelResolutionPredicateRecord::SurfaceIs("http".to_string()),
+                    ChannelResolutionPredicateRecord::LocaleEquals("ru-by".to_string()),
+                ],
+                action: ChannelResolutionActionRecord::ResolveToChannel {
+                    channel_id: "channel_01".to_string(),
+                },
+            },
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        let channels = vec![ChannelDetail {
+            channel: ChannelRecord {
+                id: "channel_01".to_string(),
+                tenant_id: "tenant_01".to_string(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                is_active: true,
+                is_default: true,
+                status: "experimental".to_string(),
+                settings: serde_json::json!({}),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            targets: Vec::new(),
+            module_bindings: Vec::new(),
+            oauth_apps: Vec::new(),
+        }];
+
+        let form_state = policy_rule_edit_form_state(&rule, &channels);
+
+        assert_eq!(form_state.priority, 30);
+        assert!(!form_state.is_active);
+        assert_eq!(form_state.action_channel_id, "channel_01");
+        assert_eq!(form_state.host_equals, "shop.example.test");
+        assert_eq!(
+            form_state.oauth_app_id,
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(form_state.surface, "http");
+        assert_eq!(form_state.locale, "ru-by");
+    }
+
+    #[test]
+    fn reorder_rule_ids_swaps_neighbors_and_guards_bounds() {
+        let base = vec![
+            "rule_01".to_string(),
+            "rule_02".to_string(),
+            "rule_03".to_string(),
+        ];
+
+        assert_eq!(
+            reorder_rule_ids(base.as_slice(), 1, true),
+            Some(vec![
+                "rule_02".to_string(),
+                "rule_01".to_string(),
+                "rule_03".to_string(),
+            ])
+        );
+        assert_eq!(
+            reorder_rule_ids(base.as_slice(), 1, false),
+            Some(vec![
+                "rule_01".to_string(),
+                "rule_03".to_string(),
+                "rule_02".to_string(),
+            ])
+        );
+        assert_eq!(reorder_rule_ids(base.as_slice(), 0, true), None);
+        assert_eq!(reorder_rule_ids(base.as_slice(), 2, false), None);
     }
 }

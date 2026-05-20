@@ -30,9 +30,10 @@ use crate::entities::channel_resolution_policy_set::{
 use crate::entities::channel_target::{self, ActiveModel as ChannelTargetActiveModel};
 use crate::error::{ChannelError, ChannelResult};
 use crate::policy::{
-    ChannelResolutionRuleDefinition, StoredChannelResolutionRule,
-    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
+    ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate,
+    StoredChannelResolutionRule, CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
 };
+use crate::resolution::TargetSurface;
 use crate::target_type::ChannelTargetType;
 
 pub struct ChannelService {
@@ -593,12 +594,23 @@ impl ChannelService {
         rule_id: Uuid,
         input: UpdateChannelResolutionRuleInput,
     ) -> ChannelResult<ChannelResolutionRuleResponse> {
-        if input.priority.is_none() && input.is_active.is_none() {
+        let has_definition_patch = input.action_channel_id.is_some()
+            || input.host_equals.is_some()
+            || input.host_suffix.is_some()
+            || input.oauth_app_id.is_some()
+            || input.surface.is_some()
+            || input.locale.is_some();
+
+        if input.priority.is_none() && input.is_active.is_none() && !has_definition_patch {
             return Err(ChannelError::InvalidPolicyOperation(
-                "provide at least one field to update (priority or is_active)".to_string(),
+                "provide at least one field to update (priority, is_active, action_channel_id, host_equals, host_suffix, oauth_app_id, surface, locale)".to_string(),
             ));
         }
 
+        let policy_set = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(policy_set_id))?;
         let rule = channel_resolution_policy_rule::Entity::find_by_id(rule_id)
             .one(&self.db)
             .await?
@@ -607,6 +619,104 @@ impl ChannelService {
             return Err(ChannelError::NotFound(rule_id));
         }
 
+        let mut next_definition = serde_json::from_value::<ChannelResolutionRuleDefinition>(
+            rule.definition.clone(),
+        )?
+        .validated()?;
+
+        if has_definition_patch {
+            let mut host_equals = next_definition.predicates.iter().find_map(|predicate| {
+                match predicate {
+                    ResolutionPredicate::HostEquals(value) => Some(value.clone()),
+                    _ => None,
+                }
+            });
+            let mut host_suffix = next_definition.predicates.iter().find_map(|predicate| {
+                match predicate {
+                    ResolutionPredicate::HostSuffix(value) => Some(value.clone()),
+                    _ => None,
+                }
+            });
+            let mut oauth_app_id = next_definition.predicates.iter().find_map(|predicate| {
+                match predicate {
+                    ResolutionPredicate::OAuthAppEquals(value) => Some(*value),
+                    _ => None,
+                }
+            });
+            let mut surface = next_definition.predicates.iter().find_map(|predicate| {
+                match predicate {
+                    ResolutionPredicate::SurfaceIs(value) => Some(*value),
+                    _ => None,
+                }
+            });
+            let mut locale = next_definition.predicates.iter().find_map(|predicate| {
+                match predicate {
+                    ResolutionPredicate::LocaleEquals(value) => Some(value.clone()),
+                    _ => None,
+                }
+            });
+
+            if let Some(channel_id) = input.action_channel_id {
+                let action_channel = channel::Entity::find_by_id(channel_id)
+                    .one(&self.db)
+                    .await?
+                    .ok_or(ChannelError::NotFound(channel_id))?;
+                if action_channel.tenant_id != policy_set.tenant_id {
+                    return Err(ChannelError::InvalidPolicyDefinition(format!(
+                        "policy action channel '{channel_id}' does not belong to tenant '{}'",
+                        policy_set.tenant_id
+                    )));
+                }
+                next_definition.action = ResolutionAction::ResolveToChannel { channel_id };
+            }
+
+            if let Some(host_value) = input.host_equals {
+                host_equals = normalize_optional_patch_text(host_value);
+            }
+            if let Some(host_suffix_value) = input.host_suffix {
+                host_suffix = normalize_optional_patch_text(host_suffix_value);
+            }
+            if let Some(oauth_app_value) = input.oauth_app_id {
+                oauth_app_id = normalize_optional_patch_text(oauth_app_value)
+                    .map(|value| {
+                        Uuid::parse_str(value.as_str()).map_err(|_| {
+                            ChannelError::InvalidPolicyDefinition(
+                                "oauth_app_id must be a valid UUID".to_string(),
+                            )
+                        })
+                    })
+                    .transpose()?;
+            }
+            if let Some(surface_value) = input.surface {
+                surface = normalize_optional_patch_text(surface_value)
+                    .map(|value| parse_target_surface(value.as_str()))
+                    .transpose()?;
+            }
+            if let Some(locale_value) = input.locale {
+                locale = normalize_optional_patch_text(locale_value);
+            }
+
+            let mut predicates = Vec::new();
+            if let Some(value) = host_equals {
+                predicates.push(ResolutionPredicate::HostEquals(value));
+            }
+            if let Some(value) = host_suffix {
+                predicates.push(ResolutionPredicate::HostSuffix(value));
+            }
+            if let Some(value) = oauth_app_id {
+                predicates.push(ResolutionPredicate::OAuthAppEquals(value));
+            }
+            if let Some(value) = surface {
+                predicates.push(ResolutionPredicate::SurfaceIs(value));
+            }
+            if let Some(value) = locale {
+                predicates.push(ResolutionPredicate::LocaleEquals(value));
+            }
+            next_definition.predicates = predicates;
+            next_definition = next_definition.validated()?;
+        }
+
+        let now = chrono::Utc::now().into();
         let mut active: channel_resolution_policy_rule::ActiveModel = rule.into();
         if let Some(priority) = input.priority {
             active.priority = Set(priority);
@@ -614,7 +724,11 @@ impl ChannelService {
         if let Some(is_active) = input.is_active {
             active.is_active = Set(is_active);
         }
-        active.updated_at = Set(chrono::Utc::now().into());
+        if has_definition_patch {
+            active.action_channel_id = Set(next_definition.action_channel_id());
+            active.definition = Set(serde_json::to_value(&next_definition)?);
+        }
+        active.updated_at = Set(now);
 
         to_channel_resolution_rule_response(active.update(&self.db).await?)
     }
@@ -1050,6 +1164,24 @@ fn to_channel_resolution_rule_response(
 
 fn normalize_target_value(target_type: ChannelTargetType, raw: &str) -> Option<String> {
     target_type.normalize_value(raw)
+}
+
+fn normalize_optional_patch_text(raw: String) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn parse_target_surface(raw: &str) -> ChannelResult<TargetSurface> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "http" => Ok(TargetSurface::Http),
+        other => Err(ChannelError::InvalidPolicyDefinition(format!(
+            "unsupported surface `{other}`; only `http` is currently supported"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -1620,6 +1752,12 @@ mod tests {
                 UpdateChannelResolutionRuleInput {
                     priority: Some(40),
                     is_active: Some(false),
+                    action_channel_id: None,
+                    host_equals: None,
+                    host_suffix: None,
+                    oauth_app_id: None,
+                    surface: None,
+                    locale: None,
                 },
             )
             .await
@@ -1632,6 +1770,185 @@ mod tests {
         assert_eq!(updated.priority, 40);
         assert!(!updated.is_active);
         assert!(active_rules.is_empty());
+    }
+
+    #[tokio::test]
+    async fn updates_resolution_rule_definition_and_action_channel() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+        let first_channel_id = create_channel(&service, tenant_id, "policy-target-a").await;
+        let second_channel_id = create_channel(&service, tenant_id, "policy-target-b").await;
+        let oauth_app_id = seed_oauth_app(&db, tenant_id, "channel-app").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+        let rule = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![
+                            ResolutionPredicate::HostSuffix("example.test".to_string()),
+                            ResolutionPredicate::LocaleEquals("ru-by".to_string()),
+                        ],
+                        action: ResolutionAction::ResolveToChannel {
+                            channel_id: first_channel_id,
+                        },
+                    },
+                },
+            )
+            .await
+            .expect("rule should be created");
+
+        let updated = service
+            .update_resolution_rule(
+                policy_set.id,
+                rule.id,
+                UpdateChannelResolutionRuleInput {
+                    priority: None,
+                    is_active: Some(false),
+                    action_channel_id: Some(second_channel_id),
+                    host_equals: Some(" SHOP.EXAMPLE.TEST ".to_string()),
+                    host_suffix: Some(" ".to_string()),
+                    oauth_app_id: Some(oauth_app_id.to_string()),
+                    surface: Some(" HTTP ".to_string()),
+                    locale: Some(" EN_US ".to_string()),
+                },
+            )
+            .await
+            .expect("rule should be updated");
+
+        assert!(!updated.is_active);
+        assert_eq!(updated.action_channel_id, second_channel_id);
+        assert_eq!(
+            updated.definition.predicates,
+            vec![
+                ResolutionPredicate::HostEquals("shop.example.test".to_string()),
+                ResolutionPredicate::OAuthAppEquals(oauth_app_id),
+                ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http),
+                ResolutionPredicate::LocaleEquals("en-us".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_resolution_rule_action_channel_update_for_other_tenant() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        let other_tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        seed_tenant(&db, other_tenant_id, "other").await;
+        let service = ChannelService::new(db.clone());
+        let channel_id = create_channel(&service, tenant_id, "policy-target").await;
+        let foreign_channel_id = create_channel(&service, other_tenant_id, "foreign-target").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+        let rule = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http)],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("rule should be created");
+
+        let error = service
+            .update_resolution_rule(
+                policy_set.id,
+                rule.id,
+                UpdateChannelResolutionRuleInput {
+                    priority: None,
+                    is_active: None,
+                    action_channel_id: Some(foreign_channel_id),
+                    host_equals: None,
+                    host_suffix: None,
+                    oauth_app_id: None,
+                    surface: None,
+                    locale: None,
+                },
+            )
+            .await
+            .expect_err("cross-tenant action channel update should be rejected");
+
+        assert!(matches!(error, ChannelError::InvalidPolicyDefinition(_)));
+    }
+
+    #[tokio::test]
+    async fn rejects_resolution_rule_update_with_invalid_surface_patch() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+        let channel_id = create_channel(&service, tenant_id, "policy-target").await;
+
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .expect("policy set should be created");
+        let rule = service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http)],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("rule should be created");
+
+        let error = service
+            .update_resolution_rule(
+                policy_set.id,
+                rule.id,
+                UpdateChannelResolutionRuleInput {
+                    priority: None,
+                    is_active: None,
+                    action_channel_id: None,
+                    host_equals: None,
+                    host_suffix: None,
+                    oauth_app_id: None,
+                    surface: Some("grpc".to_string()),
+                    locale: None,
+                },
+            )
+            .await
+            .expect_err("invalid surface patch should be rejected");
+
+        assert!(matches!(error, ChannelError::InvalidPolicyDefinition(_)));
     }
 
     #[tokio::test]

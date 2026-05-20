@@ -243,7 +243,10 @@ pub async fn create_resolution_policy_set(
     tenant_slug: Option<String>,
     payload: &CreateResolutionPolicySetPayload,
 ) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
-    post_json("/api/channels/policies", payload, token, tenant_slug).await
+    match channel_create_resolution_policy_set_native(payload.clone()).await {
+        Ok(payload) => Ok(payload),
+        Err(_) => post_json("/api/channels/policies", payload, token, tenant_slug).await,
+    }
 }
 
 pub async fn activate_resolution_policy_set(
@@ -251,13 +254,18 @@ pub async fn activate_resolution_policy_set(
     tenant_slug: Option<String>,
     policy_set_id: &str,
 ) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
-    post_json(
-        &format!("/api/channels/policies/{policy_set_id}/activate"),
-        &serde_json::json!({}),
-        token,
-        tenant_slug,
-    )
-    .await
+    match channel_activate_resolution_policy_set_native(policy_set_id.to_string()).await {
+        Ok(payload) => Ok(payload),
+        Err(_) => {
+            post_json(
+                &format!("/api/channels/policies/{policy_set_id}/activate"),
+                &serde_json::json!({}),
+                token,
+                tenant_slug,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn create_resolution_rule(
@@ -266,13 +274,18 @@ pub async fn create_resolution_rule(
     policy_set_id: &str,
     payload: &CreateResolutionRulePayload,
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    post_json(
-        &format!("/api/channels/policies/{policy_set_id}/rules"),
-        payload,
-        token,
-        tenant_slug,
-    )
-    .await
+    match channel_create_resolution_rule_native(policy_set_id.to_string(), payload.clone()).await {
+        Ok(payload) => Ok(payload),
+        Err(_) => {
+            post_json(
+                &format!("/api/channels/policies/{policy_set_id}/rules"),
+                payload,
+                token,
+                tenant_slug,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn update_resolution_rule(
@@ -282,13 +295,24 @@ pub async fn update_resolution_rule(
     rule_id: &str,
     payload: &UpdateResolutionRulePayload,
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    patch_json(
-        &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
-        payload,
-        token,
-        tenant_slug,
+    match channel_update_resolution_rule_native(
+        policy_set_id.to_string(),
+        rule_id.to_string(),
+        payload.clone(),
     )
     .await
+    {
+        Ok(payload) => Ok(payload),
+        Err(_) => {
+            patch_json(
+                &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
+                payload,
+                token,
+                tenant_slug,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn reorder_resolution_rules(
@@ -297,13 +321,18 @@ pub async fn reorder_resolution_rules(
     policy_set_id: &str,
     payload: &ReorderResolutionRulesPayload,
 ) -> Result<Vec<crate::model::ChannelResolutionRuleRecord>, ApiError> {
-    post_json(
-        &format!("/api/channels/policies/{policy_set_id}/rules/reorder"),
-        payload,
-        token,
-        tenant_slug,
-    )
-    .await
+    match channel_reorder_resolution_rules_native(policy_set_id.to_string(), payload.clone()).await {
+        Ok(payload) => Ok(payload),
+        Err(_) => {
+            post_json(
+                &format!("/api/channels/policies/{policy_set_id}/rules/reorder"),
+                payload,
+                token,
+                tenant_slug,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn delete_resolution_rule(
@@ -312,12 +341,17 @@ pub async fn delete_resolution_rule(
     policy_set_id: &str,
     rule_id: &str,
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    delete_json(
-        &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
-        token,
-        tenant_slug,
-    )
-    .await
+    match channel_delete_resolution_rule_native(policy_set_id.to_string(), rule_id.to_string()).await {
+        Ok(payload) => Ok(payload),
+        Err(_) => {
+            delete_json(
+                &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
+                token,
+                tenant_slug,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn create_target(
@@ -527,6 +561,23 @@ async fn ensure_channel_belongs_to_tenant(
     let mapped = map_channel_record(channel);
     if mapped.tenant_id != tenant_id.to_string() {
         return Err(ServerFnError::new("Channel not found"));
+    }
+    Ok(mapped)
+}
+
+#[cfg(feature = "ssr")]
+async fn ensure_policy_set_belongs_to_tenant(
+    service: &rustok_channel::ChannelService,
+    tenant_id: uuid::Uuid,
+    policy_set_id: uuid::Uuid,
+) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
+    let policy_set = service
+        .get_resolution_policy_set(policy_set_id)
+        .await
+        .map_err(ServerFnError::new)?;
+    let mapped = map_policy_set_record(policy_set);
+    if mapped.tenant_id != tenant_id.to_string() {
+        return Err(ServerFnError::new("Policy set not found"));
     }
     Ok(mapped)
 }
@@ -1261,4 +1312,379 @@ async fn channel_delete_oauth_app_binding_native(
             "channel/delete-oauth-app-binding requires the `ssr` feature",
         ))
     }
+}
+
+#[server(prefix = "/api/fn", endpoint = "channel/create-resolution-policy-set")]
+async fn channel_create_resolution_policy_set_native(
+    payload: CreateResolutionPolicySetPayload,
+) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::{ChannelService, CreateChannelResolutionPolicySetInput};
+
+        let app_ctx = expect_context::<AppContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth.permissions)?;
+
+        let service = ChannelService::new(app_ctx.db.clone());
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id: tenant.id,
+                slug: payload.slug,
+                name: payload.name,
+                is_active: payload.is_active,
+            })
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_policy_set_record(policy_set))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = payload;
+        Err(ServerFnError::new(
+            "channel/create-resolution-policy-set requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "channel/activate-resolution-policy-set")]
+async fn channel_activate_resolution_policy_set_native(
+    policy_set_id: String,
+) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::ChannelService;
+
+        let app_ctx = expect_context::<AppContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth.permissions)?;
+
+        let service = ChannelService::new(app_ctx.db.clone());
+        let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
+        ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
+        let policy_set = service
+            .set_active_resolution_policy_set(policy_set_uuid)
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_policy_set_record(policy_set))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = policy_set_id;
+        Err(ServerFnError::new(
+            "channel/activate-resolution-policy-set requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "channel/create-resolution-rule")]
+async fn channel_create_resolution_rule_native(
+    policy_set_id: String,
+    payload: CreateResolutionRulePayload,
+) -> Result<ChannelResolutionRuleRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::{ChannelService, CreateChannelResolutionRuleInput};
+
+        let app_ctx = expect_context::<AppContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth.permissions)?;
+
+        let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
+        let action_channel_id = parse_uuid(&payload.action_channel_id, "action_channel_id")?;
+        let service = ChannelService::new(app_ctx.db.clone());
+        ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
+        ensure_channel_belongs_to_tenant(&service, tenant.id, action_channel_id).await?;
+
+        let (priority, is_active, definition) =
+            build_native_rule_definition_payload(payload, action_channel_id)?;
+
+        let rule = service
+            .create_resolution_rule(
+                policy_set_uuid,
+                CreateChannelResolutionRuleInput {
+                    priority,
+                    is_active,
+                    definition,
+                },
+            )
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_policy_rule_record(rule))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (policy_set_id, payload);
+        Err(ServerFnError::new(
+            "channel/create-resolution-rule requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "channel/update-resolution-rule")]
+async fn channel_update_resolution_rule_native(
+    policy_set_id: String,
+    rule_id: String,
+    payload: UpdateResolutionRulePayload,
+) -> Result<ChannelResolutionRuleRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::{ChannelService, UpdateChannelResolutionRuleInput};
+
+        let app_ctx = expect_context::<AppContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth.permissions)?;
+
+        let service = ChannelService::new(app_ctx.db.clone());
+        let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
+        let rule_uuid = parse_uuid(&rule_id, "rule_id")?;
+        ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
+
+        let action_channel_id = payload
+            .action_channel_id
+            .as_deref()
+            .map(|value| parse_uuid(value, "action_channel_id"))
+            .transpose()?;
+        if let Some(action_channel_id) = action_channel_id {
+            ensure_channel_belongs_to_tenant(&service, tenant.id, action_channel_id).await?;
+        }
+
+        let rule = service
+            .update_resolution_rule(
+                policy_set_uuid,
+                rule_uuid,
+                UpdateChannelResolutionRuleInput {
+                    priority: payload.priority,
+                    is_active: payload.is_active,
+                    action_channel_id,
+                    host_equals: payload.host_equals,
+                    host_suffix: payload.host_suffix,
+                    oauth_app_id: payload.oauth_app_id,
+                    surface: payload.surface,
+                    locale: payload.locale,
+                },
+            )
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_policy_rule_record(rule))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (policy_set_id, rule_id, payload);
+        Err(ServerFnError::new(
+            "channel/update-resolution-rule requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "channel/reorder-resolution-rules")]
+async fn channel_reorder_resolution_rules_native(
+    policy_set_id: String,
+    payload: ReorderResolutionRulesPayload,
+) -> Result<Vec<ChannelResolutionRuleRecord>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::{ChannelService, ReorderChannelResolutionRulesInput};
+
+        let app_ctx = expect_context::<AppContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth.permissions)?;
+
+        let service = ChannelService::new(app_ctx.db.clone());
+        let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
+        ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
+        let rule_ids = payload
+            .rule_ids
+            .iter()
+            .map(|rule_id| parse_uuid(rule_id, "rule_id"))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let rules = service
+            .reorder_resolution_rules(
+                policy_set_uuid,
+                ReorderChannelResolutionRulesInput { rule_ids },
+            )
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(rules.into_iter().map(map_policy_rule_record).collect())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (policy_set_id, payload);
+        Err(ServerFnError::new(
+            "channel/reorder-resolution-rules requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "channel/delete-resolution-rule")]
+async fn channel_delete_resolution_rule_native(
+    policy_set_id: String,
+    rule_id: String,
+) -> Result<ChannelResolutionRuleRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::ChannelService;
+
+        let app_ctx = expect_context::<AppContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth.permissions)?;
+
+        let service = ChannelService::new(app_ctx.db.clone());
+        let policy_set_uuid = parse_uuid(&policy_set_id, "policy_set_id")?;
+        let rule_uuid = parse_uuid(&rule_id, "rule_id")?;
+        ensure_policy_set_belongs_to_tenant(&service, tenant.id, policy_set_uuid).await?;
+        let rule = service
+            .remove_resolution_rule(policy_set_uuid, rule_uuid)
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_policy_rule_record(rule))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (policy_set_id, rule_id);
+        Err(ServerFnError::new(
+            "channel/delete-resolution-rule requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn build_native_rule_definition_payload(
+    payload: CreateResolutionRulePayload,
+    action_channel_id: uuid::Uuid,
+) -> Result<
+    (
+        i32,
+        bool,
+        rustok_channel::ChannelResolutionRuleDefinition,
+    ),
+    ServerFnError,
+> {
+    use rustok_channel::{ResolutionAction, ResolutionPredicate, TargetSurface};
+
+    let mut predicates = Vec::new();
+
+    if let Some(host_equals) = payload
+        .host_equals
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        predicates.push(ResolutionPredicate::HostEquals(host_equals.to_string()));
+    }
+    if let Some(host_suffix) = payload
+        .host_suffix
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        predicates.push(ResolutionPredicate::HostSuffix(host_suffix.to_string()));
+    }
+    if let Some(oauth_app_id) = payload
+        .oauth_app_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        predicates.push(ResolutionPredicate::OAuthAppEquals(parse_uuid(
+            oauth_app_id,
+            "oauth_app_id",
+        )?));
+    }
+    if let Some(surface) = payload
+        .surface
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let surface = match surface {
+            "http" => TargetSurface::Http,
+            other => {
+                return Err(ServerFnError::new(format!(
+                    "Unsupported surface `{other}`; only `http` is currently supported",
+                )))
+            }
+        };
+        predicates.push(ResolutionPredicate::SurfaceIs(surface));
+    }
+    if let Some(locale) = payload
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        predicates.push(ResolutionPredicate::LocaleEquals(locale.to_string()));
+    }
+
+    Ok((
+        payload.priority,
+        payload.is_active,
+        rustok_channel::ChannelResolutionRuleDefinition {
+            predicates,
+            action: ResolutionAction::ResolveToChannel {
+                channel_id: action_channel_id,
+            },
+        },
+    ))
 }

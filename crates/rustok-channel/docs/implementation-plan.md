@@ -31,6 +31,10 @@ post-v0 rollout policy lifecycle и runtime integration parity.
   - `update_resolution_policy_set(...)`,
   - `update_resolution_rule(...)`,
   - `reorder_resolution_rules(...)` (bulk или single move);
+- закрепить partial-update contract для `update_resolution_rule(...)`:
+  - `priority/is_active/action_channel_id` optional: отсутствие в payload => поле не меняется;
+  - `host_equals/host_suffix/oauth_app_id/surface/locale` optional patch fields:
+    отсутствие => без изменений, пустая строка => удалить соответствующий predicate, непустое значение => заменить/установить predicate с обычной валидацией/нормализацией;
 - зафиксировать инварианты:
   - tenant ownership для policy set, rule и action channel,
   - deterministic order после reorder (без hidden tie-break drift),
@@ -82,7 +86,7 @@ post-v0 rollout policy lifecycle и runtime integration parity.
 | Host composition | `apps/server/src/services/app_router.rs` | middleware chaining | при необходимости корректировка порядка middleware |
 | Admin transport | `crates/rustok-channel/admin/src/api.rs` | mixed native/REST, policy mostly REST | native-first `#[server]` parity для policy writes |
 | Admin UI | `crates/rustok-channel/admin/src/lib.rs` | базовый policy workbench | full operator flow (reorder/disable/edit) |
-| Shared UI routing | `crates/rustok-api/src/route_selection.rs` | channel query keys (`channel_id/target_id/module_slug/oauth_app_id`) | добавить policy keys только если появится edit-selection state |
+| Shared UI routing | `crates/rustok-api/src/route_selection.rs` | channel query keys (`channel_id/target_id/module_slug/oauth_app_id`) + policy edit keys (`policy_set_id/policy_rule_id`) | поддерживать URL-owned selection contract и dependency cleanup (`policy_set_id -> policy_rule_id`) |
 
 ## Этапы
 
@@ -103,9 +107,9 @@ post-v0 rollout policy lifecycle и runtime integration parity.
 ### 3. Admin operator UX parity
 
 - [x] довести `rustok-channel-admin` до operator flow для policy rules (reorder/disable);
-- [ ] добавить полноценный rule edit flow (изменение predicates/action без delete+recreate);
-- [ ] выровнять native-first `#[server]` transport для policy operations с существующими channel CRUD flows;
-- [ ] при добавлении policy edit-selection state закрепить URL query contract через shared `AdminQueryKey`.
+- [x] добавить полноценный rule edit flow (изменение predicates/action без delete+recreate);
+- [x] выровнять native-first `#[server]` transport для policy operations с существующими channel CRUD flows;
+- [x] при добавлении policy edit-selection state закрепить URL query contract через shared `AdminQueryKey`.
 
 ### 4. Runtime integration rollout
 
