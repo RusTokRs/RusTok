@@ -257,3 +257,116 @@ gantt
 Ограничение исследования тоже важно зафиксировать: GitHub-анализ был намеренно ограничен **только** репозиторием `RusTokRs/RusTok`, как вы и просили; другие GitHub-репозитории не использовались. Внешний контекст добирался лишь из официальной документации MCP, OpenAI, Anthropic, Gemini, а также OpenTelemetry, Prometheus и OWASP. citeturn6view0turn6view1turn14view0turn12view0turn12view2turn16view0turn17view1turn17view2turn13view0turn13view2turn15view0turn15view2turn15view3
 
 Если свести весь отчёт к одному практическому решению, то оно звучит так: **в RusTok уже есть правильный AI-каркас; лучший путь — не строить новый AI-модуль, а довести существующий `rustok-ai` до production-grade governance и добавить новые direct verticals для moderation, product attributes и order flows, оставив MCP как controlled boundary, а не как обязательный путь для всего подряд**. fileciteturn35file0L1-L3 fileciteturn31file0L1-L3 fileciteturn44file0L1-L3
+
+## План реализации (проверенный по исследованию)
+
+Источник задач: [`docs/research/AI-research.md`](./AI-research.md).
+
+Ниже — последовательный implementation plan на базе пунктов исследования (с приоритизацией «минимальный риск → максимальный эффект»).
+
+### Phase 0 — Alignment и scope freeze (1 неделя)
+
+- Подтвердить целевые ограничения: cloud/region, data residency, SLA (p95/p99), бюджет inference, policy по auto-actions.
+- Зафиксировать owner-матрицу по AI verticals: catalog, moderation, order analytics, order ops.
+- Согласовать definition of done по safety/quality/latency/cost.
+
+**Deliverables**
+- RFC/ADR с финальными ограничениями rollout.
+- Список tenant’ов для pilot и deny-list сценариев.
+
+### Phase 1 — Foundation hardening control-plane (2–4 недели)
+
+1. **Secrets & provider governance**
+   - Вынести ключи провайдеров в managed secrets.
+   - Ввести environment separation (dev/stage/prod) и scoped provider profiles.
+2. **Data policy & redaction**
+   - Добавить redaction для traces/messages/approvals payload.
+   - Закрыть хранение sensitive payload: short TTL или отключаемое sealed-хранилище для debug.
+3. **Approval gates**
+   - Все state-changing действия (заказы/публикации/удалённые инструменты) перевести на approval policy + correlation id.
+4. **Routing reliability**
+   - Добавить retry/fallback policy (по health/cost/capability), circuit-breaker и provider scorecard.
+5. **Observability**
+   - Метрики: valid JSON rate, domain-validation errors, p95/p99, fallback rate, token cost/task, approval turnaround.
+
+**Deliverables**
+- Production-ready AI control-plane baseline.
+- Dashboard `ai_runtime_metrics` + alerting правила.
+
+### Phase 2 — Catalog AI (product_copy + product_attributes) (3–5 недель)
+
+1. **Hardening существующего `product_copy`**
+   - Draft/publish split.
+   - Confidence score + human approval для low-confidence output.
+2. **Новый vertical `product_attributes`**
+   - Strict JSON schema: brand/material/color/size/dimensions/compatibility/care/hazmat/flex_attributes.
+   - Domain validation перед записью в catalog.
+3. **Admin UX**
+   - В product form добавить `AI Fill` + preview diff + `Apply Suggested Attributes`.
+   - Отображать source-of-truth и причины отклонения валидации.
+
+**Deliverables**
+- End-to-end path: product form → AI task → validated preview → apply.
+- A/B baseline: manual vs AI-assisted.
+
+### Phase 3 — Content moderation vertical (3–4 недели)
+
+1. Добавить `content_moderation` direct handler.
+2. Выход только в структурированном JSON: `decision`, `labels`, `severity`, `explanation`, `requires_human`, `recommended_action`.
+3. Включить shadow-mode, затем human-in-the-loop queue.
+4. Авто-блокировку разрешать только для whitelisted high-confidence policy классов.
+
+**Deliverables**
+- Moderation policy matrix.
+- Offline benchmark + regression suite по false positives/false negatives.
+
+### Phase 4 — Order analytics (2–4 недели)
+
+1. Summaries по отменам/возвратам/доставке/рискам.
+2. Incident clustering по carrier/tracking/payment patterns.
+3. Operator dashboards (insights-only, без auto execution).
+
+**Deliverables**
+- Weekly executive summaries.
+- KPI: insight adoption rate, review-time reduction.
+
+### Phase 5 — Order operations assistant (4–6 недель)
+
+1. Suggest-next-action для lifecycle операций (`paid/ship/deliver/cancel`).
+2. Prefill inputs (carrier/tracking/reason) с валидацией.
+3. Approval-gated automation для узкого whitelist policy.
+4. Явный запрет silent execution вне policy.
+
+**Deliverables**
+- Operator co-pilot в order admin flow.
+- Error budget + rollback playbook для automated transitions.
+
+### Phase 6 — Controlled rollout и масштабирование (2–4 недели)
+
+1. Pilot tenants → controlled production rollout.
+2. Cost-aware routing + dynamic provider fallback tree.
+3. Регулярный evaluation cycle (качество, безопасность, стоимость, latency).
+
+**Deliverables**
+- Go/No-Go checklist для каждого tenant.
+- Quarterly recalibration модели/политик/порогов.
+
+## Проверочный чек-лист по пунктам исследования
+
+- [ ] Секреты и провайдеры изолированы по окружениям.
+- [ ] PII/sensitive payload редактируется до сохранения.
+- [ ] State-changing AI действия проходят approval gate.
+- [ ] JSON-output проходит schema + domain + permission validation.
+- [ ] MCP/remote tools работают без token passthrough и с SSRF-safe политиками.
+- [ ] `product_copy` переведён в управляемый draft/publish pipeline.
+- [ ] Реализован `product_attributes` + UI preview/apply.
+- [ ] Реализован `content_moderation` с shadow rollout.
+- [ ] Реализован `order_analytics` (insights-only).
+- [ ] Реализован `order_ops_assistant` с whitelist automation.
+- [ ] Собираются метрики качества/безопасности/стоимости/latency.
+- [ ] Проведены A/B и regression тесты перед полным rollout.
+
+## Быстрые ссылки для исполнения
+
+- Основной документ требований и контекста: [`docs/research/AI-research.md`](./AI-research.md)
+- Рекомендуемый старт реализации: разделы про `rustok-ai` direct handlers, approvals, validations, observability в этом же документе.
