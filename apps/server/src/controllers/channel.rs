@@ -596,10 +596,16 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-fn build_update_rule_input(input: UpdateResolutionRuleRequest) -> UpdateChannelResolutionRuleInput {
-    UpdateChannelResolutionRuleInput {
-        priority: input.priority,
-        is_active: input.is_active,
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty())
+}
+        host_equals: normalize_optional_string(input.host_equals),
+        host_suffix: normalize_optional_string(input.host_suffix),
+        oauth_app_id: normalize_optional_string(input.oauth_app_id),
+        surface: normalize_optional_string(input.surface),
+        locale: normalize_optional_string(input.locale),
         action_channel_id: input.action_channel_id,
         host_equals: normalize_optional_string(input.host_equals),
         host_suffix: normalize_optional_string(input.host_suffix),
@@ -667,7 +673,7 @@ pub fn routes() -> Routes {
 mod tests {
     use super::{
         build_rule_definition, build_update_rule_input, CreateResolutionRuleRequest,
-        UpdateResolutionRuleRequest,
+    fn build_rule_definition_returns_normalized_predicates() {
     };
     use rustok_channel::{ResolutionPredicate, TargetSurface};
     use uuid::Uuid;
