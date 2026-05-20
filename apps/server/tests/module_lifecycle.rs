@@ -649,3 +649,31 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         "actor metadata must be preserved for failed operations too",
     );
 }
+
+#[tokio::test]
+async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("orders").with_enable_failure());
+    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "orders", true)
+        .await
+        .expect_err("enable hook failure expected");
+    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("orders"))
+        .filter(module_operations::Column::RequestedEnabled.eq(true))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+
+    assert_eq!(failed_operation.status, "failed");
+    assert!(
+        failed_operation.requested_by.is_none(),
+        "wrapper toggle_module without actor must keep requested_by=NULL even on failed operations",
+    );
+}
