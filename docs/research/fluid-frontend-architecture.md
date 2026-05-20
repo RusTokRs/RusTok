@@ -398,6 +398,8 @@ Leptos embedded runtime и headless GraphQL/REST runtime должны быть �
 
 ## Связанные документы
 
+- [Fluid Backend Architecture для RusTok](./fluid-backend-architecture.md)
+- [План реализации Fluid Backend Architecture](./fluid-backend-architecture-implementation-plan.md)
 - [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
 - [Архитектурные принципы](../architecture/principles.md)
 - [API и surface-контракты](../architecture/api.md)

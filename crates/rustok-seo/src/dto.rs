@@ -583,6 +583,7 @@ pub enum SeoBulkApplyMode {
     PreviewOnly,
     #[default]
     ApplyMissingOnly,
+    ApplyMissingSchemaOnly,
     OverwriteGeneratedOnly,
     ForceOverwriteExplicit,
 }
@@ -592,6 +593,7 @@ impl SeoBulkApplyMode {
         match self {
             Self::PreviewOnly => "preview_only",
             Self::ApplyMissingOnly => "apply_missing_only",
+            Self::ApplyMissingSchemaOnly => "apply_missing_schema_only",
             Self::OverwriteGeneratedOnly => "overwrite_generated_only",
             Self::ForceOverwriteExplicit => "force_overwrite_explicit",
         }
@@ -601,6 +603,7 @@ impl SeoBulkApplyMode {
         match value {
             "preview_only" => Some(Self::PreviewOnly),
             "apply_missing_only" => Some(Self::ApplyMissingOnly),
+            "apply_missing_schema_only" => Some(Self::ApplyMissingSchemaOnly),
             "overwrite_generated_only" => Some(Self::OverwriteGeneratedOnly),
             "force_overwrite_explicit" => Some(Self::ForceOverwriteExplicit),
             _ => None,
@@ -760,6 +763,8 @@ pub struct SeoModuleSettings {
     pub template_defaults: SeoTemplateRuleSet,
     #[serde(default)]
     pub template_overrides: BTreeMap<String, SeoTemplateRuleSet>,
+    #[serde(default)]
+    pub sitemap_submission_endpoints: Vec<String>,
 }
 
 impl Default for SeoModuleSettings {
@@ -772,6 +777,7 @@ impl Default for SeoModuleSettings {
             x_default_locale: None,
             template_defaults: SeoTemplateRuleSet::default(),
             template_overrides: BTreeMap::new(),
+            sitemap_submission_endpoints: Vec::new(),
         }
     }
 }

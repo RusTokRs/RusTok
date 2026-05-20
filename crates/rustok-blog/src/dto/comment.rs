@@ -23,6 +23,30 @@ pub struct UpdateCommentInput {
     pub content_json: Option<Value>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModerateCommentStatus {
+    Approved,
+    Spam,
+    Trash,
+}
+
+impl From<ModerateCommentStatus> for rustok_comments::CommentStatus {
+    fn from(value: ModerateCommentStatus) -> Self {
+        match value {
+            ModerateCommentStatus::Approved => Self::Approved,
+            ModerateCommentStatus::Spam => Self::Spam,
+            ModerateCommentStatus::Trash => Self::Trash,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ModerateCommentInput {
+    pub status: ModerateCommentStatus,
+    pub locale: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
 pub struct ListCommentsFilter {
     pub locale: Option<String>,
@@ -76,7 +100,7 @@ pub struct CommentListItem {
 
 #[cfg(test)]
 mod tests {
-    use super::CommentResponse;
+    use super::{CommentResponse, ModerateCommentInput, ModerateCommentStatus};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -120,5 +144,17 @@ mod tests {
         let v = serde_json::to_value(&r).expect("serialize");
         assert_eq!(v["content_format"], "rt_json_v1");
         assert_eq!(v["content_json"], rich);
+    }
+
+    #[test]
+    fn moderate_comment_input_serde_snake_case_status() {
+        let payload = ModerateCommentInput {
+            status: ModerateCommentStatus::Approved,
+            locale: Some("en".to_string()),
+        };
+
+        let value = serde_json::to_value(payload).expect("serialize moderation payload");
+        assert_eq!(value["status"], "approved");
+        assert_eq!(value["locale"], "en");
     }
 }

@@ -3,6 +3,15 @@
 Статус: MVP complete.
 Текущее состояние: `OpenAI-compatible + Anthropic + Gemini providers + task profiles + hybrid direct/MCP execution metadata + RBAC-first AI permissions + dual admin UI packages + direct first-party verticals + streaming + diagnostics`.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Состояние на 2026-04-04
 
 `rustok-ai` уже существует как отдельный capability crate и не расширяет `rustok-mcp` до model host.
@@ -143,3 +152,10 @@
 - [README crate](../README.md)
 - [README capability docs](./README.md)
 - [ADR `rustok-ai` capability module](../../../DECISIONS/2026-04-03-rustok-ai-capability-module.md)
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

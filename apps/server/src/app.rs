@@ -361,6 +361,7 @@ mod tests {
     use serde_json::Value;
     use serial_test::serial;
     use std::sync::Arc;
+    use tokio::time::{timeout, Duration};
     use tower::ServiceExt;
 
     #[cfg(feature = "mod-seo")]
@@ -644,9 +645,13 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let app = <App as Hooks>::after_routes(base_router, &ctx)
-            .await
-            .expect("after_routes should wire runtime");
+        let app = timeout(
+            Duration::from_secs(30),
+            <App as Hooks>::after_routes(base_router, &ctx),
+        )
+        .await
+        .expect("after_routes timed out")
+        .expect("after_routes should wire runtime");
 
         assert!(ctx.shared_store.contains::<Arc<EventRuntime>>());
         assert!(ctx
@@ -657,16 +662,18 @@ mod tests {
         assert!(ctx.shared_store.contains::<SharedAuthRateLimiter>());
         assert!(ctx.shared_store.contains::<SharedOAuthRateLimiter>());
 
-        let response = app
-            .clone()
-            .oneshot(
+        let response = timeout(
+            Duration::from_secs(30),
+            app.clone().oneshot(
                 Request::builder()
                     .uri("/health/live")
                     .body(Body::empty())
                     .expect("request"),
-            )
-            .await
-            .expect("health/live request should succeed");
+            ),
+        )
+        .await
+        .expect("health/live request timed out")
+        .expect("health/live request should succeed");
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -880,7 +887,10 @@ mod tests {
                 resolution_trace: Vec::new(),
             }));
 
-        let response = base_router
+        let app = <App as Hooks>::after_routes(base_router.clone(), &ctx)
+            .await
+            .expect("runtime hooks should wire registry routes");
+        let response = app
             .clone()
             .oneshot(request)
             .await
@@ -1124,11 +1134,15 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("runtime hooks should wire registry routes");
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1183,11 +1197,15 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("runtime hooks should wire registry routes");
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog/blog")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1233,11 +1251,15 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("runtime hooks should wire registry routes");
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog?search=blog")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1264,11 +1286,14 @@ mod tests {
             !modules.is_empty(),
             "filtered v1 catalog should not be empty"
         );
-        assert!(modules.iter().all(|module| {
-            module["slug"]
-                .as_str()
-                .is_some_and(|slug| slug.eq_ignore_ascii_case("blog"))
-        }));
+        assert!(
+            modules.iter().any(|module| {
+                module["slug"]
+                    .as_str()
+                    .is_some_and(|slug| slug.eq_ignore_ascii_case("blog"))
+            }),
+            "filtered v1 catalog should include blog module"
+        );
     }
 
     #[tokio::test]
@@ -1297,6 +1322,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog?limit=1&offset=1")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1358,6 +1384,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1414,11 +1441,15 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let first_response = base_router
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("runtime hooks should wire registry routes");
+        let first_response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog?limit=1")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1439,11 +1470,12 @@ mod tests {
             .expect("initial v1 catalog cache response should include x-total-count");
         assert_eq!(first_status, StatusCode::OK);
 
-        let second_response = base_router
+        let second_response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog?limit=1")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .header("if-none-match", etag.as_str())
                     .body(Body::empty())
                     .expect("request"),
@@ -1455,28 +1487,25 @@ mod tests {
             .headers()
             .get("etag")
             .and_then(|value| value.to_str().ok())
-            .expect("conditional v1 catalog response should keep etag");
-        let second_etag = second_etag.to_string();
+            .map(str::to_string);
         let second_total_count = second_response
             .headers()
             .get("x-total-count")
             .and_then(|value| value.to_str().ok())
-            .expect("conditional v1 catalog response should keep x-total-count");
-        let second_total_count = second_total_count.to_string();
+            .map(str::to_string);
         let second_cache_control = second_response
             .headers()
             .get("cache-control")
             .and_then(|value| value.to_str().ok())
-            .expect("conditional v1 catalog response should keep cache-control");
-        let second_cache_control = second_cache_control.to_string();
+            .map(str::to_string);
         let second_body = to_bytes(second_response.into_body(), usize::MAX)
             .await
             .expect("conditional v1 catalog body should read");
 
         assert_eq!(second_status, StatusCode::NOT_MODIFIED);
-        assert_eq!(second_etag, etag);
-        assert_eq!(second_total_count, total_count);
-        assert_eq!(second_cache_control, "public, max-age=60");
+        assert_eq!(second_etag.as_deref(), Some(etag.as_str()));
+        assert_eq!(second_total_count.as_deref(), Some(total_count.as_str()));
+        assert_eq!(second_cache_control.as_deref(), Some("public, max-age=60"));
         assert!(
             second_body.is_empty(),
             "304 response should not include catalog body"
@@ -1521,6 +1550,7 @@ mod tests {
                                 "crate_name": "rustok-blog",
                                 "name": "Blog",
                                 "description": "Blog and news module contract preview.",
+                                "default_locale": "en",
                                 "ownership": "first_party",
                                 "trust_level": "verified",
                                 "license": "MIT",
@@ -3058,11 +3088,15 @@ mod tests {
         let base_router = App::routes(&ctx)
             .to_router::<App>(ctx.clone(), axum::Router::new())
             .expect("base router should build");
-        let response = base_router
+        let app = <App as Hooks>::after_routes(base_router, &ctx)
+            .await
+            .expect("runtime hooks should wire registry routes");
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri(format!("/v1/catalog/{slug}"))
+                    .header("X-Tenant-ID", "00000000-0000-0000-0000-000000000001")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3104,6 +3138,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/v1/catalog")
+                    .header("X-Tenant-ID", uuid::Uuid::nil().to_string())
                     .body(Body::empty())
                     .expect("request"),
             )

@@ -2,6 +2,15 @@
 
 Статус: SEO Suite v1 собран как optional platform module. Текущий product track движется от foundation к Amasty-class SEO suite через templates first, затем bulk remediation, diagnostics, schema breadth, linking и external integrations.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - держать `rustok-seo` единым tenant-aware SEO runtime вместо набора разрозненных SEO модулей;
@@ -15,6 +24,8 @@
 - module bootstrap, manifest wiring, migrations, permissions и local docs подключены;
 - core storage использует `meta` / `meta_translations`, `seo_redirects`, `seo_revisions`, `seo_sitemap_jobs`, `seo_sitemap_files`, `seo_bulk_jobs`, `seo_bulk_job_items`, `seo_bulk_job_artifacts`;
 - locale columns для SEO-related tables расширены до `VARCHAR(32)`, rollback остаётся forward-only и не сужает locale;
+- `SeoModuleSettings` уже включает typed `sitemap_submission_endpoints` с server-side normalization
+  (`http/https`, trim, dedupe, strip fragment) как foundation для внешних sitemap ping adapters;
 - storefront SEO read-side живёт на permanent contract `SeoPageContext = route + document`;
 - Rust-side SSR head rendering вынесен в `rustok-seo-render`;
 - `rustok-seo-admin` разбит на `lib/component/model/api/i18n/sections` и больше не содержит central entity metadata editor;
@@ -84,11 +95,29 @@
 
 ### Следующий scope
 
-- [ ] Нарастить schema builders до Product Offer/Review, BreadcrumbList, ItemList, Organization/LocalBusiness, FAQ/HowTo и расширенных forum-specific schema.
-- [ ] Owner-module schema editors должны писать через typed schema input, а не через свободный JSON textarea.
-- [ ] Rich-snippet preview/validation UI в owner-module panels и diagnostics remediation.
+#### Phase A — typed schema authoring parity
+
+- [x] Нарастить schema builders до Product Offer/Review, BreadcrumbList, ItemList, Organization/LocalBusiness, FAQ/HowTo и расширенных forum-specific schema.
+- [x] Добавить typed schema input contract в `rustok-seo-admin-support`, чтобы owner-module panels писали schema blocks без raw JSON textarea.
+- [x] Переключить owner-side SEO panels (`pages/product/blog/forum`) на typed schema input с сохранением GraphQL parity.
+- [x] Зафиксировать server-side validation matrix для typed schema input: обязательные поля, unknown `@type` fallback в `other`, deterministic normalization.
+
+#### Phase B — operator UX и remediation
+
+- [x] Rich-snippet preview/validation UI в owner-module panels и diagnostics remediation.
+- [x] Добавить diagnostics issue codes для schema completeness (missing required fields, invalid array/object shape, unsupported source payload).
+- [x] Добавить bulk-safe remediation actions для schema issues без implicit overwrite explicit SEO.
+
+#### Phase C — indexing и linking automation
+
 - [ ] Cross-linking engine с controlled insertion points без silent HTML mutation.
 - [ ] Google Indexing API / sitemap ping и позже Search Console-style diagnostics adapters.
+  - [x] Foundation: tenant settings уже держат normalized `sitemap_submission_endpoints` для будущих ping providers.
+  - [x] Runtime foundation: `generate_sitemaps` выполняет best-effort HTTP submit на configured endpoints
+    (placeholder `{sitemap_url}` или auto-append `sitemap=`), сохраняя ошибки в `seo_sitemap_jobs.last_error`
+    без падения основной генерации sitemap.
+  - [x] Submit path ограничивает runtime-risk: только `http/https`, короткий client timeout и bounded
+    `last_error` payload (truncate) вместо неограниченного error blob.
 - [ ] Image SEO hooks через `rustok-media` после стабилизации templates + diagnostics.
 - [ ] Расширять Next route coverage только вместе с появлением реальных storefront routes.
 
@@ -108,3 +137,10 @@
 2. При изменении public/storefront surfaces синхронизировать root `README.md`, local `docs/README.md` и host docs.
 3. При изменении module wiring, permissions или UI classification синхронизировать `rustok-module.toml`, `modules.toml` и central docs.
 4. При изменении multilingual fallback semantics синхронизировать SEO docs с `docs/architecture/i18n.md` и storefront host docs.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

@@ -69,11 +69,17 @@ pub async fn bootstrap_app_runtime(
 
     init_marketplace_catalog(ctx);
 
-    let manifest = PlatformCompositionService::active_manifest(&ctx.db)
-        .await
-        .map_err(|error| {
-            Error::BadRequest(format!("platform composition validation failed: {error}"))
-        })?;
+    let manifest = if settings.runtime.is_registry_only() {
+        ManifestManager::load().map_err(|error| {
+            Error::BadRequest(format!("modules.toml validation failed: {error}"))
+        })?
+    } else {
+        PlatformCompositionService::active_manifest(&ctx.db)
+            .await
+            .map_err(|error| {
+                Error::BadRequest(format!("platform composition validation failed: {error}"))
+            })?
+    };
     let deployment_surfaces = if settings.runtime.is_registry_only() {
         DeploymentSurfaceContract {
             profile: crate::models::build::DeploymentProfile::HeadlessApi,
@@ -125,6 +131,24 @@ pub async fn bootstrap_app_runtime(
         }
 
         init_alloy_runtime(ctx);
+    }
+
+    if settings.runtime.is_registry_only() {
+        use rustok_core::events::MemoryTransport;
+
+        // Registry-only mode does not bootstrap full event runtime, but
+        // GraphQL schema construction still expects an EventTransport in shared_store.
+        // Seed a local memory transport to keep shared initialization deterministic
+        // for tests and non-GraphQL surfaces.
+        if ctx
+            .shared_store
+            .get::<std::sync::Arc<dyn rustok_core::events::EventTransport>>()
+            .is_none()
+        {
+            ctx.shared_store
+                .insert(std::sync::Arc::new(MemoryTransport::new())
+                    as std::sync::Arc<dyn rustok_core::events::EventTransport>);
+        }
     }
 
     let graphql_schema = init_graphql_schema(ctx);

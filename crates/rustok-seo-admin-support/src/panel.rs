@@ -5,7 +5,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_seo_targets::SeoTargetSlug;
 
 use crate::api;
-use crate::components::{SeoSnippetPreviewCard, SeoSummaryTile};
+use crate::components::{SeoSchemaPreviewCard, SeoSnippetPreviewCard, SeoSummaryTile};
 use crate::i18n::{
     recommendation, recommendations_count_label, source_label, tr, validation_error, working_label,
 };
@@ -405,16 +405,34 @@ pub fn SeoEntityPanel(
                                 <span class="text-sm font-medium text-card-foreground">
                                     {move || tr(
                                         Some(locale.get().as_str()),
-                                        "Structured data (JSON)",
-                                        "Structured data (JSON)",
+                                        "Schema type",
+                                        "Schema type",
+                                    )}
+                                </span>
+                                <input
+                                    type="text"
+                                    class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                    placeholder="Product, Article, FAQPage..."
+                                    prop:value=move || form.get().structured_data_type
+                                    on:input=move |ev| form.update(|draft| draft.structured_data_type = event_target_value(&ev))
+                                />
+                            </label>
+                            <label class="mt-4 block space-y-2">
+                                <span class="text-sm font-medium text-card-foreground">
+                                    {move || tr(
+                                        Some(locale.get().as_str()),
+                                        "Schema payload (JSON object)",
+                                        "Schema payload (JSON object)",
                                     )}
                                 </span>
                                 <textarea
-                                    class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none transition focus:border-primary"
-                                    prop:value=move || form.get().structured_data
-                                    on:input=move |ev| form.update(|draft| draft.structured_data = event_target_value(&ev))
+                                    class="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none transition focus:border-primary"
+                                    placeholder="{\"name\": \"Demo\"}"
+                                    prop:value=move || form.get().structured_data_payload
+                                    on:input=move |ev| form.update(|draft| draft.structured_data_payload = event_target_value(&ev))
                                 />
                             </label>
+                            <SeoSchemaPreviewCard form=form locale=locale />
                             <div class="mt-4 flex flex-wrap gap-4 text-sm text-card-foreground">
                                 <label class="inline-flex items-center gap-2">
                                     <input

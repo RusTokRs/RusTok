@@ -747,6 +747,10 @@ fn should_bypass_tenant_resolution(path: &str) -> bool {
         || path == "/api/graphql/ws"
         || path == "/api/install"
         || path.starts_with("/api/install/")
+        || path == "/v1/catalog"
+        || path.starts_with("/v1/catalog/")
+        || path == "/catalog"
+        || path.starts_with("/catalog/")
         || path.starts_with("/health")
 }
 

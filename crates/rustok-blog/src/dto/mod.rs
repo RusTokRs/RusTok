@@ -8,7 +8,8 @@ pub use category::{
     UpdateCategoryInput,
 };
 pub use comment::{
-    CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
+    CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
+    ModerateCommentStatus, UpdateCommentInput,
 };
 pub use post::{
     CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput,

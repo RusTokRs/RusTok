@@ -3,6 +3,15 @@
 Статус: dedicated search module уже работает на PostgreSQL baseline; локальная
 документация и runtime boundary приведены к единому формату.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-search` как отдельный core module для search UX и engine semantics;
@@ -25,6 +34,8 @@
 - [x] зафиксировать boundary `index != search`;
 - [x] удерживать PostgreSQL как baseline engine и settings-driven engine selection;
 - [x] держать admin/storefront surfaces на едином backend contract;
+- [x] Expand capability matrix and contract tests;
+- [x] Finalize search-facing error catalog and validation policy;
 - [ ] удерживать sync между runtime metadata, UI packages и diagnostics surfaces.
 
 ### 2. Product hardening
@@ -51,3 +62,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении search/index boundary синхронизировать ADR и related docs.
 4. При изменении metadata, UI packages или engine selection contract синхронизировать `rustok-module.toml`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

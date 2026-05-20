@@ -1,8 +1,15 @@
-# Verified TODO: control plane и module lifecycle
+# Historical input: deep research report (control plane и module lifecycle)
 
-Этот файл заменяет длинный research-отчёт коротким проверенным backlog-ом. Полный текст был
-сжат, чтобы не перегружать рабочий контекст: оставлены только подтверждённые дефекты,
-устаревшие пункты и порядок исправлений.
+Этот файл сохранён как historical input после перепроверки.
+
+Актуальный рабочий backlog и статусы реализации ведутся в документе
+[План устранения недостатков control plane и module lifecycle](./control-plane-module-lifecycle-remediation-plan.md).
+
+Ниже оставлен сжатый срез исходных проверок и направлений работ, чтобы не терять контекст. Полный
+исходный текст research-отчёта был ранее сжат для рабочей эксплуатации.
+
+> Перепроверено 2026-05-18: часть пунктов уже закрыта в текущем коде. Актуальный
+> remediation plan ведётся в [плане устранения недостатков control plane и module lifecycle](./control-plane-module-lifecycle-remediation-plan.md).
 
 ## Подтверждено по текущему коду
 
@@ -24,7 +31,7 @@
 - Утверждение “нет repository-level license policy” устарело: `deny.toml` уже есть, а CI запускает
   `cargo-deny-action`. Требуется не новая policy, а сохранение/усиление CI-сигнала и SBOM/provenance.
 
-## Исправления
+## Исходные направления исправлений (historical)
 
 1. Ввести DB-backed `platform_state` с `revision`, `manifest_json`, `manifest_hash` и
    `active_release_id`; `modules.toml` оставить dev/bootstrap input, но не runtime-write target.

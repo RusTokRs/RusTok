@@ -243,6 +243,11 @@ const URL_ALIAS_PURGED_FIELDS: &[FieldSchema] = &[
 ];
 
 const TENANT_ID_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid")];
+const TENANT_MODULE_TOGGLED_FIELDS: &[FieldSchema] = &[
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("enabled", "bool"),
+];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
 
 pub const EVENT_SCHEMAS: &[EventSchema] = &[
@@ -581,6 +586,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Tenant updated.",
         fields: TENANT_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "tenant.module.toggled",
+        version: 1,
+        description: "Tenant module toggle state changed.",
+        fields: TENANT_MODULE_TOGGLED_FIELDS,
     },
     EventSchema {
         event_type: "locale.enabled",

@@ -48,6 +48,7 @@ use utoipa::OpenApi;
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
+        crate::controllers::marketplace_registry::report_validation_stage,
         crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
         // Swagger
@@ -145,6 +146,7 @@ pub struct ApiDoc;
         crate::controllers::blog::posts::delete_post,
         crate::controllers::blog::posts::publish_post,
         crate::controllers::blog::posts::unpublish_post,
+        crate::controllers::blog::comments::moderate_comment,
     ),
     components(
         schemas(
@@ -154,6 +156,9 @@ pub struct ApiDoc;
             rustok_blog::dto::PostSummary,
             rustok_blog::dto::PostListQuery,
             rustok_blog::dto::PostListResponse,
+            rustok_blog::dto::CommentResponse,
+            rustok_blog::dto::ModerateCommentInput,
+            rustok_blog::dto::ModerateCommentStatus,
             rustok_blog::state_machine::BlogPostStatus,
         )
     ),

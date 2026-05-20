@@ -1,6 +1,7 @@
 use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
+use url::Url;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
@@ -11,6 +12,9 @@ use crate::{SeoError, SeoResult};
 
 use super::routing::locale_prefixed_path;
 use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
+
+const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
+const SITEMAP_SUBMIT_MAX_ERROR_LEN: usize = 4000;
 
 impl SeoService {
     pub async fn generate_sitemaps(
@@ -43,6 +47,13 @@ impl SeoService {
         active_job.status = Set("completed".to_string());
         active_job.file_count = Set(file_models.len() as i32);
         active_job.completed_at = Set(Some(now));
+        active_job.last_error = match self.submit_sitemap_endpoints(tenant, &settings).await {
+            Ok(()) => Set(None),
+            Err(error) => {
+                tracing::warn!(tenant_id = %tenant.id, error = %error, "SEO sitemap submission failed");
+                Set(Some(error))
+            }
+        };
         active_job.updated_at = Set(now);
         active_job.update(&self.db).await?;
 
@@ -247,6 +258,52 @@ impl SeoService {
     }
 }
 
+impl SeoService {
+    async fn submit_sitemap_endpoints(
+        &self,
+        tenant: &TenantContext,
+        settings: &crate::dto::SeoModuleSettings,
+    ) -> Result<(), String> {
+        if settings.sitemap_submission_endpoints.is_empty() {
+            return Ok(());
+        }
+        let sitemap_index_url = format!("{}/sitemap.xml", public_base_url(tenant));
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(SITEMAP_SUBMIT_TIMEOUT_SECS))
+            .build()
+            .map_err(|error| format!("failed to create sitemap submission client: {error}"))?;
+        let mut failures = Vec::new();
+        for endpoint in &settings.sitemap_submission_endpoints {
+            let Some(url) = build_sitemap_submission_url(endpoint.as_str(), sitemap_index_url.as_str())
+            else {
+                failures.push(format!("invalid endpoint: {endpoint}"));
+                continue;
+            };
+            let response = client.get(url.clone()).send().await.map_err(|err| {
+                format!("request failed for endpoint `{endpoint}` with error: {err}")
+            });
+            match response {
+                Ok(response) if response.status().is_success() => {}
+                Ok(response) => failures.push(format!(
+                    "endpoint `{endpoint}` responded with status {}",
+                    response.status()
+                )),
+                Err(message) => failures.push(message),
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            let mut message = failures.join("; ");
+            if message.len() > SITEMAP_SUBMIT_MAX_ERROR_LEN {
+                message.truncate(SITEMAP_SUBMIT_MAX_ERROR_LEN);
+                message.push_str("...");
+            }
+            Err(message)
+        }
+    }
+}
+
 fn disabled_sitemap_status() -> SeoSitemapStatusRecord {
     SeoSitemapStatusRecord {
         enabled: false,
@@ -318,9 +375,61 @@ fn xml_escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn build_sitemap_submission_url(endpoint: &str, sitemap_index_url: &str) -> Option<String> {
+    let normalized = endpoint.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+    if normalized.contains("{sitemap_url}") {
+        let encoded: String = url::form_urlencoded::byte_serialize(sitemap_index_url.as_bytes())
+            .collect();
+        let replaced = normalized.replace("{sitemap_url}", encoded.as_str());
+        let parsed = Url::parse(replaced.as_str()).ok()?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return None;
+        }
+        return Some(parsed.to_string());
+    }
+    let mut parsed = Url::parse(normalized).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    if !parsed
+        .query_pairs()
+        .any(|(name, _)| name.eq_ignore_ascii_case("sitemap"))
+    {
+        parsed
+            .query_pairs_mut()
+            .append_pair("sitemap", sitemap_index_url);
+    }
+    Some(parsed.to_string())
+}
+
+pub(super) fn normalize_sitemap_submission_endpoints(values: &[String]) -> Vec<String> {
+    use std::collections::BTreeSet;
+
+    let mut unique = BTreeSet::new();
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(parsed) = url::Url::parse(trimmed) else {
+            continue;
+        };
+        if !matches!(parsed.scheme(), "http" | "https") {
+            continue;
+        }
+        let mut normalized = parsed;
+        normalized.set_fragment(None);
+        unique.insert(normalized.to_string());
+    }
+    unique.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::render_robots_body;
+    use super::{normalize_sitemap_submission_endpoints, render_robots_body};
     use crate::SeoService;
     use rustok_api::TenantContext;
     use rustok_tenant::entities::tenant_module;
@@ -428,6 +537,7 @@ mod tests {
         assert!(settings.allowed_redirect_hosts.is_empty());
         assert!(settings.allowed_canonical_hosts.is_empty());
         assert_eq!(settings.x_default_locale, None);
+        assert!(settings.sitemap_submission_endpoints.is_empty());
     }
 
     #[tokio::test]
@@ -443,7 +553,13 @@ mod tests {
                 "sitemap_enabled": true,
                 "allowed_redirect_hosts": [" Example.com ", "cdn.example.com", "example.com"],
                 "allowed_canonical_hosts": [" Blog.Example.com "],
-                "x_default_locale": " EN-us "
+                "x_default_locale": " EN-us ",
+                "sitemap_submission_endpoints": [
+                    "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml",
+                    "http://localhost:8080/seo/ping#ignored-fragment",
+                    "invalid://endpoint",
+                    "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml"
+                ]
             }),
         )
         .await;
@@ -464,6 +580,69 @@ mod tests {
         );
         assert_eq!(settings.allowed_canonical_hosts, vec!["blog.example.com"]);
         assert_eq!(settings.x_default_locale.as_deref(), Some("en-US"));
+        assert_eq!(
+            settings.sitemap_submission_endpoints,
+            vec![
+                "http://localhost:8080/seo/ping".to_string(),
+                "https://www.google.com/ping?sitemap=https://store.example.com/sitemap.xml"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates() {
+        let normalized = normalize_sitemap_submission_endpoints(&[
+            " https://example.com/ping?sitemap=https://store/sitemap.xml ".to_string(),
+            "ftp://example.com/not-supported".to_string(),
+            "not a url".to_string(),
+            "https://example.com/ping?sitemap=https://store/sitemap.xml#fragment".to_string(),
+        ]);
+
+        assert_eq!(
+            normalized,
+            vec!["https://example.com/ping?sitemap=https://store/sitemap.xml".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_sitemap_submission_url_supports_placeholder_and_query_append() {
+        let placeholder = super::build_sitemap_submission_url(
+            "https://example.com/ping?source=rustok&sitemap={sitemap_url}",
+            "https://store.example.com/sitemap.xml",
+        )
+        .expect("placeholder url");
+        assert_eq!(
+            placeholder,
+            "https://example.com/ping?source=rustok&sitemap=https%3A%2F%2Fstore.example.com%2Fsitemap.xml"
+        );
+
+        let appended = super::build_sitemap_submission_url(
+            "https://example.com/ping?source=rustok",
+            "https://store.example.com/sitemap.xml",
+        )
+        .expect("query append url");
+        assert_eq!(
+            appended,
+            "https://example.com/ping?source=rustok&sitemap=https%3A%2F%2Fstore.example.com%2Fsitemap.xml"
+        );
+    }
+
+    #[test]
+    fn build_sitemap_submission_url_rejects_non_http_and_keeps_existing_sitemap() {
+        let keeps_existing = super::build_sitemap_submission_url(
+            "https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml",
+            "https://store.example.com/sitemap.xml",
+        )
+        .expect("existing sitemap");
+        assert_eq!(
+            keeps_existing,
+            "https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml"
+        );
+
+        let invalid_scheme =
+            super::build_sitemap_submission_url("ftp://example.com/ping", "https://store.example.com/sitemap.xml");
+        assert!(invalid_scheme.is_none());
     }
 
     #[tokio::test]

@@ -79,15 +79,50 @@ fn validate_bulk_patch(patch: &SeoBulkMetaPatchInput) -> SeoResult<()> {
 
 fn validate_bulk_apply(input: &SeoBulkApplyInput) -> SeoResult<()> {
     validate_bulk_patch_shape(&input.patch)?;
-    if matches!(
-        input.apply_mode,
+    match input.apply_mode {
         SeoBulkApplyMode::PreviewOnly
-            | SeoBulkApplyMode::ApplyMissingOnly
-            | SeoBulkApplyMode::OverwriteGeneratedOnly
-    ) {
-        return Ok(());
+        | SeoBulkApplyMode::ApplyMissingOnly
+        | SeoBulkApplyMode::OverwriteGeneratedOnly => Ok(()),
+        SeoBulkApplyMode::ApplyMissingSchemaOnly => validate_schema_only_patch(&input.patch),
+        SeoBulkApplyMode::ForceOverwriteExplicit => validate_bulk_patch_has_change(&input.patch),
     }
-    validate_bulk_patch_has_change(&input.patch)
+}
+
+fn validate_schema_only_patch(patch: &SeoBulkMetaPatchInput) -> SeoResult<()> {
+    let has_other_change = [
+        patch.title.as_ref().map(|p| p.mode),
+        patch.description.as_ref().map(|p| p.mode),
+        patch.keywords.as_ref().map(|p| p.mode),
+        patch.canonical_url.as_ref().map(|p| p.mode),
+        patch.og_title.as_ref().map(|p| p.mode),
+        patch.og_description.as_ref().map(|p| p.mode),
+        patch.og_image.as_ref().map(|p| p.mode),
+        patch.noindex.as_ref().map(|p| p.mode),
+        patch.nofollow.as_ref().map(|p| p.mode),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|mode| mode != SeoBulkFieldPatchMode::Keep);
+
+    if has_other_change {
+        return Err(SeoError::validation(
+            "bulk apply mode `apply_missing_schema_only` may only modify structured_data",
+        ));
+    }
+
+    let has_schema_change = patch
+        .structured_data
+        .as_ref()
+        .map(|p| p.mode != SeoBulkFieldPatchMode::Keep)
+        .unwrap_or(false);
+
+    if !has_schema_change {
+        return Err(SeoError::validation(
+            "bulk apply mode `apply_missing_schema_only` requires a structured_data patch",
+        ));
+    }
+
+    Ok(())
 }
 
 fn validate_bulk_patch_shape(patch: &SeoBulkMetaPatchInput) -> SeoResult<()> {
@@ -677,6 +712,38 @@ mod tests {
         let err = validate_bulk_apply(&apply_input(SeoBulkApplyMode::ForceOverwriteExplicit))
             .expect_err("force overwrite must require an explicit patch delta");
         assert!(err.to_string().contains("at least one field"));
+    }
+
+    #[test]
+    fn validate_bulk_apply_allows_apply_missing_schema_only_with_structured_data_only() {
+        let mut input = apply_input(SeoBulkApplyMode::ApplyMissingSchemaOnly);
+        input.patch.structured_data = Some(SeoBulkJsonFieldPatch {
+            mode: SeoBulkFieldPatchMode::Set,
+            value: Some(Json(json!({"@type":"Product"}))),
+        });
+        validate_bulk_apply(&input).expect("schema-only patch should be valid");
+    }
+
+    #[test]
+    fn validate_bulk_apply_rejects_apply_missing_schema_only_with_other_changes() {
+        let mut input = apply_input(SeoBulkApplyMode::ApplyMissingSchemaOnly);
+        input.patch.structured_data = Some(SeoBulkJsonFieldPatch {
+            mode: SeoBulkFieldPatchMode::Set,
+            value: Some(Json(json!({"@type":"Product"}))),
+        });
+        input.patch.title = Some(SeoBulkStringFieldPatch {
+            mode: SeoBulkFieldPatchMode::Set,
+            value: Some("Title".to_string()),
+        });
+        let err = validate_bulk_apply(&input).expect_err("mixed patch should fail");
+        assert!(err.to_string().contains("apply_missing_schema_only"));
+    }
+
+    #[test]
+    fn validate_bulk_apply_rejects_apply_missing_schema_only_without_structured_data_change() {
+        let input = apply_input(SeoBulkApplyMode::ApplyMissingSchemaOnly);
+        let err = validate_bulk_apply(&input).expect_err("no schema change should fail");
+        assert!(err.to_string().contains("structured_data"));
     }
 
     #[test]
@@ -1575,6 +1642,14 @@ impl SeoService {
                     "bulk apply mode `apply_missing_only` does not overwrite explicit SEO",
                 ));
             }
+            SeoBulkApplyMode::ApplyMissingSchemaOnly
+                if current.effective_state.structured_data.source
+                    == crate::dto::SeoFieldSource::Explicit =>
+            {
+                return Err(SeoError::validation(
+                    "bulk apply mode `apply_missing_schema_only` does not overwrite explicit structured_data",
+                ));
+            }
             SeoBulkApplyMode::OverwriteGeneratedOnly
                 if current_source != SeoBulkSource::Generated =>
             {
@@ -1584,6 +1659,7 @@ impl SeoService {
                 )));
             }
             SeoBulkApplyMode::ApplyMissingOnly
+            | SeoBulkApplyMode::ApplyMissingSchemaOnly
             | SeoBulkApplyMode::OverwriteGeneratedOnly
             | SeoBulkApplyMode::ForceOverwriteExplicit => {}
         }

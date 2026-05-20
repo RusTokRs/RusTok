@@ -23,6 +23,8 @@ pub enum ChannelError {
     TargetAlreadyExists(String, String),
     #[error("channel resolution policy set `{0}` already exists for this tenant")]
     PolicySetSlugAlreadyExists(String),
+    #[error("channel resolution policy operation is invalid: {0}")]
+    InvalidPolicyOperation(String),
     #[error(transparent)]
     Database(#[from] DbErr),
     #[error(transparent)]

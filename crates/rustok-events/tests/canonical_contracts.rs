@@ -228,8 +228,13 @@ fn sample_events() -> Vec<DomainEvent> {
         },
         DomainEvent::TenantCreated { tenant_id: id(81) },
         DomainEvent::TenantUpdated { tenant_id: id(82) },
-        DomainEvent::LocaleEnabled {
+        DomainEvent::TenantModuleToggled {
             tenant_id: id(83),
+            module_slug: "blog".to_string(),
+            enabled: true,
+        },
+        DomainEvent::LocaleEnabled {
+            tenant_id: id(84),
             locale: "en".to_string(),
         },
         DomainEvent::LocaleDisabled {

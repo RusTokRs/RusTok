@@ -1,6 +1,7 @@
 use axum::routing::{get, post};
 use loco_rs::controller::Routes;
 
+pub mod comments;
 pub mod posts;
 
 pub fn routes() -> Routes {
@@ -15,4 +16,5 @@ pub fn routes() -> Routes {
         )
         .add("/posts/{id}/publish", post(posts::publish_post))
         .add("/posts/{id}/unpublish", post(posts::unpublish_post))
+        .add("/comments/{id}/moderate", post(comments::moderate_comment))
 }

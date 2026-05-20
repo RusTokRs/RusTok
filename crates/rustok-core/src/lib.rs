@@ -1,5 +1,4 @@
 pub mod async_utils;
-pub mod auth;
 pub mod cache;
 pub mod config;
 pub mod content_format;
@@ -33,10 +32,6 @@ mod validation_proptest;
 pub use async_utils::{
     batch, parallel, retry, timeout, BackoffConfig, Coalescer, Debouncer, RetryError, Throttler,
     TimeoutError,
-};
-pub use auth::{
-    AuthError, IdentityService, IdentityTokens, RegistrationInput, User, UserRepository,
-    UsersMigration,
 };
 #[cfg(feature = "redis-cache")]
 pub use cache::RedisCacheBackend;
@@ -79,7 +74,7 @@ pub use locale::{
     normalize_locale_tag, push_locale_candidate, PLATFORM_FALLBACK_LOCALE,
 };
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
-pub use migrations::ModuleMigration;
+pub use migrations::{MigrationDependencyDescriptor, ModuleMigration};
 pub use module::{
     MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,

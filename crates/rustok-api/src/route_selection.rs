@@ -24,6 +24,8 @@ pub enum AdminQueryKey {
     TargetKind,
     ModuleSlug,
     OauthAppId,
+    PolicySetId,
+    PolicyRuleId,
     Tab,
     Locale,
     Currency,
@@ -59,6 +61,8 @@ impl AdminQueryKey {
             Self::TargetKind => "target_kind",
             Self::ModuleSlug => "module_slug",
             Self::OauthAppId => "oauth_app_id",
+            Self::PolicySetId => "policy_set_id",
+            Self::PolicyRuleId => "policy_rule_id",
             Self::Tab => "tab",
             Self::Locale => "locale",
             Self::Currency => "currency",
@@ -94,6 +98,8 @@ impl AdminQueryKey {
             "target_kind" => Some(Self::TargetKind),
             "module_slug" => Some(Self::ModuleSlug),
             "oauth_app_id" => Some(Self::OauthAppId),
+            "policy_set_id" => Some(Self::PolicySetId),
+            "policy_rule_id" => Some(Self::PolicyRuleId),
             "tab" => Some(Self::Tab),
             "locale" => Some(Self::Locale),
             "currency" => Some(Self::Currency),
@@ -133,6 +139,10 @@ const CHANNEL_DEPENDENCIES: &[AdminQueryDependency] = &[
     AdminQueryDependency {
         parent: AdminQueryKey::ChannelId,
         child: AdminQueryKey::OauthAppId,
+    },
+    AdminQueryDependency {
+        parent: AdminQueryKey::PolicySetId,
+        child: AdminQueryKey::PolicyRuleId,
     },
 ];
 
@@ -182,6 +192,8 @@ const CHANNEL_ROUTE_KEYS: &[AdminQueryKey] = &[
     AdminQueryKey::TargetId,
     AdminQueryKey::ModuleSlug,
     AdminQueryKey::OauthAppId,
+    AdminQueryKey::PolicySetId,
+    AdminQueryKey::PolicyRuleId,
 ];
 const SEO_ROUTE_KEYS: &[AdminQueryKey] = &[
     AdminQueryKey::TargetKind,
@@ -434,6 +446,7 @@ mod tests {
                 ("target_id", "target_01"),
                 ("module_slug", "blog"),
                 ("oauth_app_id", "oauth_01"),
+                ("policy_rule_id", "rule_01"),
             ]),
         );
 
@@ -450,6 +463,8 @@ mod tests {
                 ("target_id", "target_01"),
                 ("module_slug", "blog"),
                 ("oauth_app_id", "oauth_01"),
+                ("policy_set_id", "policy_set_01"),
+                ("policy_rule_id", "policy_rule_01"),
             ]),
         );
 
@@ -477,6 +492,35 @@ mod tests {
                 .map(String::as_str),
             Some("oauth_01")
         );
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::PolicySetId.as_str())
+                .map(String::as_str),
+            Some("policy_set_01")
+        );
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::PolicyRuleId.as_str())
+                .map(String::as_str),
+            Some("policy_rule_01")
+        );
+    }
+
+    #[test]
+    fn channel_route_drops_policy_rule_without_policy_set_parent() {
+        let sanitized = sanitize_admin_route_query(
+            Some("channels"),
+            None,
+            &query(&[("channel_id", "ch_01"), ("policy_rule_id", "policy_rule_01")]),
+        );
+
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::ChannelId.as_str())
+                .map(String::as_str),
+            Some("ch_01")
+        );
+        assert!(!sanitized.contains_key(AdminQueryKey::PolicyRuleId.as_str()));
     }
 
     #[test]

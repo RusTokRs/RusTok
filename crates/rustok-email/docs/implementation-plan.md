@@ -3,6 +3,15 @@
 Статус: core delivery baseline зафиксирован; модуль возвращён в обязательный
 manifest/doc contract path.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-email` как capability-only core module без собственного UI;
@@ -41,3 +50,10 @@ manifest/doc contract path.
 1. При изменении SMTP/rendering contract сначала обновлять этот файл.
 2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

@@ -1,5 +1,14 @@
 ﻿# План реализации `rustok-commerce`
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Статус документа
 
 Этот документ фиксирует актуальный roadmap umbrella-модуля `rustok-commerce` после отказа от legacy REST surface `/api/commerce/*` и после появления platform-level `rustok-channel`.
@@ -480,12 +489,20 @@ Deliverables:
 - `rustok-cart` больше не считает tax lines напрямую из region helper-кода: cart runtime вызывает `TaxService` и snapshot'ит provider-aware tax lines;
 - `cart_tax_lines` и `order_tax_lines` теперь несут first-class `provider_id`, а checkout переносит этот snapshot в order без hidden metadata-only fallback;
 - targeted regression уже фиксирует, что complete checkout сохраняет `provider_id=region_default` в cart/order tax lines вместе с `tax_included` metadata.
+- cart runtime теперь уже учитывает channel-aware provider mapping из region metadata key `channel_tax_provider_ids`: при наличии `cart.channel_id` tax pipeline передаёт `channel_provider_id` в `TaxService` с precedence поверх region `tax_provider_id`.
 
 Обязательные проверки:
 
 - integration tests `cart -> taxes -> payment -> order`;
 - negative tests на конфликт tax-inclusive/exclusive semantics;
 - contract tests на transport shape tax lines.
+
+Ближайший execution slice (продолжение coding-плана):
+
+- [x] добавить channel-aware provider mapping (`regions.tax_provider_id` + `channel_id`) без hidden fallback на `region_default`;
+- [ ] расширить `rustok-tax` до typed rule input (`item class`, `shipping class`, `customer tax-exempt`) без возврата налоговой логики в `rustok-cart`;
+- [ ] закрепить admin/store read-side tax breakdown contract (line-item vs shipping vs order aggregate) в REST и GraphQL parity тестах;
+- [ ] добавить migration/contract smoke для backfill `provider_id` в legacy `order_tax_lines` snapshots.
 
 ### Phase 10. Post-order flows: returns, refunds, exchanges, claims, order changes
 
@@ -586,3 +603,10 @@ Release gates:
 5. Любые изменения схемы проходят i18n-аудит: локализованные строки не храним в base-таблицах, display-поля живут только в `*_translations`.
 6. Module-owned UI пакеты не вводят package-local locale override: write-side использует host-provided effective locale, а edit/detail hydration резолвит переводы по нему же, с fallback только после попытки точного locale match.
 7. Read-side/runtime helpers не сравнивают locale raw-строкой: резолв локализованных данных идёт через shared locale normalization и одну цепочку fallback `requested -> tenant default -> first available`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

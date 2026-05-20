@@ -3,6 +3,15 @@
 Статус: telemetry foundation crate уже есть, но локальная документация и
 контракт границы нужно удерживать так же жёстко, как у остальных shared modules.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-telemetry` как shared observability foundation layer;
@@ -49,3 +58,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
 4. При изменении shared observability wiring обновлять связанные host и verification docs.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

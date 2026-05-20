@@ -41,8 +41,8 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::build_event_hub::{
     build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
 };
+use crate::services::build_service::BuildService;
 use crate::services::build_service::EventBusBuildEventPublisher;
-use crate::services::build_service::{BuildRequest, BuildService};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -58,7 +58,8 @@ use crate::services::module_lifecycle::{
     ModuleLifecycleService, ToggleModuleError, UpdateModuleSettingsError,
 };
 use crate::services::platform_composition::{
-    PlatformCompositionError, PlatformCompositionService, PlatformCompositionSnapshot,
+    PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionError,
+    PlatformCompositionService,
 };
 use crate::services::rbac_service::RbacService;
 use rustok_core::{ModuleRegistry, Permission};
@@ -264,43 +265,6 @@ async fn ensure_modules_manage_permission(
     Ok((auth, tenant))
 }
 
-async fn request_build_for_manifest(
-    app_ctx: &loco_rs::app::AppContext,
-    tenant_id: Uuid,
-    snapshot: &PlatformCompositionSnapshot,
-    manifest_diff: &ManifestDiff,
-    requested_by: &str,
-    reason: &str,
-) -> Result<BuildJob> {
-    let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
-        Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
-            app_ctx,
-        ))),
-        Arc::new(EventBusBuildEventPublisher::new(
-            event_bus_from_context(app_ctx),
-            tenant_id,
-        )),
-    ]));
-
-    let build = BuildService::with_event_publisher(app_ctx.db.clone(), event_publisher)
-        .request_build(BuildRequest {
-            manifest_ref: format!("platform_state:{}", snapshot.revision),
-            manifest_revision: snapshot.revision,
-            manifest_snapshot: serde_json::to_value(&snapshot.manifest)
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?,
-            requested_by: requested_by.to_string(),
-            reason: Some(reason.to_string()),
-            modules_delta: manifest_diff.summary(),
-            modules: ManifestManager::build_modules(&snapshot.manifest),
-            profile: ManifestManager::deployment_profile(&snapshot.manifest),
-            execution_plan: ManifestManager::build_execution_plan(&snapshot.manifest),
-        })
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-    Ok(BuildJob::from_model(&build))
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn persist_manifest_and_request_build(
     app_ctx: &loco_rs::app::AppContext,
@@ -312,25 +276,62 @@ async fn persist_manifest_and_request_build(
     requested_by: &str,
     reason: String,
 ) -> Result<BuildJob> {
-    let snapshot = PlatformCompositionService::update_manifest(
+    let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
+        Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
+            app_ctx,
+        ))),
+        Arc::new(EventBusBuildEventPublisher::new(
+            event_bus_from_context(app_ctx),
+            tenant_id,
+        )),
+    ]));
+
+    let result = PlatformCompositionBuildService::update_manifest_and_request_build(
         &app_ctx.db,
+        event_publisher,
         registry,
         expected_revision,
         manifest,
-        Some(requested_by.to_string()),
+        manifest_diff,
+        requested_by.to_string(),
+        reason,
     )
     .await
-    .map_err(map_platform_composition_error)?;
+    .map_err(map_platform_composition_build_error)?;
 
-    request_build_for_manifest(
-        app_ctx,
-        tenant_id,
-        &snapshot,
-        &manifest_diff,
-        requested_by,
-        &reason,
-    )
-    .await
+    Ok(BuildJob::from_model(&result.build))
+}
+
+fn map_platform_composition_build_error(error: PlatformCompositionBuildError) -> FieldError {
+    match error {
+        PlatformCompositionBuildError::Composition(error) => map_platform_composition_error(error),
+        PlatformCompositionBuildError::Build(error) => {
+            <FieldError as GraphQLError>::internal_error(&error)
+        }
+    }
+}
+
+fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
+    match error {
+        ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
+        ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
+            FieldError::new(format!("Core module cannot be disabled: {}", module_slug))
+        }
+        ToggleModuleError::MissingDependencies(missing) => {
+            FieldError::new(format!("Missing module dependencies: {}", missing))
+        }
+        ToggleModuleError::HasDependents(dependents) => {
+            FieldError::new(format!("Module is required by: {}", dependents))
+        }
+        ToggleModuleError::Database(err) => {
+            <FieldError as GraphQLError>::internal_error(&err.to_string())
+        }
+        ToggleModuleError::HookFailed(err) => FieldError::new(format!(
+            "Module lifecycle hook failed before state commit: {}",
+            err
+        )),
+        ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
+    }
 }
 
 fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError {
@@ -1030,26 +1031,7 @@ impl RootMutation {
             Some(auth.user_id.to_string()),
         )
         .await
-        .map_err(|err| match err {
-            ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
-            ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
-                FieldError::new(format!("Core module cannot be disabled: {}", module_slug))
-            }
-            ToggleModuleError::MissingDependencies(missing) => {
-                FieldError::new(format!("Missing module dependencies: {}", missing))
-            }
-            ToggleModuleError::HasDependents(dependents) => {
-                FieldError::new(format!("Module is required by: {}", dependents))
-            }
-            ToggleModuleError::Database(err) => {
-                <FieldError as GraphQLError>::internal_error(&err.to_string())
-            }
-            ToggleModuleError::HookFailed(err) => FieldError::new(format!(
-                "Module lifecycle hook failed, state rolled back: {}",
-                err
-            )),
-            ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
-        })?;
+        .map_err(map_toggle_module_error)?;
 
         Ok(TenantModule {
             module_slug: module.module_slug,
@@ -1109,8 +1091,10 @@ impl RootMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        map_create_user_error, map_manifest_error, prepare_user_custom_fields_write,
-        validate_custom_fields, AuthLifecycleError, ManifestError,
+        map_create_user_error, map_manifest_error, map_platform_composition_build_error,
+        map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
+        validate_custom_fields, AuthLifecycleError, ManifestError, PlatformCompositionBuildError,
+        PlatformCompositionError, ToggleModuleError,
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use migration::Migrator;
@@ -1172,6 +1156,52 @@ mod tests {
             crate::error::Error::InternalServerError,
         ));
         assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn toggle_error_maps_unknown_module() {
+        let err = map_toggle_module_error(ToggleModuleError::UnknownModule);
+        assert_eq!(err.message, "Unknown module");
+    }
+
+    #[test]
+    fn toggle_error_maps_core_module_disable() {
+        let err =
+            map_toggle_module_error(ToggleModuleError::CoreModuleCannotBeDisabled("core".into()));
+        assert!(err.message.contains("Core module cannot be disabled"));
+        assert!(err.message.contains("core"));
+    }
+
+    #[test]
+    fn toggle_error_maps_dependency_errors() {
+        let missing =
+            map_toggle_module_error(ToggleModuleError::MissingDependencies("pricing".into()));
+        assert!(missing.message.contains("Missing module dependencies"));
+
+        let dependents =
+            map_toggle_module_error(ToggleModuleError::HasDependents("checkout".into()));
+        assert!(dependents.message.contains("Module is required by"));
+    }
+
+    #[test]
+    fn toggle_error_maps_hook_failure() {
+        let err = map_toggle_module_error(ToggleModuleError::HookFailed("boom".into()));
+        assert!(err
+            .message
+            .contains("Module lifecycle hook failed before state commit"));
+        assert!(err.message.contains("boom"));
+        assert!(!err.message.contains("rolled back"));
+    }
+
+    #[test]
+    fn toggle_error_maps_database_and_policy_to_internal_errors() {
+        let db_err = map_toggle_module_error(ToggleModuleError::Database(sea_orm::DbErr::Custom(
+            "db down".to_string(),
+        )));
+        assert!(!db_err.message.is_empty());
+
+        let policy_err = map_toggle_module_error(ToggleModuleError::Policy("policy".to_string()));
+        assert!(!policy_err.message.is_empty());
     }
 
     #[test]
@@ -1343,5 +1373,37 @@ mod tests {
             Some(serde_json::json!({"bio": "Привет"}))
         );
         assert_eq!(prepared.locale.as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn platform_composition_error_maps_revision_conflict_to_conflict_message() {
+        let err = map_platform_composition_error(PlatformCompositionError::RevisionConflict {
+            expected: 3,
+            current: 5,
+        });
+        assert!(err.message.contains("revision conflict"));
+        assert!(err.message.contains("expected 3"));
+        assert!(err.message.contains("current 5"));
+    }
+
+    #[test]
+    fn platform_composition_build_error_maps_enqueue_failures_to_internal_error() {
+        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Build(
+            "queue unavailable".to_string(),
+        ));
+        assert!(err.message.to_lowercase().contains("internal"));
+    }
+
+    #[test]
+    fn platform_composition_build_error_maps_composition_conflict_consistently() {
+        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Composition(
+            PlatformCompositionError::RevisionConflict {
+                expected: 10,
+                current: 11,
+            },
+        ));
+        assert!(err.message.contains("revision conflict"));
+        assert!(err.message.contains("expected 10"));
+        assert!(err.message.contains("current 11"));
     }
 }

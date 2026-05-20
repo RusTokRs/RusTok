@@ -1,61 +1,252 @@
-use rustok_core::EventBus;
-use rustok_events::{DomainEvent, EventEnvelope};
-use tokio::sync::broadcast;
-use uuid::Uuid;
+use std::sync::Arc;
 
-type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use rustok_outbox::entity as outbox_entity;
+use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
+use rustok_tenant::{
+    CreateTenantInput, TenantError, TenantService, ToggleModuleInput, UpdateTenantInput,
+    entities::{tenant, tenant_module},
+};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, QueryOrder, Schema,
+    sea_query::TableCreateStatement,
+};
 
-struct TestContext {
-    bus: EventBus,
-    events: broadcast::Receiver<EventEnvelope>,
-    tenant_id: Uuid,
+async fn setup_db() -> DatabaseConnection {
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("failed to connect in-memory sqlite");
+
+    let builder = db.get_database_backend();
+    let schema = Schema::new(builder);
+
+    create_entity_table(&db, &builder, schema.create_table_from_entity(tenant::Entity)).await;
+    create_entity_table(
+        &db,
+        &builder,
+        schema.create_table_from_entity(tenant_module::Entity),
+    )
+    .await;
+    create_entity_table(
+        &db,
+        &builder,
+        schema.create_table_from_entity(outbox_entity::Entity),
+    )
+    .await;
+
+    db
+}
+
+async fn create_entity_table(
+    db: &DatabaseConnection,
+    builder: &DbBackend,
+    mut statement: TableCreateStatement,
+) {
+    statement.if_not_exists();
+    db.execute(builder.build(&statement))
+        .await
+        .expect("failed to create tenant test table");
 }
 
 #[tokio::test]
-#[ignore = "Integration test requires tenant models + database wiring"]
-async fn test_tenant_event_flow() -> TestResult<()> {
-    let mut ctx = test_context().await?;
+async fn tenant_crud_flow() {
+    let db = setup_db().await;
+    let service = TenantService::new(db.clone());
 
-    let event = DomainEvent::TenantCreated {
-        tenant_id: ctx.tenant_id,
-    };
-
-    let bus = ctx.bus.clone();
-    bus.publish(ctx.tenant_id, None, event)?;
-
-    let envelope = next_event(&mut ctx.events).await?;
-    assert!(matches!(
-        envelope.event,
-        DomainEvent::TenantCreated { tenant_id } if tenant_id == ctx.tenant_id
-    ));
-
-    let resolved = wait_for_tenant(&ctx, ctx.tenant_id).await?;
-    assert_eq!(resolved, ctx.tenant_id);
-
-    Ok(())
-}
-
-async fn test_context() -> TestResult<TestContext> {
-    let bus = EventBus::new();
-    let events = bus.subscribe();
-    let tenant_id = Uuid::nil();
-
-    Ok(TestContext {
-        bus,
-        events,
-        tenant_id,
-    })
-}
-
-async fn next_event(
-    receiver: &mut broadcast::Receiver<EventEnvelope>,
-) -> TestResult<EventEnvelope> {
-    let envelope = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
+    let created = service
+        .create_tenant(CreateTenantInput {
+            name: "Acme".to_string(),
+            slug: "acme".to_string(),
+            domain: Some("acme.example".to_string()),
+        })
         .await
-        .map_err(|_| "timed out waiting for event")??;
-    Ok(envelope)
+        .expect("tenant should be created");
+
+    assert_eq!(created.name, "Acme");
+    assert_eq!(created.slug, "acme");
+    assert!(created.is_active);
+
+    let fetched = service
+        .get_tenant(created.id)
+        .await
+        .expect("tenant should be fetched by id");
+    assert_eq!(fetched.id, created.id);
+
+    let fetched_by_slug = service
+        .get_tenant_by_slug("acme")
+        .await
+        .expect("tenant should be fetched by slug");
+    assert_eq!(fetched_by_slug.id, created.id);
+
+    let updated = service
+        .update_tenant(
+            created.id,
+            UpdateTenantInput {
+                name: Some("Acme Updated".to_string()),
+                domain: Some("shop.acme.example".to_string()),
+                is_active: Some(false),
+                settings: Some(serde_json::json!({
+                    "features": {"checkout": true}
+                })),
+            },
+        )
+        .await
+        .expect("tenant should be updated");
+
+    assert_eq!(updated.name, "Acme Updated");
+    assert_eq!(updated.domain.as_deref(), Some("shop.acme.example"));
+    assert!(!updated.is_active);
+    assert_eq!(updated.settings["features"]["checkout"], serde_json::json!(true));
+
+    let (items, total) = service
+        .list_tenants(1, 10)
+        .await
+        .expect("tenant list should load");
+    assert_eq!(total, 1);
+    assert_eq!(items.len(), 1);
 }
 
-async fn wait_for_tenant(_ctx: &TestContext, _tenant_id: Uuid) -> TestResult<Uuid> {
-    Err("wire tenant lookup for integration tests".into())
+#[tokio::test]
+async fn reject_invalid_tenant_settings_schema() {
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+
+    let created = service
+        .create_tenant(CreateTenantInput {
+            name: "Settings Test".to_string(),
+            slug: "settings-test".to_string(),
+            domain: None,
+        })
+        .await
+        .expect("tenant should be created");
+
+    let err = service
+        .update_tenant(
+            created.id,
+            UpdateTenantInput {
+                name: None,
+                domain: None,
+                is_active: None,
+                settings: Some(serde_json::json!(["invalid-root"])),
+            },
+        )
+        .await
+        .expect_err("non-object settings root must be rejected");
+
+    assert!(matches!(err, TenantError::InvalidSettingsSchema(_)));
+}
+
+#[tokio::test]
+async fn module_toggle_flow_legacy() {
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+
+    let tenant = service
+        .create_tenant(CreateTenantInput {
+            name: "Toggle Test".to_string(),
+            slug: "toggle-test".to_string(),
+            domain: None,
+        })
+        .await
+        .expect("tenant should be created");
+
+    let enabled = service
+        .toggle_module(
+            tenant.id,
+            ToggleModuleInput {
+                module_slug: "blog".to_string(),
+                enabled: true,
+            },
+        )
+        .await
+        .expect("module should be enabled");
+
+    assert!(enabled.enabled);
+
+    let disabled = service
+        .toggle_module(
+            tenant.id,
+            ToggleModuleInput {
+                module_slug: "blog".to_string(),
+                enabled: false,
+            },
+        )
+        .await
+        .expect("module should be disabled");
+
+    assert_eq!(disabled.id, enabled.id);
+    assert!(!disabled.enabled);
+
+    let modules = service
+        .list_tenant_modules(tenant.id)
+        .await
+        .expect("tenant modules should list");
+    assert_eq!(modules.len(), 1);
+    assert!(!modules[0].enabled);
+}
+
+#[tokio::test]
+#[allow(deprecated)]
+async fn tenant_mutations_publish_outbox_events() {
+    let db = setup_db().await;
+    let transport = Arc::new(OutboxTransport::new(db.clone()));
+    let event_bus = TransactionalEventBus::new(transport);
+    let service = TenantService::with_event_bus(db.clone(), event_bus);
+
+    let tenant = service
+        .create_tenant(CreateTenantInput {
+            name: "Outbox Tenant".to_string(),
+            slug: "outbox-tenant".to_string(),
+            domain: None,
+        })
+        .await
+        .expect("tenant should be created");
+
+    service
+        .update_tenant(
+            tenant.id,
+            UpdateTenantInput {
+                name: Some("Outbox Tenant Updated".to_string()),
+                domain: None,
+                is_active: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("tenant should be updated");
+
+    service
+        .toggle_module(
+            tenant.id,
+            ToggleModuleInput {
+                module_slug: "blog".to_string(),
+                enabled: true,
+            },
+        )
+        .await
+        .expect("module should be toggled");
+
+    let events = SysEvents::find()
+        .order_by_asc(outbox_entity::Column::CreatedAt)
+        .all(&db)
+        .await
+        .expect("outbox events should load");
+
+    assert_eq!(events.len(), 3);
+    assert!(events.iter().any(|event| event.event_type == "tenant.created"));
+    assert!(events.iter().any(|event| event.event_type == "tenant.updated"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.module.toggled")
+    );
+
+    let module_toggle_payload = events
+        .iter()
+        .find(|event| event.event_type == "tenant.module.toggled")
+        .expect("tenant module toggle event must exist");
+    assert_eq!(module_toggle_payload.payload["event"]["data"]["module_slug"], "blog");
+    assert_eq!(
+        module_toggle_payload.payload["event"]["data"]["enabled"],
+        serde_json::json!(true)
+    );
 }

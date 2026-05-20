@@ -23,6 +23,7 @@ server = [
   "dep:rustok-pages",
   "dep:rustok-product",
   "dep:rustok-tenant",
+  "dep:reqwest",
   "dep:sea-orm",
   "dep:sea-orm-migration",
   "dep:thiserror",
@@ -59,6 +60,7 @@ rustok-pages = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-seo-targets = { path = "../rustok-seo-targets", default-features = false }
 rustok-tenant = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true

@@ -68,12 +68,17 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("tenants"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_flex_entry_localized_values_owner")
-                            .col(FlexEntryLocalizedValues::TenantId)
-                            .col(FlexEntryLocalizedValues::EntryId),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_flex_entry_localized_values_owner")
+                    .table(FlexEntryLocalizedValues::Table)
+                    .col(FlexEntryLocalizedValues::TenantId)
+                    .col(FlexEntryLocalizedValues::EntryId)
                     .to_owned(),
             )
             .await?;
@@ -88,17 +93,27 @@ SELECT
     entry_row.id,
     COALESCE(NULLIF(tenant.default_locale, ''), 'en'),
     entry_row.tenant_id,
-    jsonb_object_agg(localized_key.field_key, entry_row.data -> localized_key.field_key),
+    COALESCE(
+        jsonb_object_agg(localized_kv.field_key, localized_kv.field_value)
+            FILTER (WHERE localized_kv.field_value IS NOT NULL),
+        '{}'::jsonb
+    ),
     entry_row.created_at,
     entry_row.updated_at
 FROM flex_entries AS entry_row
 JOIN flex_schemas AS schema_row ON schema_row.id = entry_row.schema_id
 JOIN tenants AS tenant ON tenant.id = entry_row.tenant_id
-JOIN LATERAL (
-    SELECT definition ->> 'field_key' AS field_key
+LEFT JOIN LATERAL (
+    SELECT
+        definition ->> 'field_key' AS field_key,
+        entry_row.data -> (definition ->> 'field_key') AS field_value
+        definition ->> 'field_key' AS field_key,
+        entry_row.data -> (definition ->> 'field_key') AS field_value
     FROM jsonb_array_elements(schema_row.fields_config) AS definition
     WHERE COALESCE((definition ->> 'is_localized')::boolean, false)
-) AS localized_key ON entry_row.data ? localized_key.field_key
+) AS localized_kv ON TRUE
+      AND NULLIF(definition ->> 'field_key', '') IS NOT NULL
+) AS localized_kv ON TRUE
 GROUP BY
     entry_row.id,
     entry_row.tenant_id,
@@ -156,15 +171,13 @@ WHERE EXISTS (
                 .execute_unprepared(
                     r#"
 UPDATE flex_entries AS entry_row
-SET data = COALESCE(entry_row.data, '{}'::jsonb) || COALESCE(localized.data, '{}'::jsonb)
+SET data = COALESCE(entry_row.data, '{}'::jsonb) || COALESCE(localized.locales_data, '{}'::jsonb)
 FROM (
     SELECT
         localized_row.entry_id,
-        localized_row.data
+        jsonb_object_agg(localized_row.locale, localized_row.data) AS locales_data
     FROM flex_entry_localized_values AS localized_row
-    JOIN flex_entries AS entry_row ON entry_row.id = localized_row.entry_id
-    JOIN tenants AS tenant ON tenant.id = entry_row.tenant_id
-    WHERE localized_row.locale = COALESCE(NULLIF(tenant.default_locale, ''), 'en')
+    GROUP BY localized_row.entry_id
 ) AS localized
 WHERE entry_row.id = localized.entry_id
 "#,

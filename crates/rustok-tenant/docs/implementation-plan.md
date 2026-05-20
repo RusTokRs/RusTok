@@ -3,6 +3,15 @@
 Статус: базовый tenant domain contract реализован; локальная документация
 приведена к единому формату и включена в scoped audit path.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-tenant` как владельца tenant domain contract;
@@ -26,13 +35,13 @@
 
 ### 2. Domain expansion
 
-- [ ] добавить schema validation для tenant settings;
-- [ ] довести outbox events для `TenantCreated`, `TenantUpdated`, `TenantModuleToggled`;
-- [ ] синхронизировать tenancy contract с RBAC для tenant-scoped admin permissions.
+- [x] добавить schema validation для tenant settings (object-only JSON, depth/key/payload limits);
+- [x] довести outbox events для `TenantCreated`, `TenantUpdated`, `TenantModuleToggled` (через `TransactionalEventBus` в tenant mutation flows);
+- [x] синхронизировать tenancy contract с RBAC для tenant-scoped admin permissions (tenant admin bootstrap + server GraphQL tenant/module read paths выровнены по `modules:(read|list|manage)` и `tenants:(read|list|manage)` checks).
 
 ### 3. Operability
 
-- [ ] довести integration tests для tenant CRUD, module toggles и resolver invariants;
+- [ ] довести integration tests для tenant CRUD, module toggles и resolver invariants (baseline CRUD/module-toggle/outbox tests добавлены; resolver invariants pending);
 - [ ] развить observability для cache hit/miss и active tenant signals;
 - [ ] документировать provisioning/deprovisioning и invalidation guarantees одновременно с изменением runtime contract.
 
@@ -41,6 +50,7 @@
 - `cargo xtask module validate tenant`
 - `cargo xtask module test tenant`
 - targeted tests для CRUD, module toggles, resolver invariants и cache integration path
+- контрактные тесты покрывают все публичные use-case, включая tenant CRUD, module toggles и resolver-facing invariants
 
 ## Правила обновления
 
@@ -48,3 +58,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
 4. При изменении resolver/cache expectations обновлять также server docs.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

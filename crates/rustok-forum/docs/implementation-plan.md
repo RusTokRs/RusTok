@@ -3,6 +3,15 @@
 Статус: forum-owned persistence и основные product capabilities уже
 зафиксированы; модуль находится в режиме steady-state hardening.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-forum` как самостоятельный forum/Q&A bounded context;
@@ -50,3 +59,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении dependency graph, visibility semantics или metadata синхронизировать `rustok-module.toml`.
 4. При изменении forum/content conversion expectations обновлять связанные docs в `rustok-content`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

@@ -351,6 +351,11 @@ pub enum DomainEvent {
     TenantUpdated {
         tenant_id: Uuid,
     },
+    TenantModuleToggled {
+        tenant_id: Uuid,
+        module_slug: String,
+        enabled: bool,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -496,6 +501,7 @@ impl DomainEvent {
 
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
+            Self::TenantModuleToggled { .. } => "tenant.module.toggled",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -599,6 +605,7 @@ impl DomainEvent {
             // Tenant events (v1)
             Self::TenantCreated { .. } => 1,
             Self::TenantUpdated { .. } => 1,
+            Self::TenantModuleToggled { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -807,9 +814,9 @@ impl ValidateEvent for DomainEvent {
                 Ok(())
             }
 
-            // ════════════════════════════════════════════════════════════════
+            // ════════════���════════════════��══════════════════════════════════
             // COMMERCE EVENTS - Variants
-            // ════════════════════════════════════════════════════════════════
+            // ═══════���════════════════════════════════════════════════════════
             Self::VariantCreated {
                 variant_id,
                 product_id,
@@ -1212,6 +1219,16 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 Ok(())
             }
+            Self::TenantModuleToggled {
+                tenant_id,
+                module_slug,
+                ..
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
+                Ok(())
+            }
             Self::LocaleEnabled { tenant_id, locale }
             | Self::LocaleDisabled { tenant_id, locale } => {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
@@ -1581,6 +1598,30 @@ mod tests {
             entry_id: Uuid::new_v4(),
             entity_type: Some("product".to_string()),
             entity_id: None,
+        };
+
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_tenant_module_toggled_event_contract() {
+        let event = DomainEvent::TenantModuleToggled {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "blog".to_string(),
+            enabled: true,
+        };
+
+        assert_eq!(event.event_type(), "tenant.module.toggled");
+        assert_eq!(event.schema_version(), 1);
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_tenant_module_toggled_rejects_empty_module_slug() {
+        let event = DomainEvent::TenantModuleToggled {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "".to_string(),
+            enabled: true,
         };
 
         assert!(event.validate().is_err());

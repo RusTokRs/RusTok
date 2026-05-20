@@ -31,6 +31,7 @@
 - [Реестр модулей и приложений](./modules/registry.md)
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
 - [Индекс документации по модулям](./modules/_index.md)
+- [Реестр implementation plans](./modules/implementation-plans-registry.md)
 - [Шаблон документации модуля](./templates/module_contract.md)
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
@@ -200,6 +201,7 @@
 - [Тестирование](./guides/testing.md)
 - [Быстрый старт по observability](./guides/observability-quickstart.md)
 - [Runtime guardrails](./guides/runtime-guardrails.md)
+- [ADR: control-plane lifecycle and migration ordering contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Валидация входных данных](./guides/input-validation.md)
 - [Обработка ошибок](./guides/error-handling.md)
 - [Аудит безопасности](./guides/security-audit.md)
@@ -230,7 +232,10 @@
 - [Индекс MCP reference](./references/mcp/README.md)
 - [Сравнение архитектуры RusTok и Medusa](./research/medusa-vs-rustok-architecture.md)
 - [Fluid Frontend Architecture для RusTok](./research/fluid-frontend-architecture.md)
-- [Verified TODO по control plane и module lifecycle](./research/deep-research-report%20(4).md)
+- [Fluid Backend Architecture для RusTok](./research/fluid-backend-architecture.md)
+- [План реализации Fluid Backend Architecture](./research/fluid-backend-architecture-implementation-plan.md)
+- [Historical input: deep research report (control plane/module lifecycle)](./research/deep-research-report%20(4).md)
+- [План устранения недостатков control plane и module lifecycle](./research/control-plane-module-lifecycle-remediation-plan.md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
 
 ## Документация приложений

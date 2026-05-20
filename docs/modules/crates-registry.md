@@ -113,6 +113,14 @@ Alloy остаётся capability-oriented слоем с permission-поверх
 2. Затем синхронизируется эта таблица-реестр.
 3. Если crate становится платформенным модулем или перестаёт им быть, одновременно обновляются `modules.toml`, `rustok-module.toml`, [контракт manifest](./manifest.md) и [центральный реестр](./registry.md).
 
+
+### Правило для implementation plans
+
+Если добавляется новый crate (module/support/capability) с локальным `docs/implementation-plan.md`,
+его нужно сразу добавить в `docs/modules/implementation-plans-registry.md` (`Global board`, уникальный `Plan ID`).
+
+Если crate удаляется или переименовывается, строку в `Global board` нужно удалить или обновить в тот же цикл.
+
 ## Связанные документы
 
 - [Обзор модульной платформы](./overview.md)

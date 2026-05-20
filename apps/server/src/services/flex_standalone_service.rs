@@ -693,7 +693,7 @@ mod tests {
     use migration::Migrator;
     use rustok_core::field_schema::{FieldDefinition, FieldType};
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
@@ -792,6 +792,13 @@ mod tests {
     #[tokio::test]
     async fn create_entry_moves_localized_values_to_parallel_rows() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
+        let builder = db.get_database_backend();
+        let schema = sea_orm::Schema::new(builder);
+        let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
+        stmt.if_not_exists();
+        db.execute(builder.build(&stmt))
+            .await
+            .expect("create flex_entry_localized_values table for standalone flex tests");
         let service = FlexStandaloneSeaOrmService::new(db.clone());
         let tenant_id = Uuid::new_v4();
         let schema_id = Uuid::new_v4();

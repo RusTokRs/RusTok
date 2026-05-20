@@ -9,6 +9,7 @@ description.workspace = true
 async-trait.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

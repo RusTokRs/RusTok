@@ -1,7 +1,7 @@
 # rustok-core / CRATE_API
 
 ## Публичные модули
-`async_utils`, `auth`, `cache`, `config`, `context`, `error`, `events`, `health`, `i18n`, `id`, `metrics`, `migrations`, `module`, `permissions`, `rbac`, `registry`, `resilience`, `scripting`, `security`, `state_machine`, `tenant_validation`, `tracing`, `typed_error`, `types`, `utils`.
+`async_utils`, `cache`, `config`, `content_format`, `context`, `error`, `events`, `field_schema`, `grapesjs`, `health`, `i18n`, `id`, `locale`, `metrics`, `migrations`, `module`, `permissions`, `rbac`, `registry`, `resilience`, `rt_json`, `security`, `state_machine`, `tenant_validation`, `tracing`, `typed_error`, `types`, `utils`.
 
 ## Основные публичные типы и сигнатуры
 - `pub trait RusToKModule` — базовый контракт модуля платформы.
@@ -10,6 +10,9 @@
 - `pub trait EventTransport` — транспорт событий.
 - `pub enum Error`, `pub type Result<T>` — unified error model.
 - `pub struct ModuleRegistry` — реестр модулей и зависимостей.
+- `pub enum UserRole`, `pub enum UserStatus` — shared identity primitives.
+- `pub struct CustomFieldsSchema`, `pub struct FieldDefinition` — flex/custom-fields contract.
+- `pub fn generate_id()` — canonical ID generation.
 
 ## События
 - Публикует: базовые доменные события через `DomainEvent` (определяет контракт, не бизнес-эмиттер).

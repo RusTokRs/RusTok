@@ -22,6 +22,7 @@
 - [Документацией `apps/server`](../../apps/server/docs/README.md)
 - [Документацией `apps/admin`](../../apps/admin/docs/README.md)
 - [Workspace CLI `xtask`](../../xtask/README.md)
+- [Реестром implementation plans](./implementation-plans-registry.md)
 
 ## Что считать модулем
 
@@ -38,11 +39,16 @@ Support/crate/capability слой может жить рядом с модуле
 
 - module-owned backend crate регистрирует capability через `RusToKModule::register_runtime_extensions(...)`;
 - host строит единый `ModuleRuntimeExtensions` и прокидывает его во все shared entrypoints;
-- consumer entrypoints, которые зависят от такой capability, должны падать явно при отсутствии shared registry, а не тихо fallback-иться к hardcoded built-ins;
+- consumer entrypoints, которые зависят от такой capability, должны падать явно при отсутствии shared registry, а не тихо fallback-иться к hardcoded built-ins; сообщение об ошибке должно быть actionable (какой capability не найден, какой consumer entrypoint затронут, какой module/owner ожидается и как исправить конфигурацию). Graceful degradation допустим только как явно задокументированный opt-in режим (например, feature-disabled/read-only), с warning в логах/метриках и без неявной подмены built-ins;
 - если capability introspect-ится общими operator/admin surface-ами, provider должен публиковать owner-aware metadata вместо того, чтобы заставлять host жёстко маппить slugs в labels;
 - capability crate не получает из-за этого собственный slug в `modules.toml` автоматически.
 
-Для SEO-capable модулей действует дополнительное правило: provider в `rustok-seo-targets` отдаёт только typed target records и безопасный `template_fields` map (`title`, `description`, `route`, `locale`, slug/handle/id поля). Шаблоны для `title`, `meta_description`, canonical, robots, Open Graph и Twitter рендерит только `rustok-seo`; owner module не должен вводить собственный SEO-template runtime или передавать сырой HTML/JSON в template context.
+Для SEO-capable модулей действует дополнительное правило:
+
+- provider в `rustok-seo-targets` отдаёт только typed target records и безопасный `template_fields` map (`title`, `description`, `route`, `locale`, slug/handle/id поля);
+- шаблоны для `title`, `meta_description`, canonical, robots, Open Graph и Twitter рендерит только `rustok-seo`;
+- owner module не должен вводить собственный SEO-template runtime или передавать сырой HTML/JSON в template context.
+
 Если target участвует в bulk SEO, provider должен давать стабильные summaries и fields, достаточные для safe remediation: `preview_only`, `apply_missing_only`, `overwrite_generated_only` и `force_overwrite_explicit` выполняются в `rustok-seo`, а не в owner module.
 
 ## Backend
@@ -55,6 +61,7 @@ Support/crate/capability слой может жить рядом с модуле
 - `rustok-module.toml` с корректными `module.slug`, `module.version`, `module.description`, `module.ui_classification`;
 - root `README.md` на английском;
 - local `docs/README.md` и `docs/implementation-plan.md` на русском.
+- для нового module/support crate обязательно добавить строку в [реестр implementation plans](./implementation-plans-registry.md) (`Global board`) по формату реестра: минимум `Plan ID`, `Module/Crate`, `Plan doc` и `Status`.
 
 Канон:
 
@@ -118,6 +125,7 @@ Backend модуля должен встраиваться в общий platfor
 3. targeted `cargo test` по модулю и затронутому host/runtime
 4. обновлены local docs модуля
 5. обновлены central docs, если поменялся architecture/runtime contract
+6. план модуля добавлен/синхронизирован в `docs/modules/implementation-plans-registry.md`
 
 ## UI
 
@@ -204,12 +212,12 @@ Module-owned UI package не имеет права invent-ить свою locale
 
 Если агенту или разработчику нужно быстро принять решение, используйте такой порядок:
 
-1. Это platform module или support/capability crate?
-2. Какой у него backend contract: GraphQL, REST, `#[server]`, events, migrations?
-3. Какие данные language-agnostic, а какие localized?
-4. Есть ли у модуля module-owned UI surface?
-5. Как host даёт ему auth, locale, routing и tenant context?
-6. Какие docs и verification gates должны измениться вместе с кодом?
+1. Это platform module или support/capability crate? (см. [overview.md](./overview.md), [modules architecture](../architecture/modules.md))
+2. Какой у него backend contract: GraphQL, REST, `#[server]`, events, migrations? (см. [manifest contract](./manifest.md))
+3. Какие данные language-agnostic, а какие localized? (см. [database schema](../architecture/database.md))
+4. Есть ли у модуля module-owned UI surface? (см. [overview.md](./overview.md))
+5. Как host даёт ему auth, locale, routing и tenant context? (см. [modules architecture](../architecture/modules.md))
+6. Какие docs и verification gates должны измениться вместе с кодом? (см. [PR / Review Checklist](#pr--review-checklist))
 
 ## PR / Review Checklist
 

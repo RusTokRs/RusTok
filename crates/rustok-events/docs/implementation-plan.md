@@ -3,6 +3,15 @@
 Статус: canonical ownership event contracts уже вынесена в отдельный модуль;
 текущая работа — удерживать compatibility path и schema discipline без дрейфа.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-events` как единственный canonical source для event contracts;
@@ -23,7 +32,7 @@
 - [x] вынести canonical ownership event contracts в отдельный crate;
 - [x] сохранить compatibility path через `rustok-core::events`;
 - [x] покрыть schema registry, validation и roundtrip contract tests;
-- [ ] удерживать sync между event types, registry и consumer imports.
+- [ ] удерживать sync между event types, registry и consumer imports (tenant lifecycle family обновлена: добавлен `tenant.module.toggled`).
 
 ### 2. Release discipline
 
@@ -51,3 +60,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
 4. При изменении event versioning policy обновлять связанные architecture/outbox docs.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

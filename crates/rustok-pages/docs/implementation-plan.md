@@ -3,6 +3,15 @@
 Статус: pages-owned storage и visual builder contract уже зафиксированы; модуль
 удерживается в режиме steady-state hardening и rollout polish.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-pages` как владельца page, block и menu runtime contract;
@@ -23,7 +32,8 @@
 - [x] закрыть storage split для pages, blocks и menus;
 - [x] зафиксировать builder contract `markdown | rt_json_v1 | grapesjs_v1`;
 - [x] удерживать compatibility surface для legacy block-driven pages;
-- [ ] удерживать sync между runtime contracts, UI packages и module metadata.
+- [ ] удерживать sync между runtime contracts, UI packages и module metadata;
+- [ ] контрактные тесты покрывают все публичные use-case для уже поставленных pages runtime surfaces.
 
 ### 2. Product hardening
 
@@ -49,3 +59,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении dependency graph, UI wiring или visibility semantics синхронизировать `rustok-module.toml`.
 4. При изменении shared rich-text expectations обновлять также связанные docs в `rustok-content`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

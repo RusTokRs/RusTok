@@ -824,6 +824,8 @@ impl RootQuery {
         ctx: &Context<'_>,
         limit: Option<i32>,
     ) -> Result<Vec<ModuleRegistryItem>> {
+        ensure_modules_read_permission(ctx).await?;
+
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
@@ -916,6 +918,8 @@ impl RootQuery {
         ctx: &Context<'_>,
         limit: Option<i32>,
     ) -> Result<Vec<TenantModule>> {
+        ensure_modules_read_permission(ctx).await?;
+
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let requested_limit = requested_collection_limit(limit);

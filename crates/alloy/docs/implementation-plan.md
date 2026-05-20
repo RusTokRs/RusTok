@@ -3,6 +3,15 @@
 Статус: capability runtime зафиксирован; локальная документация и module
 contract приведены к единому формату.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `alloy` как capability-oriented модуль платформенного script/runtime слоя для скриптов, scheduler и hook execution;
@@ -48,3 +57,10 @@ contract приведены к единому формату.
 1. При изменении runtime contract сначала обновлять этот файл.
 2. При изменении public/capability surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata или host wiring синхронизировать `rustok-module.toml`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

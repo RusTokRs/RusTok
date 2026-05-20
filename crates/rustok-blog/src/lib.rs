@@ -62,8 +62,9 @@ mod state_machine_proptest;
 pub use dto::{
     CategoryListItem, CategoryResponse, CommentListItem, CommentResponse, CreateCategoryInput,
     CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
-    ListTagsFilter, PostListQuery, PostListResponse, PostResponse, PostSummary, TagListItem,
-    TagResponse, UpdateCategoryInput, UpdateCommentInput, UpdatePostInput, UpdateTagInput,
+    ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, PostListResponse,
+    PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
+    UpdatePostInput, UpdateTagInput,
 };
 pub use entities::*;
 pub use error::{BlogError, BlogResult};

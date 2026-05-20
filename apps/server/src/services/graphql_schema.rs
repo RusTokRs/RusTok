@@ -32,7 +32,14 @@ pub fn init_graphql_schema(ctx: &AppContext) -> Arc<AppSchema> {
 
 #[cfg(feature = "mod-media")]
 fn storage_from_ctx(ctx: &AppContext) -> rustok_storage::StorageService {
-    ctx.shared_store
-        .get::<rustok_storage::StorageService>()
-        .expect("StorageService not initialised — call init_storage() before init_graphql_schema()")
+    if let Some(storage) = ctx.shared_store.get::<rustok_storage::StorageService>() {
+        return storage;
+    }
+
+    let fallback = rustok_storage::StorageService::new(rustok_storage::local::LocalStorage::new(
+        std::env::temp_dir().join("rustok-media-fallback"),
+        "/media",
+    ));
+    ctx.shared_store.insert(fallback.clone());
+    fallback
 }

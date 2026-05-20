@@ -23,6 +23,7 @@ validation rules, а `rustok-core` сохраняет только compatibility
 - `rustok-core::events` остаётся compatibility adapter поверх канонического surface из `rustok-events`;
 - доменные модули, outbox/runtime crates и test utilities должны импортировать event contracts напрямую из `rustok-events`;
 - изменения event contracts должны быть синхронизированы с outbox, replay, DLQ и reindex guidance;
+- tenant lifecycle contracts (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) должны оставаться синхронизированными с tenancy-модулями и их outbox mutation paths;
 - breaking payload changes требуют version bump и explicit dual-read/migration plan.
 
 ## Проверка

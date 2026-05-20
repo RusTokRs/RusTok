@@ -69,6 +69,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask validate-manifest
       - run: cargo xtask module validate
+      - name: Check Dependabot directories
+        run: python scripts/ci/check-dependabot-directories.py
 
   check-msrv:
     name: Cargo Check (MSRV 1.85)
@@ -172,7 +174,7 @@ jobs:
         run: cargo install cargo-llvm-cov --locked
       - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
       - name: Enforce minimum coverage
-        run: bash scripts/ci/check-coverage.sh lcov.info 75
+        run: bash scripts/ci/check-coverage.sh lcov.info
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v5
         with:

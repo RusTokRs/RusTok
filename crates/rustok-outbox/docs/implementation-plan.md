@@ -3,6 +3,15 @@
 Статус: core outbox baseline зафиксирован; модуль приведён к единому
 manifest/doc contract.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-outbox` как bounded-context модуль transactional publishing;
@@ -22,7 +31,8 @@ manifest/doc contract.
 
 - [x] выровнять root README, local docs и manifest metadata под единый standard path;
 - [x] зафиксировать transactional publishing как основной bounded-context contract;
-- [ ] удерживать sync между public crate API и server event-runtime tests.
+- [ ] удерживать sync между public crate API и server event-runtime tests;
+- [ ] контрактные тесты покрывают все публичные use-case для transactional publishing, relay, retry и DLQ semantics.
 
 ### 2. Runtime hardening
 
@@ -47,3 +57,10 @@ manifest/doc contract.
 1. При изменении transactional publishing или relay contract сначала обновлять этот файл.
 2. При изменении public/runtime contract синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata и UI wiring синхронизировать `rustok-module.toml`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

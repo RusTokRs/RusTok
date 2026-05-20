@@ -2,7 +2,16 @@
 
 Статус: region boundary выделен; модуль держит country/currency/tax baseline, storefront lookup contract и собственные module-owned admin/storefront UI.
 
-Текущий typed tax policy contract: `region.tax_provider_id` стал first-class полем региона, а metadata-derived hook для выбора tax provider больше не является source of truth.
+Текущий typed tax policy contract: `region.tax_provider_id` стал first-class baseline полем региона; metadata-derived hook больше не является source of truth, но transitional channel override map `metadata.channel_tax_provider_ids` (string или object с `provider_id`/`provider`) допускается для channel-aware cart runtime при явном `channel_id`.
+
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
 
 ## Область работ
 
@@ -57,3 +66,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md`, `docs/README.md`, `admin/README.md`, `storefront/README.md` и `rustok-module.toml`.
 3. При изменении admin wiring синхронизировать `apps/admin` docs и central UI indexes.
 4. При изменении region/pricing/tax orchestration обновлять umbrella docs.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

@@ -1,7 +1,15 @@
 # План реализации `rustok-core`
 
-Статус: foundation crate уже служит shared contract layer; основной риск сейчас
-не в отсутствии baseline, а в дрейфе ответственности и разрастании surface.
+Статус: foundation crate служит shared contract layer; выполнен sweep boundary hardening — вычищен domain-specific auth logic, синхронизированы docs и public surface.
+
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
 
 ## Область работ
 
@@ -11,10 +19,16 @@
 
 ## Текущее состояние
 
-- crate уже используется как базовая зависимость для platform и domain modules;
-- shared typed contracts и foundation helpers уже являются частью live surface;
+- crate используется как базовая зависимость для platform и domain modules;
+- shared typed contracts и foundation helpers являются частью live surface;
 - другие модули строят свои integration contracts поверх `rustok-core`, не размазывая базовые типы по workspace;
-- local docs и root `README.md` теперь должны удерживаться как часть scoped audit path.
+- **boundary hardening**: auth module (user entity, repository, service, migrations) удалён из `rustok-core` — canonical auth lifecycle живёт в `rustok-auth`;
+- **contract sync**: `CRATE_API.md`, `README.md`, `docs/README.md` синхронизированы с актуальным public surface;
+- **deps cleanup**: удалены `jsonwebtoken` и `argon2` из `Cargo.toml` (больше не нужны после удаления auth);
+- **targeted tests**: добавлен `tests/foundation_primitives.rs` с coverage для `UserRole`/`UserStatus` (display, parse, serde), `generate_id`/`parse_id`, locale normalization и field-schema guardrails;
+- **security/validation tests**: добавлен `tests/security_validation.rs` с coverage для `SecurityHeaders`, `RateLimiter`, `InputValidator`, `SsrfProtection` и utils (`is_valid_email`, `is_valid_uuid`, `html_escape`, `slugify`);
+- **contract tests**: расширен `tests/contract_surface.rs` проверками на отсутствие auth re-exports и лишних auth-зависимостей в `Cargo.toml`;
+- local docs и root `README.md` удерживаются как часть scoped audit path.
 
 ## Этапы
 
@@ -22,19 +36,19 @@
 
 - [x] закрепить `rustok-core` как shared foundation layer;
 - [x] удерживать typed primitives и shared helpers вне host/domain buckets;
-- [ ] удерживать sync между public surface, compatibility exports и module metadata.
+- [x] удерживать sync между public surface, compatibility exports и module metadata.
 
 ### 2. Boundary hardening
 
-- [ ] продолжать вычищать domain-specific logic из foundation layer;
-- [ ] переносить shared primitives сюда только при реальной cross-module необходимости;
-- [ ] покрывать новые foundation contracts targeted tests и compatibility checks.
+- [x] продолжать вычищать domain-specific logic из foundation layer;
+- [x] переносить shared primitives сюда только при реальной cross-module необходимости;
+- [x] покрывать новые foundation contracts targeted tests и compatibility checks.
 
 ### 3. Operability
 
-- [ ] документировать изменения foundation contracts одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [ ] обновлять consumer-module docs, если меняются базовые typed contracts.
+- [x] документировать изменения foundation contracts одновременно с изменением runtime surface;
+- [x] удерживать local docs и `README.md` синхронизированными;
+- [x] обновлять consumer-module docs, если меняются базовые typed contracts.
 
 ## Проверка
 
@@ -49,3 +63,10 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
 4. При изменении shared contracts обновлять связанные consumer docs там, где это влияет на live behavior.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

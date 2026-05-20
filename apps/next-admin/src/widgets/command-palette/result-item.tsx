@@ -30,11 +30,11 @@ const ResultItem = React.forwardRef(
         {active && (
           <div
             id='kbar-result-item'
-            className='border-primary bg-accent/50 absolute inset-0 z-[-1]! border-l-4'
+            className='border-primary bg-accent/50 absolute inset-0 !z-[-1] border-l-4'
           ></div>
         )}
         <div className='relative z-10 flex items-center gap-2'>
-          {action.icon && action.icon}
+          {action.icon}
           <div className='flex flex-col'>
             <div>
               {ancestors.length > 0 &&
@@ -59,7 +59,7 @@ const ResultItem = React.forwardRef(
           <div className='relative z-10 grid grid-flow-col gap-1'>
             {action.shortcut.map((sc, i) => (
               <kbd
-                key={sc + i}
+                key={`${sc}-${i}`}
                 className='bg-muted flex h-5 items-center gap-1 rounded-md border px-1.5 text-[10px] font-medium'
               >
                 {sc}

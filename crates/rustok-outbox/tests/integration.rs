@@ -10,7 +10,10 @@ use rustok_core::{Error, Result};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_outbox::{OutboxRelay, RelayConfig, SysEventsMigration};
-use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
+    DatabaseConnection, EntityTrait, Set, Statement,
+};
 use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -188,10 +191,30 @@ async fn setup_db() -> TestResult<Option<DatabaseConnection>> {
         Err(_) => return Ok(None),
     };
 
-    let db = Database::connect(&database_url).await?;
+    let mut options = ConnectOptions::new(database_url.clone());
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+
+    let db = Database::connect(options).await?;
+
+    if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
+        let schema_name = format!("rustok_outbox_test_{}", Uuid::new_v4().simple());
+        db.execute(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(r#"CREATE SCHEMA "{schema_name}""#),
+        ))
+        .await?;
+        db.execute(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(r#"SET search_path TO "{schema_name}""#),
+        ))
+        .await?;
+    }
+
     let schema_manager = SchemaManager::new(&db);
 
-    let _ = SysEventsMigration.down(&schema_manager).await;
     SysEventsMigration.up(&schema_manager).await?;
 
     Ok(Some(db))

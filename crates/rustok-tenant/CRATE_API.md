@@ -9,11 +9,13 @@
 - `TenantModule` реализует `RusToKModule` с `ModuleKind::Core`.
 
 ## События
-- Публикует: N/A (базовый core-модуль tenancy).
+- Публикует: `tenant.created`, `tenant.updated`, `tenant.module.toggled` (через `TransactionalEventBus`, если он передан в `TenantService::with_event_bus`).
 - Потребляет: N/A.
 
 ## Зависимости от других rustok-крейтов
 - `rustok-core`
+- `rustok-events`
+- `rustok-outbox`
 
 ## Частые ошибки ИИ
 - Смешивает `tenant slug` и внутренний `tenant_id`.

@@ -2,6 +2,15 @@
 
 Статус: базовый renderer уже выделен из `apps/storefront` и используется как shared Rust-side SEO adapter.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работы
 
 - держать единый Rust-side renderer поверх canonical `rustok-seo::SeoPageContext`;
@@ -25,3 +34,10 @@
 1. Изменения canonical SEO contract сначала фиксируются в `rustok-seo`.
 2. Затем синхронизируется renderer crate и Rust-host потребители.
 3. Если меняется ownership или public API renderer-а, обновляются `README.md`, `docs/README.md` и центральные registry docs.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

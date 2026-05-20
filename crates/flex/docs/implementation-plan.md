@@ -5,6 +5,15 @@
 
 ---
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 Этот план фиксирует доведение `flex` до целевого capability-only состояния в трёх плоскостях:
@@ -352,3 +361,10 @@ CREATE INDEX idx_index_flex_search ON index_flex_entries USING GIN (search_vecto
 > **Live status override (2026-04-05):** attached multilingual donor path уже реально закрыт для `user`, `product`, `order` и `topic` через shared `flex_attached_localized_values`.
 > `topic` больше не является schema-level consumer: forum topic donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values резолвятся по тому же effective locale contract, что и у остальных live donors.
 > Если нижележащие разделы старого плана говорят, что `order` ещё не переведён или что для `topic` уже существует donor metadata path, считать это устаревшим.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

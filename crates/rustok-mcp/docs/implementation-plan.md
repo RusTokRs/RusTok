@@ -4,6 +4,15 @@
 не про переписывание протокола, а про доведение RusToK-specific runtime,
 identity/audit и Alloy-related control plane до platform-grade уровня.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-mcp` как thin MCP adapter crate поверх `rmcp`;
@@ -52,3 +61,10 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 2. Сначала сверять изменения с official MCP/rmcp источниками, потом обновлять local docs.
 3. При изменении public crate behavior синхронизировать `README.md` и `docs/README.md`.
 4. При изменении reference-map обновлять `docs/references/mcp/README.md` и при необходимости `docs/index.md`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

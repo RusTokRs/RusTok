@@ -52,11 +52,26 @@ async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnError
             .await
             .map_err(ServerFnError::new)?;
 
-        if !has_any_effective_permission(
+        let can_read_tenant = has_any_effective_permission(
             &auth.permissions,
-            &[Permission::TENANTS_READ, Permission::MODULES_READ],
-        ) {
-            return Err(ServerFnError::new("tenants:read or modules:read required"));
+            &[
+                Permission::TENANTS_READ,
+                Permission::TENANTS_LIST,
+                Permission::TENANTS_MANAGE,
+            ],
+        );
+        let can_read_modules = has_any_effective_permission(
+            &auth.permissions,
+            &[
+                Permission::MODULES_READ,
+                Permission::MODULES_LIST,
+                Permission::MODULES_MANAGE,
+            ],
+        );
+        if !(can_read_tenant && can_read_modules) {
+            return Err(ServerFnError::new(
+                "tenant admin bootstrap requires tenants:(read|list|manage) and modules:(read|list|manage)",
+            ));
         }
 
         let service = TenantService::new(app_ctx.db.clone());

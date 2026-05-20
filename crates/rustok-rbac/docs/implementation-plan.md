@@ -3,6 +3,15 @@
 Статус: переход на single-engine Casbin runtime завершён; модуль удерживается в
 steady-state hardening и drift-prevention режиме.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-rbac` как единственную каноническую границу RBAC runtime;
@@ -23,7 +32,8 @@ steady-state hardening и drift-prevention режиме.
 - [x] зафиксировать single-engine runtime contract;
 - [x] перенести policy/evaluator semantics и resolver APIs в модуль;
 - [x] стандартизировать integration events для role-assignment changes;
-- [ ] удерживать sync между runtime contracts, server adapters и module metadata.
+- [ ] удерживать sync между runtime contracts, server adapters и module metadata (tenant module adapters выровнены: `module_registry`/`tenant_modules` и tenant admin bootstrap теперь проверяют tenant-scoped read/list/manage permissions);
+- [ ] контрактные тесты покрывают все публичные use-case для permission resolution, authorization decisions, cache semantics и integration events.
 
 ### 2. Drift prevention
 
@@ -49,3 +59,10 @@ steady-state hardening и drift-prevention режиме.
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении module metadata, dependency graph или verification expectations синхронизировать `rustok-module.toml` и профильные verification docs.
 4. При изменении live contract обновлять также `apps/server/docs/README.md`.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

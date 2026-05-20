@@ -35,6 +35,7 @@ mod m20260405_000001_expand_locale_storage_columns;
 mod m20260405_000002_split_flex_schema_localized_fields;
 mod m20260405_000003_add_is_localized_to_server_field_definitions;
 mod m20260405_000004_create_flex_attached_localized_values;
+mod m20260407_000001_split_flex_entry_localized_values;
 mod m20260408_000001_expand_registry_publish_request_governance_states;
 mod m20260408_000002_expand_registry_validation_stage_runner_leases;
 mod m20260410_000001_cleanup_flex_attached_legacy_inline_metadata;
@@ -82,6 +83,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260405_000002_split_flex_schema_localized_fields::Migration),
             Box::new(m20260405_000003_add_is_localized_to_server_field_definitions::Migration),
             Box::new(m20260405_000004_create_flex_attached_localized_values::Migration),
+            Box::new(m20260407_000001_split_flex_entry_localized_values::Migration),
             Box::new(m20260410_000001_cleanup_flex_attached_legacy_inline_metadata::Migration),
             Box::new(m20260408_000001_expand_registry_publish_request_governance_states::Migration),
             Box::new(m20260408_000002_expand_registry_validation_stage_runner_leases::Migration),
@@ -119,22 +121,79 @@ impl MigratorTrait for Migrator {
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
         ));
+        let mut dependencies: Vec<MigrationDescriptor> = Vec::new();
+        dependencies.extend(
+            rustok_product::migrations::migration_dependencies()
+                .into_iter()
+                .map(MigrationDescriptor::from),
+        );
+
         all.sort_by(|a, b| a.name().cmp(b.name()));
-        sort_migrations_by_dependencies(&mut all);
+        sort_migrations_by_dependencies(&mut all, &dependencies)
+            .expect("migration dependency descriptors must be valid");
         all
     }
 }
 
-fn migration_dependencies(name: &str) -> &'static [&'static str] {
-    match name {
-        "m20260329_000001_create_product_tags" => &["m20260329_000001_create_taxonomy_tables"],
-        _ => &[],
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationDescriptor {
+    migration: String,
+    after: Vec<String>,
+}
+
+impl MigrationDescriptor {
+    pub fn new(
+        migration: impl Into<String>,
+        after: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        Self {
+            migration: migration.into(),
+            after: after.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<rustok_core::MigrationDependencyDescriptor> for MigrationDescriptor {
+    fn from(descriptor: rustok_core::MigrationDependencyDescriptor) -> Self {
+        Self {
+            migration: descriptor.migration.to_string(),
+            after: descriptor.after.into_iter().map(str::to_string).collect(),
+        }
     }
 }
 
 fn sort_migrations_by_dependencies(
     migrations: &mut Vec<Box<dyn sea_orm_migration::MigrationTrait>>,
-) {
+    descriptors: &[MigrationDescriptor],
+) -> Result<(), String> {
+    let names = migrations
+        .iter()
+        .map(|migration| migration.name().to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    for descriptor in descriptors {
+        if !names.contains(&descriptor.migration) {
+            return Err(format!(
+                "migration descriptor references missing migration {}",
+                descriptor.migration
+            ));
+        }
+        for dependency in &descriptor.after {
+            if !names.contains(dependency) {
+                return Err(format!(
+                    "migration {} depends on missing migration {}",
+                    descriptor.migration, dependency
+                ));
+            }
+        }
+    }
+
+    let after_by_name = descriptors
+        .iter()
+        .cloned()
+        .map(|descriptor| (descriptor.migration, descriptor.after))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
     let mut sorted: Vec<Box<dyn sea_orm_migration::MigrationTrait>> =
         Vec::with_capacity(migrations.len());
     let mut remaining = std::mem::take(migrations);
@@ -144,11 +203,15 @@ fn sort_migrations_by_dependencies(
         let mut index = 0;
         while index < remaining.len() {
             let name = remaining[index].name().to_string();
-            let deps_satisfied = migration_dependencies(&name).iter().all(|dependency| {
-                sorted
-                    .iter()
-                    .any(|migration| migration.name() == *dependency)
-            });
+            let deps_satisfied = after_by_name
+                .get(&name)
+                .into_iter()
+                .flatten()
+                .all(|dependency| {
+                    sorted
+                        .iter()
+                        .any(|migration| migration.name() == dependency.as_str())
+                });
             if deps_satisfied {
                 sorted.push(remaining.remove(index));
             } else {
@@ -157,18 +220,95 @@ fn sort_migrations_by_dependencies(
         }
 
         if remaining.len() == before {
-            sorted.append(&mut remaining);
+            let cycle = remaining
+                .iter()
+                .map(|migration| migration.name().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "migration dependency cycle or unsatisfied dependency: {cycle}"
+            ));
         }
     }
 
     *migrations = sorted;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Migrator;
+    use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
+
+    #[test]
+    fn dependency_sort_rejects_missing_dependency() {
+        let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
+            Box::new(super::m20250101_000001_create_tenants::Migration),
+            Box::new(super::m20250101_000002_create_users::Migration),
+        ];
+        let descriptors = vec![MigrationDescriptor::new(
+            "m20250101_000002_create_users",
+            ["m99999999_000001_missing_dep"],
+        )];
+
+        let err = sort_migrations_by_dependencies(&mut migrations, &descriptors)
+            .expect_err("missing dependency must fail");
+        assert!(
+            err.contains("depends on missing migration"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn dependency_sort_rejects_cycle() {
+        let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
+            Box::new(super::m20250101_000001_create_tenants::Migration),
+            Box::new(super::m20250101_000002_create_users::Migration),
+        ];
+        let descriptors = vec![
+            MigrationDescriptor::new(
+                "m20250101_000001_create_tenants",
+                ["m20250101_000002_create_users"],
+            ),
+            MigrationDescriptor::new(
+                "m20250101_000002_create_users",
+                ["m20250101_000001_create_tenants"],
+            ),
+        ];
+
+        let err =
+            sort_migrations_by_dependencies(&mut migrations, &descriptors).expect_err("cycle");
+        assert!(
+            err.contains("cycle or unsatisfied dependency"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn dependency_sort_keeps_lexical_order_without_descriptors() {
+        let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
+            Box::new(super::m20250101_000002_create_users::Migration),
+            Box::new(super::m20250101_000001_create_tenants::Migration),
+        ];
+        let descriptors: Vec<MigrationDescriptor> = Vec::new();
+
+        sort_migrations_by_dependencies(&mut migrations, &descriptors)
+            .expect("empty descriptors must preserve lexical default");
+
+        let names = migrations
+            .iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "m20250101_000002_create_users".to_string(),
+                "m20250101_000001_create_tenants".to_string(),
+            ],
+            "sorting helper must not reorder migrations when no dependency metadata is provided"
+        );
+    }
 
     #[test]
     fn migrator_includes_auth_migrations_in_sorted_order() {
@@ -191,7 +331,11 @@ mod tests {
                 .iter()
                 .position(|candidate| candidate == name)
                 .expect("migration exists");
-            for dependency in super::migration_dependencies(name) {
+            for dependency in rustok_product::migrations::migration_dependencies()
+                .into_iter()
+                .filter(|descriptor| descriptor.migration == name)
+                .flat_map(|descriptor| descriptor.after)
+            {
                 let dependency_index = names
                     .iter()
                     .position(|candidate| candidate == dependency)
@@ -306,6 +450,48 @@ mod tests {
                 &"m20260410_000001_cleanup_flex_attached_legacy_inline_metadata".to_string()
             ),
             "server migrator must include attached legacy metadata cleanup migration"
+        );
+    }
+
+    #[test]
+    fn migration_dependency_sort_rejects_missing_dependency() {
+        let mut migrations = Migrator::migrations();
+        let error = super::sort_migrations_by_dependencies(
+            &mut migrations,
+            &[MigrationDescriptor::new(
+                "m20260329_000001_create_product_tags",
+                vec!["m20990101_000001_missing"],
+            )],
+        )
+        .expect_err("missing dependency must be rejected");
+
+        assert!(
+            error.contains("depends on missing migration"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn migration_dependency_sort_rejects_cycles() {
+        let mut migrations = Migrator::migrations();
+        let error = super::sort_migrations_by_dependencies(
+            &mut migrations,
+            &[
+                MigrationDescriptor::new(
+                    "m20260329_000001_create_product_tags",
+                    vec!["m20260329_000001_create_taxonomy_tables"],
+                ),
+                MigrationDescriptor::new(
+                    "m20260329_000001_create_taxonomy_tables",
+                    vec!["m20260329_000001_create_product_tags"],
+                ),
+            ],
+        )
+        .expect_err("cycle must be rejected");
+
+        assert!(
+            error.contains("cycle or unsatisfied dependency"),
+            "unexpected error: {error}"
         );
     }
 

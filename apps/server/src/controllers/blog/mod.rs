@@ -1,6 +1,7 @@
 use axum::routing::get;
 use loco_rs::controller::Routes;
 
+pub mod comments;
 pub mod posts;
 
 pub fn routes() -> Routes {

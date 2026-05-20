@@ -4,6 +4,15 @@
 ключевая задача — удерживать его минимальным и не допускать повторной сборки
 монолита в foundation-слое.
 
+## Execution checkpoint
+
+- Current phase: plan_sync
+- Last checkpoint: Initial bootstrap by registry workflow.
+- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Open blockers: None.
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
+- Last updated at (UTC): 2026-05-20T00:00:00Z
+
 ## Область работ
 
 - удерживать `rustok-commerce-foundation` как dependency-only support crate;
@@ -48,3 +57,10 @@
 1. При изменении shared commerce foundation contract сначала обновлять этот файл.
 2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении consumer expectations обновлять связанные docs в split commerce crates.
+
+
+## Quality backlog
+
+- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

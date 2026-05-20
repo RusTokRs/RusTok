@@ -6,8 +6,7 @@ import {
   FormDescription,
   FormField,
   FormItem,
-  FormLabel,
-  FormMessage
+  FormLabel
 } from '@/shared/ui/shadcn/form';
 import { Switch } from '@/shared/ui/shadcn/switch';
 import { BaseFormFieldProps } from '@/types/base-form';

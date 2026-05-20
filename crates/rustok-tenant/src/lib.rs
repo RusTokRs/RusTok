@@ -3,6 +3,8 @@ pub mod entities;
 pub mod error;
 pub mod services;
 
+mod settings_schema;
+
 pub use dto::{
     CreateTenantInput, TenantModuleResponse, TenantResponse, ToggleModuleInput, UpdateTenantInput,
 };
