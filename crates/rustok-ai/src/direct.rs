@@ -31,6 +31,12 @@ use crate::provider::ModelProvider;
 use crate::service::AiOperatorContext;
 use crate::{AiError, AiResult};
 use rustok_core::{SecurityContext, CONTENT_FORMAT_MARKDOWN};
+mod direct_content_moderation;
+mod direct_order_tasks;
+mod direct_product_attributes;
+use direct_content_moderation::ContentModerationHandler;
+use direct_order_tasks::{OrderAnalyticsHandler, OrderOpsAssistantHandler};
+use direct_product_attributes::ProductAttributesHandler;
 
 pub struct DirectExecutionRequest {
     pub task_slug: String,
@@ -322,10 +328,6 @@ pub struct MediaImageAssetHandler;
 pub struct ProductCopyHandler;
 
 pub struct BlogDraftHandler;
-pub struct ContentModerationHandler;
-pub struct ProductAttributesHandler;
-pub struct OrderAnalyticsHandler;
-pub struct OrderOpsAssistantHandler;
 
 #[async_trait]
 impl DirectTaskHandler for MediaImageAssetHandler {
@@ -892,185 +894,6 @@ impl DirectTaskHandler for BlogDraftHandler {
     }
 }
 
-#[async_trait]
-impl DirectTaskHandler for ContentModerationHandler {
-    fn task_slug(&self) -> &'static str {
-        "content_moderation"
-    }
-
-    async fn execute(
-        &self,
-        _app_ctx: &AppContext,
-        _operator: &AiOperatorContext,
-        request: DirectExecutionRequest,
-    ) -> AiResult<DirectExecutionResult> {
-        let input: AiContentModerationTaskInput =
-            serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
-        let started = std::time::Instant::now();
-
-        let generated = generate_content_moderation(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            &input,
-        )
-        .await?;
-        let operation_payload = serde_json::to_value(&generated).map_err(AiError::Json)?;
-        let summary = format!(
-            "Moderation decision: {} (severity {}).",
-            generated.decision, generated.severity
-        );
-        let trace = ToolTrace {
-            tool_name: "direct.content.moderation".to_string(),
-            input_payload: request.task_input_json.clone(),
-            output_payload: Some(operation_payload.clone()),
-            status: "completed".to_string(),
-            duration_ms: started.elapsed().as_millis() as i64,
-            sensitive: true,
-            error_message: None,
-            created_at: Utc::now(),
-        };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
-        .await;
-
-        Ok(DirectExecutionResult {
-            execution_target: DirectExecutionTarget::Moderation,
-            appended_messages: vec![explanation],
-            traces: vec![trace],
-            metadata: json!({
-                "direct_task": request.task_slug,
-                "requested_locale": request.requested_locale,
-                "resolved_locale": request.resolved_locale,
-                "moderation": operation_payload,
-            }),
-        })
-    }
-}
-
-#[async_trait]
-impl DirectTaskHandler for ProductAttributesHandler {
-    fn task_slug(&self) -> &'static str {
-        "product_attributes"
-    }
-
-    async fn execute(
-        &self,
-        app_ctx: &AppContext,
-        operator: &AiOperatorContext,
-        request: DirectExecutionRequest,
-    ) -> AiResult<DirectExecutionResult> {
-        let input: AiProductAttributesTaskInput =
-            serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
-        let started = std::time::Instant::now();
-        let catalog = CatalogService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(app_ctx),
-        );
-        let security = ai_security_context(operator);
-        let product = catalog
-            .get_product(operator.tenant_id, input.product_id, &security)
-            .await
-            .map_err(|err| AiError::Runtime(err.to_string()))?;
-        let generated = generate_product_attributes(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            &input,
-            &product,
-        )
-        .await?;
-        let operation_payload = serde_json::to_value(&generated).map_err(AiError::Json)?;
-        let summary = format!(
-            "Prepared {} suggested product attributes.",
-            generated.flex_attributes.len()
-        );
-        let trace = ToolTrace {
-            tool_name: "direct.commerce.product_attributes".to_string(),
-            input_payload: request.task_input_json.clone(),
-            output_payload: Some(operation_payload.clone()),
-            status: "completed".to_string(),
-            duration_ms: started.elapsed().as_millis() as i64,
-            sensitive: false,
-            error_message: None,
-            created_at: Utc::now(),
-        };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
-        .await;
-
-        Ok(DirectExecutionResult {
-            execution_target: DirectExecutionTarget::Commerce,
-            appended_messages: vec![explanation],
-            traces: vec![trace],
-            metadata: json!({
-                "direct_task": request.task_slug,
-                "requested_locale": request.requested_locale,
-                "resolved_locale": request.resolved_locale,
-                "product_id": input.product_id,
-                "suggested_attributes": operation_payload,
-            }),
-        })
-    }
-}
-
-#[async_trait]
-impl DirectTaskHandler for OrderAnalyticsHandler {
-    fn task_slug(&self) -> &'static str {
-        "order_analytics"
-    }
-
-    async fn execute(
-        &self,
-        _app_ctx: &AppContext,
-        _operator: &AiOperatorContext,
-        request: DirectExecutionRequest,
-    ) -> AiResult<DirectExecutionResult> {
-        let _input: AiOrderAnalyticsTaskInput =
-            serde_json::from_value(request.task_input_json).map_err(AiError::Json)?;
-        Err(AiError::Validation(
-            "order_analytics direct handler is not implemented yet".to_string(),
-        ))
-    }
-}
-
-#[async_trait]
-impl DirectTaskHandler for OrderOpsAssistantHandler {
-    fn task_slug(&self) -> &'static str {
-        "order_ops_assistant"
-    }
-
-    async fn execute(
-        &self,
-        _app_ctx: &AppContext,
-        _operator: &AiOperatorContext,
-        request: DirectExecutionRequest,
-    ) -> AiResult<DirectExecutionResult> {
-        let _input: AiOrderOpsAssistantTaskInput =
-            serde_json::from_value(request.task_input_json).map_err(AiError::Json)?;
-        Err(AiError::Validation(
-            "order_ops_assistant direct handler is not implemented yet".to_string(),
-        ))
-    }
-}
 
 #[derive(Debug, Clone, Serialize)]
 struct ProductSourceTranslation {
@@ -1149,7 +972,7 @@ struct BlogSourceContent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct GeneratedModerationDecision {
+pub(crate) struct GeneratedModerationDecision {
     decision: String,
     #[serde(default)]
     labels: Vec<String>,
@@ -1160,7 +983,7 @@ struct GeneratedModerationDecision {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct GeneratedProductAttributes {
+pub(crate) struct GeneratedProductAttributes {
     brand: Option<String>,
     material: Option<String>,
     color: Option<String>,
@@ -1174,7 +997,7 @@ struct GeneratedProductAttributes {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct GeneratedFlexAttribute {
+pub(crate) struct GeneratedFlexAttribute {
     key: String,
     value: String,
 }
@@ -1297,7 +1120,7 @@ async fn generate_blog_draft(
     serde_json::from_value(parsed).map_err(AiError::Json)
 }
 
-async fn generate_content_moderation(
+pub(crate) async fn generate_content_moderation(
     provider: &Arc<dyn ModelProvider>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
@@ -1400,7 +1223,7 @@ async fn generate_content_moderation(
     })
 }
 
-async fn generate_product_attributes(
+pub(crate) async fn generate_product_attributes(
     provider: &Arc<dyn ModelProvider>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
@@ -1568,7 +1391,7 @@ fn parse_generated_product_copy(content: &str) -> AiResult<GeneratedProductCopy>
     serde_json::from_value(parsed).map_err(AiError::Json)
 }
 
-fn parse_json_object_from_text(content: &str) -> AiResult<Value> {
+pub(crate) fn parse_json_object_from_text(content: &str) -> AiResult<Value> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
         return Err(AiError::Provider(
@@ -1605,7 +1428,7 @@ fn locale_matches(left: &str, right: &str) -> bool {
         .is_some_and(|(left, right)| left.eq_ignore_ascii_case(&right))
 }
 
-fn ai_security_context(operator: &AiOperatorContext) -> SecurityContext {
+pub(crate) fn ai_security_context(operator: &AiOperatorContext) -> SecurityContext {
     SecurityContext::from_permissions(
         infer_user_role_from_permissions(&operator.permissions),
         Some(operator.user_id),
@@ -1746,7 +1569,7 @@ fn parse_runtime_payload(payload: Option<String>) -> AiResult<serde_json::Map<St
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn explain_result(
+pub(crate) async fn explain_result(
     provider: &Arc<dyn ModelProvider>,
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
