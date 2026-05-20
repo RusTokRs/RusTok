@@ -1421,13 +1421,6 @@ fn load_runtime_marketplace_modules(
 }
 
 #[cfg(feature = "ssr")]
-struct RuntimeModuleDescriptor {
-    root: std::path::PathBuf,
-    package_manifest: RuntimeModulePackageManifest,
-    cargo_manifest: RuntimeCargoManifest,
-}
-
-#[cfg(feature = "ssr")]
 fn load_runtime_module_package_manifest_by_slug(
     module_slug: &str,
     manifest: &RuntimeModulesManifest,
@@ -1443,124 +1436,6 @@ fn load_runtime_module_package_manifest_by_slug(
     Ok(None)
 }
 
-#[cfg(feature = "ssr")]
-fn load_runtime_module_descriptor_by_slug(
-    module_slug: &str,
-    manifest: &RuntimeModulesManifest,
-) -> Result<Option<RuntimeModuleDescriptor>, ServerFnError> {
-    for module_root in runtime_module_roots(manifest)? {
-        let package_manifest: RuntimeModulePackageManifest =
-            load_toml_file(&module_root.join("rustok-module.toml"))?;
-        if package_manifest.module.slug == module_slug {
-            let cargo_manifest: RuntimeCargoManifest =
-                load_toml_file(&module_root.join("Cargo.toml"))?;
-            return Ok(Some(RuntimeModuleDescriptor {
-                root: module_root,
-                package_manifest,
-                cargo_manifest,
-            }));
-        }
-    }
-
-    Ok(None)
-}
-
-#[cfg(feature = "ssr")]
-async fn save_manifest_and_enqueue_build(
-    app_ctx: &loco_rs::app::AppContext,
-    expected_revision: i64,
-    manifest: &RuntimeModulesManifest,
-    requested_by: &str,
-    reason: String,
-    summary: String,
-) -> Result<BuildJob, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement, TransactionTrait};
-
-    let backend = app_ctx.db.get_database_backend();
-    let next_revision = expected_revision + 1;
-    let manifest_hash = runtime_manifest_hash(manifest);
-    let manifest_snapshot = serde_json::to_value(manifest)
-        .map_err(|err| server_error(format!("failed to encode platform manifest: {err}")))?;
-    let now = chrono::Utc::now();
-    let update = Statement::from_sql_and_values(
-        backend,
-        platform_state_update_sql(backend),
-        vec![
-            next_revision.into(),
-            manifest_snapshot.clone().into(),
-            manifest_hash.clone().into(),
-            requested_by.to_string().into(),
-            now.into(),
-            "active".into(),
-            expected_revision.into(),
-        ],
-    );
-    let txn = app_ctx.db.begin().await.map_err(|err| {
-        server_error(format!("failed to begin manifest/build transaction: {err}"))
-    })?;
-
-    let update_result = txn
-        .execute(update)
-        .await
-        .map_err(|err| server_error(format!("failed to update platform_state: {err}")))?;
-    if update_result.rows_affected() != 1 {
-        return Err(server_error(format!(
-            "Platform composition revision conflict: expected {expected_revision}"
-        )));
-    }
-
-    let build_id = rustok_core::generate_id();
-    let insert = Statement::from_sql_and_values(
-        backend,
-        runtime_build_job_insert_sql(backend),
-        vec![
-            build_id.into(),
-            "queued".into(),
-            "pending".into(),
-            0.into(),
-            runtime_deployment_profile(manifest).into(),
-            format!("platform_state:{next_revision}").into(),
-            manifest_hash.into(),
-            next_revision.into(),
-            manifest_snapshot.into(),
-            runtime_modules_delta_json(manifest, summary).into(),
-            requested_by.to_string().into(),
-            reason.into(),
-            now.into(),
-            now.into(),
-        ],
-    );
-
-    txn.execute(insert).await.map_err(|err| {
-        server_error(format!(
-            "failed to enqueue build after manifest update: {err}"
-        ))
-    })?;
-
-    let select = Statement::from_sql_and_values(
-        backend,
-        runtime_build_job_select_sql(backend),
-        vec![build_id.into()],
-    );
-
-    let build = txn
-        .query_one(select)
-        .await
-        .map_err(|err| server_error(err.to_string()))?
-        .map(map_build_job_row)
-        .transpose()?
-        .ok_or_else(|| server_error("build record missing after enqueue"))?;
-
-    txn.commit().await.map_err(|err| {
-        server_error(format!(
-            "failed to commit manifest/build transaction: {err}"
-        ))
-    })?;
-
-    Ok(build)
-}
-
-#[cfg(feature = "ssr")]
 fn runtime_setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
     match value_type {
         "string" => value.is_string(),
@@ -4228,287 +4103,6 @@ async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnErr
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "admin/install-module")]
-async fn install_module_native(slug: String, version: String) -> Result<BuildJob, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::has_any_effective_permission;
-        use rustok_core::Permission;
-
-        let (app_ctx, auth, _tenant) = modules_server_context().await?;
-
-        if !has_any_effective_permission(&auth.permissions, &[Permission::MODULES_MANAGE]) {
-            return Err(ServerFnError::new("modules:manage required"));
-        }
-
-        let version = version.trim();
-        if version.is_empty() {
-            return Err(server_error("Version must not be empty"));
-        }
-
-        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
-        let descriptor = load_runtime_module_descriptor_by_slug(&slug, &snapshot.manifest)?
-            .ok_or_else(|| server_error(format!("Unknown module '{slug}'")))?;
-        let mut manifest = snapshot.manifest.clone();
-
-        if manifest.modules.contains_key(&slug) {
-            return Err(server_error(format!(
-                "Module '{slug}' is already installed in modules.toml"
-            )));
-        }
-
-        let workspace_root = runtime_workspace_root();
-        let relative_root = descriptor
-            .root
-            .strip_prefix(&workspace_root)
-            .map_err(|err| server_error(err.to_string()))?
-            .to_string_lossy()
-            .replace('\\', "/");
-
-        let dependencies = if descriptor.package_manifest.dependencies.is_empty() {
-            Vec::new()
-        } else {
-            descriptor
-                .package_manifest
-                .dependencies
-                .keys()
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-
-        let missing_dependencies = dependencies
-            .iter()
-            .filter(|dependency| !manifest.modules.contains_key(*dependency))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !missing_dependencies.is_empty() {
-            return Err(server_error(format!(
-                "Module '{slug}' depends on missing modules: {}",
-                missing_dependencies.join(", ")
-            )));
-        }
-
-        manifest.modules.insert(
-            slug.clone(),
-            RuntimeManifestModuleSpec {
-                source: "path".to_string(),
-                crate_name: descriptor.cargo_manifest.package.name,
-                path: Some(relative_root),
-                version: Some(version.to_string()),
-                git: None,
-                rev: None,
-                required: false,
-                depends_on: dependencies,
-            },
-        );
-
-        save_manifest_and_enqueue_build(
-            &app_ctx,
-            snapshot.revision,
-            &manifest,
-            &auth.user_id.to_string(),
-            format!("install module {slug}"),
-            format!("+{slug}@{version}"),
-        )
-        .await
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = (slug, version);
-        Err(ServerFnError::new(
-            "admin/install-module requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/uninstall-module")]
-async fn uninstall_module_native(slug: String) -> Result<BuildJob, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::has_any_effective_permission;
-        use rustok_core::Permission;
-
-        let (app_ctx, auth, _tenant) = modules_server_context().await?;
-
-        if !has_any_effective_permission(&auth.permissions, &[Permission::MODULES_MANAGE]) {
-            return Err(ServerFnError::new("modules:manage required"));
-        }
-
-        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
-        let mut manifest = snapshot.manifest.clone();
-        let spec = manifest.modules.get(&slug).cloned().ok_or_else(|| {
-            server_error(format!("Module '{slug}' is not installed in modules.toml"))
-        })?;
-
-        if spec.required {
-            return Err(server_error(format!(
-                "Module '{slug}' is required and cannot be removed from modules.toml"
-            )));
-        }
-
-        let dependents = manifest
-            .modules
-            .iter()
-            .filter(|(candidate_slug, _)| candidate_slug.as_str() != slug)
-            .filter(|(_, candidate_spec)| candidate_spec.depends_on.iter().any(|dep| dep == &slug))
-            .map(|(candidate_slug, _)| candidate_slug.clone())
-            .collect::<Vec<_>>();
-
-        if !dependents.is_empty() {
-            return Err(server_error(format!(
-                "Module '{slug}' is required by: {}",
-                dependents.join(", ")
-            )));
-        }
-
-        manifest.modules.remove(&slug);
-        manifest
-            .settings
-            .default_enabled
-            .retain(|item| item != &slug);
-
-        save_manifest_and_enqueue_build(
-            &app_ctx,
-            snapshot.revision,
-            &manifest,
-            &auth.user_id.to_string(),
-            format!("uninstall module {slug}"),
-            format!("-{slug}"),
-        )
-        .await
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = slug;
-        Err(ServerFnError::new(
-            "admin/uninstall-module requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/upgrade-module")]
-async fn upgrade_module_native(slug: String, version: String) -> Result<BuildJob, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::has_any_effective_permission;
-        use rustok_core::Permission;
-
-        let (app_ctx, auth, _tenant) = modules_server_context().await?;
-
-        if !has_any_effective_permission(&auth.permissions, &[Permission::MODULES_MANAGE]) {
-            return Err(ServerFnError::new("modules:manage required"));
-        }
-
-        let version = version.trim();
-        if version.is_empty() {
-            return Err(server_error("Version must not be empty"));
-        }
-
-        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
-        let mut manifest = snapshot.manifest.clone();
-        let spec = manifest.modules.get_mut(&slug).ok_or_else(|| {
-            server_error(format!("Module '{slug}' is not installed in modules.toml"))
-        })?;
-
-        if spec.version.as_deref() == Some(version) {
-            return Err(server_error(format!(
-                "Module '{slug}' is already pinned to version '{version}'"
-            )));
-        }
-
-        spec.version = Some(version.to_string());
-
-        save_manifest_and_enqueue_build(
-            &app_ctx,
-            snapshot.revision,
-            &manifest,
-            &auth.user_id.to_string(),
-            format!("upgrade module {slug}"),
-            format!("~{slug}@{version}"),
-        )
-        .await
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = (slug, version);
-        Err(ServerFnError::new(
-            "admin/upgrade-module requires the `ssr` feature",
-        ))
-    }
-}
-
-#[cfg(feature = "ssr")]
-async fn registry_governance_request_native<TReq, TResp>(
-    method: reqwest::Method,
-    path: String,
-    token: String,
-    tenant: String,
-    body: &TReq,
-) -> Result<TResp, ServerFnError>
-where
-    TReq: Serialize + ?Sized,
-    TResp: for<'de> Deserialize<'de>,
-{
-    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-
-    let client = reqwest::Client::new();
-    let request = client
-        .request(
-            method,
-            format!("{}{}", crate::shared::api::api_base_url(), path),
-        )
-        .header(AUTHORIZATION, format!("Bearer {token}"))
-        .header(CONTENT_TYPE, "application/json")
-        .header("X-Tenant-ID", tenant)
-        .json(body);
-
-    let response = request
-        .send()
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
-    if !response.status().is_success() {
-        return Err(server_error(
-            crate::shared::api::extract_http_error(response).await,
-        ));
-    }
-
-    response
-        .json::<TResp>()
-        .await
-        .map_err(|err| server_error(err.to_string()))
-}
-
-#[cfg(feature = "ssr")]
-async fn registry_governance_get_native<TResp>(
-    path: String,
-    token: String,
-    tenant: String,
-) -> Result<TResp, ServerFnError>
-where
-    TResp: for<'de> Deserialize<'de>,
-{
-    use reqwest::header::AUTHORIZATION;
-
-    let client = reqwest::Client::new();
-    let response = client
-        .get(format!("{}{}", crate::shared::api::api_base_url(), path))
-        .header(AUTHORIZATION, format!("Bearer {token}"))
-        .header("X-Tenant-ID", tenant)
-        .send()
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
-    if !response.status().is_success() {
-        return Err(server_error(
-            crate::shared::api::extract_http_error(response).await,
-        ));
-    }
-
-    response
-        .json::<TResp>()
-        .await
-        .map_err(|err| server_error(err.to_string()))
-}
-
 #[server(
     prefix = "/api/fn",
     endpoint = "admin/registry-fetch-publish-request-status"
@@ -4879,20 +4473,14 @@ pub async fn install_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match install_module_native(slug.clone(), version.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: InstallModuleResponse = request(
-                INSTALL_MODULE_MUTATION,
-                InstallModuleVariables { slug, version },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.install_module)
-        }
-    }
+    let response: InstallModuleResponse = request(
+        INSTALL_MODULE_MUTATION,
+        InstallModuleVariables { slug, version },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.install_module)
 }
 
 pub async fn uninstall_module(
@@ -4900,20 +4488,14 @@ pub async fn uninstall_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match uninstall_module_native(slug.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: UninstallModuleResponse = request(
-                UNINSTALL_MODULE_MUTATION,
-                UninstallModuleVariables { slug },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.uninstall_module)
-        }
-    }
+    let response: UninstallModuleResponse = request(
+        UNINSTALL_MODULE_MUTATION,
+        UninstallModuleVariables { slug },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.uninstall_module)
 }
 
 pub async fn upgrade_module(
@@ -4922,20 +4504,14 @@ pub async fn upgrade_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match upgrade_module_native(slug.clone(), version.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: UpgradeModuleResponse = request(
-                UPGRADE_MODULE_MUTATION,
-                UpgradeModuleVariables { slug, version },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.upgrade_module)
-        }
-    }
+    let response: UpgradeModuleResponse = request(
+        UPGRADE_MODULE_MUTATION,
+        UpgradeModuleVariables { slug, version },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.upgrade_module)
 }
 
 pub async fn rollback_build(
