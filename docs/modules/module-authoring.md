@@ -39,7 +39,7 @@ Support/crate/capability слой может жить рядом с модуле
 
 - module-owned backend crate регистрирует capability через `RusToKModule::register_runtime_extensions(...)`;
 - host строит единый `ModuleRuntimeExtensions` и прокидывает его во все shared entrypoints;
-- consumer entrypoints, которые зависят от такой capability, должны падать явно при отсутствии shared registry, а не тихо fallback-иться к hardcoded built-ins;
+- consumer entrypoints, которые зависят от такой capability, должны падать явно при отсутствии shared registry, а не тихо fallback-иться к hardcoded built-ins; сообщение об ошибке должно быть actionable (какой capability не найден, какой consumer entrypoint затронут, какой module/owner ожидается и как исправить конфигурацию). Graceful degradation допустим только как явно задокументированный opt-in режим (например, feature-disabled/read-only), с warning в логах/метриках и без неявной подмены built-ins;
 - если capability introspect-ится общими operator/admin surface-ами, provider должен публиковать owner-aware metadata вместо того, чтобы заставлять host жёстко маппить slugs в labels;
 - capability crate не получает из-за этого собственный slug в `modules.toml` автоматически.
 
