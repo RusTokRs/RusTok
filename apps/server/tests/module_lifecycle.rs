@@ -18,6 +18,11 @@ struct TestModule {
     disable_calls: Arc<AtomicUsize>,
 }
 
+struct DependentModule {
+    slug: &'static str,
+    dependency: &'static str,
+}
+
 impl TestModule {
     fn new(slug: &'static str) -> Self {
         Self {
@@ -36,6 +41,12 @@ impl TestModule {
 }
 
 impl rustok_core::MigrationSource for TestModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
+    }
+}
+
+impl rustok_core::MigrationSource for DependentModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         vec![]
     }
@@ -73,6 +84,29 @@ impl RusToKModule for TestModule {
             return Err(rustok_core::Error::External("disable failed".to_string()));
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl RusToKModule for DependentModule {
+    fn slug(&self) -> &'static str {
+        self.slug
+    }
+
+    fn name(&self) -> &'static str {
+        "dependent-test-module"
+    }
+
+    fn description(&self) -> &'static str {
+        "test dependent module"
+    }
+
+    fn version(&self) -> &'static str {
+        "0.1.0"
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec![self.dependency]
     }
 }
 
@@ -318,4 +352,35 @@ async fn successful_toggle_with_actor_persists_requested_by() {
 
     assert_eq!(operation.status, "done");
     assert_eq!(operation.requested_by.as_deref(), Some("admin:user-1"));
+}
+
+#[tokio::test]
+async fn dependency_validation_failure_does_not_create_journal_row() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new()
+        .register(TestModule::new("pricing"))
+        .register(DependentModule {
+            slug: "checkout",
+            dependency: "pricing",
+        });
+
+    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "checkout", true)
+        .await
+        .expect_err("enable should fail because dependency is missing");
+    assert!(matches!(err, ToggleModuleError::MissingDependencies(_)));
+
+    let operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("checkout"))
+        .one(&db)
+        .await
+        .expect("query operations");
+
+    assert!(
+        operation.is_none(),
+        "validation errors before lifecycle execution must not create journal rows",
+    );
 }
