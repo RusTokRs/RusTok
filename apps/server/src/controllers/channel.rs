@@ -11,8 +11,9 @@ use rustok_channel::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
     ChannelResolutionPolicySetDetailResponse, ChannelResponse, ChannelService,
     ChannelTargetResponse, CreateChannelInput, CreateChannelResolutionPolicySetInput,
-    CreateChannelResolutionRuleInput, CreateChannelTargetInput, ResolutionAction,
-    ResolutionPredicate, TargetSurface, UpdateChannelTargetInput,
+    CreateChannelResolutionRuleInput, CreateChannelTargetInput,
+    ReorderChannelResolutionRulesInput, ResolutionAction, ResolutionPredicate, TargetSurface,
+    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
 };
 use rustok_core::{ModuleRegistry, Permission};
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,17 @@ struct CreateResolutionRuleRequest {
     oauth_app_id: Option<Uuid>,
     surface: Option<String>,
     locale: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateResolutionRuleRequest {
+    priority: Option<i32>,
+    is_active: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReorderResolutionRulesRequest {
+    rule_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Serialize)]
@@ -367,6 +379,58 @@ async fn create_resolution_rule(
     format::json(rule)
 }
 
+async fn update_resolution_rule(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path((policy_set_id, rule_id)): Path<(Uuid, Uuid)>,
+    Json(input): Json<UpdateResolutionRuleRequest>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let rule = service
+        .update_resolution_rule(
+            policy_set_id,
+            rule_id,
+            UpdateChannelResolutionRuleInput {
+                priority: input.priority,
+                is_active: input.is_active,
+            },
+        )
+        .await
+        .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+
+    format::json(rule)
+}
+
+async fn reorder_resolution_rules(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path(policy_set_id): Path<Uuid>,
+    Json(input): Json<ReorderResolutionRulesRequest>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let rules = service
+        .reorder_resolution_rules(
+            policy_set_id,
+            ReorderChannelResolutionRulesInput {
+                rule_ids: input.rule_ids,
+            },
+        )
+        .await
+        .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+
+    format::json(rules)
+}
+
 async fn activate_resolution_policy_set(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -562,6 +626,14 @@ pub fn routes() -> Routes {
         .add(
             "/policies/{policy_set_id}/rules",
             post(create_resolution_rule),
+        )
+        .add(
+            "/policies/{policy_set_id}/rules/reorder",
+            post(reorder_resolution_rules),
+        )
+        .add(
+            "/policies/{policy_set_id}/rules/{rule_id}",
+            patch(update_resolution_rule),
         )
         .add(
             "/policies/{policy_set_id}/rules/{rule_id}",

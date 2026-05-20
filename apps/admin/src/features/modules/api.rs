@@ -613,6 +613,42 @@ fn combine_native_and_graphql_error(server_err: ServerFnError, graphql_err: ApiE
     ))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::combine_native_and_graphql_error;
+    use crate::shared::api::ApiError;
+    use futures::executor::block_on;
+    use leptos::server_fn::error::ServerFnError;
+
+    #[test]
+    fn combine_error_mentions_native_and_graphql_paths() {
+        let combined = combine_native_and_graphql_error(
+            ServerFnError::new("native disabled"),
+            ApiError::Graphql("unknown module".to_string()),
+        );
+        match combined {
+            ApiError::Graphql(message) => {
+                assert!(message.contains("native path failed"));
+                assert!(message.contains("graphql path failed"));
+                assert!(message.contains("native disabled"));
+                assert!(message.contains("unknown module"));
+            }
+            other => panic!("expected graphql error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn toggle_module_native_is_explicitly_disabled() {
+        let error = block_on(super::toggle_module_native("catalog".to_string(), true))
+            .expect_err("native toggle path must stay disabled");
+        assert!(
+            error
+                .to_string()
+                .contains("native path is disabled; use canonical GraphQL lifecycle entrypoint")
+        );
+    }
+}
+
 #[cfg(feature = "ssr")]
 async fn modules_server_context() -> Result<
     (

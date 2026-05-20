@@ -58,6 +58,17 @@ pub struct CreateChannelResolutionRuleInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateChannelResolutionRuleInput {
+    pub priority: Option<i32>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReorderChannelResolutionRulesInput {
+    pub rule_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,

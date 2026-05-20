@@ -15,7 +15,7 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 - storage для `channel_resolution_policy_sets` и `channel_resolution_policy_rules`;
 - domain-owned resolution layer: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, `ChannelResolver`;
 - tenant-scoped typed resolution policies и explicit default channel semantics;
-- module-owned Leptos admin UI package `rustok-channel-admin` с базовым policy authoring flow.
+- module-owned Leptos admin UI package `rustok-channel-admin` с operator flow для policy authoring, reorder и enable/disable.
 
 ## Интеграция
 

@@ -195,3 +195,14 @@ pub struct CreateResolutionRulePayload {
     pub surface: Option<String>,
     pub locale: Option<String>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UpdateResolutionRulePayload {
+    pub priority: Option<i32>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReorderResolutionRulesPayload {
+    pub rule_ids: Vec<String>,
+}
