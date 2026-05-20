@@ -7,7 +7,8 @@
 - схема `regions`;
 - `RegionModule` и `RegionService`;
 - region boundary для country/currency/tax baseline;
-- typed `tax_provider_id` как region-owned hook для выбора tax provider без metadata-derived fallback;
+- typed `tax_provider_id` как region-owned baseline hook для выбора tax provider;
+- optional channel-scoped override map в `metadata.channel_tax_provider_ids` (string или object `{provider_id|provider}`) используется cart/tax runtime только при наличии `channel_id`;
 - module-owned admin UI для region CRUD;
 - module-owned storefront UI для public region discovery;
 - дефолтный lookup региона по `region_id` или стране.
@@ -16,6 +17,7 @@
 
 - модуль владеет таблицей `regions` и baseline-политикой по странам, валюте и tax flags;
 - модуль не владеет tenant locales: они остаются platform-core данными;
+- channel-specific tax-provider override map остаётся compatibility metadata-contract и не заменяет typed baseline `tax_provider_id`;
 - locale/currency orchestration над baseline по-прежнему живёт в umbrella `rustok-commerce`, который связывает `regions` с tenant locale policy;
 - operator-facing admin CRUD теперь публикуется самим модулем через `rustok-region/admin`, а не через aggregate `commerce`.
 - public storefront read-side теперь тоже публикуется самим модулем через `rustok-region/storefront`, а не через aggregate storefront route.

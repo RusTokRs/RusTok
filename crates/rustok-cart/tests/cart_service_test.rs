@@ -6,6 +6,7 @@ use rustok_cart::dto::{
 };
 use rustok_cart::error::CartError;
 use rustok_cart::services::{cart::CartPricingAdjustmentUpdate, CartService};
+use rustok_commerce_foundation::entities::region;
 use rustok_fulfillment::entities::shipping_option;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
@@ -46,6 +47,33 @@ async fn insert_shipping_option(
     .insert(db)
     .await
     .expect("shipping option should insert");
+}
+
+
+
+async fn insert_region(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    id: Uuid,
+    currency_code: &str,
+    tax_provider_id: Option<&str>,
+    metadata: serde_json::Value,
+) {
+    region::ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        currency_code: Set(currency_code.to_ascii_uppercase()),
+        tax_provider_id: Set(tax_provider_id.map(|value| value.to_string())),
+        tax_rate: Set(Decimal::from_str("10.00").expect("decimal")),
+        tax_included: Set(false),
+        countries: Set(serde_json::json!([])),
+        metadata: Set(metadata),
+        created_at: Set(Utc::now().into()),
+        updated_at: Set(Utc::now().into()),
+    }
+    .insert(db)
+    .await
+    .expect("region should insert");
 }
 
 fn create_cart_input() -> CreateCartInput {
@@ -430,6 +458,406 @@ async fn create_cart_with_channel_persists_channel_snapshot() {
 
     assert_eq!(cart.channel_id, Some(channel_id));
     assert_eq!(cart.channel_slug.as_deref(), Some("web-store"));
+}
+
+#[tokio::test]
+async fn channel_tax_provider_mapping_overrides_region_provider() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): "external_tax"
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect_err("unknown channel provider should fail");
+
+    match error {
+        CartError::Tax(rustok_tax::TaxError::Validation(message)) => {
+            assert!(message.contains("unknown tax provider_id: external_tax"));
+        }
+        other => panic!("expected tax validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn channel_mapping_is_ignored_without_cart_channel_context() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let mapped_channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                mapped_channel_id.to_string(): "external_tax"
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("channel mapping should not apply without cart channel context");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
+}
+
+#[tokio::test]
+async fn channel_tax_provider_mapping_is_normalized_and_overrides_region_provider() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("external_tax"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): "  REGION_DEFAULT  "
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("normalized channel mapping should override invalid region provider");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
+}
+
+#[tokio::test]
+async fn object_channel_tax_provider_mapping_uses_provider_id_successfully() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("external_tax"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): {"provider_id": "region_default"}
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("provider_id object mapping should override invalid region provider");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
+}
+
+#[tokio::test]
+async fn object_channel_tax_provider_mapping_uses_provider_key_alias() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): {"provider": "external_tax"}
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect_err("unknown provider from object mapping should be validated");
+
+    match updated {
+        CartError::Tax(rustok_tax::TaxError::Validation(message)) => {
+            assert!(message.contains("unknown tax provider_id: external_tax"));
+        }
+        other => panic!("expected tax validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn channel_tax_provider_alias_is_ignored_without_channel_context() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let mapped_channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                mapped_channel_id.to_string(): {"provider": "external_tax"}
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("alias mapping should be ignored without channel context");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
+    assert_eq!(updated.tax_lines[0].metadata["channel_id"], serde_json::json!(null));
+}
+
+#[tokio::test]
+async fn channel_tax_provider_alias_is_normalized_and_snapshots_channel_id() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("external_tax"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): {"provider": "  REGION_DEFAULT  "}
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("alias mapping should normalize and override invalid region provider");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
+    assert_eq!(
+        updated.tax_lines[0].metadata["channel_id"],
+        serde_json::json!(channel_id.to_string())
+    );
+}
+
+#[tokio::test]
+async fn channel_tax_provider_mapping_with_invalid_chars_is_rejected() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): "INVALID PROVIDER"
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect_err("invalid provider id should be rejected");
+
+    match error {
+        CartError::Tax(rustok_tax::TaxError::Validation(message)) => {
+            assert!(message.contains("tax provider_id must use lowercase ASCII"));
+        }
+        other => panic!("expected tax validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn blank_channel_tax_provider_mapping_falls_back_to_region_provider() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({
+            "channel_tax_provider_ids": {
+                channel_id.to_string(): "   "
+            }
+        }),
+    )
+    .await;
+
+    let cart = service
+        .create_cart_with_channel(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+            Some(channel_id),
+            Some("web".to_string()),
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .expect("blank channel mapping should use region provider");
+
+    assert_eq!(updated.tax_lines.len(), 1);
+    assert_eq!(updated.tax_lines[0].provider_id, "region_default");
 }
 
 #[tokio::test]

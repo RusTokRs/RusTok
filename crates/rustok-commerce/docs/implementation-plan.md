@@ -480,6 +480,7 @@ Deliverables:
 - `rustok-cart` больше не считает tax lines напрямую из region helper-кода: cart runtime вызывает `TaxService` и snapshot'ит provider-aware tax lines;
 - `cart_tax_lines` и `order_tax_lines` теперь несут first-class `provider_id`, а checkout переносит этот snapshot в order без hidden metadata-only fallback;
 - targeted regression уже фиксирует, что complete checkout сохраняет `provider_id=region_default` в cart/order tax lines вместе с `tax_included` metadata.
+- cart runtime теперь уже учитывает channel-aware provider mapping из region metadata key `channel_tax_provider_ids`: при наличии `cart.channel_id` tax pipeline передаёт `channel_provider_id` в `TaxService` с precedence поверх region `tax_provider_id`.
 
 Обязательные проверки:
 
@@ -489,7 +490,7 @@ Deliverables:
 
 Ближайший execution slice (продолжение coding-плана):
 
-- [ ] добавить channel-aware provider mapping (`regions.tax_provider_id` + `channel_id`) без hidden fallback на `region_default`;
+- [x] добавить channel-aware provider mapping (`regions.tax_provider_id` + `channel_id`) без hidden fallback на `region_default`;
 - [ ] расширить `rustok-tax` до typed rule input (`item class`, `shipping class`, `customer tax-exempt`) без возврата налоговой логики в `rustok-cart`;
 - [ ] закрепить admin/store read-side tax breakdown contract (line-item vs shipping vs order aggregate) в REST и GraphQL parity тестах;
 - [ ] добавить migration/contract smoke для backfill `provider_id` в legacy `order_tax_lines` snapshots.

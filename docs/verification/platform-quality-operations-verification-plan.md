@@ -68,10 +68,10 @@
 
 ### 3.2.1 CI non-regression gates
 
-- [ ] `platform-contract` workflow содержит `cargo xtask validate-manifest` и `cargo xtask module validate`.
-- [ ] Coverage threshold берётся из `scripts/ci/coverage-threshold.env` (`RUSTOK_MIN_COVERAGE_PERCENT`) и применяется через `scripts/ci/check-coverage.sh`.
-- [ ] CI публикует LCOV artifact, SBOM/provenance job остаётся в required aggregate, а `cargo-deny-action` не удалён из security gates.
-- [ ] `scripts/ci/check-dependabot-directories.py` подтверждает, что все directories из `.github/dependabot.yml` существуют и stale paths не возвращаются.
+- [x] `platform-contract` workflow содержит `cargo xtask validate-manifest` и `cargo xtask module validate`.
+- [x] Coverage threshold берётся из `scripts/ci/coverage-threshold.env` (`RUSTOK_MIN_COVERAGE_PERCENT`) и применяется через `scripts/ci/check-coverage.sh`.
+- [x] CI публикует LCOV artifact, SBOM/provenance job остаётся в required aggregate, а `cargo-deny-action` не удалён из security gates.
+- [x] `scripts/ci/check-dependabot-directories.py` подтверждает, что все directories из `.github/dependabot.yml` существуют и stale paths не возвращаются.
 
 ### 3.2 Dependency and manifest hygiene
 
