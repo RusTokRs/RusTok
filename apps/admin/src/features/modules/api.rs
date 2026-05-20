@@ -4497,20 +4497,14 @@ pub async fn install_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match install_module_native(slug.clone(), version.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: InstallModuleResponse = request(
-                INSTALL_MODULE_MUTATION,
-                InstallModuleVariables { slug, version },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.install_module)
-        }
-    }
+    let response: InstallModuleResponse = request(
+        INSTALL_MODULE_MUTATION,
+        InstallModuleVariables { slug, version },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.install_module)
 }
 
 pub async fn uninstall_module(
@@ -4518,20 +4512,14 @@ pub async fn uninstall_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match uninstall_module_native(slug.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: UninstallModuleResponse = request(
-                UNINSTALL_MODULE_MUTATION,
-                UninstallModuleVariables { slug },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.uninstall_module)
-        }
-    }
+    let response: UninstallModuleResponse = request(
+        UNINSTALL_MODULE_MUTATION,
+        UninstallModuleVariables { slug },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.uninstall_module)
 }
 
 pub async fn upgrade_module(
@@ -4540,20 +4528,14 @@ pub async fn upgrade_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
-    match upgrade_module_native(slug.clone(), version.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: UpgradeModuleResponse = request(
-                UPGRADE_MODULE_MUTATION,
-                UpgradeModuleVariables { slug, version },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.upgrade_module)
-        }
-    }
+    let response: UpgradeModuleResponse = request(
+        UPGRADE_MODULE_MUTATION,
+        UpgradeModuleVariables { slug, version },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.upgrade_module)
 }
 
 pub async fn rollback_build(
