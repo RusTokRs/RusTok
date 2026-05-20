@@ -183,13 +183,8 @@ impl PlatformCompositionService {
     }
 
     pub fn manifest_hash(manifest: &ModulesManifest) -> String {
-        use sha2::Digest;
-
         let snapshot = Self::manifest_snapshot_json(manifest).unwrap_or(serde_json::Value::Null);
-        let canonical = serde_json::to_string(&snapshot).unwrap_or_default();
-        let mut hasher = sha2::Sha256::new();
-        sha2::Digest::update(&mut hasher, canonical.as_bytes());
-        hex::encode(sha2::Digest::finalize(hasher))
+        hash_manifest_snapshot(&snapshot)
     }
 
     fn snapshot_from_state(
@@ -217,6 +212,15 @@ impl PlatformCompositionService {
             })
         })
     }
+}
+
+pub fn hash_manifest_snapshot(snapshot: &serde_json::Value) -> String {
+    use sha2::Digest;
+
+    let canonical = serde_json::to_string(snapshot).unwrap_or_default();
+    let mut hasher = sha2::Sha256::new();
+    sha2::Digest::update(&mut hasher, canonical.as_bytes());
+    hex::encode(sha2::Digest::finalize(hasher))
 }
 
 impl PlatformCompositionBuildService {
@@ -328,5 +332,26 @@ impl PlatformCompositionBuildService {
                 Err(error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hash_manifest_snapshot;
+
+    #[test]
+    fn manifest_snapshot_hash_is_sha256_hex() {
+        let hash = hash_manifest_snapshot(&serde_json::json!({
+            "modules": {"catalog": {"enabled": true}}
+        }));
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn manifest_snapshot_hash_changes_when_snapshot_changes() {
+        let left = hash_manifest_snapshot(&serde_json::json!({"a": 1}));
+        let right = hash_manifest_snapshot(&serde_json::json!({"a": 2}));
+        assert_ne!(left, right);
     }
 }
