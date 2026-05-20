@@ -158,6 +158,10 @@ impl SeoService {
                 Some((normalized_slug, templates::normalize_rule_set(rules)))
             })
             .collect();
+        settings.sitemap_submission_endpoints =
+            sitemaps::normalize_sitemap_submission_endpoints(
+                settings.sitemap_submission_endpoints.as_slice(),
+            );
         settings
     }
 

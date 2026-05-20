@@ -763,6 +763,8 @@ pub struct SeoModuleSettings {
     pub template_defaults: SeoTemplateRuleSet,
     #[serde(default)]
     pub template_overrides: BTreeMap<String, SeoTemplateRuleSet>,
+    #[serde(default)]
+    pub sitemap_submission_endpoints: Vec<String>,
 }
 
 impl Default for SeoModuleSettings {
@@ -775,6 +777,7 @@ impl Default for SeoModuleSettings {
             x_default_locale: None,
             template_defaults: SeoTemplateRuleSet::default(),
             template_overrides: BTreeMap::new(),
+            sitemap_submission_endpoints: Vec::new(),
         }
     }
 }

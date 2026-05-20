@@ -11019,6 +11019,7 @@ dependencies = [
  "loco-rs",
  "moka",
  "once_cell",
+ "reqwest 0.13.2",
  "rustok-api",
  "rustok-blog",
  "rustok-commerce-foundation",
