@@ -21,4 +21,6 @@
 ## Docs
 
 - [Module docs](./docs/README.md)
+- Leptos admin UI scaffold: [`./admin/README.md`](./admin/README.md)
+- Next.js admin UI scaffold: [`../../apps/next-admin/packages/rustok-ai-order/README.md`](../../apps/next-admin/packages/rustok-ai-order/README.md)
 - [Platform docs index](../../docs/index.md)

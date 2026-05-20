@@ -125,6 +125,12 @@
 
 - `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
 - `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`
+- `rustok-ai-content` Leptos admin scaffold: [README](../../crates/rustok-ai-content/admin/README.md)
+- `rustok-ai-content` Next.js admin scaffold: `apps/next-admin/packages/rustok-ai-content/`
+- `rustok-ai-product` Leptos admin scaffold: [README](../../crates/rustok-ai-product/admin/README.md)
+- `rustok-ai-product` Next.js admin scaffold: `apps/next-admin/packages/rustok-ai-product/`
+- `rustok-ai-order` Leptos admin scaffold: [README](../../crates/rustok-ai-order/admin/README.md)
+- `rustok-ai-order` Next.js admin scaffold: `apps/next-admin/packages/rustok-ai-order/`
 
 ## Что не делать
 
