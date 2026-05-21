@@ -48,6 +48,7 @@ function buildProductAttributesHref(product: NonNullable<Awaited<ReturnType<type
   const params = new URLSearchParams({
     task: 'product_attributes',
     productId: product.id,
+    locale: translation.locale,
     sourceLocale: translation.locale,
     sourceTitle: translation.title,
     categorySlug: product.productType ?? ''

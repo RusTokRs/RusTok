@@ -601,11 +601,16 @@ export function AiAdminPage(props: AiAdminPageProps) {
     setProductAttributesForm((current) => ({
       ...current,
       productId: params.get('productId') ?? current.productId,
+      locale: params.get('locale') ?? current.locale,
       sourceLocale: params.get('sourceLocale') ?? current.sourceLocale,
       sourceTitle: params.get('sourceTitle') ?? current.sourceTitle,
       sourceDescription:
         params.get('sourceDescription') ?? current.sourceDescription,
-      categorySlug: params.get('categorySlug') ?? current.categorySlug
+      categorySlug: params.get('categorySlug') ?? current.categorySlug,
+      title:
+        params.get('productId')
+          ? `Product Attributes ${params.get('productId')}`
+          : current.title
     }));
 
     if (productAttributesTaskProfile) {
@@ -2161,13 +2166,22 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setError('Product id is required.');
                       return;
                     }
+                    const sourceTitle = productAttributesForm.sourceTitle.trim();
+                    const sourceDescription =
+                      productAttributesForm.sourceDescription.trim();
+                    if (!sourceTitle && !sourceDescription) {
+                      setError(
+                        'Either source title or source description is required for product_attributes.'
+                      );
+                      return;
+                    }
                     const taskInputJson = JSON.stringify({
                       product_id: normalizedProductId,
                       category_slug: productAttributesForm.categorySlug || null,
                       source_locale: productAttributesForm.sourceLocale || null,
-                      source_title: productAttributesForm.sourceTitle || null,
+                      source_title: sourceTitle || null,
                       source_description:
-                        productAttributesForm.sourceDescription || null,
+                        sourceDescription || null,
                       image_urls: splitCsv(productAttributesForm.imageUrls),
                       copy_instructions:
                         productAttributesForm.copyInstructions || null,
