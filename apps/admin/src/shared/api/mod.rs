@@ -152,6 +152,33 @@ fn map_server_fn_error(error: ServerFnError) -> ApiError {
     }
 }
 
+#[cfg(all(test, not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))))]
+mod map_server_fn_error_tests {
+    use super::map_server_fn_error;
+    use leptos::prelude::ServerFnError;
+    use leptos_graphql::GraphqlHttpError;
+
+    #[test]
+    fn maps_well_known_transport_errors() {
+        assert!(matches!(
+            map_server_fn_error(ServerFnError::new("Unauthorized")),
+            GraphqlHttpError::Unauthorized
+        ));
+        assert!(matches!(
+            map_server_fn_error(ServerFnError::new("Network error")),
+            GraphqlHttpError::Network
+        ));
+    }
+
+    #[test]
+    fn maps_graphql_prefix_without_losing_error_taxonomy() {
+        let mapped = map_server_fn_error(ServerFnError::new(
+            "GraphQL error: MODULE_HAS_DEPENDENTS: module 'checkout' has dependents",
+        ));
+        assert!(matches!(mapped, GraphqlHttpError::Graphql(message) if message.contains("MODULE_HAS_DEPENDENTS")));
+    }
+}
+
 pub async fn extract_http_error(response: reqwest::Response) -> String {
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
