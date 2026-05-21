@@ -553,6 +553,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
 
   const [reply, setReply] = React.useState('');
 
+  const productAttributesTaskProfile = React.useMemo(
+    () =>
+      taskProfiles.find(
+        (profile) => profile.slug === 'product_attributes' && profile.isActive
+      ) ?? null,
+    [taskProfiles]
+  );
+
+
   const loadBootstrap = React.useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -599,11 +608,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
       categorySlug: params.get('categorySlug') ?? current.categorySlug
     }));
 
-    const taskProfile = taskProfiles.find((profile) => profile.slug === task);
-    if (taskProfile) {
-      setSessionForm((current) => ({ ...current, taskProfileId: taskProfile.id }));
+    if (productAttributesTaskProfile) {
+      setSessionForm((current) => ({
+        ...current,
+        taskProfileId: productAttributesTaskProfile.id
+      }));
     }
-  }, [taskProfiles]);
+  }, [productAttributesTaskProfile]);
 
   const resetProviderForm = React.useCallback(() => {
     setProviderForm({
@@ -2127,9 +2138,6 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
-                    const productAttributesTaskProfile = taskProfiles.find(
-                      (profile) => profile.slug === 'product_attributes'
-                    );
                     if (!productAttributesTaskProfile) {
                       setError(
                         'Task profile `product_attributes` is not configured. Create/activate it first.'
@@ -2306,7 +2314,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     Provider: {sessionForm.providerProfileId || 'optional'}
                     <br />
                     Task profile:{' '}
-                    {sessionForm.taskProfileId || 'select product_attributes'}
+                    {productAttributesTaskProfile?.id ||
+                      'product_attributes (missing or inactive)'}
                     <br />
                     Mode: direct
                   </div>
