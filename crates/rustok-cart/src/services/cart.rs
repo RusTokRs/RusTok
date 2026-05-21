@@ -1341,7 +1341,7 @@ impl CartService {
             taxable_amounts.push(TaxableAmount {
                 line_item_id: Some(item.id),
                 shipping_option_id: None,
-                item_tax_class: None,
+                item_tax_class: line_item_tax_class(&item.metadata),
                 shipping_tax_class: None,
                 description: Some("line_item".to_string()),
                 amount: item.total_price,
@@ -1369,7 +1369,7 @@ impl CartService {
                 line_item_id: None,
                 shipping_option_id: Some(option.id),
                 item_tax_class: None,
-                shipping_tax_class: None,
+                shipping_tax_class: shipping_tax_class(&option.metadata),
                 description: Some("shipping".to_string()),
                 amount: option.amount,
             });
@@ -1380,7 +1380,7 @@ impl CartService {
             .calculate(TaxCalculationInput {
                 currency_code: cart.currency_code.clone(),
                 channel_id: cart.channel_id,
-                customer_tax_exempt: false,
+                customer_tax_exempt: customer_tax_exempt(&cart.metadata),
                 policy: TaxPolicySnapshot {
                     provider_id: region.tax_provider_id.clone(),
                     channel_provider_id: channel_tax_provider_id(&region.metadata, cart.channel_id),
@@ -2029,6 +2029,31 @@ fn adjustment_scope(adjustment: &entities::cart_adjustment::Model) -> Option<&st
     adjustment.metadata.get("scope").and_then(Value::as_str)
 }
 
+fn line_item_tax_class(metadata: &Value) -> Option<String> {
+    metadata
+        .get("tax_class")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn shipping_tax_class(metadata: &Value) -> Option<String> {
+    metadata
+        .get("tax_class")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn customer_tax_exempt(metadata: &Value) -> bool {
+    metadata
+        .get("customer_tax_exempt")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 async fn load_line_item_titles<C>(
     conn: &C,
     line_items: &[entities::cart_line_item::Model],
@@ -2126,7 +2151,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::channel_tax_provider_id;
+    use super::{
+        channel_tax_provider_id, customer_tax_exempt, line_item_tax_class, shipping_tax_class,
+    };
     use serde_json::json;
     use uuid::Uuid;
 
@@ -2210,5 +2237,19 @@ mod tests {
         });
 
         assert_eq!(channel_tax_provider_id(&metadata, None), None);
+    }
+
+    #[test]
+    fn tax_class_helpers_read_trimmed_tax_classes() {
+        let metadata = json!({"tax_class": " standard "});
+        assert_eq!(line_item_tax_class(&metadata).as_deref(), Some("standard"));
+        assert_eq!(shipping_tax_class(&metadata).as_deref(), Some("standard"));
+    }
+
+    #[test]
+    fn customer_tax_exempt_helper_defaults_to_false() {
+        assert!(!customer_tax_exempt(&json!({})));
+        assert!(!customer_tax_exempt(&json!({"customer_tax_exempt": "yes"})));
+        assert!(customer_tax_exempt(&json!({"customer_tax_exempt": true})));
     }
 }

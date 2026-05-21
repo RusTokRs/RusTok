@@ -145,6 +145,9 @@ impl TaxProvider for RegionTaxProvider {
                     "country_code": resolved_policy.country_code,
                     "policy_scope": resolved_policy.policy_scope,
                     "channel_id": input.channel_id.map(|value| value.to_string()),
+                    "customer_tax_exempt": input.customer_tax_exempt,
+                    "item_tax_class": amount.item_tax_class,
+                    "shipping_tax_class": amount.shipping_tax_class,
                 }),
             });
         }

@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Last checkpoint: Tax typed-rule input foundation expanded in `rustok-tax` + cart tax metadata plumbing.
+- Next step: Закрепить admin/store read-side tax breakdown contract в REST и GraphQL parity тестах.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-05-21T00:00:00Z
 
 ## Статус документа
 
@@ -504,7 +504,7 @@ Deliverables:
 Ближайший execution slice (продолжение coding-плана):
 
 - [x] добавить channel-aware provider mapping (`regions.tax_provider_id` + `channel_id`) без hidden fallback на `region_default`;
-- [ ] расширить `rustok-tax` до typed rule input (`item class`, `shipping class`, `customer tax-exempt`) без возврата налоговой логики в `rustok-cart`;
+- [x] расширить `rustok-tax` до typed rule input (`item class`, `shipping class`, `customer tax-exempt`) без возврата налоговой логики в `rustok-cart`;
 - [ ] закрепить admin/store read-side tax breakdown contract (line-item vs shipping vs order aggregate) в REST и GraphQL parity тестах;
 - [ ] добавить migration/contract smoke для backfill `provider_id` в legacy `order_tax_lines` snapshots.
 
