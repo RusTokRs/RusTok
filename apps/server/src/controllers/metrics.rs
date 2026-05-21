@@ -17,7 +17,8 @@ use std::time::Instant;
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
-use crate::middleware::tenant::tenant_cache_stats;
+use crate::middleware::tenant::{tenant_cache_stats, TenantCacheStats};
+use crate::models::_entities::tenants::{Column as TenantsColumn, Entity as TenantsEntity};
 use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::rbac_consistency::{load_rbac_consistency_stats, RbacConsistencyStats};
 use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
@@ -48,6 +49,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             let mut payload = handle.render();
             payload.push('\n');
             payload.push_str(&render_tenant_cache_metrics(&ctx).await);
+            payload.push_str(&render_tenant_activity_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
@@ -90,7 +92,10 @@ async fn sync_rate_limit_metrics(ctx: &AppContext) {
 }
 
 async fn render_tenant_cache_metrics(ctx: &AppContext) -> String {
-    let stats = tenant_cache_stats(ctx).await;
+    format_tenant_cache_metrics(tenant_cache_stats(ctx).await)
+}
+
+fn format_tenant_cache_metrics(stats: TenantCacheStats) -> String {
     format!(
         "rustok_tenant_cache_hits {hits}\n\
 rustok_tenant_cache_misses {misses}\n\
@@ -101,6 +106,7 @@ rustok_tenant_cache_negative_misses {negative_misses}\n\
 rustok_tenant_cache_negative_evictions {negative_evictions}\n\
 rustok_tenant_cache_negative_entries {negative_entries}\n\
 rustok_tenant_cache_negative_inserts {negative_inserts}\n\
+rustok_tenant_cache_coalesced_requests {coalesced_requests}\n\
 rustok_tenant_invalidation_listener_status {invalidation_listener_status}\n",
         hits = stats.hits,
         misses = stats.misses,
@@ -111,7 +117,32 @@ rustok_tenant_invalidation_listener_status {invalidation_listener_status}\n",
         negative_evictions = stats.negative_evictions,
         negative_entries = stats.negative_entries,
         negative_inserts = stats.negative_inserts,
+        coalesced_requests = stats.coalesced_requests,
         invalidation_listener_status = stats.invalidation_listener_status,
+    )
+}
+
+async fn render_tenant_activity_metrics(ctx: &AppContext) -> String {
+    let active_total = TenantsEntity::find()
+        .filter(TenantsColumn::IsActive.eq(true))
+        .count(&ctx.db)
+        .await
+        .unwrap_or(0);
+    let inactive_total = TenantsEntity::find()
+        .filter(TenantsColumn::IsActive.eq(false))
+        .count(&ctx.db)
+        .await
+        .unwrap_or(0);
+
+    format_tenant_activity_metrics(active_total, inactive_total)
+}
+
+fn format_tenant_activity_metrics(active_total: u64, inactive_total: u64) -> String {
+    format!(
+        "rustok_tenant_active_total {active_total}\n\
+rustok_tenant_inactive_total {inactive_total}\n\
+rustok_tenant_total {tenant_total}\n",
+        tenant_total = active_total + inactive_total,
     )
 }
 
@@ -490,8 +521,9 @@ fn format_rbac_metrics(
 mod tests {
     use super::{
         format_outbox_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
-        render_auth_lifecycle_metrics,
+        format_tenant_activity_metrics, format_tenant_cache_metrics, render_auth_lifecycle_metrics,
     };
+    use crate::middleware::tenant::TenantCacheStats;
     use crate::services::auth_lifecycle::AuthLifecycleService;
     use crate::services::rbac_service::RbacService;
     use crate::services::runtime_guardrails::{
@@ -603,6 +635,36 @@ mod tests {
         assert!(payload.contains("rustok_outbox_backlog_size 11"));
         assert!(payload.contains("rustok_outbox_dlq_total 2"));
         assert!(payload.contains("rustok_outbox_retries_total 7"));
+    }
+
+    #[test]
+    fn tenant_cache_metrics_include_coalesced_requests_counter() {
+        let payload = format_tenant_cache_metrics(TenantCacheStats {
+            hits: 21,
+            misses: 5,
+            evictions: 1,
+            negative_hits: 3,
+            negative_misses: 8,
+            negative_evictions: 0,
+            entries: 7,
+            negative_entries: 2,
+            negative_inserts: 4,
+            coalesced_requests: 13,
+            invalidation_listener_status: 2,
+        });
+
+        assert_metric_line(&payload, "rustok_tenant_cache_coalesced_requests");
+        assert!(payload.contains("rustok_tenant_cache_coalesced_requests 13"));
+    }
+
+    #[test]
+    fn tenant_activity_metrics_include_active_inactive_and_total() {
+        let payload = format_tenant_activity_metrics(9, 4);
+
+        assert_metric_line(&payload, "rustok_tenant_active_total");
+        assert_metric_line(&payload, "rustok_tenant_inactive_total");
+        assert_metric_line(&payload, "rustok_tenant_total");
+        assert!(payload.contains("rustok_tenant_total 13"));
     }
 
     #[test]

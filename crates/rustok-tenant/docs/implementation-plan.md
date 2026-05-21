@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: operability_observability
+- Last checkpoint: Добавлены tenant observability метрики в `apps/server` (`rustok_tenant_cache_coalesced_requests`, `rustok_tenant_active_total`, `rustok_tenant_inactive_total`, `rustok_tenant_total`) и обновлена server-документация по cache stampede.
+- Next step: Закрыть `resolver invariants` test gap в host middleware integration path и после этого обновить provisioning/deprovisioning documentation.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Hand-off notes for next agent: Следующий инкремент сфокусировать на integration tests для resolver path (header/host/subdomain + disabled/not-found semantics) и обновить этот checkpoint после тестового среза.
+- Last updated at (UTC): 2026-05-21T00:00:00Z
 
 ## Область работ
 
@@ -42,7 +42,7 @@
 ### 3. Operability
 
 - [ ] довести integration tests для tenant CRUD, module toggles и resolver invariants (baseline CRUD/module-toggle/outbox tests добавлены; resolver invariants pending);
-- [ ] развить observability для cache hit/miss и active tenant signals;
+- [x] развить observability для cache hit/miss и active tenant signals (Prometheus surface дополнен `rustok_tenant_cache_coalesced_requests` + `rustok_tenant_(active|inactive|total)_total`);
 - [ ] документировать provisioning/deprovisioning и invalidation guarantees одновременно с изменением runtime contract.
 
 ## Проверка

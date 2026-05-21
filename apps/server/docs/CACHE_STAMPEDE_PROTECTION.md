@@ -115,19 +115,20 @@ Check the effectiveness of stampede protection:
 
 ```bash
 # View all tenant cache metrics
-curl http://localhost:3000/metrics | grep tenant_cache
+curl http://localhost:3000/metrics | grep rustok_tenant_cache
 
 # Key metrics to watch:
-# - tenant_cache_coalesced_requests: Number of requests that waited (higher is better)
-# - tenant_cache_misses: Should be low relative to coalesced_requests
+# - rustok_tenant_cache_coalesced_requests: Number of requests that waited (higher is better)
+# - rustok_tenant_cache_misses: Should be low relative to coalesced_requests
+# - rustok_tenant_active_total / rustok_tenant_inactive_total: Active tenant signals
 ```
 
 ### Grafana Dashboard Query
 
 ```promql
 # Coalescing effectiveness rate
-rate(tenant_cache_coalesced_requests[5m]) / 
-(rate(tenant_cache_coalesced_requests[5m]) + rate(tenant_cache_misses[5m]))
+rate(rustok_tenant_cache_coalesced_requests[5m]) / 
+(rate(rustok_tenant_cache_coalesced_requests[5m]) + rate(rustok_tenant_cache_misses[5m]))
 
 # Should be close to 1.0 (100%) during cache invalidation events
 ```
@@ -160,7 +161,7 @@ ab -n 1000 -c 1000 \
    http://localhost:3000/api/health
 
 # Check coalescing metrics
-curl http://localhost:3000/metrics | grep tenant_cache_coalesced
+curl http://localhost:3000/metrics | grep rustok_tenant_cache_coalesced
 ```
 
 Expected: `coalesced_requests` ≈ 999
