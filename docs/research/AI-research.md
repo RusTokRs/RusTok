@@ -365,7 +365,7 @@ gantt
 
 ### Чего ещё нет (gaps to implement)
 
-- Отсутствуют direct vertical handlers: `content_moderation`, `product_attributes`, `order_analytics`, `order_ops_assistant`.
+- Direct vertical handlers `content_moderation`, `product_attributes`, `order_analytics`, `order_ops_assistant` уже добавлены в `rustok-ai`; следующий шаг — довести production-hardening (redaction/approvals/telemetry DoD) для этих вертикалей.
 - В Next admin product form нет `AI Fill`/`Apply Suggested Attributes` и preview-diff для атрибутов.
 - Нет domain-specific launchers/health panels для новых vertical задач в `apps/next-admin/packages/rustok-ai`.
 - Нет formalized rollout-metrics как отдельного acceptance-gate для новых verticals (нужно закрепить как DoD).
@@ -386,10 +386,10 @@ gantt
 - [ ] JSON-output проходит schema + domain + permission validation.
 - [ ] MCP/remote tools работают без token passthrough и с SSRF-safe политиками.
 - [ ] `product_copy` переведён в управляемый draft/publish pipeline.
-- [ ] Реализован `product_attributes` + UI preview/apply.
-- [ ] Реализован `content_moderation` с shadow rollout.
-- [ ] Реализован `order_analytics` (insights-only).
-- [ ] Реализован `order_ops_assistant` с whitelist automation.
+- [~] Реализован `product_attributes` на backend; UI preview/apply в product form остаётся в работе.
+- [~] Реализован `content_moderation` backend-handler; shadow rollout/policy matrix ещё не завершены.
+- [~] Добавлен `order_analytics` direct handler; dashboards и KPI-контур ещё не доведены.
+- [~] Добавлен `order_ops_assistant` handler; whitelist automation и rollback playbook ещё в работе.
 - [ ] Собираются метрики качества/безопасности/стоимости/latency.
 - [ ] Проведены A/B и regression тесты перед полным rollout.
 
