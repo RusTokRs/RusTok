@@ -5524,6 +5524,12 @@ mod tests {
         assert_eq!(order["customer_id"], json!(customer_id));
         assert_eq!(order["status"], json!("paid"));
         assert_eq!(order["currency_code"], json!("EUR"));
+        assert_eq!(order["tax_included"], completed["order"]["tax_included"]);
+        assert_eq!(order["tax_total"], completed["order"]["tax_total"]);
+        assert_eq!(
+            order["tax_lines"][0]["provider_id"],
+            completed["order"]["tax_lines"][0]["provider_id"]
+        );
     }
 
     #[tokio::test]
