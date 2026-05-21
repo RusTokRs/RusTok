@@ -792,6 +792,11 @@ pub async fn create_payment_collection(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     ensure_store_cart_access(&cart, customer_id)?;
+    if cart.status == "completed" {
+        return Err(Error::BadRequest(
+            "Cannot create payment collection for completed cart".to_string(),
+        ));
+    }
     let cart =
         reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &cart_service, cart)
             .await?;
