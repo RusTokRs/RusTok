@@ -1236,6 +1236,24 @@ pub fn AiAdmin() -> impl IntoView {
             set_error.set(Some(err_select_product_attributes_task.clone()));
             return;
         }
+        let selected_profile_is_product_attributes = bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload
+                    .task_profiles
+                    .iter()
+                    .any(|profile| {
+                        profile.id == task_profile_id
+                            && profile.slug == "product_attributes"
+                            && profile.is_active
+                    })
+            })
+            .unwrap_or(false);
+        if !selected_profile_is_product_attributes {
+            set_error.set(Some(err_select_product_attributes_task.clone()));
+            return;
+        }
 
         let payload = product_attributes_task_payload(
             product_attributes_product_id.get_untracked(),
