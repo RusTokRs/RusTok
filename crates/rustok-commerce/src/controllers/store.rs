@@ -791,7 +791,7 @@ pub async fn create_payment_collection(
     let cart = cart_service
         .get_cart(tenant.id, input.cart_id)
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+        .map_err(map_cart_error)?;
     ensure_store_cart_access(&cart, customer_id)?;
     ensure_cart_allows_payment_collection(&cart)?;
     let cart =
