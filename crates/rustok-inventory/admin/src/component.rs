@@ -463,6 +463,14 @@ struct InventorySummary {
     out_of_stock: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InventoryHealthState {
+    Healthy,
+    LowStock,
+    OutOfStock,
+    Backorder,
+}
+
 fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
     InventorySummary {
         variant_count: variants.len(),
@@ -472,25 +480,33 @@ fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
             .sum(),
         low_stock: variants
             .iter()
-            .filter(|variant| {
-                variant.in_stock
-                    && !is_backorder_enabled(variant)
-                    && variant.inventory_quantity <= LOW_STOCK_THRESHOLD
-            })
+            .filter(|variant| inventory_health_state(variant) == InventoryHealthState::LowStock)
             .count(),
         backorder: variants
             .iter()
-            .filter(|variant| is_backorder_enabled(variant))
+            .filter(|variant| inventory_health_state(variant) == InventoryHealthState::Backorder)
             .count(),
         out_of_stock: variants
             .iter()
-            .filter(|variant| !variant.in_stock && !is_backorder_enabled(variant))
+            .filter(|variant| inventory_health_state(variant) == InventoryHealthState::OutOfStock)
             .count(),
     }
 }
 
 fn is_backorder_enabled(variant: &InventoryVariant) -> bool {
     variant.inventory_policy.eq_ignore_ascii_case("continue")
+}
+
+fn inventory_health_state(variant: &InventoryVariant) -> InventoryHealthState {
+    if is_backorder_enabled(variant) {
+        InventoryHealthState::Backorder
+    } else if !variant.in_stock {
+        InventoryHealthState::OutOfStock
+    } else if variant.inventory_quantity <= LOW_STOCK_THRESHOLD {
+        InventoryHealthState::LowStock
+    } else {
+        InventoryHealthState::Healthy
+    }
 }
 
 #[cfg(test)]
@@ -640,26 +656,20 @@ fn format_variant_price(locale: Option<&str>, variant: &InventoryVariant) -> Str
 }
 
 fn inventory_health_label(locale: Option<&str>, variant: &InventoryVariant) -> String {
-    if is_backorder_enabled(variant) {
-        t(locale, "inventory.health.backorder", "Backorder")
-    } else if !variant.in_stock {
-        t(locale, "inventory.health.outOfStock", "Out of stock")
-    } else if variant.inventory_quantity <= LOW_STOCK_THRESHOLD {
-        t(locale, "inventory.health.lowStock", "Low stock")
-    } else {
-        t(locale, "inventory.health.healthy", "Healthy")
+    match inventory_health_state(variant) {
+        InventoryHealthState::Backorder => t(locale, "inventory.health.backorder", "Backorder"),
+        InventoryHealthState::OutOfStock => t(locale, "inventory.health.outOfStock", "Out of stock"),
+        InventoryHealthState::LowStock => t(locale, "inventory.health.lowStock", "Low stock"),
+        InventoryHealthState::Healthy => t(locale, "inventory.health.healthy", "Healthy"),
     }
 }
 
 fn inventory_health_badge(variant: &InventoryVariant) -> &'static str {
-    if is_backorder_enabled(variant) {
-        "border-sky-200 bg-sky-50 text-sky-700"
-    } else if !variant.in_stock {
-        "border-rose-200 bg-rose-50 text-rose-700"
-    } else if variant.inventory_quantity <= LOW_STOCK_THRESHOLD {
-        "border-amber-200 bg-amber-50 text-amber-700"
-    } else {
-        "border-emerald-200 bg-emerald-50 text-emerald-700"
+    match inventory_health_state(variant) {
+        InventoryHealthState::Backorder => "border-sky-200 bg-sky-50 text-sky-700",
+        InventoryHealthState::OutOfStock => "border-rose-200 bg-rose-50 text-rose-700",
+        InventoryHealthState::LowStock => "border-amber-200 bg-amber-50 text-amber-700",
+        InventoryHealthState::Healthy => "border-emerald-200 bg-emerald-50 text-emerald-700",
     }
 }
 
