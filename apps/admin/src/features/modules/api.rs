@@ -1258,6 +1258,15 @@ mod runtime_manifest_hash_tests {
     }
 
     #[test]
+    fn manifest_snapshot_hash_matches_known_sha256_vector() {
+        let hash = runtime_manifest_snapshot_hash(&serde_json::json!({"b": 2, "a": 1}));
+        assert_eq!(
+            hash,
+            "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"
+        );
+    }
+
+    #[test]
     fn runtime_manifest_hash_changes_when_profile_changes() {
         let left = sample_manifest();
         let mut right = left.clone();
