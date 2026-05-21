@@ -26,6 +26,24 @@ export const metadata = {
 
 type PageProps = { params: Promise<{ productId: string }> };
 
+
+function buildProductAttributesTaskInput(product: NonNullable<Awaited<ReturnType<typeof getProduct>>>, translation: { title: string; description: string | null; locale: string }) {
+  return JSON.stringify(
+    {
+      product_id: product.id,
+      source_locale: translation.locale,
+      source_title: translation.title,
+      source_description: translation.description,
+      category_slug: product.productType,
+      image_urls: [],
+      copy_instructions:
+        'Сформируй только подтверждаемые атрибуты и пометь неподтверждаемые как not_specified.'
+    },
+    null,
+    2
+  );
+}
+
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -158,6 +176,25 @@ export default async function ProductDetailPage({ params }: PageProps) {
                   </div>
                 ))
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className='text-base'>AI product attributes</CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-muted-foreground text-sm'>
+                Product write-side is module-owned. Use the AI task runner with
+                <code className='mx-1 rounded bg-muted px-1 py-0.5'>product_attributes</code>
+                and this payload draft based on the current product translation.
+              </p>
+              <pre className='overflow-x-auto rounded-md border bg-muted/40 p-3 text-xs'>
+{buildProductAttributesTaskInput(product, primaryTranslation ?? { title: '', description: null, locale: 'en' })}
+              </pre>
+              <Button asChild variant='outline' size='sm'>
+                <Link href='/dashboard/ai'>Open AI task runner</Link>
+              </Button>
             </CardContent>
           </Card>
 
