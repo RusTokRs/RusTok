@@ -250,7 +250,7 @@ manifest fields. Это повышает риск drift между surfaces и �
 #### 2.1 Canonical manifest snapshot/hash
 
 - [ ] Ввести canonical serializer полного manifest snapshot (включая settings, profile, dependency metadata, source pins).
-- [ ] Перейти на SHA-256 hex (64 chars) для `manifest_hash`.
+- [x] Перейти на SHA-256 hex (64 chars) для `manifest_hash`.
 - [~] Убрать drift: GraphQL, BuildService и Leptos SSR используют один canonical hashing contract (Leptos SSR path canonicalizes JSON snapshot перед SHA-256; SSR unit tests покрывают SHA-256 format/stability/change detection и fixed vector; server integration tests `successful_enqueue_keeps_hash_parity_between_snapshot_and_build` и `successful_enqueue_keeps_manifest_snapshot_parity_with_hash` дополнительно фиксируют parity `snapshot.manifest_hash == build.manifest_hash` и `build.manifest_snapshot` canonical JSON parity; остаётся закрыть cross-surface parity test на один и тот же manifest → один hash/ref/snapshot для GraphQL+Leptos SSR end-to-end).
 
 **Обязательные тесты закрытия:**
