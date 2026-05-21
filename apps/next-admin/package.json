@@ -90,7 +90,7 @@
     "date-fns": "^4.2.1",
     "eslint": "10.4.0",
     "eslint-config-next": "^16.2.6",
-    "geist": "^1.7.0",
+    "geist": "^1.7.1",
     "grapesjs": "^0.22.16",
     "grapesjs-preset-webpage": "^1.0.3",
     "input-otp": "^1.4.2",
