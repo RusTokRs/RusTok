@@ -1,4 +1,5 @@
 pub mod context;
+pub mod manifest_hash;
 #[cfg(feature = "server")]
 pub mod graphql;
 #[cfg(feature = "loco-adapter")]

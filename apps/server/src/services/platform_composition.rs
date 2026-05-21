@@ -5,6 +5,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use rustok_api::manifest_hash::hash_manifest_snapshot;
 
 use crate::models::build::Model as Build;
 use crate::models::platform_state::{
@@ -214,37 +215,6 @@ impl PlatformCompositionService {
     }
 }
 
-pub fn hash_manifest_snapshot(snapshot: &serde_json::Value) -> String {
-    use sha2::Digest;
-
-    let canonical_snapshot = canonicalize_json_value(snapshot);
-    let canonical = serde_json::to_string(&canonical_snapshot).unwrap_or_default();
-    let mut hasher = sha2::Sha256::new();
-    sha2::Digest::update(&mut hasher, canonical.as_bytes());
-    hex::encode(sha2::Digest::finalize(hasher))
-}
-
-fn canonicalize_json_value(value: &serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Object(map) => {
-            let mut entries = map.iter().collect::<Vec<_>>();
-            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-            let canonical = entries
-                .into_iter()
-                .map(|(key, nested)| (key.clone(), canonicalize_json_value(nested)))
-                .collect::<serde_json::Map<String, serde_json::Value>>();
-            serde_json::Value::Object(canonical)
-        }
-        serde_json::Value::Array(items) => serde_json::Value::Array(
-            items
-                .iter()
-                .map(canonicalize_json_value)
-                .collect::<Vec<serde_json::Value>>(),
-        ),
-        _ => value.clone(),
-    }
-}
-
 impl PlatformCompositionBuildService {
     #[allow(clippy::too_many_arguments)]
     pub async fn update_manifest_and_request_build(
@@ -359,7 +329,7 @@ impl PlatformCompositionBuildService {
 
 #[cfg(test)]
 mod tests {
-    use super::hash_manifest_snapshot;
+    use rustok_api::manifest_hash::hash_manifest_snapshot;
 
     #[test]
     fn manifest_snapshot_hash_is_sha256_hex() {
