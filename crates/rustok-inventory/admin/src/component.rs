@@ -822,6 +822,21 @@ mod tests {
     }
 
     #[test]
+    fn summary_variant_count_matches_input_length() {
+        let variants = vec![
+            variant(true, "deny", LOW_STOCK_THRESHOLD + 1),
+            variant(true, "deny", LOW_STOCK_THRESHOLD),
+            variant(false, "deny", 0),
+            variant(true, "continue", -1),
+            variant(false, "continue", -2),
+            variant(true, "deny", 42),
+        ];
+
+        let summary = summarize_inventory(&variants);
+        assert_eq!(summary.variant_count, variants.len());
+    }
+
+    #[test]
     fn state_label_helper_matches_variant_label_projection() {
         let variants = vec![
             variant(true, "deny", LOW_STOCK_THRESHOLD + 3),
