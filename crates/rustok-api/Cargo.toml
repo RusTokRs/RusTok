@@ -27,6 +27,8 @@ rustok-outbox = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
