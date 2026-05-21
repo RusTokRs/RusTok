@@ -18,7 +18,8 @@
       "alloyAssist": "Alloy Assist",
       "newSession": "Новая сессия",
       "sessions": "Сессии",
-      "operatorChat": "Операторский чат"
+      "operatorChat": "Операторский чат",
+      "productAttributes": "Атрибуты товара"
     },
     "field": {
       "slug": "Slug",
@@ -75,7 +76,9 @@
       "scriptSource": "Исходник скрипта",
       "runtimePayloadJson": "Runtime payload JSON",
       "title": "Заголовок",
-      "initialMessage": "Первое сообщение"
+      "initialMessage": "Первое сообщение",
+      "categorySlug": "Slug категории",
+      "imageUrlsCsv": "URL изображений (csv)"
     },
     "action": {
       "createProvider": "Создать провайдера",
@@ -92,7 +95,8 @@
       "startSession": "Запустить сессию",
       "send": "Отправить",
       "approve": "Одобрить",
-      "reject": "Отклонить"
+      "reject": "Отклонить",
+      "generateProductAttributes": "Сгенерировать атрибуты товара"
     },
     "common": {
       "active": "активен",
@@ -149,7 +153,8 @@
       "alloyCompleted": "Alloy job `{title}` завершён.",
       "imageCompleted": "Image job `{title}` завершён.",
       "productCompleted": "Задача по текстам товара `{title}` завершена.",
-      "blogCompleted": "Черновик блога `{title}` завершён."
+      "blogCompleted": "Черновик блога `{title}` завершён.",
+      "productAttributesCompleted": "Задача по атрибутам товара `{title}` завершена."
     },
     "error": {
       "selectProviderBeforeUpdate": "Сначала выберите провайдера для обновления.",
@@ -165,7 +170,9 @@
       "assembleAlloyPayload": "Не удалось собрать Alloy payload. Проверьте runtime payload JSON.",
       "assembleImagePayload": "Не удалось собрать payload для изображения. Проверьте prompt и size.",
       "assembleProductPayload": "Не удалось собрать payload для текстов товара. Проверьте product id.",
-      "assembleBlogPayload": "Не удалось собрать payload для черновика блога. Проверьте post/category ids."
+      "assembleBlogPayload": "Не удалось собрать payload для черновика блога. Проверьте post/category ids.",
+      "selectProductAttributesTaskProfile": "Перед генерацией атрибутов товара выберите профиль задачи `product_attributes`.",
+      "assembleProductAttributesPayload": "Не удалось собрать payload для атрибутов товара. Проверьте product id и source-поля."
     },
     "summary": {
       "bucketNoData": "нет данных",
@@ -198,6 +205,9 @@
       "imageTitle": "Media Image",
       "productTitle": "Product Copy",
       "blogTitle": "Blog Draft"
+    },
+    "hint": {
+      "productAttributesRequirements": "Выберите профиль задачи и product id для запуска генерации."
     }
   }
 }

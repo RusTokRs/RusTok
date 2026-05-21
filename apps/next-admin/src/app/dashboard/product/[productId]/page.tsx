@@ -26,6 +26,45 @@ export const metadata = {
 
 type PageProps = { params: Promise<{ productId: string }> };
 
+
+function buildProductAttributesTaskInput(product: NonNullable<Awaited<ReturnType<typeof getProduct>>>, translation: { title: string; description: string | null; locale: string }) {
+  return JSON.stringify(
+    {
+      product_id: product.id,
+      source_locale: translation.locale,
+      source_title: translation.title,
+      source_description: translation.description,
+      category_slug: product.productType,
+      image_urls: [],
+      copy_instructions:
+        'Сформируй только подтверждаемые атрибуты и пометь неподтверждаемые как not_specified.'
+    },
+    null,
+    2
+  );
+}
+
+function buildProductAttributesHref(product: NonNullable<Awaited<ReturnType<typeof getProduct>>>, translation: { title: string; description: string | null; locale: string }) {
+  const params = new URLSearchParams({
+    task: 'product_attributes',
+    productId: product.id,
+    locale: translation.locale,
+    sourceLocale: translation.locale,
+    sourceTitle: translation.title,
+    categorySlug: product.productType ?? ''
+  });
+  if (translation.description) {
+    params.set('sourceDescription', translation.description);
+  }
+  return `/dashboard/ai?${params.toString()}`;
+}
+
+function hasProductAttributesSeedData(translation: { title: string; description: string | null; locale: string } | null): boolean {
+  if (!translation) return false;
+  return translation.title.trim().length > 0 ||
+    (translation.description?.trim().length ?? 0) > 0;
+}
+
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -157,6 +196,43 @@ export default async function ProductDetailPage({ params }: PageProps) {
                     </p>
                   </div>
                 ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className='text-base'>AI product attributes</CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-muted-foreground text-sm'>
+                Product write-side is module-owned. Use the AI task runner with
+                <code className='mx-1 rounded bg-muted px-1 py-0.5'>product_attributes</code>
+                and this payload draft based on the current product translation.
+              </p>
+              {hasProductAttributesSeedData(primaryTranslation) ? (
+                <pre className='overflow-x-auto rounded-md border bg-muted/40 p-3 text-xs'>
+{buildProductAttributesTaskInput(product, primaryTranslation!)}
+                </pre>
+              ) : (
+                <p className='text-muted-foreground text-xs'>
+                  Payload preview is unavailable until title or description
+                  translation is provided.
+                </p>
+              )}
+              {hasProductAttributesSeedData(primaryTranslation) ? (
+                <Button asChild variant='outline' size='sm'>
+                  <Link
+                    href={buildProductAttributesHref(product, primaryTranslation!)}
+                  >
+                    Open AI task runner
+                  </Link>
+                </Button>
+              ) : (
+                <p className='text-muted-foreground text-xs'>
+                  Add title or description translation before launching
+                  product_attributes.
+                </p>
               )}
             </CardContent>
           </Card>

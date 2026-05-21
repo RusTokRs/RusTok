@@ -521,6 +521,19 @@ export function AiAdminPage(props: AiAdminPageProps) {
     copyInstructions: '',
     assistantPrompt: ''
   });
+  const [productAttributesForm, setProductAttributesForm] = React.useState({
+    title: 'Product Attributes',
+    locale: '',
+    productId: '',
+    categorySlug: '',
+    sourceLocale: '',
+    sourceTitle: '',
+    sourceDescription: '',
+    imageUrls: '',
+    copyInstructions:
+      'Сформируй только подтверждаемые атрибуты и пометь неподтверждаемые как not_specified.',
+    assistantPrompt: ''
+  });
   const [blogForm, setBlogForm] = React.useState({
     title: 'Blog Draft',
     locale: '',
@@ -539,6 +552,19 @@ export function AiAdminPage(props: AiAdminPageProps) {
   });
 
   const [reply, setReply] = React.useState('');
+  const [isSubmittingProductAttributes, setIsSubmittingProductAttributes] =
+    React.useState(false);
+  const productAttributesPrefillAppliedRef = React.useRef(false);
+
+  const productAttributesTaskProfile = React.useMemo(
+    () =>
+      taskProfiles.find(
+        (profile) => profile.slug === 'product_attributes' && profile.isActive
+      ) ?? null,
+    [taskProfiles]
+  );
+  const canSubmitProductAttributes =
+    !!productAttributesTaskProfile && productAttributesForm.productId.trim().length > 0;
 
   const loadBootstrap = React.useCallback(async () => {
     setLoading(true);
@@ -568,6 +594,49 @@ export function AiAdminPage(props: AiAdminPageProps) {
       setLoading(false);
     }
   }, [props]);
+
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (productAttributesPrefillAppliedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const task = params.get('task');
+    if (task !== 'product_attributes') return;
+
+    setProductAttributesForm((current) => ({
+      ...current,
+      productId: params.get('productId') ?? current.productId,
+      locale: params.get('locale') ?? current.locale,
+      sourceLocale: params.get('sourceLocale') ?? current.sourceLocale,
+      sourceTitle: params.get('sourceTitle') ?? current.sourceTitle,
+      sourceDescription:
+        params.get('sourceDescription') ?? current.sourceDescription,
+      categorySlug: params.get('categorySlug') ?? current.categorySlug,
+      title:
+        params.get('productId')
+          ? `Product Attributes ${params.get('productId')}`
+          : current.title
+    }));
+
+    if (productAttributesTaskProfile) {
+      setSessionForm((current) => ({
+        ...current,
+        taskProfileId: productAttributesTaskProfile.id
+      }));
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('task');
+    url.searchParams.delete('productId');
+    url.searchParams.delete('locale');
+    url.searchParams.delete('sourceLocale');
+    url.searchParams.delete('sourceTitle');
+    url.searchParams.delete('sourceDescription');
+    url.searchParams.delete('categorySlug');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+    productAttributesPrefillAppliedRef.current = true;
+  }, [productAttributesTaskProfile]);
 
   const resetProviderForm = React.useCallback(() => {
     setProviderForm({
@@ -1767,13 +1836,17 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setError(err.message);
                       return null;
                     });
-                    if (!started) return;
+                    if (!started) {
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
                     const id = started.runAiTaskJob.session.session.id;
                     setFeedback(
                       `Blog draft job \`${started.runAiTaskJob.session.session.title}\` completed.`
                     );
                     await loadBootstrap();
                     await loadSession(id);
+                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -1895,9 +1968,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Mode: direct
                   </div>
+                  {!canSubmitProductAttributes ? (
+                    <p className='text-muted-foreground text-xs'>
+                      Product id and active task profile `product_attributes` are required.
+                    </p>
+                  ) : null}
                   <button
-                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium'
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
+                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
                   >
                     Generate blog draft
                   </button>
@@ -1968,13 +2047,17 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setError(err.message);
                       return null;
                     });
-                    if (!started) return;
+                    if (!started) {
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
                     const id = started.runAiTaskJob.session.session.id;
                     setFeedback(
                       `Product copy job \`${started.runAiTaskJob.session.session.title}\` completed.`
                     );
                     await loadBootstrap();
                     await loadSession(id);
+                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2084,6 +2167,243 @@ export function AiAdminPage(props: AiAdminPageProps) {
               </Card>
             ) : null}
 
+
+            {!diagnosticsOnly ? (
+              <Card title='Product Attributes'>
+                <form
+                  className='space-y-3'
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (isSubmittingProductAttributes) return;
+                    setIsSubmittingProductAttributes(true);
+                    setError(null);
+                    setFeedback(null);
+                    if (!productAttributesTaskProfile) {
+                      setError(
+                        'Task profile `product_attributes` is not configured. Create/activate it first.'
+                      );
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
+                    const selectedTaskProfile = taskProfiles.find(
+                      (profile) => profile.id === sessionForm.taskProfileId
+                    );
+                    if (
+                      selectedTaskProfile &&
+                      selectedTaskProfile.slug !== 'product_attributes'
+                    ) {
+                      setError(
+                        'Current task profile is not `product_attributes`. Switch profile or use auto-selected profile.'
+                      );
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
+                    const normalizedProductId = productAttributesForm.productId.trim();
+                    if (!normalizedProductId) {
+                      setError('Product id is required.');
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
+                    const sourceTitle = productAttributesForm.sourceTitle.trim();
+                    const sourceDescription =
+                      productAttributesForm.sourceDescription.trim();
+                    if (!sourceTitle && !sourceDescription) {
+                      setError(
+                        'Either source title or source description is required for product_attributes.'
+                      );
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
+                    const normalizedCategorySlug =
+                      productAttributesForm.categorySlug.trim().toLowerCase();
+                    const parsedImageUrls = parseCsvUrls(
+                      productAttributesForm.imageUrls
+                    );
+                    if (parsedImageUrls.invalid.length > 0) {
+                      setError(
+                        `Image URLs contain invalid entries: ${parsedImageUrls.invalid.join(', ')}`
+                      );
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
+                    const taskInputJson = JSON.stringify({
+                      product_id: normalizedProductId,
+                      category_slug: normalizedCategorySlug || null,
+                      source_locale: productAttributesForm.sourceLocale || null,
+                      source_title: sourceTitle || null,
+                      source_description:
+                        sourceDescription || null,
+                      image_urls: parsedImageUrls.urls,
+                      copy_instructions:
+                        productAttributesForm.copyInstructions || null,
+                      assistant_prompt:
+                        productAttributesForm.assistantPrompt || null
+                    });
+                    const started = await gql<
+                      {
+                        runAiTaskJob: {
+                          session: { session: { id: string; title: string } };
+                        };
+                      },
+                      { input: Record<string, unknown> }
+                    >(
+                      RUN_TASK_JOB_MUTATION,
+                      {
+                        input: {
+                          title: productAttributesForm.title,
+                          providerProfileId:
+                            sessionForm.providerProfileId || null,
+                          taskProfileId: productAttributesTaskProfile.id,
+                          executionMode: 'DIRECT',
+                          locale: productAttributesForm.locale || null,
+                          taskInputJson,
+                          metadata: '{}'
+                        }
+                      },
+                      props
+                    ).catch((err: Error) => {
+                      setError(err.message);
+                      return null;
+                    });
+                    if (!started) {
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
+                    const id = started.runAiTaskJob.session.session.id;
+                    setFeedback(
+                      `Product attributes job \`${started.runAiTaskJob.session.session.title}\` completed.`
+                    );
+                    await loadBootstrap();
+                    await loadSession(id);
+                    setIsSubmittingProductAttributes(false);
+                  }}
+                >
+                  <Input
+                    label='Job title'
+                    value={productAttributesForm.title}
+                    onChange={(title) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        title
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Locale'
+                    placeholder='auto (request locale -> tenant default -> en)'
+                    value={productAttributesForm.locale}
+                    onChange={(locale) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        locale
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Product id'
+                    value={productAttributesForm.productId}
+                    onChange={(productId) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        productId
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Category slug'
+                    value={productAttributesForm.categorySlug}
+                    onChange={(categorySlug) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        categorySlug
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Source locale'
+                    value={productAttributesForm.sourceLocale}
+                    onChange={(sourceLocale) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        sourceLocale
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Source title override'
+                    value={productAttributesForm.sourceTitle}
+                    onChange={(sourceTitle) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        sourceTitle
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Source description override'
+                    value={productAttributesForm.sourceDescription}
+                    onChange={(sourceDescription) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        sourceDescription
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Image URLs (csv)'
+                    value={productAttributesForm.imageUrls}
+                    onChange={(imageUrls) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        imageUrls
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Copy instructions'
+                    value={productAttributesForm.copyInstructions}
+                    onChange={(copyInstructions) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        copyInstructions
+                      }))
+                    }
+                  />
+                  <Input
+                    label='Assistant prompt'
+                    value={productAttributesForm.assistantPrompt}
+                    onChange={(assistantPrompt) =>
+                      setProductAttributesForm((current) => ({
+                        ...current,
+                        assistantPrompt
+                      }))
+                    }
+                  />
+                  <div className='border-border text-muted-foreground rounded-lg border px-3 py-2 text-sm'>
+                    Provider: {sessionForm.providerProfileId || 'optional'}
+                    <br />
+                    Task profile:{' '}
+                    {productAttributesTaskProfile?.id ||
+                      'product_attributes (missing or inactive)'}
+                    <br />
+                    Mode: direct
+                  </div>
+                  {!canSubmitProductAttributes ? (
+                    <p className='text-muted-foreground text-xs'>
+                      Product id and active task profile `product_attributes` are required.
+                    </p>
+                  ) : null}
+                  <button
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
+                    type='submit'
+                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
+                  >
+                    {isSubmittingProductAttributes ? 'Generating…' : 'Generate product attributes'}
+                  </button>
+                </form>
+              </Card>
+            ) : null}
+
             {!diagnosticsOnly ? (
               <Card title='Media Image'>
                 <form
@@ -2132,13 +2452,17 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setError(err.message);
                       return null;
                     });
-                    if (!started) return;
+                    if (!started) {
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
                     const id = started.runAiTaskJob.session.session.id;
                     setFeedback(
                       `Image job \`${started.runAiTaskJob.session.session.title}\` completed.`
                     );
                     await loadBootstrap();
                     await loadSession(id);
+                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2226,9 +2550,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Mode: direct
                   </div>
+                  {!canSubmitProductAttributes ? (
+                    <p className='text-muted-foreground text-xs'>
+                      Product id and active task profile `product_attributes` are required.
+                    </p>
+                  ) : null}
                   <button
-                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium'
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
+                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
                   >
                     Generate media image
                   </button>
@@ -2283,13 +2613,17 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setError(err.message);
                       return null;
                     });
-                    if (!started) return;
+                    if (!started) {
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
                     const id = started.runAiTaskJob.session.session.id;
                     setFeedback(
                       `Alloy job \`${started.runAiTaskJob.session.session.title}\` completed.`
                     );
                     await loadBootstrap();
                     await loadSession(id);
+                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2363,9 +2697,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Mode: direct
                   </div>
+                  {!canSubmitProductAttributes ? (
+                    <p className='text-muted-foreground text-xs'>
+                      Product id and active task profile `product_attributes` are required.
+                    </p>
+                  ) : null}
                   <button
-                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium'
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
+                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
                   >
                     Run Alloy job
                   </button>
@@ -2405,13 +2745,17 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       setError(err.message);
                       return null;
                     });
-                    if (!started) return;
+                    if (!started) {
+                      setIsSubmittingProductAttributes(false);
+                      return;
+                    }
                     const id = started.startAiChatSession.session.session.id;
                     setFeedback(
                       `Session \`${started.startAiChatSession.session.session.title}\` started.`
                     );
                     await loadBootstrap();
                     await loadSession(id);
+                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2446,9 +2790,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Tool profile: {sessionForm.toolProfileId || 'optional'}
                   </div>
+                  {!canSubmitProductAttributes ? (
+                    <p className='text-muted-foreground text-xs'>
+                      Product id and active task profile `product_attributes` are required.
+                    </p>
+                  ) : null}
                   <button
-                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium'
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
+                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
                   >
                     Start session
                   </button>
@@ -2591,8 +2941,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     value={reply}
                   />
                   <button
-                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium'
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
+                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
                   >
                     Send
                   </button>
@@ -2786,4 +3137,26 @@ function splitCsv(value: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+
+function parseCsvUrls(value: string): { urls: string[]; invalid: string[] } {
+  const entries = splitCsv(value);
+  const urls: string[] = [];
+  const invalid: string[] = [];
+
+  for (const entry of entries) {
+    try {
+      const url = new URL(entry);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        invalid.push(entry);
+        continue;
+      }
+      urls.push(url.toString());
+    } catch {
+      invalid.push(entry);
+    }
+  }
+
+  return { urls, invalid };
 }

@@ -137,6 +137,20 @@ pub fn AiAdmin() -> impl IntoView {
     let product_source_meta_description = RwSignal::new(String::new());
     let product_copy_instructions = RwSignal::new(String::new());
     let product_assistant_prompt = RwSignal::new(String::new());
+    let product_attributes_title = RwSignal::new(t(
+        ui_locale.as_deref(),
+        "ai.job.productAttributesTitle",
+        "Product Attributes",
+    ));
+    let product_attributes_locale = RwSignal::new(String::new());
+    let product_attributes_product_id = RwSignal::new(String::new());
+    let product_attributes_category_slug = RwSignal::new(String::new());
+    let product_attributes_source_locale = RwSignal::new(String::new());
+    let product_attributes_source_title = RwSignal::new(String::new());
+    let product_attributes_source_description = RwSignal::new(String::new());
+    let product_attributes_image_urls = RwSignal::new(String::new());
+    let product_attributes_copy_instructions = RwSignal::new(String::new());
+    let product_attributes_assistant_prompt = RwSignal::new(String::new());
     let blog_title = RwSignal::new(t(ui_locale.as_deref(), "ai.job.blogTitle", "Blog Draft"));
     let blog_locale = RwSignal::new(String::new());
     let blog_post_id = RwSignal::new(String::new());
@@ -234,6 +248,11 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.feedback.productCompleted",
         "Product copy job `{title}` completed.",
     );
+    let product_attributes_completed_template = t(
+        ui_locale.as_deref(),
+        "ai.feedback.productAttributesCompleted",
+        "Product attributes job `{title}` completed.",
+    );
     let blog_completed_template = t(
         ui_locale.as_deref(),
         "ai.feedback.blogCompleted",
@@ -284,6 +303,11 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.error.selectProductTaskProfile",
         "Select the `product_copy` task profile before generating localized product copy.",
     );
+    let err_select_product_attributes_task = t(
+        ui_locale.as_deref(),
+        "ai.error.selectProductAttributesTaskProfile",
+        "Select the `product_attributes` task profile before generating product attributes.",
+    );
     let err_select_blog_task = t(
         ui_locale.as_deref(),
         "ai.error.selectBlogTaskProfile",
@@ -303,6 +327,11 @@ pub fn AiAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "ai.error.assembleProductPayload",
         "Failed to assemble product copy payload. Check the product id.",
+    );
+    let err_product_attributes_payload = t(
+        ui_locale.as_deref(),
+        "ai.error.assembleProductAttributesPayload",
+        "Failed to assemble product attributes payload. Check product id and seed fields.",
     );
     let err_blog_payload = t(
         ui_locale.as_deref(),
@@ -330,6 +359,7 @@ pub fn AiAdmin() -> impl IntoView {
     let alloy_session_query_writer = query_writer.clone();
     let image_session_query_writer = query_writer.clone();
     let product_session_query_writer = query_writer.clone();
+    let product_attributes_session_query_writer = query_writer.clone();
     let blog_session_query_writer = query_writer.clone();
 
     Effect::new(
@@ -1191,6 +1221,66 @@ pub fn AiAdmin() -> impl IntoView {
         });
     };
 
+
+    let can_submit_product_attributes = move || {
+        !selected_task_profile.get().trim().is_empty()
+            && !product_attributes_product_id.get().trim().is_empty()
+    };
+
+    let on_run_product_attributes_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_feedback.set(None);
+        set_error.set(None);
+        let task_profile_id = selected_task_profile.get_untracked();
+        if task_profile_id.trim().is_empty() {
+            set_error.set(Some(err_select_product_attributes_task.clone()));
+            return;
+        }
+
+        let payload = product_attributes_task_payload(
+            product_attributes_product_id.get_untracked(),
+            optional_text(product_attributes_category_slug.get_untracked()),
+            optional_text(product_attributes_source_locale.get_untracked()),
+            optional_text(product_attributes_source_title.get_untracked()),
+            optional_text(product_attributes_source_description.get_untracked()),
+            product_attributes_image_urls.get_untracked(),
+            optional_text(product_attributes_copy_instructions.get_untracked()),
+            optional_text(product_attributes_assistant_prompt.get_untracked()),
+        );
+        let Ok(payload) = payload else {
+            set_error.set(Some(err_product_attributes_payload.clone()));
+            return;
+        };
+
+        let product_completed_template = product_attributes_completed_template.clone();
+        let product_attributes_session_query_writer = product_attributes_session_query_writer.clone();
+        spawn_local(async move {
+            let result = api::run_task_job(
+                product_attributes_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(product_attributes_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    let session_id = result.session.session.id.clone();
+                    set_selected_session.set(Some(session_id.clone()));
+                    product_attributes_session_query_writer
+                        .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
+                    set_feedback.set(Some(
+                        product_completed_template
+                            .replace("{title}", result.session.session.title.as_str()),
+                    ));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
     let on_run_blog_job = move |ev: SubmitEvent| {
         ev.prevent_default();
         let task_profile_id = selected_task_profile.get_untracked();
@@ -1427,6 +1517,8 @@ pub fn AiAdmin() -> impl IntoView {
                     let ui_locale_diagnostics = ui_locale.clone();
                     let ui_locale_blog = ui_locale.clone();
                     let ui_locale_product = ui_locale.clone();
+                    let ui_locale_product_attributes = ui_locale.clone();
+                    let ui_locale_product_attributes_hint = ui_locale.clone();
                     let ui_locale_image = ui_locale.clone();
                     let ui_locale_alloy = ui_locale.clone();
                     let ui_locale_new_session = ui_locale.clone();
@@ -1445,12 +1537,14 @@ pub fn AiAdmin() -> impl IntoView {
                     let reset_task_form = reset_task_form.clone();
                     let on_run_blog_job = on_run_blog_job.clone();
                     let on_run_product_job = on_run_product_job.clone();
+                    let on_run_product_attributes_job = on_run_product_attributes_job.clone();
                     let on_run_image_job = on_run_image_job.clone();
                     let on_run_alloy_job = on_run_alloy_job.clone();
                     let on_start_session = on_start_session.clone();
                     let on_send_message = on_send_message.clone();
                     let blog_transport_locale = ui_locale.clone();
                     let product_transport_locale = ui_locale.clone();
+                    let product_attributes_transport_locale = ui_locale.clone();
                     let image_transport_locale = ui_locale.clone();
                     let alloy_transport_locale = ui_locale.clone();
                     let session_transport_locale = ui_locale.clone();
@@ -1899,6 +1993,57 @@ pub fn AiAdmin() -> impl IntoView {
                                             )}
                                         </div>
                                         <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_product.as_deref(), "ai.action.generateProductCopy", "Generate product copy")}</button>
+                                    </form>
+                                </Card>
+
+
+                                <Card title=t(ui_locale_product_attributes.as_deref(), "ai.card.productAttributes", "Product Attributes")>
+                                    <form class="space-y-3" on:submit=on_run_product_attributes_job.clone()>
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.jobTitle", "Job title") value=product_attributes_title />
+                                        <TextField
+                                            label=t(ui_locale_product_attributes.as_deref(), "ai.field.locale", "Locale")
+                                            value=product_attributes_locale
+                                            placeholder=t(ui_locale_product_attributes.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
+                                        />
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.productId", "Product id") value=product_attributes_product_id />
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.categorySlug", "Category slug") value=product_attributes_category_slug />
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.sourceLocale", "Source locale") value=product_attributes_source_locale />
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.sourceTitleOverride", "Source title override") value=product_attributes_source_title />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product_attributes.as_deref(), "ai.field.sourceDescriptionOverride", "Source description override")}</span>
+                                            <textarea
+                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=product_attributes_source_description
+                                                on:input=move |ev| product_attributes_source_description.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.imageUrlsCsv", "Image URLs (csv)") value=product_attributes_image_urls />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product_attributes.as_deref(), "ai.field.copyInstructions", "Copy instructions")}</span>
+                                            <textarea
+                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=product_attributes_copy_instructions
+                                                on:input=move |ev| product_attributes_copy_instructions.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=product_attributes_assistant_prompt />
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || direct_transport_summary(
+                                                product_attributes_transport_locale.as_deref(),
+                                                selected_provider.get().as_str(),
+                                                selected_task_profile.get().as_str(),
+                                            )}
+                                        </div>
+                                        <Show when=move || !can_submit_product_attributes()>
+                                            <p class="text-xs text-muted-foreground">{t(ui_locale_product_attributes_hint.as_deref(), "ai.hint.productAttributesRequirements", "Select task profile and product id to enable generation.")}</p>
+                                        </Show>
+                                        <button
+                                            type="submit"
+                                            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                                            disabled=move || !can_submit_product_attributes()
+                                        >
+                                            {t(ui_locale_product_attributes.as_deref(), "ai.action.generateProductAttributes", "Generate product attributes")}
+                                        </button>
                                     </form>
                                 </Card>
 
@@ -2908,6 +3053,76 @@ fn product_task_payload(
     serde_json::to_string(&payload)
 }
 
+
+fn parse_csv_urls(value: String) -> Result<Vec<String>, serde_json::Error> {
+    let entries = parse_csv(value);
+    let mut parsed = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let normalized = entry.trim();
+        let is_http = normalized.starts_with("http://") || normalized.starts_with("https://");
+        if !is_http {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "only http/https image URLs are allowed",
+            )));
+        }
+        if normalized.split("//").nth(1).unwrap_or_default().is_empty() {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "image URL host is required",
+            )));
+        }
+        parsed.push(normalized.to_string());
+    }
+    Ok(parsed)
+}
+
+fn product_attributes_task_payload(
+    product_id: String,
+    category_slug: Option<String>,
+    source_locale: Option<String>,
+    source_title: Option<String>,
+    source_description: Option<String>,
+    image_urls_csv: String,
+    copy_instructions: Option<String>,
+    assistant_prompt: Option<String>,
+) -> Result<String, serde_json::Error> {
+    let product_id = uuid::Uuid::parse_str(product_id.trim()).map_err(|error| {
+        serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+    })?;
+
+    let source_title = source_title.map(|value| value.trim().to_string());
+    let source_description = source_description.map(|value| value.trim().to_string());
+
+    if source_title.as_deref().unwrap_or_default().is_empty()
+        && source_description
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+    {
+        return Err(serde_json::Error::io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "source title or source description is required",
+        )));
+    }
+
+    let image_urls = parse_csv_urls(image_urls_csv)?;
+
+    let payload = serde_json::json!({
+        "product_id": product_id,
+        "category_slug": category_slug
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty()),
+        "source_locale": source_locale,
+        "source_title": source_title,
+        "source_description": source_description,
+        "image_urls": image_urls,
+        "copy_instructions": copy_instructions,
+        "assistant_prompt": assistant_prompt,
+    });
+    serde_json::to_string(&payload)
+}
+
 fn blog_task_payload(
     post_id: Option<String>,
     source_locale: Option<String>,
@@ -2951,4 +3166,85 @@ fn blog_task_payload(
         "assistant_prompt": assistant_prompt,
     });
     serde_json::to_string(&payload)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn product_attributes_payload_requires_seed_content() {
+        let result = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("Electronics".to_string()),
+            Some("en".to_string()),
+            Some("  ".to_string()),
+            Some("".to_string()),
+            String::new(),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+
+    #[test]
+    fn product_attributes_payload_normalizes_category_slug() {
+        let payload = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("  Electronics / Audio  ".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "https://example.com/a.jpg".to_string(),
+            None,
+            None,
+        )
+        .expect("payload should be valid");
+
+        let json: serde_json::Value =
+            serde_json::from_str(payload.as_str()).expect("payload must be JSON");
+        assert_eq!(
+            json.get("category_slug").and_then(|value| value.as_str()),
+            Some("electronics / audio")
+        );
+    }
+
+    #[test]
+    fn product_attributes_payload_accepts_multiple_https_urls() {
+        let payload = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("electronics".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "https://example.com/a.jpg, https://cdn.example.com/b.webp".to_string(),
+            None,
+            None,
+        )
+        .expect("payload should be valid");
+
+        let json: serde_json::Value =
+            serde_json::from_str(payload.as_str()).expect("payload must be JSON");
+        let urls = json
+            .get("image_urls")
+            .and_then(|value| value.as_array())
+            .expect("image_urls must be array");
+        assert_eq!(urls.len(), 2);
+    }
+    #[test]
+    fn product_attributes_payload_rejects_non_http_urls() {
+        let result = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("Electronics".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "ftp://example.com/a.jpg".to_string(),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+    }
 }

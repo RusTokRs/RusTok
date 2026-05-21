@@ -18,7 +18,8 @@
       "alloyAssist": "Alloy Assist",
       "newSession": "New Session",
       "sessions": "Sessions",
-      "operatorChat": "Operator Chat"
+      "operatorChat": "Operator Chat",
+      "productAttributes": "Product Attributes"
     },
     "field": {
       "slug": "Slug",
@@ -75,7 +76,9 @@
       "scriptSource": "Script source",
       "runtimePayloadJson": "Runtime payload JSON",
       "title": "Title",
-      "initialMessage": "Initial message"
+      "initialMessage": "Initial message",
+      "categorySlug": "Category slug",
+      "imageUrlsCsv": "Image URLs (csv)"
     },
     "action": {
       "createProvider": "Create provider",
@@ -92,7 +95,8 @@
       "startSession": "Start session",
       "send": "Send",
       "approve": "Approve",
-      "reject": "Reject"
+      "reject": "Reject",
+      "generateProductAttributes": "Generate product attributes"
     },
     "common": {
       "active": "active",
@@ -149,7 +153,8 @@
       "alloyCompleted": "Alloy job `{title}` completed.",
       "imageCompleted": "Image job `{title}` completed.",
       "productCompleted": "Product copy job `{title}` completed.",
-      "blogCompleted": "Blog draft job `{title}` completed."
+      "blogCompleted": "Blog draft job `{title}` completed.",
+      "productAttributesCompleted": "Product attributes job `{title}` completed."
     },
     "error": {
       "selectProviderBeforeUpdate": "Select a provider before updating it.",
@@ -165,7 +170,9 @@
       "assembleAlloyPayload": "Failed to assemble Alloy task payload. Check the runtime payload JSON.",
       "assembleImagePayload": "Failed to assemble image task payload. Check prompt and size fields.",
       "assembleProductPayload": "Failed to assemble product copy payload. Check the product id.",
-      "assembleBlogPayload": "Failed to assemble blog draft payload. Check post/category ids."
+      "assembleBlogPayload": "Failed to assemble blog draft payload. Check post/category ids.",
+      "selectProductAttributesTaskProfile": "Select the `product_attributes` task profile before generating product attributes.",
+      "assembleProductAttributesPayload": "Failed to assemble product attributes payload. Check product id and seed fields."
     },
     "summary": {
       "bucketNoData": "no data",
@@ -198,6 +205,9 @@
       "imageTitle": "Media Image",
       "productTitle": "Product Copy",
       "blogTitle": "Blog Draft"
+    },
+    "hint": {
+      "productAttributesRequirements": "Select task profile and product id to enable generation."
     }
   }
 }
