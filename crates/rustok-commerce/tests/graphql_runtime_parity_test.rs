@@ -525,6 +525,12 @@ fn admin_order_parity_query(
             order {{
               id
               status
+              totalAmount
+              taxTotal
+              taxIncluded
+              taxLines {{
+                providerId
+              }}
               paymentId
               paymentMethod
               trackingNumber
@@ -549,6 +555,12 @@ fn admin_order_parity_query(
             items {{
               id
               status
+              totalAmount
+              taxTotal
+              taxIncluded
+              taxLines {{
+                providerId
+              }}
               trackingNumber
               deliveredSignature
             }}
@@ -883,6 +895,11 @@ fn storefront_customer_order_query(tenant_id: Uuid, order_id: Uuid) -> String {
             customerId
             status
             currencyCode
+            taxTotal
+            taxIncluded
+            taxLines {{
+              providerId
+            }}
             totalAmount
             lineItems {{
               title
@@ -2664,7 +2681,15 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                     metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
                 }],
                 adjustments: Vec::new(),
-                tax_lines: Vec::new(),
+                tax_lines: vec![rustok_order::dto::CreateOrderTaxLineInput {
+                    line_item_index: Some(0),
+                    shipping_option_index: None,
+                    rate: Decimal::from_str("20.00").expect("valid decimal"),
+                    amount: Decimal::from_str("5.00").expect("valid decimal"),
+                    name: "VAT".to_string(),
+                    provider_id: "region_default".to_string(),
+                    metadata: serde_json::json!({ "tax_included": false }),
+                }],
                 metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
             },
         )
@@ -2773,6 +2798,13 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         query_json["order"]["order"]["status"],
         Value::from("delivered")
     );
+    assert_eq!(query_json["order"]["order"]["totalAmount"], Value::from("30"));
+    assert_eq!(query_json["order"]["order"]["taxTotal"], Value::from("5"));
+    assert_eq!(query_json["order"]["order"]["taxIncluded"], Value::from(false));
+    assert_eq!(
+        query_json["order"]["order"]["taxLines"][0]["providerId"],
+        Value::from("region_default")
+    );
     assert_eq!(
         query_json["order"]["order"]["paymentId"],
         Value::from("graphql-pay-1")
@@ -2793,6 +2825,19 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
     assert_eq!(
         query_json["orders"]["items"][0]["id"],
         Value::from(confirmed_order.id.to_string())
+    );
+    assert_eq!(
+        query_json["orders"]["items"][0]["totalAmount"],
+        Value::from("30")
+    );
+    assert_eq!(query_json["orders"]["items"][0]["taxTotal"], Value::from("5"));
+    assert_eq!(
+        query_json["orders"]["items"][0]["taxIncluded"],
+        Value::from(false)
+    );
+    assert_eq!(
+        query_json["orders"]["items"][0]["taxLines"][0]["providerId"],
+        Value::from("region_default")
     );
     assert_eq!(
         query_json["paymentCollection"]["payments"][0]["status"],
@@ -3273,6 +3318,102 @@ async fn admin_graphql_order_query_exposes_shipping_total_and_shipping_scoped_ad
     );
     assert_eq!(metadata["scope"], Value::from("shipping"));
     assert!(metadata.get("display_label").is_none());
+}
+
+#[tokio::test]
+async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("ADMIN-TAX-LINE-1".to_string()),
+                    title: "Admin Taxed Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("100.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-admin-tax-order" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: vec![rustok_order::dto::CreateOrderTaxLineInput {
+                    line_item_index: Some(0),
+                    shipping_option_index: None,
+                    rate: Decimal::from_str("19.00").expect("valid decimal"),
+                    amount: Decimal::from_str("19.00").expect("valid decimal"),
+                    name: "VAT".to_string(),
+                    provider_id: "region_default".to_string(),
+                    metadata: serde_json::json!({
+                        "tax_included": false,
+                        "scope": "line_item"
+                    }),
+                }],
+                metadata: serde_json::json!({ "source": "graphql-admin-tax-order" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              order(tenantId: "{tenant_id}", id: "{order_id}") {{
+                order {{
+                  id
+                  taxTotal
+                  taxIncluded
+                  taxLines {{
+                    providerId
+                    name
+                    amount
+                    rate
+                    lineItemId
+                    metadata
+                  }}
+                }}
+              }}
+            }}
+            "#,
+            order_id = order.id
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin tax GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("admin tax query response should serialize");
+    assert_eq!(json["order"]["order"]["taxTotal"], Value::from("19"));
+    assert_eq!(json["order"]["order"]["taxIncluded"], Value::from(false));
+    assert_eq!(
+        json["order"]["order"]["taxLines"][0]["providerId"],
+        Value::from("region_default")
+    );
+    assert_eq!(json["order"]["order"]["taxLines"][0]["name"], Value::from("VAT"));
+    assert_eq!(json["order"]["order"]["taxLines"][0]["amount"], Value::from("19"));
+    assert_eq!(json["order"]["order"]["taxLines"][0]["rate"], Value::from("19"));
 }
 
 #[tokio::test]
@@ -3782,7 +3923,15 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                     metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
                 }],
                 adjustments: Vec::new(),
-                tax_lines: Vec::new(),
+                tax_lines: vec![rustok_order::dto::CreateOrderTaxLineInput {
+                    line_item_index: Some(0),
+                    shipping_option_index: None,
+                    rate: Decimal::from_str("19.00").expect("valid decimal"),
+                    amount: Decimal::from_str("5.70").expect("valid decimal"),
+                    name: "VAT".to_string(),
+                    provider_id: "region_default".to_string(),
+                    metadata: serde_json::json!({ "tax_included": false }),
+                }],
                 metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
             },
         )
@@ -3825,7 +3974,13 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
     );
     assert_eq!(json["storefrontOrder"]["status"], Value::from("pending"));
     assert_eq!(json["storefrontOrder"]["currencyCode"], Value::from("EUR"));
-    assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("30"));
+    assert_eq!(json["storefrontOrder"]["taxTotal"], Value::from("5.7"));
+    assert_eq!(json["storefrontOrder"]["taxIncluded"], Value::from(false));
+    assert_eq!(
+        json["storefrontOrder"]["taxLines"][0]["providerId"],
+        Value::from("region_default")
+    );
+    assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("35.7"));
     assert_eq!(
         json["storefrontOrder"]["lineItems"][0]["title"],
         Value::from("Storefront Order")
@@ -3908,6 +4063,11 @@ async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
             query {{
               storefrontOrder(tenantId: "{tenant_id}", id: "{order_id}") {{
                 id
+                taxTotal
+                taxIncluded
+                taxLines {{
+                  providerId
+                }}
                 subtotalAmount
                 adjustmentTotal
                 totalAmount
@@ -3938,6 +4098,12 @@ async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
         .into_json()
         .expect("GraphQL response must serialize");
 
+    assert_eq!(json["storefrontOrder"]["taxTotal"], Value::from("0"));
+    assert_eq!(json["storefrontOrder"]["taxIncluded"], Value::from(false));
+    assert_eq!(
+        json["storefrontOrder"]["taxLines"].as_array().map(|items| items.len()),
+        Some(0)
+    );
     assert_eq!(json["storefrontOrder"]["subtotalAmount"], Value::from("30"));
     assert_eq!(
         json["storefrontOrder"]["adjustmentTotal"],

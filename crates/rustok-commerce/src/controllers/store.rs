@@ -4520,11 +4520,26 @@ mod tests {
         assert_eq!(completed["context"]["locale"], json!("de"));
         assert_eq!(completed["context"]["region"]["id"], json!(region.id));
         assert_eq!(completed["order"]["status"], json!("paid"));
+        assert_eq!(completed["cart"]["tax_included"], json!(true));
+        assert_eq!(completed["order"]["tax_included"], json!(true));
+        assert_eq!(completed["cart"]["tax_total"], completed["order"]["tax_total"]);
+        assert_eq!(
+            completed["cart"]["tax_lines"][0]["provider_id"],
+            json!("region_default")
+        );
+        assert_eq!(
+            completed["order"]["tax_lines"][0]["provider_id"],
+            json!("region_default")
+        );
         assert_eq!(
             completed["payment_collection"]["id"],
             payment_collection["id"]
         );
         assert_eq!(completed["payment_collection"]["status"], json!("captured"));
+        assert_eq!(
+            completed["payment_collection"]["amount"],
+            completed["order"]["total_amount"]
+        );
         assert!(completed["fulfillment"].is_null());
     }
 
@@ -5512,6 +5527,14 @@ mod tests {
         assert_eq!(order["customer_id"], json!(customer_id));
         assert_eq!(order["status"], json!("paid"));
         assert_eq!(order["currency_code"], json!("EUR"));
+        assert_eq!(order["subtotal_amount"], completed["order"]["subtotal_amount"]);
+        assert_eq!(order["total_amount"], completed["order"]["total_amount"]);
+        assert_eq!(order["tax_included"], completed["order"]["tax_included"]);
+        assert_eq!(order["tax_total"], completed["order"]["tax_total"]);
+        assert_eq!(
+            order["tax_lines"][0]["provider_id"],
+            completed["order"]["tax_lines"][0]["provider_id"]
+        );
     }
 
     #[tokio::test]

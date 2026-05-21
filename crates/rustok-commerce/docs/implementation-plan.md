@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Tax typed-rule input foundation expanded in `rustok-tax` + cart tax metadata plumbing.
-- Next step: Закрепить admin/store read-side tax breakdown contract в REST и GraphQL parity тестах.
+- Last checkpoint: Admin GraphQL parity закреплена тестом tax breakdown (`tax_total`, `tax_included`, `tax_lines.provider_id`) для order read-side.
+- Next step: Добавить store/admin REST transport parity assertions для tax breakdown (`tax_total`, `tax_included`, `tax_lines.provider_id`) в checkout/order endpoints.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-21T00:00:00Z
+- Last updated at (UTC): 2026-05-21T14:20:00Z
 
 ## Статус документа
 
