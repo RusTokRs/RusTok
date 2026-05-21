@@ -90,6 +90,20 @@ async fn enqueue_default_manifest(
     .expect("build request should succeed")
 }
 
+fn invalid_manifest_with_missing_dependency() -> ModulesManifest {
+    let mut invalid_manifest = ModulesManifest::default();
+    invalid_manifest.modules.insert(
+        "catalog".to_string(),
+        ManifestModuleSpec {
+            source: "workspace".to_string(),
+            crate_name: "rustok-catalog".to_string(),
+            depends_on: vec!["missing-dependency".to_string()],
+            ..ManifestModuleSpec::default()
+        },
+    );
+    invalid_manifest
+}
+
 #[tokio::test]
 async fn stale_revision_does_not_enqueue_build() {
     let db = setup_db(true).await;
@@ -178,16 +192,7 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
         .await
         .expect("seed active snapshot");
 
-    let mut invalid_manifest = ModulesManifest::default();
-    invalid_manifest.modules.insert(
-        "catalog".to_string(),
-        ManifestModuleSpec {
-            source: "workspace".to_string(),
-            crate_name: "rustok-catalog".to_string(),
-            depends_on: vec!["missing-dependency".to_string()],
-            ..ManifestModuleSpec::default()
-        },
-    );
+    let invalid_manifest = invalid_manifest_with_missing_dependency();
 
     let err = PlatformCompositionBuildService::update_manifest_and_request_build(
         &db,
@@ -241,16 +246,7 @@ async fn update_manifest_validation_error_does_not_update_platform_state() {
         .await
         .expect("seed active snapshot");
 
-    let mut invalid_manifest = ModulesManifest::default();
-    invalid_manifest.modules.insert(
-        "catalog".to_string(),
-        ManifestModuleSpec {
-            source: "workspace".to_string(),
-            crate_name: "rustok-catalog".to_string(),
-            depends_on: vec!["missing-dependency".to_string()],
-            ..ManifestModuleSpec::default()
-        },
-    );
+    let invalid_manifest = invalid_manifest_with_missing_dependency();
 
     let err = PlatformCompositionService::update_manifest(
         &db,
@@ -273,6 +269,12 @@ async fn update_manifest_validation_error_does_not_update_platform_state() {
     assert_eq!(state_after.revision, seeded.revision);
     assert_eq!(state_after.manifest_hash, seeded.manifest_hash);
     assert_eq!(state_after.manifest, seeded.manifest);
+
+    let builds = BuildEntity::find().all(&db).await.expect("list builds");
+    assert!(
+        builds.is_empty(),
+        "update_manifest must not enqueue builds on validation failure"
+    );
 }
 
 #[tokio::test]
