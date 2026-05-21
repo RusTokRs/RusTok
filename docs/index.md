@@ -234,6 +234,7 @@
 - [Fluid Frontend Architecture для RusTok](./research/fluid-frontend-architecture.md)
 - [Fluid Backend Architecture для RusTok](./research/fluid-backend-architecture.md)
 - [План реализации Fluid Backend Architecture](./research/fluid-backend-architecture-implementation-plan.md)
+- [Консолидированный план реализации Fluid Backend Architecture](./research/fluid-backend-architecture-unified-plan.md)
 - [Historical input: deep research report (control plane/module lifecycle)](./research/deep-research-report%20(4).md)
 - [План устранения недостатков control plane и module lifecycle](./research/control-plane-module-lifecycle-remediation-plan.md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
