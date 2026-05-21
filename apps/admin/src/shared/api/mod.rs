@@ -139,22 +139,30 @@ async fn execute_admin_graphql(request: ServerGraphqlRequest) -> Result<Value, A
 fn map_server_fn_error(error: ServerFnError) -> ApiError {
     let message = error.to_string();
 
+    normalize_server_fn_error_message(&message)
+}
+
+#[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+fn normalize_server_fn_error_message(message: &str) -> ApiError {
     if message == "Unauthorized" {
-        ApiError::Unauthorized
-    } else if message == "Network error" {
-        ApiError::Network
-    } else if let Some(value) = message.strip_prefix("Http error: ") {
-        ApiError::Http(value.to_string())
-    } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
-        ApiError::Graphql(value.to_string())
-    } else {
-        ApiError::Graphql(message)
+        return ApiError::Unauthorized;
     }
+    if message == "Network error" {
+        return ApiError::Network;
+    }
+    if let Some(value) = message.strip_prefix("Http error: ") {
+        return ApiError::Http(value.to_string());
+    }
+    if let Some(value) = message.strip_prefix("GraphQL error: ") {
+        return ApiError::Graphql(value.to_string());
+    }
+
+    ApiError::Graphql(message.to_string())
 }
 
 #[cfg(all(test, not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))))]
 mod map_server_fn_error_tests {
-    use super::map_server_fn_error;
+    use super::{map_server_fn_error, normalize_server_fn_error_message};
     use leptos::prelude::ServerFnError;
     use leptos_graphql::GraphqlHttpError;
 
@@ -176,6 +184,18 @@ mod map_server_fn_error_tests {
             "GraphQL error: MODULE_HAS_DEPENDENTS: module 'checkout' has dependents",
         ));
         assert!(matches!(mapped, GraphqlHttpError::Graphql(message) if message.contains("MODULE_HAS_DEPENDENTS")));
+    }
+
+    #[test]
+    fn maps_http_prefix_and_preserves_payload() {
+        let mapped = normalize_server_fn_error_message("Http error: 409 conflict");
+        assert!(matches!(mapped, GraphqlHttpError::Http(message) if message == "409 conflict"));
+    }
+
+    #[test]
+    fn unknown_server_errors_fallback_to_graphql_variant() {
+        let mapped = normalize_server_fn_error_message("internal adapter panic");
+        assert!(matches!(mapped, GraphqlHttpError::Graphql(message) if message == "internal adapter panic"));
     }
 }
 
