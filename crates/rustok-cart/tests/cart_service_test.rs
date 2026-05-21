@@ -1148,6 +1148,45 @@ async fn checkout_transition_guards_reject_invalid_reentry_and_release() {
 }
 
 #[tokio::test]
+async fn release_checkout_restores_mutation_paths() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+
+    let checking_out = service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(checking_out.status, "checking_out");
+
+    let reopened = service.release_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(reopened.status, "active");
+
+    let updated = service
+        .apply_percentage_promotion(
+            tenant_id,
+            cart.id,
+            None,
+            "promo-after-release",
+            Decimal::from_str("10.00").unwrap(),
+            serde_json::json!({ "source": "release-checkout-test" }),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.status, "active");
+    assert!(updated
+        .adjustments
+        .iter()
+        .any(|item| item.source_id.as_deref() == Some("promo-after-release")));
+}
+
+#[tokio::test]
 async fn checking_out_cart_rejects_typed_promotion_mutations() {
     let service = setup().await;
     let tenant_id = support::TEST_TENANT_ID;
