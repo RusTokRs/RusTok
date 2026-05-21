@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Current phase: phase_c_iteration_planning
+- Last checkpoint: Выполнен plan-sync с фактическим кодом `rustok-seo`: подтверждены typed schema input/write paths, diagnostics remediation flow и runtime foundation для sitemap submission endpoints (`sitemap_submission_endpoints` + bounded best-effort submit в `generate_sitemaps`).
+- Next step: Стартовать Iteration C1 — вынести submission path в явный adapter seam (без изменения public SEO contract) и закрыть regression coverage для success/failure endpoint fan-out.
+- Open blockers: Для полноценного Google Indexing API/поисковых провайдеров нужен отдельный tenant-secret contract (вне текущего scope C1).
+- Hand-off notes for next agent: Не расширять C1 до cross-linking/media; сначала зафиксировать adapter seam + tests, затем переходить к C2/C3.
+- Last updated at (UTC): 2026-05-21T12:05:47Z
 
 ## Область работ
 
@@ -33,6 +33,13 @@
 - target extensibility идёт через `rustok-seo-targets` и runtime registration providers;
 - tenant templates и diagnostics уже являются first-class read/control-plane слоями; diagnostics покрывает issue aggregates, canonical redirect chains/loops и hreflang gaps;
 - `SeoDocument.structured_data_blocks` больше не является raw JSON passthrough: JSON-LD нормализуется в typed schema blocks с `schema_kind`, `schema_type`, legacy `kind`, `source` и payload.
+
+## Итог последней exploration-сессии
+
+- baseline runtime и control-plane для templates/bulk/diagnostics подтверждён как завершённый;
+- Phase C уже имеет production foundation для sitemap submit, но пока без явного provider seam и без расширенной telemetry/analytics детализации;
+- cross-linking и image SEO остаются следующими крупными инкрементами, требующими отдельного typed read contract и diagnostics coverage;
+- дополнительные SEO surface-расширения для Next/storefront не должны опережать реальное появление route ownership в host-приложениях.
 
 ## Этапы
 
@@ -110,16 +117,33 @@
 
 #### Phase C — indexing и linking automation
 
-- [ ] Cross-linking engine с controlled insertion points без silent HTML mutation.
-- [ ] Google Indexing API / sitemap ping и позже Search Console-style diagnostics adapters.
-  - [x] Foundation: tenant settings уже держат normalized `sitemap_submission_endpoints` для будущих ping providers.
-  - [x] Runtime foundation: `generate_sitemaps` выполняет best-effort HTTP submit на configured endpoints
-    (placeholder `{sitemap_url}` или auto-append `sitemap=`), сохраняя ошибки в `seo_sitemap_jobs.last_error`
-    без падения основной генерации sitemap.
-  - [x] Submit path ограничивает runtime-risk: только `http/https`, короткий client timeout и bounded
-    `last_error` payload (truncate) вместо неограниченного error blob.
-- [ ] Image SEO hooks через `rustok-media` после стабилизации templates + diagnostics.
-- [ ] Расширять Next route coverage только вместе с появлением реальных storefront routes.
+- [ ] **Iteration C1 — external submission adapters (runtime seam + hardening)**
+  - [ ] Вынести текущий sitemap submit flow в typed adapter contract (`submit_sitemap_index`) с default HTTP adapter поверх уже существующих `sitemap_submission_endpoints`.
+  - [ ] Добавить per-endpoint result aggregation (success/failure count + bounded error summary) без изменения существующего `SeoSitemapStatusRecord` public shape.
+  - [ ] Покрыть adapter path regression tests: all-success, partial-failure, invalid endpoint skip, timeout/failure truncation.
+  - Проверка инкремента:
+    - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
+    - `cargo test -p rustok-seo --lib sitemaps`
+
+- [ ] **Iteration C2 — cross-linking foundation (read-only suggestions first)**
+  - [ ] Добавить typed cross-link suggestions read model (target, anchor hint, destination route, confidence/source), не выполняя автоматических HTML mutation.
+  - [ ] Включить cross-link gaps в diagnostics (issue codes + aggregates) и дать remediation entrypoint через существующий SEO control-plane.
+  - [ ] Добавить GraphQL/REST read contract для suggestions с tenant/RBAC guard parity.
+  - Проверка инкремента:
+    - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
+    - `cargo check -p rustok-seo-admin --features ssr --config profile.dev.debug=0`
+    - `cargo check -p rustok-server --lib --config profile.dev.debug=0`
+
+- [ ] **Iteration C3 — image SEO hooks через `rustok-media`**
+  - [ ] Зафиксировать module boundary contract: `rustok-media` отдаёт typed image descriptors (url/alt/size/mime), `rustok-seo` только потребляет их для OG/Twitter/schema fallback.
+  - [ ] Обновить built-in owner providers (`pages/product/blog/forum`) для заполнения image-aware template/schema fields без raw blob glue.
+  - [ ] Добавить diagnostics checks для missing image alt/size в SEO-critical targets.
+  - Проверка инкремента:
+    - `cargo check -p rustok-media --tests --config profile.dev.debug=0`
+    - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
+    - `cargo check -p rustok-storefront --config profile.dev.debug=0`
+
+- [ ] Расширять Next route coverage только вместе с появлением реальных storefront routes и после фиксации C1–C3 baseline.
 
 ## Проверка
 
