@@ -202,7 +202,12 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
     .await
     .expect_err("manifest validation should fail before transaction update");
 
-    assert!(matches!(err, PlatformCompositionBuildError::Composition(_)));
+    assert!(matches!(
+        err,
+        PlatformCompositionBuildError::Composition(
+            rustok_server::services::platform_composition::PlatformCompositionError::Manifest(_)
+        )
+    ));
 
     let state_after = PlatformCompositionService::active_snapshot(&db)
         .await
@@ -210,6 +215,10 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
     assert_eq!(
         state_after.revision, seeded.revision,
         "revision must stay unchanged when manifest validation fails"
+    );
+    assert_eq!(
+        state_after.manifest_hash, seeded.manifest_hash,
+        "manifest hash must stay unchanged when manifest validation fails"
     );
 
     let builds = BuildEntity::find().all(&db).await.expect("list builds");
