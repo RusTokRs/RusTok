@@ -215,6 +215,7 @@ rustok-tenant = { path = "crates/rustok-tenant" }
 rustok-rbac = { path = "crates/rustok-rbac" }
 rustok-mcp = { path = "crates/rustok-mcp" }
 rustok-ai = { path = "crates/rustok-ai" }
+rustok-ai-order = { path = "crates/rustok-ai-order" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }

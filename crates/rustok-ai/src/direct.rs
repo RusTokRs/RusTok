@@ -48,10 +48,7 @@ mod direct_product_attributes;
 use direct_domain_commerce::register_commerce_direct_handlers;
 use direct_domain_content::register_content_direct_handlers;
 use direct_domain_orders::register_order_direct_handlers;
-pub(crate) use direct_order_generation::{
-    generate_order_analytics, generate_order_ops_assistant, GeneratedOrderAnalytics,
-    GeneratedOrderOpsAssistant,
-};
+pub(crate) use direct_order_generation::{generate_order_analytics, generate_order_ops_assistant};
 
 pub struct DirectExecutionRequest {
     pub task_slug: String,

@@ -13,6 +13,7 @@ server = [
   "dep:loco-rs",
   "dep:once_cell",
   "dep:rhai",
+  "dep:rustok-ai-order",
   "dep:rustok-api",
   "dep:rustok-blog",
   "dep:rustok-commerce",
@@ -38,6 +39,7 @@ once_cell = { workspace = true, optional = true }
 futures-util = { version = "0.3" }
 reqwest = { workspace = true, features = ["json", "stream"] }
 rhai = { workspace = true, optional = true }
+rustok-ai-order = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }

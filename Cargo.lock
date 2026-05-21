@@ -9763,6 +9763,7 @@ dependencies = [
  "once_cell",
  "reqwest 0.13.2",
  "rhai",
+ "rustok-ai-order",
  "rustok-api",
  "rustok-blog",
  "rustok-commerce",
@@ -9802,6 +9803,40 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
 ]
+
+[[package]]
+name = "rustok-ai-content"
+version = "0.1.0"
+dependencies = [
+ "rustok-ai",
+]
+
+[[package]]
+name = "rustok-ai-content-admin"
+version = "0.1.0"
+
+[[package]]
+name = "rustok-ai-order"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-ai-order-admin"
+version = "0.1.0"
+
+[[package]]
+name = "rustok-ai-product"
+version = "0.1.0"
+dependencies = [
+ "rustok-ai",
+]
+
+[[package]]
+name = "rustok-ai-product-admin"
+version = "0.1.0"
 
 [[package]]
 name = "rustok-api"
@@ -11325,6 +11360,7 @@ dependencies = [
  "chrono",
  "rustok-core",
  "rustok-events",
+ "rustok-outbox",
  "sea-orm",
  "sea-orm-migration",
  "serde",

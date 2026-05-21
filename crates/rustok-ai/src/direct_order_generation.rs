@@ -2,8 +2,7 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::direct::parse_json_object_from_text;
 use crate::model::{
@@ -12,27 +11,9 @@ use crate::model::{
 };
 use crate::provider::ModelProvider;
 use crate::{AiError, AiResult};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GeneratedOrderAnalytics {
-    pub(crate) summary: String,
-    #[serde(default)]
-    pub(crate) key_findings: Vec<String>,
-    #[serde(default)]
-    pub(crate) risk_flags: Vec<String>,
-    #[serde(default)]
-    pub(crate) recommended_actions: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GeneratedOrderOpsAssistant {
-    pub(crate) recommended_action: String,
-    pub(crate) rationale: String,
-    #[serde(default)]
-    pub(crate) prefill: Value,
-    pub(crate) requires_human: bool,
-    pub(crate) confidence: u8,
-}
+use rustok_ai_order::{
+    validate_order_ops_assistant_confidence, GeneratedOrderAnalytics, GeneratedOrderOpsAssistant,
+};
 
 pub(crate) async fn generate_order_analytics(
     provider: &Arc<dyn ModelProvider>,
@@ -153,10 +134,6 @@ pub(crate) async fn generate_order_ops_assistant(
     let parsed = parse_json_object_from_text(&content)?;
     let decision: GeneratedOrderOpsAssistant =
         serde_json::from_value(parsed).map_err(AiError::Json)?;
-    if decision.confidence > 100 {
-        return Err(AiError::Validation(
-            "order_ops_assistant confidence must be between 0 and 100".to_string(),
-        ));
-    }
+    validate_order_ops_assistant_confidence(decision.confidence).map_err(AiError::Validation)?;
     Ok(decision)
 }

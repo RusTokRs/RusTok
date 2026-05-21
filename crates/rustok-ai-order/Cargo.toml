@@ -7,7 +7,8 @@ description = "Domain-owned AI verticals for order flows"
 
 [features]
 default = []
-server = ["rustok-ai/server"]
+server = []
 
 [dependencies]
-rustok-ai = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
