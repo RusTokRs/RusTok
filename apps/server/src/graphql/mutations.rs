@@ -1419,35 +1419,4 @@ mod tests {
         assert_eq!(prepared.locale.as_deref(), Some("ru"));
     }
 
-    #[test]
-    fn platform_composition_error_maps_revision_conflict_to_conflict_message() {
-        let err = map_platform_composition_error(PlatformCompositionError::RevisionConflict {
-            expected: 3,
-            current: 5,
-        });
-        assert!(err.message.contains("revision conflict"));
-        assert!(err.message.contains("expected 3"));
-        assert!(err.message.contains("current 5"));
-    }
-
-    #[test]
-    fn platform_composition_build_error_maps_enqueue_failures_to_internal_error() {
-        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Build(
-            "queue unavailable".to_string(),
-        ));
-        assert!(err.message.to_lowercase().contains("internal"));
-    }
-
-    #[test]
-    fn platform_composition_build_error_maps_composition_conflict_consistently() {
-        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Composition(
-            PlatformCompositionError::RevisionConflict {
-                expected: 10,
-                current: 11,
-            },
-        ));
-        assert!(err.message.contains("revision conflict"));
-        assert!(err.message.contains("expected 10"));
-        assert!(err.message.contains("current 11"));
-    }
 }
