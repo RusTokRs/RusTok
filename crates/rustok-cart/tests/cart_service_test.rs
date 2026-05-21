@@ -1110,6 +1110,41 @@ async fn checkout_lifecycle_uses_checking_out_before_completion() {
 
 
 #[tokio::test]
+async fn checking_out_cart_rejects_typed_promotion_mutations() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+
+    let checking_out = service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(checking_out.status, "checking_out");
+
+    let error = service
+        .apply_percentage_promotion(
+            tenant_id,
+            cart.id,
+            None,
+            "promo-typed-while-checkout",
+            Decimal::from_str("10.00").unwrap(),
+            serde_json::json!({ "source": "typed-checkout-guard" }),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CartError::InvalidTransition { from, .. } => assert_eq!(from, "checking_out"),
+        other => panic!("expected invalid transition, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn checking_out_cart_rejects_adjustment_mutations() {
     let service = setup().await;
     let tenant_id = support::TEST_TENANT_ID;
