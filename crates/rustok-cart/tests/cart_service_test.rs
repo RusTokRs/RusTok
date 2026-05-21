@@ -1110,6 +1110,30 @@ async fn checkout_lifecycle_uses_checking_out_before_completion() {
 
 
 #[tokio::test]
+async fn release_checkout_does_not_set_completed_at_and_complete_cart_does() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    assert!(cart.completed_at.is_none());
+
+    let checking_out = service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(checking_out.status, "checking_out");
+    assert!(checking_out.completed_at.is_none());
+
+    let reopened = service.release_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(reopened.status, "active");
+    assert!(reopened.completed_at.is_none());
+
+    let completed = service.complete_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(completed.status, "completed");
+    assert!(completed.completed_at.is_some());
+}
+
+#[tokio::test]
 async fn completed_checkout_rejects_release_and_reentry() {
     let service = setup().await;
     let tenant_id = support::TEST_TENANT_ID;
