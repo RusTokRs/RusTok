@@ -9,7 +9,9 @@ use sea_orm::{Database, DatabaseConnection, DbBackend, EntityTrait, Statement};
 use std::sync::Arc;
 
 async fn setup_db(include_builds: bool) -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:").await.expect("db connect");
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("db connect");
 
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
@@ -63,6 +65,31 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
     db
 }
 
+async fn enqueue_default_manifest(
+    db: &DatabaseConnection,
+) -> rustok_server::services::platform_composition::PlatformCompositionBuildResult {
+    let registry = ModuleRegistry::new();
+    let publisher = Arc::new(NoopBuildEventPublisher);
+    let manifest = ModulesManifest::default();
+
+    let seeded = PlatformCompositionService::active_snapshot(db)
+        .await
+        .expect("seed active snapshot");
+
+    PlatformCompositionBuildService::update_manifest_and_request_build(
+        db,
+        publisher,
+        &registry,
+        Some(seeded.revision),
+        manifest,
+        ManifestDiff::default(),
+        "test-admin".to_string(),
+        "success case".to_string(),
+    )
+    .await
+    .expect("build request should succeed")
+}
+
 #[tokio::test]
 async fn stale_revision_does_not_enqueue_build() {
     let db = setup_db(true).await;
@@ -100,7 +127,10 @@ async fn stale_revision_does_not_enqueue_build() {
     assert_eq!(state_after.revision, seeded.revision);
 
     let builds = BuildEntity::find().all(&db).await.expect("list builds");
-    assert!(builds.is_empty(), "no build should be enqueued on stale CAS");
+    assert!(
+        builds.is_empty(),
+        "no build should be enqueued on stale CAS"
+    );
 }
 
 #[tokio::test]
@@ -141,26 +171,10 @@ async fn build_insert_error_rolls_back_platform_revision() {
 #[tokio::test]
 async fn successful_enqueue_sets_manifest_ref_to_platform_state_revision() {
     let db = setup_db(true).await;
-    let registry = ModuleRegistry::new();
-    let publisher = Arc::new(NoopBuildEventPublisher);
-    let manifest = ModulesManifest::default();
-
     let seeded = PlatformCompositionService::active_snapshot(&db)
         .await
         .expect("seed active snapshot");
-
-    let result = PlatformCompositionBuildService::update_manifest_and_request_build(
-        &db,
-        publisher,
-        &registry,
-        Some(seeded.revision),
-        manifest,
-        ManifestDiff::default(),
-        "test-admin".to_string(),
-        "success case".to_string(),
-    )
-    .await
-    .expect("build request should succeed");
+    let result = enqueue_default_manifest(&db).await;
 
     assert_eq!(result.snapshot.revision, seeded.revision + 1);
     assert_eq!(
@@ -173,4 +187,32 @@ async fn successful_enqueue_sets_manifest_ref_to_platform_state_revision() {
         .await
         .expect("load state after success");
     assert_eq!(state_after.revision, result.snapshot.revision);
+}
+
+#[tokio::test]
+async fn successful_enqueue_keeps_hash_parity_between_snapshot_and_build() {
+    let db = setup_db(true).await;
+    let result = enqueue_default_manifest(&db).await;
+
+    let expected_hash = PlatformCompositionService::manifest_hash(&result.snapshot.manifest);
+    assert_eq!(result.snapshot.manifest_hash, expected_hash);
+    assert_eq!(result.build.manifest_hash, expected_hash);
+}
+
+#[tokio::test]
+async fn successful_enqueue_keeps_manifest_snapshot_parity_with_hash() {
+    let db = setup_db(true).await;
+    let result = enqueue_default_manifest(&db).await;
+
+    let persisted_snapshot: serde_json::Value =
+        serde_json::from_str(&result.build.manifest_snapshot)
+            .expect("manifest snapshot in build should be valid json");
+    let expected_snapshot =
+        PlatformCompositionService::manifest_snapshot_json(&result.snapshot.manifest)
+            .expect("serialize snapshot from platform state manifest");
+    assert_eq!(persisted_snapshot, expected_snapshot);
+
+    let expected_hash = rustok_api::manifest_hash::hash_manifest_snapshot(&persisted_snapshot);
+    assert_eq!(result.build.manifest_hash, expected_hash);
+    assert_eq!(result.snapshot.manifest_hash, expected_hash);
 }
