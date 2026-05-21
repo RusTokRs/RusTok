@@ -472,13 +472,55 @@ fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
             .sum(),
         low_stock: variants
             .iter()
-            .filter(|variant| variant.inventory_quantity <= LOW_STOCK_THRESHOLD)
+            .filter(|variant| {
+                variant.in_stock
+                    && !variant.inventory_policy.eq_ignore_ascii_case("continue")
+                    && variant.inventory_quantity <= LOW_STOCK_THRESHOLD
+            })
             .count(),
         backorder: variants
             .iter()
             .filter(|variant| variant.inventory_policy.eq_ignore_ascii_case("continue"))
             .count(),
         out_of_stock: variants.iter().filter(|variant| !variant.in_stock).count(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::InventoryVariant;
+
+    fn variant(in_stock: bool, inventory_policy: &str, inventory_quantity: i32) -> InventoryVariant {
+        InventoryVariant {
+            id: "v".to_string(),
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            title: "Variant".to_string(),
+            option1: None,
+            option2: None,
+            option3: None,
+            prices: Vec::new(),
+            inventory_quantity,
+            inventory_policy: inventory_policy.to_string(),
+            in_stock,
+        }
+    }
+
+    #[test]
+    fn summary_does_not_mix_out_of_stock_or_backorder_into_low_stock() {
+        let variants = vec![
+            variant(true, "deny", 2),
+            variant(false, "deny", 0),
+            variant(true, "continue", 0),
+        ];
+
+        let summary = summarize_inventory(&variants);
+        assert_eq!(summary.variant_count, 3);
+        assert_eq!(summary.low_stock, 1);
+        assert_eq!(summary.out_of_stock, 1);
+        assert_eq!(summary.backorder, 1);
     }
 }
 
