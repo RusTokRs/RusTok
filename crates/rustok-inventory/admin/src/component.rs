@@ -473,6 +473,14 @@ enum InventoryHealthState {
 
 fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
     let health_counts = summarize_inventory_health_counts(variants);
+    let non_healthy_total = health_counts.non_healthy_total();
+    let healthy_total = variants.len().saturating_sub(non_healthy_total);
+
+    debug_assert_eq!(
+        non_healthy_total + healthy_total,
+        variants.len(),
+        "inventory health partition must cover every variant exactly once"
+    );
 
     InventorySummary {
         variant_count: variants.len(),
@@ -632,6 +640,24 @@ mod tests {
     fn health_counts_empty_input_is_zeroed() {
         let counts = summarize_inventory_health_counts(&[]);
         assert_eq!(counts, InventoryHealthCounts::default());
+    }
+
+    #[test]
+    fn health_counts_and_summary_stay_consistent_for_mixed_variants() {
+        let variants = vec![
+            variant(true, "deny", LOW_STOCK_THRESHOLD - 1),
+            variant(true, "deny", LOW_STOCK_THRESHOLD + 3),
+            variant(false, "deny", 0),
+            variant(false, "continue", -2),
+            variant(true, "CONTINUE", -1),
+        ];
+
+        let counts = summarize_inventory_health_counts(&variants);
+        let summary = summarize_inventory(&variants);
+        assert_eq!(counts.low_stock, summary.low_stock);
+        assert_eq!(counts.out_of_stock, summary.out_of_stock);
+        assert_eq!(counts.backorder, summary.backorder);
+        assert_eq!(counts.non_healthy_total(), summary.variant_count - 1);
     }
 }
 
