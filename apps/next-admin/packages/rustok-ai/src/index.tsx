@@ -2127,9 +2127,24 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
-                    if (!sessionForm.taskProfileId) {
+                    const productAttributesTaskProfile = taskProfiles.find(
+                      (profile) => profile.slug === 'product_attributes'
+                    );
+                    if (!productAttributesTaskProfile) {
                       setError(
-                        'Select the `product_attributes` task profile before generating product attributes.'
+                        'Task profile `product_attributes` is not configured. Create/activate it first.'
+                      );
+                      return;
+                    }
+                    const selectedTaskProfile = taskProfiles.find(
+                      (profile) => profile.id === sessionForm.taskProfileId
+                    );
+                    if (
+                      selectedTaskProfile &&
+                      selectedTaskProfile.slug !== 'product_attributes'
+                    ) {
+                      setError(
+                        'Current task profile is not `product_attributes`. Switch profile or use auto-selected profile.'
                       );
                       return;
                     }
@@ -2165,7 +2180,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           title: productAttributesForm.title,
                           providerProfileId:
                             sessionForm.providerProfileId || null,
-                          taskProfileId: sessionForm.taskProfileId,
+                          taskProfileId: productAttributesTaskProfile.id,
                           executionMode: 'DIRECT',
                           locale: productAttributesForm.locale || null,
                           taskInputJson,
