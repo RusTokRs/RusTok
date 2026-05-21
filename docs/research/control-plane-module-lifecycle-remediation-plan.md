@@ -330,7 +330,7 @@ rollback-стратегии и Definition of Done по итерациям.
 
 - [x] Конфликт CAS: stale revision → `platform_state` не меняется, build не создаётся.
 - [x] Ошибка insert в `builds` → транзакция откатывается, revision не инкрементируется.
-- [ ] Ошибка валидации manifest → нет ни update state, ни build enqueue.
+- [x] Ошибка валидации manifest → нет ни update state, ни build enqueue.
 
 ### Итерация B — закрыть P0.2 (canonical lifecycle entrypoint)
 
