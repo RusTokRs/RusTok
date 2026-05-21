@@ -1,6 +1,6 @@
 use rustok_core::ModuleRegistry;
 use rustok_server::models::build::Entity as BuildEntity;
-use rustok_server::modules::{ManifestDiff, ModulesManifest};
+use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
 use rustok_server::services::build_service::NoopBuildEventPublisher;
 use rustok_server::services::platform_composition::{
     PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionService,
@@ -90,6 +90,47 @@ async fn enqueue_default_manifest(
     .expect("build request should succeed")
 }
 
+fn invalid_manifest_with_missing_dependency() -> ModulesManifest {
+    let mut invalid_manifest = ModulesManifest::default();
+    invalid_manifest.modules.insert(
+        "catalog".to_string(),
+        ManifestModuleSpec {
+            source: "workspace".to_string(),
+            crate_name: "rustok-catalog".to_string(),
+            depends_on: vec!["missing-dependency".to_string()],
+            ..ManifestModuleSpec::default()
+        },
+    );
+    invalid_manifest
+}
+
+async fn assert_snapshot_unchanged(
+    db: &DatabaseConnection,
+    seeded: &rustok_server::services::platform_composition::PlatformCompositionSnapshot,
+    context: &str,
+) {
+    let state_after = PlatformCompositionService::active_snapshot(db)
+        .await
+        .expect("load state after failed operation");
+    assert_eq!(
+        state_after.revision, seeded.revision,
+        "revision must stay unchanged for {context}"
+    );
+    assert_eq!(
+        state_after.manifest_hash, seeded.manifest_hash,
+        "manifest hash must stay unchanged for {context}"
+    );
+    assert_eq!(
+        state_after.manifest, seeded.manifest,
+        "manifest payload must stay unchanged for {context}"
+    );
+}
+
+async fn assert_no_builds_enqueued(db: &DatabaseConnection, context: &str) {
+    let builds = BuildEntity::find().all(db).await.expect("list builds");
+    assert!(builds.is_empty(), "no builds expected for {context}");
+}
+
 #[tokio::test]
 async fn stale_revision_does_not_enqueue_build() {
     let db = setup_db(true).await;
@@ -169,6 +210,100 @@ async fn build_insert_error_rolls_back_platform_revision() {
 }
 
 #[tokio::test]
+async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
+    let db = setup_db(true).await;
+    let registry = ModuleRegistry::new();
+    let publisher = Arc::new(NoopBuildEventPublisher);
+
+    let seeded = PlatformCompositionService::active_snapshot(&db)
+        .await
+        .expect("seed active snapshot");
+
+    let invalid_manifest = invalid_manifest_with_missing_dependency();
+
+    let err = PlatformCompositionBuildService::update_manifest_and_request_build(
+        &db,
+        publisher,
+        &registry,
+        Some(seeded.revision),
+        invalid_manifest,
+        ManifestDiff::default(),
+        "test-admin".to_string(),
+        "invalid manifest should fail validation".to_string(),
+    )
+    .await
+    .expect_err("manifest validation should fail before transaction update");
+
+    assert!(matches!(
+        err,
+        PlatformCompositionBuildError::Composition(
+            rustok_server::services::platform_composition::PlatformCompositionError::Manifest(_)
+        )
+    ));
+
+    assert_snapshot_unchanged(&db, &seeded, "manifest validation failure (build path)").await;
+    assert_no_builds_enqueued(&db, "manifest validation failure (build path)").await;
+}
+
+#[tokio::test]
+async fn update_manifest_validation_error_does_not_update_platform_state() {
+    let db = setup_db(true).await;
+    let registry = ModuleRegistry::new();
+
+    let seeded = PlatformCompositionService::active_snapshot(&db)
+        .await
+        .expect("seed active snapshot");
+
+    let invalid_manifest = invalid_manifest_with_missing_dependency();
+
+    let err = PlatformCompositionService::update_manifest(
+        &db,
+        &registry,
+        Some(seeded.revision),
+        invalid_manifest,
+        Some("test-admin".to_string()),
+    )
+    .await
+    .expect_err("manifest validation should fail before platform state update");
+
+    assert!(matches!(
+        err,
+        rustok_server::services::platform_composition::PlatformCompositionError::Manifest(_)
+    ));
+
+    assert_snapshot_unchanged(&db, &seeded, "manifest validation failure (update path)").await;
+    assert_no_builds_enqueued(&db, "manifest validation failure (update path)").await;
+}
+
+#[tokio::test]
+async fn update_manifest_stale_revision_conflict_does_not_update_platform_state() {
+    let db = setup_db(true).await;
+    let registry = ModuleRegistry::new();
+
+    let seeded = PlatformCompositionService::active_snapshot(&db)
+        .await
+        .expect("seed active snapshot");
+
+    let err = PlatformCompositionService::update_manifest(
+        &db,
+        &registry,
+        Some(seeded.revision - 1),
+        ModulesManifest::default(),
+        Some("test-admin".to_string()),
+    )
+    .await
+    .expect_err("stale revision must fail with conflict");
+
+    assert!(matches!(
+        err,
+        rustok_server::services::platform_composition::PlatformCompositionError::RevisionConflict { .. }
+    ));
+
+    assert_snapshot_unchanged(&db, &seeded, "stale revision conflict (update path)").await;
+    assert_no_builds_enqueued(&db, "stale revision conflict (update path)").await;
+}
+
+#[tokio::test]
 async fn successful_enqueue_sets_manifest_ref_to_platform_state_revision() {
     let db = setup_db(true).await;
     let seeded = PlatformCompositionService::active_snapshot(&db)
@@ -215,4 +350,22 @@ async fn successful_enqueue_keeps_manifest_snapshot_parity_with_hash() {
     let expected_hash = rustok_api::manifest_hash::hash_manifest_snapshot(&persisted_snapshot);
     assert_eq!(result.build.manifest_hash, expected_hash);
     assert_eq!(result.snapshot.manifest_hash, expected_hash);
+}
+
+#[tokio::test]
+async fn same_manifest_keeps_hash_and_snapshot_stable_across_revisions() {
+    let db = setup_db(true).await;
+
+    let first = enqueue_default_manifest(&db).await;
+    let second = enqueue_default_manifest(&db).await;
+
+    assert!(
+        second.snapshot.revision > first.snapshot.revision,
+        "revisions should advance for every successful enqueue"
+    );
+    assert_ne!(first.build.manifest_ref, second.build.manifest_ref);
+
+    assert_eq!(first.snapshot.manifest_hash, second.snapshot.manifest_hash);
+    assert_eq!(first.build.manifest_hash, second.build.manifest_hash);
+    assert_eq!(first.build.manifest_snapshot, second.build.manifest_snapshot);
 }
