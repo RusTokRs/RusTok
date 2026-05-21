@@ -216,3 +216,21 @@ async fn successful_enqueue_keeps_manifest_snapshot_parity_with_hash() {
     assert_eq!(result.build.manifest_hash, expected_hash);
     assert_eq!(result.snapshot.manifest_hash, expected_hash);
 }
+
+#[tokio::test]
+async fn same_manifest_keeps_hash_and_snapshot_stable_across_revisions() {
+    let db = setup_db(true).await;
+
+    let first = enqueue_default_manifest(&db).await;
+    let second = enqueue_default_manifest(&db).await;
+
+    assert!(
+        second.snapshot.revision > first.snapshot.revision,
+        "revisions should advance for every successful enqueue"
+    );
+    assert_ne!(first.build.manifest_ref, second.build.manifest_ref);
+
+    assert_eq!(first.snapshot.manifest_hash, second.snapshot.manifest_hash);
+    assert_eq!(first.build.manifest_hash, second.build.manifest_hash);
+    assert_eq!(first.build.manifest_snapshot, second.build.manifest_snapshot);
+}
