@@ -1108,6 +1108,45 @@ async fn checkout_lifecycle_uses_checking_out_before_completion() {
     assert_eq!(completed.status, "completed");
 }
 
+
+#[tokio::test]
+async fn checking_out_cart_rejects_adjustment_mutations() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+
+    let checking_out = service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(checking_out.status, "checking_out");
+
+    let error = service
+        .set_adjustments(
+            tenant_id,
+            cart.id,
+            vec![SetCartAdjustmentInput {
+                line_item_id: None,
+                source_type: "Promotion".to_string(),
+                source_id: Some("promo-while-checkout".to_string()),
+                amount: Decimal::from_str("1.00").unwrap(),
+                metadata: serde_json::json!({ "rule_code": "forbidden" }),
+            }],
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CartError::InvalidTransition { from, .. } => assert_eq!(from, "checking_out"),
+        other => panic!("expected invalid transition, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn seller_aware_delivery_groups_split_same_shipping_profile() {
     let service = setup().await;
