@@ -6,11 +6,11 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Last checkpoint: Checkout hardening coverage now explicitly includes mutation guards for `checking_out` carts (`set_adjustments` + typed `apply_percentage_promotion`).
+- Next step: Добавить coverage для recovery/versioning semantics вокруг `checking_out` и checkout release/complete transitions.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-05-21T09:45:00Z
 
 ## Область работ
 
@@ -30,6 +30,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`, без цикла зависимостей;
 - storefront cart inspection, safe decrement/remove write-side и seller-aware delivery-group snapshot уже вынесены в `rustok-cart/storefront`;
 - channel/context/deliverability orchestration поверх cart по-прежнему выполняется на уровне umbrella-модуля.
+- targeted tests теперь явно фиксируют, что cart mutation paths `set_adjustments` и typed promotion apply-path отклоняются при `checking_out`, чтобы во время checkout не было конкурентной мутации pricing snapshot.
 
 ## Этапы
 
