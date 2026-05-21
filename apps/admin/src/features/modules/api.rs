@@ -4574,23 +4574,17 @@ pub async fn toggle_module(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<ToggleModuleResult, ApiError> {
-    match toggle_module_native(module_slug.clone(), enabled).await {
-        Ok(result) => Ok(result),
-        Err(server_err) => {
-            let response: ToggleModuleResponse = request(
-                TOGGLE_MODULE_MUTATION,
-                ToggleModuleVariables {
-                    module_slug,
-                    enabled,
-                },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.toggle_module)
-        }
-    }
+    let response: ToggleModuleResponse = request(
+        TOGGLE_MODULE_MUTATION,
+        ToggleModuleVariables {
+            module_slug,
+            enabled,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.toggle_module)
 }
 
 pub async fn update_module_settings(
