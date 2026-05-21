@@ -90,6 +90,15 @@ Shared foundation / support crates:
   отклоняется. `/api/install/*` намеренно обходит tenant resolution middleware,
   потому что первый install запускается до создания tenant context. CLI остаётся
   canonical automation path.
+- Tenant middleware resolution contract зафиксирован integration tests в
+  `apps/server/tests/tenant_resolver_invariants_test.rs`: active tenant
+  разрешается через `header`, `host` и `subdomain`, disabled tenant стабильно
+  отвечает `403`, отсутствующий tenant — `404`.
+- Provisioning/deprovisioning path обязан инициировать cache invalidation
+  (`invalidate_tenant_cache_by_uuid/slug/host`) после create/update/deactivate/
+  domain-change операций: положительный cache живёт до `TENANT_CACHE_TTL=300s`,
+  negative cache miss — до `TENANT_NEGATIVE_CACHE_TTL=60s`, поэтому без
+  invalidation stale resolver state допустим только в рамках этих TTL.
 
 ## Границы ответственности
 

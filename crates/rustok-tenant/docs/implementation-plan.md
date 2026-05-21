@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: operability_observability
-- Last checkpoint: Добавлены tenant observability метрики в `apps/server` (`rustok_tenant_cache_coalesced_requests`, `rustok_tenant_active_total`, `rustok_tenant_inactive_total`, `rustok_tenant_total`) и обновлена server-документация по cache stampede.
-- Next step: Закрыть `resolver invariants` test gap в host middleware integration path и после этого обновить provisioning/deprovisioning documentation.
+- Last checkpoint: Добавлены integration tests для host tenant middleware resolver path (`apps/server/tests/tenant_resolver_invariants_test.rs`) с coverage по `header/host/subdomain` resolution и `not_found/forbidden` semantics; обновлён runtime docs contract по tenant provisioning/deprovisioning и cache invalidation guarantees.
+- Next step: Закрыть оставшийся contract-sync пункт в `Contract stability` и обновить verification notes по итоговому статусу модуля.
 - Open blockers: None.
-- Hand-off notes for next agent: Следующий инкремент сфокусировать на integration tests для resolver path (header/host/subdomain + disabled/not-found semantics) и обновить этот checkpoint после тестового среза.
-- Last updated at (UTC): 2026-05-21T00:00:00Z
+- Hand-off notes for next agent: Следующий инкремент сфокусировать на финальном sync tenancy invariants между `rustok-tenant` и server resolver docs, после чего перевести план в `done`.
+- Last updated at (UTC): 2026-05-21T12:00:00Z
 
 ## Область работ
 
@@ -41,9 +41,9 @@
 
 ### 3. Operability
 
-- [ ] довести integration tests для tenant CRUD, module toggles и resolver invariants (baseline CRUD/module-toggle/outbox tests добавлены; resolver invariants pending);
+- [x] довести integration tests для tenant CRUD, module toggles и resolver invariants (baseline CRUD/module-toggle/outbox tests в `crates/rustok-tenant/tests/integration.rs`, resolver invariants в `apps/server/tests/tenant_resolver_invariants_test.rs`);
 - [x] развить observability для cache hit/miss и active tenant signals (Prometheus surface дополнен `rustok_tenant_cache_coalesced_requests` + `rustok_tenant_(active|inactive|total)_total`);
-- [ ] документировать provisioning/deprovisioning и invalidation guarantees одновременно с изменением runtime contract.
+- [x] документировать provisioning/deprovisioning и invalidation guarantees одновременно с изменением runtime contract.
 
 ## Проверка
 
@@ -62,6 +62,6 @@
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

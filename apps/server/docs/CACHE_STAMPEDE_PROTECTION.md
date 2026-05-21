@@ -146,6 +146,7 @@ cargo test tenant_cache_stampede --package rustok-server
 Tests verify:
 1. Without coalescing: N requests = N DB queries
 2. With coalescing: N requests = 1 DB query
+3. Resolver integration invariants (header/host/subdomain + disabled/not-found semantics) stay stable in `tests/tenant_resolver_invariants_test.rs`
 
 ### Load Test
 
@@ -174,6 +175,16 @@ Stampede protection is critical in these scenarios:
 2. **Cache Invalidation**: Tenant data updated (e.g., settings changed)
 3. **Cache Expiry**: TTL expires during high traffic
 4. **High Concurrency**: Many simultaneous requests for same tenant
+
+## Provisioning/Deprovisioning Invalidation Contract
+
+When provisioning or deprovisioning a tenant, host flows must call
+`invalidate_tenant_cache_by_uuid`, `invalidate_tenant_cache_by_slug`, or
+`invalidate_tenant_cache_by_host` after create/update/deactivate/domain changes.
+
+Without explicit invalidation, stale resolver state can persist until TTL expiry:
+- positive cache: `TENANT_CACHE_TTL = 300s`
+- negative cache: `TENANT_NEGATIVE_CACHE_TTL = 60s`
 
 ## Implementation Notes
 

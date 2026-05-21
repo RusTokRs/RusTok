@@ -17,6 +17,10 @@
 - Depends on `rustok-core` for module contracts and permission vocabulary.
 - Integrates with `rustok-outbox` (`TransactionalEventBus`) to persist tenant lifecycle events transactionally.
 - Used by `apps/server` tenant middleware, tenant admin flows, and module toggle orchestration.
+- Tenant resolver invariants for `header`/`host`/`subdomain` resolution and disabled/not-found
+  semantics are covered in `apps/server/tests/tenant_resolver_invariants_test.rs`.
+- Tenant provisioning/deprovisioning flows in the host are expected to invalidate tenant cache keys
+  (`uuid` / `slug` / `host`) to avoid stale resolver state beyond TTL windows.
 - Exposes a module-owned Leptos admin overview through `rustok-tenant-admin`.
 - Declares permissions via `rustok-core::Permission`.
 - `apps/server` enforces those permissions through `RbacService` and GraphQL/REST RBAC guards.
