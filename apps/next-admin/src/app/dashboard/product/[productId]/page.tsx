@@ -59,6 +59,12 @@ function buildProductAttributesHref(product: NonNullable<Awaited<ReturnType<type
   return `/dashboard/ai?${params.toString()}`;
 }
 
+function hasProductAttributesSeedData(translation: { title: string; description: string | null; locale: string } | null): boolean {
+  if (!translation) return false;
+  return translation.title.trim().length > 0 ||
+    (translation.description?.trim().length ?? 0) > 0;
+}
+
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -207,9 +213,20 @@ export default async function ProductDetailPage({ params }: PageProps) {
               <pre className='overflow-x-auto rounded-md border bg-muted/40 p-3 text-xs'>
 {buildProductAttributesTaskInput(product, primaryTranslation ?? { title: '', description: null, locale: 'en' })}
               </pre>
-              <Button asChild variant='outline' size='sm'>
-                <Link href={buildProductAttributesHref(product, primaryTranslation ?? { title: '', description: null, locale: 'en' })}>Open AI task runner</Link>
-              </Button>
+              {hasProductAttributesSeedData(primaryTranslation) ? (
+                <Button asChild variant='outline' size='sm'>
+                  <Link
+                    href={buildProductAttributesHref(product, primaryTranslation!)}
+                  >
+                    Open AI task runner
+                  </Link>
+                </Button>
+              ) : (
+                <p className='text-muted-foreground text-xs'>
+                  Add title or description translation before launching
+                  product_attributes.
+                </p>
+              )}
             </CardContent>
           </Card>
 
