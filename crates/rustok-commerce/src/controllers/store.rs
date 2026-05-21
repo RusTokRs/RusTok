@@ -4520,6 +4520,18 @@ mod tests {
         assert_eq!(completed["context"]["locale"], json!("de"));
         assert_eq!(completed["context"]["region"]["id"], json!(region.id));
         assert_eq!(completed["order"]["status"], json!("paid"));
+        assert_eq!(completed["cart"]["tax_included"], json!(true));
+        assert_eq!(completed["order"]["tax_included"], json!(true));
+        assert_ne!(completed["cart"]["tax_total"], serde_json::Value::Null);
+        assert_ne!(completed["order"]["tax_total"], serde_json::Value::Null);
+        assert_eq!(
+            completed["cart"]["tax_lines"][0]["provider_id"],
+            json!("region_default")
+        );
+        assert_eq!(
+            completed["order"]["tax_lines"][0]["provider_id"],
+            json!("region_default")
+        );
         assert_eq!(
             completed["payment_collection"]["id"],
             payment_collection["id"]

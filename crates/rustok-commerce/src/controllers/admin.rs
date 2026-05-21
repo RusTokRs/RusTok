@@ -1850,7 +1850,7 @@ mod tests {
     use crate::dto::{
         AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
         CompleteRefundInput, CreateFulfillmentInput, CreateFulfillmentItemInput, CreateOrderInput,
-        CreateOrderLineItemInput, CreatePaymentCollectionInput, CreateRefundInput,
+        CreateOrderLineItemInput, CreateOrderTaxLineInput, CreatePaymentCollectionInput, CreateRefundInput,
         DeliverFulfillmentInput, FulfillmentItemQuantityInput, RefundResponse,
         ShipFulfillmentInput, UpdateShippingOptionInput,
     };
@@ -1988,7 +1988,18 @@ mod tests {
                         metadata: json!({ "source": "admin-order-transport" }),
                     }],
                     adjustments: Vec::new(),
-                    tax_lines: Vec::new(),
+                    tax_lines: vec![CreateOrderTaxLineInput {
+                        line_item_index: Some(0),
+                        shipping_option_index: None,
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("9.50").expect("valid decimal"),
+                        name: "VAT".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: json!({
+                            "tax_included": false,
+                            "scope": "line_item"
+                        }),
+                    }],
                     metadata: json!({ "source": "admin-order-transport" }),
                 },
             )
@@ -2051,6 +2062,12 @@ mod tests {
             serde_json::from_slice(&body).expect("response should be JSON");
         assert_eq!(payload["order"]["id"], json!(order.id));
         assert_eq!(payload["order"]["customer_id"], json!(customer_id));
+        assert_eq!(payload["order"]["tax_total"], json!("9.5"));
+        assert_eq!(payload["order"]["tax_included"], json!(false));
+        assert_eq!(
+            payload["order"]["tax_lines"][0]["provider_id"],
+            json!("region_default")
+        );
         assert_eq!(
             payload["payment_collection"]["id"],
             json!(payment_collection.id)
