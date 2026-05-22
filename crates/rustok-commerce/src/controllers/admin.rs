@@ -3359,6 +3359,169 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_refunds_transport_supports_order_id_filter() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+
+        let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+        let first_order = order_service
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(Uuid::new_v4()),
+                    currency_code: "usd".to_string(),
+                    shipping_total: Decimal::ZERO,
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-REFUND-ORDER-FILTER-1".to_string()),
+                        title: "Admin Refund Order Filter 1".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("12.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-refund-order-filter" }),
+                    }],
+                    adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
+                    metadata: json!({ "source": "admin-refund-order-filter" }),
+                },
+            )
+            .await
+            .expect("first order should be created");
+        let second_order = order_service
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(Uuid::new_v4()),
+                    currency_code: "usd".to_string(),
+                    shipping_total: Decimal::ZERO,
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-REFUND-ORDER-FILTER-2".to_string()),
+                        title: "Admin Refund Order Filter 2".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("14.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-refund-order-filter" }),
+                    }],
+                    adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
+                    metadata: json!({ "source": "admin-refund-order-filter" }),
+                },
+            )
+            .await
+            .expect("second order should be created");
+
+        let first_collection = PaymentService::new(db.clone())
+            .create_collection(
+                tenant_id,
+                CreatePaymentCollectionInput {
+                    cart_id: None,
+                    order_id: Some(first_order.id),
+                    customer_id: first_order.customer_id,
+                    currency_code: "USD".to_string(),
+                    amount: first_order.total_amount,
+                    metadata: json!({ "source": "admin-refund-order-filter" }),
+                },
+            )
+            .await
+            .expect("first collection should be created");
+        let second_collection = PaymentService::new(db.clone())
+            .create_collection(
+                tenant_id,
+                CreatePaymentCollectionInput {
+                    cart_id: None,
+                    order_id: Some(second_order.id),
+                    customer_id: second_order.customer_id,
+                    currency_code: "USD".to_string(),
+                    amount: second_order.total_amount,
+                    metadata: json!({ "source": "admin-refund-order-filter" }),
+                },
+            )
+            .await
+            .expect("second collection should be created");
+
+        PaymentService::new(db.clone())
+            .create_refund(
+                tenant_id,
+                first_collection.id,
+                CreateRefundInput {
+                    amount: Decimal::from_str("3.00").expect("valid decimal"),
+                    reason: Some("test".to_string()),
+                    metadata: json!({ "source": "admin-refund-order-filter" }),
+                },
+            )
+            .await
+            .expect("first refund should be created");
+        PaymentService::new(db.clone())
+            .create_refund(
+                tenant_id,
+                second_collection.id,
+                CreateRefundInput {
+                    amount: Decimal::from_str("5.00").expect("valid decimal"),
+                    reason: Some("test".to_string()),
+                    metadata: json!({ "source": "admin-refund-order-filter" }),
+                },
+            )
+            .await
+            .expect("second refund should be created");
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Tenant".to_string(),
+            slug: format!("tenant-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PAYMENTS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/admin/refunds?order_id={}", first_order.id))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("request should succeed");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("response should be JSON");
+        assert_eq!(payload["total"], json!(1));
+        let items = payload["data"].as_array().expect("data should be array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0]["payment_collection_id"],
+            json!(first_collection.id.to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn admin_shipping_profiles_transport_supports_create_update_and_list() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
