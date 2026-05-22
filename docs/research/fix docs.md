@@ -285,6 +285,6 @@
 - [ ] DOC-07 Docs CI quality gates
 - [~] DOC-08 Executable examples hub (PR: pending)
 - [ ] DOC-09 Конвейер генерации reference-артефактов
-- [ ] DOC-10 Language/naming governance
-- [ ] DOC-11 Reviewer checklist + PR template
+- [~] DOC-10 Language/naming governance (PR: pending)
+- [~] DOC-11 Reviewer checklist + PR template (PR: pending)
 - [ ] DOC-12 Code hotspots documentation

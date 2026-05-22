@@ -1,116 +1,66 @@
 # Pull Request
 
-## 📋 Description
+## 📋 Summary
 
-<!-- Provide a brief description of the changes -->
+<!-- Кратко: что изменено и зачем. -->
 
-## 🎯 Related Issues
+## 🎯 Scope
 
-<!-- Link to related issues, e.g., Fixes #123 -->
+- DOC / code scope:
+- Affected modules/apps:
+- Out of scope:
 
 ## 🔍 Type of Change
 
-<!-- Mark the appropriate option with an 'x' -->
-
-- [ ] 🐛 Bug fix (non-breaking change which fixes an issue)
-- [ ] ✨ New feature (non-breaking change which adds functionality)
-- [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] 🐛 Bug fix
+- [ ] ✨ New feature
+- [ ] 💥 Breaking change
 - [ ] 📝 Documentation update
 - [ ] 🔧 Configuration change
-- [ ] ♻️ Code refactoring
-- [ ] 🎨 UI/UX improvement
+- [ ] ♻️ Refactor
 - [ ] ⚡ Performance improvement
-- [ ] 🧪 Test addition or improvement
+- [ ] 🧪 Test updates
 
-## ✅ Checklist
+## ✅ Required Checklist
 
-### Code Quality
-- [ ] My code follows the project's coding style
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] My changes generate no new warnings or errors
-- [ ] I have removed any debugging code or console.log statements
+### Universal
+- [ ] Self-review completed
+- [ ] No debug-only leftovers
+- [ ] Changed docs are aligned with actual code/runtime behavior
 
-### Testing
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] I have tested edge cases and error conditions
-- [ ] Test coverage has not decreased
+### Docs policy (required for docs or contract changes)
+- [ ] `docs/index.md` updated when navigation changed
+- [ ] `docs/modules/registry.md` updated if module/app composition changed
+- [ ] Existing docs were extended instead of creating duplicate documents
+- [ ] One file — one language policy respected
 
-### Documentation
-- [ ] I have made corresponding changes to the documentation
-- [ ] I have updated the README if needed
-- [ ] I have added/updated inline code comments
-- [ ] I have added/updated examples if needed
+### Security / Contract integrity
+- [ ] Tenant boundaries preserved
+- [ ] Permission/authorization contracts preserved
+- [ ] Validation/error contracts updated where needed
 
-### Security & Validation
-- [ ] All domain services use `TransactionalEventBus` (not direct `EventBus`)
-- [ ] User input is properly validated and sanitized
-- [ ] No SQL injection vulnerabilities
-- [ ] No XSS vulnerabilities
-- [ ] Sensitive data is not logged
-- [ ] Authentication/authorization is properly implemented
+## 🧪 Verification
 
-### Database & Events
-- [ ] Database migrations are included if schema changes were made
-- [ ] Events are validated before publishing (using `ValidateEvent`)
-- [ ] Events are published within transactions (using `publish_in_tx`)
-- [ ] No events are lost due to transaction rollbacks
-- [ ] Проверка транзакционности + outbox выполнена (domain write + outbox write в одной транзакции)
+<!-- Обязательно: фактические результаты. Не писать "checks passed" без evidence. -->
 
-### Performance & Reliability
-- [ ] No potential memory leaks
-- [ ] No unbounded resource usage
-- [ ] Proper error handling is in place
-- [ ] Logging is appropriate (not too verbose, not too sparse)
-- [ ] Backpressure/rate limiting considered if applicable
+### Verification Evidence
 
-### Backwards Compatibility
-- [ ] My changes are backwards compatible
-- [ ] If breaking changes exist, I have documented the migration path
-- [ ] API versioning is maintained if applicable
+- YYYY-MM-DD — `<exact command>` — `pass|fail|blocked`
+  - output/reason: `<1-3 lines>`
 
-## 📊 Test Results
+<!-- Для text-only docs PR допустимо: -->
+<!-- text-only: checks skipped by policy (see docs/research/fix docs.md) -->
 
-<!-- Paste relevant test results or link to CI -->
+## 📝 Docs Reviewer Checklist (required for docs PR)
 
-```
-# Example:
-$ cargo test
-   ...
-   test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured
-```
-
-## 📸 Screenshots (if applicable)
-
-<!-- Add screenshots for UI changes -->
+- [ ] Scope and intent are clear and bounded
+- [ ] Claims match current code/config/runtime
+- [ ] Links/anchors are valid in changed sections
+- [ ] Examples/commands are runnable or explicitly marked as blocked
+- [ ] Ownership and follow-ups are stated when work is partial
 
 ## 🔗 Additional Context
 
-<!-- Add any other context about the pull request here -->
-
-## 🚀 Deployment Notes
-
-<!-- Any special deployment steps or considerations -->
-
-- [ ] Database migrations need to be run
-- [ ] Environment variables need to be updated
-- [ ] Configuration changes are required
-- [ ] Requires restart of services
-- [ ] Dependencies need to be updated
-
----
-
-### Reviewer Checklist
-
-For reviewers - please verify:
-
-- [ ] Code follows project conventions and style
-- [ ] Tests are adequate and pass
-- [ ] Documentation is complete and accurate
-- [ ] Security considerations are addressed
-- [ ] Performance implications are acceptable
-- [ ] Breaking changes are clearly documented
-- [ ] EventBus consistency is maintained (TransactionalEventBus usage)
-- [ ] Event validation is implemented where needed
-- [ ] Tenant validation is implemented where needed
+- Related issue(s):
+- Follow-up task(s):
+- Migration/deployment notes (if any):
