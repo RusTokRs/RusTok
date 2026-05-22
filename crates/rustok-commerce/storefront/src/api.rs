@@ -827,20 +827,13 @@ fn build_graphql_shipping_selections(
     seller_scope: Option<&str>,
     shipping_option_id: Option<Uuid>,
 ) -> Result<Vec<StorefrontShippingSelectionInput>, ApiError> {
-    let selections = build_graphql_shipping_selection_plan(
+    build_graphql_shipping_selection_plan(
         cart,
         shipping_profile_slug,
         seller_id,
         seller_scope,
         shipping_option_id,
-    )?;
-    Ok(selections
-        .into_iter()
-        .map(|(delivery_group_id, shipping_option_id)| StorefrontShippingSelectionInput {
-            delivery_group_id,
-            shipping_option_id,
-        })
-        .collect())
+    )
 }
 
 fn build_graphql_shipping_selection_plan(
@@ -849,7 +842,7 @@ fn build_graphql_shipping_selection_plan(
     seller_id: Option<&str>,
     seller_scope: Option<&str>,
     shipping_option_id: Option<Uuid>,
-) -> Result<Vec<(String, String)>, ApiError> {
+) -> Result<Vec<StorefrontShippingSelectionInput>, ApiError> {
     let mut matched_target = false;
     let mut selections = Vec::with_capacity(cart.delivery_groups.len());
 
