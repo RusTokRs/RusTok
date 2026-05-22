@@ -421,8 +421,8 @@ fn parse_optional_uuid(value: Option<String>, field_name: &str) -> Result<Option
 }
 
 fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
+    if let Ok(url) = std::env::var("RUSTOK_GRAPHQL_URL") {
+        return url;
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -827,6 +827,29 @@ fn build_graphql_shipping_selections(
     seller_scope: Option<&str>,
     shipping_option_id: Option<Uuid>,
 ) -> Result<Vec<StorefrontShippingSelectionInput>, ApiError> {
+    let selections = build_graphql_shipping_selection_plan(
+        cart,
+        shipping_profile_slug,
+        seller_id,
+        seller_scope,
+        shipping_option_id,
+    )?;
+    Ok(selections
+        .into_iter()
+        .map(|(delivery_group_id, shipping_option_id)| StorefrontShippingSelectionInput {
+            delivery_group_id,
+            shipping_option_id,
+        })
+        .collect())
+}
+
+fn build_graphql_shipping_selection_plan(
+    cart: &StorefrontCheckoutCart,
+    shipping_profile_slug: &str,
+    seller_id: Option<&str>,
+    seller_scope: Option<&str>,
+    shipping_option_id: Option<Uuid>,
+) -> Result<Vec<(String, String)>, ApiError> {
     let mut matched_target = false;
     let mut selections = Vec::with_capacity(cart.delivery_groups.len());
 
@@ -886,6 +909,30 @@ fn build_native_shipping_selections(
     seller_scope: Option<&str>,
     shipping_option_id: Option<Uuid>,
 ) -> Result<Vec<rustok_commerce::CartShippingSelectionInput>, ServerFnError> {
+    let selections = build_native_shipping_selection_plan(
+        cart,
+        shipping_profile_slug,
+        seller_id,
+        seller_scope,
+        shipping_option_id,
+    )?;
+    Ok(selections
+        .into_iter()
+        .map(|(delivery_group_id, shipping_option_id)| rustok_commerce::CartShippingSelectionInput {
+            delivery_group_id,
+            shipping_option_id,
+        })
+        .collect())
+}
+
+#[cfg(feature = "ssr")]
+fn build_native_shipping_selection_plan(
+    cart: &rustok_commerce::CartResponse,
+    shipping_profile_slug: &str,
+    seller_id: Option<&str>,
+    seller_scope: Option<&str>,
+    shipping_option_id: Option<Uuid>,
+) -> Result<Vec<(String, String)>, ServerFnError> {
     let mut matched_target = false;
     let mut selections = Vec::with_capacity(cart.delivery_groups.len());
 
@@ -940,7 +987,10 @@ pub async fn fetch_storefront_commerce(
 ) -> Result<StorefrontCommerceData, ApiError> {
     match fetch_storefront_commerce_server(selected_cart_id.clone(), locale.clone()).await {
         Ok(data) => Ok(data),
-        Err(_) => fetch_storefront_commerce_graphql(selected_cart_id, locale).await,
+        Err(ApiError::ServerFn(ServerFnError::MissingServer)) => {
+            fetch_storefront_commerce_graphql(selected_cart_id, locale).await
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -1699,5 +1749,38 @@ mod tests {
         assert_eq!(summary.total, 0);
         assert_eq!(summary.refunded_amount, None);
         assert_eq!(summary.latest_status.as_deref(), Some("pending"));
+    }
+
+    #[test]
+    fn summarize_storefront_refunds_non_zero_total_with_invalid_amounts_returns_zero_string() {
+        let summary = summarize_storefront_refunds(
+            &[
+                GraphqlRefundItem {
+                    amount: "invalid".to_string(),
+                    status: "pending".to_string(),
+                },
+                GraphqlRefundItem {
+                    amount: "NaN".to_string(),
+                    status: "failed".to_string(),
+                },
+            ],
+            2,
+        );
+
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.refunded_amount.as_deref(), Some("0"));
+        assert_eq!(summary.latest_status.as_deref(), Some("pending"));
+    }
+
+    #[tokio::test]
+    async fn fetch_storefront_order_refunds_summary_rejects_invalid_uuid() {
+        let result = fetch_storefront_order_refunds_summary("not-a-uuid".to_string()).await;
+
+        match result {
+            Err(ApiError::Validation(message)) => {
+                assert_eq!(message, "order_id must be a valid UUID".to_string());
+            }
+            other => panic!("expected validation error, got {:?}", other),
+        }
     }
 }
