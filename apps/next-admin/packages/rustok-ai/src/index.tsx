@@ -3103,7 +3103,10 @@ function parseCsvUrls(value: string): { urls: string[]; invalid: string[] } {
   for (const entry of entries) {
     try {
       const url = new URL(entry);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      if (
+        (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+        !url.hostname
+      ) {
         invalid.push(entry);
         continue;
       }
