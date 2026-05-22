@@ -382,6 +382,14 @@ impl CommerceQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
+        let filter = filter.unwrap_or(StorefrontRefundsFilter {
+            status: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+
         let Some(_order) = load_storefront_customer_order(
             db,
             event_bus,
@@ -396,19 +404,11 @@ impl CommerceQuery {
             return Ok(GqlRefundList {
                 items: Vec::new(),
                 total: 0,
-                page: 1,
-                per_page: 20,
+                page,
+                per_page,
                 has_next: false,
             });
         };
-
-        let filter = filter.unwrap_or(StorefrontRefundsFilter {
-            status: None,
-            page: Some(1),
-            per_page: Some(20),
-        });
-        let page = filter.page.unwrap_or(1).max(1);
-        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
 
         let (items, total) = PaymentService::new(db.clone())
             .list_refunds(

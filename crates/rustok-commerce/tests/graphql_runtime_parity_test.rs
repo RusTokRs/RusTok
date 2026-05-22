@@ -817,6 +817,32 @@ fn storefront_refunds_query(tenant_id: Uuid, order_id: Uuid) -> String {
     )
 }
 
+fn storefront_refunds_query_with_paging(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    page: u64,
+    per_page: u64,
+) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontRefunds(
+            tenantId: "{tenant_id}",
+            orderId: "{order_id}",
+            filter: {{ page: {page}, perPage: {per_page} }}
+          ) {{
+            total
+            page
+            perPage
+            items {{
+              id
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -5014,12 +5040,19 @@ async fn storefront_graphql_refunds_query_returns_empty_for_unknown_order() {
         request_context(tenant_id, "de"),
         Some(customer_auth_context(tenant_id, customer_user_id)),
     )
-    .execute(Request::new(storefront_refunds_query(tenant_id, Uuid::new_v4())))
+    .execute(Request::new(storefront_refunds_query_with_paging(
+        tenant_id,
+        Uuid::new_v4(),
+        3,
+        7,
+    )))
     .await;
 
     assert!(response.errors.is_empty(), "unexpected errors: {:?}", response.errors);
     let json = response.data.into_json().expect("response should serialize");
     assert_eq!(json["storefrontRefunds"]["total"], Value::from(0));
+    assert_eq!(json["storefrontRefunds"]["page"], Value::from(3));
+    assert_eq!(json["storefrontRefunds"]["perPage"], Value::from(7));
     assert_eq!(json["storefrontRefunds"]["items"], Value::from(Vec::<Value>::new()));
 }
 
