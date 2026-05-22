@@ -1,0 +1,29 @@
+name: rustok_admin_mobile
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.1
+  go_router: ^17.2.3
+  app_core:
+    path: ../../packages/app_core
+  app_graphql:
+    path: ../../packages/app_graphql
+  app_module_contracts:
+    path: ../../packages/app_module_contracts
+  app_route_contracts:
+    path: ../../packages/app_route_contracts
+  app_ui_kit:
+    path: ../../packages/app_ui_kit
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,10 @@
+name: app_module_contracts
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  app_route_contracts:
+    path: ../app_route_contracts
