@@ -211,6 +211,27 @@ fn module_composition_helper_signatures_are_unique() {
     }
 }
 
+#[test]
+fn module_composition_helpers_do_not_call_toggle_mutation_contract() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for helper in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+    ] {
+        let helper_body = extract_function_block(&content, helper)
+            .unwrap_or_else(|| panic!("helper signature not found: {helper}"));
+
+        assert!(
+            !helper_body.contains("TOGGLE_MODULE_MUTATION"),
+            "module composition helper must not accidentally call toggle mutation contract: {helper}"
+        );
+    }
+}
+
 fn extract_function_block<'a>(content: &'a str, signature: &str) -> Option<&'a str> {
     let start = content.find(signature)?;
     let rest = &content[start..];
