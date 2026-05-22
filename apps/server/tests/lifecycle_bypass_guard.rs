@@ -259,3 +259,41 @@ fn graphql_mutations_do_not_reintroduce_duplicate_platform_composition_mapping_t
         );
     }
 }
+
+#[test]
+fn graphql_mutations_toggle_error_mapping_tests_stay_matrix_based() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let mutations_rs = repo_root.join("apps/server/src/graphql/mutations.rs");
+    let content = fs::read_to_string(&mutations_rs).expect("mutations.rs should be readable");
+
+    let expected_unique_tests = [
+        "fn toggle_error_maps_database_and_policy_to_internal_errors()",
+        "fn toggle_error_taxonomy_matrix_stays_stable()",
+        "fn toggle_error_mapping_sets_expected_error_codes()",
+    ];
+
+    for signature in expected_unique_tests {
+        let occurrences = content.matches(signature).count();
+        assert_eq!(
+            occurrences, 1,
+            "Expected exactly one `{signature}` test, found {occurrences}."
+        );
+    }
+
+    let forbidden_legacy_tests = [
+        "fn toggle_error_maps_unknown_module()",
+        "fn toggle_error_maps_core_module_disable()",
+        "fn toggle_error_maps_dependency_errors()",
+        "fn toggle_error_maps_hook_failure()",
+    ];
+
+    for signature in forbidden_legacy_tests {
+        assert!(
+            !content.contains(signature),
+            "Legacy/duplicate toggle mapping test signature reintroduced: {signature}"
+        );
+    }
+}
