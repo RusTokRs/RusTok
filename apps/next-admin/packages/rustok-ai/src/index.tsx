@@ -2164,100 +2164,99 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     setIsSubmittingProductAttributes(true);
                     setError(null);
                     setFeedback(null);
-                    if (!productAttributesTaskProfile) {
-                      setError(
-                        'Task profile `product_attributes` is not configured. Create/activate it first.'
+                    try {
+                      if (!productAttributesTaskProfile) {
+                        setError(
+                          'Task profile `product_attributes` is not configured. Create/activate it first.'
+                        );
+                        return;
+                      }
+                      const selectedTaskProfile = taskProfiles.find(
+                        (profile) => profile.id === sessionForm.taskProfileId
                       );
-                      setIsSubmittingProductAttributes(false);
-                      return;
-                    }
-                    const selectedTaskProfile = taskProfiles.find(
-                      (profile) => profile.id === sessionForm.taskProfileId
-                    );
-                    if (
-                      selectedTaskProfile &&
-                      selectedTaskProfile.slug !== 'product_attributes'
-                    ) {
-                      setError(
-                        'Current task profile is not `product_attributes`. Switch profile or use auto-selected profile.'
+                      if (
+                        selectedTaskProfile &&
+                        selectedTaskProfile.slug !== 'product_attributes'
+                      ) {
+                        setError(
+                          'Current task profile is not `product_attributes`. Switch profile or use auto-selected profile.'
+                        );
+                        return;
+                      }
+                      const normalizedProductId = productAttributesForm.productId.trim();
+                      if (!normalizedProductId) {
+                        setError('Product id is required.');
+                        return;
+                      }
+                      const sourceTitle = productAttributesForm.sourceTitle.trim();
+                      const sourceDescription =
+                        productAttributesForm.sourceDescription.trim();
+                      if (!sourceTitle && !sourceDescription) {
+                        setError(
+                          'Either source title or source description is required for product_attributes.'
+                        );
+                        return;
+                      }
+                      const normalizedCategorySlug =
+                        productAttributesForm.categorySlug.trim().toLowerCase();
+                      const parsedImageUrls = parseCsvUrls(
+                        productAttributesForm.imageUrls
                       );
-                      setIsSubmittingProductAttributes(false);
-                      return;
-                    }
-                    const normalizedProductId = productAttributesForm.productId.trim();
-                    if (!normalizedProductId) {
-                      setError('Product id is required.');
-                      setIsSubmittingProductAttributes(false);
-                      return;
-                    }
-                    const sourceTitle = productAttributesForm.sourceTitle.trim();
-                    const sourceDescription =
-                      productAttributesForm.sourceDescription.trim();
-                    if (!sourceTitle && !sourceDescription) {
-                      setError(
-                        'Either source title or source description is required for product_attributes.'
+                      if (parsedImageUrls.invalid.length > 0) {
+                        setError(
+                          `Image URLs contain invalid entries: ${parsedImageUrls.invalid.join(', ')}`
+                        );
+                        return;
+                      }
+                      const taskInputJson = JSON.stringify({
+                        product_id: normalizedProductId,
+                        category_slug: normalizedCategorySlug || null,
+                        source_locale: productAttributesForm.sourceLocale || null,
+                        source_title: sourceTitle || null,
+                        source_description:
+                          sourceDescription || null,
+                        image_urls: parsedImageUrls.urls,
+                        copy_instructions:
+                          productAttributesForm.copyInstructions || null,
+                        assistant_prompt:
+                          productAttributesForm.assistantPrompt || null
+                      });
+                      const started = await gql<
+                        {
+                          runAiTaskJob: {
+                            session: { session: { id: string; title: string } };
+                          };
+                        },
+                        { input: Record<string, unknown> }
+                      >(
+                        RUN_TASK_JOB_MUTATION,
+                        {
+                          input: {
+                            title: productAttributesForm.title,
+                            providerProfileId:
+                              sessionForm.providerProfileId || null,
+                            taskProfileId: productAttributesTaskProfile.id,
+                            executionMode: 'DIRECT',
+                            locale: productAttributesForm.locale || null,
+                            taskInputJson,
+                            metadata: '{}'
+                          }
+                        },
+                        props
+                      ).catch((err: Error) => {
+                        setError(err.message);
+                        return null;
+                      });
+                      if (!started) return;
+                      const id = started.runAiTaskJob.session.session.id;
+                      setFeedback(
+                        `Product attributes job \`${started.runAiTaskJob.session.session.title}\` completed.`
                       );
+                      await loadBootstrap();
+                      await loadSession(id);
+                    } finally {
                       setIsSubmittingProductAttributes(false);
-                      return;
                     }
-                    const normalizedCategorySlug =
-                      productAttributesForm.categorySlug.trim().toLowerCase();
-                    const parsedImageUrls = parseCsvUrls(
-                      productAttributesForm.imageUrls
-                    );
-                    if (parsedImageUrls.invalid.length > 0) {
-                      setError(
-                        `Image URLs contain invalid entries: ${parsedImageUrls.invalid.join(', ')}`
-                      );
-                      setIsSubmittingProductAttributes(false);
-                      return;
-                    }
-                    const taskInputJson = JSON.stringify({
-                      product_id: normalizedProductId,
-                      category_slug: normalizedCategorySlug || null,
-                      source_locale: productAttributesForm.sourceLocale || null,
-                      source_title: sourceTitle || null,
-                      source_description:
-                        sourceDescription || null,
-                      image_urls: parsedImageUrls.urls,
-                      copy_instructions:
-                        productAttributesForm.copyInstructions || null,
-                      assistant_prompt:
-                        productAttributesForm.assistantPrompt || null
-                    });
-                    const started = await gql<
-                      {
-                        runAiTaskJob: {
-                          session: { session: { id: string; title: string } };
-                        };
-                      },
-                      { input: Record<string, unknown> }
-                    >(
-                      RUN_TASK_JOB_MUTATION,
-                      {
-                        input: {
-                          title: productAttributesForm.title,
-                          providerProfileId:
-                            sessionForm.providerProfileId || null,
-                          taskProfileId: productAttributesTaskProfile.id,
-                          executionMode: 'DIRECT',
-                          locale: productAttributesForm.locale || null,
-                          taskInputJson,
-                          metadata: '{}'
-                        }
-                      },
-                      props
-                    ).catch((err: Error) => {
-                      setError(err.message);
-                      return null;
-                    });
-                    if (!started) return;
-                    const id = started.runAiTaskJob.session.session.id;
-                    setFeedback(
-                      `Product attributes job \`${started.runAiTaskJob.session.session.title}\` completed.`
-                    );
-                    await loadBootstrap();
-                    await loadSession(id);
                   }}
                 >
                   <Input
