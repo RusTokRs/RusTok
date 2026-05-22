@@ -12,6 +12,7 @@ pub struct Model {
     pub previous_effective_enabled: bool,
     pub status: String,
     pub requested_by: Option<String>,
+    pub correlation_id: Option<String>,
     pub error_message: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

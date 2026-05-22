@@ -16,6 +16,7 @@ pub struct ModuleLifecycleService;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ModuleOperationStatus {
+    Validated,
     Running,
     Committed,
     Failed,
@@ -25,6 +26,7 @@ pub(crate) enum ModuleOperationStatus {
 impl ModuleOperationStatus {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::Validated => "validated",
             Self::Running => "running",
             Self::Committed => "committed",
             Self::Failed => "failed",
@@ -37,6 +39,7 @@ impl ModuleOperationStatus {
 
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
+            "validated" => Some(Self::Validated),
             "running" => Some(Self::Running),
             "committed" => Some(Self::Committed),
             "failed" => Some(Self::Failed),
@@ -105,6 +108,10 @@ pub enum UpdateModuleSettingsError {
 }
 
 impl ModuleLifecycleService {
+    fn generate_correlation_id() -> String {
+        uuid::Uuid::new_v4().to_string()
+    }
+
     pub async fn toggle_module(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
@@ -178,6 +185,7 @@ impl ModuleLifecycleService {
             requested_by,
         )
         .await?;
+        Self::mark_operation_running(db, operation.id).await?;
 
         let hook_settings = Self::current_module_settings(db, tenant_id, module_slug).await?;
         let module_ctx = ModuleContext {
@@ -411,8 +419,9 @@ impl ModuleLifecycleService {
             module_slug: sea_orm::ActiveValue::Set(module_slug.to_string()),
             requested_enabled: sea_orm::ActiveValue::Set(requested_enabled),
             previous_effective_enabled: sea_orm::ActiveValue::Set(previous_effective_enabled),
-            status: sea_orm::ActiveValue::Set(ModuleOperationStatus::Running.into()),
+            status: sea_orm::ActiveValue::Set(ModuleOperationStatus::Validated.into()),
             requested_by: sea_orm::ActiveValue::Set(requested_by),
+            correlation_id: sea_orm::ActiveValue::Set(Some(Self::generate_correlation_id())),
             error_message: sea_orm::ActiveValue::Set(None),
             created_at: sea_orm::ActiveValue::Set(now),
             updated_at: sea_orm::ActiveValue::Set(now),
@@ -434,6 +443,19 @@ impl ModuleLifecycleService {
             active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Failed.into());
             active.error_message = sea_orm::ActiveValue::Set(Some(error_message.to_string()));
             active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+            active.update(db).await?;
+        }
+        Ok(())
+    }
+
+    async fn mark_operation_running(
+        db: &DatabaseConnection,
+        operation_id: uuid::Uuid,
+    ) -> Result<(), DbErr> {
+        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id).one(db).await? {
+            let mut active: module_operations::ActiveModel = model.into();
+            active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Running.into());
+            active.updated_at = sea_orm::ActiveValue::Set(Utc::now().into());
             active.update(db).await?;
         }
         Ok(())
@@ -461,6 +483,7 @@ mod tests {
     #[test]
     fn module_operation_status_roundtrip() {
         for status in [
+            ModuleOperationStatus::Validated,
             ModuleOperationStatus::Running,
             ModuleOperationStatus::Committed,
             ModuleOperationStatus::Failed,
@@ -469,14 +492,28 @@ mod tests {
             assert_eq!(ModuleOperationStatus::parse(&encoded), Some(status));
         }
         assert_eq!(ModuleOperationStatus::parse("unknown"), None);
+        assert_eq!(
+            "validated".parse::<ModuleOperationStatus>(),
+            Ok(ModuleOperationStatus::Validated)
+        );
         assert_eq!("running".parse::<ModuleOperationStatus>(), Ok(ModuleOperationStatus::Running));
         assert_eq!("committed".parse::<ModuleOperationStatus>(), Ok(ModuleOperationStatus::Committed));
         assert_eq!("failed".parse::<ModuleOperationStatus>(), Ok(ModuleOperationStatus::Failed));
         assert_eq!("unknown".parse::<ModuleOperationStatus>(), Err(()));
+        assert_eq!(String::from(ModuleOperationStatus::Validated), "validated");
         assert_eq!(String::from(ModuleOperationStatus::Running), "running");
+        assert!(!ModuleOperationStatus::Validated.is_terminal());
         assert!(!ModuleOperationStatus::Running.is_terminal());
         assert!(ModuleOperationStatus::Committed.is_terminal());
         assert!(ModuleOperationStatus::Failed.is_terminal());
+    }
+
+    #[test]
+    fn generated_correlation_id_is_uuid_v4_string() {
+        let value = ModuleLifecycleService::generate_correlation_id();
+        assert_eq!(value.len(), 36);
+        let parsed = uuid::Uuid::parse_str(&value).expect("correlation id must be valid UUID");
+        assert_eq!(parsed.get_version_num(), 4);
     }
 
     fn path_module(crate_name: &str, path: &str, required: bool) -> ManifestModuleSpec {
