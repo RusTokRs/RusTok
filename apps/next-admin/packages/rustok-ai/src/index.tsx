@@ -556,6 +556,14 @@ export function AiAdminPage(props: AiAdminPageProps) {
     React.useState(false);
   const [isSubmittingDirectJob, setIsSubmittingDirectJob] =
     React.useState(false);
+  const [activeDirectSubmit, setActiveDirectSubmit] = React.useState<
+    | 'blog_draft'
+    | 'product_copy'
+    | 'image_asset'
+    | 'alloy_code'
+    | 'new_session'
+    | null
+  >(null);
   const productAttributesPrefillAppliedRef = React.useRef(false);
 
   const productAttributesTaskProfile = React.useMemo(
@@ -1897,6 +1905,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       );
                       return;
                     }
+                    setActiveDirectSubmit('blog_draft');
                     setIsSubmittingDirectJob(true);
                     try {
                       const taskInputJson = JSON.stringify({
@@ -1948,6 +1957,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadBootstrap();
                       await loadSession(id);
                     } finally {
+                      setActiveDirectSubmit(null);
                       setIsSubmittingDirectJob(false);
                     }
                   }}
@@ -2076,7 +2086,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     type='submit'
                     disabled={isSubmittingDirectJob}
                   >
-                    {isSubmittingDirectJob ? 'Submitting…' : 'Generate blog draft'}
+                    {activeDirectSubmit === 'blog_draft'
+                      ? 'Submitting…'
+                      : 'Generate blog draft'}
                   </button>
                 </form>
               </Card>
@@ -2111,6 +2123,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       );
                       return;
                     }
+                    setActiveDirectSubmit('product_copy');
                     setIsSubmittingDirectJob(true);
                     try {
                       const taskInputJson = JSON.stringify({
@@ -2159,6 +2172,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadBootstrap();
                       await loadSession(id);
                     } finally {
+                      setActiveDirectSubmit(null);
                       setIsSubmittingDirectJob(false);
                     }
                   }}
@@ -2265,7 +2279,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     type='submit'
                     disabled={isSubmittingDirectJob}
                   >
-                    {isSubmittingDirectJob ? 'Submitting…' : 'Generate product copy'}
+                    {activeDirectSubmit === 'product_copy'
+                      ? 'Submitting…'
+                      : 'Generate product copy'}
                   </button>
                 </form>
               </Card>
@@ -2625,6 +2641,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       );
                       return;
                     }
+                    setActiveDirectSubmit('image_asset');
                     setIsSubmittingDirectJob(true);
                     try {
                       const taskInputJson = JSON.stringify({
@@ -2671,6 +2688,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadBootstrap();
                       await loadSession(id);
                     } finally {
+                      setActiveDirectSubmit(null);
                       setIsSubmittingDirectJob(false);
                     }
                   }}
@@ -2765,7 +2783,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     type='submit'
                     disabled={isSubmittingDirectJob}
                   >
-                    {isSubmittingDirectJob ? 'Submitting…' : 'Generate media image'}
+                    {activeDirectSubmit === 'image_asset'
+                      ? 'Submitting…'
+                      : 'Generate media image'}
                   </button>
                 </form>
               </Card>
@@ -2786,6 +2806,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       );
                       return;
                     }
+                    setActiveDirectSubmit('alloy_code');
                     setIsSubmittingDirectJob(true);
                     try {
                       const taskInputJson = JSON.stringify({
@@ -2831,6 +2852,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadBootstrap();
                       await loadSession(id);
                     } finally {
+                      setActiveDirectSubmit(null);
                       setIsSubmittingDirectJob(false);
                     }
                   }}
@@ -2911,7 +2933,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     type='submit'
                     disabled={isSubmittingDirectJob}
                   >
-                    {isSubmittingDirectJob ? 'Submitting…' : 'Run Alloy job'}
+                    {activeDirectSubmit === 'alloy_code'
+                      ? 'Submitting…'
+                      : 'Run Alloy job'}
                   </button>
                 </form>
               </Card>
@@ -2926,6 +2950,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     if (isSubmittingDirectJob) return;
                     setError(null);
                     setFeedback(null);
+                    setActiveDirectSubmit('new_session');
                     setIsSubmittingDirectJob(true);
                     try {
                       const started = await gql<
@@ -2962,6 +2987,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadBootstrap();
                       await loadSession(id);
                     } finally {
+                      setActiveDirectSubmit(null);
                       setIsSubmittingDirectJob(false);
                     }
                   }}
@@ -3003,7 +3029,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     type='submit'
                     disabled={isSubmittingDirectJob}
                   >
-                    {isSubmittingDirectJob ? 'Submitting…' : 'Start session'}
+                    {activeDirectSubmit === 'new_session'
+                      ? 'Submitting…'
+                      : 'Start session'}
                   </button>
                 </form>
               </Card>
