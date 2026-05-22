@@ -16,7 +16,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Host app routing with `go_router` + `ShellRoute`.
 - Generated-manifest style module registry adapter (`mobile_manifest.g.dart`).
 - Shared route contracts with snake_case query key constraints.
-- Shared GraphQL transport context/header builders.
+- Shared GraphQL transport context/header builders (tenant/locale non-blank validation in request context).
 - GraphQL client factory with HTTP/WebSocket split transport and subscription support.
 - Auth session scaffolding (`AuthSessionStore`, `AuthSessionManager`, in-memory store, refresh service contract).
 - Manifest generator script from `crates/*/rustok-module.toml`.

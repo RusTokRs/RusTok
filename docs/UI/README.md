@@ -4,12 +4,13 @@
 
 ## Ландшафт UI
 
-В платформе поддерживаются четыре host-приложения:
+В платформе поддерживаются host-приложения для web/headless и mobile-срезов:
 
 - `apps/admin` — основной Leptos admin host;
 - `apps/storefront` — основной Leptos storefront host;
 - `apps/next-admin` — параллельный Next.js admin host;
-- `apps/next-frontend` — параллельный Next.js storefront host.
+- `apps/next-frontend` — параллельный Next.js storefront host;
+- `rustok_mobile/apps/rustok_admin_mobile` — Flutter admin mobile host (в стадии поэтапного внедрения).
 
 Leptos hosts являются основным runtime-путём для platform-owned UI внутри Rust workspace. Next.js hosts идут параллельным headless-путём и должны сохранять parity по transport, auth, i18n и module contracts.
 
@@ -48,7 +49,7 @@ Leptos hosts являются основным runtime-путём для platfor
   для SEO это GraphQL `seoTargets` или REST `/api/seo/targets`, а не host-local mappings target slug-ов.
 - Для storefront SEO structured data backend contract также является source of truth: hosts потребляют
   `SeoStructuredDataBlock.schema_kind/schema_type/source/payload` и не вводят собственный schema.org classifier.
-- Contract parity между Leptos и Next.js оценивается на уровне маршрутов, auth, locale, module wiring и transport surface, а не на уровне буквального совпадения внутренней реализации.
+- Contract parity между Leptos, Next.js и Flutter оценивается на уровне маршрутов, auth, locale, module wiring и transport surface, а не на уровне буквального совпадения внутренней реализации.
 
 ## Разделы документации
 
@@ -64,6 +65,7 @@ Leptos hosts являются основным runtime-путём для platfor
 - [Leptos Storefront](../../apps/storefront/docs/README.md)
 - [Next.js Admin](../../apps/next-admin/docs/README.md)
 - [Next.js Storefront](../../apps/next-frontend/docs/README.md)
+- [Flutter Admin Mobile](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
 
 ## Поддержка актуальности
 

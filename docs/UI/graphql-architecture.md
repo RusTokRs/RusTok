@@ -7,7 +7,7 @@
 Для Leptos UI в платформе действует dual-path модель поверх SSR-first runtime:
 
 - native `#[server]` functions — preferred internal data-layer для `apps/admin`, `apps/storefront` и module-owned Leptos UI packages в `ssr`/`hydrate`/monolith профилях;
-- GraphQL `/api/graphql` — обязательный параллельный transport contract для Next.js hosts, headless clients и fallback-веток в Leptos.
+- GraphQL `/api/graphql` — обязательный параллельный transport contract для Next.js hosts, Flutter hosts, headless clients и fallback-веток в Leptos.
 
 `#[server]` не заменяет GraphQL на уровне платформы. Он добавляет более короткий внутренний путь для Leptos hosts, когда host реально работает через SSR/hydrate runtime.
 
@@ -31,6 +31,7 @@ CSR остаётся обязательным compatibility/debug профиле
 | module-owned Leptos UI standalone `csr` | debug/compatibility | GraphQL/REST | — |
 | `apps/next-admin` | headless | GraphQL/REST | — |
 | `apps/next-frontend` | headless | GraphQL/REST | — |
+| `rustok_mobile/apps/rustok_admin_mobile` | headless/mobile host | GraphQL/REST (+ `/api/graphql/ws`) | — |
 | external/mobile clients | headless | GraphQL/REST | — |
 
 ## Contract для Leptos UI
@@ -56,7 +57,7 @@ UI component
 GraphQL остаётся:
 
 - публичным backend contract;
-- основным transport-слоем для Next.js hosts;
+- основным transport-слоем для Next.js и Flutter hosts;
 - fallback-путём для Leptos hosts;
 - transport surface для websocket subscriptions и совместимости с headless clients.
 
@@ -99,5 +100,6 @@ Security и allow/deny policy для чувствительных admin-опер
 - [Документация `apps/admin`](../../apps/admin/docs/README.md)
 - [Документация `apps/storefront`](../../apps/storefront/docs/README.md)
 - [Документация `apps/server`](../../apps/server/docs/README.md)
+- [Документация Flutter Admin Mobile](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [Карта документации](../index.md)

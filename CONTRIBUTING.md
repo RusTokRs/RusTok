@@ -149,7 +149,9 @@ Update documentation when:
 - **apps/server**: Main backend API (Loco.rs)
 - **apps/admin**: Leptos admin host (standalone profile via Trunk, SSR-first contract in docs)
 - **apps/storefront**: Leptos storefront host (standalone profile via Trunk, SSR-first contract in docs)
+- **apps/next-admin**: Next.js admin host
 - **apps/next-frontend**: Next.js storefront
+- **rustok_mobile/apps/rustok_admin_mobile**: Flutter admin mobile host (experimental rollout)
 - **crates/rustok-mcp**: MCP adapter crate (includes stdio server binary `rustok-mcp-server`)
 
 ### Crates (Modules)

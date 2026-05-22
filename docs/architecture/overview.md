@@ -16,6 +16,7 @@ module contract, registry и local docs вынесены в `docs/modules/*`.
 - `apps/storefront` — Leptos storefront host
 - `apps/next-admin` — Next.js admin host
 - `apps/next-frontend` — Next.js storefront host
+- `rustok_mobile/apps/rustok_admin_mobile` — Flutter admin mobile host (поэтапный rollout)
 
 Хост-приложения собирают runtime, монтируют module-owned surfaces и не должны
 забирать ownership доменной логики модуля.

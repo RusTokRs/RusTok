@@ -108,18 +108,13 @@
 - [Шаблон AI-сессии](./ai/SESSION_TEMPLATE.md)
 - [Известные pitfalls](./ai/KNOWN_PITFALLS.md)
 - [Индекс MCP reference](./references/mcp/README.md)
-- [Сравнение архитектуры RusTok и Medusa](
-  ./research/medusa-vs-rustok-architecture.md)
-- [Fluid Frontend Architecture для RusTok](
-  ./research/fluid-frontend-architecture.md)
-- [Fluid Backend Architecture для RusTok](
-  ./research/fluid-backend-architecture.md)
-- [Единый план реализации Fluid Backend Architecture](
-  ./research/fluid-backend-architecture-unified-plan.md)
-- [Historical input: deep research report (control plane/module lifecycle)](
-  ./research/deep-research-report%20(4).md)
-- [План устранения недостатков control plane и module lifecycle](
-  ./research/control-plane-module-lifecycle-remediation-plan.md)
+- [Сравнение архитектуры RusTok и Medusa](./research/medusa-vs-rustok-architecture.md)
+- [Fluid Frontend Architecture для RusTok](./research/fluid-frontend-architecture.md)
+- [Fluid Backend Architecture для RusTok](./research/fluid-backend-architecture.md)
+- [Архитектура Flutter-приложения для RusTok](./research/flutter.md)
+- [Единый план реализации Fluid Backend Architecture](./research/fluid-backend-architecture-unified-plan.md)
+- [Historical input: deep research report (control plane/module lifecycle)](./research/deep-research-report%20(4).md)
+- [План устранения недостатков control plane и module lifecycle](./research/control-plane-module-lifecycle-remediation-plan.md)
 - [План исправления документации](./research/fix%20docs.md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
 
@@ -130,6 +125,7 @@
 - [Документация Storefront](../apps/storefront/docs/README.md)
 - [Документация Next Admin](../apps/next-admin/docs/README.md)
 - [Документация Next Frontend](../apps/next-frontend/docs/README.md)
+- [Документация Flutter Admin Mobile](../rustok_mobile/apps/rustok_admin_mobile/README.md)
 
 ## Документация crate-ов
 

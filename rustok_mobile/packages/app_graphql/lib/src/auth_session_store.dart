@@ -9,7 +9,11 @@ class AuthSession {
   final String? refreshToken;
   final DateTime? expiresAt;
 
-  bool get isExpired => expiresAt != null && DateTime.now().isAfter(expiresAt!);
+  bool get isExpired => isExpiredAt(DateTime.now());
+
+  bool isExpiredAt(DateTime now) {
+    return expiresAt != null && now.isAfter(expiresAt!);
+  }
 }
 
 abstract class AuthSessionStore {
