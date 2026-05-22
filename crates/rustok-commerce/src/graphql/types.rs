@@ -828,6 +828,7 @@ pub struct PaymentCollectionsFilter {
 #[derive(InputObject)]
 pub struct RefundsFilter {
     pub payment_collection_id: Option<Uuid>,
+    pub order_id: Option<Uuid>,
     pub status: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,

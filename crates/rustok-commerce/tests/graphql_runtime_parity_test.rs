@@ -737,6 +737,62 @@ fn admin_refunds_list_query(tenant_id: Uuid, payment_collection_id: Uuid) -> Str
     )
 }
 
+fn admin_refunds_list_query_with_status(
+    tenant_id: Uuid,
+    payment_collection_id: Uuid,
+    status: &str,
+) -> String {
+    format!(
+        r#"
+        query {{
+          refunds(
+            tenantId: "{tenant_id}",
+            filter: {{
+              page: 1,
+              perPage: 20,
+              paymentCollectionId: "{payment_collection_id}",
+              status: "{status}"
+            }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              paymentCollectionId
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_refunds_list_query_with_order(
+    tenant_id: Uuid,
+    order_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        query {{
+          refunds(
+            tenantId: "{tenant_id}",
+            filter: {{
+              page: 1,
+              perPage: 20,
+              orderId: "{order_id}"
+            }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              paymentCollectionId
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -3463,6 +3519,265 @@ async fn admin_graphql_complete_refund_hides_foreign_tenant_refund() {
         error_message.contains("not found") || error_message.contains("refund"),
         "unexpected completeRefund error message: {}",
         response.errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_refunds_filter_normalizes_status_and_rejects_unknown_values() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-REFUND-STATUS-FILTER-1".to_string()),
+                    title: "GraphQL Refund Status Filter".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-status-filter" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-status-filter" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-status-filter" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: Some("test".to_string()),
+                metadata: serde_json::json!({ "source": "graphql-refund-status-filter" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+
+    let normalized_response = schema
+        .execute(Request::new(admin_refunds_list_query_with_status(
+            tenant_id,
+            payment_collection.id,
+            " PENDING ",
+        )))
+        .await;
+    assert!(
+        normalized_response.errors.is_empty(),
+        "unexpected refunds filter normalization errors: {:?}",
+        normalized_response.errors
+    );
+    let normalized_json = normalized_response
+        .data
+        .into_json()
+        .expect("normalized refunds response should serialize");
+    assert_eq!(normalized_json["refunds"]["total"], Value::from(1));
+
+    let invalid_response = schema
+        .execute(Request::new(admin_refunds_list_query_with_status(
+            tenant_id,
+            payment_collection.id,
+            "processing",
+        )))
+        .await;
+    assert!(
+        !invalid_response.errors.is_empty(),
+        "invalid refunds status should return GraphQL error"
+    );
+    assert!(
+        invalid_response.errors[0]
+            .message
+            .contains("invalid refund status filter"),
+        "unexpected invalid refunds status error: {}",
+        invalid_response.errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_refunds_filter_supports_order_id() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let first_order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-REFUND-ORDER-FILTER-1".to_string()),
+                    title: "GraphQL Refund Order Filter 1".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+            },
+        )
+        .await
+        .expect("first order should be created");
+    let second_order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-REFUND-ORDER-FILTER-2".to_string()),
+                    title: "GraphQL Refund Order Filter 2".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("22.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+            },
+        )
+        .await
+        .expect("second order should be created");
+
+    let first_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(first_order.id),
+                customer_id: first_order.customer_id,
+                currency_code: "eur".to_string(),
+                amount: first_order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+            },
+        )
+        .await
+        .expect("first collection should be created");
+    let second_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(second_order.id),
+                customer_id: second_order.customer_id,
+                currency_code: "eur".to_string(),
+                amount: second_order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+            },
+        )
+        .await
+        .expect("second collection should be created");
+
+    PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            first_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("4.00").expect("valid decimal"),
+                reason: Some("test".to_string()),
+                metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+            },
+        )
+        .await
+        .expect("first refund should be created");
+    PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            second_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("6.00").expect("valid decimal"),
+                reason: Some("test".to_string()),
+                metadata: serde_json::json!({ "source": "graphql-refund-order-filter" }),
+            },
+        )
+        .await
+        .expect("second refund should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(admin_refunds_list_query_with_order(
+            tenant_id,
+            first_order.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected refunds-by-order errors: {:?}",
+        response.errors
+    );
+
+    let json = response
+        .data
+        .into_json()
+        .expect("refunds-by-order response should serialize");
+    assert_eq!(json["refunds"]["total"], Value::from(1));
+    let items = json["refunds"]["items"]
+        .as_array()
+        .expect("refunds items should be array");
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]["paymentCollectionId"],
+        Value::from(first_collection.id.to_string())
     );
 }
 

@@ -300,8 +300,25 @@ impl PaymentService {
         if let Some(collection_id) = input.payment_collection_id {
             query = query.filter(entities::refund::Column::PaymentCollectionId.eq(collection_id));
         }
+        if let Some(order_id) = input.order_id {
+            let collection_ids = entities::payment_collection::Entity::find()
+                .select_only()
+                .column(entities::payment_collection::Column::Id)
+                .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
+                .filter(entities::payment_collection::Column::OrderId.eq(order_id))
+                .into_tuple::<Uuid>()
+                .all(&self.db)
+                .await?;
+
+            if collection_ids.is_empty() {
+                return Ok((Vec::new(), 0));
+            }
+
+            query = query.filter(entities::refund::Column::PaymentCollectionId.is_in(collection_ids));
+        }
         if let Some(status) = input.status {
-            query = query.filter(entities::refund::Column::Status.eq(status));
+            let normalized_status = normalize_refund_status_filter(&status)?;
+            query = query.filter(entities::refund::Column::Status.eq(normalized_status));
         }
 
         let total = query.clone().count(&self.db).await?;
@@ -319,6 +336,20 @@ impl PaymentService {
             total,
         ))
     }
+
+fn normalize_refund_status_filter(status: &str) -> PaymentResult<String> {
+    let normalized = status.trim().to_ascii_lowercase();
+    if matches!(
+        normalized.as_str(),
+        STATUS_REFUND_PENDING | STATUS_REFUNDED | STATUS_CANCELLED
+    ) {
+        return Ok(normalized);
+    }
+
+    Err(PaymentError::Validation(
+        "invalid refund status filter: expected one of pending, refunded, cancelled".to_string(),
+    ))
+}
 
     pub async fn complete_refund(
         &self,

@@ -669,6 +669,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let filter = filter.unwrap_or(RefundsFilter {
             payment_collection_id: None,
+            order_id: None,
             status: None,
             page: Some(1),
             per_page: Some(20),
@@ -682,6 +683,7 @@ impl CommerceQuery {
                     page,
                     per_page,
                     payment_collection_id: filter.payment_collection_id,
+                    order_id: filter.order_id,
                     status: filter.status,
                 },
             )
