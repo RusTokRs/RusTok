@@ -169,6 +169,9 @@ type DirectSubmitKind =
   | 'alloy_code'
   | 'new_session';
 
+const DIRECT_SUBMIT_LOCK_MESSAGE =
+  'Another direct job is already running. Please wait.';
+
 const BOOTSTRAP_QUERY = `
   query AiBootstrap {
     aiRuntimeMetrics {
@@ -1971,7 +1974,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadSession(id);
                     });
                     if (!accepted) {
-                      setFeedback('Another direct job is already running. Please wait.');
+                      setError(DIRECT_SUBMIT_LOCK_MESSAGE);
                     }
                   }}
                 >
@@ -2181,7 +2184,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadSession(id);
                     });
                     if (!accepted) {
-                      setFeedback('Another direct job is already running. Please wait.');
+                      setError(DIRECT_SUBMIT_LOCK_MESSAGE);
                     }
                   }}
                 >
@@ -2692,7 +2695,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadSession(id);
                     });
                     if (!accepted) {
-                      setFeedback('Another direct job is already running. Please wait.');
+                      setError(DIRECT_SUBMIT_LOCK_MESSAGE);
                     }
                   }}
                 >
@@ -2851,7 +2854,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadSession(id);
                     });
                     if (!accepted) {
-                      setFeedback('Another direct job is already running. Please wait.');
+                      setError(DIRECT_SUBMIT_LOCK_MESSAGE);
                     }
                   }}
                 >
@@ -2981,7 +2984,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadSession(id);
                     });
                     if (!accepted) {
-                      setFeedback('Another direct job is already running. Please wait.');
+                      setError(DIRECT_SUBMIT_LOCK_MESSAGE);
                     }
                   }}
                 >
