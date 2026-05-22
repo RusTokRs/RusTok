@@ -335,7 +335,7 @@ async fn concurrent_toggle_requests_keep_consistent_state() {
 }
 
 #[tokio::test]
-async fn successful_toggle_writes_done_module_operation() {
+async fn successful_toggle_writes_committed_module_operation() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
