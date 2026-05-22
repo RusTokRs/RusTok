@@ -3293,6 +3293,88 @@ async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_fi
 }
 
 #[tokio::test]
+async fn admin_graphql_create_refund_rejects_foreign_tenant_payment_collection() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_tenant_context(&db, foreign_tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-FOREIGN-REFUND-CREATE-1".to_string()),
+                    title: "GraphQL Foreign Refund Create".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-foreign-create" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-create" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-create" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    let foreign_schema = build_schema(
+        &db,
+        tenant_context(foreign_tenant_id),
+        request_context(foreign_tenant_id, "en"),
+        Some(admin_order_auth_context(foreign_tenant_id)),
+    );
+
+    let response = foreign_schema
+        .execute(Request::new(admin_create_refund_mutation(
+            foreign_tenant_id,
+            payment_collection.id,
+            "5.00",
+            "test",
+            "foreign-create",
+        )))
+        .await;
+
+    assert!(
+        !response.errors.is_empty(),
+        "foreign tenant createRefund should return GraphQL error"
+    );
+    let error_message = response.errors[0].message.to_lowercase();
+    assert!(
+        error_message.contains("not found") || error_message.contains("payment collection"),
+        "unexpected createRefund error message: {}",
+        response.errors[0].message
+    );
+}
+
+#[tokio::test]
 async fn admin_graphql_order_query_exposes_typed_adjustments_and_totals() {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
