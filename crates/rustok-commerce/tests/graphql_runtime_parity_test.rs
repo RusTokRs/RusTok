@@ -843,6 +843,28 @@ fn storefront_refunds_query_with_paging(
     )
 }
 
+
+fn storefront_refunds_query_with_status(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    status: &str,
+) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontRefunds(
+            tenantId: "{tenant_id}",
+            orderId: "{order_id}",
+            filter: {{ page: 1, perPage: 20, status: "{status}" }}
+          ) {{
+            total
+            items {{ id status }}
+          }}
+        }}
+        "#
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -5054,6 +5076,124 @@ async fn storefront_graphql_refunds_query_returns_empty_for_unknown_order() {
     assert_eq!(json["storefrontRefunds"]["page"], Value::from(3));
     assert_eq!(json["storefrontRefunds"]["perPage"], Value::from(7));
     assert_eq!(json["storefrontRefunds"]["items"], Value::from(Vec::<Value>::new()));
+}
+
+#[tokio::test]
+async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_values() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let customer_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(customer_user_id),
+                email: "refund-status@example.com".to_string(),
+                first_name: Some("Refund".to_string()),
+                last_name: Some("Status".to_string()),
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            customer_user_id,
+            CreateOrderInput {
+                customer_id: Some(customer.id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("STOREFRONT-REFUND-STATUS".to_string()),
+                    title: "Storefront Refund Status".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("40.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment = PaymentService::new(db.clone())
+        .create_payment_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                amount: Decimal::from_str("40.00").expect("valid decimal"),
+                currency_code: "EUR".to_string(),
+                provider_id: "manual".to_string(),
+                customer_id: Some(customer.id),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: Some("status-normalization".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, customer_user_id)),
+    );
+
+    let normalized = schema
+        .execute(Request::new(storefront_refunds_query_with_status(
+            tenant_id,
+            order.id,
+            " PENDING ",
+        )))
+        .await;
+    assert!(normalized.errors.is_empty(), "unexpected normalized errors: {:?}", normalized.errors);
+    let normalized_json = normalized
+        .data
+        .into_json()
+        .expect("normalized response should serialize");
+    assert_eq!(normalized_json["storefrontRefunds"]["total"], Value::from(1));
+
+    let invalid = schema
+        .execute(Request::new(storefront_refunds_query_with_status(
+            tenant_id,
+            order.id,
+            "processing",
+        )))
+        .await;
+    assert_eq!(invalid.errors.len(), 1, "invalid status should fail");
+    assert!(
+        invalid.errors[0]
+            .message
+            .contains("invalid refund status filter"),
+        "unexpected invalid-status error: {}",
+        invalid.errors[0].message
+    );
 }
 
 #[tokio::test]
