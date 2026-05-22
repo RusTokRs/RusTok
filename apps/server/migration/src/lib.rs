@@ -195,11 +195,18 @@ fn sort_migrations_by_dependencies(
         }
     }
 
-    let after_by_name = descriptors
-        .iter()
-        .cloned()
-        .map(|descriptor| (descriptor.migration, descriptor.after))
-        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut after_by_name = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for descriptor in descriptors.iter().cloned() {
+        if after_by_name
+            .insert(descriptor.migration.clone(), descriptor.after)
+            .is_some()
+        {
+            return Err(format!(
+                "duplicate migration descriptor for {}",
+                descriptor.migration
+            ));
+        }
+    }
 
     let mut sorted: Vec<Box<dyn sea_orm_migration::MigrationTrait>> =
         Vec::with_capacity(migrations.len());
@@ -288,6 +295,28 @@ mod tests {
             sort_migrations_by_dependencies(&mut migrations, &descriptors).expect_err("cycle");
         assert!(
             err.contains("cycle or unsatisfied dependency"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn dependency_sort_rejects_duplicate_descriptor_for_same_migration() {
+        let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
+            Box::new(super::m20250101_000001_create_tenants::Migration),
+            Box::new(super::m20250101_000002_create_users::Migration),
+        ];
+        let descriptors = vec![
+            MigrationDescriptor::new(
+                "m20250101_000002_create_users",
+                ["m20250101_000001_create_tenants"],
+            ),
+            MigrationDescriptor::new("m20250101_000002_create_users", [] as [&str; 0]),
+        ];
+
+        let err = sort_migrations_by_dependencies(&mut migrations, &descriptors)
+            .expect_err("duplicate descriptor must fail");
+        assert!(
+            err.contains("duplicate migration descriptor"),
             "unexpected error: {err}"
         );
     }
