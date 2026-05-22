@@ -2899,7 +2899,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   <button
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
-                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
+                    disabled={!selectedSession || !reply.trim()}
                   >
                     Send
                   </button>
