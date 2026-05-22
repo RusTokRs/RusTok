@@ -322,3 +322,14 @@ fn extract_function_block_returns_none_when_signature_missing() {
     let source = "pub async fn other_helper() {}";
     assert!(extract_function_block(source, "pub async fn toggle_module(").is_none());
 }
+
+#[test]
+fn extract_function_block_returns_none_when_braces_are_unbalanced() {
+    let source = r#"
+pub async fn toggle_module() {
+    if true {
+        let _x = 1;
+}
+"#;
+    assert!(extract_function_block(source, "pub async fn toggle_module()").is_none());
+}
