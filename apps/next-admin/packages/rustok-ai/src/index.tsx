@@ -3228,16 +3228,16 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   </button>
                 </form>
 
-                {detail.approvals.filter(
-                  (approval) => approval.status === 'pending'
-                ).length > 0 ? (
-                  <div className='space-y-3'>
-                    <div className='text-sm font-semibold'>
-                      Pending approvals
-                    </div>
-                    {detail.approvals
-                      .filter((approval) => approval.status === 'pending')
-                      .map((approval) => (
+                {(() => {
+                  const pendingApprovals = detail.approvals.filter(
+                    (approval) => approval.status === 'pending'
+                  );
+                  return pendingApprovals.length > 0 ? (
+                    <div className='space-y-3'>
+                      <div className='text-sm font-semibold'>
+                        Pending approvals
+                      </div>
+                      {pendingApprovals.map((approval) => (
                         <div
                           key={approval.id}
                           className='rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900'
@@ -3291,8 +3291,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                           </div>
                         </div>
                       ))}
-                  </div>
-                ) : null}
+                    </div>
+                  ) : null;
+                })()}
 
                 <div className='space-y-3'>
                   <div className='text-sm font-semibold'>Runs</div>
