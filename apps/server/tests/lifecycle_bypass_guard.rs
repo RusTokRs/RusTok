@@ -297,3 +297,34 @@ fn graphql_mutations_toggle_error_mapping_tests_stay_matrix_based() {
         );
     }
 }
+
+#[test]
+fn lifecycle_hook_phases_adr_is_linked_from_indexes_and_backlog() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+
+    let adr_path = "DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md";
+    let decisions_readme = fs::read_to_string(repo_root.join("DECISIONS/README.md"))
+        .expect("DECISIONS/README.md should be readable");
+    let docs_index =
+        fs::read_to_string(repo_root.join("docs/index.md")).expect("docs/index.md should be readable");
+    let remediation = fs::read_to_string(
+        repo_root.join("docs/research/control-plane-module-lifecycle-remediation-plan.md"),
+    )
+    .expect("remediation plan should be readable");
+
+    assert!(
+        decisions_readme.contains(adr_path),
+        "ADR index must link lifecycle hook phases ADR: {adr_path}"
+    );
+    assert!(
+        docs_index.contains(adr_path),
+        "docs/index.md must link lifecycle hook phases ADR: {adr_path}"
+    );
+    assert!(
+        remediation.contains("2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md"),
+        "remediation backlog must reference lifecycle hook phases ADR explicitly"
+    );
+}
