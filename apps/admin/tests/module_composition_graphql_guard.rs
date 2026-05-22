@@ -90,12 +90,16 @@ fn toggle_module_helper_uses_graphql_only_contract() {
         "toggle_module must use typed ToggleModuleVariables payload"
     );
     assert!(
-        helper_body.contains("module_slug"),
-        "toggle_module must forward module_slug into GraphQL variables"
+        helper_body.contains("ToggleModuleVariables {"),
+        "toggle_module must construct ToggleModuleVariables struct literal"
     );
     assert!(
-        helper_body.contains("enabled"),
-        "toggle_module must forward enabled flag into GraphQL variables"
+        helper_body.contains("module_slug,"),
+        "toggle_module must forward module_slug into ToggleModuleVariables payload"
+    );
+    assert!(
+        helper_body.contains("enabled,"),
+        "toggle_module must forward enabled flag into ToggleModuleVariables payload"
     );
 }
 
