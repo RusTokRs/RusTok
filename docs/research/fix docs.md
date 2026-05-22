@@ -447,7 +447,7 @@ Batch считается закрытым только если одноврем
 - [x] DOC-06 Registry ↔ manifest sync (commit: c9a22f1, merged: 2026-05-22)
 - [x] DOC-07 Docs CI quality gates (commit: 1bf7ead, merged: 2026-05-22)
 - [x] DOC-08 Executable examples hub (commit: 0f35991, merged: 2026-05-22)
-- [ ] DOC-09 Конвейер генерации reference-артефактов
+- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11, commit: 4bafe23)
 - [ ] DOC-10 Language/naming governance
 - [ ] DOC-11 Reviewer checklist + PR template
 - [ ] DOC-12 Code hotspots documentation
