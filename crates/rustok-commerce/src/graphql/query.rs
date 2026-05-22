@@ -1247,6 +1247,7 @@ impl CommerceQuery {
         let per_page = filter.per_page.unwrap_or(12).clamp(1, 48);
         let offset = (page.saturating_sub(1)) * per_page;
         let public_channel_slug = request_public_channel_slug(ctx);
+        const MAX_PREFILTER_FETCH: u64 = 5000;
 
         let mut query = product::Entity::find()
             .filter(product::Column::TenantId.eq(tenant_id))
@@ -1270,6 +1271,7 @@ impl CommerceQuery {
         let visible_products = query
             .order_by_desc(product::Column::PublishedAt)
             .order_by_desc(product::Column::CreatedAt)
+            .limit(MAX_PREFILTER_FETCH)
             .all(db)
             .await?
             .into_iter()
