@@ -176,6 +176,27 @@ fn toggle_module_helper_forwards_auth_context_without_local_overrides() {
 }
 
 #[test]
+fn toggle_module_helper_does_not_cross_wire_other_mutation_contracts() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let helper_body = extract_function_block(&content, "pub async fn toggle_module(")
+        .expect("toggle_module helper signature not found");
+
+    for forbidden in [
+        "INSTALL_MODULE_MUTATION",
+        "UNINSTALL_MODULE_MUTATION",
+        "UPGRADE_MODULE_MUTATION",
+    ] {
+        assert!(
+            !helper_body.contains(forbidden),
+            "toggle_module helper must not reference foreign mutation constant {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn toggle_module_mutation_contract_shape_stays_stable() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");

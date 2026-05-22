@@ -1297,27 +1297,27 @@ mod tests {
         let cases = vec![
             (
                 ToggleModuleError::UnknownModule,
-                "Unknown module",
+                TOGGLE_ERR_UNKNOWN_MODULE,
                 "unknown-module",
             ),
             (
                 ToggleModuleError::CoreModuleCannotBeDisabled("core".into()),
-                "Core module cannot be disabled: core",
+                toggle_err_core_module_cannot_be_disabled("core"),
                 "core-disable",
             ),
             (
                 ToggleModuleError::MissingDependencies("pricing".into()),
-                "Missing module dependencies: pricing",
+                toggle_err_missing_dependencies("pricing"),
                 "missing-dependencies",
             ),
             (
                 ToggleModuleError::HasDependents("checkout".into()),
-                "Module is required by: checkout",
+                toggle_err_has_dependents("checkout"),
                 "has-dependents",
             ),
             (
                 ToggleModuleError::HookFailed("boom".into()),
-                "Module lifecycle hook failed before state commit: boom",
+                toggle_err_hook_failed("boom"),
                 "hook-failed",
             ),
         ];
