@@ -373,23 +373,6 @@ impl ModuleLifecycleService {
         .await
     }
 
-    #[allow(dead_code)]
-    async fn mark_operation_committed(
-        db: &DatabaseConnection,
-        operation_id: uuid::Uuid,
-    ) -> Result<(), DbErr> {
-        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-        {
-            let mut active: module_operations::ActiveModel = model.into();
-            active.status = sea_orm::ActiveValue::Set(MODULE_OPERATION_STATUS_COMMITTED.to_string());
-            active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-            active.update(db).await?;
-        }
-        Ok(())
-    }
-
     async fn mark_operation_failed(
         db: &DatabaseConnection,
         operation_id: uuid::Uuid,
