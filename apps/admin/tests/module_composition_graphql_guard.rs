@@ -192,6 +192,25 @@ fn toggle_module_helper_signature_is_unique() {
     );
 }
 
+#[test]
+fn module_composition_helper_signatures_are_unique() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+    ] {
+        let occurrences = content.matches(signature).count();
+        assert_eq!(
+            occurrences, 1,
+            "Expected exactly one `{signature}` helper signature, found {occurrences}"
+        );
+    }
+}
+
 fn extract_function_block<'a>(content: &'a str, signature: &str) -> Option<&'a str> {
     let start = content.find(signature)?;
     let rest = &content[start..];
