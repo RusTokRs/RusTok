@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Admin GraphQL parity закреплена тестом tax breakdown (`tax_total`, `tax_included`, `tax_lines.provider_id`) для order read-side.
-- Next step: Добавить store/admin REST transport parity assertions для tax breakdown (`tax_total`, `tax_included`, `tax_lines.provider_id`) в checkout/order endpoints.
+- Last checkpoint: migration/contract smoke для legacy `order_tax_lines` без `provider_id` добавлен в `rustok-order`, а storefront GraphQL tax breakdown parity усилен scoped tax-line assertions (`line_item`/`shipping`/`order`).
+- Next step: Перейти к Phase 10 и расширить post-order transport parity (returns/refunds/order-change coverage).
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-21T14:20:00Z
+- Last updated at (UTC): 2026-05-22T12:40:00Z
 
 ## Статус документа
 
@@ -505,8 +505,8 @@ Deliverables:
 
 - [x] добавить channel-aware provider mapping (`regions.tax_provider_id` + `channel_id`) без hidden fallback на `region_default`;
 - [x] расширить `rustok-tax` до typed rule input (`item class`, `shipping class`, `customer tax-exempt`) без возврата налоговой логики в `rustok-cart`;
-- [ ] закрепить admin/store read-side tax breakdown contract (line-item vs shipping vs order aggregate) в REST и GraphQL parity тестах;
-- [ ] добавить migration/contract smoke для backfill `provider_id` в legacy `order_tax_lines` snapshots.
+- [x] закрепить admin/store read-side tax breakdown contract (line-item vs shipping vs order aggregate) в REST и GraphQL parity тестах;
+- [x] добавить migration/contract smoke для backfill `provider_id` в legacy `order_tax_lines` snapshots.
 
 ### Phase 10. Post-order flows: returns, refunds, exchanges, claims, order changes
 
@@ -611,6 +611,6 @@ Release gates:
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.

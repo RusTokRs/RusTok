@@ -2,11 +2,11 @@ use chrono::Utc;
 use flex::attached;
 use rust_decimal::Decimal;
 use rustok_order::dto::{CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput};
-use rustok_order::entities::order;
+use rustok_order::entities::{order, order_tax_line};
 use rustok_order::error::OrderError;
 use rustok_order::services::OrderService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -105,6 +105,73 @@ async fn create_order_persists_snapshot_and_total() {
     assert_eq!(created.subtotal_amount, Decimal::from_str("43.98").unwrap());
     assert_eq!(created.adjustment_total, Decimal::ZERO);
     assert_eq!(created.total_amount, Decimal::from_str("43.98").unwrap());
+}
+
+#[tokio::test]
+async fn order_tax_lines_insert_without_provider_id_use_region_default() {
+    let db = setup_test_db().await;
+    support::ensure_order_schema(&db).await;
+    let service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let created = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, name, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            rustok_core::generate_id().into(),
+            tenant_id.into(),
+            created.id.into(),
+            Decimal::from_str("7.00").expect("valid decimal").into(),
+            Decimal::from_str("3.50").expect("valid decimal").into(),
+            "VAT backfill smoke".to_string().into(),
+            serde_json::json!({"scope": "order"}).into(),
+        ],
+    ))
+    .await
+    .expect("legacy-style insert should use provider_id default");
+
+    let inserted = order_tax_line::Entity::find()
+        .filter(order_tax_line::Column::OrderId.eq(created.id))
+        .filter(order_tax_line::Column::Name.eq("VAT backfill smoke"))
+        .one(&db)
+        .await
+        .expect("tax line query should succeed")
+        .expect("tax line should exist");
+
+    assert_eq!(inserted.provider_id, "region_default");
+
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, name, provider_id, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            rustok_core::generate_id().into(),
+            tenant_id.into(),
+            created.id.into(),
+            Decimal::from_str("9.00").expect("valid decimal").into(),
+            Decimal::from_str("4.00").expect("valid decimal").into(),
+            "VAT explicit provider".to_string().into(),
+            "custom_tax".to_string().into(),
+            serde_json::json!({"scope": "order"}).into(),
+        ],
+    ))
+    .await
+    .expect("explicit provider insert should succeed");
+
+    let explicit = order_tax_line::Entity::find()
+        .filter(order_tax_line::Column::OrderId.eq(created.id))
+        .filter(order_tax_line::Column::Name.eq("VAT explicit provider"))
+        .one(&db)
+        .await
+        .expect("explicit provider tax line query should succeed")
+        .expect("explicit provider tax line should exist");
+
+    assert_eq!(explicit.provider_id, "custom_tax");
 }
 
 #[tokio::test]

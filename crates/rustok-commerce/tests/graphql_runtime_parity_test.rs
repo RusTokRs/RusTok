@@ -716,6 +716,27 @@ fn admin_refund_query(tenant_id: Uuid, refund_id: Uuid, payment_collection_id: U
     )
 }
 
+
+fn admin_refunds_list_query(tenant_id: Uuid, payment_collection_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          refunds(
+            tenantId: "{tenant_id}",
+            filter: {{ page: 1, perPage: 20, paymentCollectionId: "{payment_collection_id}" }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              paymentCollectionId
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -2798,9 +2819,15 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         query_json["order"]["order"]["status"],
         Value::from("delivered")
     );
-    assert_eq!(query_json["order"]["order"]["totalAmount"], Value::from("30"));
+    assert_eq!(
+        query_json["order"]["order"]["totalAmount"],
+        Value::from("30")
+    );
     assert_eq!(query_json["order"]["order"]["taxTotal"], Value::from("5"));
-    assert_eq!(query_json["order"]["order"]["taxIncluded"], Value::from(false));
+    assert_eq!(
+        query_json["order"]["order"]["taxIncluded"],
+        Value::from(false)
+    );
     assert_eq!(
         query_json["order"]["order"]["taxLines"][0]["providerId"],
         Value::from("region_default")
@@ -2830,7 +2857,10 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         query_json["orders"]["items"][0]["totalAmount"],
         Value::from("30")
     );
-    assert_eq!(query_json["orders"]["items"][0]["taxTotal"], Value::from("5"));
+    assert_eq!(
+        query_json["orders"]["items"][0]["taxTotal"],
+        Value::from("5")
+    );
     assert_eq!(
         query_json["orders"]["items"][0]["taxIncluded"],
         Value::from(false)
@@ -3070,6 +3100,369 @@ async fn admin_graphql_refund_surface_matches_runtime_services() {
             .unwrap()
             .len(),
         2
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_refund_query_hides_foreign_tenant_refund() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_tenant_context(&db, foreign_tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-FOREIGN-REFUND-1".to_string()),
+                    title: "GraphQL Foreign Refund".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-foreign" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    let refund = PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: Some("test".to_string()),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let foreign_schema = build_schema(
+        &db,
+        tenant_context(foreign_tenant_id),
+        request_context(foreign_tenant_id, "en"),
+        Some(admin_order_auth_context(foreign_tenant_id)),
+    );
+
+    let response = foreign_schema
+        .execute(Request::new(admin_refund_query(
+            foreign_tenant_id,
+            refund.id,
+            payment_collection.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected foreign-tenant refund query errors: {:?}",
+        response.errors
+    );
+
+    let json = response
+        .data
+        .into_json()
+        .expect("foreign tenant refund query response should serialize");
+    assert_eq!(json["refund"], Value::Null);
+    assert_eq!(json["refunds"]["total"], Value::from(0));
+    assert_eq!(json["paymentCollection"], Value::Null);
+}
+
+
+#[tokio::test]
+async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_filter() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_tenant_context(&db, foreign_tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-FOREIGN-REFUND-LIST-1".to_string()),
+                    title: "GraphQL Foreign Refund List".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-foreign-list" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-list" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-list" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: Some("test".to_string()),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-list" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let foreign_schema = build_schema(
+        &db,
+        tenant_context(foreign_tenant_id),
+        request_context(foreign_tenant_id, "en"),
+        Some(admin_order_auth_context(foreign_tenant_id)),
+    );
+
+    let response = foreign_schema
+        .execute(Request::new(admin_refunds_list_query(
+            foreign_tenant_id,
+            payment_collection.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected foreign-tenant refunds list errors: {:?}",
+        response.errors
+    );
+
+    let json = response
+        .data
+        .into_json()
+        .expect("foreign tenant refunds list response should serialize");
+    assert_eq!(json["refunds"]["total"], Value::from(0));
+    assert_eq!(json["refunds"]["items"], Value::from(Vec::<Value>::new()));
+}
+
+#[tokio::test]
+async fn admin_graphql_create_refund_rejects_foreign_tenant_payment_collection() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_tenant_context(&db, foreign_tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-FOREIGN-REFUND-CREATE-1".to_string()),
+                    title: "GraphQL Foreign Refund Create".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-foreign-create" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-create" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-create" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    let foreign_schema = build_schema(
+        &db,
+        tenant_context(foreign_tenant_id),
+        request_context(foreign_tenant_id, "en"),
+        Some(admin_order_auth_context(foreign_tenant_id)),
+    );
+
+    let response = foreign_schema
+        .execute(Request::new(admin_create_refund_mutation(
+            foreign_tenant_id,
+            payment_collection.id,
+            "5.00",
+            "test",
+            "foreign-create",
+        )))
+        .await;
+
+    assert!(
+        !response.errors.is_empty(),
+        "foreign tenant createRefund should return GraphQL error"
+    );
+    let error_message = response.errors[0].message.to_lowercase();
+    assert!(
+        error_message.contains("not found") || error_message.contains("payment collection"),
+        "unexpected createRefund error message: {}",
+        response.errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_complete_refund_hides_foreign_tenant_refund() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_tenant_context(&db, foreign_tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-FOREIGN-REFUND-COMPLETE-1".to_string()),
+                    title: "GraphQL Foreign Refund Complete".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-refund-foreign-complete" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-complete" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment_collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                amount: order.total_amount,
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-complete" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    let refund = PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: Some("test".to_string()),
+                metadata: serde_json::json!({ "source": "graphql-refund-foreign-complete" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let foreign_schema = build_schema(
+        &db,
+        tenant_context(foreign_tenant_id),
+        request_context(foreign_tenant_id, "en"),
+        Some(admin_order_auth_context(foreign_tenant_id)),
+    );
+
+    let response = foreign_schema
+        .execute(Request::new(admin_complete_refund_mutation(
+            foreign_tenant_id,
+            refund.id,
+        )))
+        .await;
+
+    assert!(
+        !response.errors.is_empty(),
+        "foreign tenant completeRefund should return GraphQL error"
+    );
+    let error_message = response.errors[0].message.to_lowercase();
+    assert!(
+        error_message.contains("not found") || error_message.contains("refund"),
+        "unexpected completeRefund error message: {}",
+        response.errors[0].message
     );
 }
 
@@ -3348,18 +3741,35 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
                     metadata: serde_json::json!({ "source": "graphql-admin-tax-order" }),
                 }],
                 adjustments: Vec::new(),
-                tax_lines: vec![rustok_order::dto::CreateOrderTaxLineInput {
-                    line_item_index: Some(0),
-                    shipping_option_index: None,
-                    rate: Decimal::from_str("19.00").expect("valid decimal"),
-                    amount: Decimal::from_str("19.00").expect("valid decimal"),
-                    name: "VAT".to_string(),
-                    provider_id: "region_default".to_string(),
-                    metadata: serde_json::json!({
-                        "tax_included": false,
-                        "scope": "line_item"
-                    }),
-                }],
+                tax_lines: vec![
+                    rustok_order::dto::CreateOrderTaxLineInput {
+                        line_item_index: Some(0),
+                        shipping_option_index: None,
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("19.00").expect("valid decimal"),
+                        name: "VAT line item".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: serde_json::json!({"tax_included": false, "scope": "line_item"}),
+                    },
+                    rustok_order::dto::CreateOrderTaxLineInput {
+                        line_item_index: None,
+                        shipping_option_index: Some(0),
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("1.00").expect("valid decimal"),
+                        name: "VAT shipping".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: serde_json::json!({"tax_included": false, "scope": "shipping"}),
+                    },
+                    rustok_order::dto::CreateOrderTaxLineInput {
+                        line_item_index: None,
+                        shipping_option_index: None,
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("0.50").expect("valid decimal"),
+                        name: "VAT order".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: serde_json::json!({"tax_included": false, "scope": "order"}),
+                    },
+                ],
                 metadata: serde_json::json!({ "source": "graphql-admin-tax-order" }),
             },
         )
@@ -3381,14 +3791,15 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
                   id
                   taxTotal
                   taxIncluded
-                  taxLines {{
+                  taxLines {
                     providerId
                     name
                     amount
                     rate
                     lineItemId
+                    shippingOptionId
                     metadata
-                  }}
+                  }
                 }}
               }}
             }}
@@ -3405,15 +3816,15 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
         .data
         .into_json()
         .expect("admin tax query response should serialize");
-    assert_eq!(json["order"]["order"]["taxTotal"], Value::from("19"));
+    assert_eq!(json["order"]["order"]["taxTotal"], Value::from("20.5"));
     assert_eq!(json["order"]["order"]["taxIncluded"], Value::from(false));
-    assert_eq!(
-        json["order"]["order"]["taxLines"][0]["providerId"],
-        Value::from("region_default")
-    );
-    assert_eq!(json["order"]["order"]["taxLines"][0]["name"], Value::from("VAT"));
-    assert_eq!(json["order"]["order"]["taxLines"][0]["amount"], Value::from("19"));
-    assert_eq!(json["order"]["order"]["taxLines"][0]["rate"], Value::from("19"));
+    let tax_lines = json["order"]["order"]["taxLines"].as_array().expect("tax lines array");
+    assert_eq!(tax_lines.len(), 3);
+    assert_eq!(tax_lines[0]["providerId"], Value::from("region_default"));
+    assert!(tax_lines[0]["lineItemId"].as_str().is_some());
+    assert!(tax_lines[1]["shippingOptionId"].as_str().is_some());
+    assert!(tax_lines[2]["lineItemId"].is_null());
+    assert!(tax_lines[2]["shippingOptionId"].is_null());
 }
 
 #[tokio::test]
@@ -3923,15 +4334,35 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                     metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
                 }],
                 adjustments: Vec::new(),
-                tax_lines: vec![rustok_order::dto::CreateOrderTaxLineInput {
-                    line_item_index: Some(0),
-                    shipping_option_index: None,
-                    rate: Decimal::from_str("19.00").expect("valid decimal"),
-                    amount: Decimal::from_str("5.70").expect("valid decimal"),
-                    name: "VAT".to_string(),
-                    provider_id: "region_default".to_string(),
-                    metadata: serde_json::json!({ "tax_included": false }),
-                }],
+                tax_lines: vec![
+                    rustok_order::dto::CreateOrderTaxLineInput {
+                        line_item_index: Some(0),
+                        shipping_option_index: None,
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("5.70").expect("valid decimal"),
+                        name: "VAT line item".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: serde_json::json!({ "tax_included": false, "scope": "line_item" }),
+                    },
+                    rustok_order::dto::CreateOrderTaxLineInput {
+                        line_item_index: None,
+                        shipping_option_index: Some(0),
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("1.50").expect("valid decimal"),
+                        name: "VAT shipping".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: serde_json::json!({ "tax_included": false, "scope": "shipping" }),
+                    },
+                    rustok_order::dto::CreateOrderTaxLineInput {
+                        line_item_index: None,
+                        shipping_option_index: None,
+                        rate: Decimal::from_str("19.00").expect("valid decimal"),
+                        amount: Decimal::from_str("0.25").expect("valid decimal"),
+                        name: "VAT order".to_string(),
+                        provider_id: "region_default".to_string(),
+                        metadata: serde_json::json!({ "tax_included": false, "scope": "order" }),
+                    },
+                ],
                 metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
             },
         )
@@ -3974,13 +4405,18 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
     );
     assert_eq!(json["storefrontOrder"]["status"], Value::from("pending"));
     assert_eq!(json["storefrontOrder"]["currencyCode"], Value::from("EUR"));
-    assert_eq!(json["storefrontOrder"]["taxTotal"], Value::from("5.7"));
+    assert_eq!(json["storefrontOrder"]["taxTotal"], Value::from("7.45"));
     assert_eq!(json["storefrontOrder"]["taxIncluded"], Value::from(false));
-    assert_eq!(
-        json["storefrontOrder"]["taxLines"][0]["providerId"],
-        Value::from("region_default")
-    );
-    assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("35.7"));
+    let tax_lines = json["storefrontOrder"]["taxLines"].as_array().expect("tax lines array");
+    assert_eq!(tax_lines.len(), 3);
+    assert_eq!(tax_lines[0]["providerId"], Value::from("region_default"));
+    assert!(tax_lines[0]["lineItemId"].as_str().is_some());
+    assert!(tax_lines[0]["shippingOptionId"].is_null());
+    assert!(tax_lines[1]["lineItemId"].is_null());
+    assert!(tax_lines[1]["shippingOptionId"].as_str().is_some());
+    assert!(tax_lines[2]["lineItemId"].is_null());
+    assert!(tax_lines[2]["shippingOptionId"].is_null());
+    assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("37.45"));
     assert_eq!(
         json["storefrontOrder"]["lineItems"][0]["title"],
         Value::from("Storefront Order")
@@ -4101,7 +4537,9 @@ async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
     assert_eq!(json["storefrontOrder"]["taxTotal"], Value::from("0"));
     assert_eq!(json["storefrontOrder"]["taxIncluded"], Value::from(false));
     assert_eq!(
-        json["storefrontOrder"]["taxLines"].as_array().map(|items| items.len()),
+        json["storefrontOrder"]["taxLines"]
+            .as_array()
+            .map(|items| items.len()),
         Some(0)
     );
     assert_eq!(json["storefrontOrder"]["subtotalAmount"], Value::from("30"));

@@ -5531,10 +5531,16 @@ mod tests {
         assert_eq!(order["total_amount"], completed["order"]["total_amount"]);
         assert_eq!(order["tax_included"], completed["order"]["tax_included"]);
         assert_eq!(order["tax_total"], completed["order"]["tax_total"]);
+        assert_eq!(order["tax_lines"], completed["order"]["tax_lines"]);
+        assert_eq!(order["tax_lines"].as_array().expect("tax lines array").len(), 2);
         assert_eq!(
             order["tax_lines"][0]["provider_id"],
             completed["order"]["tax_lines"][0]["provider_id"]
         );
+        assert!(order["tax_lines"][0]["line_item_id"].as_str().is_some());
+        assert!(order["tax_lines"][0]["shipping_option_id"].is_null());
+        assert!(order["tax_lines"][1]["line_item_id"].is_null());
+        assert!(order["tax_lines"][1]["shipping_option_id"].as_str().is_some());
     }
 
     #[tokio::test]
