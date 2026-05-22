@@ -236,6 +236,7 @@
 - [Единый план реализации Fluid Backend Architecture](./research/fluid-backend-architecture-unified-plan.md)
 - [Historical input: deep research report (control plane/module lifecycle)](./research/deep-research-report%20(4).md)
 - [План устранения недостатков control plane и module lifecycle](./research/control-plane-module-lifecycle-remediation-plan.md)
+- [План исправления документации](./research/fix%20docs.md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
 
 ## Документация приложений
