@@ -25,9 +25,34 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
   return InMemoryAuthSessionStore();
 });
 
-final authSessionProvider = FutureProvider<AuthSession?>((ref) async {
+final refreshClientProvider = Provider<GraphQLClient>((ref) {
+  final config = GraphQlClientConfig(
+    baseUri: Uri.parse(_defaultServerBaseUrl),
+    context: const GraphQlRequestContext(
+      tenantSlug: _defaultTenantSlug,
+      locale: _defaultLocale,
+    ),
+  );
+  return const GraphQlClientFactory().create(config);
+});
+
+final refreshTokenServiceProvider = Provider<RefreshTokenService>((ref) {
+  final client = ref.watch(refreshClientProvider);
+  return GraphQlRefreshTokenService(client: client);
+});
+
+final authSessionManagerProvider = Provider<AuthSessionManager>((ref) {
   final store = ref.watch(authSessionStoreProvider);
-  return store.read();
+  final refreshService = ref.watch(refreshTokenServiceProvider);
+  return AuthSessionManager(
+    store: store,
+    refreshTokenService: refreshService,
+  );
+});
+
+final authSessionProvider = FutureProvider<AuthSession?>((ref) async {
+  final manager = ref.watch(authSessionManagerProvider);
+  return manager.readValidSession();
 });
 
 final graphQlConfigProvider = Provider<GraphQlClientConfig>((ref) {

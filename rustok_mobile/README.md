@@ -22,6 +22,8 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Manifest generator script from `crates/*/rustok-module.toml`.
 
 
+Host-level providers now resolve sessions via `AuthSessionManager` and `RefreshTokenService` before building the authenticated GraphQL client.
+
 ## Runtime transport configuration
 
 Host app reads GraphQL transport defaults from `--dart-define` values:
