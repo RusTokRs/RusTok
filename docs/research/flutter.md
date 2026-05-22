@@ -1130,11 +1130,21 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 
 ### Open questions и ограничения
 
+
+### Scope clarification: клиенты, а не третий web frontend
+
+Для текущего трека Flutter scope фиксируется так:
+- не создавать «третий web frontend» параллельно `apps/admin` / `apps/next-admin`;
+- развивать **headless-клиенты** (mobile и desktop) как host-приложения поверх существующего backend-контракта;
+- переиспользовать общий client-core (auth/session, tenant/locale context, GraphQL transport, route/query contracts) между mobile и desktop поверхностями.
+
+Это сохраняет platform parity и снижает стоимость сопровождения по сравнению с отдельным web-host fork.
+
 Ниже — то, что в постановке **не указано**, поэтому в отчёте я дал только разумные варианты, а не жёсткие требования:
 
 | Параметр | Статус | Разумный вариант по умолчанию |
 |---|---|---|
-| Целевые платформы | **Не указано** | Начать с iOS + Android |
+| Целевые платформы | **Уточнено** | Mobile-first (iOS + Android), затем desktop (macOS/Windows/Linux) на общем client-core; без запуска нового web-host |
 | Минимальные OS/SDK требования | **Не указано** | Брать актуальную stable-ветку Flutter и согласовать minima после freeze набора пакетов |
 | Offline support | **Не указано** | Стартовать без offline-first; только persisted cache + secure auth + drafts |
 | Тип мобильного приложения | **Не указано** | Судя по репозиторию, первичен **admin/operator mobile host**; storefront имеет смысл выносить отдельным приложением/пакетом позже |
