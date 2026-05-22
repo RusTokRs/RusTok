@@ -78,6 +78,13 @@ API-слой RusToK должен оставаться согласованным
 - [ ] health/metrics/ops endpoints соответствуют текущему server/runtime contract.
 - [ ] API documentation layer не расходится с реальным routing.
 
+### 4.2 Reference artifacts export (DOC-09 / B11)
+
+- [ ] Выполнен экспорт `scripts/verify/export-reference-artifacts.sh artifacts/reference`.
+- [ ] В output присутствуют `openapi/openapi.json`, `openapi/openapi.yaml`, `graphql-introspection.json`, `manifest.txt`.
+- [ ] Для API-контрактных PR приложен Verification Evidence с датой, командами и статусами.
+
+
 ## Фаза 5. Точечные проверки
 
 ### 5.1 Локальный минимум
