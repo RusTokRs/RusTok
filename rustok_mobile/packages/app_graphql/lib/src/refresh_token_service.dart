@@ -2,8 +2,12 @@ import 'package:graphql/client.dart';
 
 import 'auth_session_store.dart';
 
-class RefreshTokenService {
-  const RefreshTokenService({required this.client});
+abstract class RefreshTokenService {
+  Future<AuthSession?> refresh(AuthSession session);
+}
+
+class GraphQlRefreshTokenService implements RefreshTokenService {
+  GraphQlRefreshTokenService({required this.client});
 
   final GraphQLClient client;
 
@@ -19,6 +23,7 @@ class RefreshTokenService {
     '''),
   );
 
+  @override
   Future<AuthSession?> refresh(AuthSession session) async {
     final refreshToken = session.refreshToken;
     if (refreshToken == null || refreshToken.isEmpty) {

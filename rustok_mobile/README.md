@@ -18,7 +18,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Shared route contracts with snake_case query key constraints.
 - Shared GraphQL transport context/header builders.
 - GraphQL client factory with HTTP/WebSocket split transport and subscription support.
-- Auth session scaffolding (`AuthSessionStore`, in-memory store, refresh service contract).
+- Auth session scaffolding (`AuthSessionStore`, `AuthSessionManager`, in-memory store, refresh service contract).
 - Manifest generator script from `crates/*/rustok-module.toml`.
 
 
