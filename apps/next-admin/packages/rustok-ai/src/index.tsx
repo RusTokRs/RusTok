@@ -554,6 +554,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
   const [reply, setReply] = React.useState('');
   const [isSubmittingProductAttributes, setIsSubmittingProductAttributes] =
     React.useState(false);
+  const [isSubmittingDirectJob, setIsSubmittingDirectJob] =
+    React.useState(false);
   const productAttributesPrefillAppliedRef = React.useRef(false);
 
   const productAttributesTaskProfile = React.useMemo(
@@ -571,7 +573,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
     productAttributesParsedImageUrls.urls.join('\n');
   const canNormalizeProductAttributesImageUrls =
     normalizedProductAttributesImageUrls.length > 0 &&
-    productAttributesForm.imageUrls.trim() !== normalizedProductAttributesImageUrls;
+    productAttributesForm.imageUrls.trim() !==
+      normalizedProductAttributesImageUrls;
   const hasProductAttributesInvalidImageUrls =
     productAttributesParsedImageUrls.invalid.length > 0;
   const hasProductAttributesReadyState =
@@ -579,10 +582,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
     productAttributesForm.productId.trim().length > 0 &&
     hasProductAttributesSeedContent(productAttributesForm) &&
     !hasProductAttributesInvalidImageUrls;
-  const canSubmitProductAttributes =
-    hasProductAttributesReadyState;
+  const canSubmitProductAttributes = hasProductAttributesReadyState;
   const productAttributesRequirementItems = React.useMemo(() => {
-    const items: Array<{ key: string; message: string; status: 'pass' | 'fail' }> = [];
+    const items: Array<{
+      key: string;
+      message: string;
+      status: 'pass' | 'fail';
+    }> = [];
     items.push({
       key: 'taskProfile',
       message: 'Active task profile `product_attributes` is required.',
@@ -651,7 +657,6 @@ export function AiAdminPage(props: AiAdminPageProps) {
     }
   }, [props]);
 
-
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     if (productAttributesPrefillAppliedRef.current) return;
@@ -678,8 +683,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
       imageUrls: queryValue('imageUrls') ?? current.imageUrls,
       copyInstructions:
         queryValue('copyInstructions') ?? current.copyInstructions,
-      assistantPrompt:
-        queryValue('assistantPrompt') ?? current.assistantPrompt,
+      assistantPrompt: queryValue('assistantPrompt') ?? current.assistantPrompt,
       title:
         queryValue('title') ??
         (queryProductId
@@ -710,7 +714,11 @@ export function AiAdminPage(props: AiAdminPageProps) {
     ].forEach((key) => {
       url.searchParams.delete(key);
     });
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    window.history.replaceState(
+      null,
+      '',
+      `${url.pathname}${url.search}${url.hash}`
+    );
 
     productAttributesPrefillAppliedRef.current = true;
   }, [productAttributesTaskProfile]);
@@ -1880,64 +1888,68 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
+                    if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `blog_draft` task profile before generating blog draft content.'
                       );
                       return;
                     }
-                    const taskInputJson = JSON.stringify({
-                      post_id: blogForm.postId || null,
-                      source_locale: blogForm.sourceLocale || null,
-                      source_title: blogForm.sourceTitle || null,
-                      source_body: blogForm.sourceBody || null,
-                      source_excerpt: blogForm.sourceExcerpt || null,
-                      source_seo_title: blogForm.sourceSeoTitle || null,
-                      source_seo_description:
-                        blogForm.sourceSeoDescription || null,
-                      tags: splitCsv(blogForm.tags),
-                      category_id: blogForm.categoryId || null,
-                      featured_image_url: blogForm.featuredImageUrl || null,
-                      copy_instructions: blogForm.copyInstructions || null,
-                      assistant_prompt: blogForm.assistantPrompt || null
-                    });
-                    const started = await gql<
-                      {
-                        runAiTaskJob: {
-                          session: { session: { id: string; title: string } };
-                        };
-                      },
-                      { input: Record<string, unknown> }
-                    >(
-                      RUN_TASK_JOB_MUTATION,
-                      {
-                        input: {
-                          title: blogForm.title,
-                          providerProfileId:
-                            sessionForm.providerProfileId || null,
-                          taskProfileId: sessionForm.taskProfileId,
-                          executionMode: 'DIRECT',
-                          locale: blogForm.locale || null,
-                          taskInputJson,
-                          metadata: '{}'
-                        }
-                      },
-                      props
-                    ).catch((err: Error) => {
-                      setError(err.message);
-                      return null;
-                    });
-                    if (!started) {
-                      setIsSubmittingProductAttributes(false);
-                      return;
+                    setIsSubmittingDirectJob(true);
+                    try {
+                      const taskInputJson = JSON.stringify({
+                        post_id: blogForm.postId || null,
+                        source_locale: blogForm.sourceLocale || null,
+                        source_title: blogForm.sourceTitle || null,
+                        source_body: blogForm.sourceBody || null,
+                        source_excerpt: blogForm.sourceExcerpt || null,
+                        source_seo_title: blogForm.sourceSeoTitle || null,
+                        source_seo_description:
+                          blogForm.sourceSeoDescription || null,
+                        tags: splitCsv(blogForm.tags),
+                        category_id: blogForm.categoryId || null,
+                        featured_image_url: blogForm.featuredImageUrl || null,
+                        copy_instructions: blogForm.copyInstructions || null,
+                        assistant_prompt: blogForm.assistantPrompt || null
+                      });
+                      const started = await gql<
+                        {
+                          runAiTaskJob: {
+                            session: { session: { id: string; title: string } };
+                          };
+                        },
+                        { input: Record<string, unknown> }
+                      >(
+                        RUN_TASK_JOB_MUTATION,
+                        {
+                          input: {
+                            title: blogForm.title,
+                            providerProfileId:
+                              sessionForm.providerProfileId || null,
+                            taskProfileId: sessionForm.taskProfileId,
+                            executionMode: 'DIRECT',
+                            locale: blogForm.locale || null,
+                            taskInputJson,
+                            metadata: '{}'
+                          }
+                        },
+                        props
+                      ).catch((err: Error) => {
+                        setError(err.message);
+                        return null;
+                      });
+                      if (!started) return;
+                      const id = started.runAiTaskJob.session.session.id;
+                      setFeedback(
+                        `Blog draft job \`${started.runAiTaskJob.session.session.title}\` completed.`
+                      );
+                      await loadBootstrap();
+                      await loadSession(id);
+                    } finally {
+                      setIsSubmittingDirectJob(false);
                     }
-                    const id = started.runAiTaskJob.session.session.id;
-                    setFeedback(
-                      `Blog draft job \`${started.runAiTaskJob.session.session.title}\` completed.`
-                    );
-                    await loadBootstrap();
-                    await loadSession(id);
-                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2059,15 +2071,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Mode: direct
                   </div>
-                  {!canSubmitProductAttributes ? (
-                    <p className='text-muted-foreground text-xs'>
-                      Product id and active task profile `product_attributes` are required.
-                    </p>
-                  ) : null}
                   <button
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
-                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
+                    disabled={isSubmittingDirectJob}
                   >
                     Generate blog draft
                   </button>
@@ -2081,6 +2088,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
+                    if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `product_copy` task profile before generating localized product copy.'
@@ -2101,54 +2111,56 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       );
                       return;
                     }
-                    const taskInputJson = JSON.stringify({
-                      product_id: normalizedProductId,
-                      source_locale: productForm.sourceLocale || null,
-                      source_title: productForm.sourceTitle || null,
-                      source_description: productForm.sourceDescription || null,
-                      source_meta_title: productForm.sourceMetaTitle || null,
-                      source_meta_description:
-                        productForm.sourceMetaDescription || null,
-                      copy_instructions: productForm.copyInstructions || null,
-                      assistant_prompt: productForm.assistantPrompt || null
-                    });
-                    const started = await gql<
-                      {
-                        runAiTaskJob: {
-                          session: { session: { id: string; title: string } };
-                        };
-                      },
-                      { input: Record<string, unknown> }
-                    >(
-                      RUN_TASK_JOB_MUTATION,
-                      {
-                        input: {
-                          title: productForm.title,
-                          providerProfileId:
-                            sessionForm.providerProfileId || null,
-                          taskProfileId: sessionForm.taskProfileId,
-                          executionMode: 'DIRECT',
-                          locale: productForm.locale || null,
-                          taskInputJson,
-                          metadata: '{}'
-                        }
-                      },
-                      props
-                    ).catch((err: Error) => {
-                      setError(err.message);
-                      return null;
-                    });
-                    if (!started) {
-                      setIsSubmittingProductAttributes(false);
-                      return;
+                    setIsSubmittingDirectJob(true);
+                    try {
+                      const taskInputJson = JSON.stringify({
+                        product_id: normalizedProductId,
+                        source_locale: productForm.sourceLocale || null,
+                        source_title: productForm.sourceTitle || null,
+                        source_description:
+                          productForm.sourceDescription || null,
+                        source_meta_title: productForm.sourceMetaTitle || null,
+                        source_meta_description:
+                          productForm.sourceMetaDescription || null,
+                        copy_instructions: productForm.copyInstructions || null,
+                        assistant_prompt: productForm.assistantPrompt || null
+                      });
+                      const started = await gql<
+                        {
+                          runAiTaskJob: {
+                            session: { session: { id: string; title: string } };
+                          };
+                        },
+                        { input: Record<string, unknown> }
+                      >(
+                        RUN_TASK_JOB_MUTATION,
+                        {
+                          input: {
+                            title: productForm.title,
+                            providerProfileId:
+                              sessionForm.providerProfileId || null,
+                            taskProfileId: sessionForm.taskProfileId,
+                            executionMode: 'DIRECT',
+                            locale: productForm.locale || null,
+                            taskInputJson,
+                            metadata: '{}'
+                          }
+                        },
+                        props
+                      ).catch((err: Error) => {
+                        setError(err.message);
+                        return null;
+                      });
+                      if (!started) return;
+                      const id = started.runAiTaskJob.session.session.id;
+                      setFeedback(
+                        `Product copy job \`${started.runAiTaskJob.session.session.title}\` completed.`
+                      );
+                      await loadBootstrap();
+                      await loadSession(id);
+                    } finally {
+                      setIsSubmittingDirectJob(false);
                     }
-                    const id = started.runAiTaskJob.session.session.id;
-                    setFeedback(
-                      `Product copy job \`${started.runAiTaskJob.session.session.title}\` completed.`
-                    );
-                    await loadBootstrap();
-                    await loadSession(id);
-                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2249,15 +2261,15 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     Mode: direct
                   </div>
                   <button
-                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium'
+                    className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
+                    disabled={isSubmittingDirectJob}
                   >
                     Generate product copy
                   </button>
                 </form>
               </Card>
             ) : null}
-
 
             {!diagnosticsOnly ? (
               <Card title='Product Attributes'>
@@ -2292,17 +2304,23 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         selectedTaskProfile?.slug === 'product_attributes'
                           ? selectedTaskProfile.id
                           : productAttributesTaskProfile.id;
-                      const normalizedProductId = productAttributesForm.productId.trim();
-                      const normalizedTitle = productAttributesForm.title.trim();
-                      const normalizedLocale = productAttributesForm.locale.trim();
+                      const normalizedProductId =
+                        productAttributesForm.productId.trim();
+                      const normalizedTitle =
+                        productAttributesForm.title.trim();
+                      const normalizedLocale =
+                        productAttributesForm.locale.trim();
                       if (!normalizedProductId) {
                         setError('Product id is required.');
                         return;
                       }
-                      const sourceTitle = productAttributesForm.sourceTitle.trim();
+                      const sourceTitle =
+                        productAttributesForm.sourceTitle.trim();
                       const sourceDescription =
                         productAttributesForm.sourceDescription.trim();
-                      if (!hasProductAttributesSeedContent(productAttributesForm)) {
+                      if (
+                        !hasProductAttributesSeedContent(productAttributesForm)
+                      ) {
                         setError(
                           'Either source title or source description is required for product_attributes.'
                         );
@@ -2328,13 +2346,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         category_slug: normalizedCategorySlug || null,
                         source_locale: normalizedSourceLocale || null,
                         source_title: sourceTitle || null,
-                        source_description:
-                          sourceDescription || null,
+                        source_description: sourceDescription || null,
                         image_urls: parsedImageUrls.urls,
-                        copy_instructions:
-                          normalizedCopyInstructions || null,
-                        assistant_prompt:
-                          normalizedAssistantPrompt || null
+                        copy_instructions: normalizedCopyInstructions || null,
+                        assistant_prompt: normalizedAssistantPrompt || null
                       });
                       const started = await gql<
                         {
@@ -2457,7 +2472,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     }
                   />
                   <p className='text-muted-foreground text-xs'>
-                    Parsed image URLs: {productAttributesParsedImageUrls.urls.length}
+                    Parsed image URLs:{' '}
+                    {productAttributesParsedImageUrls.urls.length}
                     {hasProductAttributesInvalidImageUrls
                       ? ` · Invalid entries: ${productAttributesParsedImageUrls.invalid.length}`
                       : ''}
@@ -2479,7 +2495,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <button
                       className='border-input text-foreground rounded-md border px-2 py-1 text-xs'
                       type='button'
-                      disabled={productAttributesForm.imageUrls.trim().length === 0}
+                      disabled={
+                        productAttributesForm.imageUrls.trim().length === 0
+                      }
                       onClick={() =>
                         setProductAttributesForm((current) => ({
                           ...current,
@@ -2492,7 +2510,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <button
                       className='border-input text-foreground rounded-md border px-2 py-1 text-xs'
                       type='button'
-                      disabled={productAttributesParsedImageUrls.urls.length === 0}
+                      disabled={
+                        productAttributesParsedImageUrls.urls.length === 0
+                      }
                       onClick={async () => {
                         const text = normalizedProductAttributesImageUrls;
                         if (!text) return;
@@ -2502,7 +2522,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                             navigator.clipboard?.writeText
                           ) {
                             await navigator.clipboard.writeText(text);
-                            setFeedback('Normalized image URLs copied to clipboard.');
+                            setFeedback(
+                              'Normalized image URLs copied to clipboard.'
+                            );
                             return;
                           }
                         } catch {
@@ -2576,10 +2598,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
                     disabled={
-                      !canSubmitProductAttributes || isSubmittingProductAttributes
+                      !canSubmitProductAttributes ||
+                      isSubmittingProductAttributes
                     }
                   >
-                    {isSubmittingProductAttributes ? 'Generating…' : 'Generate product attributes'}
+                    {isSubmittingProductAttributes
+                      ? 'Generating…'
+                      : 'Generate product attributes'}
                   </button>
                 </form>
               </Card>
@@ -2591,59 +2616,63 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
+                    if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `image_asset` task profile before generating a media image.'
                       );
                       return;
                     }
-                    const taskInputJson = JSON.stringify({
-                      prompt: imageForm.prompt,
-                      negative_prompt: imageForm.negativePrompt || null,
-                      title: imageForm.mediaTitle || null,
-                      alt_text: imageForm.altText || null,
-                      caption: imageForm.caption || null,
-                      file_name: imageForm.fileName || null,
-                      size: imageForm.size || null,
-                      assistant_prompt: imageForm.assistantPrompt || null
-                    });
-                    const started = await gql<
-                      {
-                        runAiTaskJob: {
-                          session: { session: { id: string; title: string } };
-                        };
-                      },
-                      { input: Record<string, unknown> }
-                    >(
-                      RUN_TASK_JOB_MUTATION,
-                      {
-                        input: {
-                          title: imageForm.title,
-                          providerProfileId:
-                            sessionForm.providerProfileId || null,
-                          taskProfileId: sessionForm.taskProfileId,
-                          executionMode: 'DIRECT',
-                          locale: imageForm.locale || null,
-                          taskInputJson,
-                          metadata: '{}'
-                        }
-                      },
-                      props
-                    ).catch((err: Error) => {
-                      setError(err.message);
-                      return null;
-                    });
-                    if (!started) {
-                      setIsSubmittingProductAttributes(false);
-                      return;
+                    setIsSubmittingDirectJob(true);
+                    try {
+                      const taskInputJson = JSON.stringify({
+                        prompt: imageForm.prompt,
+                        negative_prompt: imageForm.negativePrompt || null,
+                        title: imageForm.mediaTitle || null,
+                        alt_text: imageForm.altText || null,
+                        caption: imageForm.caption || null,
+                        file_name: imageForm.fileName || null,
+                        size: imageForm.size || null,
+                        assistant_prompt: imageForm.assistantPrompt || null
+                      });
+                      const started = await gql<
+                        {
+                          runAiTaskJob: {
+                            session: { session: { id: string; title: string } };
+                          };
+                        },
+                        { input: Record<string, unknown> }
+                      >(
+                        RUN_TASK_JOB_MUTATION,
+                        {
+                          input: {
+                            title: imageForm.title,
+                            providerProfileId:
+                              sessionForm.providerProfileId || null,
+                            taskProfileId: sessionForm.taskProfileId,
+                            executionMode: 'DIRECT',
+                            locale: imageForm.locale || null,
+                            taskInputJson,
+                            metadata: '{}'
+                          }
+                        },
+                        props
+                      ).catch((err: Error) => {
+                        setError(err.message);
+                        return null;
+                      });
+                      if (!started) return;
+                      const id = started.runAiTaskJob.session.session.id;
+                      setFeedback(
+                        `Image job \`${started.runAiTaskJob.session.session.title}\` completed.`
+                      );
+                      await loadBootstrap();
+                      await loadSession(id);
+                    } finally {
+                      setIsSubmittingDirectJob(false);
                     }
-                    const id = started.runAiTaskJob.session.session.id;
-                    setFeedback(
-                      `Image job \`${started.runAiTaskJob.session.session.title}\` completed.`
-                    );
-                    await loadBootstrap();
-                    await loadSession(id);
-                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2731,15 +2760,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Mode: direct
                   </div>
-                  {!canSubmitProductAttributes ? (
-                    <p className='text-muted-foreground text-xs'>
-                      Product id and active task profile `product_attributes` are required.
-                    </p>
-                  ) : null}
                   <button
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
-                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
+                    disabled={isSubmittingDirectJob}
                   >
                     Generate media image
                   </button>
@@ -2753,58 +2777,62 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
+                    if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `alloy_code` task profile before running Alloy Assist.'
                       );
                       return;
                     }
-                    const taskInputJson = JSON.stringify({
-                      operation: alloyForm.operation,
-                      script_id: alloyForm.scriptId || null,
-                      script_name: alloyForm.scriptName || null,
-                      script_source: alloyForm.scriptSource || null,
-                      runtime_payload_json:
-                        alloyForm.runtimePayloadJson || null,
-                      assistant_prompt: alloyForm.assistantPrompt || null
-                    });
-                    const started = await gql<
-                      {
-                        runAiTaskJob: {
-                          session: { session: { id: string; title: string } };
-                        };
-                      },
-                      { input: Record<string, unknown> }
-                    >(
-                      RUN_TASK_JOB_MUTATION,
-                      {
-                        input: {
-                          title: alloyForm.title,
-                          providerProfileId:
-                            sessionForm.providerProfileId || null,
-                          taskProfileId: sessionForm.taskProfileId,
-                          executionMode: 'DIRECT',
-                          locale: alloyForm.locale || null,
-                          taskInputJson,
-                          metadata: '{}'
-                        }
-                      },
-                      props
-                    ).catch((err: Error) => {
-                      setError(err.message);
-                      return null;
-                    });
-                    if (!started) {
-                      setIsSubmittingProductAttributes(false);
-                      return;
+                    setIsSubmittingDirectJob(true);
+                    try {
+                      const taskInputJson = JSON.stringify({
+                        operation: alloyForm.operation,
+                        script_id: alloyForm.scriptId || null,
+                        script_name: alloyForm.scriptName || null,
+                        script_source: alloyForm.scriptSource || null,
+                        runtime_payload_json:
+                          alloyForm.runtimePayloadJson || null,
+                        assistant_prompt: alloyForm.assistantPrompt || null
+                      });
+                      const started = await gql<
+                        {
+                          runAiTaskJob: {
+                            session: { session: { id: string; title: string } };
+                          };
+                        },
+                        { input: Record<string, unknown> }
+                      >(
+                        RUN_TASK_JOB_MUTATION,
+                        {
+                          input: {
+                            title: alloyForm.title,
+                            providerProfileId:
+                              sessionForm.providerProfileId || null,
+                            taskProfileId: sessionForm.taskProfileId,
+                            executionMode: 'DIRECT',
+                            locale: alloyForm.locale || null,
+                            taskInputJson,
+                            metadata: '{}'
+                          }
+                        },
+                        props
+                      ).catch((err: Error) => {
+                        setError(err.message);
+                        return null;
+                      });
+                      if (!started) return;
+                      const id = started.runAiTaskJob.session.session.id;
+                      setFeedback(
+                        `Alloy job \`${started.runAiTaskJob.session.session.title}\` completed.`
+                      );
+                      await loadBootstrap();
+                      await loadSession(id);
+                    } finally {
+                      setIsSubmittingDirectJob(false);
                     }
-                    const id = started.runAiTaskJob.session.session.id;
-                    setFeedback(
-                      `Alloy job \`${started.runAiTaskJob.session.session.title}\` completed.`
-                    );
-                    await loadBootstrap();
-                    await loadSession(id);
-                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2878,15 +2906,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Mode: direct
                   </div>
-                  {!canSubmitProductAttributes ? (
-                    <p className='text-muted-foreground text-xs'>
-                      Product id and active task profile `product_attributes` are required.
-                    </p>
-                  ) : null}
                   <button
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
-                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
+                    disabled={isSubmittingDirectJob}
                   >
                     Run Alloy job
                   </button>
@@ -2900,43 +2923,47 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   className='space-y-3'
                   onSubmit={async (event) => {
                     event.preventDefault();
-                    const started = await gql<
-                      {
-                        startAiChatSession: {
-                          session: { session: { id: string; title: string } };
-                        };
-                      },
-                      { input: Record<string, unknown> }
-                    >(
-                      START_SESSION_MUTATION,
-                      {
-                        input: {
-                          title: sessionForm.title,
-                          providerProfileId:
-                            sessionForm.providerProfileId || null,
-                          taskProfileId: sessionForm.taskProfileId || null,
-                          toolProfileId: sessionForm.toolProfileId || null,
-                          locale: sessionForm.locale || null,
-                          initialMessage: sessionForm.initialMessage || null,
-                          metadata: '{}'
-                        }
-                      },
-                      props
-                    ).catch((err: Error) => {
-                      setError(err.message);
-                      return null;
-                    });
-                    if (!started) {
-                      setIsSubmittingProductAttributes(false);
-                      return;
+                    if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
+                    setIsSubmittingDirectJob(true);
+                    try {
+                      const started = await gql<
+                        {
+                          startAiChatSession: {
+                            session: { session: { id: string; title: string } };
+                          };
+                        },
+                        { input: Record<string, unknown> }
+                      >(
+                        START_SESSION_MUTATION,
+                        {
+                          input: {
+                            title: sessionForm.title,
+                            providerProfileId:
+                              sessionForm.providerProfileId || null,
+                            taskProfileId: sessionForm.taskProfileId || null,
+                            toolProfileId: sessionForm.toolProfileId || null,
+                            locale: sessionForm.locale || null,
+                            initialMessage: sessionForm.initialMessage || null,
+                            metadata: '{}'
+                          }
+                        },
+                        props
+                      ).catch((err: Error) => {
+                        setError(err.message);
+                        return null;
+                      });
+                      if (!started) return;
+                      const id = started.startAiChatSession.session.session.id;
+                      setFeedback(
+                        `Session \`${started.startAiChatSession.session.session.title}\` started.`
+                      );
+                      await loadBootstrap();
+                      await loadSession(id);
+                    } finally {
+                      setIsSubmittingDirectJob(false);
                     }
-                    const id = started.startAiChatSession.session.session.id;
-                    setFeedback(
-                      `Session \`${started.startAiChatSession.session.session.title}\` started.`
-                    );
-                    await loadBootstrap();
-                    await loadSession(id);
-                    setIsSubmittingProductAttributes(false);
                   }}
                 >
                   <Input
@@ -2971,15 +2998,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     <br />
                     Tool profile: {sessionForm.toolProfileId || 'optional'}
                   </div>
-                  {!canSubmitProductAttributes ? (
-                    <p className='text-muted-foreground text-xs'>
-                      Product id and active task profile `product_attributes` are required.
-                    </p>
-                  ) : null}
                   <button
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
                     type='submit'
-                    disabled={!canSubmitProductAttributes || isSubmittingProductAttributes}
+                    disabled={isSubmittingDirectJob}
                   >
                     Start session
                   </button>
@@ -3320,7 +3342,6 @@ function splitCsv(value: string): string[] {
     .filter(Boolean);
 }
 
-
 function parseCsvUrls(value: string): { urls: string[]; invalid: string[] } {
   const entries = splitCsv(value);
   const urls = new Set<string>();
@@ -3350,6 +3371,7 @@ function hasProductAttributesSeedContent(form: {
   sourceDescription: string;
 }): boolean {
   return (
-    form.sourceTitle.trim().length > 0 || form.sourceDescription.trim().length > 0
+    form.sourceTitle.trim().length > 0 ||
+    form.sourceDescription.trim().length > 0
   );
 }

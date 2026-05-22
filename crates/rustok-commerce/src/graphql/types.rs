@@ -825,6 +825,14 @@ pub struct PaymentCollectionsFilter {
     pub per_page: Option<u64>,
 }
 
+
+#[derive(InputObject)]
+pub struct StorefrontRefundsFilter {
+    pub status: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
 #[derive(InputObject)]
 pub struct RefundsFilter {
     pub payment_collection_id: Option<Uuid>,
