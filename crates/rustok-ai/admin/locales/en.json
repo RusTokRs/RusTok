@@ -205,6 +205,9 @@
       "imageTitle": "Media Image",
       "productTitle": "Product Copy",
       "blogTitle": "Blog Draft"
+    },
+    "hint": {
+      "productAttributesRequirements": "Select task profile and product id to enable generation."
     }
   }
 }

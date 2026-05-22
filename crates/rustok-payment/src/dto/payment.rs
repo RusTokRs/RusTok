@@ -32,6 +32,7 @@ pub struct ListRefundsInput {
     pub page: u64,
     pub per_page: u64,
     pub payment_collection_id: Option<Uuid>,
+    pub order_id: Option<Uuid>,
     pub status: Option<String>,
 }
 

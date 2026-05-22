@@ -1222,10 +1222,48 @@ pub fn AiAdmin() -> impl IntoView {
     };
 
 
+    let can_submit_product_attributes = move || {
+        let task_profile_id = selected_task_profile.get();
+        let has_product_id = !product_attributes_product_id.get().trim().is_empty();
+        let matches_product_attributes = bootstrap
+            .get()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload.task_profiles.iter().any(|profile| {
+                    profile.id == task_profile_id
+                        && profile.slug == "product_attributes"
+                        && profile.is_active
+                })
+            })
+            .unwrap_or(false);
+
+        has_product_id && matches_product_attributes
+    };
+
     let on_run_product_attributes_job = move |ev: SubmitEvent| {
         ev.prevent_default();
+        set_feedback.set(None);
+        set_error.set(None);
         let task_profile_id = selected_task_profile.get_untracked();
         if task_profile_id.trim().is_empty() {
+            set_error.set(Some(err_select_product_attributes_task.clone()));
+            return;
+        }
+        let selected_profile_is_product_attributes = bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
+            .map(|payload| {
+                payload
+                    .task_profiles
+                    .iter()
+                    .any(|profile| {
+                        profile.id == task_profile_id
+                            && profile.slug == "product_attributes"
+                            && profile.is_active
+                    })
+            })
+            .unwrap_or(false);
+        if !selected_profile_is_product_attributes {
             set_error.set(Some(err_select_product_attributes_task.clone()));
             return;
         }
@@ -1245,8 +1283,6 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         };
 
-        set_feedback.set(None);
-        set_error.set(None);
         let product_completed_template = product_attributes_completed_template.clone();
         let product_attributes_session_query_writer = product_attributes_session_query_writer.clone();
         spawn_local(async move {
@@ -1513,6 +1549,7 @@ pub fn AiAdmin() -> impl IntoView {
                     let ui_locale_blog = ui_locale.clone();
                     let ui_locale_product = ui_locale.clone();
                     let ui_locale_product_attributes = ui_locale.clone();
+                    let ui_locale_product_attributes_hint = ui_locale.clone();
                     let ui_locale_image = ui_locale.clone();
                     let ui_locale_alloy = ui_locale.clone();
                     let ui_locale_new_session = ui_locale.clone();
@@ -2028,7 +2065,16 @@ pub fn AiAdmin() -> impl IntoView {
                                                 selected_task_profile.get().as_str(),
                                             )}
                                         </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_product_attributes.as_deref(), "ai.action.generateProductAttributes", "Generate product attributes")}</button>
+                                        <Show when=move || !can_submit_product_attributes()>
+                                            <p class="text-xs text-muted-foreground">{t(ui_locale_product_attributes_hint.as_deref(), "ai.hint.productAttributesRequirements", "Select task profile and product id to enable generation.")}</p>
+                                        </Show>
+                                        <button
+                                            type="submit"
+                                            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                                            disabled=move || !can_submit_product_attributes()
+                                        >
+                                            {t(ui_locale_product_attributes.as_deref(), "ai.action.generateProductAttributes", "Generate product attributes")}
+                                        </button>
                                     </form>
                                 </Card>
 
@@ -3231,5 +3277,35 @@ mod tests {
             None,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn product_attributes_payload_rejects_http_without_host() {
+        let result = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("Electronics".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "http://".to_string(),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn product_attributes_payload_allows_empty_image_urls() {
+        let result = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("Electronics".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "   ".to_string(),
+            None,
+            None,
+        );
+        assert!(result.is_ok());
     }
 }
