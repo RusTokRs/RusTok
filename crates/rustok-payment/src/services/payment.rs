@@ -301,6 +301,15 @@ impl PaymentService {
             query = query.filter(entities::refund::Column::PaymentCollectionId.eq(collection_id));
         }
         if let Some(order_id) = input.order_id {
+            if let Some(collection_id) = input.payment_collection_id {
+                let matches_order = self
+                    .payment_collection_matches_order(tenant_id, collection_id, order_id)
+                    .await?;
+                if !matches_order {
+                    return Ok((Vec::new(), 0));
+                }
+            }
+
             let collection_ids = entities::payment_collection::Entity::find()
                 .select_only()
                 .column(entities::payment_collection::Column::Id)
@@ -335,6 +344,21 @@ impl PaymentService {
                 .collect(),
             total,
         ))
+    }
+
+    async fn payment_collection_matches_order(
+        &self,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+        order_id: Uuid,
+    ) -> PaymentResult<bool> {
+        let count = entities::payment_collection::Entity::find()
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
+            .filter(entities::payment_collection::Column::Id.eq(collection_id))
+            .filter(entities::payment_collection::Column::OrderId.eq(order_id))
+            .count(&self.db)
+            .await?;
+        Ok(count > 0)
     }
 
 fn normalize_refund_status_filter(status: &str) -> PaymentResult<String> {
