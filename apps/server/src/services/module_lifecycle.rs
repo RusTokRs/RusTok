@@ -14,6 +14,58 @@ use crate::services::effective_module_policy::EffectiveModulePolicyService;
 
 pub struct ModuleLifecycleService;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ModuleOperationStatus {
+    Running,
+    Committed,
+    Failed,
+}
+
+
+impl ModuleOperationStatus {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Committed => "committed",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub(crate) const fn is_terminal(self) -> bool {
+        matches!(self, Self::Committed | Self::Failed)
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "running" => Some(Self::Running),
+            "committed" => Some(Self::Committed),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ModuleOperationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ModuleOperationStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s).ok_or(())
+    }
+}
+
+impl From<ModuleOperationStatus> for String {
+    fn from(value: ModuleOperationStatus) -> Self {
+        value.as_str().to_string()
+    }
+}
+
+
 #[derive(Debug, Error)]
 pub enum ToggleModuleError {
     #[error("Unknown module")]
@@ -263,7 +315,7 @@ impl ModuleLifecycleService {
                     .await?
                 {
                     let mut active: module_operations::ActiveModel = model.into();
-                    active.status = sea_orm::ActiveValue::Set("done".to_string());
+                    active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Committed.into());
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                     active.update(txn).await?;
                 }
@@ -359,7 +411,7 @@ impl ModuleLifecycleService {
             module_slug: sea_orm::ActiveValue::Set(module_slug.to_string()),
             requested_enabled: sea_orm::ActiveValue::Set(requested_enabled),
             previous_effective_enabled: sea_orm::ActiveValue::Set(previous_effective_enabled),
-            status: sea_orm::ActiveValue::Set("running".to_string()),
+            status: sea_orm::ActiveValue::Set(ModuleOperationStatus::Running.into()),
             requested_by: sea_orm::ActiveValue::Set(requested_by),
             error_message: sea_orm::ActiveValue::Set(None),
             created_at: sea_orm::ActiveValue::Set(now),
@@ -367,23 +419,6 @@ impl ModuleLifecycleService {
         }
         .insert(db)
         .await
-    }
-
-    #[allow(dead_code)]
-    async fn mark_operation_done(
-        db: &DatabaseConnection,
-        operation_id: uuid::Uuid,
-    ) -> Result<(), DbErr> {
-        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
-            .one(db)
-            .await?
-        {
-            let mut active: module_operations::ActiveModel = model.into();
-            active.status = sea_orm::ActiveValue::Set("done".to_string());
-            active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-            active.update(db).await?;
-        }
-        Ok(())
     }
 
     async fn mark_operation_failed(
@@ -396,7 +431,7 @@ impl ModuleLifecycleService {
             .await?
         {
             let mut active: module_operations::ActiveModel = model.into();
-            active.status = sea_orm::ActiveValue::Set("failed".to_string());
+            active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Failed.into());
             active.error_message = sea_orm::ActiveValue::Set(Some(error_message.to_string()));
             active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
             active.update(db).await?;
@@ -407,6 +442,7 @@ impl ModuleLifecycleService {
 
 #[cfg(test)]
 mod tests {
+    use super::ModuleOperationStatus;
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
@@ -421,6 +457,27 @@ mod tests {
     use serial_test::serial;
     use std::collections::HashMap;
     use tempfile::tempdir;
+
+    #[test]
+    fn module_operation_status_roundtrip() {
+        for status in [
+            ModuleOperationStatus::Running,
+            ModuleOperationStatus::Committed,
+            ModuleOperationStatus::Failed,
+        ] {
+            let encoded = status.to_string();
+            assert_eq!(ModuleOperationStatus::parse(&encoded), Some(status));
+        }
+        assert_eq!(ModuleOperationStatus::parse("unknown"), None);
+        assert_eq!("running".parse::<ModuleOperationStatus>(), Ok(ModuleOperationStatus::Running));
+        assert_eq!("committed".parse::<ModuleOperationStatus>(), Ok(ModuleOperationStatus::Committed));
+        assert_eq!("failed".parse::<ModuleOperationStatus>(), Ok(ModuleOperationStatus::Failed));
+        assert_eq!("unknown".parse::<ModuleOperationStatus>(), Err(()));
+        assert_eq!(String::from(ModuleOperationStatus::Running), "running");
+        assert!(!ModuleOperationStatus::Running.is_terminal());
+        assert!(ModuleOperationStatus::Committed.is_terminal());
+        assert!(ModuleOperationStatus::Failed.is_terminal());
+    }
 
     fn path_module(crate_name: &str, path: &str, required: bool) -> ManifestModuleSpec {
         ManifestModuleSpec {

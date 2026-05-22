@@ -102,3 +102,10 @@ pub struct StorefrontCheckoutCompletion {
     pub context_locale: String,
     pub context_currency_code: Option<String>,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontOrderRefundSummary {
+    pub total: u64,
+    pub refunded_amount: Option<String>,
+    pub latest_status: Option<String>,
+}

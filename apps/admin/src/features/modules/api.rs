@@ -718,42 +718,6 @@ fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
 }
 
 #[cfg(feature = "ssr")]
-fn platform_state_update_sql(backend: sea_orm::DbBackend) -> &'static str {
-    match backend {
-        sea_orm::DbBackend::Sqlite => {
-            "UPDATE platform_state SET revision = ?1, manifest_json = ?2, manifest_hash = ?3, updated_by = ?4, updated_at = ?5 WHERE id = ?6 AND revision = ?7"
-        }
-        _ => {
-            "UPDATE platform_state SET revision = $1, manifest_json = $2, manifest_hash = $3, updated_by = $4, updated_at = $5 WHERE id = $6 AND revision = $7"
-        }
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn module_operation_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
-    match backend {
-        sea_orm::DbBackend::Sqlite => {
-            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, error_message, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)"
-        }
-        _ => {
-            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, error_message, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9)"
-        }
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn module_operation_update_sql(backend: sea_orm::DbBackend) -> &'static str {
-    match backend {
-        sea_orm::DbBackend::Sqlite => {
-            "UPDATE module_operations SET status = ?1, error_message = ?2, updated_at = ?3 WHERE id = ?4"
-        }
-        _ => {
-            "UPDATE module_operations SET status = $1, error_message = $2, updated_at = $3 WHERE id = $4"
-        }
-    }
-}
-
-#[cfg(feature = "ssr")]
 async fn active_runtime_platform_snapshot(
     db: &sea_orm::DatabaseConnection,
 ) -> Result<RuntimePlatformSnapshot, ServerFnError> {
@@ -1107,9 +1071,8 @@ fn runtime_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
 #[cfg(all(test, feature = "ssr"))]
 mod runtime_manifest_hash_tests {
     use super::{
-        runtime_manifest_hash, runtime_manifest_snapshot_hash,
-        RuntimeBuildConfig, RuntimeManifestModuleSpec, RuntimeModulesManifest,
-        RuntimeSettingsManifest,
+        runtime_manifest_hash, runtime_manifest_snapshot_hash, RuntimeBuildConfig,
+        RuntimeManifestModuleSpec, RuntimeModulesManifest, RuntimeSettingsManifest,
     };
     use std::collections::HashMap;
 
@@ -1169,8 +1132,10 @@ mod runtime_manifest_hash_tests {
 
     #[test]
     fn manifest_snapshot_hash_changes_for_meaningful_change() {
-        let left = runtime_manifest_snapshot_hash(&serde_json::json!({"settings": {"locale": "en"}}));
-        let right = runtime_manifest_snapshot_hash(&serde_json::json!({"settings": {"locale": "ru"}}));
+        let left =
+            runtime_manifest_snapshot_hash(&serde_json::json!({"settings": {"locale": "en"}}));
+        let right =
+            runtime_manifest_snapshot_hash(&serde_json::json!({"settings": {"locale": "ru"}}));
 
         assert_ne!(left, right);
     }
@@ -1265,7 +1230,10 @@ mod runtime_manifest_hash_tests {
         );
 
         // Reinsert to ensure potentially different insertion history still hashes identically.
-        let catalog = right.modules.remove("catalog").expect("catalog module exists");
+        let catalog = right
+            .modules
+            .remove("catalog")
+            .expect("catalog module exists");
         right.modules.insert("catalog".to_string(), catalog);
 
         assert_eq!(

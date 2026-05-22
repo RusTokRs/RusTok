@@ -793,6 +793,78 @@ fn admin_refunds_list_query_with_order(
     )
 }
 
+
+fn storefront_refunds_query(tenant_id: Uuid, order_id: Uuid) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontRefunds(
+            tenantId: "{tenant_id}",
+            orderId: "{order_id}",
+            filter: {{ page: 1, perPage: 20 }}
+          ) {{
+            total
+            items {{
+              id
+              status
+              orderId
+              paymentCollectionId
+              amount
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn storefront_refunds_query_with_paging(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    page: u64,
+    per_page: u64,
+) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontRefunds(
+            tenantId: "{tenant_id}",
+            orderId: "{order_id}",
+            filter: {{ page: {page}, perPage: {per_page} }}
+          ) {{
+            total
+            page
+            perPage
+            items {{
+              id
+            }}
+          }}
+        }}
+        "#
+    )
+}
+
+
+fn storefront_refunds_query_with_status(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    status: &str,
+) -> String {
+    format!(
+        r#"
+        query {{
+          storefrontRefunds(
+            tenantId: "{tenant_id}",
+            orderId: "{order_id}",
+            filter: {{ page: 1, perPage: 20, status: "{status}" }}
+          ) {{
+            total
+            items {{ id status }}
+          }}
+        }}
+        "#
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -4739,6 +4811,388 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
     assert_eq!(
         json["storefrontOrder"]["lineItems"][0]["quantity"],
         Value::from(2)
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let customer_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(customer_user_id),
+                email: "refund-buyer@example.com".to_string(),
+                first_name: Some("Refund".to_string()),
+                last_name: Some("Buyer".to_string()),
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds" }),
+            },
+        )
+        .await
+        .expect("customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            customer_user_id,
+            CreateOrderInput {
+                customer_id: Some(customer.id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("STOREFRONT-REFUND-1".to_string()),
+                    title: "Storefront Refundable Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("30.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-refunds" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment = PaymentService::new(db.clone())
+        .create_payment_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                amount: Decimal::from_str("30.00").expect("valid decimal"),
+                currency_code: "EUR".to_string(),
+                provider_id: "manual".to_string(),
+                customer_id: Some(customer.id),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    let created_refund = PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("10.00").expect("valid decimal"),
+                reason: Some("customer-request".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, customer_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(storefront_refunds_query(tenant_id, order.id)))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront refunds errors: {:?}",
+        response.errors
+    );
+    let json = response.data.into_json().expect("response should serialize");
+    assert_eq!(json["storefrontRefunds"]["total"], Value::from(1));
+    let items = json["storefrontRefunds"]["items"]
+        .as_array()
+        .expect("refund items should be array");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], Value::from(created_refund.id.to_string()));
+    assert_eq!(items[0]["orderId"], Value::from(order.id.to_string()));
+    assert_eq!(items[0]["paymentCollectionId"], Value::from(payment.id.to_string()));
+    assert_eq!(items[0]["amount"], Value::from("10"));
+}
+
+#[tokio::test]
+async fn storefront_graphql_refunds_query_rejects_foreign_customer_order() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let owner_user_id = Uuid::new_v4();
+    let foreign_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let owner = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(owner_user_id),
+                email: "owner-refund@example.com".to_string(),
+                first_name: Some("Owner".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-forbidden" }),
+            },
+        )
+        .await
+        .expect("owner customer should be created");
+
+    CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(foreign_user_id),
+                email: "foreign-refund@example.com".to_string(),
+                first_name: Some("Foreign".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-forbidden" }),
+            },
+        )
+        .await
+        .expect("foreign customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            owner_user_id,
+            CreateOrderInput {
+                customer_id: Some(owner.id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("STOREFRONT-REFUND-FORBIDDEN".to_string()),
+                    title: "Foreign Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-refunds-forbidden" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-forbidden" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, foreign_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(storefront_refunds_query(tenant_id, order.id)))
+        .await;
+
+    assert_eq!(response.errors.len(), 1, "expected ownership error");
+    assert!(
+        response.errors[0]
+            .message
+            .contains("Order does not belong to the current customer"),
+        "unexpected ownership error: {}",
+        response.errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_refunds_query_requires_authentication() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let response = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    )
+    .execute(Request::new(storefront_refunds_query(tenant_id, Uuid::new_v4())))
+    .await;
+
+    assert_eq!(response.errors.len(), 1, "expected unauthenticated error");
+    assert!(
+        response.errors[0].message.to_ascii_lowercase().contains("auth"),
+        "unexpected unauthenticated error: {}",
+        response.errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_refunds_query_returns_empty_for_unknown_order() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let customer_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(customer_user_id),
+                email: "refund-empty@example.com".to_string(),
+                first_name: Some("Empty".to_string()),
+                last_name: Some("Refunds".to_string()),
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-empty" }),
+            },
+        )
+        .await
+        .expect("customer should be created");
+
+    let response = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, customer_user_id)),
+    )
+    .execute(Request::new(storefront_refunds_query_with_paging(
+        tenant_id,
+        Uuid::new_v4(),
+        3,
+        7,
+    )))
+    .await;
+
+    assert!(response.errors.is_empty(), "unexpected errors: {:?}", response.errors);
+    let json = response.data.into_json().expect("response should serialize");
+    assert_eq!(json["storefrontRefunds"]["total"], Value::from(0));
+    assert_eq!(json["storefrontRefunds"]["page"], Value::from(3));
+    assert_eq!(json["storefrontRefunds"]["perPage"], Value::from(7));
+    assert_eq!(json["storefrontRefunds"]["items"], Value::from(Vec::<Value>::new()));
+}
+
+#[tokio::test]
+async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_values() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let customer_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(customer_user_id),
+                email: "refund-status@example.com".to_string(),
+                first_name: Some("Refund".to_string()),
+                last_name: Some("Status".to_string()),
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            customer_user_id,
+            CreateOrderInput {
+                customer_id: Some(customer.id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("STOREFRONT-REFUND-STATUS".to_string()),
+                    title: "Storefront Refund Status".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("40.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let payment = PaymentService::new(db.clone())
+        .create_payment_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(order.id),
+                amount: Decimal::from_str("40.00").expect("valid decimal"),
+                currency_code: "EUR".to_string(),
+                provider_id: "manual".to_string(),
+                customer_id: Some(customer.id),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("payment collection should be created");
+
+    PaymentService::new(db.clone())
+        .create_refund(
+            tenant_id,
+            payment.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: Some("status-normalization".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-refunds-status" }),
+            },
+        )
+        .await
+        .expect("refund should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, customer_user_id)),
+    );
+
+    let normalized = schema
+        .execute(Request::new(storefront_refunds_query_with_status(
+            tenant_id,
+            order.id,
+            " PENDING ",
+        )))
+        .await;
+    assert!(normalized.errors.is_empty(), "unexpected normalized errors: {:?}", normalized.errors);
+    let normalized_json = normalized
+        .data
+        .into_json()
+        .expect("normalized response should serialize");
+    assert_eq!(normalized_json["storefrontRefunds"]["total"], Value::from(1));
+
+    let invalid = schema
+        .execute(Request::new(storefront_refunds_query_with_status(
+            tenant_id,
+            order.id,
+            "processing",
+        )))
+        .await;
+    assert_eq!(invalid.errors.len(), 1, "invalid status should fail");
+    assert!(
+        invalid.errors[0]
+            .message
+            .contains("invalid refund status filter"),
+        "unexpected invalid-status error: {}",
+        invalid.errors[0].message
     );
 }
 
