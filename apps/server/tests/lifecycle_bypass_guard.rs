@@ -328,3 +328,32 @@ fn lifecycle_hook_phases_adr_is_linked_from_indexes_and_backlog() {
         "remediation backlog must reference lifecycle hook phases ADR explicitly"
     );
 }
+
+#[test]
+fn toggle_graphql_error_mapper_uses_typed_error_categories() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let mutations_rs = repo_root.join("apps/server/src/graphql/mutations.rs");
+    let content = fs::read_to_string(&mutations_rs).expect("mutations.rs should be readable");
+
+    let mapper_body = extract_function_block(
+        &content,
+        "fn map_toggle_module_error(error: ToggleModuleError) -> FieldError",
+    )
+    .expect("toggle mapper should exist");
+
+    assert!(
+        !mapper_body.contains("FieldError::new("),
+        "toggle mapper must use GraphQLError helpers (BAD_USER_INPUT/INTERNAL_ERROR), not raw FieldError::new"
+    );
+    assert!(
+        mapper_body.contains("<FieldError as GraphQLError>::bad_user_input("),
+        "toggle mapper must contain BAD_USER_INPUT mapping for user-facing cases"
+    );
+    assert!(
+        mapper_body.contains("<FieldError as GraphQLError>::internal_error("),
+        "toggle mapper must contain INTERNAL_ERROR mapping for internal failures"
+    );
+}
