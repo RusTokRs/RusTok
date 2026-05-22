@@ -569,11 +569,13 @@ export function AiAdminPage(props: AiAdminPageProps) {
   );
   const hasProductAttributesInvalidImageUrls =
     productAttributesParsedImageUrls.invalid.length > 0;
-  const canSubmitProductAttributes =
+  const hasProductAttributesReadyState =
     !!productAttributesTaskProfile &&
     productAttributesForm.productId.trim().length > 0 &&
     hasProductAttributesSeedContent(productAttributesForm) &&
     !hasProductAttributesInvalidImageUrls;
+  const canSubmitProductAttributes =
+    hasProductAttributesReadyState;
   const productAttributesRequirementItems = React.useMemo(() => {
     const items: Array<{ key: string; message: string; status: 'pass' | 'fail' }> = [];
     items.push({
@@ -2474,6 +2476,11 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         {item.status === 'pass' ? '✓' : '•'} {item.message}
                       </li>
                     ))}
+                    {hasProductAttributesReadyState ? (
+                      <li className='text-emerald-700'>
+                        ✓ Form is ready to generate product attributes.
+                      </li>
+                    ) : null}
                   </ul>
                   <button
                     className='bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60'
