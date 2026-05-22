@@ -280,7 +280,7 @@
 - [~] DOC-02 Profiles truth table (PR: pending)
 - [~] DOC-03 Workflow API doc drift cleanup (PR: pending)
 - [~] DOC-04 Changelog normalization (PR: pending)
-- [ ] DOC-05 docs/index.md refactor
+- [~] DOC-05 docs/index.md refactor (PR: pending)
 - [ ] DOC-06 Registry ↔ manifest sync
 - [ ] DOC-07 Docs CI quality gates
 - [ ] DOC-08 Executable examples hub
