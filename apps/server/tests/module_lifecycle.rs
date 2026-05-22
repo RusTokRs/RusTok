@@ -303,6 +303,10 @@ async fn hook_failure_rolls_back_state() {
         .as_deref()
         .unwrap_or_default()
         .contains("enable failed"));
+    assert!(
+        operation.correlation_id.is_some(),
+        "failed lifecycle operation must keep correlation id for retry/audit tracing",
+    );
 }
 
 #[tokio::test]
@@ -361,6 +365,10 @@ async fn successful_toggle_writes_committed_module_operation() {
     assert!(operation.error_message.is_none());
     assert!(operation.requested_enabled);
     assert!(!operation.previous_effective_enabled);
+    assert!(
+        operation.correlation_id.is_some(),
+        "committed lifecycle operation must keep correlation id for tracing",
+    );
 }
 
 #[tokio::test]

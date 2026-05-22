@@ -44,6 +44,7 @@ mod m20260412_000002_split_registry_localized_metadata;
 mod m20260419_000001_normalize_registry_governance_event_payloads;
 mod m20260426_000001_create_install_sessions;
 mod m20260501_000001_create_platform_composition_state;
+mod m20260522_000001_add_module_operation_correlation_id;
 
 pub struct Migrator;
 
@@ -132,6 +133,9 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_workflow::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
+        ));
+        all.push(Box::new(
+            m20260522_000001_add_module_operation_correlation_id::Migration,
         ));
         let dependencies = collect_migration_descriptors();
 
