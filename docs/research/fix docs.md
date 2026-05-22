@@ -512,3 +512,14 @@ Batch считается закрытым только если одноврем
 - `reason: /bin/bash: lychee: command not found`;
 - `reason: network disabled in CI job`;
 - `reason: required secret is not available for fork PR`.
+
+### Запрет на ретроактивное изменение статусов без основания
+
+Статусы в `Testing`, `Verification Evidence`, трекере и журнале batch-исполнения
+нельзя менять задним числом без явного основания.
+
+Если статус исправляется постфактум, в PR обязательно добавляется:
+
+- `Correction note:` что именно было изменено;
+- `Why corrected:` причина исправления (например, неверно записанный exit code);
+- `Evidence:` команда/лог, подтверждающий корректный статус.
