@@ -26,21 +26,56 @@ class AppShellPage extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Bootstrap error: $error')),
+        error: (_, _) => _BootstrapErrorView(
+          onRetry: () => ref.invalidate(authBootstrapProbeProvider),
+        ),
       ),
     );
   }
 }
 
-class _UnauthenticatedView extends StatelessWidget {
+class _UnauthenticatedView extends ConsumerWidget {
   const _UnauthenticatedView();
 
   @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'No active session. Provide valid auth session in host bootstrap.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: () {
+              ref.invalidate(authSessionProvider);
+              ref.invalidate(authBootstrapProbeProvider);
+            },
+            child: const Text('Retry session check'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BootstrapErrorView extends StatelessWidget {
+  const _BootstrapErrorView({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'No active session. Provide valid auth session in host bootstrap.',
-        textAlign: TextAlign.center,
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Failed to initialize host context.'),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: onRetry, child: const Text('Retry bootstrap')),
+        ],
       ),
     );
   }
@@ -53,8 +88,8 @@ class _AuthContextBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final meEmail = data.me?['email']?.toString() ?? 'unknown';
-    final tenantSlug = data.currentTenant?['slug']?.toString() ?? 'unknown';
+    final meEmail = data.userEmail ?? 'unknown';
+    final tenantSlug = data.tenantSlug ?? 'unknown';
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: ListTile(

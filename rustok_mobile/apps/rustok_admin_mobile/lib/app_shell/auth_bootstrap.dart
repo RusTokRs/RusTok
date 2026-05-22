@@ -65,6 +65,19 @@ final graphQlClientProvider = Provider<GraphQLClient>((ref) {
   return const GraphQlClientFactory().create(config);
 });
 
+const _bootstrapProbeDocument = r'''
+  query BootstrapProbe {
+    me {
+      id
+      email
+    }
+    currentTenant {
+      id
+      slug
+    }
+  }
+''';
+
 final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) async {
   final session = await ref.watch(authSessionProvider.future);
   if (session == null) {
@@ -72,21 +85,11 @@ final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) as
   }
 
   final client = ref.watch(graphQlClientProvider);
-  const document = r'''
-    query BootstrapProbe {
-      me {
-        id
-        email
-      }
-      currentTenant {
-        id
-        slug
-      }
-    }
-  ''';
-
   final result = await client.query(
-    QueryOptions(document: gql(document), fetchPolicy: FetchPolicy.networkOnly),
+    QueryOptions(
+      document: gql(_bootstrapProbeDocument),
+      fetchPolicy: FetchPolicy.networkOnly,
+    ),
   );
   if (result.hasException) {
     throw result.exception!;
@@ -94,31 +97,48 @@ final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) as
 
   final payload = result.data ?? const <String, dynamic>{};
   return BootstrapProbeResult.authenticated(
-    me: payload['me'] as Map<String, dynamic>?,
-    currentTenant: payload['currentTenant'] as Map<String, dynamic>?,
+    userEmail: _readStringField(payload, objectField: 'me', scalarField: 'email'),
+    tenantSlug: _readStringField(
+      payload,
+      objectField: 'currentTenant',
+      scalarField: 'slug',
+    ),
   );
 });
+
+String? _readStringField(
+  Map<String, dynamic> payload, {
+  required String objectField,
+  required String scalarField,
+}) {
+  final nested = payload[objectField];
+  if (nested is! Map<String, dynamic>) {
+    return null;
+  }
+  final scalar = nested[scalarField];
+  return scalar is String ? scalar : null;
+}
 
 class BootstrapProbeResult {
   const BootstrapProbeResult._({
     required this.isAuthenticated,
-    this.me,
-    this.currentTenant,
+    this.userEmail,
+    this.tenantSlug,
   });
 
   const BootstrapProbeResult.unauthenticated()
     : this._(isAuthenticated: false);
 
   const BootstrapProbeResult.authenticated({
-    Map<String, dynamic>? me,
-    Map<String, dynamic>? currentTenant,
+    String? userEmail,
+    String? tenantSlug,
   }) : this._(
          isAuthenticated: true,
-         me: me,
-         currentTenant: currentTenant,
+         userEmail: userEmail,
+         tenantSlug: tenantSlug,
        );
 
   final bool isAuthenticated;
-  final Map<String, dynamic>? me;
-  final Map<String, dynamic>? currentTenant;
+  final String? userEmail;
+  final String? tenantSlug;
 }
