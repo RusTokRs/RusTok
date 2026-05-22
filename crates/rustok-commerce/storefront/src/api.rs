@@ -1700,4 +1700,37 @@ mod tests {
         assert_eq!(summary.refunded_amount, None);
         assert_eq!(summary.latest_status.as_deref(), Some("pending"));
     }
+
+    #[test]
+    fn summarize_storefront_refunds_non_zero_total_with_invalid_amounts_returns_zero_string() {
+        let summary = summarize_storefront_refunds(
+            &[
+                GraphqlRefundItem {
+                    amount: "invalid".to_string(),
+                    status: "pending".to_string(),
+                },
+                GraphqlRefundItem {
+                    amount: "NaN".to_string(),
+                    status: "failed".to_string(),
+                },
+            ],
+            2,
+        );
+
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.refunded_amount.as_deref(), Some("0"));
+        assert_eq!(summary.latest_status.as_deref(), Some("pending"));
+    }
+
+    #[tokio::test]
+    async fn fetch_storefront_order_refunds_summary_rejects_invalid_uuid() {
+        let result = fetch_storefront_order_refunds_summary("not-a-uuid".to_string()).await;
+
+        match result {
+            Err(ApiError::Validation(message)) => {
+                assert_eq!(message, "order_id must be a valid UUID".to_string());
+            }
+            other => panic!("expected validation error, got {:?}", other),
+        }
+    }
 }
