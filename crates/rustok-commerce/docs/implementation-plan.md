@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: migration/contract smoke для legacy `order_tax_lines` без `provider_id` добавлен в `rustok-order`, а storefront GraphQL tax breakdown parity усилен scoped tax-line assertions (`line_item`/`shipping`/`order`).
-- Next step: Перейти к Phase 10 и расширить post-order transport parity (returns/refunds/order-change coverage).
+- Last checkpoint: Phase 10 decomposed into executable post-order slices (returns, refunds transport parity, order-change groundwork) with explicit checklist for parallel implementation.
+- Next step: Начать первый Phase 10 coding slice — returns foundation (entity + service lifecycle + admin transport parity).
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-22T12:40:00Z
+- Last updated at (UTC): 2026-05-22T16:15:00Z
 
 ## Статус документа
 
@@ -530,6 +530,14 @@ Deliverables:
 - стартовый refund slice уже поднят поверх `payment-collections`: `rustok-payment` теперь хранит first-class `refunds`, `PaymentService` умеет `create/list/show/complete/cancel`, а aggregate `PaymentCollectionResponse` возвращает `refunded_amount` и `refunds[]`;
 - admin REST/GraphQL уже публикуют первый post-order refund transport (`/admin/payment-collections/{id}/refunds`, `/admin/refunds*`, `createRefund`, `completeRefund`, `cancelRefund`, `refunds`), так что Phase 10 больше не начинается с нуля;
 - следующий объём внутри Phase 10 остаётся шире refund-only baseline: returns, exchanges/claims и order-change/draft-edit semantics.
+
+
+Execution slices (Phase 10):
+
+- [ ] Slice 10.1: returns foundation (`rustok-order` storage + service lifecycle + admin REST/GraphQL read/write transport).
+- [ ] Slice 10.2: refund transport parity expansion (store/customer-safe read-side + ownership/RBAC contract tests).
+- [ ] Slice 10.3: order-change groundwork (draft edit snapshot + preview/apply contract skeleton without host-owned logic).
+- [ ] Slice 10.4: exchanges/claims scope decision + parity matrix update in this plan and module docs.
 
 Обязательные проверки:
 
