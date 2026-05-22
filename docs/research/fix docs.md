@@ -466,3 +466,15 @@ Batch считается закрытым только если одноврем
   `text-only: checks skipped by policy` и причину;
 - если часть проверок запускалась, а часть нет, это фиксируется построчно
   с отдельным статусом `pass` / `fail` / `blocked` для каждой команды.
+
+### Политика согласованности Testing ↔ Verification Evidence
+
+Разделы **Testing** и **Verification Evidence** в одном PR обязаны быть
+строго согласованы:
+
+- нельзя заявлять в Testing, что проверка `pass`, если в Verification Evidence
+  у той же команды указан `fail` или `blocked`;
+- для каждой команды из Testing должна быть парная строка в Verification
+  Evidence с той же командой и тем же статусом;
+- если инструмент отсутствует (`command not found`), в обоих разделах статус
+  обязан быть `blocked`, без формулировок «passed in CI/local».
