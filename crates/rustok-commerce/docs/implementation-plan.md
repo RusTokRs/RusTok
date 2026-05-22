@@ -7,7 +7,7 @@
 - Next step: Перейти к Phase 10 и расширить post-order transport parity (returns/refunds/order-change coverage).
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-22T12:05:00Z
+- Last updated at (UTC): 2026-05-22T12:40:00Z
 
 ## Статус документа
 
@@ -612,5 +612,5 @@ Release gates:
 ## Quality backlog
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.

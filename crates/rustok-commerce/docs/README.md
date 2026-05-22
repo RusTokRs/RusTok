@@ -24,9 +24,16 @@
 
 ## Проверка
 
+Базовые verification gates для текущего состояния модуля:
+
 - `cargo xtask module validate commerce`
 - `cargo xtask module test commerce`
-- targeted commerce tests для checkout, transport parity и split-module integration при изменении runtime wiring
+- `cargo test -p rustok-commerce admin_order_transport_returns_order_with_payment_and_fulfillment -- --exact`
+- `cargo test -p rustok-commerce storefront_graphql_customer_and_order_queries_match_customer_owned_read_path -- --exact`
+- `cargo test -p rustok-order order_tax_lines_insert_without_provider_id_use_region_default -- --exact`
+
+Примечание: при изменении runtime wiring или transport-контрактов обязательно запускать targeted parity tests
+для checkout, REST/GraphQL transport и split-module integration дополнительно к baseline gate-командам.
 
 ## Связанные документы
 
