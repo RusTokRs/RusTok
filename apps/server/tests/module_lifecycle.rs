@@ -2,8 +2,7 @@ use async_trait::async_trait;
 use rustok_core::{ModuleContext, ModuleKind, ModuleRegistry, RusToKModule};
 use rustok_server::models::_entities::{module_operations, tenant_modules};
 use rustok_server::services::module_lifecycle::{
-    ModuleLifecycleService, ToggleModuleError, MODULE_OPERATION_STATUS_COMMITTED,
-    MODULE_OPERATION_STATUS_FAILED,
+    ModuleLifecycleService, ModuleOperationStatus, ToggleModuleError,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
@@ -298,7 +297,7 @@ async fn hook_failure_rolls_back_state() {
         .expect("load operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, MODULE_OPERATION_STATUS_FAILED);
+    assert_eq!(operation.status, ModuleOperationStatus::Failed.as_str());
     assert!(operation
         .error_message
         .as_deref()
@@ -358,7 +357,7 @@ async fn successful_toggle_writes_committed_module_operation() {
         .expect("load operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, MODULE_OPERATION_STATUS_COMMITTED);
+    assert_eq!(operation.status, ModuleOperationStatus::Committed.as_str());
     assert!(operation.error_message.is_none());
     assert!(operation.requested_enabled);
     assert!(!operation.previous_effective_enabled);
@@ -391,7 +390,7 @@ async fn successful_toggle_with_actor_persists_requested_by() {
         .expect("load operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, MODULE_OPERATION_STATUS_COMMITTED);
+    assert_eq!(operation.status, ModuleOperationStatus::Committed.as_str());
     assert_eq!(operation.requested_by.as_deref(), Some("admin:user-1"));
 }
 
@@ -463,7 +462,7 @@ async fn dependent_validation_failure_does_not_create_journal_row() {
         1,
         "pre-validation dependent failure must not create extra journal rows",
     );
-    assert_eq!(operations[0].status, MODULE_OPERATION_STATUS_COMMITTED);
+    assert_eq!(operations[0].status, ModuleOperationStatus::Committed.as_str());
     assert!(operations[0].requested_enabled);
 }
 
@@ -573,7 +572,7 @@ async fn noop_enable_for_already_enabled_module_does_not_create_extra_journal_ro
         1,
         "no-op enable transition must not create extra module_operations rows",
     );
-    assert_eq!(operations[0].status, MODULE_OPERATION_STATUS_COMMITTED);
+    assert_eq!(operations[0].status, ModuleOperationStatus::Committed.as_str());
 }
 
 #[tokio::test]
@@ -596,7 +595,7 @@ async fn toggle_without_actor_records_null_requested_by() {
         .expect("query operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, MODULE_OPERATION_STATUS_COMMITTED);
+    assert_eq!(operation.status, ModuleOperationStatus::Committed.as_str());
     assert!(
         operation.requested_by.is_none(),
         "toggle_module wrapper without actor must persist requested_by as NULL",
@@ -645,7 +644,7 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    assert_eq!(failed_operation.status, MODULE_OPERATION_STATUS_FAILED);
+    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
     assert_eq!(
         failed_operation.requested_by.as_deref(),
         Some("admin:user-2"),
@@ -674,7 +673,7 @@ async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    assert_eq!(failed_operation.status, MODULE_OPERATION_STATUS_FAILED);
+    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
     assert!(
         failed_operation.requested_by.is_none(),
         "wrapper toggle_module without actor must keep requested_by=NULL even on failed operations",
