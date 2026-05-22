@@ -79,6 +79,7 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn storefront_cart(",
         "async fn storefront_me(",
         "async fn storefront_order(",
+        "async fn storefront_refunds(",
         "async fn admin_pricing_product(",
         "async fn storefront_regions(",
         "async fn storefront_shipping_options(",
