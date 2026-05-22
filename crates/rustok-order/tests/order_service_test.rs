@@ -145,6 +145,33 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
         .expect("tax line should exist");
 
     assert_eq!(inserted.provider_id, "region_default");
+
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, name, provider_id, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            rustok_core::generate_id().into(),
+            tenant_id.into(),
+            created.id.into(),
+            Decimal::from_str("9.00").expect("valid decimal").into(),
+            Decimal::from_str("4.00").expect("valid decimal").into(),
+            "VAT explicit provider".to_string().into(),
+            "custom_tax".to_string().into(),
+            serde_json::json!({"scope": "order"}).into(),
+        ],
+    ))
+    .await
+    .expect("explicit provider insert should succeed");
+
+    let explicit = order_tax_line::Entity::find()
+        .filter(order_tax_line::Column::OrderId.eq(created.id))
+        .filter(order_tax_line::Column::Name.eq("VAT explicit provider"))
+        .one(&db)
+        .await
+        .expect("explicit provider tax line query should succeed")
+        .expect("explicit provider tax line should exist");
+
+    assert_eq!(explicit.provider_id, "custom_tax");
 }
 
 #[tokio::test]
