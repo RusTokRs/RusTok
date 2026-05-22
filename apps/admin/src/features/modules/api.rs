@@ -1219,6 +1219,61 @@ mod runtime_manifest_hash_tests {
 
         assert_ne!(runtime_manifest_hash(&left), runtime_manifest_hash(&right));
     }
+
+    #[test]
+    fn runtime_manifest_hash_matches_canonical_snapshot_hash() {
+        let manifest = sample_manifest();
+        let snapshot = serde_json::to_value(&manifest).expect("serialize manifest snapshot");
+
+        assert_eq!(
+            runtime_manifest_hash(&manifest),
+            runtime_manifest_snapshot_hash(&snapshot),
+            "manifest hash must use the same canonical snapshot contract",
+        );
+    }
+
+    #[test]
+    fn runtime_manifest_hash_is_stable_for_module_map_order() {
+        let mut left = sample_manifest();
+        left.modules.insert(
+            "pricing".to_string(),
+            RuntimeManifestModuleSpec {
+                source: "workspace".to_string(),
+                crate_name: "rustok-pricing".to_string(),
+                path: Some("crates/rustok-pricing".to_string()),
+                version: Some("1.0.0".to_string()),
+                git: None,
+                rev: None,
+                required: false,
+                depends_on: vec![],
+            },
+        );
+
+        let mut right = sample_manifest();
+        right.modules.insert(
+            "pricing".to_string(),
+            RuntimeManifestModuleSpec {
+                source: "workspace".to_string(),
+                crate_name: "rustok-pricing".to_string(),
+                path: Some("crates/rustok-pricing".to_string()),
+                version: Some("1.0.0".to_string()),
+                git: None,
+                rev: None,
+                required: false,
+                depends_on: vec![],
+            },
+        );
+
+        // Reinsert to ensure potentially different insertion history still hashes identically.
+        let catalog = right.modules.remove("catalog").expect("catalog module exists");
+        right.modules.insert("catalog".to_string(), catalog);
+
+        assert_eq!(
+            runtime_manifest_hash(&left),
+            runtime_manifest_hash(&right),
+            "canonical serializer must normalize map ordering",
+        );
+    }
 }
 
 #[cfg(feature = "ssr")]
