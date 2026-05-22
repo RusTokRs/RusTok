@@ -2,6 +2,25 @@
 
 Быстрый старт для локальной разработки с двумя админками (Next.js + Leptos) и двумя витринами.
 
+
+## Матрица профилей запуска (canonical truth table)
+
+| Профиль | Хосты | Порты | Владелец профиля | Canonical source |
+|---|---|---|---|---|
+| `dev-start:full` | `apps/server`, `apps/next-admin`, `apps/admin`, `apps/next-frontend`, `apps/storefront`, PostgreSQL | `5150`, `3000`, `3001`, `3100`, `3101`, `5432` | Platform + DevEx | `scripts/dev-start.sh`, `docs/guides/quickstart.md` |
+| `dev-start:admin` | `apps/server`, `apps/next-admin`, `apps/admin`, PostgreSQL | `5150`, `3000`, `3001`, `5432` | Platform + DevEx | `scripts/dev-start.sh start admin`, `docs/guides/quickstart.md` |
+| `local:ssr-install` | `apps/server` (installer/apply pipeline), PostgreSQL | `5150`, `5432` | Platform foundation | `cargo xtask install-dev`, `apps/server/config/development.yaml` |
+| `standalone:next-admin` | `apps/server` + `apps/next-admin` | `5150`, `3000` | Frontend admin owner | `apps/next-admin`, `docs/UI/admin-server-connection-quickstart.md` |
+| `standalone:leptos-admin` | `apps/server` + `apps/admin` | `5150`, `3001` | Frontend admin owner | `apps/admin/Trunk.toml`, `docs/UI/admin-server-connection-quickstart.md` |
+| `headless:next-frontend` | `apps/server` + `apps/next-frontend` | `5150`, `3100` | Frontend storefront owner | `apps/next-frontend`, `docs/UI/storefront.md` |
+| `standalone:leptos-storefront` | `apps/server` + `apps/storefront` | `5150`, `3101` | Frontend storefront owner | `apps/storefront`, `docs/UI/storefront.md` |
+
+Примечания:
+- Источником истины по модульному составу остаётся `modules.toml`; профили запуска
+  не меняют модульный контракт, а задают runtime-топологию и host composition.
+- При конфликте документации приоритет у `scripts/dev-start.sh` (для dev-start профилей)
+  и у install/host entrypoints, перечисленных в колонке `Canonical source`.
+
 ## 🚀 Запуск одной командой
 
 ```bash
