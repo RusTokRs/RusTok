@@ -76,6 +76,8 @@ fn bypass_toggle_api_is_not_public() {
     let entity_impl_anchor = "impl Entity {";
     let entity_method_signature =
         "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(";
+    let wrapper_signature =
+        "\n#[allow(dead_code)]\npub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(";
     let public_signature = "pub async fn upsert_flag_without_lifecycle_for_migrations_only(";
 
     let entity_impl_pos = content
@@ -89,7 +91,17 @@ fn bypass_toggle_api_is_not_public() {
         "Entity bypass helper should be declared inside the Entity impl section."
     );
 
-    let wrapper_signature = "\n#[allow(dead_code)]\npub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only(";
+    assert_eq!(
+        content.matches(entity_method_signature).count(),
+        2,
+        "Expected exactly two crate-scoped bypass helper signatures (Entity method + module wrapper)."
+    );
+    assert_eq!(
+        content.matches(wrapper_signature).count(),
+        1,
+        "Expected exactly one module-level bypass wrapper signature with dead_code annotation."
+    );
+
     let wrapper_block = extract_function_block(&content, wrapper_signature)
         .expect("module-level bypass wrapper should stay crate-scoped with dead_code annotation");
     assert!(
