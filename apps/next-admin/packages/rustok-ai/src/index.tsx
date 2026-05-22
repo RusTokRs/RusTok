@@ -602,21 +602,28 @@ export function AiAdminPage(props: AiAdminPageProps) {
     if (typeof window === 'undefined') return;
     if (productAttributesPrefillAppliedRef.current) return;
     const params = new URLSearchParams(window.location.search);
+    const queryValue = (key: string): string | null => {
+      const value = params.get(key);
+      if (value == null) return null;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    };
     const task = params.get('task');
     if (task !== 'product_attributes') return;
 
+    const queryProductId = queryValue('productId');
     setProductAttributesForm((current) => ({
       ...current,
-      productId: params.get('productId') ?? current.productId,
-      locale: params.get('locale') ?? current.locale,
-      sourceLocale: params.get('sourceLocale') ?? current.sourceLocale,
-      sourceTitle: params.get('sourceTitle') ?? current.sourceTitle,
+      productId: queryProductId ?? current.productId,
+      locale: queryValue('locale') ?? current.locale,
+      sourceLocale: queryValue('sourceLocale') ?? current.sourceLocale,
+      sourceTitle: queryValue('sourceTitle') ?? current.sourceTitle,
       sourceDescription:
-        params.get('sourceDescription') ?? current.sourceDescription,
-      categorySlug: params.get('categorySlug') ?? current.categorySlug,
+        queryValue('sourceDescription') ?? current.sourceDescription,
+      categorySlug: queryValue('categorySlug') ?? current.categorySlug,
       title:
-        params.get('productId')
-          ? `Product Attributes ${params.get('productId')}`
+        queryProductId
+          ? `Product Attributes ${queryProductId}`
           : current.title
     }));
 
