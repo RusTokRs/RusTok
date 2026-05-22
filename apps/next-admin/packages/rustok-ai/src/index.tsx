@@ -574,23 +574,34 @@ export function AiAdminPage(props: AiAdminPageProps) {
     productAttributesForm.productId.trim().length > 0 &&
     hasProductAttributesSeedContent(productAttributesForm) &&
     !hasProductAttributesInvalidImageUrls;
-  const productAttributesRequirementMessages = React.useMemo(() => {
-    const messages: string[] = [];
-    if (!productAttributesTaskProfile) {
-      messages.push('Active task profile `product_attributes` is required.');
-    }
-    if (productAttributesForm.productId.trim().length === 0) {
-      messages.push('Product id is required.');
-    }
-    if (!hasProductAttributesSeedContent(productAttributesForm)) {
-      messages.push('Source title or source description is required.');
-    }
-    if (hasProductAttributesInvalidImageUrls) {
-      messages.push(
-        `Image URLs contain invalid entries: ${productAttributesParsedImageUrls.invalid.join(', ')}`
-      );
-    }
-    return messages;
+  const productAttributesRequirementItems = React.useMemo(() => {
+    const items: Array<{ key: string; message: string; status: 'pass' | 'fail' }> = [];
+    items.push({
+      key: 'taskProfile',
+      message: 'Active task profile `product_attributes` is required.',
+      status: productAttributesTaskProfile ? 'pass' : 'fail'
+    });
+    items.push({
+      key: 'productId',
+      message: 'Product id is required.',
+      status:
+        productAttributesForm.productId.trim().length > 0 ? 'pass' : 'fail'
+    });
+    items.push({
+      key: 'seedContent',
+      message: 'Source title or source description is required.',
+      status: hasProductAttributesSeedContent(productAttributesForm)
+        ? 'pass'
+        : 'fail'
+    });
+    items.push({
+      key: 'imageUrls',
+      message: hasProductAttributesInvalidImageUrls
+        ? `Image URLs contain invalid entries: ${productAttributesParsedImageUrls.invalid.join(', ')}`
+        : 'Image URLs are valid.',
+      status: hasProductAttributesInvalidImageUrls ? 'fail' : 'pass'
+    });
+    return items;
   }, [
     hasProductAttributesInvalidImageUrls,
     productAttributesForm,
@@ -2447,9 +2458,18 @@ export function AiAdminPage(props: AiAdminPageProps) {
                     Mode: direct
                   </div>
                   {!canSubmitProductAttributes ? (
-                    <ul className='text-xs text-amber-700'>
-                      {productAttributesRequirementMessages.map((message) => (
-                        <li key={message}>• {message}</li>
+                    <ul className='space-y-1 text-xs'>
+                      {productAttributesRequirementItems.map((item) => (
+                        <li
+                          key={item.key}
+                          className={
+                            item.status === 'pass'
+                              ? 'text-emerald-700'
+                              : 'text-amber-700'
+                          }
+                        >
+                          {item.status === 'pass' ? '✓' : '•'} {item.message}
+                        </li>
                       ))}
                     </ul>
                   ) : null}
