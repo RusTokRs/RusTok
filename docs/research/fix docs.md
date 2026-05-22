@@ -283,6 +283,48 @@
 ---
 
 
+
+## Исполняемый backlog на ближайший цикл (операционализация)
+
+Чтобы «продолжить реализацию» без дополнительного планирования, фиксируем
+следующий исполняемый набор задач поверх batches B1–B5.
+
+### Batch card template (копировать в каждый PR)
+
+```md
+### Batch Card
+- Batch: `B?`
+- Закрывает: `DOC-..`
+- Scope: `<список файлов>`
+- Depends on: `<batch/ID или none>`
+- Done when:
+  - [ ] критерий 1
+  - [ ] критерий 2
+- Verification Evidence:
+  - YYYY-MM-DD — `<command>` — pass/fail/blocked
+```
+
+### Следующие батчи после B1–B5
+
+| Batch | Закрывает | Область изменений (точно) | Exit criteria |
+|---|---|---|---|
+| B6 | DOC-05 | `docs/index.md` | Индекс сокращён до navigation-first карты без статусной хроники и с валидными кросс-ссылками |
+| B7 | DOC-06 | `docs/modules/registry.md`, `docs/modules/_index.md`, `docs/modules/UI_PACKAGES_INDEX.md`, `modules.toml` (только сверка) | Все module entries синхронизированы, capability/support метки выровнены |
+| B8 | DOC-07 (завершение) | `.github/workflows/*docs*` и/или существующие CI docs jobs, `docs/verification/*` | CI действительно блокирует PR на markdown/link/anchor ошибки |
+| B9 | DOC-11 | `.github/pull_request_template.md`, `docs/guides/*` (если нужно) | PR template содержит обязательный docs checklist и Verification Evidence |
+| B10 | DOC-12 (first pass) | hotspot H1–H3 документы из этого плана | Для каждой hotspot-зоны есть owner, scope и минимальный PR contract |
+
+### Правило обновления статусов
+
+- В каждом docs PR обновляется только соответствующий пункт в «Трекере статуса».
+- Статус `[~]` разрешён только при наличии открытого PR-номера.
+- Статус `[x]` ставится только после merge в default branch с датой merge.
+- Если задача декомпозирована на batches, в пункте указывается последний активный batch.
+
+Формат:
+- `- [~] DOC-06 ... (Batch: B7, PR: #1234)`
+- `- [x] DOC-06 ... (Batch: B7, PR: #1234, merged: YYYY-MM-DD)`
+
 ## Правила ведения статусов
 
 - `[ ]` — не начато;
