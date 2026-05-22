@@ -2,18 +2,20 @@ import 'package:app_graphql/app_graphql.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:graphql/client.dart';
 
-const defaultServerBaseUrl = String.fromEnvironment(
+const _defaultServerBaseUrl = String.fromEnvironment(
   'RUSTOK_SERVER_BASE_URL',
   defaultValue: 'http://localhost:8080',
 );
-const defaultTenantSlug = String.fromEnvironment(
+const _defaultTenantSlug = String.fromEnvironment(
   'RUSTOK_TENANT_SLUG',
   defaultValue: 'default',
 );
-const defaultLocale = String.fromEnvironment(
+const _defaultLocale = String.fromEnvironment(
   'RUSTOK_LOCALE',
   defaultValue: 'en',
 );
+
+Uri _serverBaseUri() => Uri.parse(_defaultServerBaseUrl);
 
 final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
   return InMemoryAuthSessionStore();
@@ -21,10 +23,10 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
 
 final refreshClientProvider = Provider<GraphQLClient>((ref) {
   final config = GraphQlClientConfig(
-    baseUri: Uri.parse(defaultServerBaseUrl),
+    baseUri: _serverBaseUri(),
     context: const GraphQlRequestContext(
-      tenantSlug: defaultTenantSlug,
-      locale: defaultLocale,
+      tenantSlug: _defaultTenantSlug,
+      locale: _defaultLocale,
     ),
   );
   return const GraphQlClientFactory().createHttpOnly(config);
@@ -49,10 +51,10 @@ final authSessionProvider = FutureProvider<AuthSession?>((ref) async {
 final graphQlConfigProvider = Provider<GraphQlClientConfig>((ref) {
   final session = ref.watch(authSessionProvider).valueOrNull;
   return GraphQlClientConfig(
-    baseUri: Uri.parse(defaultServerBaseUrl),
+    baseUri: _serverBaseUri(),
     context: GraphQlRequestContext(
-      tenantSlug: defaultTenantSlug,
-      locale: defaultLocale,
+      tenantSlug: _defaultTenantSlug,
+      locale: _defaultLocale,
       accessToken: session?.accessToken,
     ),
   );
