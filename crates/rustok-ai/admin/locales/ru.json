@@ -205,6 +205,9 @@
       "imageTitle": "Media Image",
       "productTitle": "Product Copy",
       "blogTitle": "Blog Draft"
+    },
+    "hint": {
+      "productAttributesRequirements": "Выберите профиль задачи и product id для запуска генерации."
     }
   }
 }
