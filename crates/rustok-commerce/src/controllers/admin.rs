@@ -3216,6 +3216,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_refunds_transport_rejects_invalid_status_filter() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Tenant".to_string(),
+            slug: format!("tenant-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PAYMENTS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/admin/refunds?status=processing")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("request should succeed");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn admin_shipping_profiles_transport_supports_create_update_and_list() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;

@@ -390,3 +390,29 @@ async fn refund_amount_cannot_exceed_remaining_captured_total() {
         other => panic!("expected validation error, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn list_refunds_rejects_unknown_status_filter() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let error = service
+        .list_refunds(
+            tenant_id,
+            rustok_payment::dto::ListRefundsInput {
+                page: 1,
+                per_page: 20,
+                payment_collection_id: None,
+                status: Some("processing".to_string()),
+            },
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        PaymentError::Validation(message) => {
+            assert!(message.contains("invalid refund status filter"));
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+}

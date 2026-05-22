@@ -301,6 +301,7 @@ impl PaymentService {
             query = query.filter(entities::refund::Column::PaymentCollectionId.eq(collection_id));
         }
         if let Some(status) = input.status {
+            validate_refund_status_filter(&status)?;
             query = query.filter(entities::refund::Column::Status.eq(status));
         }
 
@@ -319,6 +320,19 @@ impl PaymentService {
             total,
         ))
     }
+
+fn validate_refund_status_filter(status: &str) -> PaymentResult<()> {
+    if matches!(
+        status,
+        STATUS_REFUND_PENDING | STATUS_REFUNDED | STATUS_CANCELLED
+    ) {
+        return Ok(());
+    }
+
+    Err(PaymentError::Validation(
+        "invalid refund status filter: expected one of pending, refunded, cancelled".to_string(),
+    ))
+}
 
     pub async fn complete_refund(
         &self,
