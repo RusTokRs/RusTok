@@ -69,6 +69,24 @@ use uuid::Uuid;
 #[derive(Default)]
 pub struct RootMutation;
 
+const TOGGLE_ERR_UNKNOWN_MODULE: &str = "Unknown module";
+
+fn toggle_err_core_module_cannot_be_disabled(module_slug: &str) -> String {
+    format!("Core module cannot be disabled: {module_slug}")
+}
+
+fn toggle_err_missing_dependencies(missing: &str) -> String {
+    format!("Missing module dependencies: {missing}")
+}
+
+fn toggle_err_has_dependents(dependents: &str) -> String {
+    format!("Module is required by: {dependents}")
+}
+
+fn toggle_err_hook_failed(reason: &str) -> String {
+    format!("Module lifecycle hook failed before state commit: {reason}")
+}
+
 fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldError {
     match error {
         rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
@@ -314,31 +332,24 @@ fn map_platform_composition_build_error(error: PlatformCompositionBuildError) ->
 fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
     match error {
         ToggleModuleError::UnknownModule => {
-            <FieldError as GraphQLError>::bad_user_input("Unknown module")
+            <FieldError as GraphQLError>::bad_user_input(TOGGLE_ERR_UNKNOWN_MODULE)
         }
         ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
-            <FieldError as GraphQLError>::bad_user_input(format!(
-                "Core module cannot be disabled: {}",
-                module_slug
+            <FieldError as GraphQLError>::bad_user_input(toggle_err_core_module_cannot_be_disabled(
+                &module_slug,
             ))
         }
         ToggleModuleError::MissingDependencies(missing) => {
-            <FieldError as GraphQLError>::bad_user_input(format!(
-                "Missing module dependencies: {}",
-                missing
-            ))
+            <FieldError as GraphQLError>::bad_user_input(toggle_err_missing_dependencies(&missing))
         }
         ToggleModuleError::HasDependents(dependents) => {
-            <FieldError as GraphQLError>::bad_user_input(format!(
-                "Module is required by: {}",
-                dependents
-            ))
+            <FieldError as GraphQLError>::bad_user_input(toggle_err_has_dependents(&dependents))
         }
         ToggleModuleError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
         ToggleModuleError::HookFailed(err) => <FieldError as GraphQLError>::bad_user_input(
-            format!("Module lifecycle hook failed before state commit: {}", err),
+            toggle_err_hook_failed(&err),
         ),
         ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
     }
@@ -1172,7 +1183,7 @@ mod tests {
     #[test]
     fn toggle_error_maps_unknown_module() {
         let err = map_toggle_module_error(ToggleModuleError::UnknownModule);
-        assert_eq!(err.message, "Unknown module");
+        assert_eq!(err.message, TOGGLE_ERR_UNKNOWN_MODULE);
     }
 
     #[test]
@@ -1181,7 +1192,7 @@ mod tests {
             map_toggle_module_error(ToggleModuleError::CoreModuleCannotBeDisabled("core".into()));
         assert_eq!(
             err.message,
-            "Core module cannot be disabled: core",
+            toggle_err_core_module_cannot_be_disabled("core"),
             "core-module mapping must keep deterministic user-facing taxonomy"
         );
     }
@@ -1192,7 +1203,7 @@ mod tests {
             map_toggle_module_error(ToggleModuleError::MissingDependencies("pricing".into()));
         assert_eq!(
             missing.message,
-            "Missing module dependencies: pricing",
+            toggle_err_missing_dependencies("pricing"),
             "missing-dependency mapping must keep deterministic user-facing taxonomy"
         );
 
@@ -1200,7 +1211,7 @@ mod tests {
             map_toggle_module_error(ToggleModuleError::HasDependents("checkout".into()));
         assert_eq!(
             dependents.message,
-            "Module is required by: checkout",
+            toggle_err_has_dependents("checkout"),
             "dependents mapping must keep deterministic user-facing taxonomy"
         );
     }
@@ -1210,7 +1221,7 @@ mod tests {
         let err = map_toggle_module_error(ToggleModuleError::HookFailed("boom".into()));
         assert_eq!(
             err.message,
-            "Module lifecycle hook failed before state commit: boom",
+            toggle_err_hook_failed("boom"),
             "hook-failure mapping must stay explicit and deterministic"
         );
         assert!(!err.message.contains("rolled back"));
@@ -1232,27 +1243,27 @@ mod tests {
         let cases = vec![
             (
                 ToggleModuleError::UnknownModule,
-                "Unknown module",
+                TOGGLE_ERR_UNKNOWN_MODULE,
                 "unknown-module",
             ),
             (
                 ToggleModuleError::CoreModuleCannotBeDisabled("core".into()),
-                "Core module cannot be disabled: core",
+                toggle_err_core_module_cannot_be_disabled("core"),
                 "core-disable",
             ),
             (
                 ToggleModuleError::MissingDependencies("pricing".into()),
-                "Missing module dependencies: pricing",
+                toggle_err_missing_dependencies("pricing"),
                 "missing-dependencies",
             ),
             (
                 ToggleModuleError::HasDependents("checkout".into()),
-                "Module is required by: checkout",
+                toggle_err_has_dependents("checkout"),
                 "has-dependents",
             ),
             (
                 ToggleModuleError::HookFailed("boom".into()),
-                "Module lifecycle hook failed before state commit: boom",
+                toggle_err_hook_failed("boom"),
                 "hook-failed",
             ),
         ];
