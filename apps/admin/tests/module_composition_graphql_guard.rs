@@ -118,6 +118,10 @@ fn toggle_module_helper_uses_graphql_only_contract() {
         "toggle_module must call GraphQL request path"
     );
     assert!(
+        helper_body.contains("let response: ToggleModuleResponse"),
+        "toggle_module must decode into typed ToggleModuleResponse before returning payload"
+    );
+    assert!(
         helper_body.contains("ToggleModuleVariables"),
         "toggle_module must use typed ToggleModuleVariables payload"
     );
@@ -168,6 +172,41 @@ fn toggle_module_helper_forwards_auth_context_without_local_overrides() {
     assert!(
         !helper_body.contains("None"),
         "toggle_module must not locally null auth context when forwarding request"
+    );
+}
+
+#[test]
+fn toggle_module_mutation_contract_shape_stays_stable() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let declaration = "pub const TOGGLE_MODULE_MUTATION: &str = \"";
+    let start = content
+        .find(declaration)
+        .expect("TOGGLE_MODULE_MUTATION declaration not found");
+    let rest = &content[start + declaration.len()..];
+    let end = rest
+        .find("\";")
+        .expect("TOGGLE_MODULE_MUTATION declaration terminator not found");
+    let mutation = &rest[..end];
+
+    for required_fragment in [
+        "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!)",
+        "toggleModule(moduleSlug: $moduleSlug, enabled: $enabled)",
+        "moduleSlug",
+        "enabled",
+        "settings",
+    ] {
+        assert!(
+            mutation.contains(required_fragment),
+            "toggle mutation contract drifted: missing fragment `{required_fragment}`"
+        );
+    }
+
+    assert!(
+        !mutation.contains("__typename"),
+        "toggle mutation contract must stay minimal and not introduce opaque response-only fields"
     );
 }
 

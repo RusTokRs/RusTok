@@ -1191,49 +1191,6 @@ mod tests {
         assert!(!policy_err.message.is_empty());
     }
 
-    #[test]
-    fn toggle_error_taxonomy_matrix_stays_stable() {
-        let cases = vec![
-            (
-                ToggleModuleError::UnknownModule,
-                TOGGLE_ERR_UNKNOWN_MODULE,
-                "unknown-module",
-            ),
-            (
-                ToggleModuleError::CoreModuleCannotBeDisabled("core".into()),
-                toggle_err_core_module_cannot_be_disabled("core"),
-                "core-disable",
-            ),
-            (
-                ToggleModuleError::MissingDependencies("pricing".into()),
-                toggle_err_missing_dependencies("pricing"),
-                "missing-dependencies",
-            ),
-            (
-                ToggleModuleError::HasDependents("checkout".into()),
-                toggle_err_has_dependents("checkout"),
-                "has-dependents",
-            ),
-            (
-                ToggleModuleError::HookFailed("boom".into()),
-                toggle_err_hook_failed("boom"),
-                "hook-failed",
-            ),
-        ];
-
-        for (error, expected_message, case_name) in cases {
-            let field_error = map_toggle_module_error(error);
-            assert_eq!(
-                field_error.message, expected_message,
-                "toggle error taxonomy drifted for case: {case_name}"
-            );
-            assert!(
-                !field_error.message.contains("rolled back"),
-                "toggle error message unexpectedly references rollback for case: {case_name}"
-            );
-        }
-    }
-
     fn error_code(error: &async_graphql::Error) -> Option<String> {
         error
             .extensions
@@ -1325,6 +1282,11 @@ mod tests {
                 error_code(&gql).as_deref(),
                 case.expected_code,
                 "toggle error code drifted for case: {}",
+                case.case_name
+            );
+            assert!(
+                !mapped.message.contains("rolled back"),
+                "toggle error contract must not reference partial rollback semantics for case: {}",
                 case.case_name
             );
         }
