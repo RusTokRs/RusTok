@@ -96,13 +96,25 @@ final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) as
   }
 
   final payload = result.data ?? const <String, dynamic>{};
+  final userEmail = _readStringField(
+    payload,
+    objectField: 'me',
+    scalarField: 'email',
+  );
+  final tenantSlug = _readStringField(
+    payload,
+    objectField: 'currentTenant',
+    scalarField: 'slug',
+  );
+  if (userEmail == null || tenantSlug == null) {
+    throw const FormatException(
+      'Bootstrap probe payload is missing required me/currentTenant fields.',
+    );
+  }
+
   return BootstrapProbeResult.authenticated(
-    userEmail: _readStringField(payload, objectField: 'me', scalarField: 'email'),
-    tenantSlug: _readStringField(
-      payload,
-      objectField: 'currentTenant',
-      scalarField: 'slug',
-    ),
+    userEmail: userEmail,
+    tenantSlug: tenantSlug,
   );
 });
 

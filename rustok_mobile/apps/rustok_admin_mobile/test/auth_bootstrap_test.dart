@@ -84,4 +84,33 @@ void main() {
       throwsA(isA<OperationException>()),
     );
   });
+
+  test('throws when probe payload is missing required fields', () async {
+    final queryResult = QueryResult<Object?>(
+      options: QueryOptions(document: gql('query BootstrapProbe { me { id } }')),
+      source: QueryResultSource.network,
+      data: {
+        'me': {'id': '1'},
+      },
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        authSessionProvider.overrideWith(
+          (ref) async => const AuthSession(
+            accessToken: 'token',
+            refreshToken: 'refresh',
+            expiresAt: 4102444800000,
+          ),
+        ),
+        graphQlClientProvider.overrideWithValue(clientWithResult(queryResult)),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    expect(
+      container.read(authBootstrapProbeProvider.future),
+      throwsA(isA<FormatException>()),
+    );
+  });
 }
