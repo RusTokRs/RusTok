@@ -1889,6 +1889,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   onSubmit={async (event) => {
                     event.preventDefault();
                     if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `blog_draft` task profile before generating blog draft content.'
@@ -2087,6 +2089,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   onSubmit={async (event) => {
                     event.preventDefault();
                     if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `product_copy` task profile before generating localized product copy.'
@@ -2613,6 +2617,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   onSubmit={async (event) => {
                     event.preventDefault();
                     if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `image_asset` task profile before generating a media image.'
@@ -2772,6 +2778,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   onSubmit={async (event) => {
                     event.preventDefault();
                     if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     if (!sessionForm.taskProfileId) {
                       setError(
                         'Select the `alloy_code` task profile before running Alloy Assist.'
@@ -2916,6 +2924,8 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   onSubmit={async (event) => {
                     event.preventDefault();
                     if (isSubmittingDirectJob) return;
+                    setError(null);
+                    setFeedback(null);
                     setIsSubmittingDirectJob(true);
                     try {
                       const started = await gql<
