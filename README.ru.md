@@ -11,7 +11,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome][def]](CONTRIBUTING.md)
 
-**[English version](README.md)** | **[РљСЂР°С‚РєР°СЏ СЃРїСЂР°РІРєР° РїРѕ РїР»Р°С‚С„РѕСЂРјРµ](PLATFORM_INFO_RU.md)**
+**[English version](README.md)**
 
 </div>
 
@@ -213,9 +213,9 @@ RusToK по-прежнему ориентирован на agent-assisted раб
 
 <a id="applications"></a>
 
-### РџСЂРёР»РѕР¶РµРЅРёСЏ
+### Приложения
 
-| РџСѓС‚СЊ | Р РѕР»СЊ |
+| Путь | Роль |
 |---|---|
 | `apps/server` | Composition root, общий HTTP/GraphQL runtime host, wiring auth/session/RBAC, event runtime, проверка manifest |
 | `apps/admin` | Основной Leptos admin host |
@@ -225,7 +225,7 @@ RusToK по-прежнему ориентирован на agent-assisted раб
 
 <a id="module-taxonomy"></a>
 
-### РўР°РєСЃРѕРЅРѕРјРёСЏ РјРѕРґСѓР»РµР№
+### Таксономия модулей
 
 `modules.toml` — источник истины по модульному составу платформы.
 
@@ -283,7 +283,7 @@ modules.toml
 
 <a id="quick-start"></a>
 
-## Р‘С‹СЃС‚СЂС‹Р№ СЃС‚Р°СЂС‚
+## Быстрый старт
 
 Актуальное руководство быстрого старта для локальной разработки находится в [docs/guides/quickstart.md](docs/guides/quickstart.md).
 
@@ -327,7 +327,7 @@ modules.toml
 
 <a id="development"></a>
 
-## Р Р°Р·СЂР°Р±РѕС‚РєР°
+## Разработка
 
 Рекомендуемый минимум окружения:
 
@@ -390,9 +390,7 @@ cargo machete
 
 <a id="license"></a>
 
-## Р›РёС†РµРЅР·РёСЏ
-
-RusToK СЂР°СЃРїСЂРѕСЃС‚СЂР°РЅСЏРµС‚СЃСЏ РїРѕ [Р»РёС†РµРЅР·РёРё MIT](LICENSE).
+## Лицензия
 
 RusToK распространяется по [лицензии MIT](LICENSE).
 
