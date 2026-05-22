@@ -6,13 +6,11 @@
 
 ## Как пользоваться картой
 
-1. Сначала откройте обзор платформы и нужный архитектурный раздел.
-2. Для изменений в модульной системе переходите в `docs/modules/*`.
-3. Для UI-срезов используйте `docs/UI/*` и локальные docs приложений.
-4. Для периодической верификации и quality-gates используйте `docs/verification/*` и `docs/guides/*`.
-5. Для остаточного и будущего scope по platform contracts сверяйтесь с профильными live docs в `docs/architecture/*`, `docs/UI/*` и `apps/*/docs/*`, не смешивая это с периодической верификацией.
-6. Для изменений конкретного модуля сверяйтесь с `docs/modules/registry.md` и локальными docs соответствующего crate.
-7. Для принятых архитектурных решений и clean-cutover решений сверяйтесь с `DECISIONS/*`.
+1. Откройте обзор платформы и нужный архитектурный раздел.
+2. Для модулей используйте `docs/modules/*` и `docs/modules/registry.md`.
+3. Для UI используйте `docs/UI/*` и локальные docs приложений.
+4. Для проверок и quality-gates используйте `docs/verification/*` и `docs/guides/*`.
+5. Для архитектурных решений используйте `DECISIONS/*`.
 
 ## Обязательные стартовые документы
 
@@ -37,9 +35,6 @@
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
-Для исторических статусных деталей и cutover-хроники используйте профильные
-implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/*`.
-
 ## UI и клиентские поверхности
 
 - [Обзор UI](./UI/README.md)
@@ -50,14 +45,11 @@ implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/
 - [Трек rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Архитектура i18n](./architecture/i18n.md)
 
-Исторические status/cutover заметки по UI держим в профильных docs/ADR,
-а этот индекс оставляем navigation-first.
-
 ## Архитектура и foundation
 
 - [Диаграмма платформы](./architecture/diagram.md)
-- [База данных](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
-- [ADR гибридного установщика](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
+- [База данных](./architecture/database.md)
+- [ADR гибридного установщика](../DECISIONS/2026-04-26-hybrid-installer-architecture.md)
 - [Каналы](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
 - [Контракт event flow](./architecture/event-flow-contract.md)
@@ -88,8 +80,7 @@ implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/
 
 - [Инструмент workspace CLI `xtask`](../xtask/README.md)
 - [Главный README по верификации](./verification/README.md)
-- Flex multilingual contract теперь имеет отдельный repo-side guardrail:
-  `node scripts/verify/verify-flex-multilingual-contract.mjs`
+- [Проверка Flex multilingual contract](../scripts/verify/verify-flex-multilingual-contract.mjs)
 - [Сводный план верификации](./verification/PLATFORM_VERIFICATION_PLAN.md)
 - [Верификация foundation-слоя](./verification/platform-foundation-verification-plan.md)
 - [Верификация API-поверхностей](./verification/platform-api-surfaces-verification-plan.md)
@@ -115,12 +106,6 @@ implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/
 ## Документация приложений
 
 - [Документация Server](../apps/server/docs/README.md)
-  Server docs теперь фиксируют live `flex` standalone GraphQL + REST surfaces, их tenant-scoped RBAC contract,
-  а также reduced/headless build matrix с минимальным `--no-default-features` profile, optional `redis-cache`
-  для Redis-backed runtime integrations, без обязательного `mod-commerce` и с compile-time feature ownership
-  для embedded admin/storefront host-ов; content REST/OpenAPI fragments `blog/forum/pages` и content-only
-  maintenance binary `migrate_legacy_richtext` там тоже зафиксированы как module-owned compile-time surfaces,
-  а не как безусловный baseline `apps/server`.
 - [Документация Admin](../apps/admin/docs/README.md)
 - [Документация Storefront](../apps/storefront/docs/README.md)
 - [Документация Next Admin](../apps/next-admin/docs/README.md)
@@ -129,9 +114,9 @@ implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/
 ## Документация crate-ов
 
 - Для platform modules: `crates/rustok-*` согласно [реестру модулей и приложений](./modules/registry.md).
-- Для foundation и shared libraries: `crates/rustok-core`, `crates/rustok-api`, `crates/rustok-events`, `crates/rustok-storage`, `crates/rustok-test-utils`, `crates/rustok-commerce-foundation`, `crates/rustok-seo/render`, `crates/rustok-seo-admin-support`.
-- Для infrastructure и capability crates: `crates/rustok-installer`, `crates/rustok-iggy`, `crates/rustok-iggy-connector`, `crates/rustok-telemetry`, `crates/rustok-mcp`, `crates/rustok-ai`, `crates/alloy`, `crates/flex`, `crates/rustok-seo-targets`.
-- Для UI-библиотек и host-shared UI support: `crates/leptos-*`, `crates/leptos-ui`.
+- Для foundation/shared libraries см. `crates/rustok-*` и соответствующие `README.md`.
+- Для infrastructure/capability crates см. `crates/*` и `docs/modules/crates-registry.md`.
+- Для UI-библиотек используйте `crates/leptos-*`, `crates/leptos-ui`.
 - У каждого crate должен быть актуальный `README.md`, а при необходимости и `docs/`.
 
 ## Правила поддержки актуальности
@@ -141,11 +126,9 @@ implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/
 - Один файл — один язык.
 - Не создавайте новый документ, если подходящий уже существует: расширяйте текущий.
 - При изменении архитектуры, API, tenancy, routing, observability или модульной системы обновляйте и локальные docs компонента, и центральные документы в `docs/`.
-- Любая новая схема проходит i18n-аудит: локализованные строки не храним в base-таблицах, display-поля живут только в `*_translations`. Module-owned UI пакеты не вводят package-local locale override и гидратят edit/detail формы по host-provided effective locale, а не по `first()` переводу сущности.
-- Read-side/runtime locale resolution тоже живёт по общему contract: locale matching идёт через shared normalization (`requested -> tenant default -> first available`), а не через raw string equality вроде `ru` vs `ru-RU`.
-- Любой новый module-owned admin UI обязан пройти route-selection audit: selection state хранится в URL,
-  используются только typed `snake_case` query keys, локальный state остаётся производным от URL,
-  а invalid/missing selection не должен silently fallback’иться на first-item auto-open.
+- Любая новая схема проходит i18n-аудит; локализованные display-поля живут в `*_translations`.
+- Read-side locale matching использует shared normalization (`requested -> tenant default -> first available`).
+- Module-owned admin UI хранит selection state в URL с typed `snake_case` query keys.
 
 ## Architecture Decisions
 
