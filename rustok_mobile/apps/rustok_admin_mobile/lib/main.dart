@@ -33,7 +33,7 @@ final refreshClientProvider = Provider<GraphQLClient>((ref) {
       locale: _defaultLocale,
     ),
   );
-  return const GraphQlClientFactory().create(config);
+  return const GraphQlClientFactory().createHttpOnly(config);
 });
 
 final refreshTokenServiceProvider = Provider<RefreshTokenService>((ref) {

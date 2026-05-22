@@ -6,6 +6,17 @@ class GraphQlClientFactory {
   const GraphQlClientFactory();
 
   GraphQLClient create(GraphQlClientConfig config) {
+    return _createClient(config, includeSubscriptions: true);
+  }
+
+  GraphQLClient createHttpOnly(GraphQlClientConfig config) {
+    return _createClient(config, includeSubscriptions: false);
+  }
+
+  GraphQLClient _createClient(
+    GraphQlClientConfig config, {
+    required bool includeSubscriptions,
+  }) {
     final authLink = AuthLink(getToken: () async {
       final token = config.context.accessToken;
       if (token == null || token.isEmpty) {
@@ -22,16 +33,21 @@ class GraphQlClientFactory {
       defaultHeaders: headers,
     );
 
-    final wsLink = WebSocketLink(
-      config.wsUri.toString(),
-      config: SocketClientConfig(
-        initialPayload: () => config.wsInitPayload,
-      ),
-    );
+    final Link transportLink;
+    if (includeSubscriptions) {
+      final wsLink = WebSocketLink(
+        config.wsUri.toString(),
+        config: SocketClientConfig(
+          initialPayload: () => config.wsInitPayload,
+        ),
+      );
 
-    final transportLink = authLink.concat(
-      Link.split((request) => request.isSubscription, wsLink, httpLink),
-    );
+      transportLink = authLink.concat(
+        Link.split((request) => request.isSubscription, wsLink, httpLink),
+      );
+    } else {
+      transportLink = authLink.concat(httpLink);
+    }
 
     return GraphQLClient(
       cache: GraphQLCache(),
