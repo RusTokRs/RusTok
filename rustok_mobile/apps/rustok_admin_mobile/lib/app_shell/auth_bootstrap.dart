@@ -64,3 +64,81 @@ final graphQlClientProvider = Provider<GraphQLClient>((ref) {
   final config = ref.watch(graphQlConfigProvider);
   return const GraphQlClientFactory().create(config);
 });
+
+const _bootstrapProbeDocument = r'''
+  query BootstrapProbe {
+    me {
+      id
+      email
+    }
+    currentTenant {
+      id
+      slug
+    }
+  }
+''';
+
+final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) async {
+  final session = await ref.watch(authSessionProvider.future);
+  if (session == null) {
+    return const BootstrapProbeResult.unauthenticated();
+  }
+
+  final client = ref.watch(graphQlClientProvider);
+  final result = await client.query(
+    QueryOptions(
+      document: gql(_bootstrapProbeDocument),
+      fetchPolicy: FetchPolicy.networkOnly,
+    ),
+  );
+  if (result.hasException) {
+    throw result.exception!;
+  }
+
+  final payload = result.data ?? const <String, dynamic>{};
+  return BootstrapProbeResult.authenticated(
+    userEmail: _readStringField(payload, objectField: 'me', scalarField: 'email'),
+    tenantSlug: _readStringField(
+      payload,
+      objectField: 'currentTenant',
+      scalarField: 'slug',
+    ),
+  );
+});
+
+String? _readStringField(
+  Map<String, dynamic> payload, {
+  required String objectField,
+  required String scalarField,
+}) {
+  final nested = payload[objectField];
+  if (nested is! Map<String, dynamic>) {
+    return null;
+  }
+  final scalar = nested[scalarField];
+  return scalar is String ? scalar : null;
+}
+
+class BootstrapProbeResult {
+  const BootstrapProbeResult._({
+    required this.isAuthenticated,
+    this.userEmail,
+    this.tenantSlug,
+  });
+
+  const BootstrapProbeResult.unauthenticated()
+    : this._(isAuthenticated: false);
+
+  const BootstrapProbeResult.authenticated({
+    String? userEmail,
+    String? tenantSlug,
+  }) : this._(
+         isAuthenticated: true,
+         userEmail: userEmail,
+         tenantSlug: tenantSlug,
+       );
+
+  final bool isAuthenticated;
+  final String? userEmail;
+  final String? tenantSlug;
+}
