@@ -355,7 +355,7 @@ async fn successful_toggle_writes_done_module_operation() {
         .expect("load operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, "done");
+    assert_eq!(operation.status, "committed");
     assert!(operation.error_message.is_none());
     assert!(operation.requested_enabled);
     assert!(!operation.previous_effective_enabled);
@@ -388,7 +388,7 @@ async fn successful_toggle_with_actor_persists_requested_by() {
         .expect("load operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, "done");
+    assert_eq!(operation.status, "committed");
     assert_eq!(operation.requested_by.as_deref(), Some("admin:user-1"));
 }
 
@@ -460,7 +460,7 @@ async fn dependent_validation_failure_does_not_create_journal_row() {
         1,
         "pre-validation dependent failure must not create extra journal rows",
     );
-    assert_eq!(operations[0].status, "done");
+    assert_eq!(operations[0].status, "committed");
     assert!(operations[0].requested_enabled);
 }
 
@@ -570,7 +570,7 @@ async fn noop_enable_for_already_enabled_module_does_not_create_extra_journal_ro
         1,
         "no-op enable transition must not create extra module_operations rows",
     );
-    assert_eq!(operations[0].status, "done");
+    assert_eq!(operations[0].status, "committed");
 }
 
 #[tokio::test]
@@ -593,7 +593,7 @@ async fn toggle_without_actor_records_null_requested_by() {
         .expect("query operation")
         .expect("operation exists");
 
-    assert_eq!(operation.status, "done");
+    assert_eq!(operation.status, "committed");
     assert!(
         operation.requested_by.is_none(),
         "toggle_module wrapper without actor must persist requested_by as NULL",

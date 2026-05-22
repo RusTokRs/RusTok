@@ -263,7 +263,7 @@ impl ModuleLifecycleService {
                     .await?
                 {
                     let mut active: module_operations::ActiveModel = model.into();
-                    active.status = sea_orm::ActiveValue::Set("done".to_string());
+                    active.status = sea_orm::ActiveValue::Set("committed".to_string());
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                     active.update(txn).await?;
                 }
@@ -379,7 +379,7 @@ impl ModuleLifecycleService {
             .await?
         {
             let mut active: module_operations::ActiveModel = model.into();
-            active.status = sea_orm::ActiveValue::Set("done".to_string());
+            active.status = sea_orm::ActiveValue::Set("committed".to_string());
             active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
             active.update(db).await?;
         }
