@@ -643,3 +643,138 @@ async fn list_refunds_returns_empty_for_unknown_order_id() {
     assert_eq!(total, 0);
     assert!(items.is_empty());
 }
+
+#[tokio::test]
+async fn list_refunds_combined_order_and_collection_filters_require_intersection() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order_service = rustok_order::services::OrderService::new(
+        service.db.clone(),
+        rustok_events::MockTransactionalEventBus::new(),
+    );
+    let first_order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            rustok_order::dto::CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![rustok_order::dto::CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("ORDER-INTERSECTION-1".to_string()),
+                    title: "Order intersection 1".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({}),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let second_order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            rustok_order::dto::CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![rustok_order::dto::CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("ORDER-INTERSECTION-2".to_string()),
+                    title: "Order intersection 2".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("20.00").expect("valid decimal"),
+                    metadata: serde_json::json!({}),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let first_collection = service
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(first_order.id),
+                customer_id: first_order.customer_id,
+                currency_code: "usd".to_string(),
+                amount: first_order.total_amount,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let second_collection = service
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: Some(second_order.id),
+                customer_id: second_order.customer_id,
+                currency_code: "usd".to_string(),
+                amount: second_order.total_amount,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    service
+        .create_refund(
+            tenant_id,
+            first_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("5.00").expect("valid decimal"),
+                reason: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .create_refund(
+            tenant_id,
+            second_collection.id,
+            CreateRefundInput {
+                amount: Decimal::from_str("7.00").expect("valid decimal"),
+                reason: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let (items, total) = service
+        .list_refunds(
+            tenant_id,
+            rustok_payment::dto::ListRefundsInput {
+                page: 1,
+                per_page: 20,
+                payment_collection_id: Some(first_collection.id),
+                order_id: Some(second_order.id),
+                status: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(total, 0);
+    assert!(items.is_empty());
+}
