@@ -40,6 +40,35 @@ cargo xtask module test <slug>
 cargo xtask validate-manifest
 ```
 
+
+## Reference artifacts pipeline (DOC-09 / B11)
+
+Для phase 1 по DOC-09 используем единый локальный скрипт экспорта reference-артефактов:
+
+```bash
+scripts/verify/export-reference-artifacts.sh artifacts/reference
+```
+
+Что делает скрипт:
+
+- генерирует rustdoc для `rustok-server` и `rustok-workflow` (если не задан `SKIP_RUSTDOC=1`);
+- сохраняет OpenAPI (`/api/openapi.json`, `/api/openapi.yaml`);
+- сохраняет GraphQL introspection snapshot из `/api/graphql`;
+- пишет `manifest.txt` с timestamp/base_url.
+
+Переменные окружения:
+
+- `RUSTOK_BASE_URL` — базовый URL сервера (по умолчанию `http://127.0.0.1:5150`);
+- `SKIP_RUSTDOC=1` — пропустить `cargo doc` и сделать только API exports.
+
+Минимальный verification-набор для PR (B11):
+
+```bash
+cargo xtask --help
+scripts/verify/export-reference-artifacts.sh artifacts/reference
+rg -n "openapi|graphql-introspection|manifest.txt" artifacts/reference -S
+```
+
 ## Windows hybrid path
 
 На текущем Windows-окружении обязательный локальный путь верификации не должен зависеть от Bash как hard prerequisite.

@@ -575,3 +575,134 @@ Reviewer перед approve проверяет:
 - `Resolved review note:` кратко, какое замечание закрыто;
 - `What changed:` какие строки/статусы исправлены;
 - `Re-check command:` команда, которой подтверждена корректность после правки.
+
+## Продолжение реализации: executable backlog для DOC-09..DOC-12
+
+Чтобы закрыть оставшийся хвост плана без повторного перепланирования,
+фиксируем готовые к запуску батчи для задач DOC-09..DOC-12.
+
+### Следующие батчи после B10
+
+| Batch | Закрывает | Область изменений (точно) | Exit criteria |
+|---|---|---|---|
+| B11 | DOC-09 (phase 1) | `xtask/`, `scripts/`, `docs/verification/*` | Добавлены команды генерации rustdoc/OpenAPI/GraphQL артефактов и описан единый pipeline запуска |
+| B12 | DOC-09 (phase 2) | `.github/workflows/*`, `docs/verification/*` | CI публикует reference-артефакты и показывает diff контрактов в PR |
+| B13 | DOC-10 + DOC-11 | `.github/pull_request_template.md`, `docs/guides/*`, `docs/standards/*` | Формализованы governance-правила и reviewer checklist; шаблон PR требует Verification Evidence |
+| B14 | DOC-12 | hotspot-документы H1..H5 (`docs/modules/*`, `docs/guides/*`, `docs/UI/*`, `README*`) | Для каждой hotspot-зоны есть актуализированный doc-contract и зафиксирован residual drift risk |
+
+### Batch cards (готовые заготовки)
+
+```md
+### Batch Card
+- Batch: `B11`
+- Закрывает: `DOC-09 (phase 1)`
+- Scope:
+  - `xtask/*`
+  - `scripts/*`
+  - `docs/verification/*`
+- Depends on: `B8`
+- Done when:
+  - [ ] есть воспроизводимый локальный запуск генерации rustdoc/OpenAPI/GraphQL
+  - [ ] команды и output-пути описаны в `docs/verification/*`
+```
+
+```md
+### Batch Card
+- Batch: `B12`
+- Закрывает: `DOC-09 (phase 2)`
+- Scope:
+  - `.github/workflows/*`
+  - `docs/verification/*`
+- Depends on: `B11`
+- Done when:
+  - [ ] reference-артефакты публикуются CI job-ом
+  - [ ] PR показывает contract diff (или explicit no-diff)
+```
+
+```md
+### Batch Card
+- Batch: `B13`
+- Закрывает: `DOC-10`, `DOC-11`
+- Scope:
+  - `.github/pull_request_template.md`
+  - `docs/guides/*`
+  - `docs/standards/*`
+- Depends on: `B8`
+- Done when:
+  - [ ] governance policy формализован без конфликтов с AGENTS
+  - [ ] docs reviewer checklist обязателен в PR template
+```
+
+```md
+### Batch Card
+- Batch: `B14`
+- Закрывает: `DOC-12`
+- Scope:
+  - hotspot H1..H5 документы из этого плана
+- Depends on: `B11`, `B13`
+- Done when:
+  - [ ] по каждой hotspot-зоне есть owner + обновлённые doc-contracts
+  - [ ] для каждой зоны зафиксирован residual drift risk
+```
+
+### Трекер статуса (рабочий порядок закрытия хвоста)
+
+- [ ] DOC-09 Конвейер генерации reference-артефактов (Batch: B11 → B12)
+- [ ] DOC-10 Language/naming governance (Batch: B13)
+- [ ] DOC-11 Reviewer checklist + PR template (Batch: B13)
+- [ ] DOC-12 Code hotspots documentation (Batch: B14)
+
+### Verification policy для B11..B14
+
+Для батчей B11..B14 раздел **Verification Evidence** обязателен и должен
+минимум включать:
+
+- дату запуска (`YYYY-MM-DD`);
+- точную команду;
+- статус (`pass`/`fail`/`blocked`);
+- строку `reason: ...` для каждого `fail`/`blocked`;
+- ссылку на изменённые файлы в scope батча.
+
+### Runbook запуска B11..B14 (без дополнительного планирования)
+
+Ниже — минимальный protocol, чтобы каждый следующий PR стартовал одинаково и
+без расхождений в отчётности.
+
+1. Выбрать ровно один batch (`B11`/`B12`/`B13`/`B14`) и зафиксировать его в PR
+   заголовке по шаблону `docs: DOC-XX ...`.
+2. До первого коммита вставить `Batch Card` в описание PR и проверить scope по
+   `git diff --name-only`.
+3. Выполнить проверки из раздела ниже и перенести статусы в
+   `Verification Evidence` без переформулировок.
+4. Обновить «Трекер статуса» только для соответствующего DOC-пункта.
+
+### Минимальные команды проверки по batch
+
+| Batch | Команды для Verification Evidence | Ожидаемый baseline |
+|---|---|---|
+| B11 | `cargo xtask --help`; `rg -n "rustdoc|openapi|graphql" xtask scripts docs/verification` | Команды генерации/экспорта найдены и задокументированы |
+| B12 | `rg -n "markdown|link|docs|artifact|upload" .github/workflows`; `sed -n '1,260p' docs/verification/README.md` | CI-конвейер и публикация артефактов явно описаны |
+| B13 | `sed -n '1,260p' .github/pull_request_template.md`; `rg -n "checklist|Verification Evidence|owner" docs/guides docs/standards` | PR template и governance-checklist синхронизированы |
+| B14 | `rg -n "Hotspot|Residual drift risk|Doc contracts updated" docs`; `rg -n "H1|H2|H3|H4|H5" docs/research/fix\ docs.md` | Для hotspot-зон есть обязательные блоки и owner-контекст |
+
+### Definition of Done для DOC-09..DOC-12 (строгая фиксация)
+
+- `DOC-09` закрывается только после merge двух батчей (`B11` и `B12`) и
+  наличия evidence по локальному запуску + CI публикации артефактов.
+- `DOC-10` и `DOC-11` закрываются одновременно одним батчем (`B13`), так как
+  governance-policy и PR-template проверяются как единый контракт.
+- `DOC-12` закрывается только после `B14` и подтверждения, что для H1..H5
+  добавлены `Hotspot`, `Doc contracts updated`, `Residual drift risk`.
+
+### Anti-overlap правило для параллельной работы
+
+Чтобы избежать конфликтов между авторами, при запуске batch применяется
+фиксированная ownership-матрица:
+
+- `B11`: владелец `xtask/` + `scripts/` + `docs/verification/*`;
+- `B12`: владелец `.github/workflows/*` + `docs/verification/*`;
+- `B13`: владелец `.github/pull_request_template.md` + governance docs;
+- `B14`: владельцы hotspot-зон H1..H5 по module registry.
+
+Если два batch пересекаются по одному файлу, более поздний batch стартует
+только после merge более раннего по зависимости (`Depends on`).

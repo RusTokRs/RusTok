@@ -72,7 +72,7 @@
 
 ## 📊 Test Results
 
-<!-- Paste relevant test results or link to CI -->
+<!-- List exact commands with outcomes; do not claim passed checks if command failed. -->
 
 ```
 # Example:
@@ -80,6 +80,23 @@ $ cargo test
    ...
    test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured
 ```
+
+
+## 🧾 Verification Evidence
+
+<!-- Required for docs PRs and recommended for all PRs. -->
+<!-- Format: YYYY-MM-DD — <exact command> — pass/fail/blocked -->
+<!-- For fail/blocked add: reason: <stderr or environment limitation> -->
+
+- YYYY-MM-DD — `<command>` — pass/fail/blocked
+  - output/reason: `<1-3 lines or reason: ...>`
+
+## 📚 Docs PR Reporting (required when docs changed)
+
+- [ ] I included exact commands in **Testing** (or used `text-only: checks skipped by policy`)
+- [ ] I mirrored the same command list/statuses in **Verification Evidence**
+- [ ] Every Verification Evidence row has date in `YYYY-MM-DD`
+- [ ] Each `blocked`/`fail` row includes `reason: ...`
 
 ## 📸 Screenshots (if applicable)
 
