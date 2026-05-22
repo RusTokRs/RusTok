@@ -3278,4 +3278,34 @@ mod tests {
         );
         assert!(result.is_err());
     }
+
+    #[test]
+    fn product_attributes_payload_rejects_http_without_host() {
+        let result = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("Electronics".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "http://".to_string(),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn product_attributes_payload_allows_empty_image_urls() {
+        let result = product_attributes_task_payload(
+            uuid::Uuid::new_v4().to_string(),
+            Some("Electronics".to_string()),
+            Some("en".to_string()),
+            Some("Title".to_string()),
+            None,
+            "   ".to_string(),
+            None,
+            None,
+        );
+        assert!(result.is_ok());
+    }
 }
