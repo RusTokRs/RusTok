@@ -314,6 +314,35 @@
 | B9 | DOC-11 | `.github/pull_request_template.md`, `docs/guides/*` (если нужно) | PR template содержит обязательный docs checklist и Verification Evidence |
 | B10 | DOC-12 (first pass) | hotspot H1–H3 документы из этого плана | Для каждой hotspot-зоны есть owner, scope и минимальный PR contract |
 
+### B6 kickoff package (готово к исполнению)
+
+Чтобы следующий PR мог сразу стартовать DOC-05, фиксируем заранее:
+
+- **Batch:** `B6`
+- **Закрывает:** `DOC-05`
+- **Scope (strict):**
+  - `docs/index.md`
+- **Out of scope (для этого батча):**
+  - изменение содержимого профильных документов;
+  - перенос ADR/verification-истории в другие файлы;
+  - правки `docs/modules/*` (это зона B7).
+
+#### B6: ожидаемый diff-pattern
+
+1. Сократить вводный раздел `docs/index.md` до navigation-first правил (без исторических статусных вставок).
+2. Оставить только актуальные «точки входа» по разделам платформы.
+3. Убрать дублирующиеся/шумовые пояснения, которые не влияют на маршрутизацию читателя.
+4. Проверить, что ссылки на `docs/modules/registry.md` и `DECISIONS/README.md` остаются доступными.
+
+#### B6: Verification plan (шаблон для исполнения)
+
+```md
+### Verification Evidence
+- YYYY-MM-DD — `npx --yes markdownlint-cli docs/index.md` — pass/fail/blocked
+- YYYY-MM-DD — `lychee --no-progress docs/index.md` — pass/fail/blocked
+- YYYY-MM-DD — `sed -n '1,220p' docs/index.md` — pass
+```
+
 ### Матрица исполнения B6–B10 (owner + handoff)
 
 | Batch | Owner role | Reviewer role | Handoff artifact | Blockers to check before start |
