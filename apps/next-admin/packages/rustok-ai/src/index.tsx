@@ -633,9 +633,10 @@ export function AiAdminPage(props: AiAdminPageProps) {
       assistantPrompt:
         queryValue('assistantPrompt') ?? current.assistantPrompt,
       title:
-        queryProductId
+        queryValue('title') ??
+        (queryProductId
           ? `Product Attributes ${queryProductId}`
-          : current.title
+          : current.title)
     }));
 
     if (productAttributesTaskProfile) {
@@ -646,16 +647,21 @@ export function AiAdminPage(props: AiAdminPageProps) {
     }
 
     const url = new URL(window.location.href);
-    url.searchParams.delete('task');
-    url.searchParams.delete('productId');
-    url.searchParams.delete('locale');
-    url.searchParams.delete('sourceLocale');
-    url.searchParams.delete('sourceTitle');
-    url.searchParams.delete('sourceDescription');
-    url.searchParams.delete('categorySlug');
-    url.searchParams.delete('imageUrls');
-    url.searchParams.delete('copyInstructions');
-    url.searchParams.delete('assistantPrompt');
+    [
+      'task',
+      'title',
+      'productId',
+      'locale',
+      'sourceLocale',
+      'sourceTitle',
+      'sourceDescription',
+      'categorySlug',
+      'imageUrls',
+      'copyInstructions',
+      'assistantPrompt'
+    ].forEach((key) => {
+      url.searchParams.delete(key);
+    });
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
 
     productAttributesPrefillAppliedRef.current = true;
@@ -3142,7 +3148,7 @@ function formatRecentRunSummary(runs: RecentRun[]): string {
 
 function splitCsv(value: string): string[] {
   return value
-    .split(',')
+    .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
