@@ -61,6 +61,35 @@ fn module_composition_helpers_do_not_use_native_graphql_fallback_combiner() {
 }
 
 #[test]
+fn module_composition_helpers_use_graphql_contract_payloads() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn install_module(",
+        "INSTALL_MODULE_MUTATION",
+        "InstallModuleVariables {",
+        "Ok(response.install_module)",
+    );
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn uninstall_module(",
+        "UNINSTALL_MODULE_MUTATION",
+        "UninstallModuleVariables {",
+        "Ok(response.uninstall_module)",
+    );
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn upgrade_module(",
+        "UPGRADE_MODULE_MUTATION",
+        "UpgradeModuleVariables {",
+        "Ok(response.upgrade_module)",
+    );
+}
+
+#[test]
 fn toggle_module_helper_uses_graphql_only_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");
@@ -104,6 +133,38 @@ fn toggle_module_helper_uses_graphql_only_contract() {
     assert!(
         helper_body.contains("Ok(response.toggle_module)"),
         "toggle_module must return GraphQL toggle payload directly without native fallback mapping"
+    );
+}
+
+fn assert_graphql_only_helper(
+    content: &str,
+    signature: &str,
+    mutation_name: &str,
+    variables_literal: &str,
+    return_expr: &str,
+) {
+    let helper_body = extract_function_block(content, signature)
+        .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+    assert!(
+        helper_body.contains(mutation_name),
+        "expected helper {signature} to call canonical mutation {mutation_name}"
+    );
+    assert!(
+        helper_body.contains("request("),
+        "expected helper {signature} to call GraphQL request path"
+    );
+    assert!(
+        helper_body.contains(variables_literal),
+        "expected helper {signature} to construct typed GraphQL variables payload"
+    );
+    assert!(
+        helper_body.contains(return_expr),
+        "expected helper {signature} to return GraphQL payload directly"
+    );
+    assert!(
+        !helper_body.contains("combine_native_and_graphql_error"),
+        "helper {signature} must not compose native/graphql fallback errors"
     );
 }
 
