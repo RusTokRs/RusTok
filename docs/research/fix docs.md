@@ -283,7 +283,7 @@
 - [~] DOC-05 docs/index.md refactor (PR: pending)
 - [~] DOC-06 Registry ↔ manifest sync (PR: pending)
 - [ ] DOC-07 Docs CI quality gates
-- [ ] DOC-08 Executable examples hub
+- [~] DOC-08 Executable examples hub (PR: pending)
 - [ ] DOC-09 Конвейер генерации reference-артефактов
 - [ ] DOC-10 Language/naming governance
 - [ ] DOC-11 Reviewer checklist + PR template

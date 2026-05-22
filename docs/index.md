@@ -64,6 +64,10 @@ implementation-plan документы в `docs/modules/*` и ADR в `DECISIONS/
 - [Matryoshka / модель композиции](./architecture/matryoshka.md)
 - [Базовая производительность](./architecture/performance-baseline.md)
 
+## Примеры и smoke-сценарии
+
+- [Каталог исполняемых примеров](./examples/README.md)
+
 ## Руководства и стандарты
 
 - [Быстрый старт](./guides/quickstart.md)
