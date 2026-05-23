@@ -297,7 +297,7 @@ async fn successful_enable_and_idempotent_retry() {
 }
 
 #[tokio::test]
-async fn hook_failure_rolls_back_state() {
+async fn pre_enable_failure_keeps_state_uncommitted() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
@@ -320,7 +320,7 @@ async fn hook_failure_rolls_back_state() {
 
     assert!(
         !state.enabled,
-        "state should be rolled back after hook failure"
+        "pre-enable hook failure must keep state uncommitted (enabled=false)",
     );
 
     let operation = module_operations::Entity::find()
