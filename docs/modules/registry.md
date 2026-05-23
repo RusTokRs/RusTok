@@ -37,16 +37,6 @@ capability crate-ов и host-приложений в RusToK.
 
 Без подтверждённого ownership-review изменение считается незавершённым.
 
-## Hotspot contract (DOC-12 / H1)
-
-- Hotspot: `H1` (Runtime composition и module manifest).
-- Doc contracts updated: `docs/modules/registry.md`.
-- Owner scope: platform foundation + module platform owner.
-- Residual drift risk:
-  - при изменении `modules.toml` без синхронного обновления этого реестра и
-    `docs/index.md` остаётся риск ghost/stale module map;
-  - cross-cutting ownership changes требуют отдельного owner confirmation в PR.
-
 ## Архитектурная карта
 
 ```mermaid

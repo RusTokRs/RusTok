@@ -414,6 +414,7 @@ Batch считается закрытым только если одноврем
 | 2026-05-23 | B12 | DOC-09 | `[~]` | `commit: c9e2299` | Добавлен CI job `reference-artifacts` с upload и aggregate gate |
 | 2026-05-23 | B14 | DOC-12 | `[~]` | `commit: 075e380` | Добавлены hotspot contracts first pass для H4/H5 |
 | 2026-05-23 | B14 | DOC-12 | `[~]` | `commit: 9bf4dd9` | Добавлены hotspot contracts first pass для H1/H2/H3 |
+| 2026-05-23 | B14 | DOC-12 | `[~]` | `commit: 5656aa2` | Убрана избыточная дубликация hotspot-блоков из central docs; фокус оставлен в плане и профильных разделах |
 
 Пример реальной записи после merge:
 
