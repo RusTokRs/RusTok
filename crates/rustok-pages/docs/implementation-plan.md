@@ -90,3 +90,5 @@
 - [x] Code/docs consistency check completed for `rustok-pages/admin` and `rustok-pages/storefront`.
 - [x] Tracker wording synced with actual `core` extraction state.
 - [x] No transport-contract changes introduced (`native #[server]` + GraphQL fallback preserved).
+
+- [x] Slice 9: storefront raw-format body summary rendering moved to core (`raw_body_format_summary`).

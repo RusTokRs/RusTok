@@ -240,13 +240,15 @@ fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> Strin
         return content.trim().to_string();
     }
 
-    t(
-        locale,
-        "pages.body.rawFormat",
-        "Stored in `{format}` format. Raw body length: {count} characters.",
+    core::raw_body_format_summary(
+        format,
+        content.chars().count(),
+        &t(
+            locale,
+            "pages.body.rawFormat",
+            "Stored in `{format}` format. Raw body length: {count} characters.",
+        ),
     )
-    .replace("{format}", format)
-    .replace("{count}", &content.chars().count().to_string())
 }
 
 #[cfg(test)]
@@ -276,6 +278,20 @@ mod tests {
         );
 
         assert_eq!(summary, "Hello");
+    }
+
+    #[test]
+    fn raw_body_format_summary_uses_template_placeholders() {
+        let summary = core::raw_body_format_summary(
+            "rt_json_v1",
+            42,
+            "Stored in `{format}` format. Raw body length: {count} characters.",
+        );
+
+        assert_eq!(
+            summary,
+            "Stored in `rt_json_v1` format. Raw body length: 42 characters."
+        );
     }
 
     #[test]

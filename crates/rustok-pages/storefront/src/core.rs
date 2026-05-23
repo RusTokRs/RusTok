@@ -48,3 +48,9 @@ fn summarize_legacy_blocks(blocks: &[PageBlock]) -> String {
         rows.join(", ")
     )
 }
+
+pub fn raw_body_format_summary(format: &str, char_count: usize, template: &str) -> String {
+    template
+        .replace("{format}", format)
+        .replace("{count}", &char_count.to_string())
+}
