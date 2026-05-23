@@ -154,6 +154,7 @@
 - `rustok-pages` slice #8: busy-key action matching moved to core (`busy_key_matches_action`).
 - `rustok-pages` slice #9: raw body summary placeholder rendering moved to storefront core (`raw_body_format_summary`).
 - `rustok-pages` slice #10: pages implementation tracker synchronized after double docs verification closure.
+- `rustok-pages` slice #11: admin reset-form defaults delegated to core seed helper (`empty_edit_form_seed`).
 
 
 ### Перепроверка после slices #2-#8 (rustok-pages/admin)

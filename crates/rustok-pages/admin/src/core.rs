@@ -135,6 +135,18 @@ mod tests {
     }
 
     #[test]
+    fn empty_edit_form_seed_uses_default_locale() {
+        let seed = empty_edit_form_seed("en");
+        assert_eq!(seed.locale, "en");
+        assert!(seed.title.is_empty());
+        assert!(seed.slug.is_empty());
+        assert!(seed.body.is_empty());
+        assert!(seed.channel_slugs_text.is_empty());
+        assert!(!seed.publish_now);
+    }
+
+
+    #[test]
     fn edit_form_seed_extracts_values() {
         let page = PageDetail {
             id: "p_1".to_string(),
@@ -175,4 +187,16 @@ pub fn busy_key_matches_action(busy_key: Option<&str>, action: &str) -> bool {
     busy_key
         .map(|key| key.starts_with(prefix.as_str()))
         .unwrap_or(false)
+}
+
+
+pub fn empty_edit_form_seed(default_locale: &str) -> EditFormSeed {
+    EditFormSeed {
+        locale: default_locale.to_string(),
+        title: String::new(),
+        slug: String::new(),
+        body: String::new(),
+        channel_slugs_text: String::new(),
+        publish_now: false,
+    }
 }

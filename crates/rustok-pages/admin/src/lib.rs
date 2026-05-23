@@ -766,11 +766,12 @@ fn reset_page_form(
     set_publish_now: WriteSignal<bool>,
     default_locale: &str,
 ) {
+    let seed = core::empty_edit_form_seed(default_locale);
     set_editing_page_id.set(None);
-    set_title.set(String::new());
-    set_slug.set(String::new());
-    set_body.set(String::new());
-    set_channel_slugs_text.set(String::new());
-    set_locale.set(default_locale.to_string());
-    set_publish_now.set(false);
+    set_title.set(seed.title);
+    set_slug.set(seed.slug);
+    set_body.set(seed.body);
+    set_channel_slugs_text.set(seed.channel_slugs_text);
+    set_locale.set(seed.locale);
+    set_publish_now.set(seed.publish_now);
 }

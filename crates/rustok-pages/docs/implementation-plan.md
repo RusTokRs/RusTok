@@ -94,3 +94,4 @@
 - [x] Slice 9: storefront raw-format body summary rendering moved to core (`raw_body_format_summary`).
 
 - [x] Slice 10: pages tracker synchronized after double documentation verification completion.
+- [x] Slice 11: admin reset-form defaults delegated to core (`empty_edit_form_seed`).
