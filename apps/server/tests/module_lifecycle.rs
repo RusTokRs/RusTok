@@ -810,9 +810,16 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
 
     let failing_registry =
         ModuleRegistry::new().register(TestModule::new("search").with_post_disable_failure());
-    let err = ModuleLifecycleService::toggle_module(&db, &failing_registry, tenant_id, "search", false)
-        .await
-        .expect_err("post-disable failure expected");
+    let err = ModuleLifecycleService::toggle_module_with_actor(
+        &db,
+        &failing_registry,
+        tenant_id,
+        "search",
+        false,
+        Some("admin:user-post-disable".to_string()),
+    )
+    .await
+    .expect_err("post-disable failure expected");
     assert!(matches!(err, ToggleModuleError::HookFailed(_)));
 
     let state = tenant_modules::Entity::find()
@@ -841,6 +848,11 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         .as_deref()
         .unwrap_or_default()
         .contains("post-hook"));
+    assert_eq!(
+        failed_operation.requested_by.as_deref(),
+        Some("admin:user-post-disable"),
+        "post-hook failed operation must keep actor metadata for retry/audit attribution",
+    );
     assert!(
         failed_operation.correlation_id.is_some(),
         "post-hook failure operation must keep correlation id for retry/audit tracing",
