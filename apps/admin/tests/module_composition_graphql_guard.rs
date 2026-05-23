@@ -188,6 +188,31 @@ fn toggle_module_helper_forwards_auth_context_without_local_overrides() {
     );
 }
 
+
+#[test]
+fn toggle_module_helper_does_not_parse_journal_metadata_contract() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let helper_body = extract_function_block(&content, "pub async fn toggle_module(")
+        .expect("toggle_module helper signature not found");
+
+    for forbidden in [
+        "module_operations",
+        "correlation_id",
+        "requested_by",
+        "requested_enabled",
+        "previous_effective_enabled",
+        "ModuleOperationStatus",
+    ] {
+        assert!(
+            !helper_body.contains(forbidden),
+            "toggle_module helper must not parse journal metadata fragment `{forbidden}`"
+        );
+    }
+}
+
 #[test]
 fn toggle_module_helper_does_not_cross_wire_other_mutation_contracts() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
