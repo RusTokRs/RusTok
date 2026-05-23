@@ -151,3 +151,4 @@
 - `rustok-pages` slice #4: admin busy-key composition вынесен в core (`busy_key_with_id`, `busy_key_for_save`).
 - `rustok-pages` slice #6: admin page-list load error rendering переведён на core `error_with_context`.
 - `rustok-pages` slice #7: status badge css composition moved to core (`status_badge_css`).
+- `rustok-pages` slice #8: busy-key action matching moved to core (`busy_key_matches_action`).

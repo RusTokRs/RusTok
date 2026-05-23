@@ -530,7 +530,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     || busy_key
                                         .get()
                                         .as_deref()
-                                        .map(|key| key.starts_with("save:"))
+                                         .map(|key| core::busy_key_matches_action(Some(key), "save"))
                                         .unwrap_or(false)
                             }
                         >
@@ -539,7 +539,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     || busy_key
                                         .get()
                                         .as_deref()
-                                        .map(|key| key.starts_with("save:"))
+                                         .map(|key| core::busy_key_matches_action(Some(key), "save"))
                                         .unwrap_or(false)
                                 {
                                     t(locale.get().as_str().into(), "pages.form.saving", "Saving...")
@@ -682,7 +682,7 @@ fn PagesTable(
                                                 >
                                                     {if is_busy && busy_key
                                                         .as_deref()
-                                                        .map(|key| key.starts_with("edit:"))
+                                                         .map(|key| core::busy_key_matches_action(Some(key), "edit"))
                                                         .unwrap_or(false)
                                                     {
                                                         "...".to_string()
@@ -702,7 +702,7 @@ fn PagesTable(
                                                 >
                                                     {if is_busy && busy_key
                                                         .as_deref()
-                                                        .map(|key| key.starts_with("publish:"))
+                                                         .map(|key| core::busy_key_matches_action(Some(key), "publish"))
                                                         .unwrap_or(false)
                                                     {
                                                         "...".to_string()
@@ -722,7 +722,7 @@ fn PagesTable(
                                                 >
                                                     {if is_busy && busy_key
                                                         .as_deref()
-                                                        .map(|key| key.starts_with("delete:"))
+                                                         .map(|key| core::busy_key_matches_action(Some(key), "delete"))
                                                         .unwrap_or(false)
                                                     {
                                                         "...".to_string()

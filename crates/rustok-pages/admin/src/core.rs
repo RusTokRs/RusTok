@@ -126,6 +126,8 @@ mod tests {
         assert_eq!(busy_key_with_id("edit", "p_1"), "edit:p_1");
         assert_eq!(busy_key_for_save(Some("p_2")), "save:p_2");
         assert_eq!(busy_key_for_save(None), "create");
+        assert!(busy_key_matches_action(Some("save:p_1"), "save"));
+        assert!(!busy_key_matches_action(Some("edit:p_1"), "save"));
         assert_eq!(
             status_badge_css("published"),
             "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
@@ -166,4 +168,11 @@ pub fn status_badge_css(status: &str) -> String {
         "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {}",
         status_badge_class(status)
     )
+}
+
+pub fn busy_key_matches_action(busy_key: Option<&str>, action: &str) -> bool {
+    let prefix = format!("{}:", action);
+    busy_key
+        .map(|key| key.starts_with(prefix.as_str()))
+        .unwrap_or(false)
 }
