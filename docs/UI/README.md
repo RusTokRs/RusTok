@@ -78,3 +78,13 @@ Leptos hosts являются основным runtime-путём для platfor
    host docs, если меняется query schema, selection behavior или helper layer.
 5. Для module-owned storefront UI так же обновляйте routing/query parity notes, если меняется
    reuse слоя `leptos-ui-routing`, host query semantics или storefront route/query contract.
+
+## Hotspot contract (DOC-12 / H3)
+
+- Hotspot: `H3` (Admin/storefront host topology).
+- Doc contracts updated: `docs/UI/README.md`.
+- Owner scope: frontend owners.
+- Residual drift risk:
+  - при изменении host wiring и transport parity в `apps/*` без синхронного
+    обновления `docs/UI/*` остаётся риск расхождения host contract notes;
+  - route/query parity для Leptos/Next может дрейфовать при быстрых UI cutover-й.

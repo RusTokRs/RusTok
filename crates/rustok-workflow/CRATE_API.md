@@ -78,3 +78,14 @@
 1. Обновить этот overview (роли, инварианты, boundaries).
 2. Не дублировать ручные сигнатуры в markdown.
 3. Добавить/обновить ссылки на generated reference в релевантных docs.
+
+## Hotspot contract (DOC-12 / H4)
+
+- Hotspot: `H4` (Workflow/Public API contracts).
+- Doc contracts updated: `crates/rustok-workflow/CRATE_API.md`.
+- Owner scope: workflow module owner.
+- Residual drift risk:
+  - до закрытия DOC-09 (B12 CI artifacts) возможен разрыв между curated overview
+    и фактическими exported reference-артефактами в PR;
+  - при изменении transport payload-форм без обновления generated references
+    risk остаётся высоким.

@@ -2,6 +2,29 @@
 
 Быстрый старт для локальной разработки с двумя админками (Next.js + Leptos) и двумя витринами.
 
+## Docs PR reporting contract
+
+Для docs-изменений в этом документе используйте PR-шаблон репозитория и
+обязательные секции **Testing** + **Verification Evidence**:
+
+- шаблон: `.github/pull_request_template.md`;
+- правила и anti-fake политика: `docs/research/fix docs.md`;
+- для text-only правок используйте ровно формулировку
+  `text-only: checks skipped by policy`.
+
+## Hotspot contract (DOC-12 / H2, H3)
+
+- Hotspot: `H2` (Installer / bootstrap flow), `H3` (Admin/storefront host topology).
+- Doc contracts updated: `docs/guides/quickstart.md`.
+- Owner scope:
+  - `H2` — platform foundation;
+  - `H3` — frontend owners.
+- Residual drift risk:
+  - installer `preflight/plan/apply` цепочка обновляется быстрее, чем
+    синхронизируются примеры команд в quickstart;
+  - host topology/port matrix может устаревать при изменениях dev-start
+    сценариев и transport wiring без синхронного обновления `docs/UI/*`.
+
 
 ## Матрица профилей запуска (canonical truth table)
 

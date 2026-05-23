@@ -58,3 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - ...
 ```
+
+## Hotspot contract (DOC-12 / H5)
+
+- Hotspot: `H5` (Release and compatibility communication).
+- Doc contracts updated: `CHANGELOG.md`.
+- Owner scope: platform docs owner.
+- Residual drift risk:
+  - root onboarding docs (`README.md`, `README.ru.md`) могут обновиться раньше,
+    чем release note section в этом файле;
+  - без обязательного release cutover checklist риск stale compatibility notes
+    остаётся до полного закрытия DOC-12 (B14).
