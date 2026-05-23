@@ -1524,6 +1524,33 @@ mod tests {
                 exact_message: None,
             },
             Case {
+                name: "serialize failure via composition wrapper",
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::Serialize("serde exploded".to_string()),
+                ),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "serde exploded",
+                exact_message: None,
+            },
+            Case {
+                name: "deserialize failure via composition wrapper",
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::Deserialize("bad snapshot".to_string()),
+                ),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "bad snapshot",
+                exact_message: None,
+            },
+            Case {
+                name: "database failure via composition wrapper",
+                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(
+                    sea_orm::DbErr::Custom("db is unavailable".to_string()),
+                )),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "db is unavailable",
+                exact_message: None,
+            },
+            Case {
                 name: "build path revision conflict",
                 error: PlatformCompositionBuildError::Composition(
                     PlatformCompositionError::RevisionConflict {
@@ -1567,6 +1594,15 @@ mod tests {
             PlatformCompositionBuildError::Build(sea_orm::DbErr::Custom("enqueue failed".to_string())),
             PlatformCompositionBuildError::Composition(PlatformCompositionError::Manifest(
                 ManifestError::RequiredModule("pages".to_string()),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Serialize(
+                "serde exploded".to_string(),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Deserialize(
+                "bad snapshot".to_string(),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(
+                sea_orm::DbErr::Custom("db is unavailable".to_string()),
             )),
             PlatformCompositionBuildError::Composition(PlatformCompositionError::RevisionConflict {
                 expected: 1,
