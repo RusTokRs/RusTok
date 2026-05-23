@@ -411,7 +411,7 @@ Batch считается закрытым только если одноврем
 | 2026-05-22 | B13 | DOC-11 | `[~]` | `commit: 4f76fc2` | Добавлен docs PR verification contract в `docs/guides/testing.md` |
 | 2026-05-22 | B13 | DOC-11 | `[~]` | `commit: 4e3ead8` | В PR template добавлен hotspot-блок (`Hotspot`, `Doc contracts updated`, `Residual drift risk`) |
 | 2026-05-23 | B13 | DOC-10 | `[~]` | `commit: 6c7a53f` | Добавлен governance baseline (language/naming/ownership-review) |
-| 2026-05-23 | B12 | DOC-09 | `[~]` | `commit: c9e2299` | Добавлен CI job `reference-artifacts` с upload и aggregate gate |
+| 2026-05-23 | B12 | DOC-09 | `[~]` | `commit: 416ee98` | Добавлен CI job `reference-artifacts` с upload и aggregate gate |
 | 2026-05-23 | B14 | DOC-12 | `[~]` | `commit: 075e380` | Добавлены hotspot contracts first pass для H4/H5 |
 | 2026-05-23 | B14 | DOC-12 | `[~]` | `commit: 9bf4dd9` | Добавлены hotspot contracts first pass для H1/H2/H3 |
 | 2026-05-23 | B14 | DOC-12 | `[~]` | `commit: 5656aa2` | Убрана избыточная дубликация hotspot-блоков из central docs; фокус оставлен в плане и профильных разделах |
@@ -454,7 +454,7 @@ Batch считается закрытым только если одноврем
 - [x] DOC-06 Registry ↔ manifest sync (commit: c9a22f1, merged: 2026-05-22)
 - [x] DOC-07 Docs CI quality gates (commit: 1bf7ead, merged: 2026-05-22)
 - [x] DOC-08 Executable examples hub (commit: 0f35991, merged: 2026-05-22)
-- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11/B12, commit: 4bafe23, c9e2299)
+- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11/B12, commit: 4bafe23, 416ee98)
 - [~] DOC-10 Language/naming governance (Batch: B13, commit: 6c7a53f)
 - [~] DOC-11 Reviewer checklist + PR template (Batch: B13, commit: 4e3ead8)
 - [~] DOC-12 Code hotspots documentation (Batch: B14, commit: 075e380, 9bf4dd9)
@@ -655,7 +655,7 @@ Reviewer перед approve проверяет:
 
 ### Трекер статуса (рабочий порядок закрытия хвоста)
 
-- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11/B12, commit: 4bafe23, c9e2299)
+- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11/B12, commit: 4bafe23, 416ee98)
 - [~] DOC-10 Language/naming governance (Batch: B13, commit: 6c7a53f)
 - [~] DOC-11 Reviewer checklist + PR template (Batch: B13, commit: 4e3ead8)
 - [~] DOC-12 Code hotspots documentation (Batch: B14, commit: 075e380, 9bf4dd9)
