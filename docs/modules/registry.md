@@ -22,6 +22,31 @@ capability crate-ов и host-приложений в RusToK.
 
 Центральный реестр не должен дублировать эти локальные документы. Его задача — дать карту платформы и отправить читателя в правильный компонент.
 
+## Ownership-review policy
+
+Для изменений в этом реестре действует обязательный путь ownership-review:
+
+1. Сначала актуализируются локальные документы затронутых компонентов
+   (`README.md`, `docs/README.md`, при необходимости `docs/implementation-plan.md`).
+2. Затем обновляется этот central registry как карта, а не как дубль локальной
+   спецификации.
+3. Любое изменение ownership/capability/support статуса должно быть
+   синхронизировано с `modules.toml` и проверено module platform owner.
+4. Для cross-cutting правок (несколько модулей/host-приложений) требуется
+   дополнительный review от platform team.
+
+Без подтверждённого ownership-review изменение считается незавершённым.
+
+## Hotspot contract (DOC-12 / H1)
+
+- Hotspot: `H1` (Runtime composition и module manifest).
+- Doc contracts updated: `docs/modules/registry.md`.
+- Owner scope: platform foundation + module platform owner.
+- Residual drift risk:
+  - при изменении `modules.toml` без синхронного обновления этого реестра и
+    `docs/index.md` остаётся риск ghost/stale module map;
+  - cross-cutting ownership changes требуют отдельного owner confirmation в PR.
+
 ## Архитектурная карта
 
 ```mermaid

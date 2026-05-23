@@ -68,3 +68,18 @@ When checks are skipped by policy for text-only edits, use only:
 - `text-only: checks skipped by policy`.
 
 Reference template: `.github/pull_request_template.md`.
+
+## Ownership-review path для docs/testing изменений
+
+Для изменений, затрагивающих тестовые контракты, quality gates, ownership или
+review policy, применяйте обязательный маршрут согласования:
+
+1. Зафиксировать owner затронутой зоны (module owner или platform/DevEx owner).
+2. В PR явно перечислить scope файлов без «и др.».
+3. Добавить **Testing** и зеркальный **Verification Evidence** с фактическими
+   статусами `pass`/`fail`/`blocked`.
+4. Для `fail`/`blocked` указать точную причину и последующий шаг.
+5. Обновить связанные central docs (`docs/index.md`, `docs/modules/registry.md`
+   или `docs/verification/*`), если контракт изменился.
+
+Это обязательный baseline для DOC-10/DOC-11 и всех последующих docs PR.
