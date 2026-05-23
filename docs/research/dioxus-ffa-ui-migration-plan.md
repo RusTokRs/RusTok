@@ -145,3 +145,45 @@
 - Dioxus pilot подтверждает reuse shared core без дублирования доменной логики;
 - headless контракты не деградировали;
 - документация и ADR отражают новое целевое состояние.
+
+
+## Сверка с текущим кодом (на 2026-05-23)
+
+Ниже зафиксирована привязка плана к текущему состоянию репозитория.
+
+### 1) Фактический dual-path контракт уже закреплён в docs
+
+- `docs/UI/graphql-architecture.md` фиксирует модель: native `#[server]` preferred + GraphQL как обязательный параллельный контракт.
+- `apps/storefront/docs/README.md` фиксирует native-first в SSR/hydrate и обязательный GraphQL fallback для storefront surfaces.
+
+### 2) UI-пакеты в коде сейчас Leptos-specific
+
+- Базовые shared UI crates завязаны на Leptos:
+  - `crates/leptos-ui/Cargo.toml`
+  - `crates/leptos-ui-routing/Cargo.toml`
+  - `crates/leptos-graphql/Cargo.toml`
+  - `crates/leptos-auth/Cargo.toml`
+- Module-owned UI пакеты активно используют `leptos::*`, `#[component]`, `leptos_router` и Leptos hooks (пример: `rustok-search`, `rustok-workflow`, `rustok-commerce`, `rustok-cart`).
+
+### 3) Данные уже ходят через native/GraphQL гибрид
+
+- В `crates/rustok-*/storefront/src/api.rs` и `crates/rustok-*/admin/src/api.rs` видны GraphQL adapters (`leptos_graphql`) и `#[cfg(feature = "ssr")]` ветви для native SSR paths.
+- Это означает, что план не придумывает новую модель, а формализует уже существующий runtime split и переводит его в FFA-структуру.
+
+### 4) Кандидаты пилота подтверждены текущей сложностью
+
+- `rustok-pages`/`rustok-blog`: меньший объём UI state и проще сценарии CRUD/read.
+- `rustok-search` и `rustok-commerce`/`rustok-cart`: выраженная сложность по state/fallback flows и SSR branches.
+
+### 5) Команды сверки, которыми обновлялся этот документ
+
+```bash
+rg -n "Dioxus|Leptos|headless|server functions|UI packages|GraphQL" docs crates apps
+rg -n "^use leptos|#\[component\]|#\[server\]|leptos =|leptos_router|leptos_ui_routing|cfg\(feature = "ssr"\)" crates/rustok-*/admin crates/rustok-*/storefront crates/leptos-* --glob "*.rs" --glob "Cargo.toml"
+nl -ba docs/UI/graphql-architecture.md
+nl -ba apps/storefront/docs/README.md
+```
+
+### 6) Следствие для исполнения плана
+
+План выполняется **без смены продуктового контракта**: сначала рефактор структуры пакетов (core/transport/ui), затем Dioxus adapter pilot. GraphQL/REST остаются обязательными контрактами для headless parity на каждом этапе.
