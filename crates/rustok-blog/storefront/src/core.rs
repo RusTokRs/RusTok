@@ -14,6 +14,14 @@ pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{label}: {value}")
 }
 
+pub fn error_with_context(context: &str, error: &str) -> String {
+    format!("{context}: {error}")
+}
+
+pub fn module_href(base: &str, slug: &str) -> String {
+    format!("{base}?slug={slug}")
+}
+
 pub fn summarize_content(content: &str, format: &str, fallback_template: &str) -> String {
     if format.eq_ignore_ascii_case("markdown") {
         return content.trim().to_string();
@@ -43,6 +51,18 @@ mod tests {
                 "Stored in `{format}` format. Raw body length: {count} characters.",
             ),
             "Stored in `json` format. Raw body length: 11 characters.".to_string()
+        );
+    }
+
+    #[test]
+    fn error_and_href_helpers_format_expected_values() {
+        assert_eq!(
+            error_with_context("Failed to load", "timeout"),
+            "Failed to load: timeout"
+        );
+        assert_eq!(
+            module_href("/store/modules/blog", "hello-world"),
+            "/store/modules/blog?slug=hello-world"
         );
     }
 }

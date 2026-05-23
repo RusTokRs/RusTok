@@ -70,7 +70,7 @@ pub fn BlogView() -> impl IntoView {
                                 Ok(data) => view! { <BlogShowcase data /> }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("{}: {err}", load_error)}
+                                        {core::error_with_context(load_error.as_str(), &err.to_string())}
                                     </div>
                                 }.into_any(),
                             }
@@ -217,7 +217,7 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                         let slug = post.slug.unwrap_or_else(|| {
                             t(locale.as_deref(), "blog.selected.missingSlug", "missing-slug")
                         });
-                        let href = format!("{module_route_base}?slug={slug}");
+                        let href = core::module_href(module_route_base.as_str(), slug.as_str());
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
                                 <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
