@@ -46,6 +46,7 @@
 - Leptos-specific точки (`#[component]`, router hooks, reactive state);
 - transport binding точки (`#[server]`, GraphQL requests, fallback branches);
 - места смешения UI/state/business логики.
+- Базовая карта связности пилотов (`rustok-pages`, `rustok-search`) зафиксирована в `docs/research/dioxus-ffa-pilot-connectivity-map.md`.
 
 ### A3. Contract freeze
 

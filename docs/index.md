@@ -117,6 +117,7 @@
 - [План устранения недостатков control plane и module lifecycle](./research/control-plane-module-lifecycle-remediation-plan.md)
 - [План исправления документации](./research/fix%20docs.md)
 - [План FFA-рефакторинга UI и подготовки к Dioxus](./research/dioxus-ffa-ui-migration-plan.md)
+- [Карта связности пилотов FFA/Dioxus (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
 - [Checklist parity для FFA UI migration](./verification/ffa-ui-parity-checklist.md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
 
