@@ -1415,38 +1415,246 @@ mod tests {
             err.message,
             "Platform composition revision conflict: expected 3, current 5"
         );
+        let gql = err.extend();
+        assert_eq!(
+            error_code(&gql).as_deref(),
+            Some("BAD_USER_INPUT"),
+            "revision conflict must stay in user-facing conflict taxonomy"
+        );
     }
 
     #[test]
-    fn platform_composition_build_error_maps_build_failures_to_internal_error() {
-        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Build(
-            sea_orm::DbErr::Custom("enqueue failed".to_string()),
-        ));
-        assert!(!err.message.is_empty());
+    fn platform_composition_error_matrix_preserves_taxonomy_for_internal_and_user_paths() {
+        struct Case {
+            name: &'static str,
+            error: PlatformCompositionError,
+            expected_code: &'static str,
+            message_fragment: &'static str,
+        }
+
+        let cases = vec![
+            Case {
+                name: "revision conflict",
+                error: PlatformCompositionError::RevisionConflict {
+                    expected: 7,
+                    current: 9,
+                },
+                expected_code: "BAD_USER_INPUT",
+                message_fragment: "revision conflict",
+            },
+            Case {
+                name: "serialize failure",
+                error: PlatformCompositionError::Serialize("serde exploded".to_string()),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                message_fragment: "serde exploded",
+            },
+            Case {
+                name: "deserialize failure",
+                error: PlatformCompositionError::Deserialize("bad snapshot".to_string()),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                message_fragment: "bad snapshot",
+            },
+            Case {
+                name: "database failure",
+                error: PlatformCompositionError::Database(sea_orm::DbErr::Custom(
+                    "db is unavailable".to_string(),
+                )),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                message_fragment: "db is unavailable",
+            },
+            Case {
+                name: "manifest validation direct mapping",
+                error: PlatformCompositionError::Manifest(ManifestError::RequiredModule(
+                    "pages".to_string(),
+                )),
+                expected_code: "BAD_USER_INPUT",
+                message_fragment: "required",
+            },
+        ];
+
+        for case in cases {
+            let mapped = map_platform_composition_error(case.error);
+            assert!(
+                mapped.message.to_lowercase().contains(case.message_fragment),
+                "message contract drifted for case `{}`",
+                case.name
+            );
+            let gql = mapped.extend();
+            assert_eq!(
+                error_code(&gql).as_deref(),
+                Some(case.expected_code),
+                "error code contract drifted for case `{}`",
+                case.name
+            );
+            assert!(
+                !mapped.message.to_lowercase().contains("rolled back"),
+                "error message must not reintroduce partial rollback wording for case `{}`",
+                case.name
+            );
+        }
     }
 
     #[test]
-    fn platform_composition_build_error_maps_manifest_validation_to_user_facing_message() {
-        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Composition(
+    fn platform_composition_build_error_matrix_preserves_message_and_code_contract() {
+        struct Case {
+            name: &'static str,
+            error: PlatformCompositionBuildError,
+            expected_code: &'static str,
+            expected_message_fragment: &'static str,
+            exact_message: Option<&'static str>,
+        }
+
+        let cases = vec![
+            Case {
+                name: "build enqueue failure",
+                error: PlatformCompositionBuildError::Build(sea_orm::DbErr::Custom(
+                    "enqueue failed".to_string(),
+                )),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "enqueue failed",
+                exact_message: None,
+            },
+            Case {
+                name: "manifest validation failure",
+                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Manifest(
+                    ManifestError::RequiredModule("pages".to_string()),
+                )),
+                expected_code: "BAD_USER_INPUT",
+                expected_message_fragment: "required",
+                exact_message: None,
+            },
+            Case {
+                name: "serialize failure via composition wrapper",
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::Serialize("serde exploded".to_string()),
+                ),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "serde exploded",
+                exact_message: None,
+            },
+            Case {
+                name: "deserialize failure via composition wrapper",
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::Deserialize("bad snapshot".to_string()),
+                ),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "bad snapshot",
+                exact_message: None,
+            },
+            Case {
+                name: "database failure via composition wrapper",
+                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(
+                    sea_orm::DbErr::Custom("db is unavailable".to_string()),
+                )),
+                expected_code: "INTERNAL_SERVER_ERROR",
+                expected_message_fragment: "db is unavailable",
+                exact_message: None,
+            },
+            Case {
+                name: "build path revision conflict",
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::RevisionConflict {
+                        expected: 11,
+                        current: 13,
+                    },
+                ),
+                expected_code: "BAD_USER_INPUT",
+                expected_message_fragment: "revision conflict",
+                exact_message: Some("Platform composition revision conflict: expected 11, current 13"),
+            },
+        ];
+
+        for case in cases {
+            let mapped = map_platform_composition_build_error(case.error);
+            assert!(
+                mapped.message.contains(case.expected_message_fragment),
+                "message fragment drifted for case `{}`",
+                case.name
+            );
+            if let Some(exact) = case.exact_message {
+                assert_eq!(
+                    mapped.message, exact,
+                    "exact message drifted for case `{}`",
+                    case.name
+                );
+            }
+            let gql = mapped.extend();
+            assert_eq!(
+                error_code(&gql).as_deref(),
+                Some(case.expected_code),
+                "error code drifted for case `{}`",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn platform_composition_build_error_mapping_never_mentions_partial_rollback() {
+        let errors = vec![
+            PlatformCompositionBuildError::Build(sea_orm::DbErr::Custom("enqueue failed".to_string())),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Manifest(
+                ManifestError::RequiredModule("pages".to_string()),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Serialize(
+                "serde exploded".to_string(),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Deserialize(
+                "bad snapshot".to_string(),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(
+                sea_orm::DbErr::Custom("db is unavailable".to_string()),
+            )),
+            PlatformCompositionBuildError::Composition(PlatformCompositionError::RevisionConflict {
+                expected: 1,
+                current: 2,
+            }),
+        ];
+
+        for error in errors {
+            let mapped = map_platform_composition_build_error(error);
+            assert!(
+                !mapped.message.to_lowercase().contains("rolled back"),
+                "platform composition build error contract must not mention partial rollback semantics"
+            );
+        }
+    }
+
+    #[test]
+    fn platform_composition_build_wrapper_preserves_composition_mapping_contract() {
+        let composition_errors = vec![
+            PlatformCompositionError::RevisionConflict {
+                expected: 5,
+                current: 8,
+            },
             PlatformCompositionError::Manifest(ManifestError::RequiredModule(
                 "pages".to_string(),
             )),
-        ));
-        assert!(err.message.contains("required"));
-    }
+            PlatformCompositionError::Serialize("serde exploded".to_string()),
+            PlatformCompositionError::Deserialize("bad snapshot".to_string()),
+            PlatformCompositionError::Database(sea_orm::DbErr::Custom(
+                "db is unavailable".to_string(),
+            )),
+        ];
 
-    #[test]
-    fn platform_composition_build_error_maps_revision_conflict_to_conflict_message() {
-        let err = map_platform_composition_build_error(PlatformCompositionBuildError::Composition(
-            PlatformCompositionError::RevisionConflict {
-                expected: 11,
-                current: 13,
-            },
-        ));
-        assert_eq!(
-            err.message,
-            "Platform composition revision conflict: expected 11, current 13"
-        );
+        for composition_error in composition_errors {
+            let direct = map_platform_composition_error(composition_error.clone());
+            let wrapped = map_platform_composition_build_error(
+                PlatformCompositionBuildError::Composition(composition_error),
+            );
+
+            assert_eq!(
+                wrapped.message, direct.message,
+                "build-wrapper mapping drifted from direct composition mapping"
+            );
+
+            let direct_gql = direct.extend();
+            let wrapped_gql = wrapped.extend();
+            assert_eq!(
+                error_code(&wrapped_gql),
+                error_code(&direct_gql),
+                "build-wrapper error code drifted from direct composition mapping"
+            );
+        }
     }
 
     #[tokio::test]

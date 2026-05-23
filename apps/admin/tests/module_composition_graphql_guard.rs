@@ -92,6 +92,297 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
     );
 }
 
+
+#[test]
+fn module_composition_helpers_forward_auth_context_without_local_overrides() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert_eq!(
+            helper_body.matches("request(").count(),
+            1,
+            "{signature} must perform exactly one GraphQL request call"
+        );
+        assert!(
+            helper_body.contains("token,"),
+            "{signature} must forward token to canonical GraphQL request"
+        );
+        assert!(
+            helper_body.contains("tenant_slug,"),
+            "{signature} must forward tenant_slug to canonical GraphQL request"
+        );
+        assert!(
+            !helper_body.contains(".map_err("),
+            "{signature} must not remap canonical GraphQL ApiError taxonomy"
+        );
+        assert!(
+            !helper_body.contains("Some("),
+            "{signature} must not locally override auth context when forwarding request"
+        );
+        assert!(
+            !helper_body.contains("None"),
+            "{signature} must not locally null auth context when forwarding request"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for forbidden in [
+            "UNKNOWN_MODULE",
+            "CORE_MODULE",
+            "MISSING_DEPENDENCIES",
+            "HAS_DEPENDENTS",
+            "MODULE_HOOK_FAILED",
+            "extensions.code",
+            "reason_code",
+            "module_operations",
+            "correlation_id",
+            "requested_by",
+        ] {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not branch on runtime taxonomy fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let cases = [
+        (
+            "pub async fn install_module(",
+            "INSTALL_MODULE_MUTATION",
+            [
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "UNINSTALL_MODULE_MUTATION",
+            [
+                "INSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "UPGRADE_MODULE_MUTATION",
+            [
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+        ),
+    ];
+
+    for (signature, required, forbidden_list) in cases {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+        assert!(
+            helper_body.contains(required),
+            "{signature} must reference canonical mutation constant `{required}`"
+        );
+        for forbidden in forbidden_list {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not cross-wire foreign mutation constant `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let cases = [
+        (
+            "pub async fn install_module(",
+            "let response: InstallModuleResponse",
+            "Ok(response.install_module)",
+            [
+                "response.uninstall_module",
+                "response.upgrade_module",
+                "response.toggle_module",
+            ],
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "let response: UninstallModuleResponse",
+            "Ok(response.uninstall_module)",
+            [
+                "response.install_module",
+                "response.upgrade_module",
+                "response.toggle_module",
+            ],
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "let response: UpgradeModuleResponse",
+            "Ok(response.upgrade_module)",
+            [
+                "response.install_module",
+                "response.uninstall_module",
+                "response.toggle_module",
+            ],
+        ),
+    ];
+
+    for (signature, typed_response, canonical_return, forbidden_returns) in cases {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert!(
+            helper_body.contains(typed_response),
+            "{signature} must decode GraphQL response into `{typed_response}`"
+        );
+        assert!(
+            helper_body.contains(canonical_return),
+            "{signature} must return canonical payload `{canonical_return}`"
+        );
+        for forbidden in forbidden_returns {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not return foreign payload fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_mutation_constants_are_declared_once() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for constant in [
+        "pub const INSTALL_MODULE_MUTATION: &str =",
+        "pub const UNINSTALL_MODULE_MUTATION: &str =",
+        "pub const UPGRADE_MODULE_MUTATION: &str =",
+    ] {
+        let occurrences = content.matches(constant).count();
+        assert_eq!(
+            occurrences, 1,
+            "expected exactly one mutation constant declaration `{constant}`, found {occurrences}"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_reference_single_canonical_mutation_and_request_call() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let cases = [
+        (
+            "pub async fn install_module(",
+            "INSTALL_MODULE_MUTATION",
+            ["UNINSTALL_MODULE_MUTATION", "UPGRADE_MODULE_MUTATION"],
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "UNINSTALL_MODULE_MUTATION",
+            ["INSTALL_MODULE_MUTATION", "UPGRADE_MODULE_MUTATION"],
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "UPGRADE_MODULE_MUTATION",
+            ["INSTALL_MODULE_MUTATION", "UNINSTALL_MODULE_MUTATION"],
+        ),
+    ];
+
+    for (signature, canonical_mutation, foreign_mutations) in cases {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert_eq!(
+            helper_body.matches("request(").count(),
+            1,
+            "{signature} must call request exactly once"
+        );
+        assert_eq!(
+            helper_body.matches(canonical_mutation).count(),
+            1,
+            "{signature} must reference canonical mutation constant exactly once"
+        );
+        for foreign in foreign_mutations {
+            assert!(
+                !helper_body.contains(foreign),
+                "{signature} must not reference foreign mutation constant `{foreign}`"
+            );
+        }
+        assert!(
+            !helper_body.to_lowercase().contains("rolled back"),
+            "{signature} must not encode rollback semantics in helper-level contracts"
+        );
+    }
+}
+
+#[test]
+fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallback_combiner() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let rollback_body = extract_function_block(&content, "pub async fn rollback_build(")
+        .expect("rollback_build helper signature not found");
+    assert!(
+        rollback_body.contains("combine_native_and_graphql_error"),
+        "rollback_build must preserve native/graphql fallback combiner contract"
+    );
+    assert!(
+        rollback_body.contains("rollback_build_native("),
+        "rollback_build must preserve native-first fallback path"
+    );
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+        assert!(
+            !helper_body.contains("combine_native_and_graphql_error"),
+            "{signature} must not use native/graphql fallback combiner"
+        );
+    }
+}
+
 #[test]
 fn toggle_module_helper_uses_graphql_only_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
