@@ -34,6 +34,11 @@ usage() {
     echo "  architecture       Check module registry, Loco hooks, MCP, DI, telemetry"
     echo "  deployment-profiles  Smoke-check monolith, server+admin, headless-api builds"
     echo "  anti-bypass       Audit domain bypass patterns and duplicated business logic"
+    echo "  storefront-module-routes  Verify storefront module route contract"
+    echo "  i18n-contract     Verify i18n contract drift (repo-side)"
+    echo "  ui-i18n-parity    Verify module UI i18n parity"
+    echo "  flex-multilingual-contract  Verify Flex multilingual live contract guardrails"
+    echo "  module-lifecycle-bypass-usage  Verify lifecycle bypass helper is blocked in production paths"
     echo ""
     echo "Without arguments, runs all scripts."
 }
@@ -57,6 +62,11 @@ SCRIPTS=(
     "verify-architecture.sh:Architecture"
     "verify-deployment-profiles.sh:Deployment Profiles"
     "verify-anti-bypass.sh:Anti-bypass Audit"
+    "verify-storefront-module-routes.mjs:Storefront Module Routes"
+    "verify-i18n-contract.mjs:i18n Contract"
+    "verify-ui-i18n-parity.mjs:UI i18n Parity"
+    "verify-flex-multilingual-contract.mjs:Flex Multilingual Contract"
+    "verify-module-lifecycle-bypass-usage.mjs:Module Lifecycle Bypass Usage"
 )
 
 # Filter to selected script if specified
@@ -65,6 +75,7 @@ if [[ -n "$SELECTED_SCRIPT" ]]; then
     for entry in "${SCRIPTS[@]}"; do
         script_file="${entry%%:*}"
         script_name="${script_file%.sh}"
+        script_name="${script_name%.mjs}"
         script_name="${script_name#verify-}"
         if [[ "$script_name" == "$SELECTED_SCRIPT" || "$script_file" == "$SELECTED_SCRIPT" ]]; then
             FILTERED+=("$entry")
@@ -88,6 +99,7 @@ echo ""
 
 TOTAL_PASSED=0
 TOTAL_FAILED=0
+TOTAL_ERRORS=0
 RESULTS=()
 SEPARATOR="────────────────────────────────────────────────"
 
@@ -105,14 +117,23 @@ for entry in "${SCRIPTS[@]}"; do
     echo -e "${BLUE}▶ Running: $script_label${NC}"
     echo -e "${SEPARATOR}"
 
+    if [[ "$script_file" == *.mjs ]]; then
+        runner=(node "$script_path")
+    else
+        runner=(bash "$script_path")
+    fi
+
     if [[ $VERBOSE -eq 1 ]]; then
-        bash "$script_path"
+        "${runner[@]}"
         exit_code=$?
     else
-        output=$(bash "$script_path" 2>&1)
+        output=$("${runner[@]}" 2>&1)
         exit_code=$?
-        # Show only the summary line
-        echo "$output" | grep -E "━━━|error|warning|passed|✗" | tail -5
+        # Show compact summary lines when possible
+        summary_lines="$(echo "$output" | grep -Ei "━━━|error|warning|passed|failed|✗|✔|summary" | tail -5 || true)"
+        if [[ -n "$summary_lines" ]]; then
+            echo "$summary_lines"
+        fi
     fi
 
     if [[ $exit_code -eq 0 ]]; then
@@ -121,9 +142,16 @@ for entry in "${SCRIPTS[@]}"; do
     else
         RESULTS+=("${RED}FAIL${NC} $script_label ($exit_code error(s))")
         TOTAL_FAILED=$((TOTAL_FAILED + 1))
+        TOTAL_ERRORS=$((TOTAL_ERRORS + exit_code))
         # In non-verbose mode, show errors
         if [[ $VERBOSE -eq 0 ]]; then
-            echo "$output" | grep "✗" | head -5
+            fail_lines="$(echo "$output" | grep -Ei "✗|error|failed|violation" | head -10 || true)"
+            if [[ -n "$fail_lines" ]]; then
+                echo "$fail_lines"
+            else
+                # Fallback: print the tail so failures without standard markers are still visible.
+                echo "$output" | tail -20
+            fi
         fi
     fi
 
@@ -153,5 +181,11 @@ else
     echo ""
     echo -e "  ${RED}${BOLD}$TOTAL_FAILED suite(s) have errors. Review output above.${NC}"
     echo -e "  Run with ${BOLD}-v${NC} for full output: ${BOLD}./scripts/verify/verify-all.sh -v${NC}"
-    exit 1
+    # POSIX process exit codes are limited to 0..255.
+    # Preserve "N errors" semantics while avoiding wraparound ambiguity.
+    if [[ $TOTAL_ERRORS -gt 255 ]]; then
+        echo -e "  ${YELLOW}Warning:${NC} aggregated error count $TOTAL_ERRORS exceeds exit-code limit; returning 255."
+        exit 255
+    fi
+    exit "$TOTAL_ERRORS"
 fi

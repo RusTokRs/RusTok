@@ -19,11 +19,35 @@ pass() {
 }
 
 test_passes_for_existing_directories() {
-  local out_log="$TMPDIR_ROOT/check_dependabot_ok.log"
-  python3 "$SCRIPT" >"$out_log"
+  local tmp
+  tmp="$(mktemp -d "$TMPDIR_ROOT/ok-test.XXXXXX")"
+  mkdir -p "$tmp/.github" "$tmp/apps/admin" "$tmp/apps/server" "$tmp/crates"
+  cat > "$tmp/.github/dependabot.yml" <<'YAML'
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/apps/admin"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/apps/server"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/crates"
+    schedule:
+      interval: "daily"
+YAML
+
+  local out_log="$tmp/check_dependabot_ok.log"
+  python3 "$SCRIPT" --root "$tmp" --config "$tmp/.github/dependabot.yml" >"$out_log"
   rg -q "All Dependabot update directories exist" "$out_log" \
     || fail "expected success message"
-  pass "script passes for current repository dependabot directories"
+  pass "script passes for valid dependabot config in isolated fixture"
 }
 
 test_fails_for_missing_directory() {

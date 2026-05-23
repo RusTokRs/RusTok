@@ -75,7 +75,6 @@ node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 - `unwrap_or("default")` для секретов — unsafe fallback
 
 **Severity:** HIGH. Паника крашит весь tokio runtime.
-????????????? ??? `registry-only` ??????? ??? ?????? `GET /v1/catalog/{slug}` detail-path, cache-contract ????? `ETag` / `If-None-Match` ? negative smoke ?? write-route-? `POST /v2/catalog/publish`, `POST /v2/catalog/owner-transfer` ? `POST /v2/catalog/yank`.
 
 ---
 
@@ -284,8 +283,51 @@ Focused repo-side guardrail for the live Flex multilingual contract.
 **Severity:** HIGH. Возврат к inline localized fallback снова размажет единый multilingual storage contract.
 
 ---
+### `verify-storefront-module-routes.mjs`
+Repo-side контракт маршрутов storefront для модульных UI-surface.
+
+Что проверяет:
+- manifest metadata storefront UI модулей синхронизирована с route wiring;
+- route keys не выпадают из ожидаемого contract-surface;
+- drift между module-owned route map и host wiring фиксируется как ошибка.
+
+**Severity:** HIGH. Drift в storefront route contract ломает навигацию и интеграцию модульного UI.
+
+---
+### `verify-i18n-contract.mjs`
+Repo-side guardrail для i18n contract платформы.
+
+Что проверяет:
+- ключевые i18n contract-правила остаются согласованными в исходниках/документации;
+- нет регресса в canonical путях locale handling для server-owned contract.
+
+**Severity:** HIGH. Drift i18n contract быстро приводит к несогласованным locale fallback и UI/Server mismatch.
+
+---
+### `verify-ui-i18n-parity.mjs`
+Проверка паритета i18n между module-owned UI и host-runtime expectations.
+
+Что проверяет:
+- module UI wiring не расходится с host-provided locale contract;
+- ключевые surface точки не обходят canonical locale provider.
+
+**Severity:** HIGH. Нарушение parity приводит к фрагментации i18n и различию поведения между surface-ами.
+
+---
+### `verify-module-lifecycle-bypass-usage.mjs`
+Guardrail против использования lifecycle bypass helper в production/runtime путях.
+
+Что проверяет:
+- helper для lifecycle bypass не просачивается в production-контуры;
+- forbidden usage фиксируется как contract violation.
+
+**Severity:** HIGH. Bypass в production нарушает lifecycle governance и publish/runtime safety.
+
+---
 ### `verify-all.sh`
-**Master runner** — запуск всех скриптов с итоговым отчётом.
+**Master runner** — запуск всех `verify-*.sh` и ключевых `verify-*.mjs` с итоговым отчётом.
+В non-verbose режиме раннер пытается показывать compact summary, а при падении печатает
+явные `error/failed/violation` строки (с fallback на tail вывода), чтобы ошибки не терялись.
 
 ```
 ╔══════════════════════════════════════════════╗
@@ -301,7 +343,7 @@ Focused repo-side guardrail for the live Flex multilingual contract.
   PASS Security
   PASS Architecture
 
-  Total: 8 suites | 7 passed | 1 failed
+  Total: 13 suites | 12 passed | 1 failed
 ```
 
 ## Интерпретация результатов
@@ -314,7 +356,8 @@ Focused repo-side guardrail for the live Flex multilingual contract.
 
 **Exit codes:**
 - `0` — все проверки пройдены
-- `N` — количество ошибок (errors, не warnings)
+- `N` — агрегированное количество ошибок (errors, не warnings)
+- `255` — ошибок больше 255 (ограничение process exit code)
 
 ## Расширение скриптов
 
