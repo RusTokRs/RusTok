@@ -1115,7 +1115,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 
 | Статус | Фаза | Объём работ | На что опираемся в этом документе | Definition of Done |
 |---|---|---|---|---|
-| 🟡 In progress | **Phase 0 — Foundation** | Создать `host app`, app shell, тему, auth session store, GraphQL client factory, route contracts. | [Базовый каркас приложения](#базовый-каркас-приложения), [Маршрутизация](#маршрутизация), [Стандартное подключение GraphQL для RusTok](#стандартное-подключение-graphql-для-rustok), [Авторизация и refresh](#авторизация-и-refresh) | Работают login + `me` + `currentTenant`, есть базовый shell и deep-link вход в защищённый экран. |
+| 🟡 In progress | **Phase 0 — Foundation** | Создать `host app`, app shell, тему, auth session store, GraphQL client factory, route contracts и сразу зафиксировать FFA-baseline для Flutter (единый product/capability contract без Flutter-specific API). | [Базовый каркас приложения](#базовый-каркас-приложения), [Маршрутизация](#маршрутизация), [Стандартное подключение GraphQL для RusTok](#стандартное-подключение-graphql-для-rustok), [Авторизация и refresh](#авторизация-и-refresh) | Работают login + `me` + `currentTenant`, есть базовый shell и deep-link вход в защищённый экран; FFA-baseline зафиксирован с начала разработки. |
 | ⬜ Planned | **Phase 1 — Pilot module** | Внедрить один module-owned пакет (рекомендовано: `modules` или `blog`) с реальным E2E флоу. | [Файловая структура и размещение UI-компонентов](#файловая-структура-и-размещение-ui-компонентов), [DI и registry-driven подключение модулей](#di-и-registry-driven-подключение-модулей), [Шаблоны экранов и виджетов](#шаблоны-экранов-и-виджетов) | Один бизнес-сценарий модуля проходит end-to-end в мобильном host без feature-local transport-клиентов. |
 | 🟡 In progress | **Phase 2 — Registry/codegen** | Подключить generated mobile registry из manifest/export и убрать ручное wiring в host. Заранее заложить расширяемость registry под сложные модульные поверхности (в т.ч. page builder: child pages/typed surface metadata), без отдельного «плана-повтора». | [Предлагаемый registry-driven поток подключения модулей](#предлагаемый-registry-driven-поток-подключения-модулей), [Предлагаемые самописные библиотеки и модули](#предлагаемые-самописные-библиотеки-и-модули) | Новый модуль подключается через manifest/codegen без правок в навигационном каркасе host; контракты registry готовы к page-builder сценариям (nested routes и surface metadata). |
 | ⬜ Planned | **Phase 3 — Parity expansion** | Перенести остальные high-value модули, закрепить route/i18n/permission parity и единые error/loading/empty паттерны. | [Где размещать UI-компоненты и как дублировать UI модулей платформы](#где-размещать-ui-компоненты-и-как-дублировать-ui-модулей-платформы), [Кэширование, обработка ошибок и subscriptions](#кэширование-обработка-ошибок-и-subscriptions) | Покрыты основные operator flows; контракты query keys/locale/permissions не расходятся с web-host правилами. |
@@ -1145,6 +1145,11 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 - Flutter-план для registry/codegen и module surfaces **зависит** от выполнения backend/page-builder этапов в:
   - `docs/modules/tiptap-page-builder-implementation-plan.md`;
   - `crates/rustok-pages/docs/implementation-plan.md` (Dedicated page-builder track).
+- Flutter host, базовый app shell и module-owned mobile UI пакеты нужно развивать в логике FFA (один product contract при разных runtime/topology), но **без** Flutter-специфичных API-контрактов поверх платформы.
+- Для практики это означает:
+  - Flutter держит минимальные contract-safe каркасы (`preview/tree/properties/publish`) и registry wiring;
+  - canonical правила builder/state/validation/RBAC остаются на backend и в общем page-builder плане;
+  - parity проверяется по capability и data-contract, а не по буквальному UI-клону Leptos/Next.
 - Если в мобильном host добавить routing/registry под page-builder раньше, чем зафиксированы backend contract + parity для admin-стеков, появится drift:
   - расхождение surface metadata;
   - нестабильные GraphQL payload/contracts;
@@ -1152,6 +1157,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 - Поэтому при каждом PR по Flutter registry/module contracts агент должен явно отмечать:
   1) что уже закрыто в backend/page-builder плане;
   2) какой следующий шаг **заблокирован** до закрытия пунктов в `tiptap-page-builder-implementation-plan.md` и `rustok-pages` плане.
+
 
 Ниже — то, что в постановке **не указано**, поэтому в отчёте я дал только разумные варианты, а не жёсткие требования:
 
