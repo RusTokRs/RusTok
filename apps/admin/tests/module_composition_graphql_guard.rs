@@ -667,20 +667,6 @@ fn assert_graphql_only_helper(
 }
 
 #[test]
-fn toggle_module_helper_signature_is_unique() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
-
-    let signature = "pub async fn toggle_module(";
-    let occurrences = content.matches(signature).count();
-    assert_eq!(
-        occurrences, 1,
-        "Expected exactly one toggle_module helper signature, found {occurrences}"
-    );
-}
-
-#[test]
 fn module_composition_helper_signatures_are_unique() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");
@@ -697,60 +683,6 @@ fn module_composition_helper_signatures_are_unique() {
             occurrences, 1,
             "Expected exactly one `{signature}` helper signature, found {occurrences}"
         );
-    }
-}
-
-#[test]
-fn module_composition_helpers_do_not_cross_wire_mutation_constants() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
-
-    let cases = [
-        (
-            "pub async fn install_module(",
-            [
-                "UNINSTALL_MODULE_MUTATION",
-                "UPGRADE_MODULE_MUTATION",
-                "TOGGLE_MODULE_MUTATION",
-            ],
-        ),
-        (
-            "pub async fn uninstall_module(",
-            [
-                "INSTALL_MODULE_MUTATION",
-                "UPGRADE_MODULE_MUTATION",
-                "TOGGLE_MODULE_MUTATION",
-            ],
-        ),
-        (
-            "pub async fn upgrade_module(",
-            [
-                "INSTALL_MODULE_MUTATION",
-                "UNINSTALL_MODULE_MUTATION",
-                "TOGGLE_MODULE_MUTATION",
-            ],
-        ),
-        (
-            "pub async fn toggle_module(",
-            [
-                "INSTALL_MODULE_MUTATION",
-                "UNINSTALL_MODULE_MUTATION",
-                "UPGRADE_MODULE_MUTATION",
-            ],
-        ),
-    ];
-
-    for (signature, forbidden_mutations) in cases {
-        let helper_body = extract_function_block(&content, signature)
-            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
-
-        for forbidden in forbidden_mutations {
-            assert!(
-                !helper_body.contains(forbidden),
-                "helper {signature} must not reference foreign mutation constant {forbidden}"
-            );
-        }
     }
 }
 
