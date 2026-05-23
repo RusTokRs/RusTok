@@ -207,3 +207,29 @@ nl -ba apps/storefront/docs/README.md
 ### 6) Следствие для исполнения плана
 
 План выполняется **без смены продуктового контракта**: сначала рефактор структуры пакетов (core/transport/ui), затем Dioxus adapter pilot. GraphQL/REST остаются обязательными контрактами для headless parity на каждом этапе.
+
+## Phase-gate критерии (обязательные переходы между фазами)
+
+- **A -> B**: завершена карта связности пилотов, зафиксированы current native/GraphQL surfaces, составлен parity checklist.
+- **B -> C**: в пилотах реально выделены `core/transport/ui`, UI не ходит напрямую в transport, parity тесты проходят в pilot scope.
+- **C -> D**: shared abstractions согласованы с владельцами модулей, portability-порт для route/query принят как contract.
+- **D -> E**: минимум одна wave завершена без doc drift, двойная documentation verification выполнена для всех затронутых модулей.
+- **E -> Program done**: Dioxus pilot прошёл parity/KPI проверки и не нарушил headless контракты.
+
+## KPI parity (измеримые пороги)
+
+- Функциональный parity: все обязательные сценарии pilot checklist проходят и в native path, и в GraphQL fallback path.
+- Error parity: доля расхождений по error-classification между адаптерами = 0 для обязательных сценариев.
+- Performance guard: p95 latency новых adapter-path не ухудшается более чем на 15% относительно baseline пилота.
+- Contract guard: 0 случаев удаления/ослабления headless GraphQL/REST контракта в рамках migration PR.
+- Docs guard: 0 известных конфликтующих/устаревших transport-формулировок после двойной сверки.
+
+## RACI (кто принимает phase-gates)
+
+- **Responsible (R):** владелец конкретного модуля UI пакета + исполнитель migration task.
+- **Accountable (A):** platform foundation team (финальный gate по transport/UI contract).
+- **Consulted (C):** владельцы `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend` по host parity.
+- **Informed (I):** смежные module owners и observability/QA владельцы.
+
+Phase-gate не считается пройденным без явного подтверждения `A` и отметки о двойной documentation verification.
+
