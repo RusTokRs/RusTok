@@ -3,6 +3,7 @@ use leptos::web_sys;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
+use crate::core;
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
 
 pub type ApiError = GraphqlHttpError;
@@ -237,8 +238,8 @@ pub async fn create_post(
                 title: draft.title,
                 body: draft.body,
                 body_format: draft.body_format,
-                excerpt: optional_text(draft.excerpt),
-                slug: optional_text(draft.slug),
+                excerpt: core::optional_text(draft.excerpt.as_str()),
+                slug: core::optional_text(draft.slug.as_str()),
                 publish: draft.publish,
                 tags: draft.tags,
                 category_id: None,
@@ -389,13 +390,4 @@ pub async fn delete_post(
     .await?;
 
     Ok(response.delete_post)
-}
-
-fn optional_text(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
 }

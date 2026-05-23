@@ -225,6 +225,7 @@ rg -n "Dioxus|Leptos|headless|server functions|UI packages|GraphQL" docs crates 
 rg -n "^use leptos|#\[component\]|#\[server\]|leptos =|leptos_router|leptos_ui_routing|cfg\(feature = "ssr"\)" crates/rustok-*/admin crates/rustok-*/storefront crates/leptos-* --glob "*.rs" --glob "Cargo.toml"
 nl -ba docs/UI/graphql-architecture.md
 nl -ba apps/storefront/docs/README.md
+npm run verify:ffa:ui:migration
 ```
 
 ### 6) Следствие для исполнения плана

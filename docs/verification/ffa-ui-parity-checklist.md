@@ -45,6 +45,7 @@ Checklist используется как evidence для phase-gates `A -> B`, 
   - [ ] `npm run verify:i18n:ui`
   - [ ] `npm run verify:i18n:contract`
   - [ ] `npm.cmd run verify:storefront:routes`
+- [ ] Выполнен `npm run verify:ffa:ui:migration`.
 - [ ] В PR приложен фактический вывод проверок.
 
 ### 5) Documentation double-check
@@ -73,6 +74,7 @@ Commands:
 - npm run verify:i18n:ui
 - npm run verify:i18n:contract
 - npm.cmd run verify:storefront:routes
+- npm run verify:ffa:ui:migration
 ```
 
 ## Связанные документы

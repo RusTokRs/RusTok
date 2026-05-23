@@ -1,4 +1,5 @@
 mod api;
+mod core;
 mod i18n;
 mod model;
 
@@ -114,12 +115,12 @@ pub fn BlogAdmin() -> impl IntoView {
         editing_post_id
             .get()
             .map(|post_id| {
-                t(
+                let template = t(
                     editing_banner_locale.as_deref(),
                     "blog.form.editingBanner",
                     "Editing post {id}",
-                )
-                .replace("{id}", post_id.as_str())
+                );
+                core::label_with_id(template.as_str(), post_id.as_str())
             })
             .unwrap_or_default()
     });
@@ -146,7 +147,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let ui_locale = edit_post_locale.clone();
         let default_locale = edit_post_default_locale.clone();
         set_submit_error.set(None);
-        set_busy_key.set(Some(format!("edit:{post_id}")));
+        set_busy_key.set(Some(core::busy_key_for_edit(post_id.as_str())));
 
         spawn_local(async move {
             match api::fetch_post(
@@ -203,13 +204,12 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_publish_now,
                         default_locale.as_str(),
                     );
-                    set_submit_error.set(Some(WritePathIssue::with_context(
-                        t(
+                    set_submit_error.set(Some(core::error_with_context(
+                        &t(
                             ui_locale.as_deref(),
                             "blog.error.loadPost",
-                            "Failed to load post"
-                        )
-                        .as_str(),
+                            "Failed to load post",
+                        ),
                         &err.to_string(),
                     )));
                 }
@@ -221,7 +221,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let initial_edit_post = edit_post;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| match selected_post_query.get() {
-        Some(post_id) if !post_id.trim().is_empty() => {
+        Some(post_id) if core::has_non_empty_text(post_id.as_str()) => {
             initial_edit_post.run((post_id, effect_default_locale.clone()));
         }
         _ => reset_form(
@@ -248,13 +248,13 @@ pub fn BlogAdmin() -> impl IntoView {
 
         let draft = BlogPostDraft {
             locale: locale.get_untracked(),
-            title: title.get_untracked().trim().to_string(),
-            slug: slug.get_untracked().trim().to_string(),
-            excerpt: excerpt.get_untracked().trim().to_string(),
-            body: body.get_untracked().trim().to_string(),
+            title: core::trimmed_text(title.get_untracked().as_str()),
+            slug: core::trimmed_text(slug.get_untracked().as_str()),
+            excerpt: core::trimmed_text(excerpt.get_untracked().as_str()),
+            body: core::trimmed_text(body.get_untracked().as_str()),
             body_format: body_format.get_untracked(),
             publish: publish_now.get_untracked(),
-            tags: parse_tags(tags_input.get_untracked().as_str()),
+            tags: core::parse_tags(tags_input.get_untracked().as_str()),
         };
 
         if draft.title.is_empty() || draft.body.is_empty() {
@@ -269,11 +269,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let editing_post = editing_post_id.get_untracked();
-        set_busy_key.set(Some(if let Some(post_id) = editing_post.as_ref() {
-            format!("save:{post_id}")
-        } else {
-            "create".to_string()
-        }));
+        set_busy_key.set(Some(core::busy_key_for_save(editing_post.as_deref())));
 
         spawn_local(async move {
             let result = match editing_post {
@@ -300,13 +296,12 @@ pub fn BlogAdmin() -> impl IntoView {
                     submit_query_writer.replace_value(AdminQueryKey::PostId.as_str(), post_id);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::with_context(
-                        t(
+                    set_submit_error.set(Some(core::error_with_context(
+                        &t(
                             submit_ui_locale.as_deref(),
                             "blog.error.savePost",
                             "Failed to save post",
-                        )
-                        .as_str(),
+                        ),
                         &err.to_string(),
                     )));
                 }
@@ -323,7 +318,7 @@ pub fn BlogAdmin() -> impl IntoView {
             let tenant_value = tenant.get_untracked();
             let ui_locale = toggle_publish_locale.clone();
             set_submit_error.set(None);
-            set_busy_key.set(Some(format!("publish:{post_id}")));
+            set_busy_key.set(Some(core::busy_key_for_publish(post_id.as_str())));
 
             spawn_local(async move {
                 let result = if publish {
@@ -363,13 +358,12 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_submit_error.set(Some(WritePathIssue::with_context(
-                            t(
+                        set_submit_error.set(Some(core::error_with_context(
+                            &t(
                                 ui_locale.as_deref(),
                                 "blog.error.updateStatus",
-                                "Failed to update post status"
-                            )
-                            .as_str(),
+                                "Failed to update post status",
+                            ),
                             &err.to_string(),
                         )));
                     }
@@ -386,7 +380,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let ui_locale = archive_post_locale.clone();
         set_submit_error.set(None);
-        set_busy_key.set(Some(format!("archive:{post_id}")));
+        set_busy_key.set(Some(core::busy_key_for_archive(post_id.as_str())));
 
         spawn_local(async move {
             match api::archive_post(
@@ -415,13 +409,12 @@ pub fn BlogAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::with_context(
-                        t(
+                    set_submit_error.set(Some(core::error_with_context(
+                        &t(
                             ui_locale.as_deref(),
                             "blog.error.archivePost",
-                            "Failed to archive post"
-                        )
-                        .as_str(),
+                            "Failed to archive post",
+                        ),
                         &err.to_string(),
                     )));
                 }
@@ -441,7 +434,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let default_locale = delete_post_default_locale.clone();
         let delete_query_writer = delete_query_writer.clone();
         set_submit_error.set(None);
-        set_busy_key.set(Some(format!("delete:{post_id}")));
+        set_busy_key.set(Some(core::busy_key_for_delete(post_id.as_str())));
 
         spawn_local(async move {
             match api::delete_post(token_value, tenant_value, post_id.clone()).await {
@@ -471,13 +464,12 @@ pub fn BlogAdmin() -> impl IntoView {
                     ))));
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::with_context(
-                        t(
+                    set_submit_error.set(Some(core::error_with_context(
+                        &t(
                             ui_locale.as_deref(),
                             "blog.error.deletePost",
-                            "Failed to delete post"
-                        )
-                        .as_str(),
+                            "Failed to delete post",
+                        ),
                         &err.to_string(),
                     )));
                 }
@@ -577,7 +569,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     }.into_any(),
                                     Err(err) => view! {
                                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                            {format!("{}: {err}", load_posts_error_label.clone())}
+                                            {core::error_with_context(load_posts_error_label.as_str(), &err.to_string())}
                                         </div>
                                     }.into_any(),
                                 }
@@ -623,8 +615,8 @@ pub fn BlogAdmin() -> impl IntoView {
                                 prop:value=title
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
-                                    if slug.get_untracked().trim().is_empty() {
-                                        set_slug.set(slugify(value.as_str()));
+                                    if !core::has_non_empty_text(slug.get_untracked().as_str()) {
+                                        set_slug.set(core::slugify(value.as_str()));
                                     }
                                     set_title.set(value);
                                 }
@@ -759,21 +751,11 @@ pub fn BlogAdmin() -> impl IntoView {
                             type="submit"
                             class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
                             disabled=move || {
-                                busy_key.get().as_deref() == Some("create")
-                                    || busy_key
-                                        .get()
-                                        .as_deref()
-                                        .map(|key| key.starts_with("save:"))
-                                        .unwrap_or(false)
+                                core::is_save_busy(busy_key.get().as_deref())
                             }
                         >
                             {move || {
-                                if busy_key.get().as_deref() == Some("create")
-                                    || busy_key
-                                        .get()
-                                        .as_deref()
-                                        .map(|key| key.starts_with("save:"))
-                                        .unwrap_or(false)
+                                if core::is_save_busy(busy_key.get().as_deref())
                                 {
                                     t(ui_locale.as_deref(), "blog.form.saving", "Saving...")
                                 } else if editing_post_id.get().is_some() {
@@ -860,8 +842,7 @@ fn BlogPostsTable(
     view! {
         <div class="space-y-4">
             <div class="text-sm text-muted-foreground">
-                {t(locale.as_deref(), "blog.table.total", "{count} post(s)")
-                    .replace("{count}", &total.to_string())}
+                {core::count_label(&t(locale.as_deref(), "blog.table.total", "{count} post(s)"), total)}
             </div>
             <div class="overflow-hidden rounded-xl border border-border">
                 <table class="w-full text-sm">
@@ -884,29 +865,29 @@ fn BlogPostsTable(
                                 let post_id_publish = post_id.clone();
                                 let post_id_archive = post_id.clone();
                                 let post_id_delete = post_id.clone();
-                                let post_slug = post.slug.clone().unwrap_or_else(|| {
-                                    t(locale.as_deref(), "blog.table.draft", "draft")
-                                });
+                                let post_slug = core::fallback_post_slug(
+                                    post.slug.clone(),
+                                    &t(locale.as_deref(), "blog.table.draft", "draft"),
+                                );
                                 let post_locale = post.effective_locale.clone();
                                 let post_locale_edit = post_locale.clone();
                                 let post_locale_publish = post_locale.clone();
                                 let post_locale_archive = post_locale.clone();
                                 let is_editing = editing_post_id.as_deref() == Some(post_id.as_str());
-                                let row_busy = busy_key
-                                    .as_deref()
-                                    .map(|key| key.contains(post_id.as_str()))
-                                    .unwrap_or(false);
-                                let is_published = post.status.eq_ignore_ascii_case("published");
-                                let is_archived = post.status.eq_ignore_ascii_case("archived");
+                                let row_busy =
+                                    core::row_is_busy_for_post(busy_key.as_deref(), post_id.as_str());
+                                let is_published = core::is_published_status(post.status.as_str());
+                                let is_archived = core::is_archived_status(post.status.as_str());
 
                                 view! {
                                     <tr class="transition-colors hover:bg-muted/30">
                                         <td class="px-4 py-3 align-top">
                                             <div class="font-medium text-foreground">{post.title}</div>
                                             <div class="mt-1 text-xs text-muted-foreground">
-                                                {post.excerpt.unwrap_or_else(|| {
-                                                    t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt")
-                                                })}
+                                                {core::fallback_post_excerpt(
+                                                    post.excerpt,
+                                                    &t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt"),
+                                                )}
                                             </div>
                                         </td>
                                         <td class="px-4 py-3 align-top text-xs text-muted-foreground">{post_slug}</td>
@@ -987,27 +968,12 @@ fn BlogPostsTable(
 
 #[component]
 fn StatusBadge(status: String) -> impl IntoView {
-    let class_name = if status.eq_ignore_ascii_case("published") {
-        "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-    } else if status.eq_ignore_ascii_case("archived") {
-        "bg-muted text-muted-foreground"
-    } else {
-        "bg-primary/10 text-primary"
-    };
-
+    let badge_css = core::status_badge_css(status.as_str());
     view! {
-        <span class=format!("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {class_name}")>
+        <span class=badge_css>
             {status}
         </span>
     }
-}
-
-fn parse_tags(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|tag| !tag.is_empty())
-        .map(ToString::to_string)
-        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1031,7 +997,7 @@ fn apply_post_to_form(
     set_body.set(post.body.clone().unwrap_or_default());
     set_body_format.set(post.body_format.clone());
     set_tags_input.set(post.tags.join(", "));
-    set_publish_now.set(post.status.eq_ignore_ascii_case("published"));
+    set_publish_now.set(core::is_published_status(post.status.as_str()));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1056,46 +1022,4 @@ fn reset_form(
     set_body_format.set("markdown".to_string());
     set_tags_input.set(String::new());
     set_publish_now.set(false);
-}
-
-
-fn issue_banner_class(issue: &WritePathIssue) -> &'static str {
-    match issue.kind {
-        WritePathIssueKind::Validation | WritePathIssueKind::Sanitization => {
-            "rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-        }
-        WritePathIssueKind::Runtime => {
-            "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        }
-    }
-}
-
-fn issue_label<'a>(
-    issue: &WritePathIssue,
-    validation: &'a str,
-    sanitize: &'a str,
-    runtime: &'a str,
-) -> &'a str {
-    match issue.kind {
-        WritePathIssueKind::Validation => validation,
-        WritePathIssueKind::Sanitization => sanitize,
-        WritePathIssueKind::Runtime => runtime,
-    }
-}
-
-fn slugify(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
 }

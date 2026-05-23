@@ -59,11 +59,11 @@
 
 - [x] A1 pilot selection зафиксирован.
 - [x] A2 connectivity map зафиксирован.
-- [ ] A3 contract freeze evidence полностью приложен в рамках первой migration-задачи по коду.
+- [x] A3 contract freeze evidence полностью приложен: parity checklist зафиксирован, verify-команда `npm run verify:ffa:ui:migration` добавлена в обязательный evidence path.
 
 ## Следующий шаг (one-task-per-iteration)
 
-Следующая итерация: для `rustok-pages` выделить **один** целевой use-case и провести
+Следующая итерация: для `rustok-blog` выделить **один** целевой use-case и провести
 структурный срез `core/transport/ui` без изменения продуктового dual-path контракта,
 с обязательным evidence по checklist:
 `docs/verification/ffa-ui-parity-checklist.md`.
@@ -176,6 +176,7 @@
 
 - `rustok-pages/admin` — core helper extraction и выравнивание UI-call sites.
 - `rustok-pages/storefront` — ранее завершённый core slice подтверждён повторной сверкой.
+- `rustok-blog/storefront` — стартован новый slice: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`.
 
 
 ### Pages pilot status (current checkpoint)

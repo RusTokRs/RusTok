@@ -82,25 +82,15 @@ pub fn SearchView() -> impl IntoView {
         "search.error.loadResults",
         "Failed to load storefront search results",
     );
-    let entity_types = core::parse_csv(
-        read_route_query_value(&route_context, "entity_types")
-            .as_deref()
-            .unwrap_or(""),
-    );
-    let source_modules = core::parse_csv(
-        read_route_query_value(&route_context, "source_modules")
-            .as_deref()
-            .unwrap_or(""),
-    );
-    let statuses = core::parse_csv(
-        read_route_query_value(&route_context, "statuses")
-            .as_deref()
-            .unwrap_or(""),
+    let route_filters = core::parse_search_route_filters(
+        read_route_query_value(&route_context, "entity_types").as_deref(),
+        read_route_query_value(&route_context, "source_modules").as_deref(),
+        read_route_query_value(&route_context, "statuses").as_deref(),
     );
     let filters = SearchPreviewFilters {
-        entity_types,
-        source_modules,
-        statuses,
+        entity_types: route_filters.entity_types,
+        source_modules: route_filters.source_modules,
+        statuses: route_filters.statuses,
     };
     let query_for_resource = query.clone();
     let locale_for_resource = locale.clone();
@@ -120,7 +110,7 @@ pub fn SearchView() -> impl IntoView {
         move |(query, locale, filters)| {
             let preset_key = preset_for_resource.clone();
             async move {
-                if query.trim().is_empty() {
+                if core::normalized_search_query(&query).is_none() {
                     Ok(None)
                 } else {
                     api::fetch_storefront_search(
@@ -138,11 +128,9 @@ pub fn SearchView() -> impl IntoView {
     let suggestions = Resource::new(
         move || (search_input.get(), locale_for_suggestions.clone()),
         move |(query, locale)| async move {
-            let trimmed = query.trim().to_string();
-            if trimmed.len() < 2 {
-                Ok(Vec::new())
-            } else {
-                api::fetch_storefront_suggestions(trimmed, locale).await
+            match core::suggestion_query(&query, 2) {
+                Some(trimmed) => api::fetch_storefront_suggestions(trimmed, locale).await,
+                None => Ok(Vec::new()),
             }
         },
     );
@@ -308,7 +296,7 @@ fn SearchSuggestionList(suggestions: Vec<SearchSuggestion>) -> impl IntoView {
                             <button
                                 class="flex w-full items-start justify-between gap-4 rounded-xl border border-border px-4 py-3 text-left hover:bg-muted/30"
                                 on:click=move |_| {
-                                    if suggestion_kind == "document" {
+                                    if core::is_document_suggestion(suggestion_kind.as_str()) {
                                         if let Some(href) = href.clone() {
                                             navigate_to_href(&href);
                                         } else {
@@ -325,18 +313,18 @@ fn SearchSuggestionList(suggestions: Vec<SearchSuggestion>) -> impl IntoView {
                                         {suggestion_text.clone()}
                                     </span>
                                     <span class="mt-1 block text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                                        {format!(
-                                            "{}{}",
-                                            suggestion_kind,
-                                            suggestion_locale
-                                                .as_deref()
-                                                .map(|locale| format!(" • {locale}"))
-                                                .unwrap_or_default()
+                                        {core::suggestion_kind_with_locale(
+                                            suggestion_kind.as_str(),
+                                            suggestion_locale.as_deref(),
                                         )}
                                     </span>
                                 </span>
                                 <span class="shrink-0 text-xs text-muted-foreground">
-                                    {if suggestion_kind == "document" { open_label.clone() } else { search_label.clone() }}
+                                    {core::suggestion_action_label(
+                                        suggestion_kind.as_str(),
+                                        open_label.as_str(),
+                                        search_label.as_str(),
+                                    )}
                                 </span>
                             </button>
                         }
@@ -369,7 +357,10 @@ fn PresetChips(
                             "inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
                         }
                         on:click=move |_| {
-                            let next = if selected_preset.get() == key { String::new() } else { key.clone() };
+                            let next = core::next_preset_selection(
+                                selected_preset.get().as_str(),
+                                key.as_str(),
+                            );
                             set_selected_preset.set(next.clone());
                             navigate_to_search_query(&query_value, Some(next));
                         }
@@ -441,11 +432,7 @@ fn SearchResults(
         "search.features.facetsBody",
         "Entity type and source module facets come from the same search payload used by admin previews.",
     );
-    let locale = payload
-        .items
-        .first()
-        .and_then(|item| item.locale.clone())
-        .unwrap_or_else(|| "all".to_string());
+    let locale = core::locale_or_all(payload.items.first().and_then(|item| item.locale.clone()));
     let SearchPreviewPayload {
         query_log_id,
         preset_key: applied_preset_key,
@@ -468,7 +455,7 @@ fn SearchResults(
                     <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                         <span>{core::entity_source_label(&item.entity_type, &item.source_module)}</span>
                         <span>"|"</span>
-                        <span>{format!("score {}", core::score_value(item.score))}</span>
+                        <span>{core::score_label(item.score)}</span>
                     </div>
                     <h3 class="mt-3 text-lg font-semibold text-foreground">{item.title}</h3>
                     <p class="mt-2 text-sm text-muted-foreground">
@@ -495,24 +482,28 @@ fn SearchResults(
                             </div>
                             <h3 class="mt-2 text-xl font-semibold text-foreground">{query}</h3>
                             <p class="mt-2 text-sm text-muted-foreground">
-                                {results_summary_template
-                                    .replace("{count}", total.to_string().as_str())
-                                    .replace("{took_ms}", took_ms.to_string().as_str())
-                                    .replace("{engine}", engine.as_str())
-                                    .replace("{ranking_profile}", ranking_profile.as_str())}
+                                {core::render_results_summary(
+                                    results_summary_template.as_str(),
+                                    total,
+                                    took_ms,
+                                    engine.as_str(),
+                                    ranking_profile.as_str(),
+                                )}
                             </p>
                             <p class="mt-2 text-xs text-muted-foreground">
-                                {preset_template.replace(
-                                    "{preset}",
-                                    applied_preset_key
-                                        .filter(|value| !value.is_empty())
-                                        .unwrap_or_else(|| if selected_preset.is_empty() { none_label.clone() } else { selected_preset.clone() })
-                                        .as_str(),
+                                {core::render_preset_label(
+                                    preset_template.as_str(),
+                                    core::applied_preset_or_selected(
+                                        applied_preset_key,
+                                        selected_preset.as_str(),
+                                        none_label.as_str(),
+                                    )
+                                    .as_str(),
                                 )}
                             </p>
                         </div>
                         <div class="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-card-foreground">
-                            {locale_template.replace("{locale}", locale.as_str())}
+                            {core::render_locale_label(locale_template.as_str(), locale.as_str())}
                         </div>
                     </div>
                 </article>
@@ -677,10 +668,10 @@ fn navigate_to_search_query(query: &str, preset_key: Option<String>) {
         return;
     };
 
-    if query.trim().is_empty() {
-        url.search_params().delete("q");
+    if let Some(normalized_query) = core::normalized_search_query(query) {
+        url.search_params().set("q", normalized_query.as_str());
     } else {
-        url.search_params().set("q", query.trim());
+        url.search_params().delete("q");
     }
 
     match preset_key
