@@ -153,6 +153,7 @@
 - `rustok-pages` slice #7: status badge css composition moved to core (`status_badge_css`).
 - `rustok-pages` slice #8: busy-key action matching moved to core (`busy_key_matches_action`).
 - `rustok-pages` slice #9: raw body summary placeholder rendering moved to storefront core (`raw_body_format_summary`).
+- `rustok-pages` slice #10: pages implementation tracker synchronized after double docs verification closure.
 
 
 ### Перепроверка после slices #2-#8 (rustok-pages/admin)

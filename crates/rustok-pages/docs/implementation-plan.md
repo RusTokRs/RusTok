@@ -76,7 +76,7 @@
 - [x] Storefront + admin surfaces updated for selected slices.
 - [x] `cargo xtask module validate pages` passed.
 - [ ] `cargo xtask module test pages` full run evidence attached.
-- [ ] Double documentation verification completed.
+- [x] Double documentation verification completed.
 - [x] Slice 3: admin status badge class mapping moved to core (`status_badge_class`).
 - [x] Slice 4: admin busy-key composition moved to core (`busy_key_with_id`, `busy_key_for_save`).
 - [x] Slice 5: admin edit-form seed mapping moved to core (`edit_form_seed_from_page`).
@@ -92,3 +92,5 @@
 - [x] No transport-contract changes introduced (`native #[server]` + GraphQL fallback preserved).
 
 - [x] Slice 9: storefront raw-format body summary rendering moved to core (`raw_body_format_summary`).
+
+- [x] Slice 10: pages tracker synchronized after double documentation verification completion.
