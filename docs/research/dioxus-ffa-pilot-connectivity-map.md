@@ -134,3 +134,4 @@
 - `rustok-search` slice #4: snippet fallback rendering вынесен в core (`snippet_or_fallback`) для storefront/admin.
 - `rustok-search` slice #5: score label normalization вынесена в core (`score_label`) для storefront/admin.
 - `rustok-search` slice #6: entity/source/status labels вынесены в core для storefront/admin.
+- `rustok-search` slice #7: score template value extraction переведён на core helper (`score_value`) без string hacks в UI.

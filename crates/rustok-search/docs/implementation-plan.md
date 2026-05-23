@@ -84,3 +84,4 @@
 - [x] Slice 4: storefront/admin snippet fallback rendering moved to core (`snippet_or_fallback`).
 - [x] Slice 5: storefront/admin score label normalization moved to core (`score_label`).
 - [x] Slice 6: storefront/admin entity-source/status label formatting moved to core (`entity_source_label`, `source_entity_status_label`).
+- [x] Slice 7: admin preview score-template value extraction switched to dedicated core helper (`score_value`).

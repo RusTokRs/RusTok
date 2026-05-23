@@ -32,6 +32,10 @@ pub fn score_label(score: f64) -> String {
     format!("score {:.3}", score)
 }
 
+pub fn score_value(score: f64) -> String {
+    format!("{:.3}", score)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,6 +73,7 @@ mod tests {
         assert_eq!(facet_display_name("source_module"), "source module");
         assert_eq!(facet_bucket_label("product", 42), "product (42)");
         assert_eq!(score_label(0.12345), "score 0.123");
+        assert_eq!(score_value(0.12345), "0.123");
         assert_eq!(
             snippet_or_fallback(None, "fallback"),
             "fallback".to_string()
