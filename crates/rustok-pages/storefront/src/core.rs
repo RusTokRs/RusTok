@@ -64,3 +64,8 @@ pub fn count_label(template: &str, count: u64) -> String {
 pub fn open_link_label(prefix: &str, slug: &str) -> String {
     format!("{} {}", prefix, slug)
 }
+
+
+pub fn label_value_pair(label: &str, value: &str) -> String {
+    format!("{}: {}", label, value)
+}

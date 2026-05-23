@@ -99,3 +99,4 @@
 - [x] Slice 13: storefront published-pages total count placeholder rendering moved to core (`count_label`).
 - [x] Slice 14: admin editing-banner `{id}` placeholder rendering moved to core (`label_with_id`).
 - [x] Slice 15: storefront open-link label composition moved to core (`open_link_label`).
+- [x] Slice 16: storefront label/value pair rendering moved to core (`label_value_pair`).

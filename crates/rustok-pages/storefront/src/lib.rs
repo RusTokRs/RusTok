@@ -142,14 +142,14 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{format!(
-                    "{}: {slug}",
-                    t(locale.as_deref(), "pages.selected.slugLabel", "selected slug")
+                <span>{core::label_value_pair(
+                    &t(locale.as_deref(), "pages.selected.slugLabel", "selected slug"),
+                    slug.as_str(),
                 )}</span>
                 <span>"·"</span>
-                <span>{format!(
-                    "{}: {effective_locale}",
-                    t(locale.as_deref(), "pages.selected.localeLabel", "locale")
+                <span>{core::label_value_pair(
+                    &t(locale.as_deref(), "pages.selected.localeLabel", "locale"),
+                    effective_locale.as_str(),
                 )}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
@@ -224,10 +224,9 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                                 )}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
-                                    {format!(
-                                        "{}: {}",
-                                        t(locale.as_deref(), "pages.list.templateLabel", "template"),
-                                        page.template
+                                    {core::label_value_pair(
+                                        &t(locale.as_deref(), "pages.list.templateLabel", "template"),
+                                        page.template.as_str(),
                                     )}
                                 </p>
                             </article>
@@ -262,6 +261,12 @@ mod tests {
     use crate::model::PageBody;
 
 
+
+
+    #[test]
+    fn label_value_pair_formats_label_and_value() {
+        assert_eq!(core::label_value_pair("locale", "en"), "locale: en");
+    }
 
     #[test]
     fn open_link_label_joins_prefix_and_slug() {
