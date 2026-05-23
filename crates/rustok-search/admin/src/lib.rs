@@ -1,4 +1,5 @@
 mod api;
+mod core;
 mod i18n;
 mod model;
 
@@ -206,16 +207,16 @@ pub fn SearchAdmin() -> impl IntoView {
         set_preview_error.set(None);
         set_busy.set(true);
         let filters = SearchPreviewFilters {
-            entity_types: parse_csv(entity_types.get_untracked()),
-            source_modules: parse_csv(source_modules.get_untracked()),
-            statuses: parse_csv(statuses.get_untracked()),
+            entity_types: core::parse_csv(&entity_types.get_untracked()),
+            source_modules: core::parse_csv(&source_modules.get_untracked()),
+            statuses: core::parse_csv(&statuses.get_untracked()),
         };
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let query_value = query.get_untracked();
             let ranking_profile_value = ranking_profile.get_untracked();
-            let preset_key_value = optional_text(preset_key.get_untracked());
+            let preset_key_value = core::optional_text(&preset_key.get_untracked());
             let locale_value = initial_locale.clone();
             let preview_error_label = preview_error_label.clone();
             let preview_query_writer = preview_query_writer.clone();
@@ -231,16 +232,17 @@ pub fn SearchAdmin() -> impl IntoView {
                     tenant_value,
                     query_value,
                     locale_value,
-                    optional_text(ranking_profile_value),
+                    core::optional_text(&ranking_profile_value),
                     preset_key_value,
                     filters,
                 )
                 .await
                 {
                     Ok(result) => set_preview.set(Some(result)),
-                    Err(err) => {
-                        set_preview_error.set(Some(format!("{}: {err}", preview_error_label)))
-                    }
+                    Err(err) => set_preview_error.set(Some(core::error_with_context(
+                        preview_error_label.as_str(),
+                        &err.to_string(),
+                    ))),
                 }
                 set_busy.set(false);
             }
@@ -254,7 +256,7 @@ pub fn SearchAdmin() -> impl IntoView {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let target_type = rebuild_target_type.get_untracked();
-            let target_id = optional_text(rebuild_target_id.get_untracked());
+            let target_id = core::optional_text(&rebuild_target_id.get_untracked());
             let rebuild_queued_template = rebuild_queued_template.clone();
             let queue_rebuild_error_label = queue_rebuild_error_label.clone();
             async move {
@@ -279,8 +281,10 @@ pub fn SearchAdmin() -> impl IntoView {
                         ));
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    Err(err) => set_rebuild_feedback
-                        .set(Some(format!("{}: {err}", queue_rebuild_error_label))),
+                    Err(err) => set_rebuild_feedback.set(Some(core::error_with_context(
+                        queue_rebuild_error_label.as_str(),
+                        &err.to_string(),
+                    ))),
                 }
                 set_rebuild_busy.set(false);
             }
@@ -496,7 +500,7 @@ pub fn SearchAdmin() -> impl IntoView {
                         }
                         Err(err) => view! {
                             <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                {format!("{}: {err}", load_bootstrap_error)}
+                                {core::error_with_context(load_bootstrap_error.as_str(), &err.to_string())}
                             </div>
                         }.into_any(),
                     })
@@ -1030,9 +1034,9 @@ fn preview_panel(payload: SearchPreviewPayload, labels: SearchPreviewLabels) -> 
         <div class="mt-5 grid gap-4 lg:grid-cols-3">{payload.facets.iter().map(|facet| view! { <FacetCard facet=facet.clone() /> }).collect_view()}</div>
         <div class="mt-6 space-y-3">{payload.items.into_iter().enumerate().map(|(index, item)| view! {
             <article class="rounded-xl border border-border bg-background p-4">
-                <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"><span>{item.entity_type.clone()}</span><span>"|"</span><span>{item.source_module.clone()}</span><span>"|"</span><span>{labels.score_template.clone().replace("{score:.3}", format!("{:.3}", item.score).as_str())}</span></div>
+                <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"><span>{core::entity_source_label(&item.entity_type, &item.source_module)}</span><span>"|"</span><span>{core::score_label(item.score)}</span></div>
                 <h3 class="mt-2 text-base font-semibold text-card-foreground">{item.title}</h3>
-                <p class="mt-2 text-sm text-muted-foreground">{item.snippet.unwrap_or_else(|| labels.no_snippet.clone())}</p>
+                <p class="mt-2 text-sm text-muted-foreground">{core::snippet_or_fallback(item.snippet.clone(), &labels.no_snippet)}</p>
                 {preview_result_action(payload.query_log_id.clone(), item.id.clone(), item.url.clone(), index, labels.clone())}
             </article>
         }).collect_view()}</div>
@@ -1179,7 +1183,7 @@ fn lagging_table(
         <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
             <tr class="transition-colors hover:bg-muted/30">
                 <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{}/{} ({})", row.source_module, row.entity_type, row.status)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
                 <td class="px-4 py-3 align-top"><span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{format!("{}s", row.lag_seconds)}</span></td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
@@ -1223,7 +1227,7 @@ fn consistency_table(
                         <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {badge_class}")>{issue_label}</span>
                     </td>
                     <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{}/{} ({})", row.source_module, row.entity_type, row.status)}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at.unwrap_or_else(|| t(locale, "search.common.notIndexed", "not indexed"))}</td>
@@ -1354,7 +1358,7 @@ fn DictionariesView() -> impl IntoView {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let term = synonym_term.get_untracked();
-            let synonyms = parse_csv(synonym_values.get_untracked());
+            let synonyms = core::parse_csv(&synonym_values.get_untracked());
             let synonym_updated_label = synonym_updated_label.clone();
             let synonym_save_error_label = synonym_save_error_label.clone();
             async move {
@@ -1402,7 +1406,7 @@ fn DictionariesView() -> impl IntoView {
 
     let submit_pin_rule = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
-        let pinned_position = match optional_text(pin_position.get_untracked()) {
+        let pinned_position = match core::optional_text(&pin_position.get_untracked()) {
             Some(value) => match value.parse::<i32>() {
                 Ok(parsed) => Some(parsed),
                 Err(_) => {
@@ -1784,25 +1788,7 @@ where
 
 #[component]
 fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
-    view! { <article class="rounded-xl border border-border bg-background p-4"><div class="text-sm font-semibold capitalize text-card-foreground">{facet.name.replace('_', " ")}</div><div class="mt-3 flex flex-wrap gap-2">{facet.buckets.into_iter().map(|bucket| view! { <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">{format!("{} ({})", bucket.value, bucket.count)}</span> }).collect_view()}</div></article> }
-}
-
-fn parse_csv(value: String) -> Vec<String> {
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
-fn optional_text(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    view! { <article class="rounded-xl border border-border bg-background p-4"><div class="text-sm font-semibold capitalize text-card-foreground">{core::facet_display_name(&facet.name)}</div><div class="mt-3 flex flex-wrap gap-2">{facet.buckets.into_iter().map(|bucket| view! { <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">{core::facet_bucket_label(&bucket.value, bucket.count)}</span> }).collect_view()}</div></article> }
 }
 
 fn pretty_json_string(value: &str) -> String {

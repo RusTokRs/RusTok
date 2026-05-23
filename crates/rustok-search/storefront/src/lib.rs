@@ -1,4 +1,5 @@
 mod api;
+mod core;
 mod i18n;
 mod model;
 
@@ -81,17 +82,17 @@ pub fn SearchView() -> impl IntoView {
         "search.error.loadResults",
         "Failed to load storefront search results",
     );
-    let entity_types = parse_csv(
+    let entity_types = core::parse_csv(
         read_route_query_value(&route_context, "entity_types")
             .as_deref()
             .unwrap_or(""),
     );
-    let source_modules = parse_csv(
+    let source_modules = core::parse_csv(
         read_route_query_value(&route_context, "source_modules")
             .as_deref()
             .unwrap_or(""),
     );
-    let statuses = parse_csv(
+    let statuses = core::parse_csv(
         read_route_query_value(&route_context, "statuses")
             .as_deref()
             .unwrap_or(""),
@@ -125,7 +126,7 @@ pub fn SearchView() -> impl IntoView {
                     api::fetch_storefront_search(
                         query,
                         locale,
-                        (!preset_key.is_empty()).then_some(preset_key.clone()),
+                        core::optional_text(&preset_key),
                         filters,
                     )
                     .await
@@ -193,7 +194,7 @@ pub fn SearchView() -> impl IntoView {
                                 <PresetChips presets selected_preset set_selected_preset query=search_input.get() />
                             }.into_any(),
                             Ok(_) => ().into_any(),
-                            Err(err) => view! { <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("{}: {err}", load_presets_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{core::error_with_context(load_presets_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                     <p class="mt-3 text-xs text-muted-foreground">
@@ -224,7 +225,7 @@ pub fn SearchView() -> impl IntoView {
                                 }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("{}: {err}", load_suggestions_error.clone())}
+                                        {core::error_with_context(load_suggestions_error.as_str(), &err.to_string())}
                                     </div>
                                 }.into_any(),
                             }
@@ -262,7 +263,7 @@ pub fn SearchView() -> impl IntoView {
                                 }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("{}: {err}", load_results_error.clone())}
+                                        {core::error_with_context(load_results_error.as_str(), &err.to_string())}
                                     </div>
                                 }.into_any(),
                             }
@@ -465,15 +466,13 @@ fn SearchResults(
             view! {
                 <article class="rounded-2xl border border-border bg-background p-5">
                     <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                        <span>{item.entity_type.clone()}</span>
+                        <span>{core::entity_source_label(&item.entity_type, &item.source_module)}</span>
                         <span>"|"</span>
-                        <span>{item.source_module.clone()}</span>
-                        <span>"|"</span>
-                        <span>{format!("score {:.3}", item.score)}</span>
+                        <span>{format!("score {}", core::score_value(item.score))}</span>
                     </div>
                     <h3 class="mt-3 text-lg font-semibold text-foreground">{item.title}</h3>
                     <p class="mt-2 text-sm text-muted-foreground">
-                        {item.snippet.unwrap_or_else(|| "No snippet returned.".to_string())}
+                        {core::snippet_or_fallback(item.snippet.clone(), "No snippet returned.")}
                     </p>
                     {render_result_action(query_log_id, item.id.clone(), href, index)}
                 </article>
@@ -637,12 +636,12 @@ fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-5">
             <div class="text-sm font-semibold capitalize text-card-foreground">
-                {facet.name.replace('_', " ")}
+                {core::facet_display_name(&facet.name)}
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
                 {facet.buckets.into_iter().map(|bucket| view! {
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {format!("{} ({})", bucket.value, bucket.count)}
+                        {core::facet_bucket_label(&bucket.value, bucket.count)}
                     </span>
                 }).collect_view()}
             </div>
@@ -658,15 +657,6 @@ fn EmptyState(title: String, body: String) -> impl IntoView {
             <p class="mt-2 text-sm text-muted-foreground">{body}</p>
         </article>
     }
-}
-
-fn parse_csv(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
 }
 
 fn submit_search(ev: SubmitEvent, query: String, preset_key: String) {

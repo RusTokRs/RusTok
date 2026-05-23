@@ -5,12 +5,15 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Закрыть sync-точки с `docs/modules/tiptap-page-builder-implementation-plan.md` и `docs/research/flutter.md` перед расширением mobile page-builder surfaces.
+- Current phase: phase_b_closed
+- Last checkpoint: Phase B pilot closure зафиксирован (core extraction + validate/test + docs double-check).
+- Next step: Перевести `rustok-pages` в maintenance mode и при следующем инкременте ограничиваться runtime-contract задачами (builder/visibility/observability), без возврата UI helper-логики из core в lib.rs.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок и явно фиксировать, какие шаги Flutter/mobile ещё заблокированы текущим pages backend/parity статусом.
-- Last updated at (UTC): 2026-05-22T00:00:00Z
+- Hand-off notes for next agent:
+  1. Перед любыми изменениями pages сначала сверить `docs/research/dioxus-ffa-pilot-connectivity-map.md` и этот файл; не открывать новый slice без явной цели в трекере.
+  2. Для кода ориентироваться на текущий образец: Leptos UI = thin render/bind, formatting/parsing helpers = `core::*`, dual-path (`native #[server]` + GraphQL fallback) не менять.
+  3. Если задача не про pages runtime contract, приоритет смещается на следующий модуль волны; в pages вносить только bugfix/contract-sync.
+- Last updated at (UTC): 2026-05-23T23:59:00Z
 
 ## Область работ
 
@@ -67,3 +70,46 @@
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+
+
+## FFA pilot migration tracker (rustok-pages)
+
+- [x] Slice 1: storefront selected-page core extraction (`selected_page_title/slug/effective_locale`, `summarize_page_content`).
+- [x] Slice 2: admin form helper extraction (`slugify`, `parse_channel_slugs`, `error_with_context`).
+- [x] Storefront + admin surfaces updated for selected slices.
+- [x] `cargo xtask module validate pages` passed.
+- [x] `cargo xtask module test pages` full run evidence attached.
+- [x] Double documentation verification completed.
+- [x] Slice 3: admin status badge class mapping moved to core (`status_badge_class`).
+- [x] Slice 4: admin busy-key composition moved to core (`busy_key_with_id`, `busy_key_for_save`).
+- [x] Slice 5: admin edit-form seed mapping moved to core (`edit_form_seed_from_page`).
+- [x] Slice 6: admin list-load error rendering switched to core error composition (`error_with_context`).
+- [x] Slice 7: admin status badge css composition moved to core (`status_badge_css`).
+- [x] Slice 8: admin busy-key action matching moved to core (`busy_key_matches_action`).
+
+
+## Перепроверка после slices #2-#8
+
+- [x] Code/docs consistency check completed for `rustok-pages/admin` and `rustok-pages/storefront`.
+- [x] Tracker wording synced with actual `core` extraction state.
+- [x] No transport-contract changes introduced (`native #[server]` + GraphQL fallback preserved).
+
+- [x] Slice 9: storefront raw-format body summary rendering moved to core (`raw_body_format_summary`).
+
+- [x] Slice 10: pages tracker synchronized after double documentation verification completion.
+- [x] Slice 11: admin reset-form defaults delegated to core (`empty_edit_form_seed`).
+- [x] Slice 12: admin table count-label placeholder rendering moved to core (`count_label`).
+- [x] Slice 13: storefront published-pages total count placeholder rendering moved to core (`count_label`).
+- [x] Slice 14: admin editing-banner `{id}` placeholder rendering moved to core (`label_with_id`).
+- [x] Slice 15: storefront open-link label composition moved to core (`open_link_label`).
+- [x] Slice 16: storefront label/value pair rendering moved to core (`label_value_pair`).
+- [x] Slice 17: storefront core extraction cleanup after full module test evidence (unused import removal).
+
+
+## Phase B pilot closure (rustok-pages)
+
+- [x] Core extraction slices for admin/storefront completed for planned helper scope.
+- [x] Module validation evidence attached (`cargo xtask module validate pages`).
+- [x] Module test evidence attached (`cargo xtask module test pages`).
+- [x] Double documentation verification completed and synced in central tracker.
+- [x] Ready to move primary focus to next module wave while keeping pages in maintenance mode.
