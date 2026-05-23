@@ -8,105 +8,217 @@ const generatedMobileManifest = <MobileModuleEntry>[
     moduleKey: 'rustok_blog',
     routeSegment: 'blog',
     nav: MobileNavMeta(title: 'Blog', icon: 'article'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'new',
+        title: 'Add Blog Post',
+        navLabel: 'Add Post',
+      ),
+      MobileChildPage(
+        subpath: 'posts',
+        title: 'All Blog Posts',
+        navLabel: 'All Posts',
+      ),
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_channel',
     routeSegment: 'channels',
     nav: MobileNavMeta(title: 'Channels', icon: 'module'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'apps',
+        title: 'Channel Apps',
+        navLabel: 'Apps',
+      ),
+      MobileChildPage(
+        subpath: 'targets',
+        title: 'Channel Targets',
+        navLabel: 'Targets',
+      ),
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_comments',
     routeSegment: 'comments',
     nav: MobileNavMeta(title: 'Comments', icon: 'chat'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_commerce',
     routeSegment: 'commerce',
     nav: MobileNavMeta(title: 'Commerce', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_customer',
     routeSegment: 'customers',
     nav: MobileNavMeta(title: 'Customers', icon: 'people'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_forum',
     routeSegment: 'forum',
     nav: MobileNavMeta(title: 'Forum', icon: 'forum'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'categories',
+        title: 'Forum Categories',
+        navLabel: 'Categories',
+      ),
+      MobileChildPage(
+        subpath: 'topics',
+        title: 'Forum Topics',
+        navLabel: 'Topics',
+      ),
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_fulfillment',
     routeSegment: 'fulfillment',
     nav: MobileNavMeta(title: 'Fulfillment', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_index',
     routeSegment: 'index',
     nav: MobileNavMeta(title: 'Index', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_inventory',
     routeSegment: 'inventory',
     nav: MobileNavMeta(title: 'Inventory', icon: 'inventory'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_media',
     routeSegment: 'media',
     nav: MobileNavMeta(title: 'Media', icon: 'perm_media'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_order',
     routeSegment: 'orders',
     nav: MobileNavMeta(title: 'Orders', icon: 'receipt_long'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_outbox',
     routeSegment: 'outbox',
     nav: MobileNavMeta(title: 'Outbox', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_pages',
     routeSegment: 'pages',
     nav: MobileNavMeta(title: 'Pages', icon: 'module'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'all',
+        title: 'All Pages',
+        navLabel: 'All Pages',
+      ),
+      MobileChildPage(
+        subpath: 'new',
+        title: 'Add Page',
+        navLabel: 'Add Page',
+      ),
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_pricing',
     routeSegment: 'pricing',
     nav: MobileNavMeta(title: 'Pricing', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_product',
     routeSegment: 'product',
     nav: MobileNavMeta(title: 'Products', icon: 'inventory_2'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_rbac',
     routeSegment: 'rbac',
     nav: MobileNavMeta(title: 'RBAC', icon: 'shield'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_region',
     routeSegment: 'regions',
     nav: MobileNavMeta(title: 'Regions', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_search',
     routeSegment: 'search',
     nav: MobileNavMeta(title: 'Search', icon: 'search'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'analytics',
+        title: 'Search Analytics',
+        navLabel: 'Analytics',
+      ),
+      MobileChildPage(
+        subpath: 'dictionaries',
+        title: 'Search Dictionaries',
+        navLabel: 'Dictionaries',
+      ),
+      MobileChildPage(
+        subpath: 'engines',
+        title: 'Search Engines',
+        navLabel: 'Engines',
+      ),
+      MobileChildPage(
+        subpath: 'playground',
+        title: 'Search Playground',
+        navLabel: 'Playground',
+      ),
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_seo',
     routeSegment: 'seo',
     nav: MobileNavMeta(title: 'SEO', icon: 'travel_explore'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'overview',
+        title: 'SEO Overview',
+        navLabel: 'Overview',
+      ),
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_tenant',
     routeSegment: 'tenant',
     nav: MobileNavMeta(title: 'Tenant', icon: 'apartment'),
+    childPages: <MobileChildPage>[
+    ],
   ),
   MobileModuleEntry(
     moduleKey: 'rustok_workflow',
     routeSegment: 'workflow',
     nav: MobileNavMeta(title: 'Workflow', icon: 'account_tree'),
+    childPages: <MobileChildPage>[
+      MobileChildPage(
+        subpath: 'templates',
+        title: 'Workflow Templates',
+        navLabel: 'Templates',
+      ),
+    ],
   ),
 ];

@@ -47,12 +47,21 @@
 - [x] Подключить `PageBuilder` в production CRUD-flow pages.
 - [ ] Зафиксировать parity-план для двух стеков: `apps/next-admin` и `apps/admin`.
 - [ ] Выровнять UX-обработку validation/sanitize ошибок в формах.
+- [ ] Синхронизировать milestone-dependency с Flutter registry/codegen планом (`docs/research/flutter.md`, секция anti-drift guardrail), чтобы mobile host не расходился с backend/page-builder rollout.
 
 Текущее состояние `apps/next-admin`: production-формы blog и forum снова используют реальный Tiptap-based editor, а сериализация в write-path идёт в канонический payload `rt_json_v1` (`version` / `locale` / `doc`) без textarea-fallback в основном UX. `PageBuilder` переведён на реальный `GrapesJS` runtime, сохраняет `projectData` в body-формат `grapesjs_v1`, работает с реальным выбором страниц и оставляет legacy `blocks` как отдельную migration-compatible поверхность. Для `pages` compatibility rules теперь зафиксированы явно: `body` считается приоритетным payload для visual-builder consumer-ов, но legacy block-driven pages могут оставаться без `body`, а запись `body` не удаляет старые `blocks` автоматически.
 
 Отдельный детальный план по `pages` как модулю ведётся в `crates/rustok-pages/docs/implementation-plan.md` в секции `Dedicated page-builder track`, чтобы rollout visual builder не смешивался ни с OAuth/app-registration, ни с rich-text задачами blog/forum.
 
 **DoD фазы:** все целевые формы работают через компонентные редакторы, без ручного markdown-only fallback в основном UX.
+
+### Cross-plan dependency note (обязательно для hand-off)
+
+- До завершения backend/parity шагов этой дорожной карты Flutter-команда может делать только contract-safe registry scaffolding.
+- Любые изменения mobile module contracts для page-builder обязаны содержать явное уведомление о зависимостях и блокерах между:
+  - `docs/research/flutter.md`;
+  - текущим документом;
+  - `crates/rustok-pages/docs/implementation-plan.md`.
 
 ### Фаза 2 — Feature flags и стратегия rollout
 

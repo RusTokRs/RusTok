@@ -7,10 +7,10 @@
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Закрыть sync-точки с `docs/modules/tiptap-page-builder-implementation-plan.md` и `docs/research/flutter.md` перед расширением mobile page-builder surfaces.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок и явно фиксировать, какие шаги Flutter/mobile ещё заблокированы текущим pages backend/parity статусом.
+- Last updated at (UTC): 2026-05-22T00:00:00Z
 
 ## Область работ
 
@@ -59,6 +59,7 @@
 2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
 3. При изменении dependency graph, UI wiring или visibility semantics синхронизировать `rustok-module.toml`.
 4. При изменении shared rich-text expectations обновлять также связанные docs в `rustok-content`.
+5. При изменении page-builder contract синхронно обновлять dependency-notes в `docs/modules/tiptap-page-builder-implementation-plan.md` и `docs/research/flutter.md`.
 
 
 ## Quality backlog

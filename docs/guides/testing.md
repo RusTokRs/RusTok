@@ -48,3 +48,23 @@ The dependency guard enforces (backend scope):
 - no new bypass dependencies between domain crates unless the edge is in `scripts/architecture_rules.toml` allow-list;
 - no nested imports of internal crate modules from target backend apps, except explicit allow-list exceptions in `scripts/architecture_rules.toml`;
 - frontend workspace libraries remain allowed for frontend apps and are not blocked by this backend-oriented guard.
+
+
+## Docs PR verification contract
+
+For documentation-only or documentation-heavy PRs, reporting must follow the
+repository PR template and the tracker policy in
+`docs/research/fix docs.md`.
+
+Minimum requirement:
+
+- include exact commands and statuses in **Testing**;
+- mirror the same command list/statuses in **Verification Evidence**;
+- include date in `YYYY-MM-DD` for every verification row;
+- for `fail`/`blocked`, include `reason: ...` with exact stderr or limitation.
+
+When checks are skipped by policy for text-only edits, use only:
+
+- `text-only: checks skipped by policy`.
+
+Reference template: `.github/pull_request_template.md`.

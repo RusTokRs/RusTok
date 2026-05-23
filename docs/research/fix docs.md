@@ -407,6 +407,9 @@ Batch считается закрытым только если одноврем
 | 2026-05-22 | B6 | DOC-05 | `[x]` | `commit: 1d087a3` | `docs/index.md` переведён в navigation-first, убрана статусная хроника |
 | 2026-05-22 | B7 | DOC-06 | `[x]` | `commit: c9a22f1` | Реестры синхронизированы с `modules.toml` |
 | 2026-05-22 | B8 | DOC-07 | `[x]` | `commit: 1bf7ead` | Зафиксирован baseline quality-gates в verification-планах |
+| 2026-05-22 | B11 | DOC-09 | `[~]` | `commit: 4bafe23` | Добавлены API reference-artifacts требования и B11 checklist в verification-план API surfaces |
+| 2026-05-22 | B13 | DOC-11 | `[~]` | `commit: 4f76fc2` | Добавлен docs PR verification contract в `docs/guides/testing.md` |
+| 2026-05-22 | B13 | DOC-11 | `[~]` | `commit: 4e3ead8` | В PR template добавлен hotspot-блок (`Hotspot`, `Doc contracts updated`, `Residual drift risk`) |
 
 Пример реальной записи после merge:
 
@@ -446,9 +449,9 @@ Batch считается закрытым только если одноврем
 - [x] DOC-06 Registry ↔ manifest sync (commit: c9a22f1, merged: 2026-05-22)
 - [x] DOC-07 Docs CI quality gates (commit: 1bf7ead, merged: 2026-05-22)
 - [x] DOC-08 Executable examples hub (commit: 0f35991, merged: 2026-05-22)
-- [ ] DOC-09 Конвейер генерации reference-артефактов
+- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11, commit: 4bafe23)
 - [ ] DOC-10 Language/naming governance
-- [ ] DOC-11 Reviewer checklist + PR template
+- [~] DOC-11 Reviewer checklist + PR template (Batch: B13, commit: 4e3ead8)
 - [ ] DOC-12 Code hotspots documentation
 
 ### Процедура синхронизации трекера с уже влитыми PR
@@ -647,10 +650,23 @@ Reviewer перед approve проверяет:
 
 ### Трекер статуса (рабочий порядок закрытия хвоста)
 
-- [ ] DOC-09 Конвейер генерации reference-артефактов (Batch: B11 → B12)
+- [~] DOC-09 Конвейер генерации reference-артефактов (Batch: B11, commit: 4bafe23)
 - [ ] DOC-10 Language/naming governance (Batch: B13)
-- [ ] DOC-11 Reviewer checklist + PR template (Batch: B13)
+- [~] DOC-11 Reviewer checklist + PR template (Batch: B13, commit: 4e3ead8)
 - [ ] DOC-12 Code hotspots documentation (Batch: B14)
+
+
+### B12 preflight blocker (зафиксировано)
+
+Текущий `.github/workflows/ci.yml` не содержит отдельного job-а публикации
+reference-артефактов (`openapi/graphql-introspection/rustdoc`) и contract-diff
+для PR, поэтому `DOC-09` нельзя переводить в `[x]` до реализации B12 в CI.
+
+Минимальный scope B12 для снятия блокера:
+
+- добавить CI job с запуском `scripts/verify/export-reference-artifacts.sh`;
+- публиковать `artifacts/reference/**` через `actions/upload-artifact`;
+- добавить обязательную проверку в aggregate (`ci-success`).
 
 ### Verification policy для B11..B14
 
@@ -706,3 +722,53 @@ Reviewer перед approve проверяет:
 
 Если два batch пересекаются по одному файлу, более поздний batch стартует
 только после merge более раннего по зависимости (`Depends on`).
+
+
+## Следующий этап реализации: DOC-09 → DOC-12 (готово к запуску)
+
+После закрытия B1–B10 остаются четыре пункта трекера (`DOC-09..DOC-12`).
+Ниже зафиксирован исполняемый план без дополнительной декомпозиции.
+
+### Batch-план для незакрытых задач
+
+| Batch | Закрывает | Область изменений (точно) | Exit criteria | Минимальная проверка |
+|---|---|---|---|---|
+| B11 | DOC-09 | `xtask/`, `apps/server` (export hooks), `docs/verification/*`, `docs/architecture/api.md` (ссылки на artifacts) | В CI публикуются rustdoc/OpenAPI/GraphQL артефакты; есть diff-check контрактов в PR | `cargo xtask docs-export --check`; `cargo test -p rustok-workflow`; link-check изменённых docs |
+| B12 | DOC-10 | `docs/standards/coding.md`, `docs/guides/testing.md`, `docs/modules/registry.md` (ownership policy refs) | Формализованы language/naming/review policy и ownership-review path | markdownlint + link-check изменённых docs |
+| B13 | DOC-11 | `.github/pull_request_template.md`, `docs/guides/quickstart.md` (ссылка на checklist), `docs/research/fix docs.md` (трекер/журнал) | PR template содержит обязательный docs checklist и Verification Evidence; чеклист применён минимум в одном реальном docs PR | markdownlint шаблона/доков + ручная валидация шаблона |
+| B14 | DOC-12 | `docs/modules/*`, `apps/*/docs/*`, `crates/*/docs/*` (только hotspot-зоны H4/H5 first pass) | Для каждой hotspot-зоны есть owner, scope, residual risk и минимум один merged update | markdownlint + link-check только по изменённым hotspot-файлам |
+
+### Критический путь и зависимости
+
+1. **B11 (DOC-09)** — блокирует финализацию DOC-12 для API hotspot-ветки H4.
+2. **B12 (DOC-10)** — создаёт governance baseline, который обязателен для B13.
+3. **B13 (DOC-11)** — включает enforcement через PR template.
+4. **B14 (DOC-12)** — выполняется после появления quality gates и governance (B11–B13).
+
+### Definition of Ready (DoR) для B11–B14
+
+Перед стартом каждого batch обязательно:
+
+- зафиксирован owner/reviewer в описании PR;
+- приложен точный scope файлов (без «и др.»);
+- подготовлен Verification Evidence-шаблон с датой `YYYY-MM-DD`;
+- указано, попадает ли PR в hotspot H1..H5.
+
+### Definition of Done (DoD) для B11–B14
+
+Batch считается завершённым только если:
+
+- все exit criteria закрыты фактическими изменениями в scope;
+- разделы `Testing` и `Verification Evidence` согласованы построчно;
+- трекер внизу документа обновлён на `[~]` (open PR) или `[x]` (merged);
+- добавлена строка в «Журнал исполнения батчей» с реальным PR/commit идентификатором.
+
+### Обновление трекера для следующего цикла
+
+Использовать только следующие переходы:
+
+- `[ ] -> [~]` при открытии PR;
+- `[~] -> [x]` только после merge в default branch;
+- `[ ] -> [x]` разрешён только для уже исторически влитого изменения с подтверждённым merge-следом.
+
+---

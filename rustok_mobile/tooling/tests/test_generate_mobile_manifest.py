@@ -24,6 +24,10 @@ class GenerateMobileManifestTests(unittest.TestCase):
                     [provides.admin_ui]
                     route_segment = "Auth"
                     nav_label = "Auth"
+
+                    [[provides.admin_ui.child_pages]]
+                    subpath = "Users"
+                    title = "Users"
                     """
                 ).strip()
             )
@@ -52,6 +56,7 @@ class GenerateMobileManifestTests(unittest.TestCase):
             modules = scan_modules(root)
             self.assertEqual([m["route_segment"] for m in modules], ["auth", "blog"])
             self.assertEqual(modules[0]["icon"], "shield")
+            self.assertEqual(modules[0]["child_pages"][0]["subpath"], "users")
 
     def test_render_escapes_quotes(self):
         content = render(
@@ -65,6 +70,24 @@ class GenerateMobileManifestTests(unittest.TestCase):
             ]
         )
         self.assertIn("Owner\\'s", content)
+
+    def test_render_includes_child_pages(self):
+        content = render(
+            [
+                {
+                    "module_key": "rustok_test",
+                    "route_segment": "test",
+                    "nav_label": "Test",
+                    "icon": "module",
+                    "child_pages": [
+                        {"subpath": "items", "title": "Items", "nav_label": "All items"}
+                    ],
+                }
+            ]
+        )
+        self.assertIn("childPages: <MobileChildPage>[", content)
+        self.assertIn("subpath: 'items'", content)
+        self.assertIn("navLabel: 'All items'", content)
 
 
 if __name__ == "__main__":
