@@ -206,7 +206,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let initial_edit_post = edit_post;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| match selected_post_query.get() {
-        Some(post_id) if !post_id.trim().is_empty() => {
+        Some(post_id) if core::has_non_empty_text(post_id.as_str()) => {
             initial_edit_post.run((post_id, effect_default_locale.clone()));
         }
         _ => reset_form(
@@ -233,10 +233,10 @@ pub fn BlogAdmin() -> impl IntoView {
 
         let draft = BlogPostDraft {
             locale: locale.get_untracked(),
-            title: title.get_untracked().trim().to_string(),
-            slug: slug.get_untracked().trim().to_string(),
-            excerpt: excerpt.get_untracked().trim().to_string(),
-            body: body.get_untracked().trim().to_string(),
+            title: core::trimmed_text(title.get_untracked().as_str()),
+            slug: core::trimmed_text(slug.get_untracked().as_str()),
+            excerpt: core::trimmed_text(excerpt.get_untracked().as_str()),
+            body: core::trimmed_text(body.get_untracked().as_str()),
             body_format: body_format.get_untracked(),
             publish: publish_now.get_untracked(),
             tags: core::parse_tags(tags_input.get_untracked().as_str()),
@@ -600,7 +600,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 prop:value=title
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
-                                    if slug.get_untracked().trim().is_empty() {
+                                    if !core::has_non_empty_text(slug.get_untracked().as_str()) {
                                         set_slug.set(core::slugify(value.as_str()));
                                     }
                                     set_title.set(value);
@@ -826,18 +826,17 @@ fn BlogPostsTable(
                                 let post_id_publish = post_id.clone();
                                 let post_id_archive = post_id.clone();
                                 let post_id_delete = post_id.clone();
-                                let post_slug = post.slug.clone().unwrap_or_else(|| {
-                                    t(locale.as_deref(), "blog.table.draft", "draft")
-                                });
+                                let post_slug = core::fallback_post_slug(
+                                    post.slug.clone(),
+                                    &t(locale.as_deref(), "blog.table.draft", "draft"),
+                                );
                                 let post_locale = post.effective_locale.clone();
                                 let post_locale_edit = post_locale.clone();
                                 let post_locale_publish = post_locale.clone();
                                 let post_locale_archive = post_locale.clone();
                                 let is_editing = editing_post_id.as_deref() == Some(post_id.as_str());
-                                let row_busy = busy_key
-                                    .as_deref()
-                                    .map(|key| key.contains(post_id.as_str()))
-                                    .unwrap_or(false);
+                                let row_busy =
+                                    core::row_is_busy_for_post(busy_key.as_deref(), post_id.as_str());
                                 let is_published = core::is_published_status(post.status.as_str());
                                 let is_archived = core::is_archived_status(post.status.as_str());
 
@@ -846,9 +845,10 @@ fn BlogPostsTable(
                                         <td class="px-4 py-3 align-top">
                                             <div class="font-medium text-foreground">{post.title}</div>
                                             <div class="mt-1 text-xs text-muted-foreground">
-                                                {post.excerpt.unwrap_or_else(|| {
-                                                    t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt")
-                                                })}
+                                                {core::fallback_post_excerpt(
+                                                    post.excerpt,
+                                                    &t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt"),
+                                                )}
                                             </div>
                                         </td>
                                         <td class="px-4 py-3 align-top text-xs text-muted-foreground">{post_slug}</td>

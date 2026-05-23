@@ -96,6 +96,28 @@ pub fn status_badge_css(status: &str) -> String {
     )
 }
 
+pub fn has_non_empty_text(value: &str) -> bool {
+    !value.trim().is_empty()
+}
+
+pub fn trimmed_text(value: &str) -> String {
+    value.trim().to_string()
+}
+
+pub fn fallback_post_slug(value: Option<String>, fallback: &str) -> String {
+    value.unwrap_or_else(|| fallback.to_string())
+}
+
+pub fn fallback_post_excerpt(value: Option<String>, fallback: &str) -> String {
+    value.unwrap_or_else(|| fallback.to_string())
+}
+
+pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
+    busy_key
+        .map(|key| key.contains(post_id))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +191,18 @@ mod tests {
             status_badge_css("published"),
             "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
         );
+        assert!(has_non_empty_text(" x "));
+        assert!(!has_non_empty_text("   "));
+        assert_eq!(trimmed_text(" abc "), "abc".to_string());
+        assert_eq!(
+            fallback_post_slug(None, "missing-slug"),
+            "missing-slug".to_string()
+        );
+        assert_eq!(
+            fallback_post_excerpt(None, "No excerpt"),
+            "No excerpt".to_string()
+        );
+        assert!(row_is_busy_for_post(Some("edit:42"), "42"));
+        assert!(!row_is_busy_for_post(Some("edit:41"), "42"));
     }
 }
