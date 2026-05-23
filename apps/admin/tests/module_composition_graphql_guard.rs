@@ -384,6 +384,163 @@ fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallb
 }
 
 #[test]
+fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    struct Case<'a> {
+        signature: &'a str,
+        mutation: &'a str,
+        typed_response: &'a str,
+        canonical_return: &'a str,
+        foreign_mutations: [&'a str; 2],
+        required_payload_fields: &'a [&'a str],
+    }
+
+    let cases = [
+        Case {
+            signature: "pub async fn install_module(",
+            mutation: "INSTALL_MODULE_MUTATION",
+            typed_response: "let response: InstallModuleResponse",
+            canonical_return: "Ok(response.install_module)",
+            foreign_mutations: ["UNINSTALL_MODULE_MUTATION", "UPGRADE_MODULE_MUTATION"],
+            required_payload_fields: &["InstallModuleVariables {", "slug,", "version,", "token,", "tenant_slug,"],
+        },
+        Case {
+            signature: "pub async fn uninstall_module(",
+            mutation: "UNINSTALL_MODULE_MUTATION",
+            typed_response: "let response: UninstallModuleResponse",
+            canonical_return: "Ok(response.uninstall_module)",
+            foreign_mutations: ["INSTALL_MODULE_MUTATION", "UPGRADE_MODULE_MUTATION"],
+            required_payload_fields: &["UninstallModuleVariables {", "slug,", "token,", "tenant_slug,"],
+        },
+        Case {
+            signature: "pub async fn upgrade_module(",
+            mutation: "UPGRADE_MODULE_MUTATION",
+            typed_response: "let response: UpgradeModuleResponse",
+            canonical_return: "Ok(response.upgrade_module)",
+            foreign_mutations: ["INSTALL_MODULE_MUTATION", "UNINSTALL_MODULE_MUTATION"],
+            required_payload_fields: &["UpgradeModuleVariables {", "slug,", "version,", "token,", "tenant_slug,"],
+        },
+    ];
+
+    for case in cases {
+        let helper_body = extract_function_block(&content, case.signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {}", case.signature));
+
+        assert_eq!(helper_body.matches("request(").count(), 1, "{} must call request exactly once", case.signature);
+        assert_eq!(helper_body.matches(case.mutation).count(), 1, "{} must reference canonical mutation exactly once", case.signature);
+        assert!(helper_body.contains(case.typed_response), "{} must decode typed response", case.signature);
+        assert!(helper_body.contains(case.canonical_return), "{} must return canonical payload", case.signature);
+
+        for forbidden in case.foreign_mutations {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{} must not reference foreign mutation `{forbidden}`",
+                case.signature
+            );
+        }
+        for field in case.required_payload_fields {
+            assert!(
+                helper_body.contains(field),
+                "{} must preserve GraphQL payload/auth forwarding field `{field}`",
+                case.signature
+            );
+        }
+
+        for forbidden_fragment in [
+            ".map_err(",
+            "combine_native_and_graphql_error",
+            "Some(",
+            "None",
+            "UNKNOWN_MODULE",
+            "CORE_MODULE",
+            "HAS_DEPENDENTS",
+            "MISSING_DEPENDENCIES",
+            "MODULE_HOOK_FAILED",
+            "extensions.code",
+            "reason_code",
+            "module_operations",
+            "correlation_id",
+            "requested_by",
+        ] {
+            assert!(
+                !helper_body.contains(forbidden_fragment),
+                "{} must not contain forbidden helper-level fragment `{forbidden_fragment}`",
+                case.signature
+            );
+        }
+    }
+}
+
+#[test]
+fn module_graphql_mutation_constants_have_stable_operation_shapes() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let cases = [
+        (
+            "pub const INSTALL_MODULE_MUTATION: &str = \"",
+            [
+                "mutation InstallModule(",
+                "installModule(",
+                "slug: $slug",
+                "version: $version",
+                "manifestRef",
+                "manifestHash",
+                "manifestRevision",
+            ],
+            ["__typename", "toggleModule(", "moduleSlug: $moduleSlug"],
+        ),
+        (
+            "pub const UNINSTALL_MODULE_MUTATION: &str = \"",
+            [
+                "mutation UninstallModule(",
+                "uninstallModule(",
+                "slug: $slug",
+                "manifestRef",
+                "manifestHash",
+                "manifestRevision",
+            ],
+            ["__typename", "toggleModule(", "version: $version"],
+        ),
+        (
+            "pub const UPGRADE_MODULE_MUTATION: &str = \"",
+            [
+                "mutation UpgradeModule(",
+                "upgradeModule(",
+                "slug: $slug",
+                "version: $version",
+                "manifestRef",
+                "manifestHash",
+                "manifestRevision",
+            ],
+            ["__typename", "toggleModule(", "moduleSlug: $moduleSlug"],
+        ),
+    ];
+
+    for (declaration, required_fragments, forbidden_fragments) in cases {
+        let mutation = extract_const_string_literal(&content, declaration)
+            .unwrap_or_else(|| panic!("mutation declaration not found: {declaration}"));
+
+        for required in required_fragments {
+            assert!(
+                mutation.contains(required),
+                "mutation shape drifted: missing `{required}` for declaration `{declaration}`"
+            );
+        }
+        for forbidden in forbidden_fragments {
+            assert!(
+                !mutation.contains(forbidden),
+                "mutation contract must not contain `{forbidden}` for declaration `{declaration}`"
+            );
+        }
+    }
+}
+
+#[test]
 fn toggle_module_helper_uses_graphql_only_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");
@@ -820,6 +977,13 @@ fn extract_function_block<'a>(content: &'a str, signature: &str) -> Option<&'a s
     }
 
     end_rel.map(|end| &rest[..end])
+}
+
+fn extract_const_string_literal<'a>(content: &'a str, declaration: &str) -> Option<&'a str> {
+    let start = content.find(declaration)?;
+    let rest = &content[start + declaration.len()..];
+    let end = rest.find("\";")?;
+    Some(&rest[..end])
 }
 
 #[test]
