@@ -774,3 +774,49 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
         .unwrap_or_default()
         .contains("post-hook"));
 }
+
+#[tokio::test]
+async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("search"));
+    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "search", true)
+        .await
+        .expect("enable should succeed");
+
+    let failing_registry =
+        ModuleRegistry::new().register(TestModule::new("search").with_post_disable_failure());
+    let err = ModuleLifecycleService::toggle_module(&db, &failing_registry, tenant_id, "search", false)
+        .await
+        .expect_err("post-disable failure expected");
+    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+
+    let state = tenant_modules::Entity::find()
+        .filter(tenant_modules::Column::TenantId.eq(tenant_id))
+        .filter(tenant_modules::Column::ModuleSlug.eq("search"))
+        .one(&db)
+        .await
+        .expect("load state")
+        .expect("state row exists");
+    assert!(
+        !state.enabled,
+        "post-hook failure must keep committed disabled state",
+    );
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .filter(module_operations::Column::RequestedEnabled.eq(false))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert!(failed_operation
+        .error_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("post-hook"));
+}
