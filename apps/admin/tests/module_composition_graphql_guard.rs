@@ -320,6 +320,7 @@ fn module_composition_mutation_constants_are_declared_once() {
         "pub const INSTALL_MODULE_MUTATION: &str =",
         "pub const UNINSTALL_MODULE_MUTATION: &str =",
         "pub const UPGRADE_MODULE_MUTATION: &str =",
+        "pub const TOGGLE_MODULE_MUTATION: &str =",
     ] {
         let occurrences = content.matches(constant).count();
         assert_eq!(
@@ -350,6 +351,15 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
             "pub async fn upgrade_module(",
             "UPGRADE_MODULE_MUTATION",
             ["INSTALL_MODULE_MUTATION", "UNINSTALL_MODULE_MUTATION"],
+        ),
+        (
+            "pub async fn toggle_module(",
+            "TOGGLE_MODULE_MUTATION",
+            [
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+            ],
         ),
     ];
 
