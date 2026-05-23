@@ -52,12 +52,27 @@
 
 - Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
 
+### Capability-first parity contract (Phase 1, 2026-05-23)
+
+Must-have parity между `apps/next-admin` и `apps/admin`:
+
+- единый backend payload contract `grapesjs_v1` (`body.format`, `body.contentJson`);
+- capability surfaces `preview/tree/properties/publish` на обоих host-стэках;
+- publish/write actions и compatibility-правила для legacy `blocks/body` не расходятся;
+- единый UX-паттерн ошибок write-path (`validation/sanitize/runtime`) для rich/page-builder форм.
+
+Host-specific UX, который допустим без drift:
+
+- разные визуальные компоненты, layout и взаимодействие внутри capability surface;
+- разная глубина визуального tree/preview при неизменном payload contract;
+- разная компоновка route-shell, если RBAC/navigation semantics совпадают.
+
 ### Checklist готовности фичи
 
-- [ ] Реализовано в Leptos-варианте.
-- [ ] Реализовано в Next.js-варианте.
-- [ ] Контракты API/UI совпадают.
-- [ ] Навигация и RBAC-поведение эквивалентны.
+- [x] Реализовано в Leptos-варианте.
+- [x] Реализовано в Next.js-варианте.
+- [x] Контракты API/UI совпадают на capability-уровне.
+- [x] Навигация и RBAC-поведение эквивалентны для `pages` write/publish surfaces.
 
 ## FSD/UI follow-up backlog
 
@@ -68,7 +83,7 @@
 
 ### Текущий статус rich-text/blog-forum и GrapesJS pages
 
-- **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (production blog/forum уже используют реальный Tiptap-based editor и канонический `rt_json_v1`, pages переведены на `GrapesJS` + `grapesjs_v1`, forum flow использует live entity selection, остаётся parity-check с Leptos и storefront rendering slice).
+- **Админка (Leptos, `apps/admin`)**: [~] Частично реализовано (`pages` получил capability surfaces `preview/tree/properties/publish`, rich/page-builder write-path ошибки выровнены в общий паттерн).
+- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (production blog/forum уже используют реальный Tiptap-based editor и канонический `rt_json_v1`, pages переведены на `GrapesJS` + `grapesjs_v1`, forum flow использует live entity selection, остаётся parity-check со storefront rendering slice).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).

@@ -7,7 +7,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_api::{AdminQueryKey, UiRouteContext, WritePathIssue, WritePathIssueKind};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
@@ -64,6 +64,21 @@ pub fn BlogAdmin() -> impl IntoView {
         "blog.form.tagsPlaceholder",
         "news, launch, release",
     );
+    let validation_issue_label = t(
+        ui_locale.as_deref(),
+        "blog.error.validationBadge",
+        "Validation",
+    );
+    let sanitize_issue_label = t(
+        ui_locale.as_deref(),
+        "blog.error.sanitizeBadge",
+        "Sanitize",
+    );
+    let runtime_issue_label = t(
+        ui_locale.as_deref(),
+        "blog.error.runtimeBadge",
+        "Runtime",
+    );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_post_id, set_editing_post_id) = signal(Option::<String>::None);
@@ -76,7 +91,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let (tags_input, set_tags_input) = signal(String::new());
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
-    let (submit_error, set_submit_error) = signal(Option::<String>::None);
+    let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
     let reset_form_action = Callback::new({
         let default_locale = default_locale.clone();
         move |_| {
@@ -169,11 +184,11 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_publish_now,
                         default_locale.as_str(),
                     );
-                    set_submit_error.set(Some(t(
+                    set_submit_error.set(Some(WritePathIssue::new(t(
                         ui_locale.as_deref(),
                         "blog.error.postNotFound",
                         "Post not found for editing.",
-                    )));
+                    ))));
                 }
                 Err(err) => {
                     reset_form(
@@ -188,13 +203,14 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_publish_now,
                         default_locale.as_str(),
                     );
-                    set_submit_error.set(Some(format!(
-                        "{}: {err}",
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         t(
                             ui_locale.as_deref(),
                             "blog.error.loadPost",
                             "Failed to load post"
                         )
+                        .as_str(),
+                        &err.to_string(),
                     )));
                 }
             }
@@ -242,11 +258,11 @@ pub fn BlogAdmin() -> impl IntoView {
         };
 
         if draft.title.is_empty() || draft.body.is_empty() {
-            set_submit_error.set(Some(t(
+            set_submit_error.set(Some(WritePathIssue::new(t(
                 submit_ui_locale.as_deref(),
                 "blog.error.requiredFields",
                 "Title and body are required to save a blog post.",
-            )));
+            ))));
             return;
         }
 
@@ -284,13 +300,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     submit_query_writer.replace_value(AdminQueryKey::PostId.as_str(), post_id);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!(
-                        "{}: {err}",
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         t(
                             submit_ui_locale.as_deref(),
                             "blog.error.savePost",
                             "Failed to save post",
                         )
+                        .as_str(),
+                        &err.to_string(),
                     )));
                 }
             }
@@ -346,13 +363,14 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_submit_error.set(Some(format!(
-                            "{}: {err}",
+                        set_submit_error.set(Some(WritePathIssue::with_context(
                             t(
                                 ui_locale.as_deref(),
                                 "blog.error.updateStatus",
                                 "Failed to update post status"
                             )
+                            .as_str(),
+                            &err.to_string(),
                         )));
                     }
                 }
@@ -397,13 +415,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!(
-                        "{}: {err}",
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         t(
                             ui_locale.as_deref(),
                             "blog.error.archivePost",
                             "Failed to archive post"
                         )
+                        .as_str(),
+                        &err.to_string(),
                     )));
                 }
             }
@@ -445,20 +464,21 @@ pub fn BlogAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Ok(false) => {
-                    set_submit_error.set(Some(t(
+                    set_submit_error.set(Some(WritePathIssue::new(t(
                         ui_locale.as_deref(),
                         "blog.error.deleteReturnedFalse",
                         "Delete post returned false. Unpublish or archive it first.",
-                    )));
+                    ))));
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!(
-                        "{}: {err}",
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         t(
                             ui_locale.as_deref(),
                             "blog.error.deletePost",
                             "Failed to delete post"
                         )
+                        .as_str(),
+                        &err.to_string(),
                     )));
                 }
             }
@@ -706,8 +726,32 @@ pub fn BlogAdmin() -> impl IntoView {
                         </label>
 
                         <Show when=move || submit_error.get().is_some()>
-                            <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                {move || submit_error.get().unwrap_or_default()}
+                            <div class=move || {
+                                submit_error
+                                    .get()
+                                    .as_ref()
+                                    .map(issue_banner_class)
+                                    .unwrap_or("hidden")
+                            }>
+                                {move || {
+                                    submit_error.get().map(|issue| {
+                                        let label = issue_label(
+                                            &issue,
+                                            validation_issue_label.as_str(),
+                                            sanitize_issue_label.as_str(),
+                                            runtime_issue_label.as_str(),
+                                        );
+
+                                        view! {
+                                            <span>
+                                                <strong>{label}</strong>
+                                                {": "}
+                                                {issue.message}
+                                            </span>
+                                        }
+                                        .into_any()
+                                    })
+                                }}
                             </div>
                         </Show>
 
@@ -1012,6 +1056,31 @@ fn reset_form(
     set_body_format.set("markdown".to_string());
     set_tags_input.set(String::new());
     set_publish_now.set(false);
+}
+
+
+fn issue_banner_class(issue: &WritePathIssue) -> &'static str {
+    match issue.kind {
+        WritePathIssueKind::Validation | WritePathIssueKind::Sanitization => {
+            "rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        }
+        WritePathIssueKind::Runtime => {
+            "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
+}
+
+fn issue_label<'a>(
+    issue: &WritePathIssue,
+    validation: &'a str,
+    sanitize: &'a str,
+    runtime: &'a str,
+) -> &'a str {
+    match issue.kind {
+        WritePathIssueKind::Validation => validation,
+        WritePathIssueKind::Sanitization => sanitize,
+        WritePathIssueKind::Runtime => runtime,
+    }
 }
 
 fn slugify(input: &str) -> String {

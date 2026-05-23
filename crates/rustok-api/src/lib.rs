@@ -8,6 +8,7 @@ pub mod loco;
 pub mod request;
 pub mod route_selection;
 pub mod ui;
+pub mod write_path_feedback;
 
 #[cfg(feature = "server")]
 pub use context::{
@@ -30,3 +31,4 @@ pub use ui::{
     build_ui_message_catalog, resolve_ui_message, resolve_ui_message_or_fallback, UiMessageCatalog,
     UiRouteContext,
 };
+pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};

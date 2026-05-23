@@ -45,6 +45,9 @@
   "blog.error.archivePost": "Не удалось архивировать пост",
   "blog.error.deleteReturnedFalse": "Удаление поста вернуло false. Сначала снимите его с публикации или архивируйте.",
   "blog.error.deletePost": "Не удалось удалить пост",
+  "blog.error.validationBadge": "Валидация",
+  "blog.error.sanitizeBadge": "Санитизация",
+  "blog.error.runtimeBadge": "Рантайм",
   "blog.seo.title": "SEO поста",
   "blog.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранного поста блога.",
   "blog.seo.empty": "Сначала создайте или откройте пост. SEO остаётся внутри редактора блога, а не в глобальном SEO-хабе."

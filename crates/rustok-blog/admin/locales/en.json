@@ -45,6 +45,9 @@
   "blog.error.archivePost": "Failed to archive post",
   "blog.error.deleteReturnedFalse": "Delete post returned false. Unpublish or archive it first.",
   "blog.error.deletePost": "Failed to delete post",
+  "blog.error.validationBadge": "Validation",
+  "blog.error.sanitizeBadge": "Sanitize",
+  "blog.error.runtimeBadge": "Runtime",
   "blog.seo.title": "Post SEO",
   "blog.seo.subtitle": "Explicit metadata, social tags and diagnostics for the selected blog post.",
   "blog.seo.empty": "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub."

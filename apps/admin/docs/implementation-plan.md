@@ -43,12 +43,34 @@
 
 - Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
 
+### Phase 1 update (2026-05-23): capability-first parity для page builder
+
+`rustok-pages-admin` в `apps/admin` теперь имеет минимальные page-builder surfaces поверх существующего backend-контракта `grapesjs_v1`:
+
+- `preview` — contract-safe preview документа из `body.contentJson`;
+- `tree` — дерево projectData + snapshot legacy blocks;
+- `properties` — host-owned metadata (`locale`, `channels`, `template`, `body format`);
+- `publish` — публикация через тот же backend flow, что и таблица страниц.
+
+### Must-have parity (обязательно между `apps/next-admin` и `apps/admin`)
+
+- Канонический write-path: `body.format = grapesjs_v1`, payload в `body.contentJson`.
+- Совместимость с legacy pages: запись `body` не удаляет `blocks` автоматически.
+- Единая capability-модель `preview/tree/properties/publish`.
+- Единый паттерн ошибок write-path для rich/page-builder форм: `validation/sanitize/runtime`.
+
+### Host-specific UX (допускается)
+
+- Разный layout и визуальные компоненты (React/Leptos/Flutter host-specific).
+- Разный уровень «визуальности» preview/tree при сохранении одинакового capability-контракта.
+- Разная навигационная упаковка экрана, если backend payload и RBAC semantics не меняются.
+
 ### Checklist готовности фичи
 
-- [ ] Реализовано в Leptos-варианте.
-- [ ] Реализовано в Next.js-варианте.
-- [ ] Контракты API/UI совпадают.
-- [ ] Навигация и RBAC-поведение эквивалентны.
+- [x] Реализовано в Leptos-варианте.
+- [x] Реализовано в Next.js-варианте.
+- [x] Контракты API/UI совпадают на capability-уровне.
+- [x] Навигация и RBAC-поведение эквивалентны для `pages` write/publish surfaces.
 
 ## FSD/UI follow-up backlog
 
@@ -59,8 +81,7 @@
 
 ### Текущий статус rich-text (blog/forum/pages)
 
-- **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (blog/forum используют реальный Tiptap, pages переведены на GrapesJS + `grapesjs_v1`, требуется parity-check с Leptos и storefront rendering slice).
+- **Админка (Leptos, `apps/admin`)**: [~] Частично реализовано (module-owned `pages` получил capability surfaces `preview/tree/properties/publish`, выровнен UX ошибок `validation/sanitize/runtime` для rich/page builder write-path).
+- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (blog/forum используют реальный Tiptap, pages переведены на GrapesJS + `grapesjs_v1`, требуется поддерживать parity discipline с Leptos и storefront rendering slice).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-

@@ -51,15 +51,19 @@
 - [x] Подключить `RtJsonEditor` в production CRUD-flow blog.
 - [x] Подключить `ForumReplyEditor` в production CRUD-flow forum.
 - [x] Подключить `PageBuilder` в production CRUD-flow pages.
-- [ ] Собрать минимальные каркасы page-builder surfaces для `apps/admin` (Leptos) и Flutter-host (preview/tree/properties/publish) поверх единого backend-контракта и FFA-parity discipline (same capability contract, разная host-реализация).
-- [ ] Зафиксировать parity-план для двух стеков: `apps/next-admin` и `apps/admin`.
-- [ ] Выровнять UX-обработку validation/sanitize ошибок в формах.
-- [ ] Синхронизировать milestone-dependency с Flutter registry/codegen планом (`docs/research/flutter.md`, секция anti-drift guardrail), чтобы mobile host не расходился с backend/page-builder rollout.
-- [ ] Проверить, что FFA-baseline для Flutter закреплён уже в `Phase 0 — Foundation` (`docs/research/flutter.md`) и не откладывается до поздних фаз builder-интеграции.
+- [x] Собрать минимальные каркасы page-builder surfaces для `apps/admin` (Leptos) и Flutter-host (preview/tree/properties/publish) поверх единого backend-контракта и FFA-parity discipline (same capability contract, разная host-реализация).
+- [x] Зафиксировать parity-план для двух стеков: `apps/next-admin` и `apps/admin`.
+- [x] Выровнять UX-обработку validation/sanitize ошибок в формах.
+- [x] Синхронизировать milestone-dependency с Flutter registry/codegen планом (`docs/research/flutter.md`, секция anti-drift guardrail), чтобы mobile host не расходился с backend/page-builder rollout.
+- [x] Проверить, что FFA-baseline для Flutter закреплён уже в `Phase 0 — Foundation` (`docs/research/flutter.md`) и не откладывается до поздних фаз builder-интеграции.
 
 Текущее состояние `apps/next-admin`: production-формы blog и forum снова используют реальный Tiptap-based editor, а сериализация в write-path идёт в канонический payload `rt_json_v1` (`version` / `locale` / `doc`) без textarea-fallback в основном UX. `PageBuilder` переведён на реальный `GrapesJS` runtime, сохраняет `projectData` в body-формат `grapesjs_v1`, работает с реальным выбором страниц и оставляет legacy `blocks` как отдельную migration-compatible поверхность. Для `pages` compatibility rules теперь зафиксированы явно: `body` считается приоритетным payload для visual-builder consumer-ов, но legacy block-driven pages могут оставаться без `body`, а запись `body` не удаляет старые `blocks` автоматически.
 
 Отдельный детальный план по `pages` как модулю ведётся в `crates/rustok-pages/docs/implementation-plan.md` в секции `Dedicated page-builder track`, чтобы rollout visual builder не смешивался ни с OAuth/app-registration, ни с rich-text задачами blog/forum.
+
+Апдейт фазы 1 (2026-05-23): `rustok-pages-admin` в `apps/admin` теперь держит минимальные capability surfaces `preview/tree/properties/publish` поверх существующего backend-контракта `grapesjs_v1`, без vendor-specific API. Для rich/page-builder write-path в Leptos зафиксирован единый UX-паттерн ошибок (`validation/sanitize/runtime`) с одинаковой семантикой алертов в blog/pages формах.
+
+Parity-план между `apps/next-admin` и `apps/admin` закреплён как capability-first: обязательный слой parity — contract-level (`grapesjs_v1`, publish flow, compatibility с legacy blocks/body), host-specific отличия допускаются только в presentation/layout и локальных UX-деталях без изменения backend payload contract.
 
 **DoD фазы:** все целевые формы работают через компонентные редакторы, без ручного markdown-only fallback в основном UX.
 

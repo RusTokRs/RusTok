@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageList {
@@ -29,6 +30,18 @@ pub struct PageBody {
     pub locale: String,
     pub content: String,
     pub format: String,
+    #[serde(rename = "contentJson")]
+    pub content_json: Option<Value>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PageBlock {
+    pub id: String,
+    #[serde(rename = "blockType")]
+    pub block_type: String,
+    pub position: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -40,6 +53,8 @@ pub struct PageDetail {
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
     pub body: Option<PageBody>,
+    #[serde(default)]
+    pub blocks: Vec<PageBlock>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -56,7 +71,9 @@ pub struct CreatePageDraft {
     pub locale: String,
     pub title: String,
     pub slug: String,
-    pub body: String,
+    pub body_content: String,
+    pub body_format: String,
+    pub body_content_json: Value,
     pub template: Option<String>,
     pub channel_slugs: Vec<String>,
     pub publish: bool,

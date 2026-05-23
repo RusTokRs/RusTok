@@ -14,6 +14,7 @@
   2. Для кода ориентироваться на текущий образец: Leptos UI = thin render/bind, formatting/parsing helpers = `core::*`, dual-path (`native #[server]` + GraphQL fallback) не менять.
   3. Если задача не про pages runtime contract, приоритет смещается на следующий модуль волны; в pages вносить только bugfix/contract-sync.
 - Last updated at (UTC): 2026-05-23T23:59:00Z
+- Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 
 ## Область работ
 
@@ -26,7 +27,8 @@
 - pages, page bodies, blocks и menus уже работают на module-owned persistence;
 - GraphQL/REST adapters и Leptos admin/storefront packages уже живут внутри модуля;
 - `grapesjs_v1` зафиксирован как canonical visual page-builder write-path;
-- visibility contract уже использует typed relation `page_channel_visibility`.
+- visibility contract уже использует typed relation `page_channel_visibility`;
+- write-path UX для page builder теперь использует единый паттерн ошибок `validation/sanitize/runtime` и contract-safe JSON handling для `body.contentJson`.
 
 ## Этапы
 

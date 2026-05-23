@@ -2,14 +2,14 @@
 use leptos::web_sys;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
 
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str =
-    "query PageAdmin($id: UUID!) { page(id: $id) { id status template channelSlugs translation { locale title slug } body { locale content format } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id status template channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } blocks { id blockType position } } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id status updatedAt translation { locale title slug } } }";
 const UPDATE_PAGE_MUTATION: &str = "mutation UpdatePage($id: UUID!, $input: UpdateGqlPageInput!) { updatePage(id: $id, input: $input) { id status updatedAt translation { locale title slug } } }";
 const PUBLISH_PAGE_MUTATION: &str =
@@ -118,6 +118,8 @@ struct CreatePageBodyInput {
     locale: String,
     content: String,
     format: Option<String>,
+    #[serde(rename = "contentJson")]
+    content_json: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -213,8 +215,9 @@ pub async fn create_page(
                 template: draft.template,
                 body: Some(CreatePageBodyInput {
                     locale: draft.locale,
-                    content: draft.body,
-                    format: Some("markdown".to_string()),
+                    content: draft.body_content,
+                    format: Some(draft.body_format),
+                    content_json: Some(draft.body_content_json),
                 }),
                 channel_slugs: Some(draft.channel_slugs),
                 blocks: None,
@@ -249,8 +252,9 @@ pub async fn update_page(
                 template: draft.template,
                 body: Some(CreatePageBodyInput {
                     locale: draft.locale,
-                    content: draft.body,
-                    format: Some("markdown".to_string()),
+                    content: draft.body_content,
+                    format: Some(draft.body_format),
+                    content_json: Some(draft.body_content_json),
                 }),
                 channel_slugs: Some(draft.channel_slugs),
             },

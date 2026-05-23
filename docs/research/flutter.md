@@ -1150,6 +1150,8 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
   - Flutter держит минимальные contract-safe каркасы (`preview/tree/properties/publish`) и registry wiring;
   - canonical правила builder/state/validation/RBAC остаются на backend и в общем page-builder плане;
   - parity проверяется по capability и data-contract, а не по буквальному UI-клону Leptos/Next.
+- Синхронизация milestone (2026-05-23): в web-admin стэках закрыты Phase 1 capability surfaces (`apps/admin` + `apps/next-admin`) и parity-note зафиксирован в `docs/modules/tiptap-page-builder-implementation-plan.md`; Flutter может двигать registry/codegen дальше без изменения platform contract.
+- FFA-baseline для Flutter остаётся закреплённым в **Phase 0 — Foundation** (см. таблицу фаз выше), и это правило не переносится в поздние builder-фазы.
 - Если в мобильном host добавить routing/registry под page-builder раньше, чем зафиксированы backend contract + parity для admin-стеков, появится drift:
   - расхождение surface metadata;
   - нестабильные GraphQL payload/contracts;
