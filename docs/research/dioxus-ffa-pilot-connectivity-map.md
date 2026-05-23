@@ -136,3 +136,4 @@
 - `rustok-search` slice #6: entity/source/status labels вынесены в core для storefront/admin.
 - `rustok-search` slice #7: score template value extraction переведён на core helper (`score_value`) без string hacks в UI.
 - `rustok-search` slice #8: error message composition (`<context>: <error>`) вынесена в core для storefront/admin.
+- `rustok-search` slice #9: score rendering unified across storefront/admin to direct core helpers, removing template/trim coupling in UI.

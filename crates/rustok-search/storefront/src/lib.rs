@@ -468,7 +468,7 @@ fn SearchResults(
                     <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                         <span>{core::entity_source_label(&item.entity_type, &item.source_module)}</span>
                         <span>"|"</span>
-                        <span>{core::score_label(item.score)}</span>
+                        <span>{format!("score {}", core::score_value(item.score))}</span>
                     </div>
                     <h3 class="mt-3 text-lg font-semibold text-foreground">{item.title}</h3>
                     <p class="mt-2 text-sm text-muted-foreground">

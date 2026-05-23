@@ -86,3 +86,4 @@
 - [x] Slice 6: storefront/admin entity-source/status label formatting moved to core (`entity_source_label`, `source_entity_status_label`).
 - [x] Slice 7: admin preview score-template value extraction switched to dedicated core helper (`score_value`).
 - [x] Slice 8: storefront/admin error message composition moved to core (`error_with_context`).
+- [x] Slice 9: storefront/admin score rendering unified to direct core helpers (`score_label`, `score_value`) without template/trim hacks.
