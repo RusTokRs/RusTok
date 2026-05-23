@@ -98,6 +98,14 @@ $ cargo test
 - [ ] Every Verification Evidence row has date in `YYYY-MM-DD`
 - [ ] Each `blocked`/`fail` row includes `reason: ...`
 
+
+## 🧭 Hotspot (required for docs PR in hotspot zones H1..H5)
+
+<!-- Required when PR touches hotspot zones from docs/research/fix docs.md -->
+- Hotspot: `H1|H2|H3|H4|H5` / `n/a`
+- Doc contracts updated: `<file list>`
+- Residual drift risk: `<what remains out of scope or n/a>`
+
 ## 📸 Screenshots (if applicable)
 
 <!-- Add screenshots for UI changes -->
