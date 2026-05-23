@@ -716,6 +716,28 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         Some("admin:user-2"),
         "actor metadata must be preserved for failed operations too",
     );
+    assert!(
+        failed_operation.correlation_id.is_some(),
+        "failed pre-disable operation must keep correlation id for retry/audit tracing",
+    );
+    let correlation_id = failed_operation
+        .correlation_id
+        .as_deref()
+        .expect("failed operation must have correlation id");
+    let parsed = uuid::Uuid::parse_str(correlation_id).expect("correlation id must be uuid");
+    assert_eq!(parsed.get_version_num(), 4);
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("billing"))
+        .all(&db)
+        .await
+        .expect("load billing operations");
+    assert_eq!(
+        operations.len(),
+        2,
+        "enable + pre-disable failure must produce exactly two lifecycle journal rows",
+    );
 }
 
 #[tokio::test]
@@ -743,6 +765,229 @@ async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
     assert!(
         failed_operation.requested_by.is_none(),
         "wrapper toggle_module without actor must keep requested_by=NULL even on failed operations",
+    );
+    assert!(
+        failed_operation.correlation_id.is_some(),
+        "failed pre-enable operation must keep correlation id for retry/audit tracing",
+    );
+    let correlation_id = failed_operation
+        .correlation_id
+        .as_deref()
+        .expect("failed operation must have correlation id");
+    let parsed = uuid::Uuid::parse_str(correlation_id).expect("correlation id must be uuid");
+    assert_eq!(parsed.get_version_num(), 4);
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("orders"))
+        .all(&db)
+        .await
+        .expect("load order operations");
+    assert_eq!(
+        operations.len(),
+        1,
+        "single pre-enable failure attempt must produce exactly one lifecycle journal row",
+    );
+}
+
+#[tokio::test]
+async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let failing_module = TestModule::new("search").with_post_enable_failure();
+    let post_enable_calls = failing_module.post_enable_calls.clone();
+    let registry = ModuleRegistry::new().register(failing_module);
+    let err = ModuleLifecycleService::toggle_module_with_actor(
+        &db,
+        &registry,
+        tenant_id,
+        "search",
+        true,
+        Some("admin:user-post-enable".to_string()),
+    )
+    .await
+    .expect_err("post-enable failure expected");
+    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+
+    let state = tenant_modules::Entity::find()
+        .filter(tenant_modules::Column::TenantId.eq(tenant_id))
+        .filter(tenant_modules::Column::ModuleSlug.eq("search"))
+        .one(&db)
+        .await
+        .expect("load state")
+        .expect("state row exists");
+    assert!(
+        state.enabled,
+        "post-hook failure must keep committed enabled state",
+    );
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .filter(module_operations::Column::RequestedEnabled.eq(true))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert!(failed_operation
+        .error_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("post-hook"));
+    assert_eq!(
+        failed_operation.requested_by.as_deref(),
+        Some("admin:user-post-enable"),
+        "post-hook failed operation must keep actor metadata for retry/audit attribution",
+    );
+    assert!(
+        failed_operation.correlation_id.is_some(),
+        "post-hook failure operation must keep correlation id for retry/audit tracing",
+    );
+    let correlation_id = failed_operation
+        .correlation_id
+        .as_deref()
+        .expect("failed operation must have correlation id");
+    let parsed = uuid::Uuid::parse_str(correlation_id).expect("correlation id must be uuid");
+    assert_eq!(parsed.get_version_num(), 4);
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .all(&db)
+        .await
+        .expect("load search operations");
+    assert_eq!(
+        operations.len(),
+        1,
+        "single post-enable failure attempt must produce exactly one journal row",
+    );
+
+    let retry = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "search", true)
+        .await
+        .expect("retry enable after committed post-hook failure should be a no-op");
+    assert!(retry.enabled);
+
+    let operations_after_retry = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .all(&db)
+        .await
+        .expect("load search operations after retry");
+    assert_eq!(
+        operations_after_retry.len(),
+        1,
+        "idempotent retry after committed post-enable failure must not create extra journal rows",
+    );
+    assert_eq!(
+        post_enable_calls.load(Ordering::SeqCst),
+        1,
+        "idempotent retry after committed post-enable failure must not invoke post-enable hook again",
+    );
+}
+
+#[tokio::test]
+async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("search"));
+    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "search", true)
+        .await
+        .expect("enable should succeed");
+
+    let failing_module = TestModule::new("search").with_post_disable_failure();
+    let post_disable_calls = failing_module.post_disable_calls.clone();
+    let failing_registry = ModuleRegistry::new().register(failing_module);
+    let err = ModuleLifecycleService::toggle_module_with_actor(
+        &db,
+        &failing_registry,
+        tenant_id,
+        "search",
+        false,
+        Some("admin:user-post-disable".to_string()),
+    )
+    .await
+    .expect_err("post-disable failure expected");
+    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+
+    let state = tenant_modules::Entity::find()
+        .filter(tenant_modules::Column::TenantId.eq(tenant_id))
+        .filter(tenant_modules::Column::ModuleSlug.eq("search"))
+        .one(&db)
+        .await
+        .expect("load state")
+        .expect("state row exists");
+    assert!(
+        !state.enabled,
+        "post-hook failure must keep committed disabled state",
+    );
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .filter(module_operations::Column::RequestedEnabled.eq(false))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert!(failed_operation
+        .error_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("post-hook"));
+    assert_eq!(
+        failed_operation.requested_by.as_deref(),
+        Some("admin:user-post-disable"),
+        "post-hook failed operation must keep actor metadata for retry/audit attribution",
+    );
+    assert!(
+        failed_operation.correlation_id.is_some(),
+        "post-hook failure operation must keep correlation id for retry/audit tracing",
+    );
+    let correlation_id = failed_operation
+        .correlation_id
+        .as_deref()
+        .expect("failed operation must have correlation id");
+    let parsed = uuid::Uuid::parse_str(correlation_id).expect("correlation id must be uuid");
+    assert_eq!(parsed.get_version_num(), 4);
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .all(&db)
+        .await
+        .expect("load search operations");
+    assert_eq!(
+        operations.len(),
+        2,
+        "enable + failed disable must produce exactly two lifecycle journal rows",
+    );
+
+    let retry = ModuleLifecycleService::toggle_module(&db, &failing_registry, tenant_id, "search", false)
+        .await
+        .expect("retry disable after committed post-hook failure should be a no-op");
+    assert!(!retry.enabled);
+
+    let operations_after_retry = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("search"))
+        .all(&db)
+        .await
+        .expect("load search operations after retry");
+    assert_eq!(
+        operations_after_retry.len(),
+        2,
+        "idempotent retry after committed post-disable failure must not create extra journal rows",
+    );
+    assert_eq!(
+        post_disable_calls.load(Ordering::SeqCst),
+        1,
+        "idempotent retry after committed post-disable failure must not invoke post-disable hook again",
     );
 }
 
