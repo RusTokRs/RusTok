@@ -99,6 +99,7 @@ echo ""
 
 TOTAL_PASSED=0
 TOTAL_FAILED=0
+TOTAL_ERRORS=0
 RESULTS=()
 SEPARATOR="────────────────────────────────────────────────"
 
@@ -141,6 +142,7 @@ for entry in "${SCRIPTS[@]}"; do
     else
         RESULTS+=("${RED}FAIL${NC} $script_label ($exit_code error(s))")
         TOTAL_FAILED=$((TOTAL_FAILED + 1))
+        TOTAL_ERRORS=$((TOTAL_ERRORS + exit_code))
         # In non-verbose mode, show errors
         if [[ $VERBOSE -eq 0 ]]; then
             fail_lines="$(echo "$output" | grep -Ei "✗|error|failed|violation" | head -10 || true)"
@@ -179,5 +181,5 @@ else
     echo ""
     echo -e "  ${RED}${BOLD}$TOTAL_FAILED suite(s) have errors. Review output above.${NC}"
     echo -e "  Run with ${BOLD}-v${NC} for full output: ${BOLD}./scripts/verify/verify-all.sh -v${NC}"
-    exit 1
+    exit "$TOTAL_ERRORS"
 fi
