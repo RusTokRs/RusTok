@@ -7,10 +7,10 @@
 
 - Current phase: plan_sync
 - Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Next step: Phase B pilot slice #1 — выделить первый `core` use-case в storefront/admin surfaces без изменения dual-path transport contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-05-23T00:00:00Z
 
 ## Область работ
 
@@ -69,3 +69,21 @@
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+
+
+## FFA pilot migration tracker (rustok-search)
+
+- [x] Slice 1 scope locked (single use-case): query/filter input normalization (`parse_csv`, `optional_text`).
+- [x] Storefront surface updated.
+- [x] Admin surface checked/updated for the same use-case.
+- [x] GraphQL fallback parity confirmed (no contract regression): transport path not modified in this slice.
+- [x] Double documentation verification completed.
+
+- [x] Slice 2: storefront/admin facet display normalization moved to core (`facet_display_name`).
+- [x] Slice 3: storefront/admin facet bucket label formatting moved to core (`facet_bucket_label`).
+- [x] Slice 4: storefront/admin snippet fallback rendering moved to core (`snippet_or_fallback`).
+- [x] Slice 5: storefront/admin score label normalization moved to core (`score_label`).
+- [x] Slice 6: storefront/admin entity-source/status label formatting moved to core (`entity_source_label`, `source_entity_status_label`).
+- [x] Slice 7: admin preview score-template value extraction switched to dedicated core helper (`score_value`).
+- [x] Slice 8: storefront/admin error message composition moved to core (`error_with_context`).
+- [x] Slice 9: storefront/admin score rendering unified to direct core helpers (`score_label`, `score_value`) without template/trim hacks.

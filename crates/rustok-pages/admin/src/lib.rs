@@ -1,4 +1,5 @@
 mod api;
+mod core;
 mod i18n;
 mod model;
 
@@ -125,12 +126,14 @@ pub fn PagesAdmin() -> impl IntoView {
             editing_page_id
                 .get()
                 .map(|page_id| {
-                    t(
-                        locale.get().as_str().into(),
-                        "pages.form.editingBanner",
-                        "Editing page {id}",
+                    core::label_with_id(
+                        &t(
+                            locale.get().as_str().into(),
+                            "pages.form.editingBanner",
+                            "Editing page {id}",
+                        ),
+                        page_id.as_str(),
                     )
-                    .replace("{id}", page_id.as_str())
                 })
                 .unwrap_or_default()
         }
@@ -156,40 +159,20 @@ pub fn PagesAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let default_locale = edit_default_locale.clone();
         set_submit_error.set(None);
-        set_busy_key.set(Some(format!("edit:{page_id}")));
+        set_busy_key.set(Some(core::busy_key_with_id("edit", &page_id)));
 
         spawn_local(async move {
             match api::fetch_page(token_value, tenant_value, page_id.clone()).await {
                 Ok(Some(page)) => {
-                    let page_locale = page
-                        .translation
-                        .as_ref()
-                        .map(|translation| translation.locale.clone())
-                        .or_else(|| page.body.as_ref().map(|page_body| page_body.locale.clone()))
-                        .unwrap_or_else(|| default_locale.clone());
-                    let page_title = page
-                        .translation
-                        .as_ref()
-                        .and_then(|translation| translation.title.clone())
-                        .unwrap_or_default();
-                    let page_slug = page
-                        .translation
-                        .as_ref()
-                        .and_then(|translation| translation.slug.clone())
-                        .unwrap_or_default();
-                    let page_body = page
-                        .body
-                        .map(|page_body| page_body.content)
-                        .unwrap_or_default();
-                    let page_channel_slugs = page.channel_slugs.join(", ");
+                    let seed = core::edit_form_seed_from_page(&page, default_locale.as_str());
 
                     set_editing_page_id.set(Some(page_id.clone()));
-                    set_locale.set(page_locale);
-                    set_title.set(page_title);
-                    set_slug.set(page_slug);
-                    set_body.set(page_body);
-                    set_channel_slugs_text.set(page_channel_slugs);
-                    set_publish_now.set(page.status.eq_ignore_ascii_case("published"));
+                    set_locale.set(seed.locale);
+                    set_title.set(seed.title);
+                    set_slug.set(seed.slug);
+                    set_body.set(seed.body);
+                    set_channel_slugs_text.set(seed.channel_slugs_text);
+                    set_publish_now.set(seed.publish_now);
                 }
                 Ok(None) => {
                     reset_page_form(
@@ -215,7 +198,10 @@ pub fn PagesAdmin() -> impl IntoView {
                         set_publish_now,
                         default_locale.as_str(),
                     );
-                    set_submit_error.set(Some(format!("Failed to load page: {err}")));
+                    set_submit_error.set(Some(core::error_with_context(
+                        "Failed to load page",
+                        &err.to_string(),
+                    )));
                 }
             }
             set_busy_key.set(None);
@@ -249,7 +235,7 @@ pub fn PagesAdmin() -> impl IntoView {
             slug: slug.get_untracked().trim().to_string(),
             body: body.get_untracked().trim().to_string(),
             template: Some("default".to_string()),
-            channel_slugs: parse_channel_slugs(&channel_slugs_text.get_untracked()),
+            channel_slugs: core::parse_channel_slugs(&channel_slugs_text.get_untracked()),
             publish: publish_now.get_untracked(),
         };
 
@@ -263,11 +249,7 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let editing_page = editing_page_id.get_untracked();
-        set_busy_key.set(Some(if let Some(page_id) = editing_page.as_ref() {
-            format!("save:{page_id}")
-        } else {
-            "create".to_string()
-        }));
+        set_busy_key.set(Some(core::busy_key_for_save(editing_page.as_deref())));
 
         spawn_local(async move {
             let result = match editing_page {
@@ -287,7 +269,10 @@ pub fn PagesAdmin() -> impl IntoView {
                     submit_query_writer.replace_value(AdminQueryKey::PageId.as_str(), page_id);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!("Failed to save page: {err}")));
+                    set_submit_error.set(Some(core::error_with_context(
+                        "Failed to save page",
+                        &err.to_string(),
+                    )));
                 }
             }
 
@@ -299,7 +284,7 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         set_submit_error.set(None);
-        set_busy_key.set(Some(format!("publish:{page_id}")));
+        set_busy_key.set(Some(core::busy_key_with_id("publish", &page_id)));
 
         spawn_local(async move {
             let result = if publish {
@@ -316,7 +301,10 @@ pub fn PagesAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!("Failed to update page status: {err}")));
+                    set_submit_error.set(Some(core::error_with_context(
+                        "Failed to update page status",
+                        &err.to_string(),
+                    )));
                 }
             }
 
@@ -330,7 +318,7 @@ pub fn PagesAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let delete_query_writer = delete_query_writer.clone();
         set_submit_error.set(None);
-        set_busy_key.set(Some(format!("delete:{page_id}")));
+        set_busy_key.set(Some(core::busy_key_with_id("delete", &page_id)));
 
         spawn_local(async move {
             match api::delete_page(token_value, tenant_value, page_id.clone()).await {
@@ -345,7 +333,10 @@ pub fn PagesAdmin() -> impl IntoView {
                     set_submit_error.set(Some("Delete page returned false.".to_string()));
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!("Failed to delete page: {err}")));
+                    set_submit_error.set(Some(core::error_with_context(
+                        "Failed to delete page",
+                        &err.to_string(),
+                    )));
                 }
             }
             set_busy_key.set(None);
@@ -410,10 +401,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     }.into_any(),
                                     Err(err) => view! {
                                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                            {format!(
-                                                "{}: {err}",
-                                                load_error_text.clone()
-                                            )}
+                                            {core::error_with_context(load_error_text.as_str(), &err.to_string())}
                                         </div>
                                     }.into_any(),
                                 }
@@ -463,7 +451,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
                                     if slug.get_untracked().trim().is_empty() {
-                                        set_slug.set(slugify(value.as_str()));
+                                        set_slug.set(core::slugify(value.as_str()));
                                     }
                                     set_title.set(value);
                                 }
@@ -544,7 +532,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     || busy_key
                                         .get()
                                         .as_deref()
-                                        .map(|key| key.starts_with("save:"))
+                                         .map(|key| core::busy_key_matches_action(Some(key), "save"))
                                         .unwrap_or(false)
                             }
                         >
@@ -553,7 +541,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     || busy_key
                                         .get()
                                         .as_deref()
-                                        .map(|key| key.starts_with("save:"))
+                                         .map(|key| core::busy_key_matches_action(Some(key), "save"))
                                         .unwrap_or(false)
                                 {
                                     t(locale.get().as_str().into(), "pages.form.saving", "Saving...")
@@ -640,8 +628,10 @@ fn PagesTable(
     view! {
         <div class="space-y-4">
             <div class="text-sm text-muted-foreground">
-                {t(locale.as_deref(), "pages.table.total", "{count} page(s)")
-                    .replace("{count}", &total.to_string())}
+                {core::count_label(
+                    &t(locale.as_deref(), "pages.table.total", "{count} page(s)"),
+                    total,
+                )}
             </div>
             <div class="overflow-hidden rounded-xl border border-border">
                 <table class="w-full text-sm">
@@ -696,7 +686,7 @@ fn PagesTable(
                                                 >
                                                     {if is_busy && busy_key
                                                         .as_deref()
-                                                        .map(|key| key.starts_with("edit:"))
+                                                         .map(|key| core::busy_key_matches_action(Some(key), "edit"))
                                                         .unwrap_or(false)
                                                     {
                                                         "...".to_string()
@@ -716,7 +706,7 @@ fn PagesTable(
                                                 >
                                                     {if is_busy && busy_key
                                                         .as_deref()
-                                                        .map(|key| key.starts_with("publish:"))
+                                                         .map(|key| core::busy_key_matches_action(Some(key), "publish"))
                                                         .unwrap_or(false)
                                                     {
                                                         "...".to_string()
@@ -736,7 +726,7 @@ fn PagesTable(
                                                 >
                                                     {if is_busy && busy_key
                                                         .as_deref()
-                                                        .map(|key| key.starts_with("delete:"))
+                                                         .map(|key| core::busy_key_matches_action(Some(key), "delete"))
                                                         .unwrap_or(false)
                                                     {
                                                         "...".to_string()
@@ -760,48 +750,13 @@ fn PagesTable(
 
 #[component]
 fn StatusBadge(status: String) -> impl IntoView {
-    let normalized = status.to_lowercase();
-    let class_name = match normalized.as_str() {
-        "published" => {
-            "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-        }
-        "archived" => "bg-muted text-muted-foreground",
-        _ => "bg-primary/10 text-primary",
-    };
+    let class_name = core::status_badge_css(&status);
 
     view! {
-        <span class=format!("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {class_name}")>
+        <span class=class_name>
             {status}
         </span>
     }
-}
-
-fn slugify(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
-fn parse_channel_slugs(value: &str) -> Vec<String> {
-    let mut items = value
-        .split(',')
-        .map(|item| item.trim().to_ascii_lowercase())
-        .filter(|item| !item.is_empty())
-        .collect::<Vec<_>>();
-    items.sort();
-    items.dedup();
-    items
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -815,11 +770,12 @@ fn reset_page_form(
     set_publish_now: WriteSignal<bool>,
     default_locale: &str,
 ) {
+    let seed = core::empty_edit_form_seed(default_locale);
     set_editing_page_id.set(None);
-    set_title.set(String::new());
-    set_slug.set(String::new());
-    set_body.set(String::new());
-    set_channel_slugs_text.set(String::new());
-    set_locale.set(default_locale.to_string());
-    set_publish_now.set(false);
+    set_title.set(seed.title);
+    set_slug.set(seed.slug);
+    set_body.set(seed.body);
+    set_channel_slugs_text.set(seed.channel_slugs_text);
+    set_locale.set(seed.locale);
+    set_publish_now.set(seed.publish_now);
 }

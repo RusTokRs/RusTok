@@ -1,4 +1,5 @@
 mod api;
+mod core;
 mod i18n;
 mod model;
 
@@ -7,7 +8,7 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
-use crate::model::{PageBlock, PageDetail, PageListItem, StorefrontPagesData};
+use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
 
 #[component]
 pub fn PagesView() -> impl IntoView {
@@ -116,33 +117,39 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
         .into_any();
     };
 
-    let title = page
-        .translation
-        .as_ref()
-        .and_then(|translation| translation.title.clone())
-        .unwrap_or_else(|| t(locale.as_deref(), "pages.selected.defaultTitle", "Page"));
-    let slug = page
-        .translation
-        .as_ref()
-        .and_then(|translation| translation.slug.clone())
-        .unwrap_or_else(|| t(locale.as_deref(), "pages.selected.defaultSlug", "home"));
-    let effective_locale = page
-        .effective_locale
-        .clone()
-        .unwrap_or_else(|| t(locale.as_deref(), "pages.selected.defaultLocale", "default"));
-    let summary = summarize_page_content(locale.as_deref(), &page);
+    let title = core::selected_page_title(
+        &page,
+        t(locale.as_deref(), "pages.selected.defaultTitle", "Page"),
+    );
+    let slug = core::selected_page_slug(
+        &page,
+        t(locale.as_deref(), "pages.selected.defaultSlug", "home"),
+    );
+    let effective_locale = core::selected_page_effective_locale(
+        &page,
+        t(locale.as_deref(), "pages.selected.defaultLocale", "default"),
+    );
+    let summary = core::summarize_page_content(
+        &page,
+        |content, format| summarize_content(locale.as_deref(), content, format),
+        t(
+            locale.as_deref(),
+            "pages.body.empty",
+            "No page body or legacy blocks yet.",
+        ),
+    );
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{format!(
-                    "{}: {slug}",
-                    t(locale.as_deref(), "pages.selected.slugLabel", "selected slug")
+                <span>{core::label_value_pair(
+                    &t(locale.as_deref(), "pages.selected.slugLabel", "selected slug"),
+                    slug.as_str(),
                 )}</span>
                 <span>"·"</span>
-                <span>{format!(
-                    "{}: {effective_locale}",
-                    t(locale.as_deref(), "pages.selected.localeLabel", "locale")
+                <span>{core::label_value_pair(
+                    &t(locale.as_deref(), "pages.selected.localeLabel", "locale"),
+                    effective_locale.as_str(),
                 )}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
@@ -185,8 +192,10 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                     {t(locale.as_deref(), "pages.list.title", "Published pages")}
                 </h3>
                 <span class="text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "pages.list.total", "{count} total")
-                        .replace("{count}", &total.to_string())}
+                    {core::count_label(
+                        &t(locale.as_deref(), "pages.list.total", "{count} total"),
+                        total,
+                    )}
                 </span>
             </div>
             <div class="grid gap-3 md:grid-cols-2">
@@ -209,13 +218,15 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                                     })}
                                 </h4>
                                 <a class="mt-2 inline-flex text-sm text-primary hover:underline" href=href>
-                                    {format!("{} {slug}", t(locale.as_deref(), "pages.list.open", "Open"))}
+                                    {core::open_link_label(
+                                    &t(locale.as_deref(), "pages.list.open", "Open"),
+                                    slug.as_str(),
+                                )}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
-                                    {format!(
-                                        "{}: {}",
-                                        t(locale.as_deref(), "pages.list.templateLabel", "template"),
-                                        page.template
+                                    {core::label_value_pair(
+                                        &t(locale.as_deref(), "pages.list.templateLabel", "template"),
+                                        page.template.as_str(),
                                     )}
                                 </p>
                             </article>
@@ -233,86 +244,43 @@ fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> Strin
         return content.trim().to_string();
     }
 
-    t(
-        locale,
-        "pages.body.rawFormat",
-        "Stored in `{format}` format. Raw body length: {count} characters.",
-    )
-    .replace("{format}", format)
-    .replace("{count}", &content.chars().count().to_string())
-}
-
-fn summarize_page_content(locale: Option<&str>, page: &PageDetail) -> String {
-    if let Some(body) = page.body.as_ref() {
-        return summarize_content(locale, body.content.as_str(), body.format.as_str());
-    }
-
-    if !page.blocks.is_empty() {
-        return summarize_legacy_blocks(locale, &page.blocks);
-    }
-
-    t(
-        locale,
-        "pages.body.empty",
-        "No page body or legacy blocks yet.",
-    )
-}
-
-fn summarize_legacy_blocks(locale: Option<&str>, blocks: &[PageBlock]) -> String {
-    let block_count = blocks.len();
-    let first_block = blocks
-        .first()
-        .map(|block| humanize_block_type(locale, block.block_type.as_str()))
-        .unwrap_or_else(|| t(locale, "pages.block.default", "block"));
-
-    if block_count == 1 {
-        return t(
+    core::raw_body_format_summary(
+        format,
+        content.chars().count(),
+        &t(
             locale,
-            "pages.body.legacySingle",
-            "Legacy block-driven page with 1 {block_type} block.",
-        )
-        .replace("{block_type}", first_block.as_str());
-    }
-
-    t(
-        locale,
-        "pages.body.legacyMany",
-        "Legacy block-driven page with {count} blocks. First block: {block_type}.",
+            "pages.body.rawFormat",
+            "Stored in `{format}` format. Raw body length: {count} characters.",
+        ),
     )
-    .replace("{count}", &block_count.to_string())
-    .replace("{block_type}", first_block.as_str())
-}
-
-fn humanize_block_type(locale: Option<&str>, block_type: &str) -> String {
-    match block_type {
-        "hero" => t(locale, "pages.block.hero", "hero"),
-        "text" => t(locale, "pages.block.text", "text"),
-        "image" => t(locale, "pages.block.image", "image"),
-        "gallery" => t(locale, "pages.block.gallery", "gallery"),
-        "cta" => t(locale, "pages.block.cta", "CTA"),
-        "features" => t(locale, "pages.block.features", "features"),
-        "testimonials" => t(locale, "pages.block.testimonials", "testimonials"),
-        "pricing" => t(locale, "pages.block.pricing", "pricing"),
-        "faq" => t(locale, "pages.block.faq", "FAQ"),
-        "contact" => t(locale, "pages.block.contact", "contact"),
-        "product_grid" => t(locale, "pages.block.productGrid", "product grid"),
-        "newsletter" => t(locale, "pages.block.newsletter", "newsletter"),
-        "video" => t(locale, "pages.block.video", "video"),
-        "html" => t(locale, "pages.block.html", "HTML"),
-        "spacer" => t(locale, "pages.block.spacer", "spacer"),
-        _ => t(locale, "pages.block.content", "content"),
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{summarize_page_content, PageBlock, PageDetail};
+    use super::{core, PageBlock, PageDetail};
     use crate::model::PageBody;
+
+
+
+
+    #[test]
+    fn label_value_pair_formats_label_and_value() {
+        assert_eq!(core::label_value_pair("locale", "en"), "locale: en");
+    }
+
+    #[test]
+    fn open_link_label_joins_prefix_and_slug() {
+        assert_eq!(core::open_link_label("Open", "home"), "Open home");
+    }
+
+    #[test]
+    fn count_label_replaces_placeholder() {
+        assert_eq!(core::count_label("{count} total", 5), "5 total");
+    }
 
     #[test]
     fn page_body_takes_precedence_over_legacy_blocks() {
-        let summary = summarize_page_content(
-            Some("en"),
+        let summary = core::summarize_page_content(
             &PageDetail {
                 effective_locale: Some("en".to_string()),
                 translation: None,
@@ -327,15 +295,30 @@ mod tests {
                     position: 0,
                 }],
             },
+            |content, format| super::summarize_content(Some("en"), content, format),
+            "empty".to_string(),
         );
 
         assert_eq!(summary, "Hello");
     }
 
     #[test]
+    fn raw_body_format_summary_uses_template_placeholders() {
+        let summary = core::raw_body_format_summary(
+            "rt_json_v1",
+            42,
+            "Stored in `{format}` format. Raw body length: {count} characters.",
+        );
+
+        assert_eq!(
+            summary,
+            "Stored in `rt_json_v1` format. Raw body length: 42 characters."
+        );
+    }
+
+    #[test]
     fn legacy_blocks_are_summarized_when_body_is_missing() {
-        let summary = summarize_page_content(
-            Some("en"),
+        let summary = core::summarize_page_content(
             &PageDetail {
                 effective_locale: Some("en".to_string()),
                 translation: None,
@@ -346,8 +329,13 @@ mod tests {
                     position: 0,
                 }],
             },
+            |content, format| super::summarize_content(Some("en"), content, format),
+            "empty".to_string(),
         );
 
-        assert_eq!(summary, "Legacy block-driven page with 1 text block.");
+        assert_eq!(
+            summary,
+            "Legacy blocks are still attached to this page: #1 text."
+        );
     }
 }

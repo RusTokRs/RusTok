@@ -46,11 +46,13 @@
 - Leptos-specific точки (`#[component]`, router hooks, reactive state);
 - transport binding точки (`#[server]`, GraphQL requests, fallback branches);
 - места смешения UI/state/business логики.
+- Базовая карта связности пилотов (`rustok-pages`, `rustok-search`) зафиксирована в `docs/research/dioxus-ffa-pilot-connectivity-map.md`.
 
 ### A3. Contract freeze
 
 - Зафиксировать текущие GraphQL/native surfaces и smoke-скрипты.
 - Добавить checklist parity: SSR native path, GraphQL fallback, headless path.
+- Базовый checklist закреплён в `docs/verification/ffa-ui-parity-checklist.md` и обязателен для phase-gate evidence.
 
 ## Phase B — FFA-декомпозиция в пилотах (2–4 недели)
 
