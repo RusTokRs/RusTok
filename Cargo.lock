@@ -10539,6 +10539,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-page-builder"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rustok-pages"
 version = "0.1.0"
 dependencies = [
@@ -10582,6 +10594,7 @@ dependencies = [
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -11062,6 +11075,7 @@ dependencies = [
  "rustok-media",
  "rustok-order",
  "rustok-outbox",
+ "rustok-page-builder",
  "rustok-pages",
  "rustok-payment",
  "rustok-pricing",

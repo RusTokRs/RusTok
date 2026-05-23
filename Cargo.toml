@@ -194,6 +194,7 @@ rustok-fulfillment = { path = "crates/rustok-fulfillment" }
 rustok-blog = { path = "crates/rustok-blog" }
 rustok-content = { path = "crates/rustok-content" }
 rustok-pages = { path = "crates/rustok-pages" }
+rustok-page-builder = { path = "crates/rustok-page-builder" }
 rustok-taxonomy = { path = "crates/rustok-taxonomy" }
 rustok-index = { path = "crates/rustok-index" }
 rustok-search = { path = "crates/rustok-search" }

@@ -32,6 +32,7 @@ default = [
     "mod-forum",
     "mod-comments",
     "mod-pages",
+    "mod-page-builder",
     "mod-taxonomy",
     "mod-alloy",
     "mod-flex",
@@ -61,6 +62,7 @@ mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-c
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy"]
 mod-comments  = ["dep:rustok-comments", "rustok-comments/server"]
 mod-pages     = ["dep:rustok-pages", "mod-content"]
+mod-page-builder = ["dep:rustok-page-builder"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy     = ["dep:alloy"]
 mod-flex      = []
@@ -95,6 +97,7 @@ rustok-comments  = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-forum     = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
+rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy  = { workspace = true, optional = true }
 rustok-storage   = { workspace = true, features = ["s3"] }
 rustok-media     = { workspace = true, optional = true }
