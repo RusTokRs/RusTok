@@ -55,7 +55,7 @@
 
 ### 2.3 Compose и local stack readiness
 
-- [ ] `docker-compose*.yml`, `grafana/`, `prometheus/` и связанные runbooks не расходятся с текущей dev/runtime картиной.
+- [ ] `docker-compose*.yml`, `ops/grafana/`, `ops/prometheus/` и связанные runbooks не расходятся с текущей dev/runtime картиной.
 - [ ] Observability stack описывает реальный локальный контур, а не исторический rollout.
 
 ## Фаза 3. Security и dependency hygiene

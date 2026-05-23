@@ -245,8 +245,8 @@ cargo bench -p rustok-benchmarks -- --baseline main
 
 ## Adding New Benchmarks
 
-1. Create a new file in `benches/benches/`
-2. Add benchmark entry to `benches/Cargo.toml`
+1. Create a new file in `ops/benches/benches/`
+2. Add benchmark entry to `ops/benches/Cargo.toml`
 3. Use `criterion_group!` and `criterion_main!` macros
 4. Document the benchmark in this guide
 

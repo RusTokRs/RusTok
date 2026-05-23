@@ -212,7 +212,7 @@ Extended HTTP metrics.
 
 ### Overview Dashboard
 
-**File:** `grafana/dashboards/rustok-overview.json`
+**File:** `ops/grafana/dashboards/rustok-overview.json`
 
 **Panels:**
 - HTTP request rate
@@ -225,7 +225,7 @@ Extended HTTP metrics.
 
 ### Advanced Dashboard
 
-**File:** `grafana/dashboards/rustok-advanced.json`
+**File:** `ops/grafana/dashboards/rustok-advanced.json`
 
 **Panels (13 total):**
 
@@ -277,7 +277,7 @@ rustok_circuit_breaker_state{service="redis"}
 
 ### SLO-Based Alerts
 
-**File:** `prometheus/alert_rules.yml`
+**File:** `ops/prometheus/alert_rules.yml`
 
 #### High Error Rate
 

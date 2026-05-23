@@ -41,7 +41,7 @@ members = [
     "crates/rustok-workflow/admin",
     "crates/*",
     "UI/leptos",
-    "benches",
+    "ops/benches",
     "xtask",
 ]
 
