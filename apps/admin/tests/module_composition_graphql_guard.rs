@@ -352,6 +352,38 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
 }
 
 #[test]
+fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallback_combiner() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let rollback_body = extract_function_block(&content, "pub async fn rollback_build(")
+        .expect("rollback_build helper signature not found");
+    assert!(
+        rollback_body.contains("combine_native_and_graphql_error"),
+        "rollback_build must preserve native/graphql fallback combiner contract"
+    );
+    assert!(
+        rollback_body.contains("rollback_build_native("),
+        "rollback_build must preserve native-first fallback path"
+    );
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+        assert!(
+            !helper_body.contains("combine_native_and_graphql_error"),
+            "{signature} must not use native/graphql fallback combiner"
+        );
+    }
+}
+
+#[test]
 fn toggle_module_helper_uses_graphql_only_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");
