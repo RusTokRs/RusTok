@@ -121,6 +121,7 @@
 ## Документация приложений
 
 - [Документация Server](../apps/server/docs/README.md)
+- [Server runbook: retry/compensation lifecycle hook failures](../apps/server/docs/module-lifecycle-retry-compensation-runbook.md)
 - [Документация Admin](../apps/admin/docs/README.md)
 - [Документация Storefront](../apps/storefront/docs/README.md)
 - [Документация Next Admin](../apps/next-admin/docs/README.md)

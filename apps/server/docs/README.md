@@ -54,6 +54,7 @@ Shared foundation / support crates:
 - Для registry/governance surfaces именно сервер остаётся каноническим валидатором lifecycle policy, `reason` / `reason_code` contract и allowed action set; thin clients могут делать preflight, но не определяют policy локально.
 - Для control-plane composition install/uninstall/upgrade server использует единый orchestration path: manifest validation, CAS-update `platform_state` и enqueue build выполняются атомарно в одном transaction boundary. `manifest_ref` для build всегда формируется как `platform_state:<revision>`, а `manifest_hash` считается как SHA-256 canonical JSON snapshot.
 - Tenant module enable/disable идёт через canonical lifecycle entrypoint `ModuleLifecycleService::toggle_module_with_actor()`; bypass model-level toggle не считается production contract. `module_operations` фиксирует lifecycle status в typed модели `running/committed/failed`, а pre-validation ошибки/no-op переходы не должны создавать лишние journal rows.
+- Для post-hook failure recovery/compensation используется отдельный runbook `module-lifecycle-retry-compensation-runbook.md`; committed tenant state не откатывается автоматически, а retry/compensation выполняются как отдельные lifecycle операции через canonical entrypoint.
 - Registry metadata теперь следует общему multilingual storage contract: publish/release base rows держат language-agnostic state и `default_locale`, а display metadata (`name`, `description`) живут в `registry_*_translations`.
 - Registry audit payload больше не держит historical runtime fallback: `registry_governance_events.details` нормализован на typed shape (`stage_key`, nested `owner_transition`, structured principal objects), а controller маппит lifecycle failures от typed `RegistryGovernanceError`, а не от substring matching.
 - `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без bearer auth он возвращает status-driven superset `governanceActions`, а при session-backed user bearer режет request-level действия до реально разрешённых для этого principal.
@@ -146,4 +147,5 @@ Shared foundation / support crates:
 - [Loco integration](./loco-core-integration-plan.md)
 - [Контракт event flow](../../../docs/architecture/event-flow-contract.md)
 - [Контракты manifest-слоя](../../../docs/modules/manifest.md)
+- [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)
 - [Карта документации](../../../docs/index.md)
