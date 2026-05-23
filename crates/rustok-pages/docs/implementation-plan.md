@@ -75,7 +75,7 @@
 - [x] Slice 2: admin form helper extraction (`slugify`, `parse_channel_slugs`, `error_with_context`).
 - [x] Storefront + admin surfaces updated for selected slices.
 - [x] `cargo xtask module validate pages` passed.
-- [ ] `cargo xtask module test pages` full run evidence attached.
+- [x] `cargo xtask module test pages` full run evidence attached.
 - [x] Double documentation verification completed.
 - [x] Slice 3: admin status badge class mapping moved to core (`status_badge_class`).
 - [x] Slice 4: admin busy-key composition moved to core (`busy_key_with_id`, `busy_key_for_save`).
@@ -100,3 +100,4 @@
 - [x] Slice 14: admin editing-banner `{id}` placeholder rendering moved to core (`label_with_id`).
 - [x] Slice 15: storefront open-link label composition moved to core (`open_link_label`).
 - [x] Slice 16: storefront label/value pair rendering moved to core (`label_value_pair`).
+- [x] Slice 17: storefront core extraction cleanup after full module test evidence (unused import removal).

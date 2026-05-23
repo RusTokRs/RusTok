@@ -8,7 +8,7 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
-use crate::model::{PageBlock, PageDetail, PageListItem, StorefrontPagesData};
+use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
 
 #[component]
 pub fn PagesView() -> impl IntoView {

@@ -145,7 +145,7 @@
 - [x] `rustok-pages/storefront` core slice #1 (`selected_page_*`, `summarize_page_content`)
 - [x] `rustok-pages/admin` core slice #2 (`slugify`, `parse_channel_slugs`, `error_with_context`)
 - [x] `cargo xtask module validate pages`
-- [ ] `cargo xtask module test pages` (долгий прогон, выполнить до phase close)
+- [x] `cargo xtask module test pages` (долгий прогон завершён, evidence приложен)
 - [x] docs double-check pass #1/#2 for pages
 - `rustok-pages` slice #3: status badge class mapping вынесен в `admin/src/core.rs` (`status_badge_class`).
 - `rustok-pages` slice #4: admin busy-key composition вынесен в core (`busy_key_with_id`, `busy_key_for_save`).
@@ -160,6 +160,7 @@
 - `rustok-pages` slice #14: admin editing-banner `{id}` placeholder rendering moved to core (`label_with_id`).
 - `rustok-pages` slice #15: storefront open-link label composition moved to core (`open_link_label`).
 - `rustok-pages` slice #16: storefront label/value pair rendering moved to core (`label_value_pair`).
+- `rustok-pages` slice #17: storefront cleanup after full pages module-test evidence (remove unused import warning).
 
 
 ### Перепроверка после slices #2-#8 (rustok-pages/admin)
