@@ -116,6 +116,7 @@
 - [Historical input: deep research report (control plane/module lifecycle)](./research/deep-research-report%20(4).md)
 - [План устранения недостатков control plane и module lifecycle](./research/control-plane-module-lifecycle-remediation-plan.md)
 - [План исправления документации](./research/fix%20docs.md)
+- [План FFA-рефакторинга UI и подготовки к Dioxus](./research/dioxus-ffa-ui-migration-plan.md)
 - [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
 
 ## Документация приложений
