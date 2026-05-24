@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Добавлен storefront refund read-side transport `GET /store/orders/{id}/refunds` с customer ownership guard и paginated status-filter contract поверх `PaymentService::list_refunds`.
-- Next step: Продолжить Phase 10.1 returns foundation (`rustok-order` entity/service lifecycle + admin REST/GraphQL transport).
+- Last checkpoint: Проведён re-check ранее внедрённого refund/read-side среза (route contract + backlog alignment) и зафиксирован FFA/FBA transition track для ecommerce implementation plan.
+- Next step: Продолжить Phase 10.1 returns foundation (`rustok-order` entity/service lifecycle + admin REST/GraphQL transport) и синхронно закрывать FFA/FBA alignment checklist в ecommerce family.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T10:40:00Z
+- Last updated at (UTC): 2026-05-24T16:35:00Z
 
 ## Статус документа
 
@@ -28,6 +28,34 @@ typed shipping-profile registry плюс aggregate cart-promotion operator surfa
 - `rustok-commerce` продолжает играть роль root umbrella module для ecommerce family;
 - базовый split на `cart/customer/product/region/pricing/inventory/order/payment/fulfillment` уже выполнен и дальше углубляется;
 - отдельный sales-channel домен в `commerce` не нужен: платформа уже имеет `rustok-channel`, и ecommerce должен стать channel-aware поверх него, а не дублировать его модель.
+
+
+## FFA/FBA transition (early alignment track)
+
+Статус: `in progress`
+
+С этого среза ecommerce roadmap официально синхронизирован с переходом платформы на
+Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
+
+- FFA: module-owned UI surfaces (`admin`/`storefront`) остаются default path, а transport
+  (`#[server]` + GraphQL/REST fallback) обязан сохранять semantic parity без локальных
+  divergence по доменной логике;
+- FBA: `rustok-commerce` и split ecommerce modules удерживают service-boundary-ready
+  contract, где application services остаются canonical бизнес-ядром независимо от
+  topology исполнения (embedded vs remote);
+- umbrella слой не возвращает ownership уже выделенных bounded contexts и продолжает
+  выступать orchestration root для cross-domain сценариев checkout/post-order;
+- все новые Phase 8/9/10/11 инкременты должны сразу проходить FFA/FBA check:
+  transport-neutral service semantics, channel-aware boundaries, и отсутствие
+  duplicated business rules в UI/transport adapters.
+
+Обязательные действия в ближайших итерациях:
+
+1. для каждого нового ecommerce endpoint фиксировать FFA parity (`#[server]` ↔ GraphQL/REST);
+2. для каждого нового post-order сценария фиксировать FBA boundary
+   (service contract first, transport adapters second);
+3. при обновлении execution checkpoint явно отмечать, какие FFA/FBA invariants были
+   проверены в конкретном срезе.
 
 ## Область работ
 
