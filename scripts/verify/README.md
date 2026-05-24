@@ -218,6 +218,54 @@ npm run verify:page-builder:fba:baseline
 - Dependency guard (`cargo metadata` + allow/deny):
   - backend apps (в текущей конфигурации: `rustok-server`) → только `rustok-*` crate-зависимости (кроме явных infra-исключений)
   - deny новых междоменных `rustok-* -> rustok-*` связей вне allow-list
+
+---
+
+### `verify-page-builder-contract-parity.mjs`
+**Page Builder FBA baseline** — Provider/consumer version parity
+
+Что проверяет:
+- `builder_contract_version` между `rustok-page-builder` (provider) и `rustok-pages` (consumer);
+- `contract_version` в consumer-манифесте относительно версии provider.
+
+**Severity:** HIGH. Drift версий контракта блокирует безопасный rollout между Wave 0/Wave 1.
+
+---
+
+### `verify-page-builder-fallback-profiles.mjs`
+**Page Builder FBA baseline** — Required fallback/toggle structure
+
+Что проверяет:
+- наличие секций `fba.builder_consumer.degraded_modes` и `fba.builder_consumer.toggle_profiles`;
+- обязательные ключи degraded modes и профилей (`all_on/publish_off/preview_off/builder_off`);
+- наличие обязательных toggle-флагов и typed degraded-mode для publish-disable path.
+
+**Severity:** HIGH. Отсутствие fallback-структуры ведёт к неуправляемой деградации при отключении capability.
+
+---
+
+### `verify-page-builder-toggle-profiles-consistency.mjs`
+**Page Builder FBA baseline** — Toggle profile value consistency
+
+Что проверяет:
+- что в каждом профиле (`all_on/publish_off/preview_off/builder_off`) флаги имеют ожидаемые boolean-комбинации;
+- что dry-run rollout semantics остаются детерминированными.
+
+**Severity:** HIGH. Неконсистентные профили делают tenant-toggle rollout непредсказуемым.
+
+---
+
+### `verify-page-builder-fba-baseline.mjs`
+**Page Builder FBA baseline** — Aggregate gate
+
+Что делает:
+- последовательно запускает:
+  1) `verify-page-builder-contract-parity.mjs`,
+  2) `verify-page-builder-fallback-profiles.mjs`,
+  3) `verify-page-builder-toggle-profiles-consistency.mjs`;
+- возвращает non-zero exit code при падении любого шага.
+
+**Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.
   - deny nested imports внутренних модулей без явного разрешения
 
 **Severity:** CRITICAL. Модуль вне registry = не проходит health check.
