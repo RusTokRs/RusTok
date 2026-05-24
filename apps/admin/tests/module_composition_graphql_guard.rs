@@ -20,6 +20,27 @@ fn native_module_composition_endpoints_are_not_declared() {
     }
 }
 
+
+#[test]
+fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for forbidden in [
+        "UPDATE platform_state",
+        "INSERT INTO builds",
+        "INSERT INTO module_operations",
+        "SELECT revision FROM platform_state",
+        "save_manifest_and_enqueue_build",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "Forbidden raw SQL/platform composition helper fragment found in api.rs: {forbidden}"
+        );
+    }
+}
+
 #[test]
 fn module_composition_client_helpers_do_not_call_native_paths() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
