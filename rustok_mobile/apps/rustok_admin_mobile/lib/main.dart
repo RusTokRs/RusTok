@@ -5,7 +5,8 @@ import 'app_shell/auth_bootstrap.dart';
 import 'registry/mobile_module_registry.dart';
 import 'routes/app_router.dart';
 
-final mobileRegistryProvider = Provider((ref) => buildMobileModuleRegistry());
+final mobileRegistryReportProvider =
+    Provider((ref) => buildAdaptedMobileModuleRegistryWithReport());
 
 void main() {
   runApp(const ProviderScope(child: RusTokAdminMobileApp()));
@@ -17,7 +18,7 @@ class RusTokAdminMobileApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(graphQlClientProvider);
-    final router = buildRouter(ref.watch(mobileRegistryProvider));
+    final router = buildRouter(ref.watch(mobileRegistryReportProvider));
     return MaterialApp.router(
       title: 'RusTok Admin Mobile',
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.deepPurple),
