@@ -9,6 +9,17 @@
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-05-24T16:35:00Z
 
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Owner: `rustok-commerce` module team
+
 ## Статус документа
 
 Этот документ фиксирует актуальный roadmap umbrella-модуля `rustok-commerce` после отказа от legacy REST surface `/api/commerce/*` и после появления platform-level `rustok-channel`.

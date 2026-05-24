@@ -3,7 +3,10 @@ use rustok_pages::dto::{
     BlockType, CreateBlockInput, CreatePageInput, PageBodyInput, PageTranslationInput,
     UpdatePageInput,
 };
-use rustok_pages::error::PagesError;
+use rustok_pages::error::{
+    PagesError, FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED,
+    FEATURE_BUILDER_PROPERTIES_ENABLED, FEATURE_BUILDER_PUBLISH_ENABLED,
+};
 use rustok_pages::services::{BlockService, PageService};
 use rustok_pages::PagesModule;
 use rustok_test_utils::{
@@ -181,7 +184,7 @@ async fn publish_returns_feature_disabled_when_builder_publish_toggle_is_false()
     let result = page_service.publish(tenant_id, security, page.id).await;
     assert!(matches!(
         result,
-        Err(PagesError::FeatureDisabled { feature }) if feature == "builder.publish.enabled"
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_PUBLISH_ENABLED
     ));
 }
 
@@ -220,7 +223,7 @@ async fn create_grapesjs_body_returns_feature_disabled_when_builder_toggle_is_fa
 
     assert!(matches!(
         result,
-        Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_ENABLED
     ));
 }
 
@@ -251,7 +254,7 @@ async fn update_grapesjs_body_returns_feature_disabled_when_builder_toggle_is_fa
 
     assert!(matches!(
         result,
-        Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_ENABLED
     ));
 }
 
@@ -363,6 +366,49 @@ async fn create_and_publish_markdown_is_allowed_when_builder_disabled_but_publis
 }
 
 #[tokio::test]
+async fn create_and_publish_markdown_is_allowed_when_builder_publish_toggle_is_false() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":true,\"publish\":{\"enabled\":false}}}",
+    )
+    .await;
+
+    let created = page_service
+        .create(
+            tenant_id,
+            security,
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Published markdown with publish-off".to_string(),
+                    slug: Some("published-markdown-publish-off".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    content: "markdown publish path when builder publish off".to_string(),
+                    format: Some("markdown".to_string()),
+                    content_json: None,
+                }),
+                blocks: None,
+                channel_slugs: None,
+                publish: true,
+            },
+        )
+        .await
+        .expect("markdown publish should remain available when builder.publish is disabled");
+
+    assert_eq!(
+        created.status,
+        rustok_content::entities::node::ContentStatus::Published
+    );
+}
+
+#[tokio::test]
 async fn publish_grapesjs_page_is_blocked_when_builder_disabled_even_if_publish_enabled() {
     let (db, page_service, _block_service, tenant_id, security) = setup().await;
     let draft = page_service
@@ -404,7 +450,7 @@ async fn publish_grapesjs_page_is_blocked_when_builder_disabled_even_if_publish_
     let result = page_service.publish(tenant_id, security, draft.id).await;
     assert!(matches!(
         result,
-        Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_ENABLED
     ));
 }
 
@@ -505,7 +551,7 @@ async fn update_to_published_is_blocked_for_existing_grapesjs_page_when_builder_
 
     assert!(matches!(
         result,
-        Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_ENABLED
     ));
 }
 
@@ -566,6 +612,62 @@ async fn update_to_published_markdown_is_allowed_when_builder_disabled_but_publi
 }
 
 #[tokio::test]
+async fn update_to_published_markdown_is_allowed_when_builder_publish_toggle_is_false() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    let draft = page_service
+        .create(
+            tenant_id,
+            security.clone(),
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Draft markdown publish-off page".to_string(),
+                    slug: Some("draft-markdown-publish-off".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    content: "markdown draft publish-off".to_string(),
+                    format: Some("markdown".to_string()),
+                    content_json: None,
+                }),
+                blocks: None,
+                channel_slugs: None,
+                publish: false,
+            },
+        )
+        .await
+        .expect("must create draft markdown page");
+
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":true,\"publish\":{\"enabled\":false}}}",
+    )
+    .await;
+
+    let updated = page_service
+        .update(
+            tenant_id,
+            security,
+            draft.id,
+            UpdatePageInput {
+                status: Some(rustok_content::entities::node::ContentStatus::Published),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("markdown publish transition should remain available when builder.publish is disabled");
+
+    assert_eq!(
+        updated.status,
+        rustok_content::entities::node::ContentStatus::Published
+    );
+}
+
+#[tokio::test]
 async fn publish_forbidden_user_gets_forbidden_before_builder_toggle_errors() {
     let (db, page_service, _block_service, tenant_id, admin) = setup().await;
     let draft = page_service
@@ -609,4 +711,94 @@ async fn publish_forbidden_user_gets_forbidden_before_builder_toggle_errors() {
         .await;
 
     assert!(matches!(result, Err(PagesError::Forbidden(_))));
+}
+
+#[tokio::test]
+async fn preview_capability_returns_feature_disabled_when_preview_toggle_is_false() {
+    let (db, page_service, _block_service, tenant_id, _security) = setup().await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":true,\"preview\":{\"enabled\":false}}}",
+    )
+    .await;
+
+    let result = page_service
+        .ensure_builder_preview_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(matches!(
+        result,
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_PREVIEW_ENABLED
+    ));
+}
+
+#[tokio::test]
+async fn properties_capability_returns_feature_disabled_when_properties_toggle_is_false() {
+    let (db, page_service, _block_service, tenant_id, _security) = setup().await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":true,\"properties\":{\"enabled\":false}}}",
+    )
+    .await;
+
+    let result = page_service
+        .ensure_builder_properties_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(matches!(
+        result,
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_PROPERTIES_ENABLED
+    ));
+}
+
+#[tokio::test]
+async fn preview_capability_is_enabled_by_default_when_settings_absent() {
+    let (_db, page_service, _block_service, tenant_id, _security) = setup().await;
+
+    let result = page_service
+        .ensure_builder_preview_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn properties_capability_is_enabled_by_default_when_settings_absent() {
+    let (_db, page_service, _block_service, tenant_id, _security) = setup().await;
+
+    let result = page_service
+        .ensure_builder_properties_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn preview_capability_is_enabled_when_preview_toggle_is_true() {
+    let (db, page_service, _block_service, tenant_id, _security) = setup().await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":true,\"preview\":{\"enabled\":true}}}",
+    )
+    .await;
+
+    let result = page_service
+        .ensure_builder_preview_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn properties_capability_is_enabled_when_properties_toggle_is_true() {
+    let (db, page_service, _block_service, tenant_id, _security) = setup().await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":true,\"properties\":{\"enabled\":true}}}",
+    )
+    .await;
+
+    let result = page_service
+        .ensure_builder_properties_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(result.is_ok());
 }

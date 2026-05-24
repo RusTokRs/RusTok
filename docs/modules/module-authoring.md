@@ -196,6 +196,46 @@ Module-owned UI package не имеет права invent-ить свою locale
 3. `npm run verify:i18n:ui`, если тронуты locale bundles или locale wiring
 4. UI package docs и host docs обновлены, если поменялся surface contract
 
+### 6. Обязательный FFA/FBA status block для модулей с UI
+
+Для каждого module-owned UI пакета (admin/storefront/host-integrated surface) в локальном
+`docs/implementation-plan.md` обязателен status block:
+
+```md
+## FFA/FBA status
+
+- FFA status: `not_started | in_progress | phase_b_ready | parity_verified`
+- FBA status: `not_started | in_progress | boundary_ready | transport_verified`
+- Evidence:
+  - UI/core/transport decomposition status
+  - native `#[server]` + GraphQL parity status
+  - backend boundary status (in-process/remote-ready), если применимо
+- Last verified at (UTC):
+- Owner:
+```
+
+Правила:
+
+1. Если правится UI contract, transport wiring или module boundary — status block обновляется в том же PR.
+2. Если меняется статус локального блока, синхронно обновляется central entry в `docs/modules/registry.md` (раздел FFA/FBA readiness board).
+3. Нельзя выставлять `parity_verified`/`transport_verified` без явного verification evidence в PR и в локальном плане.
+
+### 7. Правило для модулей, у которых UI запланирован, но ещё не реализован
+
+Чтобы не терять контроль над будущими UI-surface, для модулей с планируемым UI действует
+обязательное предварительное правило:
+
+1. Если UI ещё не реализован, в локальном `docs/implementation-plan.md` всё равно должен
+   быть `## FFA/FBA status` block со статусами `not_started` и явной пометкой в `Evidence`,
+   что UI surface запланирован, но не опубликован.
+2. В central `docs/modules/registry.md` (FFA/FBA readiness board) для такого модуля должна
+   существовать строка со статусом `not_started` и корректным `Source plan`.
+3. В PR, где впервые появляется module-owned UI (admin/storefront/host-integrated),
+   исполнитель обязан в том же изменении:
+   - обновить локальный статус минимум до `in_progress`;
+   - синхронизировать соответствующую строку в central board;
+   - приложить первичное verification evidence (минимум validate/check + transport parity note).
+
 ## Что запрещено
 
 При написании модуля нельзя:

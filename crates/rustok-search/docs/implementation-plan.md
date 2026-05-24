@@ -12,6 +12,17 @@
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-05-23T00:00:00Z
 
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - module plan синхронизирован с central FFA/FBA readiness board;
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Owner: `rustok-search` module team
+
 ## Область работ
 
 - удерживать `rustok-search` как отдельный core module для search UX и engine semantics;

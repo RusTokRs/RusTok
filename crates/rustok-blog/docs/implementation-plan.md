@@ -8,7 +8,7 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #19 completed (admin tags input formatting moved to `core`, dual-path transport unchanged).
+- Last checkpoint: FFA slice #24 completed (admin submit button label mapping moved to `core::submit_action_label`, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
@@ -16,6 +16,17 @@ packages и module metadata синхронизированы.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
 - Last updated at (UTC): 2026-05-24T18:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract;
+  - native `#[server]` + GraphQL fallback остаются параллельными путями, removal/replace GraphQL не выполнялся;
+  - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract.
+- Last verified at (UTC): 2026-05-24T18:00:00Z
+- Owner: `rustok-blog` module team
 
 ## Область работ
 
@@ -131,7 +142,12 @@ packages и module metadata синхронизированы.
 - [x] Slice 17: admin locale argument mapping switched from inline `Some(post_locale[..])` to `core::locale_arg`.
 - [x] Slice 18: admin optional text default mapping switched from inline `unwrap_or_default()` to `core::optional_text_or_default`.
 - [x] Slice 19: admin tags input formatting switched from inline `post.tags.join(\", \")` to `core::tags_input_value`.
-- [ ] Sync admin surface for the same helper family where applicable and attach parity evidence.
+- [x] Slice 20: admin submit-button state selection moved to core (`submit_button_state` + `SubmitButtonState`) to keep UI as thin label mapper.
+- [x] Slice 21: admin selected-post effect branch switched to core-owned loadability predicate/normalization flow.
+- [x] Slice 22: admin selected-post id normalization moved to core (`loadable_post_id`) and nested UI branch removed.
+- [x] Slice 23: admin form title select (`edit/create`) switched from inline conditional to `core::edit_action_label`.
+- [x] Slice 24: admin submit button label mapping switched from inline `match` to `core::submit_action_label`.
+- [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 
 ## Double documentation verification (current slice)

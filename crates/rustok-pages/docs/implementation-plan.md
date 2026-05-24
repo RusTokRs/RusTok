@@ -16,9 +16,24 @@
   3. Если задача не про pages runtime contract, приоритет смещается на следующий модуль волны; в pages вносить только bugfix/contract-sync.
 - Last updated at (UTC): 2026-05-24T00:40:00Z
 - Last updated at (UTC): 2026-05-24T09:15:00Z
+- Last updated at (UTC): 2026-05-24T10:05:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 
+- PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 
+
+
+
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - module plan синхронизирован с central FFA/FBA readiness board;
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Owner: `rustok-pages` module team
 
 ## PB-FBA immediate sprint (продолжение page builder разработки)
 
