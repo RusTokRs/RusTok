@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_shell/app_shell_page.dart';
+import '../registry/module_entry_adapter.dart';
 
 GoRouter buildRouter(List<MobileModuleEntry> entries) {
+  final moduleRoutes = adaptModuleEntries(entries);
+
   return GoRouter(
     initialLocation: '/modules',
     routes: [
@@ -14,12 +17,12 @@ GoRouter buildRouter(List<MobileModuleEntry> entries) {
         routes: [
           GoRoute(
             path: '/modules',
-            builder: (context, state) => ModulesHomePage(entries: entries),
+            builder: (context, state) => ModulesHomePage(moduleRoutes: moduleRoutes),
             routes: [
-              for (final entry in entries)
+              for (final routeEntry in moduleRoutes)
                 GoRoute(
-                  path: entry.routeSegment,
-                  name: entry.moduleKey,
+                  path: routeEntry.routeSegment,
+                  name: routeEntry.moduleKey,
                   builder: (context, state) {
                     const codec = RouteCodec(
                       RouteSanitizer({
@@ -34,10 +37,21 @@ GoRouter buildRouter(List<MobileModuleEntry> entries) {
                       state.uri.queryParameters,
                     );
                     return ModulePlaceholderPage(
-                      entry: entry,
+                      moduleRoute: routeEntry,
                       selection: selection,
                     );
                   },
+                  routes: [
+                    for (final child in routeEntry.childRoutes)
+                      GoRoute(
+                        path: child.subpath,
+                        name: '${routeEntry.moduleKey}:${child.subpath}',
+                        builder: (context, state) => ModuleChildPlaceholderPage(
+                          moduleRoute: routeEntry,
+                          childRoute: child,
+                        ),
+                      ),
+                  ],
                 ),
             ],
           ),
@@ -48,20 +62,31 @@ GoRouter buildRouter(List<MobileModuleEntry> entries) {
 }
 
 class ModulesHomePage extends StatelessWidget {
-  const ModulesHomePage({super.key, required this.entries});
+  const ModulesHomePage({super.key, required this.moduleRoutes});
 
-  final List<MobileModuleEntry> entries;
+  final List<ModuleRouteEntry> moduleRoutes;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       children: [
         const ListTile(title: Text('RusTok Modules')),
-        for (final entry in entries)
-          ListTile(
-            title: Text(entry.nav.title),
-            subtitle: Text('/modules/${entry.routeSegment}'),
-            onTap: () => context.go('/modules/${entry.routeSegment}'),
+        for (final moduleRoute in moduleRoutes)
+          ExpansionTile(
+            title: Text(moduleRoute.navTitle),
+            subtitle: Text(moduleRoute.path),
+            children: [
+              ListTile(
+                title: const Text('Open module root'),
+                onTap: () => context.go(moduleRoute.path),
+              ),
+              for (final child in moduleRoute.childRoutes)
+                ListTile(
+                  title: Text(child.navLabel),
+                  subtitle: Text(child.path),
+                  onTap: () => context.go(child.path),
+                ),
+            ],
           ),
       ],
     );
@@ -71,11 +96,11 @@ class ModulesHomePage extends StatelessWidget {
 class ModulePlaceholderPage extends StatelessWidget {
   const ModulePlaceholderPage({
     super.key,
-    required this.entry,
+    required this.moduleRoute,
     required this.selection,
   });
 
-  final MobileModuleEntry entry;
+  final ModuleRouteEntry moduleRoute;
   final RouteSelection selection;
 
   @override
@@ -84,8 +109,34 @@ class ModulePlaceholderPage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Module: ${entry.moduleKey}'),
+          Text('Module: ${moduleRoute.moduleKey}'),
           Text('Location: ${selection.toLocation()}'),
+        ],
+      ),
+    );
+  }
+}
+
+
+class ModuleChildPlaceholderPage extends StatelessWidget {
+  const ModuleChildPlaceholderPage({
+    super.key,
+    required this.moduleRoute,
+    required this.childRoute,
+  });
+
+  final ModuleRouteEntry moduleRoute;
+  final ModuleChildRouteEntry childRoute;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Module: ${moduleRoute.moduleKey}'),
+          Text('Child page: ${childRoute.title}'),
+          Text('Path: ${childRoute.path}'),
         ],
       ),
     );
