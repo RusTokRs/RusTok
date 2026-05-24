@@ -31,7 +31,7 @@
 - [x] **Фаза 0 — Контракт и backend-baseline зафиксированы**
 - [~] **Фаза 1 — Выделение FBA reference-модуля builder-а**
 - [~] **Фаза 2 — Интеграция consumer-ов (в т.ч. `pages`) с reference-модулем**
-- [ ] **Фаза 3 — Feature flags и стратегия rollout**
+- [~] **Фаза 3 — Feature flags и стратегия rollout**
 - [ ] **Фаза 4 — Миграция legacy markdown → rt_json_v1**
 - [ ] **Фаза 5 — Release-gate: тесты, RBAC, observability**
 - [ ] **Фаза 6 — Pre-production smoke и pilot rollout**
@@ -88,7 +88,7 @@
 
 ### Фаза 3 — Feature flags и стратегия rollout
 
-**Статус:** [ ] Todo
+**Статус:** [~] In progress
 
 - [~] Ввести флаги уровня tenant/module/form (baseline-профиль и naming зафиксированы, rollout automation остаётся в бэклоге).
 - [x] Определить стратегию включения: internal → pilot → broad rollout.
@@ -143,6 +143,15 @@
 4. Проверить observability probes: sanitize failures, publish latency, error-rate за последние 15 минут.
 5. Зафиксировать post-check snapshot + решение (`keep` / `rollback`) в audit trail.
 
+6. Получить owner sign-off по чеклисту: platform on-call, pages owner, runtime owner (Next/Leptos).
+
+Артефакты выполнения (обязательно приложить к execution log):
+
+- pre/post toggle snapshot;
+- smoke-check протокол (`preview/properties/publish(dry)`);
+- выдержка метрик за 15 минут до/после переключения;
+- финальное решение `keep`/`rollback` с owner signatures.
+
 Условия немедленного rollback:
 
 - рост runtime error-rate выше agreed threshold;
@@ -155,17 +164,6 @@ SLO-проверка после переключения:
 - `publish` p95 < 3s;
 - sanitize failures <= baseline + alert threshold.
 
-
-- **Wave 0 (internal):** platform tenants + synthetic data; цель — проверить control-plane toggle semantics.
-- **Wave 1 (pilot):** 1–3 tenant с low traffic; цель — проверить publish latency / sanitize failures.
-- **Wave 2 (broad):** расширение на cohort tenants после прохождения release-gate Phase 5.
-
-Go/No-Go для перехода в следующую волну:
-
-- нет блокирующих RBAC regression;
-- P95 publish latency в пределах согласованного SLO;
-- sanitize failure rate не растёт относительно baseline больше порога алерта;
-- есть утверждённый rollback шаг и подтверждённый owner on-call.
 
 ### Фаза 4 — Миграция legacy markdown → rt_json_v1
 
