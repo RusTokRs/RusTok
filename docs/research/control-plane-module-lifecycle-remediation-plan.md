@@ -696,7 +696,7 @@ rollback-стратегии и Definition of Done по итерациям.
 
 - [x] Закрыть общий hash builder для GraphQL/Leptos SSR/BuildService и end-to-end test
   “один manifest -> один hash/ref/snapshot” между surfaces (server integration tests `successful_enqueue_keeps_hash_parity_between_snapshot_and_build`, `successful_enqueue_keeps_manifest_snapshot_parity_with_hash`, `same_manifest_keeps_hash_and_snapshot_stable_across_revisions` + shared typed hash helper cutover).
-- [ ] Прогнать минимальный verification-набор плана на ветке и зафиксировать результат в чекбоксах.
+- [~] Прогнать минимальный verification-набор плана на ветке и зафиксировать результат в чекбоксах (добавлен единый runner `scripts/verify/run-control-plane-remediation-minimal.sh`; нужен зелёный прогон без pre-existing drift).
 
 ### Definition of Done для пакетного цикла
 
@@ -735,3 +735,31 @@ rollback-стратегии и Definition of Done по итерациям.
 - Закрыт operational-gate по dependabot directory contract: устранены дубли директорий `/apps/admin` и `/apps/storefront` в `.github/dependabot.yml`, после чего `scripts/ci/check-dependabot-directories.py` проходит зелёно.
 - Повторно подтверждены CI non-regression контракты для module platform: `cargo xtask validate-manifest` и `cargo xtask module validate` выполняются с PASS.
 - Release-gate чекбокс `CI-gates подтверждены как non-regression` переведён в `[x]`; незакрытым остаётся отдельный пункт про полный минимальный verification-набор (fmt/tests bundle).
+
+### Актуализация 2026-05-24 (итерация 50)
+
+- Повторный запуск `cargo fmt --all -- --check` снова не прошёл: зафиксирован масштабный rustfmt-drift в уже существующих файлах (`apps/admin`, `apps/server`, `crates/rustok-seo`, `crates/rustok-tenant`, и др.), без новых функциональных регрессий.
+- Параллельно повторно запущены `cargo xtask validate-manifest` и `cargo xtask module validate`; оба прогона упирались в длительную перекомпиляцию и lock contention (`Blocking waiting for file lock ...`) в рамках окна итерации.
+- Чекбокс минимального verification-набора сохраняется в `[ ]` до отдельного зелёного прогона fmt + server/migration bundle после стабилизации build-cache/lock-окна.
+
+
+### Актуализация 2026-05-24 (итерация 51)
+
+- Усилен operational runner `scripts/verify/run-control-plane-remediation-minimal.sh`: добавлен inter-process lock (`flock`) в `target/.control-plane-remediation-minimal.lock`, чтобы исключить параллельные запуски и снизить повторяемые `Blocking waiting for file lock ...` между итерациями.
+- Для ускоренного повторного прогона после pre-existing formatting drift добавлен управляемый флаг `RUSTOK_VERIFY_SKIP_FMT=1` (только для локального цикла triage; release-gate остаётся с обязательным fmt-check).
+- Batch-2 пункт verification остаётся `[~]` до полного зелёного прогона полного набора без skip-флагов.
+
+### Актуализация 2026-05-24 (итерация 52)
+
+- Для нового minimal runner добавлен smoke/guard тест `scripts/tests/control_plane_remediation_minimal_runner_test.sh` (syntax + lock-conflict path + skip-fmt path до шага migration).
+- `scripts/tests/README.md` и `scripts/verify/README.md` синхронизированы с новым runner/test entrypoint, чтобы operational usage и локальные проверки были воспроизводимыми.
+
+### Актуализация 2026-05-24 (итерация 53)
+
+- `verify-all` теперь поддерживает alias `control-plane-remediation-minimal` для точечного запуска нового bundle без ручного вызова файла runner.
+- Добавлен отдельный smoke-тест `scripts/tests/control_plane_remediation_verify_all_alias_test.sh`, подтверждающий корректный route alias -> runner path.
+
+### Актуализация 2026-05-24 (итерация 54)
+
+- Smoke-тесты для control-plane minimal runner переведены на изолированные fixture-сценарии (`mktemp` + fake `cargo`/`python3`), без зависимости от состояния текущего workspace и без тяжёлой перекомпиляции.
+- Alias-тест `verify-all -> control-plane-remediation-minimal` теперь проверяет полный PASS-path в fixture, включая финальный отчёт `All verification suites passed!`.

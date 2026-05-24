@@ -70,7 +70,10 @@ pub fn busy_key_for_delete(post_id: &str) -> String {
 }
 
 pub fn is_save_busy(busy_key: Option<&str>) -> bool {
-    busy_key == Some("create") || busy_key.map(|key| key.starts_with("save:")).unwrap_or(false)
+    busy_key == Some("create")
+        || busy_key
+            .map(|key| key.starts_with("save:"))
+            .unwrap_or(false)
 }
 
 pub fn label_with_id(template: &str, id: &str) -> String {
@@ -104,12 +107,11 @@ pub fn should_autofill_slug(current_slug: &str) -> bool {
     !has_non_empty_text(current_slug)
 }
 
-pub fn should_load_selected_post(post_id: Option<&str>) -> bool {
-    post_id.map(has_non_empty_text).unwrap_or(false)
-}
-
-pub fn selected_post_id_if_loadable<'a>(post_id: Option<&'a str>) -> Option<&'a str> {
-    post_id.filter(|value| has_non_empty_text(value))
+pub fn loadable_post_id(post_id: Option<&str>) -> Option<String> {
+    post_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 pub fn trimmed_text(value: &str) -> String {
@@ -133,9 +135,7 @@ pub fn tags_input_value(tags: &[String]) -> String {
 }
 
 pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
-    busy_key
-        .map(|key| key.contains(post_id))
-        .unwrap_or(false)
+    busy_key.map(|key| key.contains(post_id)).unwrap_or(false)
 }
 
 pub fn is_editing_post(editing_post_id: Option<&str>, post_id: &str) -> bool {
@@ -236,6 +236,36 @@ pub fn issue_label_for(issue: &WritePathIssue) -> &'static str {
     issue_kind_label(issue.kind)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubmitButtonState {
+    Saving,
+    Editing,
+    Creating,
+}
+
+pub fn submit_button_state(is_save_busy: bool, is_editing_mode: bool) -> SubmitButtonState {
+    if is_save_busy {
+        SubmitButtonState::Saving
+    } else if is_editing_mode {
+        SubmitButtonState::Editing
+    } else {
+        SubmitButtonState::Creating
+    }
+}
+
+pub fn submit_action_label(
+    state: SubmitButtonState,
+    saving_label: String,
+    update_label: String,
+    create_label: String,
+) -> String {
+    match state {
+        SubmitButtonState::Saving => saving_label,
+        SubmitButtonState::Editing => update_label,
+        SubmitButtonState::Creating => create_label,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,7 +284,11 @@ mod tests {
     fn parse_tags_trims_and_skips_empty() {
         assert_eq!(
             parse_tags("news, launch, , release"),
-            vec!["news".to_string(), "launch".to_string(), "release".to_string()]
+            vec![
+                "news".to_string(),
+                "launch".to_string(),
+                "release".to_string()
+            ]
         );
     }
 
@@ -313,15 +347,12 @@ mod tests {
         assert!(!has_non_empty_text("   "));
         assert!(should_autofill_slug("   "));
         assert!(!should_autofill_slug("existing-slug"));
-        assert!(should_load_selected_post(Some("post-1")));
-        assert!(!should_load_selected_post(Some("   ")));
-        assert!(!should_load_selected_post(None));
         assert_eq!(
-            selected_post_id_if_loadable(Some("post-1")),
-            Some("post-1")
+            loadable_post_id(Some(" post-1 ")),
+            Some("post-1".to_string())
         );
-        assert_eq!(selected_post_id_if_loadable(Some("   ")), None);
-        assert_eq!(selected_post_id_if_loadable(None), None);
+        assert_eq!(loadable_post_id(Some("   ")), None);
+        assert_eq!(loadable_post_id(None), None);
         assert_eq!(trimmed_text(" abc "), "abc".to_string());
         assert_eq!(
             fallback_post_slug(None, "missing-slug"),
@@ -400,6 +431,33 @@ mod tests {
         assert_eq!(
             issue_label_for(&WritePathIssue::with_runtime("runtime issue")),
             "Runtime"
+        );
+        assert_eq!(
+            submit_action_label(
+                SubmitButtonState::Saving,
+                "Saving...".to_string(),
+                "Update post".to_string(),
+                "Create post".to_string()
+            ),
+            "Saving...".to_string()
+        );
+        assert_eq!(
+            submit_action_label(
+                SubmitButtonState::Editing,
+                "Saving...".to_string(),
+                "Update post".to_string(),
+                "Create post".to_string()
+            ),
+            "Update post".to_string()
+        );
+        assert_eq!(
+            submit_action_label(
+                SubmitButtonState::Creating,
+                "Saving...".to_string(),
+                "Update post".to_string(),
+                "Create post".to_string()
+            ),
+            "Create post".to_string()
         );
     }
 }

@@ -474,3 +474,20 @@ fi
 - [Forbidden Actions](../../docs/standards/forbidden-actions.md) — запреты с примерами
 - [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — ✅/❌ сравнения
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов
+
+
+## Control-plane remediation minimal bundle
+
+```bash
+./scripts/verify/run-control-plane-remediation-minimal.sh
+```
+
+Опционально для triage при известном pre-existing formatting drift:
+
+```bash
+RUSTOK_VERIFY_SKIP_FMT=1 ./scripts/verify/run-control-plane-remediation-minimal.sh
+```
+
+```bash
+./scripts/verify/verify-all.sh control-plane-remediation-minimal
+```

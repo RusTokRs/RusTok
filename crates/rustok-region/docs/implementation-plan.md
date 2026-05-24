@@ -13,6 +13,17 @@
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Owner: `rustok-region` module team
+
 ## Область работ
 
 - удерживать `rustok-region` как owner region/country/currency policy baseline;
