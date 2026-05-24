@@ -78,6 +78,9 @@ def _validate_snapshot_schema(entries: object) -> str | None:
         missing = required_keys.difference(item.keys())
         if missing:
             return f"snapshot entry #{index} missing keys: {sorted(missing)}"
+        unknown = set(item.keys()).difference(required_keys)
+        if unknown:
+            return f"snapshot entry #{index} has unknown keys: {sorted(unknown)}"
 
         module_slug = item["module_slug"]
         route_segment = item["route_segment"]
@@ -153,6 +156,17 @@ def _validate_snapshot_schema(entries: object) -> str | None:
         for child_index, child in enumerate(child_pages):
             if not isinstance(child, dict):
                 return f"snapshot entry #{index} child #{child_index} is not an object"
+            required_child_keys = {"subpath", "title", "nav_label"}
+            missing_child = required_child_keys.difference(child.keys())
+            if missing_child:
+                return (
+                    f"snapshot entry #{index} child #{child_index} missing keys: {sorted(missing_child)}"
+                )
+            unknown_child = set(child.keys()).difference(required_child_keys)
+            if unknown_child:
+                return (
+                    f"snapshot entry #{index} child #{child_index} has unknown keys: {sorted(unknown_child)}"
+                )
             for key in ("subpath", "title", "nav_label"):
                 value = child.get(key)
                 if not isinstance(value, str) or not value.strip():

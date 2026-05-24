@@ -374,6 +374,46 @@ class VerifyMobileManifestTests(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertIn("invalid surface_kind", error)
 
+    def test_validate_snapshot_schema_rejects_unknown_top_level_keys(self):
+        error = _validate_snapshot_schema(
+            [
+                {
+                    "module_slug": "blog",
+                    "surface_kind": "admin_mobile",
+                    "route_segment": "blog",
+                    "permissions": [],
+                    "locale_namespace": "blog",
+                    "child_pages": [],
+                    "extra": True,
+                }
+            ]
+        )
+        self.assertIsNotNone(error)
+        self.assertIn("unknown keys", error)
+
+    def test_validate_snapshot_schema_rejects_unknown_child_keys(self):
+        error = _validate_snapshot_schema(
+            [
+                {
+                    "module_slug": "blog",
+                    "surface_kind": "admin_mobile",
+                    "route_segment": "blog",
+                    "permissions": [],
+                    "locale_namespace": "blog",
+                    "child_pages": [
+                        {
+                            "subpath": "posts",
+                            "title": "Posts",
+                            "nav_label": "All posts",
+                            "extra": "x",
+                        }
+                    ],
+                }
+            ]
+        )
+        self.assertIsNotNone(error)
+        self.assertIn("has unknown keys", error)
+
 
 if __name__ == "__main__":
     unittest.main()
