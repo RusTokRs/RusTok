@@ -65,21 +65,6 @@ pub fn BlogAdmin() -> impl IntoView {
         "blog.form.tagsPlaceholder",
         "news, launch, release",
     );
-    let validation_issue_label = t(
-        ui_locale.as_deref(),
-        "blog.error.validationBadge",
-        "Validation",
-    );
-    let sanitize_issue_label = t(
-        ui_locale.as_deref(),
-        "blog.error.sanitizeBadge",
-        "Sanitize",
-    );
-    let runtime_issue_label = t(
-        ui_locale.as_deref(),
-        "blog.error.runtimeBadge",
-        "Runtime",
-    );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_post_id, set_editing_post_id) = signal(Option::<String>::None);
@@ -204,14 +189,14 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_publish_now,
                         default_locale.as_str(),
                     );
-                    set_submit_error.set(Some(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.loadPost",
                             "Failed to load post",
                         ),
                         &err.to_string(),
-                    )));
+                    ))));
                 }
             }
 
@@ -296,14 +281,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     submit_query_writer.replace_value(AdminQueryKey::PostId.as_str(), post_id);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
                         &t(
                             submit_ui_locale.as_deref(),
                             "blog.error.savePost",
                             "Failed to save post",
                         ),
                         &err.to_string(),
-                    )));
+                    ))));
                 }
             }
 
@@ -358,14 +343,14 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_submit_error.set(Some(core::error_with_context(
+                        set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
                             &t(
                                 ui_locale.as_deref(),
                                 "blog.error.updateStatus",
                                 "Failed to update post status",
                             ),
                             &err.to_string(),
-                        )));
+                        ))));
                     }
                 }
 
@@ -409,14 +394,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.archivePost",
                             "Failed to archive post",
                         ),
                         &err.to_string(),
-                    )));
+                    ))));
                 }
             }
 
@@ -464,14 +449,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     ))));
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.deletePost",
                             "Failed to delete post",
                         ),
                         &err.to_string(),
-                    )));
+                    ))));
                 }
             }
 
@@ -727,12 +712,11 @@ pub fn BlogAdmin() -> impl IntoView {
                             }>
                                 {move || {
                                     submit_error.get().map(|issue| {
-                                        let label = issue_label(
-                                            &issue,
-                                            validation_issue_label.as_str(),
-                                            sanitize_issue_label.as_str(),
-                                            runtime_issue_label.as_str(),
-                                        );
+                                        let label = match issue.kind {
+                                            WritePathIssueKind::Validation => "Validation".to_string(),
+                                            WritePathIssueKind::Sanitization => "Sanitize".to_string(),
+                                            WritePathIssueKind::Runtime => "Runtime".to_string(),
+                                        };
 
                                         view! {
                                             <span>
@@ -905,11 +889,11 @@ fn BlogPostsTable(
                                                         move |_| on_edit.run((post_id_edit.clone(), post_locale_edit.clone()))
                                                     }
                                                 >
-                                                    {if is_editing {
-                                                        t(locale.as_deref(), "blog.table.editing", "Editing")
-                                                    } else {
-                                                        t(locale.as_deref(), "blog.table.edit", "Edit")
-                                                    }}
+                                                    {core::edit_action_label(
+                                                        is_editing,
+                                                        t(locale.as_deref(), "blog.table.editing", "Editing"),
+                                                        t(locale.as_deref(), "blog.table.edit", "Edit"),
+                                                    )}
                                                 </button>
                                                 <button
                                                     type="button"
@@ -919,15 +903,13 @@ fn BlogPostsTable(
                                                         move |_| on_toggle_publish.run((post_id_publish.clone(), !is_published, post_locale_publish.clone()))
                                                     }
                                                 >
-                                                    {if is_published {
-                                                        t(locale.as_deref(), "blog.table.unpublish", "Unpublish")
-                                                    } else {
-                                                        t(locale.as_deref(), "blog.table.publish", "Publish")
-                                                    }}
+                                                    {core::publish_action_label(
+                                                        is_published,
+                                                        t(locale.as_deref(), "blog.table.unpublish", "Unpublish"),
+                                                        t(locale.as_deref(), "blog.table.publish", "Publish"),
+                                                    )}
                                                 </button>
-                                                {if is_archived {
-                                                    ().into_any()
-                                                } else {
+                                                {if core::should_show_archive_action(is_archived) {
                                                     view! {
                                                         <button
                                                             type="button"
@@ -941,6 +923,8 @@ fn BlogPostsTable(
                                                         </button>
                                                     }
                                                     .into_any()
+                                                } else {
+                                                    ().into_any()
                                                 }}
                                                 <button
                                                     type="button"
@@ -973,6 +957,33 @@ fn StatusBadge(status: String) -> impl IntoView {
         <span class=badge_css>
             {status}
         </span>
+    }
+}
+
+fn issue_banner_class(issue: &WritePathIssue) -> &'static str {
+    match issue.kind {
+        WritePathIssueKind::Validation => {
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        }
+        WritePathIssueKind::Sanitization => {
+            "rounded-xl border border-orange-300/60 bg-orange-50 px-4 py-3 text-sm text-orange-900"
+        }
+        WritePathIssueKind::Runtime => {
+            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
+}
+
+fn issue_label<'a>(
+    issue: &WritePathIssue,
+    validation_label: &'a str,
+    sanitize_label: &'a str,
+    runtime_label: &'a str,
+) -> &'a str {
+    match issue.kind {
+        WritePathIssueKind::Validation => validation_label,
+        WritePathIssueKind::Sanitization => sanitize_label,
+        WritePathIssueKind::Runtime => runtime_label,
     }
 }
 
@@ -1022,4 +1033,18 @@ fn reset_form(
     set_body_format.set("markdown".to_string());
     set_tags_input.set(String::new());
     set_publish_now.set(false);
+}
+
+fn issue_banner_class(issue: &WritePathIssue) -> &'static str {
+    match issue.kind {
+        WritePathIssueKind::Validation => {
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        }
+        WritePathIssueKind::Sanitization => {
+            "rounded-xl border border-blue-300/60 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+        }
+        WritePathIssueKind::Runtime => {
+            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
 }
