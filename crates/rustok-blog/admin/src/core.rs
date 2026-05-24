@@ -118,6 +118,10 @@ pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn is_editing_post(editing_post_id: Option<&str>, post_id: &str) -> bool {
+    editing_post_id == Some(post_id)
+}
+
 pub fn edit_action_label(is_editing: bool, editing_label: String, edit_label: String) -> String {
     if is_editing {
         editing_label
@@ -266,6 +270,9 @@ mod tests {
         );
         assert!(row_is_busy_for_post(Some("edit:42"), "42"));
         assert!(!row_is_busy_for_post(Some("edit:41"), "42"));
+        assert!(is_editing_post(Some("42"), "42"));
+        assert!(!is_editing_post(Some("41"), "42"));
+        assert!(!is_editing_post(None, "42"));
         assert_eq!(
             edit_action_label(true, "Editing".to_string(), "Edit".to_string()),
             "Editing".to_string()

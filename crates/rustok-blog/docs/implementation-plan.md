@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #4 completed (admin body-format warning visibility guard moved to `core`, dual-path transport unchanged).
+- Last checkpoint: FFA slice #5 completed (admin editing-post predicate moved to `core`, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-24T11:40:00Z
+- Last updated at (UTC): 2026-05-24T12:05:00Z
 
 ## Область работ
 
@@ -116,6 +116,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 2: admin submit-error banner class fallback moved to core (`issue_banner_class_or_hidden`) without changing transport path.
 - [x] Slice 3: admin required draft-field guard moved to core (`has_required_draft_fields`) without changing transport path.
 - [x] Slice 4: admin raw-body warning visibility guard moved to core (`is_markdown_format`, `should_show_raw_body_warning`) without changing transport path.
+- [x] Slice 5: admin editing-post predicate moved to core (`is_editing_post`) and reused in toggle/archive/delete/table flows without changing transport path.
 - [ ] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

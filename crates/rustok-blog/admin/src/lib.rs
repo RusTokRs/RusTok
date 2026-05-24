@@ -326,7 +326,10 @@ pub fn BlogAdmin() -> impl IntoView {
 
                 match result {
                     Ok(post) => {
-                        if editing_post_id.get_untracked().as_deref() == Some(post.id.as_str()) {
+                        if core::is_editing_post(
+                            editing_post_id.get_untracked().as_deref(),
+                            post.id.as_str(),
+                        ) {
                             apply_post_to_form(
                                 set_editing_post_id,
                                 set_title,
@@ -377,7 +380,10 @@ pub fn BlogAdmin() -> impl IntoView {
             .await
             {
                 Ok(post) => {
-                    if editing_post_id.get_untracked().as_deref() == Some(post.id.as_str()) {
+                    if core::is_editing_post(
+                        editing_post_id.get_untracked().as_deref(),
+                        post.id.as_str(),
+                    ) {
                         apply_post_to_form(
                             set_editing_post_id,
                             set_title,
@@ -424,7 +430,10 @@ pub fn BlogAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::delete_post(token_value, tenant_value, post_id.clone()).await {
                 Ok(true) => {
-                    if editing_post_id.get_untracked().as_deref() == Some(post_id.as_str()) {
+                    if core::is_editing_post(
+                        editing_post_id.get_untracked().as_deref(),
+                        post_id.as_str(),
+                    ) {
                         delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
                         reset_form(
                             set_editing_post_id,
@@ -851,7 +860,8 @@ fn BlogPostsTable(
                                 let post_locale_edit = post_locale.clone();
                                 let post_locale_publish = post_locale.clone();
                                 let post_locale_archive = post_locale.clone();
-                                let is_editing = editing_post_id.as_deref() == Some(post_id.as_str());
+                                let is_editing =
+                                    core::is_editing_post(editing_post_id.as_deref(), post_id.as_str());
                                 let row_busy =
                                     core::row_is_busy_for_post(busy_key.as_deref(), post_id.as_str());
                                 let is_published = core::is_published_status(post.status.as_str());
