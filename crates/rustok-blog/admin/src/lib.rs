@@ -744,13 +744,19 @@ pub fn BlogAdmin() -> impl IntoView {
                             }
                         >
                             {move || {
-                                if core::is_save_busy(busy_key.get().as_deref())
-                                {
-                                    t(ui_locale.as_deref(), "blog.form.saving", "Saving...")
-                                } else if core::is_editing_mode(editing_post_id.get().as_deref()) {
-                                    t(ui_locale.as_deref(), "blog.form.update", "Update post")
-                                } else {
-                                    t(ui_locale.as_deref(), "blog.form.create", "Create post")
+                                match core::submit_button_state(
+                                    core::is_save_busy(busy_key.get().as_deref()),
+                                    core::is_editing_mode(editing_post_id.get().as_deref()),
+                                ) {
+                                    core::SubmitButtonState::Saving => {
+                                        t(ui_locale.as_deref(), "blog.form.saving", "Saving...")
+                                    }
+                                    core::SubmitButtonState::Editing => {
+                                        t(ui_locale.as_deref(), "blog.form.update", "Update post")
+                                    }
+                                    core::SubmitButtonState::Creating => {
+                                        t(ui_locale.as_deref(), "blog.form.create", "Create post")
+                                    }
                                 }
                             }}
                         </button>

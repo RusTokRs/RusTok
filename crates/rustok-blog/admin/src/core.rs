@@ -70,7 +70,10 @@ pub fn busy_key_for_delete(post_id: &str) -> String {
 }
 
 pub fn is_save_busy(busy_key: Option<&str>) -> bool {
-    busy_key == Some("create") || busy_key.map(|key| key.starts_with("save:")).unwrap_or(false)
+    busy_key == Some("create")
+        || busy_key
+            .map(|key| key.starts_with("save:"))
+            .unwrap_or(false)
 }
 
 pub fn label_with_id(template: &str, id: &str) -> String {
@@ -133,9 +136,7 @@ pub fn tags_input_value(tags: &[String]) -> String {
 }
 
 pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
-    busy_key
-        .map(|key| key.contains(post_id))
-        .unwrap_or(false)
+    busy_key.map(|key| key.contains(post_id)).unwrap_or(false)
 }
 
 pub fn is_editing_post(editing_post_id: Option<&str>, post_id: &str) -> bool {
@@ -236,6 +237,23 @@ pub fn issue_label_for(issue: &WritePathIssue) -> &'static str {
     issue_kind_label(issue.kind)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubmitButtonState {
+    Saving,
+    Editing,
+    Creating,
+}
+
+pub fn submit_button_state(is_save_busy: bool, is_editing_mode: bool) -> SubmitButtonState {
+    if is_save_busy {
+        SubmitButtonState::Saving
+    } else if is_editing_mode {
+        SubmitButtonState::Editing
+    } else {
+        SubmitButtonState::Creating
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,7 +272,11 @@ mod tests {
     fn parse_tags_trims_and_skips_empty() {
         assert_eq!(
             parse_tags("news, launch, , release"),
-            vec!["news".to_string(), "launch".to_string(), "release".to_string()]
+            vec![
+                "news".to_string(),
+                "launch".to_string(),
+                "release".to_string()
+            ]
         );
     }
 
@@ -316,10 +338,7 @@ mod tests {
         assert!(should_load_selected_post(Some("post-1")));
         assert!(!should_load_selected_post(Some("   ")));
         assert!(!should_load_selected_post(None));
-        assert_eq!(
-            selected_post_id_if_loadable(Some("post-1")),
-            Some("post-1")
-        );
+        assert_eq!(selected_post_id_if_loadable(Some("post-1")), Some("post-1"));
         assert_eq!(selected_post_id_if_loadable(Some("   ")), None);
         assert_eq!(selected_post_id_if_loadable(None), None);
         assert_eq!(trimmed_text(" abc "), "abc".to_string());
