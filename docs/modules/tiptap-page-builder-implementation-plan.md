@@ -98,6 +98,36 @@
 
 **DoD фазы:** controlled rollout возможен без redeploy.
 
+
+### Фаза 3.1 — Минимальный профиль feature flags (FBA baseline)
+
+Обязательный baseline-профиль до pilot-wave:
+
+- `builder.enabled` — глобальный tenant-level флаг доступа к visual builder контру.
+- `builder.preview.enabled` — разрешение preview capability.
+- `builder.properties.enabled` — разрешение редактирования properties/tree.
+- `builder.publish.enabled` — разрешение publish через builder path.
+- `builder.legacy_bridge_readonly` — принудительный read-only режим legacy block bridge.
+
+Правила:
+
+1. Выключение `builder.publish.enabled` **не** должно ломать page read-path и direct publish для legacy payload.
+2. Выключение `builder.enabled` переводит UI в fallback-поведение (read-only + диагностическое сообщение), без 5xx на storefront/admin list views.
+3. Для pilot-tenants запрещено включать `builder.publish.enabled=true`, если `builder.preview.enabled=false`.
+
+### Фаза 3.2 — Матрица rollout по волнам
+
+- **Wave 0 (internal):** platform tenants + synthetic data; цель — проверить control-plane toggle semantics.
+- **Wave 1 (pilot):** 1–3 tenant с low traffic; цель — проверить publish latency / sanitize failures.
+- **Wave 2 (broad):** расширение на cohort tenants после прохождения release-gate Phase 5.
+
+Go/No-Go для перехода в следующую волну:
+
+- нет блокирующих RBAC regression;
+- P95 publish latency в пределах согласованного SLO;
+- sanitize failure rate не растёт относительно baseline больше порога алерта;
+- есть утверждённый rollback шаг и подтверждённый owner on-call.
+
 ### Фаза 4 — Миграция legacy markdown → rt_json_v1
 
 **Статус:** [ ] Todo
@@ -197,3 +227,4 @@
 - [ ] CI-gate содержит сценарии fallback на legacy-read path при недоступности capability-layer.
 - [ ] Stores/admin UIs проходят parity-check по error semantics (`validation/sanitize/runtime`).
 - [ ] Для legacy block-driven path утверждён tenant-by-tenant sunset график.
+- [ ] Для Wave 0 зафиксированы toggle snapshots (before/after) и audit trail в control-plane логах.

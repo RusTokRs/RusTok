@@ -38,6 +38,22 @@
 - В module docs и runtime metadata фиксируется запрет на возврат к pages-local ownership визуального builder runtime.
 - Legacy block-driven path удерживается как compatibility-bridge с явным sunset roadmap.
 
+
+## Dedicated page-builder track (FBA hand-off scope)
+
+### Scope now
+
+- pages runtime остаётся owner для `page/menu/visibility/routing`.
+- visual builder write-path работает через внешний capability-provider (`preview/tree/properties/publish`).
+- module-level runbook обязан описывать degraded mode при отключении builder capability.
+
+### Acceptance criteria for hand-off
+
+- [ ] Admin UI показывает понятный fallback-state при `builder.enabled=false`.
+- [ ] Storefront read-path не зависит от availability builder capability endpoint.
+- [ ] Publish endpoint корректно возвращает typed runtime error при `builder.publish.enabled=false`.
+- [ ] Legacy blocks path работает в режиме read/bridge без расширения write surface.
+
 ## Этапы
 
 ### 1. Contract stability
