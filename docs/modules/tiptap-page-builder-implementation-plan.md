@@ -924,3 +924,42 @@ Notes: <known deviations or waivers>
 - `docs/research/flutter.md` (явный статус зависимостей mobile contract scaffolding).
 
 Несинхронные изменения считаются release-blocker для pilot-wave.
+
+#### Еженедельный cadence (операционный ритм)
+- **Среда (evidence review, 30 мин):**
+  - проверка свежести fallback/observability артефактов;
+  - подтверждение, что CI anti-drift/fallback gates остаются `green` для активной ветки.
+- **Пятница (governance review, 30 мин):**
+  - фиксация решений `keep/rollback` по активным tenant change-set;
+  - обновление execution packet и hand-off статуса по owner-матрице 12.5.
+
+#### DoD для Wave 0 → Wave 1 (операционный минимум)
+
+Переход разрешён только если одновременно выполнены все условия:
+
+- [ ] anti-drift gate проходит для актуальной пары `builder_contract_version` / `consumer_min_version`;
+- [ ] fallback smoke по `all_on/publish_off/preview_off/builder_off` содержит подтверждение отсутствия 5xx в `admin list/read` и `storefront read`;
+- [ ] observability packet содержит p95 по `preview/publish`, sanitize failure rate и не имеет незакрытых `P1`;
+- [ ] rollback drill проведён и приложен decision log с owner sign-off.
+
+### 12.10 Ближайшие задачи реализации (следующие 2 недели)
+
+Чтобы продолжить разработку без смены фокуса, фиксируется двухнедельный практический backlog:
+
+1. **Contract registry + parity guardrails**
+   - [ ] добавить единый machine-readable реестр версий (`builder_contract_version`, `consumer_min_version`) и включить его в nightly CI;
+   - [ ] завести fail-fast правило: несовместимая пара версий блокирует merge в ветки rollout.
+2. **Fallback verification hardening**
+   - [ ] добавить обязательный отчёт по `builder_off`/`publish_off` с таймингами `list/read/publish(dry)`;
+   - [ ] вынести отчёт в единый артефакт execution packet (`fallback/report.json` + markdown summary).
+3. **Observability packet automation**
+   - [ ] автоматизировать выгрузку `preview p95`, `publish p95`, sanitize failure rate в шаблон 12.6;
+   - [ ] закрепить минимальный retention для метрик pilot-wave (не менее 14 дней).
+4. **Owner sign-off workflow**
+   - [ ] формализовать чек-лист подтверждения для Platform/Builder/Pages/Frontend owners;
+   - [ ] запретить promotion в Wave 1 без полного owner sign-off bundle.
+
+**Exit criteria (2 недели):**
+- anti-drift и fallback gates выполняются автоматически в CI;
+- execution packet собирается полуавтоматически и содержит все обязательные разделы из 12.6;
+- есть как минимум один внутренний tenant change-set с полным evidence + sign-off.
