@@ -15,6 +15,7 @@
   2. Для кода ориентироваться на текущий образец: Leptos UI = thin render/bind, formatting/parsing helpers = `core::*`, dual-path (`native #[server]` + GraphQL fallback) не менять.
   3. Если задача не про pages runtime contract, приоритет смещается на следующий модуль волны; в pages вносить только bugfix/contract-sync.
 - Last updated at (UTC): 2026-05-24T00:40:00Z
+- Last updated at (UTC): 2026-05-24T09:15:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 
 ## Область работ
@@ -119,6 +120,28 @@ Rollback trigger:
 - [ ] Включить fallback regression checks в `cargo xtask module test pages` (или эквивалентный CI gate).
 - [ ] Добавить targeted integration checks для `builder.publish.enabled=false` и `builder.enabled=false`.
 - [ ] Зафиксировать evidence-template для Wave hand-off (platform + pages owner approval).
+
+## Wave 0 execution checklist (операционный минимум для `pages`)
+
+### C1. Toggle profiles (обязательно)
+
+- [ ] `all_on`: `builder.enabled=true`, `preview/properties/publish=true`.
+- [ ] `publish_off`: `builder.publish.enabled=false`, publish-path возвращает typed `feature-disabled` error.
+- [ ] `preview_off`: preview capability недоступен, read/list surfaces не деградируют.
+- [ ] `builder_off`: admin visual path в read-only fallback, storefront read-path стабилен.
+
+### C2. Evidence package для каждого профиля
+
+- [ ] before/after snapshot флагов и module health.
+- [ ] smoke output: `list -> open -> preview -> save-draft -> publish-dry` (с ожидаемым результатом для профиля).
+- [ ] observability snapshot: `sanitize`, `runtime`, `publish_latency`.
+- [ ] решение `keep/rollback` + owner подпись в control-plane audit trail.
+
+### C3. Exit criteria для Wave 1
+
+- [ ] fallback regression checks зелёные в CI на актуальном коммите.
+- [ ] нет RBAC regression для editor/moderator/admin в builder-related сценариях.
+- [ ] подтверждён rollback execution <= 10 минут без redeploy `pages` runtime.
 
 ## Проверка
 

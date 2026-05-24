@@ -308,3 +308,30 @@ Go/No-Go для перехода в следующую волну:
 - `pages` прошёл fallback сценарии (`builder.enabled=false`, `builder.publish.enabled=false`);
 - CI содержит fallback regression checks для admin/storefront read paths;
 - для pilot-tenant есть утверждённый owner on-call и rollback playbook.
+
+### 8.4 Последовательность исполнения (Wave 0 → Wave 1)
+
+Чтобы снять неоднозначность hand-off между командами, исполнение фиксируется как линейка обязательных шагов:
+
+1. **Contract freeze**
+   - freeze `grapesjs_v1` поля и typed error semantics;
+   - зафиксировать contract version (`builder_contract_version`) в metadata provider-а и consumer-а (`pages`).
+2. **Toggle semantics verification**
+   - выполнить dry run по четырём профилям: `all_on`, `publish_off`, `preview_off`, `builder_off`;
+   - для каждого профиля сохранить audit evidence (`before/after`, smoke output, rollback decision).
+3. **Fallback CI gate**
+   - включить автоматические checks fallback-поведения в CI;
+   - запретить переход в Wave 1 при отсутствии свежего fallback evidence.
+4. **Pilot readiness review**
+   - совместный sign-off Platform + Pages + Builder owners;
+   - согласование on-call и incident ownership до включения pilot-tenant.
+
+### 8.5 Артефакты, обязательные для Go/No-Go
+
+Перед каждым переходом между волнами должны существовать артефакты:
+
+- capability metadata snapshot (provider + consumer);
+- rollout change-set с trace-id и audit trail;
+- smoke report (`preview/properties/publish(dry)`);
+- observability report (p95 preview/publish, sanitize failures, runtime error-rate);
+- rollback confirmation note с указанием ответственного owner.
