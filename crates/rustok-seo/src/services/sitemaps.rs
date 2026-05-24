@@ -532,6 +532,7 @@ mod tests {
     struct TestSitemapSubmissionAdapter {
         outcomes: Arc<Mutex<HashMap<String, Result<(), String>>>>,
         submitted_endpoints: Arc<Mutex<Vec<String>>>,
+        submitted_request_urls: Arc<Mutex<Vec<String>>>,
     }
 
     impl TestSitemapSubmissionAdapter {
@@ -539,11 +540,16 @@ mod tests {
             Self {
                 outcomes: Arc::new(Mutex::new(outcomes)),
                 submitted_endpoints: Arc::new(Mutex::new(Vec::new())),
+                submitted_request_urls: Arc::new(Mutex::new(Vec::new())),
             }
         }
 
         async fn submitted_endpoints(&self) -> Vec<String> {
             self.submitted_endpoints.lock().await.clone()
+        }
+
+        async fn submitted_request_urls(&self) -> Vec<String> {
+            self.submitted_request_urls.lock().await.clone()
         }
     }
 
@@ -557,6 +563,10 @@ mod tests {
                 .lock()
                 .await
                 .push(endpoint.endpoint.clone());
+            self.submitted_request_urls
+                .lock()
+                .await
+                .push(endpoint.request_url.clone());
             let outcomes = self.outcomes.lock().await;
             outcomes
                 .get(endpoint.endpoint.as_str())
@@ -888,6 +898,44 @@ mod tests {
             vec![
                 "https://ok.example.com/ping".to_string(),
                 "https://fail.example.com/ping".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn submit_sitemap_endpoints_passes_normalized_request_urls_to_adapter() {
+        let db = test_db().await;
+        let service = SeoService::new_memory(db);
+        let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([
+            (
+                "https://example.com/ping?source=rustok".to_string(),
+                Ok(()),
+            ),
+            (
+                "https://example.com/ping?sitemap={sitemap_url}".to_string(),
+                Ok(()),
+            ),
+        ]));
+
+        let result = service
+            .submit_sitemap_endpoints_with_adapter(
+                &[
+                    "https://example.com/ping?source=rustok".to_string(),
+                    "https://example.com/ping?sitemap={sitemap_url}".to_string(),
+                ],
+                "https://store.example.com/sitemap.xml",
+                &adapter,
+            )
+            .await;
+
+        assert!(result.is_ok());
+        let urls = adapter.submitted_request_urls().await;
+        assert_eq!(
+            urls,
+            vec![
+                "https://example.com/ping?source=rustok&sitemap=https%3A%2F%2Fstore.example.com%2Fsitemap.xml".to_string(),
+                "https://example.com/ping?sitemap=https%3A%2F%2Fstore.example.com%2Fsitemap.xml"
+                    .to_string(),
             ]
         );
     }
