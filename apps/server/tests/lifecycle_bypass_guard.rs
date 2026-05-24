@@ -378,7 +378,8 @@ fn toggle_graphql_error_mapper_preserves_expected_variant_contract() {
         "ToggleModuleError::CoreModuleCannotBeDisabled(",
         "ToggleModuleError::MissingDependencies(",
         "ToggleModuleError::HasDependents(",
-        "ToggleModuleError::HookFailed(",
+        "ToggleModuleError::PreHookFailed(",
+        "ToggleModuleError::PostHookFailed(",
         "ToggleModuleError::Database(",
         "ToggleModuleError::Policy(",
     ];
