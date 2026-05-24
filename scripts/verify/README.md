@@ -25,6 +25,7 @@ node scripts/verify/verify-page-builder-contract-parity.mjs
 node scripts/verify/verify-page-builder-fallback-profiles.mjs
 node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
 node scripts/verify/verify-page-builder-fba-baseline.mjs
+node scripts/verify/verify-page-builder-consumer-readiness.mjs pages
 ```
 
 ## Когда запускать
@@ -47,6 +48,7 @@ node scripts/verify/verify-page-builder-fba-baseline.mjs
 | Проверка required fallback/toggle профилей page-builder | `node scripts/verify/verify-page-builder-fallback-profiles.mjs` |
 | Проверка консистентности значений в toggle профилях page-builder | `node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
 | Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Проверка readiness consumer-модуля (`pages/forum`) | `node scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
 
 Альтернативно те же проверки доступны через `npm run`:
 
@@ -55,6 +57,8 @@ npm run verify:page-builder:contract-parity
 npm run verify:page-builder:fallback-profiles
 npm run verify:page-builder:toggle-profiles
 npm run verify:page-builder:fba:baseline
+npm run verify:page-builder:consumer:pages
+npm run verify:page-builder:consumer:forum
 ```
 
 ## Описание скриптов
@@ -266,6 +270,22 @@ npm run verify:page-builder:fba:baseline
 - возвращает non-zero exit code при падении любого шага.
 
 **Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.
+
+---
+
+### `verify-page-builder-consumer-readiness.mjs`
+**Page Builder FBA baseline** — Consumer readiness check
+
+Что проверяет:
+- наличие `rustok-module.toml` и `docs/implementation-plan.md` для модуля-consumer;
+- наличие marker-ов dependency/consumer contract (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
+- наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan.
+
+Поддерживаемые slug:
+- `pages`
+- `forum`
+
+**Severity:** MEDIUM. Скрипт проверяет structural readiness перед включением модуля в rollout wave.
   - deny nested imports внутренних модулей без явного разрешения
 
 **Severity:** CRITICAL. Модуль вне registry = не проходит health check.

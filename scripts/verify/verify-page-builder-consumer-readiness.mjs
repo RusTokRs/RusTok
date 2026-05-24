@@ -1,0 +1,69 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
+
+const arg = process.argv[2];
+if (!arg) {
+  console.error("[verify-page-builder-consumer-readiness] FAIL");
+  console.error("usage: node scripts/verify/verify-page-builder-consumer-readiness.mjs <module-slug>");
+  process.exit(1);
+}
+
+const moduleToCrate = {
+  pages: "rustok-pages",
+  forum: "rustok-forum",
+};
+
+const crateName = moduleToCrate[arg];
+if (!crateName) {
+  console.error("[verify-page-builder-consumer-readiness] FAIL");
+  console.error(`unsupported module '${arg}'. supported: ${Object.keys(moduleToCrate).join(", ")}`);
+  process.exit(1);
+}
+
+const moduleTomlPath = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
+const implPlanPath = path.join(repoRoot, "crates", crateName, "docs", "implementation-plan.md");
+
+function fail(message) {
+  console.error("[verify-page-builder-consumer-readiness] FAIL");
+  console.error(`- ${message}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(moduleTomlPath)) fail(`missing module manifest: ${moduleTomlPath}`);
+if (!fs.existsSync(implPlanPath)) fail(`missing implementation plan: ${implPlanPath}`);
+
+const moduleToml = fs.readFileSync(moduleTomlPath, "utf8");
+const implPlan = fs.readFileSync(implPlanPath, "utf8");
+
+const hasConsumerManifestMarkers =
+  moduleToml.includes("page_builder") || moduleToml.includes("builder_consumer");
+
+if (arg === "pages") {
+  if (!hasConsumerManifestMarkers) {
+    fail(`${arg}: no page-builder dependency/builder_consumer markers in manifest`);
+  }
+  const mustHaveManifestMarkers = ["contract_version", "builder_contract_version"];
+  for (const marker of mustHaveManifestMarkers) {
+    if (!moduleToml.includes(marker)) {
+      fail(`${arg}: manifest missing marker '${marker}'`);
+    }
+  }
+}
+
+if (!implPlan.includes("Execution checkpoint")) {
+  fail(`${arg}: implementation-plan missing Execution checkpoint section`);
+}
+
+if (!implPlan.match(/FBA|page-builder|builder/mi)) {
+  fail(`${arg}: implementation-plan has no FBA/page-builder readiness notes`);
+}
+
+console.log("[verify-page-builder-consumer-readiness] PASS");
+console.log(`module=${arg}; crate=${crateName}; consumer_manifest_markers=${hasConsumerManifestMarkers}`);

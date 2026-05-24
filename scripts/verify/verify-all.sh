@@ -43,6 +43,7 @@ usage() {
     echo "  page-builder-fallback-profiles  Verify required page-builder fallback/toggle profile structure"
     echo "  page-builder-toggle-profiles-consistency  Verify page-builder toggle profile flag combinations"
     echo "  page-builder-fba-baseline  Run full page-builder FBA baseline gate (parity + fallback + toggle consistency)"
+    echo "  page-builder-consumer-readiness  Verify module-level consumer readiness for page-builder (uses PBC_MODULE)"
     echo ""
     echo "Without arguments, runs all scripts."
 }
@@ -75,6 +76,7 @@ SCRIPTS=(
     "verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"
     "verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
     "verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
+    "verify-page-builder-consumer-readiness.mjs:Page Builder Consumer Readiness"
 )
 
 # Filter to selected script if specified
@@ -126,7 +128,11 @@ for entry in "${SCRIPTS[@]}"; do
     echo -e "${SEPARATOR}"
 
     if [[ "$script_file" == *.mjs ]]; then
-        runner=(node "$script_path")
+        if [[ "$script_file" == "verify-page-builder-consumer-readiness.mjs" ]]; then
+            runner=(node "$script_path" "${PBC_MODULE:-pages}")
+        else
+            runner=(node "$script_path")
+        fi
     else
         runner=(bash "$script_path")
     fi
