@@ -85,6 +85,17 @@ def _validate_snapshot_schema(entries: object) -> str | None:
             return f"snapshot entry #{index} has invalid locale_namespace"
         if not isinstance(permissions, list):
             return f"snapshot entry #{index} permissions must be an array"
+        seen_permissions: set[str] = set()
+        for permission_index, permission in enumerate(permissions):
+            if not isinstance(permission, str) or not permission.strip():
+                return (
+                    f"snapshot entry #{index} permission #{permission_index} is invalid"
+                )
+            if permission in seen_permissions:
+                return (
+                    f"snapshot entry #{index} duplicates permission '{permission}'"
+                )
+            seen_permissions.add(permission)
         if not isinstance(child_pages, list):
             return f"snapshot entry #{index} child_pages must be an array"
 

@@ -95,6 +95,38 @@ class VerifyMobileManifestTests(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertIn("invalid locale_namespace", error)
 
+    def test_validate_snapshot_schema_rejects_duplicate_permissions(self):
+        error = _validate_snapshot_schema(
+            [
+                {
+                    "module_slug": "blog",
+                    "surface_kind": "admin_mobile",
+                    "route_segment": "blog",
+                    "permissions": ["blog.read", "blog.read"],
+                    "locale_namespace": "blog",
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIsNotNone(error)
+        self.assertIn("duplicates permission", error)
+
+    def test_validate_snapshot_schema_rejects_non_string_permission(self):
+        error = _validate_snapshot_schema(
+            [
+                {
+                    "module_slug": "blog",
+                    "surface_kind": "admin_mobile",
+                    "route_segment": "blog",
+                    "permissions": ["blog.read", 10],
+                    "locale_namespace": "blog",
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIsNotNone(error)
+        self.assertIn("permission #1 is invalid", error)
+
 
 if __name__ == "__main__":
     unittest.main()
