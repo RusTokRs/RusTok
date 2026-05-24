@@ -234,6 +234,15 @@ fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_cont
         "previous_effective_enabled",
         "retryable",
     ];
+    let composition_error_fragments = [
+        "REVISION_CONFLICT",
+        "INVALID_MODULE",
+        "REQUIRED_MODULE",
+        "UNKNOWN_DEPENDENCY",
+        "INTERNAL_ERROR",
+        "manifest_ref",
+        "platform_state:",
+    ];
 
     for signature in [
         "pub async fn install_module(",
@@ -247,6 +256,7 @@ fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_cont
         for fragment in lifecycle_taxonomy_fragments
             .iter()
             .chain(journal_metadata_fragments.iter())
+            .chain(composition_error_fragments.iter())
         {
             assert!(
                 !helper_body.contains(fragment),
@@ -419,6 +429,39 @@ fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
             assert!(
                 !helper_body.contains(fragment),
                 "{signature} must not parse GraphQL error payload shape fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_map_graphql_taxonomy_to_transport_error_variants() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let forbidden_transport_remap_fragments = [
+        "ApiError::Unauthorized",
+        "ApiError::Network",
+        "ApiError::Http(",
+        "\"Unauthorized\"",
+        "\"Network error\"",
+        "\"Http error: \"",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in forbidden_transport_remap_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not remap GraphQL taxonomy into transport fragment `{fragment}`"
             );
         }
     }
