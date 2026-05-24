@@ -118,6 +118,52 @@ pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn edit_action_label(is_editing: bool, editing_label: String, edit_label: String) -> String {
+    if is_editing {
+        editing_label
+    } else {
+        edit_label
+    }
+}
+
+pub fn publish_action_label(
+    is_published: bool,
+    unpublish_label: String,
+    publish_label: String,
+) -> String {
+    if is_published {
+        unpublish_label
+    } else {
+        publish_label
+    }
+}
+
+pub fn should_show_archive_action(is_archived: bool) -> bool {
+    !is_archived
+}
+
+pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {
+    match kind {
+        WritePathIssueKind::Validation => {
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        }
+        WritePathIssueKind::Sanitization => {
+            "rounded-xl border border-blue-300/60 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+        }
+        WritePathIssueKind::Runtime => {
+            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
+}
+
+pub fn issue_kind_label(kind: WritePathIssueKind) -> &'static str {
+    match kind {
+        WritePathIssueKind::Validation => "Validation",
+        WritePathIssueKind::Sanitization => "Sanitize",
+        WritePathIssueKind::Runtime => "Runtime",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +250,29 @@ mod tests {
         );
         assert!(row_is_busy_for_post(Some("edit:42"), "42"));
         assert!(!row_is_busy_for_post(Some("edit:41"), "42"));
+        assert_eq!(
+            edit_action_label(true, "Editing".to_string(), "Edit".to_string()),
+            "Editing".to_string()
+        );
+        assert_eq!(
+            edit_action_label(false, "Editing".to_string(), "Edit".to_string()),
+            "Edit".to_string()
+        );
+        assert_eq!(
+            publish_action_label(true, "Unpublish".to_string(), "Publish".to_string()),
+            "Unpublish".to_string()
+        );
+        assert_eq!(
+            publish_action_label(false, "Unpublish".to_string(), "Publish".to_string()),
+            "Publish".to_string()
+        );
+        assert!(should_show_archive_action(false));
+        assert!(!should_show_archive_action(true));
+        assert_eq!(
+            issue_banner_class(WritePathIssueKind::Validation),
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        );
+        assert_eq!(issue_kind_label(WritePathIssueKind::Runtime), "Runtime");
     }
 }
+use rustok_api::WritePathIssueKind;

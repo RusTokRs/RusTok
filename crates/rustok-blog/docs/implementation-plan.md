@@ -7,12 +7,15 @@ packages и module metadata синхронизированы.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: phase_b_in_progress
+- Last checkpoint: FFA storefront slice #1 completed (core formatting/fallback helpers extracted, dual-path transport unchanged).
+- Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Hand-off notes for next agent:
+  1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
+  2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
+  3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
+- Last updated at (UTC): 2026-05-24T00:00:00Z
 
 ## Область работ
 
@@ -31,7 +34,8 @@ packages и module metadata синхронизированы.
 - blog services re-validate RBAC локально для posts, categories и tags;
 - customer read paths restricted to published posts;
 - observability уже частично реализована: `metrics::record_read_path_*` на GraphQL/REST read paths,
-  `#[instrument]` на всех сервисных методах, span-трекинг для post lifecycle.
+  `#[instrument]` на всех сервисных методах, span-трекинг для post lifecycle;
+- для storefront UI уже выделен первый FFA core slice: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`, Leptos UI слой использует `core::*` и не меняет transport wiring.
 
 ## Этапы
 
@@ -103,3 +107,16 @@ packages и module metadata синхронизированы.
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+
+## FFA pilot migration tracker (rustok-blog)
+
+- [x] Slice 1: storefront formatting/fallback helper extraction (`fallback_text`, `count_label`, `open_link_label`, `label_value_pair`, `error_with_context`, `summarize_content`, `module_href`, fallback wrappers).
+- [x] `crates/rustok-blog/storefront/src/lib.rs` переведён на `core::*` helper-слой для выбранного use-case.
+- [x] Dual-path transport contract preserved (`native #[server]` + GraphQL fallback).
+- [ ] Sync admin surface for the same helper family where applicable and attach parity evidence.
+- [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
+
+## Double documentation verification (current slice)
+
+- [x] Pass #1 (code/docs consistency): storefront helper extraction отражён в трекере и локальных docs.
+- [x] Pass #2 (cleanup stale wording): удалены формулировки bootstrap-only статуса; execution checkpoint синхронизирован с текущим phase B контекстом.
