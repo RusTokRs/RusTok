@@ -12,6 +12,17 @@
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
+
+## FFA/FBA status
+
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Evidence:
+  - module plan синхронизирован с central FFA/FBA readiness board;
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Owner: `rustok-product` module team
+
 ## Область работ
 
 - удерживать `rustok-product` как owner product/variant/catalog domain;

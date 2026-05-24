@@ -20,6 +20,17 @@
 
 
 
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - module plan синхронизирован с central FFA/FBA readiness board;
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Owner: `rustok-pages` module team
+
 ## PB-FBA immediate sprint (продолжение page builder разработки)
 
 ### Sprint goal
