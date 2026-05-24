@@ -654,8 +654,13 @@ impl PageService {
         Ok(())
     }
 
-    async fn ensure_builder_enabled_for_page(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<()> {
-        let bodies = self.load_bodies(page_id).await?;
+    async fn ensure_builder_enabled_for_page(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<()> {
+        let page = self.find_page(tenant_id, page_id).await?;
+        let bodies = self.load_bodies(page.id).await?;
         if page_uses_builder_capability(&bodies) {
             self.ensure_builder_enabled(tenant_id).await?;
         }

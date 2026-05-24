@@ -403,3 +403,47 @@ async fn publish_grapesjs_page_is_blocked_when_builder_disabled_even_if_publish_
         Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
     ));
 }
+
+#[tokio::test]
+async fn publish_with_foreign_page_id_returns_page_not_found_before_builder_toggle_checks() {
+    let (db, page_service, _block_service, tenant_a, security) = setup().await;
+    let page = page_service
+        .create(
+            tenant_a,
+            security.clone(),
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Tenant A grapes page".to_string(),
+                    slug: Some("tenant-a-grapes".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    content: "".to_string(),
+                    format: Some("grapesjs_v1".to_string()),
+                    content_json: Some(serde_json::json!({
+                        "components": []
+                    })),
+                }),
+                blocks: None,
+                channel_slugs: None,
+                publish: false,
+            },
+        )
+        .await
+        .expect("must create page in tenant A");
+
+    let tenant_b = Uuid::new_v4();
+    seed_pages_module_settings(
+        &db,
+        tenant_b,
+        "{\"builder\":{\"enabled\":false,\"publish\":{\"enabled\":true}}}",
+    )
+    .await;
+
+    let result = page_service.publish(tenant_b, security, page.id).await;
+    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == page.id));
+}
