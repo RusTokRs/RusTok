@@ -87,6 +87,14 @@ fn toggle_err_hook_failed(reason: &str) -> String {
     format!("Module lifecycle hook failed: {reason}")
 }
 
+fn toggle_err_hook_failure_metadata(reason: &str) -> (&str, bool, &str) {
+    if reason.starts_with("post-hook:") {
+        ("MODULE_HOOK_FAILED", true, "post_hook_failed")
+    } else {
+        ("MODULE_HOOK_FAILED", false, "pre_hook_failed")
+    }
+}
+
 fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldError {
     match error {
         rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
@@ -348,9 +356,14 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
-        ToggleModuleError::HookFailed(err) => <FieldError as GraphQLError>::bad_user_input(
-            toggle_err_hook_failed(&err),
-        ),
+        ToggleModuleError::HookFailed(err) => {
+            let (code, retryable_issue, operation_issue) = toggle_err_hook_failure_metadata(&err);
+            FieldError::new(toggle_err_hook_failed(&err)).extend_with(|_, ext| {
+                ext.set("code", code);
+                ext.set("retryable_issue", retryable_issue);
+                ext.set("operation_issue", operation_issue);
+            })
+        }
         ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
     }
 }
@@ -1201,6 +1214,26 @@ mod tests {
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
     }
 
+    fn extension_string(error: &async_graphql::Error, key: &str) -> Option<String> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get(key))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
+    fn extension_bool(error: &async_graphql::Error, key: &str) -> Option<bool> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get(key))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_bool())
+    }
+
     struct ToggleCase {
         error: ToggleModuleError,
         expected_message: String,
@@ -1380,6 +1413,34 @@ mod tests {
                 case.case_name
             );
         }
+    }
+
+    #[test]
+    fn toggle_hook_failed_pre_hook_sets_non_retryable_issue_extensions() {
+        let mapped = map_toggle_module_error(ToggleModuleError::HookFailed("boom".to_string()));
+        let gql = mapped.extend();
+
+        assert_eq!(error_code(&gql).as_deref(), Some("MODULE_HOOK_FAILED"));
+        assert_eq!(extension_bool(&gql, "retryable_issue"), Some(false));
+        assert_eq!(
+            extension_string(&gql, "operation_issue").as_deref(),
+            Some("pre_hook_failed")
+        );
+    }
+
+    #[test]
+    fn toggle_hook_failed_post_hook_sets_retryable_issue_extensions() {
+        let mapped = map_toggle_module_error(ToggleModuleError::HookFailed(
+            "post-hook: downstream timeout".to_string(),
+        ));
+        let gql = mapped.extend();
+
+        assert_eq!(error_code(&gql).as_deref(), Some("MODULE_HOOK_FAILED"));
+        assert_eq!(extension_bool(&gql, "retryable_issue"), Some(true));
+        assert_eq!(
+            extension_string(&gql, "operation_issue").as_deref(),
+            Some("post_hook_failed")
+        );
     }
 
     #[test]
