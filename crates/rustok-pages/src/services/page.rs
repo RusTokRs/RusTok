@@ -22,7 +22,9 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::entities::{page, page_body, page_channel_visibility, page_translation};
-use crate::error::{PagesError, PagesResult};
+use crate::error::{
+    PagesError, PagesResult, FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PUBLISH_ENABLED,
+};
 use crate::services::rbac::{can_read_non_public_pages, enforce_owned_scope, enforce_scope};
 use crate::services::BlockService;
 use rustok_tenant::entities::tenant_module;
@@ -645,7 +647,7 @@ impl PageService {
             .map(|m| is_builder_publish_enabled(&m.settings))
             .unwrap_or(true);
         if !enabled {
-            return Err(PagesError::feature_disabled("builder.publish.enabled"));
+            return Err(PagesError::feature_disabled(FEATURE_BUILDER_PUBLISH_ENABLED));
         }
         Ok(())
     }
@@ -657,7 +659,7 @@ impl PageService {
             .map(|m| is_builder_enabled(&m.settings))
             .unwrap_or(true);
         if !enabled {
-            return Err(PagesError::feature_disabled("builder.enabled"));
+            return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
         }
         Ok(())
     }
@@ -1027,6 +1029,24 @@ fn is_builder_enabled(settings: &serde_json::Value) -> bool {
         .unwrap_or(true)
 }
 
+fn is_builder_preview_enabled(settings: &serde_json::Value) -> bool {
+    settings
+        .get("builder")
+        .and_then(|builder| builder.get("preview"))
+        .and_then(|preview| preview.get("enabled"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
+}
+
+fn is_builder_properties_enabled(settings: &serde_json::Value) -> bool {
+    settings
+        .get("builder")
+        .and_then(|builder| builder.get("properties"))
+        .and_then(|properties| properties.get("enabled"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
+}
+
 fn body_uses_builder_capability(body: Option<&PreparedPageBody>) -> bool {
     body.is_some_and(|item| item.format == CONTENT_FORMAT_GRAPESJS_V1)
 }
@@ -1298,6 +1318,42 @@ mod tests {
         })));
         assert!(is_builder_enabled(&serde_json::json!({
             "builder": { "enabled": true }
+        })));
+    }
+
+    #[test]
+    fn builder_preview_enabled_defaults_to_true() {
+        assert!(is_builder_preview_enabled(&serde_json::json!({})));
+        assert!(is_builder_preview_enabled(&serde_json::json!({
+            "builder": {}
+        })));
+    }
+
+    #[test]
+    fn builder_preview_enabled_reads_nested_flag() {
+        assert!(!is_builder_preview_enabled(&serde_json::json!({
+            "builder": { "preview": { "enabled": false } }
+        })));
+        assert!(is_builder_preview_enabled(&serde_json::json!({
+            "builder": { "preview": { "enabled": true } }
+        })));
+    }
+
+    #[test]
+    fn builder_properties_enabled_defaults_to_true() {
+        assert!(is_builder_properties_enabled(&serde_json::json!({})));
+        assert!(is_builder_properties_enabled(&serde_json::json!({
+            "builder": {}
+        })));
+    }
+
+    #[test]
+    fn builder_properties_enabled_reads_nested_flag() {
+        assert!(!is_builder_properties_enabled(&serde_json::json!({
+            "builder": { "properties": { "enabled": false } }
+        })));
+        assert!(is_builder_properties_enabled(&serde_json::json!({
+            "builder": { "properties": { "enabled": true } }
         })));
     }
 }

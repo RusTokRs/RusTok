@@ -768,3 +768,47 @@ Go/No-Go для перехода в следующую волну:
 - [ ] `next action` в registry и локальных implementation-plan синхронизирован с новым шагом.
 
 Если хотя бы одно условие не выполнено — шаг остаётся `in_progress`, новые направления не открываются.
+
+
+## 8. Продолжение разработки page builder (текущий sprint для `rustok-pages`)
+
+Этот блок фиксирует следующий практический шаг после Phase B closure в `rustok-pages`:
+перевести consumer-контур page builder в CI-проверяемый FBA baseline для Wave 0.
+
+### 8.1 Sprint objective (PB-FBA-1)
+
+- Закрыть typed fallback matrix для профилей `builder_off`, `preview_off`, `publish_off`.
+- Зафиксировать единый error catalog (`validation`, `sanitize`, `runtime`, `feature-disabled`)
+  без дрейфа между `#[server]`, GraphQL и UI adapters.
+- Добавить CI fallback-gate для профилей `builder.enabled=false` и
+  `builder.publish.enabled=false`.
+- Сформировать Wave 0 evidence package: toggle snapshots + smoke output +
+  observability snapshot + decision note (`keep/rollback`).
+
+### 8.2 Delivery slices (пошаговое выполнение)
+
+1. **Contract slice:** добавить machine-readable mapping fallback-профилей в runtime metadata
+   `rustok-pages` и синхронизировать с docs модуля.
+2. **Error semantics slice:** привести payload typed ошибок к одному catalog key-space
+   для `preview/properties/publish` capability endpoints.
+3. **Verification slice:** расширить module test gate целевыми проверками
+   `publish_disabled` и `builder_disabled` без деградации list/read.
+4. **Operability slice:** оформить единый evidence-template для Wave 0 и привязать
+   к control-plane audit trail.
+
+### 8.3 Exit criteria для hand-off в Wave 1
+
+- CI fallback regression checks стабильно зелёные на актуальном коммите.
+- RBAC parity подтверждён для `editor/moderator/admin` в builder-related сценариях.
+- Rollback toggle execution укладывается в <=10 минут без redeploy `pages` runtime.
+- Legacy blocks path зафиксирован как read/bridge-only (без расширения write-surface).
+
+### 8.4 Dependency sync note (обязательная синхронизация)
+
+Для каждого завершённого slice обязательно обновлять одновременно:
+
+- `crates/rustok-pages/docs/implementation-plan.md` (execution checkpoint + backlog);
+- текущий документ (phase-level platform track);
+- `docs/research/flutter.md` (явный статус зависимостей mobile contract scaffolding).
+
+Несинхронные изменения считаются release-blocker для pilot-wave.

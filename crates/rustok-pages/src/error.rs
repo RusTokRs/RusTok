@@ -48,6 +48,13 @@ pub enum PagesError {
 
 pub type PagesResult<T> = Result<T, PagesError>;
 
+pub const FEATURE_BUILDER_ENABLED: &str = "builder.enabled";
+#[allow(dead_code)]
+pub const FEATURE_BUILDER_PREVIEW_ENABLED: &str = "builder.preview.enabled";
+#[allow(dead_code)]
+pub const FEATURE_BUILDER_PROPERTIES_ENABLED: &str = "builder.properties.enabled";
+pub const FEATURE_BUILDER_PUBLISH_ENABLED: &str = "builder.publish.enabled";
+
 // Conversion from PagesError to RichError for API responses
 impl From<PagesError> for RichError {
     fn from(err: PagesError) -> Self {
@@ -215,14 +222,14 @@ mod tests {
 
     #[test]
     fn test_feature_disabled_conversion() {
-        let err = PagesError::feature_disabled("builder.publish.enabled");
+        let err = PagesError::feature_disabled(FEATURE_BUILDER_PUBLISH_ENABLED);
         let rich: RichError = err.into();
 
         assert_eq!(rich.kind, ErrorKind::BusinessLogic);
         assert_eq!(rich.error_code, Some("FEATURE_DISABLED".to_string()));
         assert_eq!(
             rich.fields.get("feature"),
-            Some(&"builder.publish.enabled".to_string())
+            Some(&FEATURE_BUILDER_PUBLISH_ENABLED.to_string())
         );
     }
 }
