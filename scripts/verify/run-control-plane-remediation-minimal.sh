@@ -1,5 +1,30 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+SECONDS=0
+CURRENT_STEP="bootstrap"
+CURRENT_COMMAND="n/a"
+
+format_duration() {
+  local total="$1"
+  local h=$((total / 3600))
+  local m=$(((total % 3600) / 60))
+  local s=$((total % 60))
+  printf "%02dh:%02dm:%02ds" "$h" "$m" "$s"
+}
+
+on_error() {
+  local exit_code="$?"
+  echo
+  echo "Control-plane remediation minimal verification: FAIL" >&2
+  echo "Failed step: ${CURRENT_STEP}" >&2
+  echo "Failed command: ${CURRENT_COMMAND}" >&2
+  echo "Exit code: ${exit_code}" >&2
+  echo "Elapsed: $(format_duration "${SECONDS}")" >&2
+  exit "${exit_code}"
+}
+
+trap on_error ERR
 
 SECONDS=0
 CURRENT_STEP="bootstrap"
@@ -33,6 +58,11 @@ if ! command -v flock >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ -n "${RUSTOK_VERIFY_STEP_TIMEOUT:-}" ]] && ! command -v timeout >/dev/null 2>&1; then
+  echo "RUSTOK_VERIFY_STEP_TIMEOUT is set but required tool is missing: timeout" >&2
+  exit 1
+fi
+
 exec 9>"${LOCK_FILE}"
 if ! flock -n 9; then
   echo "Another remediation verification run is already active (lock: ${LOCK_FILE})." >&2
@@ -57,9 +87,11 @@ run_step() {
   CURRENT_STEP="${title}"
   printf "\n==> %s\n" "${title}"
   printf "$ %s\n" "$*"
+  CURRENT_COMMAND="$*"
   step_timeout "$@"
   local step_elapsed=$((SECONDS - step_start))
   printf "--> %s: PASS (%s)\n" "${title}" "$(format_duration "${step_elapsed}")"
+  CURRENT_COMMAND="n/a"
 }
 
 if [[ "${RUSTOK_VERIFY_SKIP_FMT:-0}" == "1" ]]; then
