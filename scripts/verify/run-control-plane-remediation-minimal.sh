@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 SECONDS=0
 CURRENT_STEP="bootstrap"
