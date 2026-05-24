@@ -97,17 +97,12 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let editing_banner_locale = ui_locale.clone();
     let editing_banner_text = Memo::new(move |_| {
-        editing_post_id
-            .get()
-            .map(|post_id| {
-                let template = t(
-                    editing_banner_locale.as_deref(),
-                    "blog.form.editingBanner",
-                    "Editing post {id}",
-                );
-                core::label_with_id(template.as_str(), post_id.as_str())
-            })
-            .unwrap_or_default()
+        let template = t(
+            editing_banner_locale.as_deref(),
+            "blog.form.editingBanner",
+            "Editing post {id}",
+        );
+        core::label_with_optional_id(template.as_str(), editing_post_id.get().as_deref())
     });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();

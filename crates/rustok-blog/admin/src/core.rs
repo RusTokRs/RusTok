@@ -80,6 +80,11 @@ pub fn label_with_id(template: &str, id: &str) -> String {
     template.replace("{id}", id)
 }
 
+pub fn label_with_optional_id(template: &str, id: Option<&str>) -> String {
+    id.map(|value| label_with_id(template, value))
+        .unwrap_or_default()
+}
+
 pub fn count_label(template: &str, total: u64) -> String {
     template.replace("{count}", &total.to_string())
 }
@@ -357,6 +362,11 @@ mod tests {
     #[test]
     fn label_count_and_status_helpers_work() {
         assert_eq!(label_with_id("Editing post {id}", "42"), "Editing post 42");
+        assert_eq!(
+            label_with_optional_id("Editing post {id}", Some("42")),
+            "Editing post 42"
+        );
+        assert_eq!(label_with_optional_id("Editing post {id}", None), "");
         assert_eq!(count_label("{count} total", 7), "7 total");
         assert!(is_published_status("published"));
         assert!(is_archived_status("archived"));
