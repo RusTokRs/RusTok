@@ -53,6 +53,21 @@
 - [ ] Storefront read-path не зависит от availability builder capability endpoint.
 - [ ] Publish endpoint корректно возвращает typed runtime error при `builder.publish.enabled=false`.
 - [ ] Legacy blocks path работает в режиме read/bridge без расширения write surface.
+- [ ] Переключение tenant flags не требует redeploy и оставляет list/read surfaces доступными.
+
+### Tenant switch procedure (operational checklist)
+
+1. Capture `before` snapshot по flags и module health.
+2. Apply change-set (`builder.enabled`, `builder.preview`, `builder.properties`, `builder.publish`).
+3. Run targeted smoke (`list -> open -> preview -> save-draft -> publish-dry`).
+4. Validate logs/metrics (`sanitize`, `runtime`, `publish_latency`).
+5. Capture `after` snapshot + decision note (`keep/rollback`).
+
+Rollback trigger:
+
+- runtime errors выше alert threshold;
+- publish latency p95 выше целевого SLO в течение 10 минут;
+- storefront read regression на published pages.
 
 ## Этапы
 

@@ -117,6 +117,29 @@
 
 ### Фаза 3.2 — Матрица rollout по волнам
 
+### Фаза 3.3 — Runbook переключений (tenant-by-tenant)
+
+Процедура для каждого tenant выполняется как атомарная операция control-plane:
+
+1. Снять pre-check snapshot: текущие flags, модульные permissions, состояние publish queue.
+2. Включить/выключить `builder.enabled` и дочерние capability flags в одном change-set.
+3. Выполнить smoke-проверки: `preview -> properties -> publish(dry)` на тестовой page.
+4. Проверить observability probes: sanitize failures, publish latency, error-rate за последние 15 минут.
+5. Зафиксировать post-check snapshot + решение (`keep` / `rollback`) в audit trail.
+
+Условия немедленного rollback:
+
+- рост runtime error-rate выше agreed threshold;
+- regression в RBAC (доступ editor/moderator/admin расходится с policy);
+- publish pipeline queue backlog превышает baseline x2 в течение 10+ минут.
+
+SLO-проверка после переключения:
+
+- `preview` p95 < 1.5s;
+- `publish` p95 < 3s;
+- sanitize failures <= baseline + alert threshold.
+
+
 - **Wave 0 (internal):** platform tenants + synthetic data; цель — проверить control-plane toggle semantics.
 - **Wave 1 (pilot):** 1–3 tenant с low traffic; цель — проверить publish latency / sanitize failures.
 - **Wave 2 (broad):** расширение на cohort tenants после прохождения release-gate Phase 5.
@@ -228,3 +251,13 @@ Go/No-Go для перехода в следующую волну:
 - [ ] Stores/admin UIs проходят parity-check по error semantics (`validation/sanitize/runtime`).
 - [ ] Для legacy block-driven path утверждён tenant-by-tenant sunset график.
 - [ ] Для Wave 0 зафиксированы toggle snapshots (before/after) и audit trail в control-plane логах.
+
+
+### 7.5 Ownership / approvals matrix
+
+- **Platform team:** владеет control-plane toggles, lifecycle hooks, rollback decision.
+- **Pages module owners:** владеют page/menu runtime contract и storefront read guarantees.
+- **Builder reference owners:** владеют capability API/schema (`preview/tree/properties/publish`) и sanitize policy.
+- **Frontend owners (Next/Leptos/Flutter):** владеют adapter parity и UX fallback semantics.
+
+Перед переводом tenant в следующую волну требуется явное подтверждение от Platform + Pages owner.
