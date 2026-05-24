@@ -711,10 +711,10 @@ pub fn BlogAdmin() -> impl IntoView {
                             )}
                         </label>
 
-                        <Show when=move || core::has_issue(submit_error.get().as_ref().map(|issue| issue.kind))>
+                        <Show when=move || core::has_issue(core::issue_kind(submit_error.get().as_ref()))>
                             <div class=move || {
                                 core::issue_banner_class_or_hidden(
-                                    submit_error.get().as_ref().map(|issue| issue.kind),
+                                    core::issue_kind(submit_error.get().as_ref()),
                                 )
                             }>
                                 {move || {

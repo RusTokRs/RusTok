@@ -130,6 +130,10 @@ pub fn has_issue(issue: Option<WritePathIssueKind>) -> bool {
     issue.is_some()
 }
 
+pub fn issue_kind(issue: Option<&WritePathIssue>) -> Option<WritePathIssueKind> {
+    issue.map(|value| value.kind)
+}
+
 pub fn has_items<T>(items: &[T]) -> bool {
     !items.is_empty()
 }
@@ -289,6 +293,11 @@ mod tests {
         assert!(!is_editing_mode(None));
         assert!(has_issue(Some(WritePathIssueKind::Runtime)));
         assert!(!has_issue(None));
+        assert_eq!(
+            issue_kind(Some(&WritePathIssue::with_runtime("runtime issue"))),
+            Some(WritePathIssueKind::Runtime)
+        );
+        assert_eq!(issue_kind(None), None);
         assert!(has_items(&[1, 2, 3]));
         assert!(!has_items::<u8>(&[]));
         assert_eq!(
@@ -329,4 +338,4 @@ mod tests {
         assert_eq!(issue_kind_label(WritePathIssueKind::Runtime), "Runtime");
     }
 }
-use rustok_api::WritePathIssueKind;
+use rustok_api::{WritePathIssue, WritePathIssueKind};

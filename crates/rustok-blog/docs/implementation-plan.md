@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #9 completed (admin table empty-state predicate moved to `core`, dual-path transport unchanged).
+- Last checkpoint: FFA slice #10 completed (admin submit-issue kind mapping moved to `core`, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-24T13:45:00Z
+- Last updated at (UTC): 2026-05-24T14:20:00Z
 
 ## Область работ
 
@@ -121,6 +121,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 7: admin edit-banner visibility condition switched from inline `.is_some()` to `core::is_editing_mode` for consistent predicate reuse.
 - [x] Slice 8: admin submit-issue visibility predicate switched from inline `.is_some()` to `core::has_issue` for consistent helper reuse.
 - [x] Slice 9: admin table empty-state predicate switched from inline `.is_empty()` to `core::has_items` for consistent helper reuse.
+- [x] Slice 10: admin submit-issue kind extraction switched from inline `.map(|issue| issue.kind)` to `core::issue_kind` for consistent helper reuse.
 - [ ] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 
