@@ -1045,6 +1045,34 @@ mod tests {
         );
     }
 
+
+    #[tokio::test]
+    async fn submit_sitemap_endpoints_preserves_case_insensitive_sitemap_query_key() {
+        let db = test_db().await;
+        let service = SeoService::new_memory(db);
+        let endpoint = "https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml";
+        let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([(
+            endpoint.to_string(),
+            Ok(()),
+        )]));
+
+        let result = service
+            .submit_sitemap_endpoints_with_adapter(
+                &[endpoint.to_string()],
+                "https://store.example.com/sitemap.xml",
+                &adapter,
+            )
+            .await;
+
+        assert!(result.is_ok());
+        let urls = adapter.submitted_request_urls().await;
+        assert_eq!(
+            urls,
+            vec!["https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml"
+                .to_string()]
+        );
+    }
+
     #[tokio::test]
     async fn submit_sitemap_endpoints_timeout_and_failure_messages_are_bounded() {
         let db = test_db().await;
