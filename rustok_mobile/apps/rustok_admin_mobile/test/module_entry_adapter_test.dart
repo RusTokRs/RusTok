@@ -127,4 +127,37 @@ void main() {
     expect(media.childRoutes.single.path, '/modules/media/library');
   });
 
+
+
+  test('returns adaptation report with rejected module and child counters', () {
+    final entries = <MobileModuleEntry>[
+      const MobileModuleEntry(
+        moduleKey: 'rustok_valid',
+        routeSegment: 'valid',
+        nav: MobileNavMeta(title: 'Valid', icon: 'module'),
+        childPages: [
+          MobileChildPage(subpath: 'good', title: 'Good Child'),
+          MobileChildPage(subpath: 'bad/child', title: 'Bad Child'),
+          MobileChildPage(subpath: 'good', title: 'Duplicate Child'),
+        ],
+      ),
+      const MobileModuleEntry(
+        moduleKey: '',
+        routeSegment: 'invalid',
+        nav: MobileNavMeta(title: 'Invalid Module', icon: 'module'),
+      ),
+      const MobileModuleEntry(
+        moduleKey: 'rustok_valid',
+        routeSegment: 'valid-duplicate',
+        nav: MobileNavMeta(title: 'Duplicate Key', icon: 'module'),
+      ),
+    ];
+
+    final report = adaptModuleEntriesWithReport(entries);
+
+    expect(report.routes, hasLength(1));
+    expect(report.rejectedModuleEntries, 2);
+    expect(report.rejectedChildEntries, 2);
+  });
+
 }

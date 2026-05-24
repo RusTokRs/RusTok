@@ -9,4 +9,12 @@ void main() {
     expect(() => routes.add(routes.first), throwsUnsupportedError);
     expect(routes.first.path, startsWith('/modules/'));
   });
+
+  test('buildAdaptedMobileModuleRegistryWithReport returns stable counters', () {
+    final report = buildAdaptedMobileModuleRegistryWithReport();
+
+    expect(report.routes, isNotEmpty);
+    expect(report.rejectedModuleEntries, greaterThanOrEqualTo(0));
+    expect(report.rejectedChildEntries, greaterThanOrEqualTo(0));
+  });
 }

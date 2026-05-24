@@ -8,5 +8,9 @@ List<MobileModuleEntry> buildMobileModuleRegistry() {
 }
 
 List<ModuleRouteEntry> buildAdaptedMobileModuleRegistry() {
-  return adaptModuleEntries(buildMobileModuleRegistry());
+  return buildAdaptedMobileModuleRegistryWithReport().routes;
+}
+
+ModuleRegistryAdaptationResult buildAdaptedMobileModuleRegistryWithReport() {
+  return adaptModuleEntriesWithReport(buildMobileModuleRegistry());
 }

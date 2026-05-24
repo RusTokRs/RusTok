@@ -32,18 +32,41 @@ class ModuleChildRouteEntry {
   final String navLabel;
 }
 
+class ModuleRegistryAdaptationResult {
+  const ModuleRegistryAdaptationResult({
+    required this.routes,
+    required this.rejectedModuleEntries,
+    required this.rejectedChildEntries,
+  });
+
+  final List<ModuleRouteEntry> routes;
+  final int rejectedModuleEntries;
+  final int rejectedChildEntries;
+}
+
 List<ModuleRouteEntry> adaptModuleEntries(List<MobileModuleEntry> entries) {
+  return adaptModuleEntriesWithReport(entries).routes;
+}
+
+ModuleRegistryAdaptationResult adaptModuleEntriesWithReport(
+  List<MobileModuleEntry> entries,
+) {
   final adapted = <ModuleRouteEntry>[];
   final usedModuleKeys = <String>{};
   final usedRouteSegments = <String>{};
 
+  var rejectedModules = 0;
+  var rejectedChildren = 0;
+
   for (final entry in entries) {
     final moduleKey = entry.moduleKey.trim();
     final routeSegment = _sanitizeSegment(entry.routeSegment);
-    if (moduleKey.isEmpty || routeSegment.isEmpty) {
-      continue;
-    }
-    if (!usedModuleKeys.add(moduleKey) || !usedRouteSegments.add(routeSegment)) {
+    final hasValidModuleIdentity = moduleKey.isNotEmpty && routeSegment.isNotEmpty;
+    final hasUniqueIdentity =
+        usedModuleKeys.add(moduleKey) && usedRouteSegments.add(routeSegment);
+
+    if (!hasValidModuleIdentity || !hasUniqueIdentity) {
+      rejectedModules += 1;
       continue;
     }
 
@@ -54,6 +77,7 @@ List<ModuleRouteEntry> adaptModuleEntries(List<MobileModuleEntry> entries) {
     for (final child in entry.childPages) {
       final subpath = _sanitizeSegment(child.subpath);
       if (subpath.isEmpty || !usedChildSubpaths.add(subpath)) {
+        rejectedChildren += 1;
         continue;
       }
 
@@ -78,7 +102,11 @@ List<ModuleRouteEntry> adaptModuleEntries(List<MobileModuleEntry> entries) {
     );
   }
 
-  return List.unmodifiable(adapted);
+  return ModuleRegistryAdaptationResult(
+    routes: List.unmodifiable(adapted),
+    rejectedModuleEntries: rejectedModules,
+    rejectedChildEntries: rejectedChildren,
+  );
 }
 
 String _sanitizeSegment(String value) {
