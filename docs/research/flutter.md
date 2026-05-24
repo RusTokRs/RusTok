@@ -1159,11 +1159,40 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 
 | Deliverable | Owner zone | Verification command / signal | Status |
 |---|---|---|---|
-| `mobile_manifest` minimal schema snapshot | `rustok_mobile/tooling` + docs трека | schema snapshot обновлён и закоммичен | ⬜ Planned |
-| Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | матрица заполнена для всех contract-полей | ⬜ Planned |
+| `mobile_manifest` minimal schema snapshot | `rustok_mobile/tooling` + docs трека | schema snapshot обновлён и закоммичен | ✅ Done |
+| Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | матрица заполнена для всех contract-полей | ✅ Done |
 | Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
 | Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ⬜ Planned |
 | Pilot E2E evidence (modules/blog) | integration tests / manual evidence | login → module list/detail → shell back | ⬜ Planned |
+
+#### PR-A evidence pack (registry contract freeze)
+
+**Snapshot source (canonical):** `rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json`.
+
+Минимальный schema contract для mobile registry фиксируется следующими полями:
+- `module_slug` — required;
+- `surface_kind` — required;
+- `route_segment` — required;
+- `child_pages` — optional (по умолчанию пустой список);
+- `permissions` — optional (по умолчанию пустой список);
+- `locale_namespace` — optional.
+
+##### Compatibility matrix (`required/optional/deprecated`)
+
+| Поле | Статус | Правило совместимости | Примечание FFA |
+|---|---|---|---|
+| `module_slug` | required | Запрещено переименование без migration-слоя в codegen | Идентификатор capability-поверхности, не runtime-деталь Flutter |
+| `surface_kind` | required | Допустимо расширение enum только backward-compatible значениями | Нормализует тип surface для host-клиентов |
+| `route_segment` | required | Изменение требует явного redirect/mapping в host routing | Поддерживает единый routing contract между host-ами |
+| `child_pages` | optional | Отсутствие трактуется как `[]`; новые элементы добавляются additive | Нужен для nested surfaces/page-builder сценариев |
+| `permissions` | optional | Отсутствие трактуется как `[]`; новые permission strings additive | Capability-level gate, без mobile-only API |
+| `locale_namespace` | optional | Отсутствие означает fallback на module slug namespace | Сохраняет host-owned locale policy без feature-local fallback |
+
+##### Field changelog (PR-A freeze)
+
+- Добавлено явное требование использовать только capability-поля, без Flutter-specific transport/UI API.
+- Зафиксированы правила default/fallback для optional-полей (`child_pages`, `permissions`, `locale_namespace`).
+- Закреплён запрет на breaking rename для `module_slug` и обязательный redirect/mapping для `route_segment`.
 
 **Execution rule:** каждый следующий PR в этом треке должен обновлять таблицу статусов выше и добавлять ссылку на проверяемое evidence (commit, CI job или test log).
 

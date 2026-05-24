@@ -6,9 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import json
 import re
 import tomllib
+
+_PERMISSION_RE = re.compile(r"^[a-z0-9_.:]+$")
 
 _ICON_RULES: tuple[tuple[str, str], ...] = (
     ("auth", "shield"),
@@ -68,6 +69,30 @@ def _pick_icon(slug: str) -> str:
     return "module"
 
 
+
+
+def _parse_permissions(admin_ui: dict[str, object]) -> list[str]:
+    raw = admin_ui.get("permissions")
+    if not isinstance(raw, list):
+        return []
+
+    permissions: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip().lower()
+        if not value or not _PERMISSION_RE.fullmatch(value) or value in seen:
+            continue
+        seen.add(value)
+        permissions.append(value)
+    return sorted(permissions)
+
+
+def _parse_locale_namespace(admin_ui: dict[str, object], module_slug: str) -> str:
+    raw = str(admin_ui.get("locale_namespace", "")).strip()
+    return _normalize_key(raw or module_slug)
+
 def _parse_child_pages(admin_ui: dict[str, object]) -> list[dict[str, str]]:
     pages_raw = admin_ui.get("child_pages")
     if not isinstance(pages_raw, list):
@@ -93,7 +118,7 @@ def _parse_child_pages(admin_ui: dict[str, object]) -> list[dict[str, str]]:
 def scan_modules(repo_root: pathlib.Path) -> list[dict[str, object]]:
     manifests = sorted(repo_root.glob("crates/*/rustok-module.toml"))
     modules: list[dict[str, object]] = []
-    used_segments: set[str] = set()
+    used_segments: dict[str, pathlib.Path] = {}
 
     for manifest in manifests:
         data = tomllib.loads(manifest.read_text(encoding="utf-8"))
@@ -109,8 +134,14 @@ def scan_modules(repo_root: pathlib.Path) -> list[dict[str, object]]:
 
         route_segment = str(admin_ui.get("route_segment", slug)).strip() or slug
         route_segment = _normalize_key(route_segment)
-        if not route_segment or route_segment in used_segments:
+        if not route_segment:
             continue
+        previous_manifest = used_segments.get(route_segment)
+        if previous_manifest is not None:
+            raise ValueError(
+                "Duplicate admin_ui.route_segment "
+                f"'{route_segment}' in {manifest}; already declared in {previous_manifest}"
+            )
 
         nav_label = str(admin_ui.get("nav_label", module.get("name", slug.title()))).strip()
         nav_label = nav_label or slug.title()
@@ -124,9 +155,11 @@ def scan_modules(repo_root: pathlib.Path) -> list[dict[str, object]]:
                 "nav_label": nav_label,
                 "icon": _pick_icon(slug),
                 "child_pages": _parse_child_pages(admin_ui),
+                "permissions": _parse_permissions(admin_ui),
+                "locale_namespace": _parse_locale_namespace(admin_ui, slug),
             }
         )
-        used_segments.add(route_segment)
+        used_segments[route_segment] = manifest
 
     return sorted(modules, key=lambda item: item["route_segment"])
 
@@ -183,8 +216,8 @@ def to_snapshot(modules: list[dict[str, object]]) -> list[dict[str, object]]:
                 "module_slug": str(module.get("module_slug") or str(module["module_key"]).removeprefix("rustok_")),
                 "surface_kind": "admin_mobile",
                 "route_segment": route_segment,
-                "permissions": [],
-                "locale_namespace": route_segment,
+                "permissions": list(module.get("permissions", [])),
+                "locale_namespace": str(module.get("locale_namespace") or module.get("module_slug") or route_segment),
                 "child_pages": [
                     {
                         "subpath": str(page["subpath"]),
