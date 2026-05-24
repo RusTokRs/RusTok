@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_c1_execution_prep
-- Last checkpoint: Выполнен plan-sync с фактическим кодом `rustok-seo`: подтверждены typed schema input/write paths, diagnostics remediation flow и runtime foundation для sitemap submission endpoints (`sitemap_submission_endpoints` + bounded best-effort submit в `generate_sitemaps`).
-- Next step: Реализовать Iteration C1 — зафиксировать typed adapter seam `submit_sitemap_index` + endpoint aggregation и закрыть regression coverage для success/failure endpoint fan-out.
-- Open blockers: Для полноценного Google Indexing API/поисковых провайдеров нужен отдельный tenant-secret contract (вне текущего scope C1).
-- Hand-off notes for next agent: Не расширять C1 до cross-linking/media; сначала зафиксировать adapter seam + tests, затем переходить к C2/C3.
-- Last updated at (UTC): 2026-05-24T17:07:32Z
+- Current phase: phase_c1_execution
+- Last checkpoint: Для C1 внедрена bounded aggregation-модель sitemap submission (детали ошибок ограничены детерминированным лимитом), test matrix обновлён до проверки detail truncation + omitted-tail semantics без изменения public `SeoSitemapStatusRecord`.
+- Next step: Завершить C1-декомпозицию `sitemaps`: после выделения `submission-adapters` и `submission-aggregation` вынести `index-generation` в отдельный подпакет и закрепить provider seam как отдельный runtime объект без изменения API наружу.
+- Open blockers: Для полноценных provider-specific adapters (Google Indexing API и др.) нужен отдельный tenant-secret contract и policy для secret rotation (вне текущего scope C1).
+- Hand-off notes for next agent: Целевое разбиение дочерних модулей для `sitemaps` = **3** (generation/adapters/aggregation); C2/C3 не трогать до полного закрытия C1 regression/verify.
+- Last updated at (UTC): 2026-05-24T20:45:00Z
 
 ## Область работ
 
@@ -118,8 +118,11 @@
 #### Phase C — indexing и linking automation
 
 - [ ] **Iteration C1 — external submission adapters (runtime seam + hardening)**
+  - [ ] C1.0 Зафиксировать runtime interface `submit_sitemap_index` (trait/adapter seam) и default HTTP adapter wiring без breaking changes в существующем orchestrator flow.
   - [ ] Вынести текущий sitemap submit flow в typed adapter contract (`submit_sitemap_index`) с default HTTP adapter поверх уже существующих `sitemap_submission_endpoints`.
+  - [ ] C1.1 Ввести telemetry-friendly aggregation model (per-endpoint status + bounded error summary) и адаптировать внутренний статус sitemap job без изменения public `SeoSitemapStatusRecord`.
   - [ ] Добавить per-endpoint result aggregation (success/failure count + bounded error summary) без изменения существующего `SeoSitemapStatusRecord` public shape.
+  - [ ] C1.2 Добавить regression test matrix для endpoint fan-out и ограничить объём ошибок/timeout details deterministic truncation-правилом.
   - [ ] Покрыть adapter path regression tests: all-success, partial-failure, invalid endpoint skip, timeout/failure truncation.
   - Проверка инкремента:
     - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
