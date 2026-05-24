@@ -836,6 +836,26 @@ mod tests {
         assert!(status.files.is_empty());
     }
 
+
+    #[tokio::test]
+    async fn submit_sitemap_endpoints_empty_input_short_circuits_without_submissions() {
+        let db = test_db().await;
+        let service = SeoService::new_memory(db);
+        let adapter = TestSitemapSubmissionAdapter::new(HashMap::new());
+
+        let result = service
+            .submit_sitemap_endpoints_with_adapter(
+                &[],
+                "https://store.example.com/sitemap.xml",
+                &adapter,
+            )
+            .await;
+
+        assert!(result.is_ok());
+        assert!(adapter.submitted_endpoints().await.is_empty());
+        assert!(adapter.submitted_request_urls().await.is_empty());
+    }
+
     #[tokio::test]
     async fn submit_sitemap_endpoints_all_success_returns_ok() {
         let db = test_db().await;
