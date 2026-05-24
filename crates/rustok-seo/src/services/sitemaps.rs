@@ -1123,6 +1123,24 @@ mod tests {
         assert!(summary.failures[0].ends_with("..."));
     }
 
+
+    #[test]
+    fn submission_summary_truncates_endpoint_status_entries_deterministically() {
+        let mut summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 0,
+            failures: Vec::new(),
+            omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
+        };
+        let long_status = format!("ok endpoint `{}`", "https://very-long-endpoint.example.com/".repeat(20));
+        super::push_endpoint_status(&mut summary, long_status);
+        assert_eq!(summary.endpoint_statuses.len(), 1);
+        assert!(summary.endpoint_statuses[0].len() <= 163);
+        assert!(summary.endpoint_statuses[0].ends_with("..."));
+    }
+
     #[test]
     fn submission_summary_omits_extra_endpoint_statuses_deterministically() {
         let mut summary = SitemapSubmissionSummary {
