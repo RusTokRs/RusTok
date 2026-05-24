@@ -37,6 +37,33 @@ capability crate-ов и host-приложений в RusToK.
 
 Без подтверждённого ownership-review изменение считается незавершённым.
 
+## FFA/FBA readiness board (module-owned UI)
+
+Этот раздел задаёт центральный статус по FFA/FBA для модулей, где есть module-owned UI
+и/или явно выраженный backend boundary contract.
+
+Статусы:
+
+- FFA: `not_started | in_progress | phase_b_ready | parity_verified`
+- FBA: `not_started | in_progress | boundary_ready | transport_verified`
+
+Правило синхронизации:
+
+1. Источник истины для статуса — локальный `docs/implementation-plan.md` модуля.
+2. При изменении локального FFA/FBA status block этот board обновляется в том же PR.
+3. Если статус = `parity_verified` или `transport_verified`, в PR должны быть verification evidence.
+
+| Module slug | UI surfaces | FFA status | FBA status | Source plan |
+|---|---|---|---|---|
+| `pages` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pages/docs/implementation-plan.md` |
+| `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` |
+| `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` |
+| `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` |
+| `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` |
+| `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
+| `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` |
+| `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` |
+
 ## Hotspot contract (DOC-12 / H1)
 
 - Hotspot: `H1` (Runtime composition и module manifest).

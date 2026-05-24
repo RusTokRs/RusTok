@@ -206,9 +206,8 @@ pub fn BlogAdmin() -> impl IntoView {
     let initial_edit_post = edit_post;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| {
-        let selected_post_id = selected_post_query.get();
-        if let Some(post_id) = core::selected_post_id_if_loadable(selected_post_id.as_deref()) {
-            initial_edit_post.run((post_id.to_string(), effect_default_locale.clone()));
+        if let Some(post_id) = core::loadable_post_id(selected_post_query.get().as_deref()) {
+            initial_edit_post.run((post_id, effect_default_locale.clone()));
         } else {
             reset_form(
                 set_editing_post_id,
@@ -579,11 +578,11 @@ pub fn BlogAdmin() -> impl IntoView {
                     <div class="space-y-1">
                         <h2 class="text-lg font-semibold text-card-foreground">
                             {move || {
-                                if core::is_editing_mode(editing_post_id.get().as_deref()) {
-                                    form_edit_title.clone()
-                                } else {
-                                    form_create_title.clone()
-                                }
+                                core::edit_action_label(
+                                    core::is_editing_mode(editing_post_id.get().as_deref()),
+                                    form_edit_title.clone(),
+                                    form_create_title.clone(),
+                                )
                             }}
                         </h2>
                         <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
@@ -744,14 +743,15 @@ pub fn BlogAdmin() -> impl IntoView {
                             }
                         >
                             {move || {
-                                if core::is_save_busy(busy_key.get().as_deref())
-                                {
-                                    t(ui_locale.as_deref(), "blog.form.saving", "Saving...")
-                                } else if core::is_editing_mode(editing_post_id.get().as_deref()) {
-                                    t(ui_locale.as_deref(), "blog.form.update", "Update post")
-                                } else {
-                                    t(ui_locale.as_deref(), "blog.form.create", "Create post")
-                                }
+                                core::submit_action_label(
+                                    core::submit_button_state(
+                                        core::is_save_busy(busy_key.get().as_deref()),
+                                        core::is_editing_mode(editing_post_id.get().as_deref()),
+                                    ),
+                                    t(ui_locale.as_deref(), "blog.form.saving", "Saving..."),
+                                    t(ui_locale.as_deref(), "blog.form.update", "Update post"),
+                                    t(ui_locale.as_deref(), "blog.form.create", "Create post"),
+                                )
                             }}
                         </button>
                     </form>

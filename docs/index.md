@@ -31,6 +31,7 @@
 - [Как писать модуль в RusToK](./modules/module-authoring.md)
 - [Контракт `rustok-module.toml`](./modules/manifest.md)
 - [Реестр модулей и приложений](./modules/registry.md)
+- [FFA/FBA readiness board (внутри реестра модулей)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
 - [Runtime-контракт `rustok-page-builder`](../crates/rustok-page-builder/docs/README.md)
 - [Индекс документации по модулям](./modules/_index.md)
