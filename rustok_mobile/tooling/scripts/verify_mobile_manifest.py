@@ -108,6 +108,8 @@ def _validate_snapshot_schema(entries: object) -> str | None:
         seen_route_segments.add(route_segment)
         previous_route_segment = route_segment
 
+        if not isinstance(surface_kind, str) or surface_kind != surface_kind.strip():
+            return f"snapshot entry #{index} has invalid surface_kind"
         if surface_kind != "admin_mobile":
             return f"snapshot entry #{index} has unsupported surface_kind '{surface_kind}'"
         if not isinstance(locale_namespace, str) or not locale_namespace.strip():
