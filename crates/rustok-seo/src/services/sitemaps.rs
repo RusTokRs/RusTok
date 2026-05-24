@@ -13,11 +13,13 @@ use crate::{SeoError, SeoResult};
 use super::routing::locale_prefixed_path;
 use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
 
+mod index_generation;
 mod submission_adapters;
 mod submission_aggregation;
 
+use index_generation::{render_sitemap_file, render_sitemap_index};
 use submission_adapters::{
-    HttpSitemapSubmissionAdapter, SitemapSubmissionAdapter, SitemapSubmitEndpoint,
+    SitemapSubmissionAdapter, SitemapSubmissionRuntime, SitemapSubmitEndpoint,
 };
 use submission_aggregation::{
     push_submission_failure, SitemapSubmissionSummary, SITEMAP_SUBMIT_MAX_ERROR_LEN,
@@ -277,15 +279,11 @@ impl SeoService {
             return Ok(());
         }
         let sitemap_index_url = format!("{}/sitemap.xml", public_base_url(tenant));
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(SITEMAP_SUBMIT_TIMEOUT_SECS))
-            .build()
-            .map_err(|error| format!("failed to create sitemap submission client: {error}"))?;
-        let adapter = HttpSitemapSubmissionAdapter { client };
+        let runtime = SitemapSubmissionRuntime::default_with_timeout(SITEMAP_SUBMIT_TIMEOUT_SECS)?;
         self.submit_sitemap_endpoints_with_adapter(
             settings.sitemap_submission_endpoints.as_slice(),
             sitemap_index_url.as_str(),
-            &adapter,
+            runtime.adapter(),
         )
         .await
     }
@@ -389,39 +387,6 @@ fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
     } else {
         "User-agent: *\nAllow: /\n".to_string()
     }
-}
-
-fn render_sitemap_file(urls: &[String]) -> String {
-    let body = urls
-        .iter()
-        .map(|url| format!("<url><loc>{}</loc></url>", xml_escape(url)))
-        .collect::<Vec<_>>()
-        .join("");
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>"#
-    )
-}
-
-fn render_sitemap_index(urls: &[String]) -> String {
-    let body = urls
-        .iter()
-        .map(|url| format!("<sitemap><loc>{}</loc></sitemap>", xml_escape(url)))
-        .collect::<Vec<_>>()
-        .join("");
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</sitemapindex>"#
-    )
-}
-
-fn xml_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
 }
 
 fn build_sitemap_submission_url(endpoint: &str, sitemap_index_url: &str) -> Option<String> {
