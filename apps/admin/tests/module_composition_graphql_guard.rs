@@ -171,10 +171,44 @@ fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
             "module_operations",
             "correlation_id",
             "requested_by",
+            "ApiError::GraphQl",
+            "GraphQlError",
+            "graphQLErrors",
         ] {
             assert!(
                 !helper_body.contains(forbidden),
                 "{signature} must not branch on runtime taxonomy fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for forbidden in [
+            "for attempt in",
+            "loop {",
+            "retry",
+            "compensat",
+            "module_operations",
+            "correlation_id",
+        ] {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not introduce local retry/compensation logic fragment `{forbidden}`"
             );
         }
     }
