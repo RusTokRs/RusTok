@@ -171,10 +171,221 @@ fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
             "module_operations",
             "correlation_id",
             "requested_by",
+            "ApiError::GraphQl",
+            "GraphQlError",
+            "graphQLErrors",
         ] {
             assert!(
                 !helper_body.contains(forbidden),
                 "{signature} must not branch on runtime taxonomy fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for forbidden in [
+            "for attempt in",
+            "loop {",
+            "retry",
+            "compensat",
+            "module_operations",
+            "correlation_id",
+        ] {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not introduce local retry/compensation logic fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_contract() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let lifecycle_taxonomy_fragments = [
+        "UNKNOWN_MODULE",
+        "CORE_MODULE",
+        "MISSING_DEPENDENCIES",
+        "HAS_DEPENDENTS",
+        "MODULE_HOOK_FAILED",
+    ];
+    let journal_metadata_fragments = [
+        "module_operations",
+        "correlation_id",
+        "requested_by",
+        "previous_effective_enabled",
+        "retryable",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in lifecycle_taxonomy_fragments
+            .iter()
+            .chain(journal_metadata_fragments.iter())
+        {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must keep server-owned parity contract and not parse fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let status_fragments = [
+        "validated",
+        "running",
+        "committed",
+        "failed",
+        "status",
+        "operation",
+        "retryable_issue",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in status_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse lifecycle operation status fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let manifest_contract_fragments = [
+        "manifest_ref",
+        "platform_state:",
+        "manifest_revision",
+        "expected_revision",
+        "revision",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in manifest_contract_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse server-owned manifest contract fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let control_plane_error_fragments = [
+        "CONFLICT",
+        "VALIDATION",
+        "INTERNAL",
+        "stale revision",
+        "expected_revision",
+        "ApiError::BadRequest",
+        "ApiError::ServerError",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in control_plane_error_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not locally branch on control-plane error taxonomy fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let pipeline_fragments = [
+        "builds",
+        "build_id",
+        "build_status",
+        "release",
+        "active_release_id",
+        "manifest_hash",
+        "manifest_snapshot",
+        "modules_delta",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in pipeline_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse build/release pipeline fragment `{fragment}`"
             );
         }
     }

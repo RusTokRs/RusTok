@@ -20,6 +20,12 @@ impl BuilderCapabilityKind {
     }
 }
 
+impl std::fmt::Display for BuilderCapabilityKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuilderTreeNode {
     pub id: String,

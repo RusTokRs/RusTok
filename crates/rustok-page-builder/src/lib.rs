@@ -1,4 +1,5 @@
 pub mod dto;
+pub mod rollout;
 #[cfg(feature = "server")]
 pub mod service;
 
@@ -60,6 +61,7 @@ mod tests {
         BuilderCapabilityKind, BuilderNodePropertiesInput, PublishPageBuilderInput,
         PublishPageBuilderResult,
     };
+    use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 
     #[test]
     fn module_metadata_is_stable() {
@@ -107,5 +109,58 @@ mod tests {
             "publish",
             "capability enum string contract must stay stable"
         );
+    }
+
+    #[test]
+    fn rollout_flags_enforce_publish_depends_on_preview() {
+        let flags = BuilderCapabilityFlags {
+            builder_enabled: true,
+            preview_enabled: false,
+            properties_enabled: true,
+            publish_enabled: true,
+            legacy_bridge_readonly: true,
+        };
+
+        let err = flags.validate().expect_err("invalid combination expected");
+        assert_eq!(
+            err,
+            BuilderRolloutError::InvalidFlagCombination(
+                "publish_enabled requires preview_enabled".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn rollout_flags_enforce_builder_master_toggle() {
+        let flags = BuilderCapabilityFlags {
+            builder_enabled: false,
+            preview_enabled: true,
+            properties_enabled: false,
+            publish_enabled: false,
+            legacy_bridge_readonly: true,
+        };
+
+        let err = flags.validate().expect_err("invalid combination expected");
+        assert_eq!(
+            err,
+            BuilderRolloutError::InvalidFlagCombination(
+                "builder_enabled=false requires preview/properties/publish=false".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn ensure_capability_returns_typed_disabled_error() {
+        let flags = BuilderCapabilityFlags {
+            builder_enabled: true,
+            preview_enabled: true,
+            properties_enabled: true,
+            publish_enabled: false,
+            legacy_bridge_readonly: false,
+        };
+
+        let err = ensure_capability(&flags, BuilderCapabilityKind::Publish)
+            .expect_err("publish should be disabled");
+        assert_eq!(err, BuilderRolloutError::CapabilityDisabled("publish"));
     }
 }
