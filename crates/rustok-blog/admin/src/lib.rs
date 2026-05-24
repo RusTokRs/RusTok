@@ -196,7 +196,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             "Failed to load post",
                         ),
                         &err.to_string(),
-                    ))));
+                    )));
                 }
             }
 
@@ -288,7 +288,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             "Failed to save post",
                         ),
                         &err.to_string(),
-                    ))));
+                    )));
                 }
             }
 
@@ -350,7 +350,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 "Failed to update post status",
                             ),
                             &err.to_string(),
-                        ))));
+                        )));
                     }
                 }
 
@@ -401,7 +401,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             "Failed to archive post",
                         ),
                         &err.to_string(),
-                    ))));
+                    )));
                 }
             }
 
@@ -456,7 +456,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             "Failed to delete post",
                         ),
                         &err.to_string(),
-                    ))));
+                    )));
                 }
             }
 
@@ -956,33 +956,6 @@ fn StatusBadge(status: String) -> impl IntoView {
     }
 }
 
-fn issue_banner_class(issue: &WritePathIssue) -> &'static str {
-    match issue.kind {
-        WritePathIssueKind::Validation => {
-            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-        }
-        WritePathIssueKind::Sanitization => {
-            "rounded-xl border border-orange-300/60 bg-orange-50 px-4 py-3 text-sm text-orange-900"
-        }
-        WritePathIssueKind::Runtime => {
-            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        }
-    }
-}
-
-fn issue_label<'a>(
-    issue: &WritePathIssue,
-    validation_label: &'a str,
-    sanitize_label: &'a str,
-    runtime_label: &'a str,
-) -> &'a str {
-    match issue.kind {
-        WritePathIssueKind::Validation => validation_label,
-        WritePathIssueKind::Sanitization => sanitize_label,
-        WritePathIssueKind::Runtime => runtime_label,
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn apply_post_to_form(
     set_editing_post_id: WriteSignal<Option<String>>,
@@ -1029,18 +1002,4 @@ fn reset_form(
     set_body_format.set("markdown".to_string());
     set_tags_input.set(String::new());
     set_publish_now.set(false);
-}
-
-fn issue_banner_class(issue: &WritePathIssue) -> &'static str {
-    match issue.kind {
-        WritePathIssueKind::Validation => {
-            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-        }
-        WritePathIssueKind::Sanitization => {
-            "rounded-xl border border-blue-300/60 bg-blue-50 px-4 py-3 text-sm text-blue-900"
-        }
-        WritePathIssueKind::Runtime => {
-            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        }
-    }
 }
