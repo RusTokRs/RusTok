@@ -308,7 +308,7 @@ async fn pre_enable_failure_keeps_state_uncommitted() {
         .await
         .expect_err("enable should fail");
 
-    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+    assert!(matches!(err, ToggleModuleError::PreHookFailed(_)));
 
     let state = tenant_modules::Entity::find()
         .filter(tenant_modules::Column::TenantId.eq(tenant_id))
@@ -687,7 +687,7 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
     )
     .await
     .expect_err("disable hook failure expected");
-    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+    assert!(matches!(err, ToggleModuleError::PreHookFailed(_)));
 
     let state = tenant_modules::Entity::find()
         .filter(tenant_modules::Column::TenantId.eq(tenant_id))
@@ -754,7 +754,7 @@ async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
     let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "orders", true)
         .await
         .expect_err("enable hook failure expected");
-    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+    assert!(matches!(err, ToggleModuleError::PreHookFailed(_)));
 
     let failed_operation = module_operations::Entity::find()
         .filter(module_operations::Column::TenantId.eq(tenant_id))
@@ -817,7 +817,7 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
     )
     .await
     .expect_err("post-enable failure expected");
-    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+    assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
 
     let state = tenant_modules::Entity::find()
         .filter(tenant_modules::Column::TenantId.eq(tenant_id))
@@ -920,7 +920,7 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
     )
     .await
     .expect_err("post-disable failure expected");
-    assert!(matches!(err, ToggleModuleError::HookFailed(_)));
+    assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
 
     let state = tenant_modules::Entity::find()
         .filter(tenant_modules::Column::TenantId.eq(tenant_id))

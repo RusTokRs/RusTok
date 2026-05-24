@@ -81,8 +81,10 @@ pub enum ToggleModuleError {
     HasDependents(String),
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
-    #[error("Module hook failed: {0}")]
-    HookFailed(String),
+    #[error("Module pre-hook failed: {0}")]
+    PreHookFailed(String),
+    #[error("Module post-hook failed: {0}")]
+    PostHookFailed(String),
     #[error("Platform module policy error: {0}")]
     Policy(String),
 }
@@ -207,7 +209,7 @@ impl ModuleLifecycleService {
             );
 
             Self::mark_operation_failed(db, operation.id, &err.to_string()).await?;
-            return Err(ToggleModuleError::HookFailed(err.to_string()));
+            return Err(ToggleModuleError::PreHookFailed(err.to_string()));
         }
 
         let module =
@@ -234,6 +236,7 @@ impl ModuleLifecycleService {
                 err
             );
             Self::mark_operation_failed(db, operation.id, &format!("post-hook: {err}")).await?;
+            return Err(ToggleModuleError::PostHookFailed(err.to_string()));
         }
 
         Ok(module)

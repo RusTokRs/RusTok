@@ -345,8 +345,8 @@ fn toggle_graphql_error_mapper_uses_typed_error_categories() {
     .expect("toggle mapper should exist");
 
     assert!(
-        !mapper_body.contains("FieldError::new("),
-        "toggle mapper must use GraphQLError helpers (BAD_USER_INPUT/INTERNAL_ERROR), not raw FieldError::new"
+        mapper_body.contains("FieldError::new(toggle_err_hook_failed("),
+        "toggle mapper must use explicit hook-failure builder for structured MODULE_HOOK_FAILED extensions"
     );
     assert!(
         mapper_body.contains("<FieldError as GraphQLError>::bad_user_input("),
@@ -378,7 +378,8 @@ fn toggle_graphql_error_mapper_preserves_expected_variant_contract() {
         "ToggleModuleError::CoreModuleCannotBeDisabled(",
         "ToggleModuleError::MissingDependencies(",
         "ToggleModuleError::HasDependents(",
-        "ToggleModuleError::HookFailed(",
+        "ToggleModuleError::PreHookFailed(",
+        "ToggleModuleError::PostHookFailed(",
         "ToggleModuleError::Database(",
         "ToggleModuleError::Policy(",
     ];
@@ -393,5 +394,13 @@ fn toggle_graphql_error_mapper_preserves_expected_variant_contract() {
     assert!(
         mapper_body.contains("toggle_err_hook_failed"),
         "hook-failure branch must use explicit helper message contract"
+    );
+    assert!(
+        mapper_body.contains("ext.set(\"retryable_issue\""),
+        "hook-failure mapping must expose retryable_issue extension"
+    );
+    assert!(
+        mapper_body.contains("ext.set(\"operation_issue\""),
+        "hook-failure mapping must expose operation_issue extension"
     );
 }

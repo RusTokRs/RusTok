@@ -84,7 +84,7 @@ fn toggle_err_has_dependents(dependents: &str) -> String {
 }
 
 fn toggle_err_hook_failed(reason: &str) -> String {
-    format!("Module lifecycle hook failed before state commit: {reason}")
+    format!("Module lifecycle hook failed: {reason}")
 }
 
 fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldError {
@@ -348,9 +348,20 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
-        ToggleModuleError::HookFailed(err) => <FieldError as GraphQLError>::bad_user_input(
-            toggle_err_hook_failed(&err),
-        ),
+        ToggleModuleError::PreHookFailed(err) => {
+            FieldError::new(toggle_err_hook_failed(&err)).extend_with(|_, ext| {
+                ext.set("code", "MODULE_HOOK_FAILED");
+                ext.set("retryable_issue", false);
+                ext.set("operation_issue", "pre_hook_failed");
+            })
+        }
+        ToggleModuleError::PostHookFailed(err) => {
+            FieldError::new(toggle_err_hook_failed(&err)).extend_with(|_, ext| {
+                ext.set("code", "MODULE_HOOK_FAILED");
+                ext.set("retryable_issue", true);
+                ext.set("operation_issue", "post_hook_failed");
+            })
+        }
         ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
     }
 }
@@ -1201,6 +1212,26 @@ mod tests {
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
     }
 
+    fn extension_string(error: &async_graphql::Error, key: &str) -> Option<String> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get(key))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
+    fn extension_bool(error: &async_graphql::Error, key: &str) -> Option<bool> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get(key))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_bool())
+    }
+
     struct ToggleCase {
         error: ToggleModuleError,
         expected_message: String,
@@ -1235,10 +1266,16 @@ mod tests {
                 case_name: "has-dependents",
             },
             ToggleCase {
-                error: ToggleModuleError::HookFailed("boom".into()),
+                error: ToggleModuleError::PreHookFailed("boom".into()),
                 expected_message: toggle_err_hook_failed("boom"),
-                expected_code: Some("BAD_USER_INPUT"),
-                case_name: "hook-failed",
+                expected_code: Some("MODULE_HOOK_FAILED"),
+                case_name: "pre-hook-failed",
+            },
+            ToggleCase {
+                error: ToggleModuleError::PostHookFailed("downstream timeout".into()),
+                expected_message: toggle_err_hook_failed("downstream timeout"),
+                expected_code: Some("MODULE_HOOK_FAILED"),
+                case_name: "post-hook-failed",
             },
             ToggleCase {
                 error: ToggleModuleError::Database(sea_orm::DbErr::Custom("db down".to_string())),
@@ -1269,6 +1306,13 @@ mod tests {
             .collect()
     }
 
+    fn toggle_hook_failed_cases() -> Vec<ToggleCase> {
+        toggle_error_contract_cases()
+            .into_iter()
+            .filter(|case| case.expected_code == Some("MODULE_HOOK_FAILED"))
+            .collect()
+    }
+
     #[test]
     fn toggle_error_taxonomy_partitions_are_disjoint_and_complete() {
         let all = toggle_error_contract_cases();
@@ -1292,6 +1336,7 @@ mod tests {
         assert!(
             all.iter().all(|case| {
                 case.expected_code == Some("BAD_USER_INPUT")
+                    || case.expected_code == Some("MODULE_HOOK_FAILED")
                     || case.expected_code == Some("INTERNAL_ERROR")
             }),
             "toggle taxonomy contains unsupported error code category"
@@ -1328,6 +1373,19 @@ mod tests {
                 error_code(&gql).as_deref(),
                 Some("BAD_USER_INPUT"),
                 "toggle user-input taxonomy must map to BAD_USER_INPUT code for case: {}",
+                case.case_name
+            );
+        }
+    }
+
+    #[test]
+    fn toggle_hook_failed_taxonomy_maps_only_to_module_hook_failed_code() {
+        for case in toggle_hook_failed_cases() {
+            let gql = map_toggle_module_error(case.error).extend();
+            assert_eq!(
+                error_code(&gql).as_deref(),
+                Some("MODULE_HOOK_FAILED"),
+                "toggle hook-failed taxonomy must map to MODULE_HOOK_FAILED code for case: {}",
                 case.case_name
             );
         }
@@ -1380,6 +1438,32 @@ mod tests {
                 case.case_name
             );
         }
+    }
+
+    #[test]
+    fn toggle_hook_failed_pre_hook_sets_non_retryable_issue_extensions() {
+        let mapped = map_toggle_module_error(ToggleModuleError::PreHookFailed("boom".to_string()));
+        let gql = mapped.extend();
+
+        assert_eq!(error_code(&gql).as_deref(), Some("MODULE_HOOK_FAILED"));
+        assert_eq!(extension_bool(&gql, "retryable_issue"), Some(false));
+        assert_eq!(
+            extension_string(&gql, "operation_issue").as_deref(),
+            Some("pre_hook_failed")
+        );
+    }
+
+    #[test]
+    fn toggle_hook_failed_post_hook_sets_retryable_issue_extensions() {
+        let mapped = map_toggle_module_error(ToggleModuleError::PostHookFailed("downstream timeout".to_string()));
+        let gql = mapped.extend();
+
+        assert_eq!(error_code(&gql).as_deref(), Some("MODULE_HOOK_FAILED"));
+        assert_eq!(extension_bool(&gql, "retryable_issue"), Some(true));
+        assert_eq!(
+            extension_string(&gql, "operation_issue").as_deref(),
+            Some("post_hook_failed")
+        );
     }
 
     #[test]
