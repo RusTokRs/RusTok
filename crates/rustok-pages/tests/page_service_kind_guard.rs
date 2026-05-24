@@ -447,3 +447,60 @@ async fn publish_with_foreign_page_id_returns_page_not_found_before_builder_togg
     let result = page_service.publish(tenant_b, security, page.id).await;
     assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == page.id));
 }
+
+#[tokio::test]
+async fn update_to_published_is_blocked_for_existing_grapesjs_page_when_builder_is_disabled() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    let draft = page_service
+        .create(
+            tenant_id,
+            security.clone(),
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Draft grapes page".to_string(),
+                    slug: Some("draft-grapes-page".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    content: "".to_string(),
+                    format: Some("grapesjs_v1".to_string()),
+                    content_json: Some(serde_json::json!({
+                        "components": []
+                    })),
+                }),
+                blocks: None,
+                channel_slugs: None,
+                publish: false,
+            },
+        )
+        .await
+        .expect("must create draft grapesjs page");
+
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"enabled\":false,\"publish\":{\"enabled\":true}}}",
+    )
+    .await;
+
+    let result = page_service
+        .update(
+            tenant_id,
+            security,
+            draft.id,
+            UpdatePageInput {
+                status: Some(rustok_content::entities::node::ContentStatus::Published),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
+    ));
+}

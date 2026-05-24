@@ -403,6 +403,7 @@ impl PageService {
                 input.status,
                 Some(rustok_content::entities::node::ContentStatus::Published)
             ) {
+                self.ensure_builder_enabled_for_page(tenant_id, page_id).await?;
                 self.ensure_builder_publish_enabled(tenant_id).await?;
             }
         }
