@@ -165,6 +165,52 @@ SLO-проверка после переключения:
 - sanitize failures <= baseline + alert threshold.
 
 
+### Фаза 3.4 — Шаблон execution log (обязательный минимум)
+
+Чтобы owner sign-off из Phase 3.3 был проверяемым, для каждого tenant change-set фиксируется единый шаблон записи:
+
+```text
+Tenant: <tenant_id>
+Wave: <0|1|2|3>
+Change-set id: <control-plane operation id>
+Requested by: <owner>
+Approved by: <platform on-call, pages owner, runtime owner>
+
+Flags before:
+- builder.enabled=...
+- builder.preview.enabled=...
+- builder.properties.enabled=...
+- builder.publish.enabled=...
+- builder.legacy_bridge_readonly=...
+
+Flags after:
+- builder.enabled=...
+- builder.preview.enabled=...
+- builder.properties.enabled=...
+- builder.publish.enabled=...
+- builder.legacy_bridge_readonly=...
+
+Smoke checks:
+- preview: pass/fail + latency
+- properties/tree: pass/fail
+- publish(dry): pass/fail + duration
+
+Observability window (15m pre/post):
+- sanitize failure rate: ...
+- publish p95: ...
+- runtime error-rate: ...
+
+Decision: keep|rollback
+Rollback reference: <runbook link / operation id>
+Notes: <known deviations or waivers>
+```
+
+Минимальные правила заполнения:
+
+1. Запрещено оставлять пустыми `Flags before/after` и `Decision`.
+2. Любой `waiver` требует явной ссылки на инцидент/тикет и срок действия waiver.
+3. Для `Wave 1` и выше обязательна ссылка на storefront regression-check отчёт (`apps/storefront` + `apps/next-frontend`).
+
 ### Фаза 4 — Миграция legacy markdown → rt_json_v1
 
 **Статус:** [ ] Todo
