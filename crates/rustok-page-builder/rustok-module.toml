@@ -13,4 +13,5 @@ entry_type = "PageBuilderModule"
 [fba.provider]
 contract = "grapesjs_v1"
 builder_contract_version = "1.0"
+consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
