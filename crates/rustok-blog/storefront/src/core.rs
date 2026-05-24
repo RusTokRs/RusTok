@@ -14,6 +14,21 @@ pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{label}: {value}")
 }
 
+pub fn post_meta_pairs(
+    slug_label: &str,
+    slug: &str,
+    locale_label: &str,
+    effective_locale: &str,
+    published_label: &str,
+    published_at: &str,
+) -> [String; 3] {
+    [
+        label_value_pair(slug_label, slug),
+        label_value_pair(locale_label, effective_locale),
+        label_value_pair(published_label, published_at),
+    ]
+}
+
 pub fn error_with_context(context: &str, error: &str) -> String {
     format!("{context}: {error}")
 }
@@ -179,6 +194,21 @@ mod tests {
                 "/store/modules/blog?slug=hello-world".to_string(),
                 "Open hello-world".to_string()
             )
+        );
+        assert_eq!(
+            post_meta_pairs(
+                "slug",
+                "hello-world",
+                "locale",
+                "en",
+                "published",
+                "2026-01-01T00:00:00Z",
+            ),
+            [
+                "slug: hello-world".to_string(),
+                "locale: en".to_string(),
+                "published: 2026-01-01T00:00:00Z".to_string(),
+            ]
         );
     }
 

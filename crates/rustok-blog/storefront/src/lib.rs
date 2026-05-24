@@ -140,6 +140,14 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     let tags = post.tags;
     let body_format = post.body_format;
     let unknown_status_label = t(locale.as_deref(), "blog.selected.unknownStatus", "unknown");
+    let [slug_meta, locale_meta, published_meta] = core::post_meta_pairs(
+        &t(locale.as_deref(), "blog.selected.slugLabel", "slug"),
+        slug.as_str(),
+        &t(locale.as_deref(), "blog.selected.localeLabel", "locale"),
+        effective_locale.as_str(),
+        &t(locale.as_deref(), "blog.selected.publishedLabel", "published"),
+        published_at.as_str(),
+    );
     let body = core::summarized_body_or_fallback(
         post.body,
         body_format.as_str(),
@@ -158,11 +166,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{core::label_value_pair(&t(locale.as_deref(), "blog.selected.slugLabel", "slug"), slug.as_str())}</span>
+                <span>{slug_meta}</span>
                 <span>"·"</span>
-                <span>{core::label_value_pair(&t(locale.as_deref(), "blog.selected.localeLabel", "locale"), effective_locale.as_str())}</span>
+                <span>{locale_meta}</span>
                 <span>"·"</span>
-                <span>{core::label_value_pair(&t(locale.as_deref(), "blog.selected.publishedLabel", "published"), published_at.as_str())}</span>
+                <span>{published_meta}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
             <div class="mt-3">
