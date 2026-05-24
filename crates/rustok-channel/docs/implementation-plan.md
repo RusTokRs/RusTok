@@ -3,6 +3,12 @@
 Статус: experimental core capability; `v0 baseline complete`. Текущий фокус —
 post-v0 rollout policy lifecycle и runtime integration parity.
 
+## Текущее состояние
+
+- План синхронизирован с текущей реализацией policy lifecycle: update/reorder/disable для rules уже присутствуют в domain/service и server transport.
+- Незакрытый хвост по rollout: решение о судьбе built-in host fast-path после полного policy rollout.
+- Дополнительный focus текущей итерации: стабилизация runtime facts parity (`locale`/`oauth_app_id`) и поддержание deterministic contract в tests/docs.
+
 ## Execution checkpoint
 
 - Current phase: plan_sync

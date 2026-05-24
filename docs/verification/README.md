@@ -129,6 +129,22 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
    - один скрипт только проксирует другой без дополнительной логики;
    - команда уже покрыта `cargo xtask ...` и не добавляет отдельный контракт.
 
+## Page Builder FBA verification baseline (Wave 0/Wave 1 gate)
+
+Для трека `page_builder -> pages` обязательный минимальный gate перед продвижением между волнами:
+
+```bash
+node scripts/verify/verify-page-builder-fba-baseline.mjs
+```
+
+Состав baseline gate:
+
+1. parity provider/consumer contract versions;
+2. required fallback/toggle profile structure;
+3. toggle profile value consistency (`all_on/publish_off/preview_off/builder_off`).
+
+Этот baseline gate используется как обязательный артефакт для Sprint/Wave evidence в `docs/modules/tiptap-page-builder-implementation-plan.md`.
+
 ## Что считается обязательным для модульной унификации
 
 При изменении module system или локального контракта модуля нужно проверять не только код, но и документационный слой:

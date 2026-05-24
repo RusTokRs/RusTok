@@ -2,6 +2,12 @@
   "scripts": {
     "format:next-admin": "npm --prefix apps/next-admin run format",
     "format:next-admin:check": "npm --prefix apps/next-admin run format:check",
+    "verify:page-builder:contract-parity": "node scripts/verify/verify-page-builder-contract-parity.mjs",
+    "verify:page-builder:fallback-profiles": "node scripts/verify/verify-page-builder-fallback-profiles.mjs",
+    "verify:page-builder:toggle-profiles": "node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs",
+    "verify:page-builder:fba:baseline": "node scripts/verify/verify-page-builder-fba-baseline.mjs",
+    "verify:page-builder:consumer:pages": "node scripts/verify/verify-page-builder-consumer-readiness.mjs pages",
+    "verify:page-builder:consumer:forum": "node scripts/verify/verify-page-builder-consumer-readiness.mjs forum",
     "verify:flex:contract": "node scripts/verify/verify-flex-multilingual-contract.mjs",
     "verify:i18n:ui": "node scripts/verify/verify-ui-i18n-parity.mjs",
     "verify:i18n:contract": "node scripts/verify/verify-i18n-contract.mjs",

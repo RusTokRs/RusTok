@@ -595,11 +595,11 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .map(|v| v.trim().to_lowercase())
         .filter(|v| !v.is_empty())
 }
-        host_equals: normalize_optional_string(input.host_equals),
-        host_suffix: normalize_optional_string(input.host_suffix),
-        oauth_app_id: input.oauth_app_id,
-        surface: normalize_optional_string(input.surface),
-        locale: normalize_optional_string(input.locale),
+
+fn build_update_rule_input(input: UpdateResolutionRuleRequest) -> UpdateChannelResolutionRuleInput {
+    UpdateChannelResolutionRuleInput {
+        priority: input.priority,
+        is_active: input.is_active,
         action_channel_id: input.action_channel_id,
         host_equals: normalize_optional_string(input.host_equals),
         host_suffix: normalize_optional_string(input.host_suffix),
@@ -730,13 +730,13 @@ mod tests {
 
         assert_eq!(payload.priority, Some(40));
         assert_eq!(payload.is_active, Some(false));
-        assert_eq!(payload.host_equals.as_deref(), Some("SHOP.EXAMPLE.TEST"));
-        assert_eq!(payload.host_suffix.as_deref(), Some(""));
+        assert_eq!(payload.host_equals.as_deref(), Some("shop.example.test"));
+        assert_eq!(payload.host_suffix.as_deref(), None);
         assert_eq!(
             payload.oauth_app_id.as_deref(),
             Some("550e8400-e29b-41d4-a716-446655440000")
         );
-        assert_eq!(payload.surface.as_deref(), Some("HTTP"));
-        assert_eq!(payload.locale.as_deref(), Some("EN_US"));
+        assert_eq!(payload.surface.as_deref(), Some("http"));
+        assert_eq!(payload.locale.as_deref(), Some("en_us"));
     }
 }

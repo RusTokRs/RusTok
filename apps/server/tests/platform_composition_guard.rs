@@ -70,3 +70,18 @@ fn graphql_module_composition_mutations_use_atomic_orchestration_service() {
         );
     }
 }
+
+
+#[test]
+fn platform_composition_manifest_hash_uses_shared_typed_hash_helper() {
+    let path = repo_root().join("apps/server/src/services/platform_composition.rs");
+    let source = fs::read_to_string(&path).expect("read platform_composition.rs");
+
+    let helper = extract_function_block(&source, "pub fn manifest_hash(manifest: &ModulesManifest) -> String")
+        .expect("manifest_hash helper should exist");
+
+    assert!(
+        helper.contains("hash_manifest(manifest)"),
+        "manifest_hash must use shared rustok_api::manifest_hash::hash_manifest helper"
+    );
+}
