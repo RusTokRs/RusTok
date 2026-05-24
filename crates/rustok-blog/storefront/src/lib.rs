@@ -113,23 +113,19 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     let title = post.title;
     let effective_locale = post.effective_locale;
     let status = post.status;
-    let slug = core::fallback_text(
+    let (slug, excerpt, published_at) = core::selected_post_fallback_fields(
         post.slug,
         &t(
             locale.as_deref(),
             "blog.selected.missingSlug",
             "missing-slug",
         ),
-    );
-    let excerpt = core::fallback_text(
         post.excerpt,
         &t(
             locale.as_deref(),
             "blog.selected.noExcerpt",
             "No excerpt yet.",
         ),
-    );
-    let published_at = core::fallback_text(
         post.published_at,
         &t(
             locale.as_deref(),
@@ -140,33 +136,37 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     let tags = post.tags;
     let body_format = post.body_format;
     let unknown_status_label = t(locale.as_deref(), "blog.selected.unknownStatus", "unknown");
-    let body = core::body_or_fallback(
-        post.body.map(|body| {
-            core::summarize_content(
-                body.as_str(),
-                body_format.as_str(),
-                &t(
-                    locale.as_deref(),
-                    "blog.body.rawFormat",
-                    "Stored in `{format}` format. Raw body length: {count} characters.",
-                ),
-            )
-        }),
+    let [slug_meta, locale_meta, published_meta] = core::post_meta_pairs(
+        &t(locale.as_deref(), "blog.selected.slugLabel", "slug"),
+        slug.as_str(),
+        &t(locale.as_deref(), "blog.selected.localeLabel", "locale"),
+        effective_locale.as_str(),
+        &t(locale.as_deref(), "blog.selected.publishedLabel", "published"),
+        published_at.as_str(),
+    );
+    let body = core::summarized_body_or_fallback(
+        post.body,
+        body_format.as_str(),
         &t(
             locale.as_deref(),
             "blog.selected.noBody",
             "No body content yet.",
+        ),
+        &t(
+            locale.as_deref(),
+            "blog.body.rawFormat",
+            "Stored in `{format}` format. Raw body length: {count} characters.",
         ),
     );
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{core::label_value_pair(&t(locale.as_deref(), "blog.selected.slugLabel", "slug"), slug.as_str())}</span>
-                <span>"·"</span>
-                <span>{core::label_value_pair(&t(locale.as_deref(), "blog.selected.localeLabel", "locale"), effective_locale.as_str())}</span>
-                <span>"·"</span>
-                <span>{core::label_value_pair(&t(locale.as_deref(), "blog.selected.publishedLabel", "published"), published_at.as_str())}</span>
+                <span>{slug_meta}</span>
+                <span>{core::meta_separator()}</span>
+                <span>{locale_meta}</span>
+                <span>{core::meta_separator()}</span>
+                <span>{published_meta}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
             <div class="mt-3">
@@ -177,7 +177,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
             </div>
             <p class="mt-3 text-sm text-muted-foreground">{excerpt}</p>
             <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
-            {if tags.is_empty() {
+            {if !core::has_items(tags.as_slice()) {
                 ().into_any()
             } else {
                 view! {
@@ -210,7 +210,7 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
 
-    if items.is_empty() {
+    if !core::has_items(items.as_slice()) {
         return view! {
             <article class="rounded-2xl border border-dashed border-border p-6">
                 <p class="text-sm text-muted-foreground">
@@ -237,11 +237,23 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                     .map(|post| {
                         let module_route_base = module_route_base.clone();
                         let locale = locale.clone();
-                        let slug = core::fallback_slug(
-                            post.slug,
-                            &t(locale.as_deref(), "blog.selected.missingSlug", "missing-slug"),
+                        let missing_slug_fallback = t(
+                            locale.as_deref(),
+                            "blog.selected.missingSlug",
+                            "missing-slug",
                         );
-                        let href = core::module_href(module_route_base.as_str(), slug.as_str());
+                        let open_label = t(locale.as_deref(), "blog.list.open", "Open");
+                        let locale_label = t(locale.as_deref(), "blog.list.localeLabel", "locale");
+                        let (excerpt, href, open_label, locale_meta) = core::list_post_card_fields(
+                            post.slug,
+                            missing_slug_fallback.as_str(),
+                            post.excerpt,
+                            &t(locale.as_deref(), "blog.list.noExcerpt", "No excerpt yet."),
+                            module_route_base.as_str(),
+                            open_label.as_str(),
+                            locale_label.as_str(),
+                            post.effective_locale.as_str(),
+                        );
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
                                 <BlogStatusBadge
@@ -250,16 +262,13 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                                 />
                                 <h4 class="mt-2 text-base font-semibold text-foreground">{post.title}</h4>
                                 <p class="mt-2 text-sm text-muted-foreground">
-                                    {core::fallback_excerpt(
-                                        post.excerpt,
-                                        &t(locale.as_deref(), "blog.list.noExcerpt", "No excerpt yet."),
-                                    )}
+                                    {excerpt}
                                 </p>
                                 <a class="mt-3 inline-flex text-sm text-primary hover:underline" href=href>
-                                    {core::open_link_label(&t(locale.as_deref(), "blog.list.open", "Open"), slug.as_str())}
+                                    {open_label}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
-                                    {core::label_value_pair(&t(locale.as_deref(), "blog.list.localeLabel", "locale"), post.effective_locale.as_str())}
+                                    {locale_meta}
                                 </p>
                             </article>
                         }
@@ -273,8 +282,7 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
 
 #[component]
 fn BlogStatusBadge(status: String, unknown_label: String) -> impl IntoView {
-    let label = core::status_label(status.as_str(), unknown_label.as_str());
-    let badge_css = core::status_badge_css(label.as_str());
+    let (label, badge_css) = core::status_presentation(status.as_str(), unknown_label.as_str());
     view! {
         <span class=badge_css>
             {label}

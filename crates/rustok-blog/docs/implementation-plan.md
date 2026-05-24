@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #34 completed (admin editing-banner optional-id mapping moved to `core::label_with_optional_id(...)`, dual-path transport unchanged).
+- Last checkpoint: FFA slice #44 completed (storefront selected-post meta separator moved from inline literal to `core::meta_separator(...)` for consistent meta-row composition, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-24T23:58:00Z
+- Last updated at (UTC): 2026-05-25T01:33:00Z
 
 ## FFA/FBA status
 
@@ -157,6 +157,16 @@ packages и module metadata синхронизированы.
 - [x] Slice 32: admin save-path create/update branch switched from inline `match Option` to `core::is_editing_mode(...)` guard.
 - [x] Slice 33: admin save-path update-id extraction switched to `core::editing_post_id_if_editing_mode(...)` and removed inline `expect(...)`.
 - [x] Slice 34: admin editing-banner label mapping switched from inline `map(...).unwrap_or_default()` to `core::label_with_optional_id(...)`.
+- [x] Slice 35: storefront tags/list empty-state predicates switched from inline `.is_empty()` to `core::has_items(...)` for collection guard reuse.
+- [x] Slice 36: storefront status-badge label/css composition switched from inline mapping to `core::status_presentation(...)`.
+- [x] Slice 37: storefront body summary/fallback composition switched from inline `Option::map(...)` flow to `core::summarized_body_or_fallback(...)`.
+- [x] Slice 38: storefront post-link (`href` + localized open label) composition switched from inline pairing to `core::post_link(...)`.
+- [x] Slice 39: storefront selected-post meta (`slug/locale/published`) label/value composition switched from inline calls to `core::post_meta_pairs(...)`.
+- [x] Slice 40: storefront selected-post fallback mapping (`slug/excerpt/published_at`) switched from inline fallbacks to `core::selected_post_fallback_fields(...)`.
+- [x] Slice 41: storefront published-post card summary (`excerpt` + `href` + open label) switched from inline composition to `core::list_post_summary(...)`.
+- [x] Slice 42: storefront published-post locale meta label/value composition switched from inline call to `core::list_post_locale_meta(...)`.
+- [x] Slice 43: storefront published-post card field composition (`excerpt` + `href` + open label + locale meta) unified via `core::list_post_card_fields(...)`.
+- [x] Slice 44: storefront selected-post meta separator switched from inline literal to `core::meta_separator(...)`.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 
