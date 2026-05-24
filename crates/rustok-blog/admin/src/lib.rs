@@ -242,7 +242,7 @@ pub fn BlogAdmin() -> impl IntoView {
             tags: core::parse_tags(tags_input.get_untracked().as_str()),
         };
 
-        if draft.title.is_empty() || draft.body.is_empty() {
+        if !core::has_required_draft_fields(draft.title.as_str(), draft.body.as_str()) {
             set_submit_error.set(Some(WritePathIssue::new(t(
                 submit_ui_locale.as_deref(),
                 "blog.error.requiredFields",
@@ -326,7 +326,10 @@ pub fn BlogAdmin() -> impl IntoView {
 
                 match result {
                     Ok(post) => {
-                        if editing_post_id.get_untracked().as_deref() == Some(post.id.as_str()) {
+                        if core::is_editing_post(
+                            editing_post_id.get_untracked().as_deref(),
+                            post.id.as_str(),
+                        ) {
                             apply_post_to_form(
                                 set_editing_post_id,
                                 set_title,
@@ -377,7 +380,10 @@ pub fn BlogAdmin() -> impl IntoView {
             .await
             {
                 Ok(post) => {
-                    if editing_post_id.get_untracked().as_deref() == Some(post.id.as_str()) {
+                    if core::is_editing_post(
+                        editing_post_id.get_untracked().as_deref(),
+                        post.id.as_str(),
+                    ) {
                         apply_post_to_form(
                             set_editing_post_id,
                             set_title,
@@ -424,7 +430,10 @@ pub fn BlogAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::delete_post(token_value, tenant_value, post_id.clone()).await {
                 Ok(true) => {
-                    if editing_post_id.get_untracked().as_deref() == Some(post_id.as_str()) {
+                    if core::is_editing_post(
+                        editing_post_id.get_untracked().as_deref(),
+                        post_id.as_str(),
+                    ) {
                         delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
                         reset_form(
                             set_editing_post_id,
@@ -568,7 +577,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     <div class="space-y-1">
                         <h2 class="text-lg font-semibold text-card-foreground">
                             {move || {
-                                if editing_post_id.get().is_some() {
+                                if core::is_editing_mode(editing_post_id.get().as_deref()) {
                                     form_edit_title.clone()
                                 } else {
                                     form_create_title.clone()
@@ -578,7 +587,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
                     </div>
 
-                    <Show when=move || editing_post_id.get().is_some()>
+                    <Show when=move || core::is_editing_mode(editing_post_id.get().as_deref())>
                         <BlogEditBanner
                             banner_text=Signal::derive({
                                 let editing_banner_text = editing_banner_text;
@@ -670,7 +679,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             />
                         </label>
 
-                        <Show when=move || body_format.get() != "markdown">
+                        <Show when=move || core::should_show_raw_body_warning(body_format.get().as_str())>
                             <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                                 {form_raw_warning.clone()}
                             </div>
@@ -702,13 +711,11 @@ pub fn BlogAdmin() -> impl IntoView {
                             )}
                         </label>
 
-                        <Show when=move || submit_error.get().is_some()>
+                        <Show when=move || core::has_issue(submit_error.get().as_ref().map(|issue| issue.kind))>
                             <div class=move || {
-                                submit_error
-                                    .get()
-                                    .as_ref()
-                                    .map(|issue| core::issue_banner_class(issue.kind))
-                                    .unwrap_or("hidden")
+                                core::issue_banner_class_or_hidden(
+                                    submit_error.get().as_ref().map(|issue| issue.kind),
+                                )
                             }>
                                 {move || {
                                     submit_error.get().map(|issue| {
@@ -738,7 +745,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 if core::is_save_busy(busy_key.get().as_deref())
                                 {
                                     t(ui_locale.as_deref(), "blog.form.saving", "Saving...")
-                                } else if editing_post_id.get().is_some() {
+                                } else if core::is_editing_mode(editing_post_id.get().as_deref()) {
                                     t(ui_locale.as_deref(), "blog.form.update", "Update post")
                                 } else {
                                     t(ui_locale.as_deref(), "blog.form.create", "Create post")
@@ -804,7 +811,7 @@ fn BlogPostsTable(
     on_delete: Callback<String>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    if items.is_empty() {
+    if !core::has_items(items.as_slice()) {
         return view! {
             <div class="rounded-xl border border-dashed border-border p-12 text-center">
                 <p class="text-sm text-muted-foreground">
@@ -853,7 +860,8 @@ fn BlogPostsTable(
                                 let post_locale_edit = post_locale.clone();
                                 let post_locale_publish = post_locale.clone();
                                 let post_locale_archive = post_locale.clone();
-                                let is_editing = editing_post_id.as_deref() == Some(post_id.as_str());
+                                let is_editing =
+                                    core::is_editing_post(editing_post_id.as_deref(), post_id.as_str());
                                 let row_busy =
                                     core::row_is_busy_for_post(busy_key.as_deref(), post_id.as_str());
                                 let is_published = core::is_published_status(post.status.as_str());
