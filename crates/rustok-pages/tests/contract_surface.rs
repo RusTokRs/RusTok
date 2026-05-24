@@ -124,3 +124,40 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
         "toggle profile preview_off must explicitly disable builder.preview.enabled"
     );
 }
+
+#[test]
+fn pages_consumer_version_satisfies_provider_minimum() {
+    let provider_manifest = include_str!("../../rustok-page-builder/rustok-module.toml");
+    let provider: toml::Value =
+        toml::from_str(provider_manifest).expect("provider rustok-module.toml must stay valid");
+    let provider_min = provider
+        .get("fba")
+        .and_then(|fba| fba.get("provider"))
+        .and_then(|provider| provider.get("consumer_min_version"))
+        .and_then(toml::Value::as_str)
+        .expect("fba.provider.consumer_min_version is required");
+
+    let consumer_manifest = include_str!("../rustok-module.toml");
+    let consumer: toml::Value =
+        toml::from_str(consumer_manifest).expect("consumer rustok-module.toml must stay valid");
+    let consumer_version = consumer
+        .get("fba")
+        .and_then(|fba| fba.get("builder_consumer"))
+        .and_then(|builder_consumer| builder_consumer.get("builder_contract_version"))
+        .and_then(toml::Value::as_str)
+        .expect("fba.builder_consumer.builder_contract_version is required");
+
+    fn semver_like_key(version: &str) -> Vec<u32> {
+        version
+            .split('.')
+            .map(|segment| segment.parse::<u32>().unwrap_or(0))
+            .collect()
+    }
+
+    assert!(
+        semver_like_key(consumer_version) >= semver_like_key(provider_min),
+        "pages builder_contract_version={} must be >= provider consumer_min_version={}",
+        consumer_version,
+        provider_min
+    );
+}
