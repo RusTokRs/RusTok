@@ -2,6 +2,7 @@ mod api;
 mod core;
 mod i18n;
 mod model;
+mod transport;
 
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
@@ -35,7 +36,7 @@ pub fn PagesView() -> impl IntoView {
 
     let pages_resource = Resource::new_blocking(
         move || (selected_slug.clone(), selected_locale.clone()),
-        move |(page_slug, locale)| async move { api::fetch_storefront_pages(page_slug, locale).await },
+        move |(page_slug, locale)| async move { transport::fetch_pages(page_slug, locale).await },
     );
 
     view! {
