@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import json
 import re
 import tomllib
 
@@ -109,8 +108,12 @@ def scan_modules(repo_root: pathlib.Path) -> list[dict[str, object]]:
 
         route_segment = str(admin_ui.get("route_segment", slug)).strip() or slug
         route_segment = _normalize_key(route_segment)
-        if not route_segment or route_segment in used_segments:
+        if not route_segment:
             continue
+        if route_segment in used_segments:
+            raise ValueError(
+                f"Duplicate admin_ui.route_segment '{route_segment}' in {manifest}"
+            )
 
         nav_label = str(admin_ui.get("nav_label", module.get("name", slug.title()))).strip()
         nav_label = nav_label or slug.title()

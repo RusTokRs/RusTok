@@ -110,24 +110,38 @@ class GenerateMobileManifestTests(unittest.TestCase):
         self.assertIn('"route_segment": "blog"', payload)
         self.assertIn('"child_pages"', payload)
 
+    def test_scan_modules_raises_on_duplicate_route_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+            (root / "crates/mod-b").mkdir(parents=True)
+
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "blog"
+
+                    [provides.admin_ui]
+                    route_segment = "content"
+                    """
+                ).strip()
+            )
+            (root / "crates/mod-b/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "forum"
+
+                    [provides.admin_ui]
+                    route_segment = "content"
+                    """
+                ).strip()
+            )
+
+            with self.assertRaisesRegex(ValueError, "Duplicate admin_ui.route_segment"):
+                scan_modules(root)
+
 
 if __name__ == "__main__":
     unittest.main()
-
-
-    def test_render_snapshot_contains_required_ffa_keys(self):
-        payload = render_snapshot_json(
-            [
-                {
-                    "module_key": "rustok_blog",
-                    "route_segment": "blog",
-                    "nav_label": "Blog",
-                    "icon": "article",
-                    "child_pages": [{"subpath": "posts", "title": "Posts"}],
-                }
-            ]
-        )
-        self.assertIn('"module_slug": "blog"', payload)
-        self.assertIn('"surface_kind": "admin_mobile"', payload)
-        self.assertIn('"route_segment": "blog"', payload)
-        self.assertIn('"child_pages"', payload)
