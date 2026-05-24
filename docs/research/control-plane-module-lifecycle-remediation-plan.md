@@ -741,3 +741,10 @@ rollback-стратегии и Definition of Done по итерациям.
 - Повторный запуск `cargo fmt --all -- --check` снова не прошёл: зафиксирован масштабный rustfmt-drift в уже существующих файлах (`apps/admin`, `apps/server`, `crates/rustok-seo`, `crates/rustok-tenant`, и др.), без новых функциональных регрессий.
 - Параллельно повторно запущены `cargo xtask validate-manifest` и `cargo xtask module validate`; оба прогона упирались в длительную перекомпиляцию и lock contention (`Blocking waiting for file lock ...`) в рамках окна итерации.
 - Чекбокс минимального verification-набора сохраняется в `[ ]` до отдельного зелёного прогона fmt + server/migration bundle после стабилизации build-cache/lock-окна.
+
+
+### Актуализация 2026-05-24 (итерация 51)
+
+- Усилен operational runner `scripts/verify/run-control-plane-remediation-minimal.sh`: добавлен inter-process lock (`flock`) в `target/.control-plane-remediation-minimal.lock`, чтобы исключить параллельные запуски и снизить повторяемые `Blocking waiting for file lock ...` между итерациями.
+- Для ускоренного повторного прогона после pre-existing formatting drift добавлен управляемый флаг `RUSTOK_VERIFY_SKIP_FMT=1` (только для локального цикла triage; release-gate остаётся с обязательным fmt-check).
+- Batch-2 пункт verification остаётся `[~]` до полного зелёного прогона полного набора без skip-флагов.
