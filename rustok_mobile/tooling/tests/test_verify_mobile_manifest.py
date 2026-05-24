@@ -193,6 +193,22 @@ class VerifyMobileManifestTests(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertIn("subpath must be snake_case", error)
 
+    def test_validate_snapshot_schema_rejects_non_snake_case_module_slug(self):
+        error = _validate_snapshot_schema(
+            [
+                {
+                    "module_slug": "Blog Module",
+                    "surface_kind": "admin_mobile",
+                    "route_segment": "blog",
+                    "permissions": [],
+                    "locale_namespace": "blog",
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIsNotNone(error)
+        self.assertIn("module_slug must be snake_case", error)
+
 
 if __name__ == "__main__":
     unittest.main()
