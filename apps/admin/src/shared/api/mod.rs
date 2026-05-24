@@ -235,6 +235,40 @@ mod map_server_fn_error_tests {
     }
 
     #[test]
+    fn lifecycle_operation_status_matrix_is_forwarded_without_local_parsing() {
+        let statuses = ["validated", "running", "committed", "failed"];
+
+        for status in statuses {
+            let payload = format!(
+                "GraphQL error: MODULE_HOOK_FAILED {{\"extensions\":{{\"code\":\"MODULE_HOOK_FAILED\",\"status\":\"{status}\",\"correlation_id\":\"74bf5a96-4997-48ea-a0f0-a8eb9a34189f\"}}}}"
+            );
+            let mapped = map_server_fn_error(ServerFnError::new(payload.clone()));
+
+            assert!(
+                matches!(mapped, GraphqlHttpError::Graphql(message)
+                    if message.contains(&format!("\"status\":\"{status}\""))
+                    && message.contains("\"correlation_id\":\"74bf5a96-4997-48ea-a0f0-a8eb9a34189f\"")),
+                "status `{status}` must pass through unchanged without local remapping"
+            );
+        }
+    }
+
+    #[test]
+    fn lifecycle_retryable_issue_fragments_are_forwarded_without_local_parsing() {
+        let payload = "GraphQL error: MODULE_HOOK_FAILED {\"extensions\":{\"code\":\"MODULE_HOOK_FAILED\",\"status\":\"failed\",\"retryable_issue\":true,\"retryable\":true,\"operation_issue\":\"post_hook_failed\",\"correlation_id\":\"12f63773-912f-432a-8fa4-c40448626d13\"}}";
+        let mapped = map_server_fn_error(ServerFnError::new(payload));
+
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message)
+                if message.contains("\"retryable_issue\":true")
+                && message.contains("\"retryable\":true")
+                && message.contains("\"operation_issue\":\"post_hook_failed\"")
+                && message.contains("\"correlation_id\":\"12f63773-912f-432a-8fa4-c40448626d13\"")),
+            "retryable issue fragments must pass through unchanged without adapter-side interpretation"
+        );
+    }
+
+    #[test]
     fn lifecycle_taxonomy_extensions_are_forwarded_without_local_normalization() {
         let payload = "GraphQL error: MISSING_DEPENDENCIES {\"extensions\":{\"code\":\"MISSING_DEPENDENCIES\",\"reason_code\":\"dependency_missing\",\"requested_by\":\"admin:user-2\"}}";
         let mapped = map_server_fn_error(ServerFnError::new(payload));
