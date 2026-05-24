@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Current phase: in_progress
+- Last checkpoint: План синхронизирован с central FBA-track для forum widget-driven consumer path (раздел 13 в `docs/modules/tiptap-page-builder-implementation-plan.md`).
+- Next step: Запустить FW-1 contract freeze для forum widgets (`topic_list/topic_detail/reply_stream`) и зафиксировать `data_contract_version`.
+- Open blockers: Для pilot Wave 1 требуется parity evidence Next/Leptos/Flutter + owner sign-off.
+- Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs.
+- Last updated at (UTC): 2026-05-24T00:00:00Z
 
 ## Область работ
 
@@ -67,3 +67,23 @@
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+
+## Forum widget-driven backlog (FBA continuation)
+
+### FW-1 — Contract freeze
+
+- [ ] Утвердить widget catalog v1: `forum.topic_list`, `forum.topic_detail`, `forum.reply_stream`.
+- [ ] Зафиксировать `data_contract_version` и compatibility matrix для consumer adapters.
+- [ ] Утвердить `props_schema` validation и typed error mapping (`validation/sanitize/rbac/runtime`).
+
+### FW-2 — Fallback hardening
+
+- [ ] Подтвердить `builder_off` и `publish_off` без 5xx для forum read/moderation paths.
+- [ ] Зафиксировать fallback semantics (`readonly/hidden/degraded`) по каждому widget type.
+- [ ] Добавить regression checklist для visibility/RBAC parity под partial disable capability layer.
+
+### FW-3 — Pilot readiness
+
+- [ ] Подготовить Wave evidence packet (`metadata/fallback/observability/rollback`) для 1–2 low-traffic tenant.
+- [ ] Подтвердить observability correlation: `builder write -> forum read/publish/moderation`.
+- [ ] Провести Go/No-Go review с Platform + Builder + Forum + Frontend owners.
