@@ -17,7 +17,9 @@
 - Last updated at (UTC): 2026-05-24T00:40:00Z
 - Last updated at (UTC): 2026-05-24T09:15:00Z
 - Last updated at (UTC): 2026-05-24T10:05:00Z
+- Last updated at (UTC): 2026-05-24T12:20:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
+- Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitization/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind` и `PagesError::FeatureDisabled`.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 
@@ -44,7 +46,7 @@
 ### Sprint scope (must-have)
 
 - [ ] Typed fallback matrix: `builder_off`, `preview_off`, `publish_off` с ожидаемыми runtime/error outcomes.
-- [ ] Unified builder error catalog для `validation/sanitize/runtime/feature-disabled` без расхождения между GraphQL, `#[server]` и UI adapters.
+- [x] Unified builder error catalog для `validation/sanitize/runtime/feature-disabled` без расхождения между GraphQL, `#[server]` и UI adapters.
 - [ ] CI fallback gate для профилей `builder.enabled=false` и `builder.publish.enabled=false`.
 - [ ] Wave 0 evidence template: flags snapshot + smoke output + observability snapshot + keep/rollback decision.
 
@@ -142,7 +144,7 @@ Rollback trigger:
 
 ### B2. Fallback & error semantics
 
-- [ ] Закрепить единый typed error catalog для builder-related runtime ошибок (`validation/sanitize/runtime/feature-disabled`).
+- [x] Закрепить единый typed error catalog для builder-related runtime ошибок (`validation/sanitize/runtime/feature-disabled`).
 - [ ] Добавить fallback snapshots в docs для admin/list/read/publish surfaces.
 - [ ] Убедиться, что partial disable не ломает page read/list/menu paths в storefront/admin.
 

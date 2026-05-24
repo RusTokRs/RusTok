@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #24 completed (admin submit button label mapping moved to `core::submit_action_label`, dual-path transport unchanged).
+- Last checkpoint: FFA slice #31 completed (admin selected-post fetch locale arg switched from inline `Some(requested_locale)` to `core::locale_arg(...)`, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-24T18:00:00Z
+- Last updated at (UTC): 2026-05-24T22:50:00Z
 
 ## FFA/FBA status
 
@@ -147,6 +147,13 @@ packages и module metadata синхронизированы.
 - [x] Slice 22: admin selected-post id normalization moved to core (`loadable_post_id`) and nested UI branch removed.
 - [x] Slice 23: admin form title select (`edit/create`) switched from inline conditional to `core::edit_action_label`.
 - [x] Slice 24: admin submit button label mapping switched from inline `match` to `core::submit_action_label`.
+- [x] Slice 25: admin selected-post load fallback reset path deduplicated into one helper closure (`reset_form_to_defaults`) to keep UI effect branch thinner.
+- [x] Slice 26: admin delete-path reset predicate switched from inline `is_editing_post(...)` to `core::should_reset_form_after_delete(...)`.
+- [x] Slice 27: admin selected-post/effect default reset switched from inline `reset_form(...)` to shared `reset_form_action.run(())` callback.
+- [x] Slice 28: admin delete success branch reset switched from inline `reset_form(...)` to shared `reset_form_action.run(())` callback.
+- [x] Slice 29: admin selected-post effect request mapping switched from inline `(post_id, default_locale)` tuple to `core::selected_post_request(...)`.
+- [x] Slice 30: admin posts fetch locale option switched from inline `Some(locale)` to `core::locale_arg(...)` for helper consistency.
+- [x] Slice 31: admin selected-post fetch locale option switched from inline `Some(requested_locale)` to `core::locale_arg(...)`.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

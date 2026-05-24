@@ -120,17 +120,22 @@ pub fn BlogAdmin() -> impl IntoView {
     let posts_resource = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get(), locale.get()),
         move |(token_value, tenant_value, _, locale_value)| async move {
-            api::fetch_posts(token_value, tenant_value, Some(locale_value)).await
+            api::fetch_posts(
+                token_value,
+                tenant_value,
+                core::locale_arg(locale_value.as_str()),
+            )
+            .await
         },
     );
 
     let edit_post_locale = ui_locale.clone();
-    let edit_post_default_locale = default_locale.clone();
+    let edit_post_reset_form_action = reset_form_action;
     let edit_post = Callback::new(move |(post_id, requested_locale): (String, String)| {
+        let reset_form_to_defaults = edit_post_reset_form_action;
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = edit_post_locale.clone();
-        let default_locale = edit_post_default_locale.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(core::busy_key_for_edit(post_id.as_str())));
 
@@ -139,7 +144,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 post_id.clone(),
-                Some(requested_locale),
+                core::locale_arg(requested_locale.as_str()),
             )
             .await
             {
@@ -158,18 +163,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     );
                 }
                 Ok(None) => {
-                    reset_form(
-                        set_editing_post_id,
-                        set_title,
-                        set_slug,
-                        set_excerpt,
-                        set_body,
-                        set_locale,
-                        set_body_format,
-                        set_tags_input,
-                        set_publish_now,
-                        default_locale.as_str(),
-                    );
+                    reset_form_to_defaults.run(());
                     set_submit_error.set(Some(WritePathIssue::new(t(
                         ui_locale.as_deref(),
                         "blog.error.postNotFound",
@@ -177,18 +171,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     ))));
                 }
                 Err(err) => {
-                    reset_form(
-                        set_editing_post_id,
-                        set_title,
-                        set_slug,
-                        set_excerpt,
-                        set_body,
-                        set_locale,
-                        set_body_format,
-                        set_tags_input,
-                        set_publish_now,
-                        default_locale.as_str(),
-                    );
+                    reset_form_to_defaults.run(());
                     set_submit_error.set(Some(WritePathIssue::with_context(
                         &t(
                             ui_locale.as_deref(),
@@ -206,21 +189,13 @@ pub fn BlogAdmin() -> impl IntoView {
     let initial_edit_post = edit_post;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| {
-        if let Some(post_id) = core::loadable_post_id(selected_post_query.get().as_deref()) {
-            initial_edit_post.run((post_id, effect_default_locale.clone()));
+        if let Some(request) = core::selected_post_request(
+            selected_post_query.get().as_deref(),
+            effect_default_locale.as_str(),
+        ) {
+            initial_edit_post.run(request);
         } else {
-            reset_form(
-                set_editing_post_id,
-                set_title,
-                set_slug,
-                set_excerpt,
-                set_body,
-                set_locale,
-                set_body_format,
-                set_tags_input,
-                set_publish_now,
-                effect_default_locale.as_str(),
-            )
+            reset_form_action.run(())
         }
     });
 
@@ -417,13 +392,13 @@ pub fn BlogAdmin() -> impl IntoView {
     });
 
     let delete_post_locale = ui_locale.clone();
-    let delete_post_default_locale = default_locale.clone();
+    let delete_post_reset_form_action = reset_form_action;
     let delete_query_writer = query_writer.clone();
     let delete_post = Callback::new(move |post_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = delete_post_locale.clone();
-        let default_locale = delete_post_default_locale.clone();
+        let reset_form_to_defaults = delete_post_reset_form_action;
         let delete_query_writer = delete_query_writer.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(core::busy_key_for_delete(post_id.as_str())));
@@ -431,23 +406,12 @@ pub fn BlogAdmin() -> impl IntoView {
         spawn_local(async move {
             match api::delete_post(token_value, tenant_value, post_id.clone()).await {
                 Ok(true) => {
-                    if core::is_editing_post(
+                    if core::should_reset_form_after_delete(
                         editing_post_id.get_untracked().as_deref(),
                         post_id.as_str(),
                     ) {
                         delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
-                        reset_form(
-                            set_editing_post_id,
-                            set_title,
-                            set_slug,
-                            set_excerpt,
-                            set_body,
-                            set_locale,
-                            set_body_format,
-                            set_tags_input,
-                            set_publish_now,
-                            default_locale.as_str(),
-                        );
+                        reset_form_to_defaults.run(());
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }

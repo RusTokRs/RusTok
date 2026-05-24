@@ -114,6 +114,13 @@ pub fn loadable_post_id(post_id: Option<&str>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+pub fn selected_post_request(
+    post_id: Option<&str>,
+    requested_locale: &str,
+) -> Option<(String, String)> {
+    loadable_post_id(post_id).map(|id| (id, requested_locale.to_string()))
+}
+
 pub fn trimmed_text(value: &str) -> String {
     value.trim().to_string()
 }
@@ -140,6 +147,13 @@ pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
 
 pub fn is_editing_post(editing_post_id: Option<&str>, post_id: &str) -> bool {
     editing_post_id == Some(post_id)
+}
+
+pub fn should_reset_form_after_delete(
+    editing_post_id: Option<&str>,
+    deleted_post_id: &str,
+) -> bool {
+    is_editing_post(editing_post_id, deleted_post_id)
 }
 
 pub fn is_editing_mode(editing_post_id: Option<&str>) -> bool {
@@ -353,6 +367,11 @@ mod tests {
         );
         assert_eq!(loadable_post_id(Some("   ")), None);
         assert_eq!(loadable_post_id(None), None);
+        assert_eq!(
+            selected_post_request(Some(" post-1 "), "en"),
+            Some(("post-1".to_string(), "en".to_string()))
+        );
+        assert_eq!(selected_post_request(Some("   "), "en"), None);
         assert_eq!(trimmed_text(" abc "), "abc".to_string());
         assert_eq!(
             fallback_post_slug(None, "missing-slug"),
@@ -376,6 +395,9 @@ mod tests {
         assert!(is_editing_post(Some("42"), "42"));
         assert!(!is_editing_post(Some("41"), "42"));
         assert!(!is_editing_post(None, "42"));
+        assert!(should_reset_form_after_delete(Some("42"), "42"));
+        assert!(!should_reset_form_after_delete(Some("41"), "42"));
+        assert!(!should_reset_form_after_delete(None, "42"));
         assert!(is_editing_mode(Some("42")));
         assert!(!is_editing_mode(None));
         assert!(has_issue(Some(WritePathIssueKind::Runtime)));
