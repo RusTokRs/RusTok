@@ -94,7 +94,7 @@ pub struct EditFormSeed {
     pub publish_now: bool,
     pub body_format: String,
     pub body_updated_at: Option<String>,
-    pub legacy_blocks: Vec<PageBlock>,
+    pub existing_blocks: Vec<PageBlock>,
 }
 
 pub fn edit_form_seed_from_page(page: &PageDetail, default_locale: &str) -> EditFormSeed {
@@ -135,7 +135,7 @@ pub fn edit_form_seed_from_page(page: &PageDetail, default_locale: &str) -> Edit
         publish_now: page.status.eq_ignore_ascii_case("published"),
         body_format,
         body_updated_at: page.body.as_ref().map(|body| body.updated_at.clone()),
-        legacy_blocks: page.blocks.clone(),
+        existing_blocks: page.blocks.clone(),
     }
 }
 
@@ -347,7 +347,7 @@ pub fn empty_edit_form_seed(default_locale: &str) -> EditFormSeed {
         publish_now: false,
         body_format: GRAPESJS_FORMAT.to_string(),
         body_updated_at: None,
-        legacy_blocks: Vec::new(),
+        existing_blocks: Vec::new(),
     }
 }
 
@@ -419,7 +419,7 @@ mod tests {
         assert!(!seed.publish_now);
         assert_eq!(seed.body_format, GRAPESJS_FORMAT);
         assert!(seed.body_updated_at.is_none());
-        assert!(seed.legacy_blocks.is_empty());
+        assert!(seed.existing_blocks.is_empty());
     }
 
     #[test]
@@ -457,7 +457,7 @@ mod tests {
         assert!(seed.publish_now);
         assert_eq!(seed.body_format, GRAPESJS_FORMAT);
         assert_eq!(seed.body_updated_at.as_deref(), Some("2026-05-23T10:30:00Z"));
-        assert_eq!(seed.legacy_blocks.len(), 1);
+        assert_eq!(seed.existing_blocks.len(), 1);
     }
 
     #[test]
