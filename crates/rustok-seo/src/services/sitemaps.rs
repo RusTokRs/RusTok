@@ -1012,6 +1012,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn submit_sitemap_endpoints_whitespace_only_endpoint_is_counted_as_invalid() {
+        let db = test_db().await;
+        let service = SeoService::new_memory(db);
+        let adapter = TestSitemapSubmissionAdapter::new(HashMap::new());
+
+        let result = service
+            .submit_sitemap_endpoints_with_adapter(
+                &["   	  ".to_string()],
+                "https://store.example.com/sitemap.xml",
+                &adapter,
+            )
+            .await;
+
+        let message = result.expect_err("whitespace endpoint must be invalid");
+        assert!(message.contains("0 success(es) and 1 failure(s)"));
+        assert!(message.contains("invalid endpoint:"));
+        assert!(adapter.submitted_endpoints().await.is_empty());
+        assert!(adapter.submitted_request_urls().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn submit_sitemap_endpoints_invalid_endpoint_is_not_submitted() {
         let db = test_db().await;
         let service = SeoService::new_memory(db);
