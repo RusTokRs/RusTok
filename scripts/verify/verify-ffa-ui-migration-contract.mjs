@@ -79,6 +79,7 @@ function stripCodeFences(content) {
   return content.replace(/```[\s\S]*?```/g, "");
 }
 
+
 function getMarkdownHeadings(content) {
   return content
     .split("\n")
@@ -110,7 +111,7 @@ function hasMarkdownLink(content, target) {
   }
 
   const referenceUsePattern = /\[[^\]]+\]\[([^\]]+)\]/g;
-  const referenceDefPattern = /^\[([^\]]+)\]:\s*(\S+)/gm;
+  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^""]+[""])?$/gm;
 
   const usedRefs = new Set();
   let useMatch;
@@ -121,7 +122,7 @@ function hasMarkdownLink(content, target) {
   let defMatch;
   while ((defMatch = referenceDefPattern.exec(normalizedContent)) !== null) {
     const ref = defMatch[1].toLowerCase();
-    const href = defMatch[2];
+    const href = defMatch[2].replace(/^<|>$/g, "");
     if (usedRefs.has(ref) && href.includes(target)) {
       return true;
     }
@@ -145,13 +146,14 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
 
   requiredChecklistChecks.forEach(({ label, pattern }) => {
     if (!pattern.test(checklist)) {
-      errors.push(`Не найден обязательный checklist-паттерн (${label})`);
+      errors.push(`Не найден обязательный checklist-паттерн (${label}) в docs/verification/ffa-ui-parity-checklist.md`);
     }
   });
 
+  const connectivityText = stripCodeFences(connectivity);
   requiredConnectivityMentions.forEach((mention) => {
-    if (!connectivity.includes(mention)) {
-      errors.push(`Не найден обязательный пилот в connectivity map: ${mention}`);
+    if (!connectivityText.includes(mention)) {
+      errors.push(`Не найден обязательный пилот в docs/research/dioxus-ffa-pilot-connectivity-map.md: ${mention}`);
     }
   });
 
