@@ -74,7 +74,7 @@ impl RusToKModule for PagesModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content"]
+        &["content", "page_builder"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

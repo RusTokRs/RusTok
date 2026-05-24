@@ -58,7 +58,7 @@ commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-c
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
-pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content"] }
+pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
@@ -68,4 +68,4 @@ alloy = { crate = "alloy", source = "path", path = "crates/alloy" }
 flex = { crate = "flex", source = "path", path = "crates/flex" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages"]
+default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "page_builder"]

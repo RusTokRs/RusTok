@@ -518,4 +518,253 @@ Go/No-Go для перехода в следующую волну:
 3. implementation-plan конкретного модуля (локальные шаги и runbook);
 4. release-gate evidence (CI + observability + rollback artifacts).
 
+## 12. Ближайший execution-пакет (май–июль 2026): продолжение разработки `page builder` и перенос `pages` в FBA
+
+Этот блок фиксирует конкретный пакет работ “что делать дальше” без повторного пересмотра всей дорожной карты.
+
+### 12.1 Sprint 1 (до 2026-06-15): contract freeze и anti-drift
+
+- [ ] Утвердить `builder_contract_version=v1` для reference builder provider и `rustok-pages` consumer metadata.
+- [ ] Зафиксировать таблицу совместимости `provider_version -> consumer_min_version` и проверять её в CI как hard gate.
+- [ ] Закрепить единый typed error contract (`validation`, `sanitize`, `rbac`, `runtime`) для `preview/tree/properties/publish`.
+
+**Артефакты Sprint 1:**
+- changelog entry по contract freeze;
+- CI отчёт anti-drift check (baseline command: `node scripts/verify/verify-page-builder-contract-parity.mjs`);
+- обновлённые metadata snapshots provider/consumer.
+
+### 12.2 Sprint 2 (до 2026-06-30): `rustok-pages` fallback hardening
+
+- [ ] Провести проверку профилей `builder_off`, `publish_off`, `preview_off` для `apps/admin` и `apps/next-admin`.
+- [ ] Подтвердить, что `list/read/menu` surfaces в `pages` не дают 5xx при частичном/полном disable builder capabilities.
+- [ ] Зафиксировать UX-semantic для disabled publish capability (typed error + operator guidance + trace-id).
+
+**Артефакты Sprint 2:**
+- fallback regression report (admin + storefront), включая baseline verify command: `node scripts/verify/verify-page-builder-fallback-profiles.mjs`;
+- incidents/alerts dry log по disable-сценариям;
+- обновлённый runbook переключений tenant-by-tenant.
+
+### 12.3 Sprint 3 (до 2026-07-15): Wave 0/Wave 1 readiness
+
+- [ ] Автоматизировать control-plane dry-run change-set для профилей `all_on/publish_off/preview_off/builder_off`.
+- [ ] Собрать обязательный Wave 1 readiness packet: metadata, smoke, observability, rollback note.
+- [ ] Провести совместный Go/No-Go review: Platform + Builder owners + Pages owners.
+
+**Артефакты Sprint 3:**
+- audit trail с before/after snapshots;
+- dry-run consistency verify report (baseline command: `node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs`);
+- SLO отчёт (`preview p95`, `publish p95`, sanitize failure rate);
+- подписанный протокол Go/No-Go для pilot tenants.
+- unified baseline gate report (command: `node scripts/verify/verify-page-builder-fba-baseline.mjs`).
+
+### 12.4 Как масштабировать после `pages` (дальше по плану)
+
+После завершения Sprint 3 модуль `pages` считается эталонным FBA-consumer кейсом, и pipeline из разделов 9–11 переносится без изменений на:
+
+1. `blog` (Queue A) — приоритет на publish/read consistency и typed error parity.
+2. `forum` (Queue A) — приоритет на moderation/publish lifecycle и fallback stability.
+3. layout/index интеграции (Queue B) — приоритет на routing/canonical/index consistency при capability деградации.
+
+Переход между модулями выполняется только при наличии полного evidence-пакета предыдущего шага (metadata + fallback + observability + rollback).
+
 Без синхронного обновления этих артефактов модуль не переводится в следующую rollout-волну.
+
+### 12.5 Матрица ответственности и hand-off (обязательный baseline для Sprint 1–3)
+
+Чтобы исключить неявные блокеры между командами, для каждого sprint-checkpoint фиксируется owner-профиль:
+
+| Checkpoint | Platform team | Builder reference owners | Pages owners | Frontend owners (Next/Leptos/Flutter) |
+| --- | --- | --- | --- | --- |
+| Sprint 1 / A1 | утверждают anti-drift gate и contract registry | публикуют `builder_contract_version` и typed error catalog | подтверждают `consumer_min_version` и dependency profile | подтверждают adapter mapping для typed errors |
+| Sprint 2 / B1 | подтверждают toggle policy и rollback triggers | гарантируют стабильность capability health probes | верифицируют `list/read/menu` fallback без 5xx | подтверждают UX parity при `publish_off`/`builder_off` |
+| Sprint 3 / C1-D1 | проводят Go/No-Go церемонию и фиксируют decision log | прикладывают provider health и SLO report | прикладывают publish/read smoke и rollback note | прикладывают parity evidence по capability semantics |
+
+Правило hand-off: checkpoint не считается завершённым, если хотя бы один owner-блок в таблице не имеет подтверждённого артефакта в release packet.
+
+### 12.6 Минимальный evidence packet template (для Wave 0/Wave 1)
+
+Для унификации пакета между модулями после `pages` используется единая структура:
+
+1. `metadata/`
+   - provider snapshot (`builder_contract_version`, health profile, degraded modes);
+   - consumer snapshot (`dependency profile`, fallback matrix, toggle profiles).
+2. `fallback/`
+   - результаты `all_on/publish_off/preview_off/builder_off`;
+   - подтверждение отсутствия 5xx в `admin list/read` и `storefront read`.
+3. `observability/`
+   - `preview p95`, `publish p95`, sanitize failure rate, runtime error rate;
+   - correlation trace examples `builder write -> pages publish -> storefront read`.
+4. `rollback/`
+   - rollback decision log (`keep` / `rollback`) с причиной;
+   - owner on-call подтверждение и timestamp.
+
+Минимальный стандарт: без полного packet template модуль не может перейти из Wave 0 в Wave 1.
+
+### 12.7 Следующий практический шаг “прямо сейчас” (next 10 working days)
+
+Чтобы команда могла продолжить работу без дополнительного re-planning, фиксируется минимальный стартовый пакет на ближайшие 10 рабочих дней:
+
+1. **Contract registry update**
+   - [ ] создать/обновить machine-readable запись `builder_contract_version=v1` для provider и `consumer_min_version` для `rustok-pages`;
+   - [ ] добавить ссылку на запись в `docs/modules/registry.md` и локальный implementation-plan `crates/rustok-pages/docs/implementation-plan.md`.
+2. **Fallback smoke baseline**
+   - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `builder_off` на одном internal tenant;
+   - [ ] приложить краткий отчёт с фактами по `admin list/read`, `storefront read`, `publish(dry)`.
+3. **Observability wiring check**
+   - [ ] подтвердить наличие correlation-id в цепочке `builder write -> pages publish -> storefront read`;
+   - [ ] зафиксировать baseline-значения `preview p95`, `publish p95`, sanitize failure rate.
+4. **Go/No-Go prep draft**
+   - [ ] подготовить черновик Wave 1 readiness packet по шаблону 12.6;
+   - [ ] провести асинхронный review owner-ами Platform/Builder/Pages/Frontend.
+
+**Exit criteria (next 10 working days):**
+- есть валидный contract registry snapshot;
+- есть fallback smoke evidence минимум для `all_on/publish_off/builder_off`;
+- есть observability baseline с correlation examples;
+- есть черновик readiness packet с незакрытыми рисками и owner-назначениями.
+
+### 12.8 Реестр рисков для Sprint 1–3 и правила эскалации
+
+Для того чтобы “дальше по плану” не превратилось в narrative-only tracking, фиксируется обязательный risk register:
+
+| Risk ID | Описание риска | Trigger | Mitigation | Escalation owner |
+| --- | --- | --- | --- | --- |
+| PB-FBA-R1 | anti-drift между provider/consumer metadata | несовместимые `builder_contract_version`/`consumer_min_version` | hard CI gate + rollback к последней совместимой паре | Platform team |
+| PB-FBA-R2 | fallback regression в `pages` read surfaces | 5xx или timeout при `builder_off`/`publish_off` | блокировка Wave promotion + hotfix fallback matrix | Pages owners |
+| PB-FBA-R3 | деградация capability health под pilot нагрузкой | `preview/publish` p95 выше SLO или рост sanitize failures | ограничение rollout cohort + tuning + повторный smoke | Builder reference owners |
+| PB-FBA-R4 | UX drift между Next/Leptos/Flutter adapters | различающиеся typed error semantics | parity review checkpoint + единый error mapping table | Frontend owners |
+
+**SLA эскалации:**
+- критические риски (`R1`, `R2`) эскалируются в течение 30 минут с момента детекта;
+- деградационные риски (`R3`, `R4`) — в течение 1 рабочего дня с обязательным remediation plan;
+- без закрытого mitigation item модуль не продвигается в следующую rollout-волну.
+
+### 12.9 Execution cadence и DoD по волнам (чтобы продолжать без повторных трактовок)
+
+#### Еженедельный cadence (до завершения Wave 1)
+
+- **Понедельник (plan sync, 30 мин):**
+  - актуализация статуса checkpoint’ов `A1/B1/C1-D1`;
+  - проверка открытых рисков `PB-FBA-R1..R4` и назначение owner/action.
+- **Среда (evidence sync, 30 мин):**
+  - сверка, что пакет `metadata/fallback/observability/rollback` пополняется фактическими артефактами;
+  - фиксация drift-замечаний между provider/consumer metadata.
+- **Пятница (promotion review, 30 мин):**
+  - решение `keep/rollback/hold` по текущему tenant cohort;
+  - обновление go/no-go статуса и блокеров следующей волны.
+
+#### Definition of Done для перехода Wave 0 -> Wave 1
+
+Переход разрешён только при одновременном выполнении:
+
+1. **Contract integrity**
+   - [ ] `builder_contract_version` и `consumer_min_version` подтверждены CI anti-drift gate без waiver.
+2. **Fallback integrity**
+   - [ ] проверены `all_on/publish_off/preview_off/builder_off` и нет 5xx в `admin list/read` + `storefront read`.
+3. **Operational integrity**
+   - [ ] есть complete audit trail (`before/after`, smoke, decision log) по toggle change-set.
+4. **Observability integrity**
+   - [ ] подтверждены SLO-границы (`preview p95`, `publish p95`, sanitize failure rate) и есть correlation trace examples.
+5. **Ownership integrity**
+   - [ ] есть явный sign-off Platform + Builder + Pages + Frontend owners.
+
+Если любой пункт не закрыт, статус волны остаётся `hold`, а модуль не масштабируется на `blog/forum` очереди.
+
+### 12.10 Что считаем “продолжили по плану” к концу июля 2026
+
+Чтобы зафиксировать измеримый результат, к **2026-07-31** ожидается минимальный outcome:
+
+- [ ] `pages` прошёл Wave 0 с полным evidence packet и без блокирующих `R1/R2`.
+- [ ] Wave 1 readiness packet подготовлен и подписан owner-группами.
+- [ ] Для `blog` и `forum` создан стартовый migration backlog по тому же шаблону (`contract/fallback/observability/rollback`).
+- [ ] В `docs/modules/registry.md` отражён актуальный maturity-state по `builder/pages` треку.
+
+Этот outcome является checkpoint для решения о переходе к broad rollout (Wave 2) в следующем плановом цикле.
+
+## 13. Forum UI как widget-driven consumer Page Builder (phpFox-подобный сценарий)
+
+Ниже фиксируется целевая трактовка, если forum UI собирается из page-builder “кирпичиков” (widgets/blocks), как в phpFox-подобном подходе.
+
+### 13.1 Что меняется в роли `forum` в этом треке
+
+- `rustok-forum` остаётся владельцем forum domain (topics/replies/moderation/policies), но UI-композиция страниц форума переходит в capability-consumer режим через builder widgets.
+- Builder в этом случае выступает layout/composition layer, а не заменой forum runtime.
+- `forum` не получает pages-local ownership editor runtime; он потребляет тот же reference provider-контракт (`preview/tree/properties/publish` + typed errors).
+
+### 13.2 Минимальный widget contract для forum-builder интеграции
+
+Для rollout без vendor-lock обязательный baseline:
+
+1. `widget_type` (machine-readable identifier, например `forum.topic_list`, `forum.topic_detail`, `forum.reply_stream`);
+2. `data_contract_version` (версия входных данных виджета, проверяется anti-drift gate);
+3. `props_schema` (валидируемый JSON schema для UI-настроек);
+4. `capability_requirements` (`preview`, `publish`, `moderation_view` при необходимости);
+5. `fallback_mode` (`readonly`, `hidden`, `degraded`) при частичном disable builder capabilities.
+
+### 13.3 Границы ответственности (обязательно)
+
+- **Forum owners:** domain data, moderation semantics, ACL/RBAC checks, query contracts.
+- **Builder owners:** widget rendering host, layout tree, publish pipeline integration, typed error surfacing.
+- **Frontend owners:** adapter parity (Next/Leptos/Flutter), UX fallback при недоступности отдельных widgets.
+- **Platform team:** tenant toggle policy, rollout/rollback governance, observability SLO gates.
+
+### 13.4 Ограничения rollout (чтобы не сломать forum runtime)
+
+- Запрещено переносить domain-логику forum в widget layer; widgets только композируют и отображают уже контрактные forum capabilities.
+- При `builder_off` forum read-path обязан оставаться доступным через baseline forum routes (без 5xx).
+- Для Wave 1 требуется parity-check: одинаковая typed error семантика для forum widgets на Next/Leptos/Flutter.
+- Любое расширение widget props должно идти через versioned `data_contract_version` и CI anti-drift check.
+
+### 13.5 Очередь внедрения forum widgets после `pages`
+
+1. **FW-1 (contract freeze):** утвердить widget catalog v1 (`topic_list/topic_detail/reply_stream`) и schema validation.
+2. **FW-2 (fallback hardening):** подтвердить `builder_off/publish_off` без деградации forum read/moderation surfaces.
+3. **FW-3 (pilot):** включить 1–2 low-traffic tenant с evidence packet (metadata/fallback/observability/rollback).
+4. **FW-4 (promotion):** расширять rollout только после owner sign-off и SLO stability 24–72h.
+
+## 14. Актуализация порядка исполнения: “без хвостов” (single critical path)
+
+Чтобы пройтись по плану без накопления параллельных незакрытых веток, ниже фиксируется обязательный порядок исполнения.
+
+### 14.1 Правило приоритезации
+
+- До закрытия `Section 12 / Sprint 1–3` новые scope-расширения (включая FW-1..FW-4 для forum widgets) не стартуют в delivery, допускаются только как design-ready backlog.
+- Любая задача, которая не влияет на текущий wave-gate (`Wave 0 -> Wave 1`), получает статус `deferred`.
+- Считаем “хвостом” любую незакрытую задачу из текущего checkpoint, если по ней нет артефакта в evidence packet.
+
+### 14.2 Новый порядок (reordered execution queue)
+
+1. **P0 — Contract freeze + anti-drift (обязательный старт)**
+   - закрыть `builder_contract_version` + `consumer_min_version`;
+   - включить CI anti-drift gate без waiver.
+2. **P1 — Fallback hardening (до любых pilot шагов)**
+   - подтвердить `all_on/publish_off/preview_off/builder_off` без 5xx;
+   - зафиксировать typed error parity для Next/Leptos/Flutter.
+3. **P2 — Control-plane operability**
+   - dry-run atomic toggle change-set;
+   - обязательные before/after snapshots + decision log.
+4. **P3 — Observability & SLO gate**
+   - зафиксировать `preview p95`, `publish p95`, sanitize failure rate;
+   - подтвердить correlation-id chain `builder write -> pages publish -> storefront read`.
+5. **P4 — Wave 0 execution**
+   - выполнить internal wave и собрать полный evidence packet.
+6. **P5 — Wave 1 readiness / Go-NoGo**
+   - совместный owner sign-off Platform + Builder + Pages + Frontend;
+   - только после sign-off разрешается активация forum FW-1 в delivery.
+
+### 14.3 Явный deferred-список до закрытия P5
+
+- FW-1/FW-2/FW-3/FW-4 по forum widgets — **deferred** (кроме уточнения контрактов в документации).
+- Расширение rollout beyond pilot cohort — **deferred**.
+- Broad rollout / default-on сценарии — **deferred**.
+
+### 14.4 Критерий “без хвостов” для перехода к следующему пункту
+
+Переход с `P(n)` на `P(n+1)` разрешён только если одновременно выполнены:
+
+- [ ] все checklist-пункты текущего шага закрыты;
+- [ ] есть связанный evidence artifact (metadata/fallback/observability/rollback);
+- [ ] нет открытых critical risks (`PB-FBA-R1`, `PB-FBA-R2`);
+- [ ] `next action` в registry и локальных implementation-plan синхронизирован с новым шагом.
+
+Если хотя бы одно условие не выполнено — шаг остаётся `in_progress`, новые направления не открываются.

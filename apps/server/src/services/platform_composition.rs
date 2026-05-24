@@ -5,7 +5,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use rustok_api::manifest_hash::hash_manifest_snapshot;
+use rustok_api::manifest_hash::{hash_manifest, hash_manifest_snapshot};
 
 use crate::models::build::Model as Build;
 use crate::models::platform_state::{
@@ -184,8 +184,7 @@ impl PlatformCompositionService {
     }
 
     pub fn manifest_hash(manifest: &ModulesManifest) -> String {
-        let snapshot = Self::manifest_snapshot_json(manifest).unwrap_or(serde_json::Value::Null);
-        hash_manifest_snapshot(&snapshot)
+        hash_manifest(manifest).unwrap_or_else(|_| hash_manifest_snapshot(&serde_json::Value::Null))
     }
 
     fn snapshot_from_state(
@@ -329,7 +328,7 @@ impl PlatformCompositionBuildService {
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::manifest_hash::hash_manifest_snapshot;
+    use rustok_api::manifest_hash::{hash_manifest, hash_manifest_snapshot};
 
     #[test]
     fn manifest_snapshot_hash_is_sha256_hex() {

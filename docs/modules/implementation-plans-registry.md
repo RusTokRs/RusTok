@@ -52,8 +52,8 @@
 | Field | Value | Notes |
 |---|---|---|
 | `cycle_id` | `2026-Q2-round-robin-v1` | Идентификатор текущего цикла |
-| `next_plan_id` | `alloy` | ID записи, которую должен взять следующий агент |
-| `last_rotation_at` | `2026-05-20T00:00:00Z` | Когда указатель был сдвинут последний раз |
+| `next_plan_id` | `rustok-fulfillment` | ID записи, которую должен взять следующий агент |
+| `last_rotation_at` | `2026-05-24T00:00:00Z` | Когда указатель был сдвинут последний раз |
 | `rotation_rule` | `strict_round_robin` | Всегда следующий план по списку, без пропусков |
 
 ## Global board
@@ -87,7 +87,7 @@
 | `rustok-customer` | `rustok-customer` | `crates/rustok-customer/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-customer --lib` |
 | `rustok-email` | `rustok-email` | `crates/rustok-email/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-email --lib` |
 | `rustok-events` | `rustok-events` | `crates/rustok-events/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-events --lib` |
-| `rustok-forum` | `rustok-forum` | `crates/rustok-forum/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-forum --lib` |
+| `rustok-forum` | `rustok-forum` | `crates/rustok-forum/docs/implementation-plan.md` | `in_progress` | `65%` | `agent` | `2026-05-24T00:00:00Z` | `plan-sync выполнен: forum согласован с FBA widget-driven consumer моделью (central section 13), сохранён forum domain ownership boundary, добавлен FW-1/FW-2/FW-3 backlog` | Закрыть FW-1: widget catalog v1 + `data_contract_version` + typed error/props schema parity | для pilot Wave 1 требуется parity evidence Next/Leptos/Flutter и owner sign-off Platform+Builder+Forum+Frontend | `cargo test -p rustok-forum --lib` |
 | `rustok-fulfillment` | `rustok-fulfillment` | `crates/rustok-fulfillment/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-fulfillment --lib` |
 | `rustok-iggy` | `rustok-iggy` | `crates/rustok-iggy/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-iggy --lib` |
 | `rustok-iggy-connector` | `rustok-iggy-connector` | `crates/rustok-iggy-connector/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-iggy-connector --lib` |
@@ -97,7 +97,7 @@
 | `rustok-media` | `rustok-media` | `crates/rustok-media/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-media --lib` |
 | `rustok-order` | `rustok-order` | `crates/rustok-order/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-order --lib` |
 | `rustok-outbox` | `rustok-outbox` | `crates/rustok-outbox/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-outbox --lib` |
-| `rustok-pages` | `rustok-pages` | `crates/rustok-pages/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-pages --lib` |
+| `rustok-pages` | `rustok-pages` | `crates/rustok-pages/docs/implementation-plan.md` | `in_progress` | `70%` | `agent` | `2026-05-24T00:00:00Z` | `plan-sync выполнен: pages зафиксирован как FBA-consumer reference для builder; добавлены execution cadence, Wave 0->1 DoD, risk/escalation и evidence packet baseline в центральном треке docs/modules/tiptap-page-builder-implementation-plan.md (раздел 12)` | Закрыть PB-FBA-1: machine-readable contract registry (`builder_contract_version`/`consumer_min_version`) + fallback evidence по `all_on/publish_off/preview_off/builder_off` | для Wave 1 требуется owner sign-off Platform+Builder+Pages+Frontend и CI anti-drift gate без waiver | `cargo test -p rustok-pages --lib` |
 | `rustok-payment` | `rustok-payment` | `crates/rustok-payment/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-payment --lib` |
 | `rustok-pricing` | `rustok-pricing` | `crates/rustok-pricing/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-pricing --lib` |
 | `rustok-product` | `rustok-product` | `crates/rustok-product/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-product --lib` |

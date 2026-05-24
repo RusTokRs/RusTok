@@ -1071,8 +1071,8 @@ fn runtime_deployment_profile(manifest: &RuntimeModulesManifest) -> String {
 
 #[cfg(feature = "ssr")]
 fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String {
-    let snapshot = serde_json::to_value(manifest).unwrap_or(serde_json::Value::Null);
-    runtime_manifest_snapshot_hash(&snapshot)
+    rustok_api::manifest_hash::hash_manifest(manifest)
+        .unwrap_or_else(|_| runtime_manifest_snapshot_hash(&serde_json::Value::Null))
 }
 
 #[cfg(feature = "ssr")]

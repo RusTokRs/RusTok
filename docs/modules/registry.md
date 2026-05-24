@@ -208,7 +208,7 @@ graph TD
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
 | `comments` | `rustok-comments` | — | Generic comments domain |
-| `pages` | `rustok-pages` | `content` | Pages, menus, page-builder surfaces |
+| `pages` | `rustok-pages` | `content`, `page_builder` | Pages, menus, page-builder surfaces |
 | `page_builder` | `rustok-page-builder` | — | Standalone FBA reference module for visual builder capabilities (`preview/tree/properties/publish`) |
 | `seo` | `rustok-seo` | `content` | Tenant-aware SEO runtime: explicit metadata overrides, template-generated SEO, bulk remediation modes, redirects, sitemap/robots generation, diagnostics/readiness scoring, shared SEO capability contracts, cross-cutting SEO infrastructure UI, storefront-facing SSR page context and headless REST read path `/api/seo/page-context`; entity SEO authoring belongs to owner modules |
 | `taxonomy` | `rustok-taxonomy` | `content` | Shared vocabulary/dictionary layer |

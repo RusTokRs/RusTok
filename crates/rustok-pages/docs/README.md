@@ -21,6 +21,7 @@ block и menu contracts.
 ## Интеграция
 
 - использует `rustok-content` только для shared rich-text helpers, а не как storage backend;
+- зависит от capability-модуля `rustok-page-builder` для FBA builder-contract (`preview/tree/properties/publish`) и соответствующих degraded/toggle профилей;
 - использует `rustok-channel` для module-level и publication-level visibility contract;
 - host applications подключают pages UI через manifest-driven generated wiring;
 - `rustok-pages/admin` уже встраивает owner-side page SEO panel через `rustok-seo-admin-support`

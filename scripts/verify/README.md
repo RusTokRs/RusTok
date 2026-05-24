@@ -21,6 +21,11 @@
 ./scripts/verify/verify-deployment-profiles.sh
 node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
+node scripts/verify/verify-page-builder-contract-parity.mjs
+node scripts/verify/verify-page-builder-fallback-profiles.mjs
+node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
+node scripts/verify/verify-page-builder-fba-baseline.mjs
+node scripts/verify/verify-page-builder-consumer-readiness.mjs pages
 ```
 
 ## Когда запускать
@@ -39,6 +44,22 @@ node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
+| Проверка parity provider/consumer для page-builder контракта | `node scripts/verify/verify-page-builder-contract-parity.mjs` |
+| Проверка required fallback/toggle профилей page-builder | `node scripts/verify/verify-page-builder-fallback-profiles.mjs` |
+| Проверка консистентности значений в toggle профилях page-builder | `node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
+| Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Проверка readiness consumer-модуля (`pages/forum`) | `node scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
+
+Альтернативно те же проверки доступны через `npm run`:
+
+```bash
+npm run verify:page-builder:contract-parity
+npm run verify:page-builder:fallback-profiles
+npm run verify:page-builder:toggle-profiles
+npm run verify:page-builder:fba:baseline
+npm run verify:page-builder:consumer:pages
+npm run verify:page-builder:consumer:forum
+```
 
 ## Описание скриптов
 
@@ -201,6 +222,70 @@ node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 - Dependency guard (`cargo metadata` + allow/deny):
   - backend apps (в текущей конфигурации: `rustok-server`) → только `rustok-*` crate-зависимости (кроме явных infra-исключений)
   - deny новых междоменных `rustok-* -> rustok-*` связей вне allow-list
+
+---
+
+### `verify-page-builder-contract-parity.mjs`
+**Page Builder FBA baseline** — Provider/consumer version parity
+
+Что проверяет:
+- `builder_contract_version` между `rustok-page-builder` (provider) и `rustok-pages` (consumer);
+- `contract_version` в consumer-манифесте относительно версии provider.
+
+**Severity:** HIGH. Drift версий контракта блокирует безопасный rollout между Wave 0/Wave 1.
+
+---
+
+### `verify-page-builder-fallback-profiles.mjs`
+**Page Builder FBA baseline** — Required fallback/toggle structure
+
+Что проверяет:
+- наличие секций `fba.builder_consumer.degraded_modes` и `fba.builder_consumer.toggle_profiles`;
+- обязательные ключи degraded modes и профилей (`all_on/publish_off/preview_off/builder_off`);
+- наличие обязательных toggle-флагов и typed degraded-mode для publish-disable path.
+
+**Severity:** HIGH. Отсутствие fallback-структуры ведёт к неуправляемой деградации при отключении capability.
+
+---
+
+### `verify-page-builder-toggle-profiles-consistency.mjs`
+**Page Builder FBA baseline** — Toggle profile value consistency
+
+Что проверяет:
+- что в каждом профиле (`all_on/publish_off/preview_off/builder_off`) флаги имеют ожидаемые boolean-комбинации;
+- что dry-run rollout semantics остаются детерминированными.
+
+**Severity:** HIGH. Неконсистентные профили делают tenant-toggle rollout непредсказуемым.
+
+---
+
+### `verify-page-builder-fba-baseline.mjs`
+**Page Builder FBA baseline** — Aggregate gate
+
+Что делает:
+- последовательно запускает:
+  1) `verify-page-builder-contract-parity.mjs`,
+  2) `verify-page-builder-fallback-profiles.mjs`,
+  3) `verify-page-builder-toggle-profiles-consistency.mjs`;
+- возвращает non-zero exit code при падении любого шага.
+
+**Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.
+
+---
+
+### `verify-page-builder-consumer-readiness.mjs`
+**Page Builder FBA baseline** — Consumer readiness check
+
+Что проверяет:
+- наличие `rustok-module.toml` и `docs/implementation-plan.md` для модуля-consumer;
+- наличие marker-ов dependency/consumer contract (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
+- наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan.
+
+Поддерживаемые slug:
+- `pages`
+- `forum`
+
+**Severity:** MEDIUM. Скрипт проверяет structural readiness перед включением модуля в rollout wave.
   - deny nested imports внутренних модулей без явного разрешения
 
 **Severity:** CRITICAL. Модуль вне registry = не проходит health check.
