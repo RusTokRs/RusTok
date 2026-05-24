@@ -13,83 +13,17 @@ use crate::{SeoError, SeoResult};
 use super::routing::locale_prefixed_path;
 use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
 
+mod submission_adapters;
+mod submission_aggregation;
+
+use submission_adapters::{
+    HttpSitemapSubmissionAdapter, SitemapSubmissionAdapter, SitemapSubmitEndpoint,
+};
+use submission_aggregation::{
+    push_submission_failure, SitemapSubmissionSummary, SITEMAP_SUBMIT_MAX_ERROR_LEN,
+};
+
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
-const SITEMAP_SUBMIT_MAX_ERROR_LEN: usize = 4000;
-const SITEMAP_SUBMIT_MAX_FAILURE_DETAILS: usize = 8;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SitemapSubmitEndpoint {
-    endpoint: String,
-    request_url: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SitemapSubmissionSummary {
-    success_count: usize,
-    failure_count: usize,
-    failures: Vec<String>,
-    omitted_failure_count: usize,
-}
-
-impl SitemapSubmissionSummary {
-    fn into_error(self) -> Option<String> {
-        if self.failure_count == 0 {
-            return None;
-        }
-        let mut parts = vec![format!(
-            "sitemap submission finished with {} success(es) and {} failure(s)",
-            self.success_count, self.failure_count
-        )];
-        parts.extend(self.failures);
-        if self.omitted_failure_count > 0 {
-            parts.push(format!(
-                "... and {} more failure(s) omitted",
-                self.omitted_failure_count
-            ));
-        }
-        let mut message = parts.join("; ");
-        if message.len() > SITEMAP_SUBMIT_MAX_ERROR_LEN {
-            message.truncate(SITEMAP_SUBMIT_MAX_ERROR_LEN);
-            message.push_str("...");
-        }
-        Some(message)
-    }
-}
-
-#[async_trait::async_trait]
-trait SitemapSubmissionAdapter: Send + Sync {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String>;
-}
-
-struct HttpSitemapSubmissionAdapter {
-    client: reqwest::Client,
-}
-
-#[async_trait::async_trait]
-impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
-    async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String> {
-        let response = self
-            .client
-            .get(endpoint.request_url)
-            .send()
-            .await
-            .map_err(|error| {
-                format!(
-                    "request failed for endpoint `{}` with error: {error}",
-                    endpoint.endpoint
-                )
-            })?;
-        if response.status().is_success() {
-            Ok(())
-        } else {
-            Err(format!(
-                "endpoint `{}` responded with status {}",
-                endpoint.endpoint,
-                response.status()
-            ))
-        }
-    }
-}
 
 impl SeoService {
     pub async fn generate_sitemaps(
@@ -1206,7 +1140,7 @@ mod tests {
             omitted_failure_count: 0,
         };
         for idx in 0..11 {
-            super::push_submission_failure(&mut summary, format!("failure #{idx}"));
+            push_submission_failure(&mut summary, format!("failure #{idx}"));
         }
         let message = summary.into_error().expect("error expected");
         assert!(message.contains("... and 3 more failure(s) omitted"));

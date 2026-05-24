@@ -6,10 +6,10 @@
 
 - Current phase: phase_c1_execution
 - Last checkpoint: Для C1 внедрена bounded aggregation-модель sitemap submission (детали ошибок ограничены детерминированным лимитом), test matrix обновлён до проверки detail truncation + omitted-tail semantics без изменения public `SeoSitemapStatusRecord`.
-- Next step: Разделить текущий `sitemaps` runtime на 3 дочерних подпакета (`index-generation`, `submission-adapters`, `submission-aggregation`) и довести provider seam до отдельного runtime объекта без изменения API наружу.
+- Next step: Завершить C1-декомпозицию `sitemaps`: после выделения `submission-adapters` и `submission-aggregation` вынести `index-generation` в отдельный подпакет и закрепить provider seam как отдельный runtime объект без изменения API наружу.
 - Open blockers: Для полноценных provider-specific adapters (Google Indexing API и др.) нужен отдельный tenant-secret contract и policy для secret rotation (вне текущего scope C1).
 - Hand-off notes for next agent: Целевое разбиение дочерних модулей для `sitemaps` = **3** (generation/adapters/aggregation); C2/C3 не трогать до полного закрытия C1 regression/verify.
-- Last updated at (UTC): 2026-05-24T18:34:00Z
+- Last updated at (UTC): 2026-05-24T20:45:00Z
 
 ## Область работ
 
