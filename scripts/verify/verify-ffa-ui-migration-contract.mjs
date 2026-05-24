@@ -81,8 +81,13 @@ const packageJsonPath = "package.json";
 
 const requiredNpmScriptCommands = {
   "verify:ffa:ui:migration": null,
-  "verify:ffa:ui:migration:contract": "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
-  "verify:ffa:ui:migration:docs": "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
+  "verify:ffa:ui:migration:contract": [
+    "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
+  ],
+  "verify:ffa:ui:migration:docs": [
+    "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
+    "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
+  ],
 };
 
 const requiredMigrationPipelineCommands = [
@@ -229,10 +234,20 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex, pac
       return;
     }
 
-    if (expectedCommand !== null && normalizeCommand(scriptValue) !== normalizeCommand(expectedCommand)) {
-      errors.push(
-        `Скрипт ${scriptName} должен быть равен: ${expectedCommand}; фактически: ${scriptValue.trim()}`,
+    if (expectedCommand !== null) {
+      const expectedVariants = Array.isArray(expectedCommand)
+        ? expectedCommand
+        : [expectedCommand];
+      const actualNormalized = normalizeCommand(scriptValue);
+      const matched = expectedVariants.some(
+        (variant) => actualNormalized === normalizeCommand(variant),
       );
+
+      if (!matched) {
+        errors.push(
+          `Скрипт ${scriptName} должен быть одним из: ${expectedVariants.join(" | ")}; фактически: ${scriptValue.trim()}`,
+        );
+      }
     }
   });
 

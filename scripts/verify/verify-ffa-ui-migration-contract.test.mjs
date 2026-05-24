@@ -144,7 +144,24 @@ test("fails when contract script command is drifted", () => {
   try {
     const result = runVerifier(fixture.root);
     assert.notEqual(result.status, 0, "Expected drifted contract command fixture to fail");
-    assert.match(result.stderr, /должен быть равен/);
+    assert.match(result.stderr, /должен быть одним из/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+
+test("passes when docs script uses sh variant", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    docsCommand: "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
+  });
+
+  try {
+    const result = runVerifier(fixture.root);
+    assert.equal(result.status, 0, `Expected sh docs command fixture to succeed:
+${result.stdout}
+${result.stderr}`);
   } finally {
     fixture.cleanup();
   }
