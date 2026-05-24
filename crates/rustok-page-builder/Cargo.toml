@@ -11,12 +11,14 @@ server = [
   "dep:async-trait",
   "dep:rustok-core",
   "dep:sea-orm-migration",
+  "dep:thiserror",
 ]
 
 [dependencies]
 async-trait = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 

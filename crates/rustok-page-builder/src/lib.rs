@@ -1,3 +1,7 @@
+pub mod dto;
+#[cfg(feature = "server")]
+pub mod service;
+
 #[cfg(feature = "server")]
 use async_trait::async_trait;
 #[cfg(feature = "server")]
@@ -52,6 +56,10 @@ impl MigrationSource for PageBuilderModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dto::{
+        BuilderCapabilityKind, BuilderNodePropertiesInput, PublishPageBuilderInput,
+        PublishPageBuilderResult,
+    };
 
     #[test]
     fn module_metadata_is_stable() {
@@ -64,5 +72,40 @@ mod tests {
             "Standalone FBA-first visual page builder reference module"
         );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn dto_contract_roundtrip_is_stable() {
+        let input = PublishPageBuilderInput {
+            page_id: "home".to_string(),
+            revision_id: "rev-1".to_string(),
+            schema_version: "grapesjs_v1".to_string(),
+            project_data: serde_json::json!({ "pages": [] }),
+        };
+        let encoded = serde_json::to_string(&input).expect("serialize input");
+        let decoded: PublishPageBuilderInput =
+            serde_json::from_str(&encoded).expect("deserialize input");
+        assert_eq!(decoded.page_id, "home");
+        assert_eq!(decoded.schema_version, "grapesjs_v1");
+
+        let props = BuilderNodePropertiesInput {
+            page_id: "home".to_string(),
+            node_id: "hero".to_string(),
+            properties: serde_json::json!({ "title": "Welcome" }),
+        };
+        let props_json = serde_json::to_value(&props).expect("serialize props");
+        assert_eq!(props_json["node_id"], "hero");
+
+        let result = PublishPageBuilderResult {
+            page_id: "home".to_string(),
+            revision_id: "rev-2".to_string(),
+            published: true,
+        };
+        assert!(result.published);
+        assert_eq!(
+            BuilderCapabilityKind::Publish.as_str(),
+            "publish",
+            "capability enum string contract must stay stable"
+        );
     }
 }
