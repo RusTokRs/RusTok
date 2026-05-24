@@ -125,12 +125,24 @@ pub fn BlogAdmin() -> impl IntoView {
     );
 
     let edit_post_locale = ui_locale.clone();
-    let edit_post_default_locale = default_locale.clone();
     let edit_post = Callback::new(move |(post_id, requested_locale): (String, String)| {
+        let reset_form_to_defaults = || {
+            reset_form(
+                set_editing_post_id,
+                set_title,
+                set_slug,
+                set_excerpt,
+                set_body,
+                set_locale,
+                set_body_format,
+                set_tags_input,
+                set_publish_now,
+                default_locale.as_str(),
+            );
+        };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = edit_post_locale.clone();
-        let default_locale = edit_post_default_locale.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(core::busy_key_for_edit(post_id.as_str())));
 
@@ -158,18 +170,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     );
                 }
                 Ok(None) => {
-                    reset_form(
-                        set_editing_post_id,
-                        set_title,
-                        set_slug,
-                        set_excerpt,
-                        set_body,
-                        set_locale,
-                        set_body_format,
-                        set_tags_input,
-                        set_publish_now,
-                        default_locale.as_str(),
-                    );
+                    reset_form_to_defaults();
                     set_submit_error.set(Some(WritePathIssue::new(t(
                         ui_locale.as_deref(),
                         "blog.error.postNotFound",
@@ -177,18 +178,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     ))));
                 }
                 Err(err) => {
-                    reset_form(
-                        set_editing_post_id,
-                        set_title,
-                        set_slug,
-                        set_excerpt,
-                        set_body,
-                        set_locale,
-                        set_body_format,
-                        set_tags_input,
-                        set_publish_now,
-                        default_locale.as_str(),
-                    );
+                    reset_form_to_defaults();
                     set_submit_error.set(Some(WritePathIssue::with_context(
                         &t(
                             ui_locale.as_deref(),
