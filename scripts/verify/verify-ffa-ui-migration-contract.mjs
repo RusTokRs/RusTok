@@ -6,7 +6,66 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../..");
+
+function parseCliArgs(argv) {
+  let cliRoot;
+  let showHelp = false;
+  const unknownArgs = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--help" || arg === "-h") {
+      showHelp = true;
+      continue;
+    }
+
+    if (arg.startsWith("--root=")) {
+      cliRoot = arg.slice("--root=".length);
+      continue;
+    }
+
+    if (arg === "--root") {
+      cliRoot = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    unknownArgs.push(arg);
+  }
+
+  return { cliRoot, showHelp, unknownArgs };
+}
+
+function printUsage() {
+  console.log("Usage: node scripts/verify/verify-ffa-ui-migration-contract.mjs [--root <path>|--root=<path>] [-h|--help]");
+}
+
+function resolveRepoRoot(cliRoot, env) {
+  if (typeof cliRoot === "string" && cliRoot.trim().length > 0) {
+    return path.resolve(cliRoot);
+  }
+
+  if (env.RUSTOK_VERIFY_ROOT) {
+    return path.resolve(env.RUSTOK_VERIFY_ROOT);
+  }
+
+  return path.resolve(__dirname, "../..");
+}
+
+const cli = parseCliArgs(process.argv.slice(2));
+if (cli.showHelp) {
+  printUsage();
+  process.exit(0);
+}
+if (cli.unknownArgs.length > 0) {
+  console.error("[verify-ffa-ui-migration-contract] FAIL");
+  console.error(`Неизвестные аргументы: ${cli.unknownArgs.join(" ")}`);
+  printUsage();
+  process.exit(1);
+}
+
+const repoRoot = resolveRepoRoot(cli.cliRoot, process.env);
 
 const requiredDocs = [
   "docs/research/dioxus-ffa-ui-migration-plan.md",
@@ -75,6 +134,24 @@ const requiredKpiMentions = [
   "Docs guard",
 ];
 
+const packageJsonPath = "package.json";
+
+const requiredNpmScriptCommands = {
+  "verify:ffa:ui:migration": null,
+  "verify:ffa:ui:migration:contract": [
+    "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
+  ],
+  "verify:ffa:ui:migration:docs": [
+    "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
+    "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
+  ],
+};
+
+const requiredMigrationPipelineCommands = [
+  "npm run verify:ffa:ui:migration:contract",
+  "npm run verify:ffa:ui:migration:docs",
+];
+
 function assertFileExists(relPath) {
   const fullPath = path.join(repoRoot, relPath);
   if (!existsSync(fullPath)) {
@@ -98,7 +175,6 @@ function stripCodeFences(content) {
 function stripHtmlComments(content) {
   return content.replace(/<!--[\s\S]*?-->/g, "");
 }
-
 
 function getMarkdownHeadings(content) {
   return content
@@ -136,7 +212,7 @@ function hasMarkdownLink(content, target) {
   }
 
   const referenceUsePattern = /\[[^\]]+\]\[([^\]]+)\]/g;
-  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^""]+[""])?$/gm;
+  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^"]+[""])?$/gm;
 
   const usedRefs = new Set();
   let useMatch;
@@ -156,7 +232,25 @@ function hasMarkdownLink(content, target) {
   return false;
 }
 
-function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
+function parsePackageJson() {
+  const fullPath = path.join(repoRoot, packageJsonPath);
+  if (!existsSync(fullPath)) {
+    throw new Error(`Отсутствует обязательный файл: ${packageJsonPath}`);
+  }
+
+  const raw = readFileSync(fullPath, "utf8");
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Не удалось распарсить ${packageJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function normalizeCommand(command) {
+  return command.replace(/\s+/g, " ").trim();
+}
+
+function collectValidationErrors({ plan, connectivity, checklist, docsIndex, packageJson }) {
   const errors = [];
 
   const planHeadingIndex = new Map(
@@ -188,6 +282,41 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
     }
   });
 
+  const scripts = packageJson?.scripts ?? {};
+  Object.entries(requiredNpmScriptCommands).forEach(([scriptName, expectedCommand]) => {
+    const scriptValue = scripts[scriptName];
+    if (typeof scriptValue !== "string" || scriptValue.trim().length === 0) {
+      errors.push(`Не найден обязательный npm script в package.json: ${scriptName}`);
+      return;
+    }
+
+    if (expectedCommand !== null) {
+      const expectedVariants = Array.isArray(expectedCommand)
+        ? expectedCommand
+        : [expectedCommand];
+      const actualNormalized = normalizeCommand(scriptValue);
+      const matched = expectedVariants.some(
+        (variant) => actualNormalized === normalizeCommand(variant),
+      );
+
+      if (!matched) {
+        errors.push(
+          `Скрипт ${scriptName} должен быть одним из: ${expectedVariants.join(" | ")}; фактически: ${scriptValue.trim()}`,
+        );
+      }
+    }
+  });
+
+  const migrationPipeline = scripts["verify:ffa:ui:migration"];
+  if (typeof migrationPipeline === "string") {
+    const normalizedPipeline = normalizeCommand(migrationPipeline);
+    requiredMigrationPipelineCommands.forEach((command) => {
+      if (!normalizedPipeline.includes(normalizeCommand(command))) {
+        errors.push(`Скрипт verify:ffa:ui:migration должен содержать команду: ${command}`);
+      }
+    });
+  }
+
   requiredIndexRefs.forEach((refPath) => {
     if (!hasMarkdownLink(docsIndex, refPath)) {
       errors.push(`Не найдена обязательная markdown-ссылка в docs/index.md: ${refPath}`);
@@ -199,7 +328,8 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
 
 try {
   const docs = readRequiredDocs();
-  const errors = collectValidationErrors(docs);
+  const packageJson = parsePackageJson();
+  const errors = collectValidationErrors({ ...docs, packageJson });
 
   if (errors.length > 0) {
     console.error("[verify-ffa-ui-migration-contract] FAIL");
