@@ -2,9 +2,9 @@ use loco_rs::{Error, Result};
 use rustok_api::{has_any_effective_permission, AuthContext};
 use rustok_core::Permission;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Debug, Clone, Deserialize, Default, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Default, IntoParams, ToSchema)]
 pub struct PaginationParams {
     #[serde(default = "default_page")]
     pub page: u64,

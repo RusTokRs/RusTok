@@ -321,7 +321,8 @@ pub async fn reorder_resolution_rules(
     policy_set_id: &str,
     payload: &ReorderResolutionRulesPayload,
 ) -> Result<Vec<crate::model::ChannelResolutionRuleRecord>, ApiError> {
-    match channel_reorder_resolution_rules_native(policy_set_id.to_string(), payload.clone()).await {
+    match channel_reorder_resolution_rules_native(policy_set_id.to_string(), payload.clone()).await
+    {
         Ok(payload) => Ok(payload),
         Err(_) => {
             post_json(
@@ -341,7 +342,9 @@ pub async fn delete_resolution_rule(
     policy_set_id: &str,
     rule_id: &str,
 ) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    match channel_delete_resolution_rule_native(policy_set_id.to_string(), rule_id.to_string()).await {
+    match channel_delete_resolution_rule_native(policy_set_id.to_string(), rule_id.to_string())
+        .await
+    {
         Ok(payload) => Ok(payload),
         Err(_) => {
             delete_json(
@@ -1357,7 +1360,10 @@ async fn channel_create_resolution_policy_set_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "channel/activate-resolution-policy-set")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "channel/activate-resolution-policy-set"
+)]
 async fn channel_activate_resolution_policy_set_native(
     policy_set_id: String,
 ) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
@@ -1613,14 +1619,7 @@ async fn channel_delete_resolution_rule_native(
 fn build_native_rule_definition_payload(
     payload: CreateResolutionRulePayload,
     action_channel_id: uuid::Uuid,
-) -> Result<
-    (
-        i32,
-        bool,
-        rustok_channel::ChannelResolutionRuleDefinition,
-    ),
-    ServerFnError,
-> {
+) -> Result<(i32, bool, rustok_channel::ChannelResolutionRuleDefinition), ServerFnError> {
     use rustok_channel::{ResolutionAction, ResolutionPredicate, TargetSurface};
 
     let mut predicates = Vec::new();

@@ -125,12 +125,8 @@ impl TenantService {
 
         let model = active.update(&txn).await?;
 
-        self.publish_event_in_tx(
-            &txn,
-            tenant_id,
-            DomainEvent::TenantUpdated { tenant_id },
-        )
-        .await?;
+        self.publish_event_in_tx(&txn, tenant_id, DomainEvent::TenantUpdated { tenant_id })
+            .await?;
 
         txn.commit().await?;
 

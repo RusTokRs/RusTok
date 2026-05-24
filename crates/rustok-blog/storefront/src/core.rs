@@ -117,10 +117,7 @@ mod tests {
             selected_slug_or_default(None, "latest"),
             "latest".to_string()
         );
-        assert_eq!(
-            route_segment_or_default(None, "blog"),
-            "blog".to_string()
-        );
+        assert_eq!(route_segment_or_default(None, "blog"), "blog".to_string());
         assert_eq!(
             body_or_fallback(None, "No body content yet."),
             "No body content yet.".to_string()

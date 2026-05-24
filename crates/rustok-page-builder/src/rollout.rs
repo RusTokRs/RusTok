@@ -44,7 +44,8 @@ impl BuilderCapabilityFlags {
             ));
         }
 
-        if !self.builder_enabled && (self.preview_enabled || self.properties_enabled || self.publish_enabled)
+        if !self.builder_enabled
+            && (self.preview_enabled || self.properties_enabled || self.publish_enabled)
         {
             return Err(BuilderRolloutError::InvalidFlagCombination(
                 "builder_enabled=false requires preview/properties/publish=false".to_string(),
@@ -74,4 +75,3 @@ pub fn ensure_capability(
         Err(BuilderRolloutError::CapabilityDisabled(capability.as_str()))
     }
 }
-

@@ -129,10 +129,7 @@ mod tests {
             Some("phone".to_string())
         );
         assert_eq!(suggestion_query(" a ", 2), None);
-        assert_eq!(
-            suggestion_query("  rustok ", 2),
-            Some("rustok".to_string())
-        );
+        assert_eq!(suggestion_query("  rustok ", 2), Some("rustok".to_string()));
         assert_eq!(
             suggestion_kind_with_locale("document", Some("ru")),
             "document • ru".to_string()

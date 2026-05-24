@@ -18,7 +18,13 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-async fn setup() -> (DatabaseConnection, PageService, BlockService, Uuid, SecurityContext) {
+async fn setup() -> (
+    DatabaseConnection,
+    PageService,
+    BlockService,
+    Uuid,
+    SecurityContext,
+) {
     let db = setup_test_db().await;
     let module = PagesModule;
     let schema = SchemaManager::new(&db);
@@ -33,7 +39,13 @@ async fn setup() -> (DatabaseConnection, PageService, BlockService, Uuid, Securi
     let page_service = PageService::new(db.clone(), event_bus.clone());
     let block_service = BlockService::new(db, event_bus);
 
-    (db, page_service, block_service, Uuid::new_v4(), admin_context())
+    (
+        db,
+        page_service,
+        block_service,
+        Uuid::new_v4(),
+        admin_context(),
+    )
 }
 
 async fn create_page(
@@ -86,11 +98,7 @@ async fn create_block(
         .expect("failed to create block")
 }
 
-async fn seed_pages_module_settings(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    settings: &str,
-) {
+async fn seed_pages_module_settings(db: &DatabaseConnection, tenant_id: Uuid, settings: &str) {
     db.execute(Statement::from_string(
         db.get_database_backend(),
         format!(
@@ -177,8 +185,12 @@ async fn delete_returns_page_not_found_for_block_id_and_keeps_page_record() {
 #[tokio::test]
 async fn publish_returns_feature_disabled_when_builder_publish_toggle_is_false() {
     let (db, page_service, _block_service, tenant_id, security) = setup().await;
-    seed_pages_module_settings(&db, tenant_id, "{\"builder\":{\"publish\":{\"enabled\":false}}}")
-        .await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        "{\"builder\":{\"publish\":{\"enabled\":false}}}",
+    )
+    .await;
 
     let page = create_page(&page_service, tenant_id, security.clone()).await;
     let result = page_service.publish(tenant_id, security, page.id).await;
@@ -659,7 +671,9 @@ async fn update_to_published_markdown_is_allowed_when_builder_publish_toggle_is_
             },
         )
         .await
-        .expect("markdown publish transition should remain available when builder.publish is disabled");
+        .expect(
+            "markdown publish transition should remain available when builder.publish is disabled",
+        );
 
     assert_eq!(
         updated.status,

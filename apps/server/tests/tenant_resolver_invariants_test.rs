@@ -112,7 +112,13 @@ async fn host_resolution_resolves_tenant_by_domain() {
     settings.tenant.resolution = "host".to_string();
 
     let (ctx, app) = setup_tenant_router(settings).await;
-    insert_tenant(&ctx, "resolver-host", Some("resolver-host.example.test"), true).await;
+    insert_tenant(
+        &ctx,
+        "resolver-host",
+        Some("resolver-host.example.test"),
+        true,
+    )
+    .await;
 
     let response = app
         .oneshot(

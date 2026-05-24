@@ -22,9 +22,9 @@ use uuid::Uuid;
 use crate::{
     dto::{
         AddCartLineItemInput, CartResponse, CompleteCheckoutInput, CompleteCheckoutResponse,
-        CreateCartInput, CustomerResponse, OrderResponse, PaymentCollectionResponse,
-        RegionResponse, ResolveStoreContextInput, ShippingOptionResponse, StoreContextResponse,
-        UpdateCartContextInput,
+        CreateCartInput, CustomerResponse, ListRefundsInput, OrderResponse,
+        PaymentCollectionResponse, RefundResponse, RegionResponse, ResolveStoreContextInput,
+        ShippingOptionResponse, StoreContextResponse, UpdateCartContextInput,
     },
     entities::{product, product_translation, product_variant, variant_translation},
     search::product_translation_title_search_condition,
@@ -79,7 +79,10 @@ pub fn routes() -> Routes {
             axum::routing::post(create_payment_collection),
         )
         .add("/orders/{id}", axum::routing::get(get_order))
-        .add("/orders/{id}/refunds", axum::routing::get(list_order_refunds))
+        .add(
+            "/orders/{id}/refunds",
+            axum::routing::get(list_order_refunds),
+        )
         .add("/customers/me", axum::routing::get(get_me))
 }
 
@@ -1013,7 +1016,8 @@ pub async fn list_order_refunds(
     let customer_id = current_customer_id(&ctx, tenant.id, Some(&auth))
         .await?
         .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
-    let order_service = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let order_service =
+        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let order = order_service
         .get_order(tenant.id, id)
         .await
@@ -1041,11 +1045,7 @@ pub async fn list_order_refunds(
 
     Ok(Json(PaginatedResponse {
         data: items,
-        meta: PaginationMeta::new(
-            params.pagination.page,
-            params.pagination.limit(),
-            total,
-        ),
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), total),
     }))
 }
 
@@ -4595,7 +4595,10 @@ mod tests {
         assert_eq!(completed["order"]["status"], json!("paid"));
         assert_eq!(completed["cart"]["tax_included"], json!(true));
         assert_eq!(completed["order"]["tax_included"], json!(true));
-        assert_eq!(completed["cart"]["tax_total"], completed["order"]["tax_total"]);
+        assert_eq!(
+            completed["cart"]["tax_total"],
+            completed["order"]["tax_total"]
+        );
         assert_eq!(
             completed["cart"]["tax_lines"][0]["provider_id"],
             json!("region_default")
@@ -5023,7 +5026,6 @@ mod tests {
             String::from_utf8_lossy(&body)
         );
     }
-
 
     #[tokio::test]
     async fn store_payment_collection_transport_returns_not_found_for_unknown_cart() {
@@ -5600,12 +5602,21 @@ mod tests {
         assert_eq!(order["customer_id"], json!(customer_id));
         assert_eq!(order["status"], json!("paid"));
         assert_eq!(order["currency_code"], json!("EUR"));
-        assert_eq!(order["subtotal_amount"], completed["order"]["subtotal_amount"]);
+        assert_eq!(
+            order["subtotal_amount"],
+            completed["order"]["subtotal_amount"]
+        );
         assert_eq!(order["total_amount"], completed["order"]["total_amount"]);
         assert_eq!(order["tax_included"], completed["order"]["tax_included"]);
         assert_eq!(order["tax_total"], completed["order"]["tax_total"]);
         assert_eq!(order["tax_lines"], completed["order"]["tax_lines"]);
-        assert_eq!(order["tax_lines"].as_array().expect("tax lines array").len(), 2);
+        assert_eq!(
+            order["tax_lines"]
+                .as_array()
+                .expect("tax lines array")
+                .len(),
+            2
+        );
         assert_eq!(
             order["tax_lines"][0]["provider_id"],
             completed["order"]["tax_lines"][0]["provider_id"]
@@ -5613,7 +5624,9 @@ mod tests {
         assert!(order["tax_lines"][0]["line_item_id"].as_str().is_some());
         assert!(order["tax_lines"][0]["shipping_option_id"].is_null());
         assert!(order["tax_lines"][1]["line_item_id"].is_null());
-        assert!(order["tax_lines"][1]["shipping_option_id"].as_str().is_some());
+        assert!(order["tax_lines"][1]["shipping_option_id"]
+            .as_str()
+            .is_some());
     }
 
     #[tokio::test]

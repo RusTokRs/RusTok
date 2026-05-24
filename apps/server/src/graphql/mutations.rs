@@ -348,20 +348,18 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
-        ToggleModuleError::PreHookFailed(err) => {
-            FieldError::new(toggle_err_hook_failed(&err)).extend_with(|_, ext| {
+        ToggleModuleError::PreHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
+            .extend_with(|_, ext| {
                 ext.set("code", "MODULE_HOOK_FAILED");
                 ext.set("retryable_issue", false);
                 ext.set("operation_issue", "pre_hook_failed");
-            })
-        }
-        ToggleModuleError::PostHookFailed(err) => {
-            FieldError::new(toggle_err_hook_failed(&err)).extend_with(|_, ext| {
+            }),
+        ToggleModuleError::PostHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
+            .extend_with(|_, ext| {
                 ext.set("code", "MODULE_HOOK_FAILED");
                 ext.set("retryable_issue", true);
                 ext.set("operation_issue", "post_hook_failed");
-            })
-        }
+            }),
         ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
     }
 }
@@ -1128,8 +1126,8 @@ mod tests {
         validate_custom_fields, AuthLifecycleError, ManifestError, PlatformCompositionBuildError,
         PlatformCompositionError, ToggleModuleError,
     };
-    use async_graphql::ErrorExtensions;
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
+    use async_graphql::ErrorExtensions;
     use migration::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
@@ -1327,7 +1325,9 @@ mod tests {
 
         for user_case in &user {
             assert!(
-                internal.iter().all(|case| case.case_name != user_case.case_name),
+                internal
+                    .iter()
+                    .all(|case| case.case_name != user_case.case_name),
                 "toggle taxonomy partition overlap detected for case: {}",
                 user_case.case_name
             );
@@ -1455,7 +1455,9 @@ mod tests {
 
     #[test]
     fn toggle_hook_failed_post_hook_sets_retryable_issue_extensions() {
-        let mapped = map_toggle_module_error(ToggleModuleError::PostHookFailed("downstream timeout".to_string()));
+        let mapped = map_toggle_module_error(ToggleModuleError::PostHookFailed(
+            "downstream timeout".to_string(),
+        ));
         let gql = mapped.extend();
 
         assert_eq!(error_code(&gql).as_deref(), Some("MODULE_HOOK_FAILED"));
@@ -1559,7 +1561,10 @@ mod tests {
         for case in cases {
             let mapped = map_platform_composition_error(case.error);
             assert!(
-                mapped.message.to_lowercase().contains(case.message_fragment),
+                mapped
+                    .message
+                    .to_lowercase()
+                    .contains(case.message_fragment),
                 "message contract drifted for case `{}`",
                 case.name
             );
@@ -1600,9 +1605,11 @@ mod tests {
             },
             Case {
                 name: "manifest validation failure",
-                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Manifest(
-                    ManifestError::RequiredModule("pages".to_string()),
-                )),
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::Manifest(ManifestError::RequiredModule(
+                        "pages".to_string(),
+                    )),
+                ),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "required",
                 exact_message: None,
@@ -1627,9 +1634,11 @@ mod tests {
             },
             Case {
                 name: "database failure via composition wrapper",
-                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(
-                    sea_orm::DbErr::Custom("db is unavailable".to_string()),
-                )),
+                error: PlatformCompositionBuildError::Composition(
+                    PlatformCompositionError::Database(sea_orm::DbErr::Custom(
+                        "db is unavailable".to_string(),
+                    )),
+                ),
                 expected_code: "INTERNAL_SERVER_ERROR",
                 expected_message_fragment: "db is unavailable",
                 exact_message: None,
@@ -1644,7 +1653,9 @@ mod tests {
                 ),
                 expected_code: "BAD_USER_INPUT",
                 expected_message_fragment: "revision conflict",
-                exact_message: Some("Platform composition revision conflict: expected 11, current 13"),
+                exact_message: Some(
+                    "Platform composition revision conflict: expected 11, current 13",
+                ),
             },
         ];
 
@@ -1675,7 +1686,9 @@ mod tests {
     #[test]
     fn platform_composition_build_error_mapping_never_mentions_partial_rollback() {
         let errors = vec![
-            PlatformCompositionBuildError::Build(sea_orm::DbErr::Custom("enqueue failed".to_string())),
+            PlatformCompositionBuildError::Build(sea_orm::DbErr::Custom(
+                "enqueue failed".to_string(),
+            )),
             PlatformCompositionBuildError::Composition(PlatformCompositionError::Manifest(
                 ManifestError::RequiredModule("pages".to_string()),
             )),
@@ -1688,10 +1701,12 @@ mod tests {
             PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(
                 sea_orm::DbErr::Custom("db is unavailable".to_string()),
             )),
-            PlatformCompositionBuildError::Composition(PlatformCompositionError::RevisionConflict {
-                expected: 1,
-                current: 2,
-            }),
+            PlatformCompositionBuildError::Composition(
+                PlatformCompositionError::RevisionConflict {
+                    expected: 1,
+                    current: 2,
+                },
+            ),
         ];
 
         for error in errors {
@@ -1710,9 +1725,7 @@ mod tests {
                 expected: 5,
                 current: 8,
             },
-            PlatformCompositionError::Manifest(ManifestError::RequiredModule(
-                "pages".to_string(),
-            )),
+            PlatformCompositionError::Manifest(ManifestError::RequiredModule("pages".to_string())),
             PlatformCompositionError::Serialize("serde exploded".to_string()),
             PlatformCompositionError::Deserialize("bad snapshot".to_string()),
             PlatformCompositionError::Database(sea_orm::DbErr::Custom(
@@ -1905,5 +1918,4 @@ mod tests {
         );
         assert_eq!(prepared.locale.as_deref(), Some("ru"));
     }
-
 }

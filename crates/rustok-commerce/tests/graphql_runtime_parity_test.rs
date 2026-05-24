@@ -716,7 +716,6 @@ fn admin_refund_query(tenant_id: Uuid, refund_id: Uuid, payment_collection_id: U
     )
 }
 
-
 fn admin_refunds_list_query(tenant_id: Uuid, payment_collection_id: Uuid) -> String {
     format!(
         r#"
@@ -766,10 +765,7 @@ fn admin_refunds_list_query_with_status(
     )
 }
 
-fn admin_refunds_list_query_with_order(
-    tenant_id: Uuid,
-    order_id: Uuid,
-) -> String {
+fn admin_refunds_list_query_with_order(tenant_id: Uuid, order_id: Uuid) -> String {
     format!(
         r#"
         query {{
@@ -792,7 +788,6 @@ fn admin_refunds_list_query_with_order(
         "#
     )
 }
-
 
 fn storefront_refunds_query(tenant_id: Uuid, order_id: Uuid) -> String {
     format!(
@@ -843,12 +838,7 @@ fn storefront_refunds_query_with_paging(
     )
 }
 
-
-fn storefront_refunds_query_with_status(
-    tenant_id: Uuid,
-    order_id: Uuid,
-    status: &str,
-) -> String {
+fn storefront_refunds_query_with_status(tenant_id: Uuid, order_id: Uuid, status: &str) -> String {
     format!(
         r#"
         query {{
@@ -3326,7 +3316,6 @@ async fn admin_graphql_refund_query_hides_foreign_tenant_refund() {
     assert_eq!(json["paymentCollection"], Value::Null);
 }
 
-
 #[tokio::test]
 async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_filter() {
     let db = setup_test_db().await;
@@ -4205,7 +4194,9 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
         .expect("admin tax query response should serialize");
     assert_eq!(json["order"]["order"]["taxTotal"], Value::from("20.5"));
     assert_eq!(json["order"]["order"]["taxIncluded"], Value::from(false));
-    let tax_lines = json["order"]["order"]["taxLines"].as_array().expect("tax lines array");
+    let tax_lines = json["order"]["order"]["taxLines"]
+        .as_array()
+        .expect("tax lines array");
     assert_eq!(tax_lines.len(), 3);
     assert_eq!(tax_lines[0]["providerId"], Value::from("region_default"));
     assert!(tax_lines[0]["lineItemId"].as_str().is_some());
@@ -4794,7 +4785,9 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
     assert_eq!(json["storefrontOrder"]["currencyCode"], Value::from("EUR"));
     assert_eq!(json["storefrontOrder"]["taxTotal"], Value::from("7.45"));
     assert_eq!(json["storefrontOrder"]["taxIncluded"], Value::from(false));
-    let tax_lines = json["storefrontOrder"]["taxLines"].as_array().expect("tax lines array");
+    let tax_lines = json["storefrontOrder"]["taxLines"]
+        .as_array()
+        .expect("tax lines array");
     assert_eq!(tax_lines.len(), 3);
     assert_eq!(tax_lines[0]["providerId"], Value::from("region_default"));
     assert!(tax_lines[0]["lineItemId"].as_str().is_some());
@@ -4908,7 +4901,10 @@ async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() 
         "unexpected storefront refunds errors: {:?}",
         response.errors
     );
-    let json = response.data.into_json().expect("response should serialize");
+    let json = response
+        .data
+        .into_json()
+        .expect("response should serialize");
     assert_eq!(json["storefrontRefunds"]["total"], Value::from(1));
     let items = json["storefrontRefunds"]["items"]
         .as_array()
@@ -4916,7 +4912,10 @@ async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["id"], Value::from(created_refund.id.to_string()));
     assert_eq!(items[0]["orderId"], Value::from(order.id.to_string()));
-    assert_eq!(items[0]["paymentCollectionId"], Value::from(payment.id.to_string()));
+    assert_eq!(
+        items[0]["paymentCollectionId"],
+        Value::from(payment.id.to_string())
+    );
     assert_eq!(items[0]["amount"], Value::from("10"));
 }
 
@@ -5021,12 +5020,18 @@ async fn storefront_graphql_refunds_query_requires_authentication() {
         request_context(tenant_id, "de"),
         None,
     )
-    .execute(Request::new(storefront_refunds_query(tenant_id, Uuid::new_v4())))
+    .execute(Request::new(storefront_refunds_query(
+        tenant_id,
+        Uuid::new_v4(),
+    )))
     .await;
 
     assert_eq!(response.errors.len(), 1, "expected unauthenticated error");
     assert!(
-        response.errors[0].message.to_ascii_lowercase().contains("auth"),
+        response.errors[0]
+            .message
+            .to_ascii_lowercase()
+            .contains("auth"),
         "unexpected unauthenticated error: {}",
         response.errors[0].message
     );
@@ -5070,12 +5075,22 @@ async fn storefront_graphql_refunds_query_returns_empty_for_unknown_order() {
     )))
     .await;
 
-    assert!(response.errors.is_empty(), "unexpected errors: {:?}", response.errors);
-    let json = response.data.into_json().expect("response should serialize");
+    assert!(
+        response.errors.is_empty(),
+        "unexpected errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("response should serialize");
     assert_eq!(json["storefrontRefunds"]["total"], Value::from(0));
     assert_eq!(json["storefrontRefunds"]["page"], Value::from(3));
     assert_eq!(json["storefrontRefunds"]["perPage"], Value::from(7));
-    assert_eq!(json["storefrontRefunds"]["items"], Value::from(Vec::<Value>::new()));
+    assert_eq!(
+        json["storefrontRefunds"]["items"],
+        Value::from(Vec::<Value>::new())
+    );
 }
 
 #[tokio::test]
@@ -5172,12 +5187,19 @@ async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_
             " PENDING ",
         )))
         .await;
-    assert!(normalized.errors.is_empty(), "unexpected normalized errors: {:?}", normalized.errors);
+    assert!(
+        normalized.errors.is_empty(),
+        "unexpected normalized errors: {:?}",
+        normalized.errors
+    );
     let normalized_json = normalized
         .data
         .into_json()
         .expect("normalized response should serialize");
-    assert_eq!(normalized_json["storefrontRefunds"]["total"], Value::from(1));
+    assert_eq!(
+        normalized_json["storefrontRefunds"]["total"],
+        Value::from(1)
+    );
 
     let invalid = schema
         .execute(Request::new(storefront_refunds_query_with_status(

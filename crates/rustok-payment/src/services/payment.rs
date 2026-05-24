@@ -323,7 +323,8 @@ impl PaymentService {
                 return Ok((Vec::new(), 0));
             }
 
-            query = query.filter(entities::refund::Column::PaymentCollectionId.is_in(collection_ids));
+            query =
+                query.filter(entities::refund::Column::PaymentCollectionId.is_in(collection_ids));
         }
         if let Some(status) = input.status {
             let normalized_status = Self::normalize_refund_status_filter(&status)?;
@@ -847,8 +848,7 @@ mod tests {
             "refunded"
         );
         assert_eq!(
-            PaymentService::normalize_refund_status_filter("CANCELLED")
-                .expect("cancelled status"),
+            PaymentService::normalize_refund_status_filter("CANCELLED").expect("cancelled status"),
             "cancelled"
         );
     }

@@ -280,7 +280,6 @@ struct GraphqlCheckoutCompletionPaymentCollection {
 #[derive(Debug, Deserialize)]
 struct GraphqlFulfillmentSummary {}
 
-
 #[derive(Debug, Deserialize)]
 struct StorefrontRefundsSummaryResponse {
     #[serde(rename = "storefrontRefunds")]
@@ -911,9 +910,11 @@ fn build_native_shipping_selections(
     )?;
     Ok(selections
         .into_iter()
-        .map(|(delivery_group_id, shipping_option_id)| rustok_commerce::CartShippingSelectionInput {
-            delivery_group_id,
-            shipping_option_id,
+        .map(|(delivery_group_id, shipping_option_id)| {
+            rustok_commerce::CartShippingSelectionInput {
+                delivery_group_id,
+                shipping_option_id,
+            }
         })
         .collect())
 }
@@ -1678,8 +1679,10 @@ async fn storefront_complete_checkout(
     }
 }
 
-
-fn summarize_storefront_refunds(items: &[GraphqlRefundItem], total: u64) -> StorefrontOrderRefundSummary {
+fn summarize_storefront_refunds(
+    items: &[GraphqlRefundItem],
+    total: u64,
+) -> StorefrontOrderRefundSummary {
     let refunded_amount = items
         .iter()
         .filter_map(|item| rust_decimal::Decimal::from_str(item.amount.trim()).ok())
@@ -1706,7 +1709,10 @@ pub async fn fetch_storefront_order_refunds_summary(
         STOREFRONT_REFUNDS_QUERY,
         StorefrontRefundsSummaryVariables {
             order_id,
-            filter: StorefrontRefundsSummaryFilter { page: 1, per_page: 50 },
+            filter: StorefrontRefundsSummaryFilter {
+                page: 1,
+                per_page: 50,
+            },
         },
     )
     .await?;

@@ -71,7 +71,8 @@ fn bypass_toggle_api_is_not_public() {
         .and_then(Path::parent)
         .expect("workspace root");
     let tenant_modules_rs = repo_root.join("apps/server/src/models/tenant_modules.rs");
-    let content = fs::read_to_string(&tenant_modules_rs).expect("tenant_modules.rs should be readable");
+    let content =
+        fs::read_to_string(&tenant_modules_rs).expect("tenant_modules.rs should be readable");
 
     let entity_impl_anchor = "impl Entity {";
     let entity_method_signature =
@@ -178,13 +179,11 @@ pub(crate) async fn other_helper() {}
 #[test]
 fn extract_function_block_returns_none_for_missing_signature() {
     let source = "pub(crate) async fn other_helper() {}";
-    assert!(
-        extract_function_block(
-            source,
-            "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only("
-        )
-        .is_none()
-    );
+    assert!(extract_function_block(
+        source,
+        "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only("
+    )
+    .is_none());
 }
 
 #[test]
@@ -196,25 +195,21 @@ pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only() {
 }
 "#;
 
-    assert!(
-        extract_function_block(
-            source,
-            "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
-        )
-        .is_none()
-    );
+    assert!(extract_function_block(
+        source,
+        "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
+    )
+    .is_none());
 }
 
 #[test]
 fn extract_function_block_returns_none_when_body_brace_missing() {
     let source = "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()";
-    assert!(
-        extract_function_block(
-            source,
-            "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
-        )
-        .is_none()
-    );
+    assert!(extract_function_block(
+        source,
+        "pub(crate) async fn upsert_flag_without_lifecycle_for_migrations_only()"
+    )
+    .is_none());
 }
 
 #[test]
@@ -308,8 +303,8 @@ fn lifecycle_hook_phases_adr_is_linked_from_indexes_and_backlog() {
     let adr_path = "DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md";
     let decisions_readme = fs::read_to_string(repo_root.join("DECISIONS/README.md"))
         .expect("DECISIONS/README.md should be readable");
-    let docs_index =
-        fs::read_to_string(repo_root.join("docs/index.md")).expect("docs/index.md should be readable");
+    let docs_index = fs::read_to_string(repo_root.join("docs/index.md"))
+        .expect("docs/index.md should be readable");
     let remediation = fs::read_to_string(
         repo_root.join("docs/research/control-plane-module-lifecycle-remediation-plan.md"),
     )

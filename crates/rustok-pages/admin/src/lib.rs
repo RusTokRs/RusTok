@@ -172,7 +172,7 @@ pub fn PagesAdmin() -> impl IntoView {
     let tree_surface_body = t(
         route_context.locale.as_deref(),
         "pages.surface.tree.body",
-        "Page/component tree from projectData plus legacy block compatibility snapshot.",
+        "Page/component tree from projectData plus existing-block compatibility snapshot.",
     );
     let properties_surface_title = t(
         route_context.locale.as_deref(),
@@ -204,15 +204,15 @@ pub fn PagesAdmin() -> impl IntoView {
         "pages.surface.tree.empty",
         "Project tree is empty.",
     );
-    let legacy_blocks_title = t(
+    let existing_blocks_title = t(
         route_context.locale.as_deref(),
-        "pages.surface.tree.legacyBlocks",
-        "Legacy blocks",
+        "pages.surface.tree.existingBlocks",
+        "Existing blocks",
     );
-    let no_legacy_blocks_text = t(
+    let no_existing_blocks_text = t(
         route_context.locale.as_deref(),
-        "pages.surface.tree.noLegacyBlocks",
-        "No legacy blocks attached.",
+        "pages.surface.tree.noExistingBlocks",
+        "No existing blocks attached.",
     );
     let body_format_label = t(
         route_context.locale.as_deref(),
@@ -267,26 +267,25 @@ pub fn PagesAdmin() -> impl IntoView {
     let compatibility_non_grapes = t(
         route_context.locale.as_deref(),
         "pages.compat.nonGrapes",
-        "Current body format is not grapesjs_v1. Save once to migrate this page body while keeping legacy blocks untouched.",
+        "Current body format is not grapesjs_v1. Save once to migrate this page body while keeping existing blocks untouched.",
     );
-    let compatibility_legacy_blocks = t(
+    let compatibility_existing_blocks = t(
         route_context.locale.as_deref(),
-        "pages.compat.legacyBlocks",
-        "Legacy blocks remain attached and are not deleted automatically by grapesjs_v1 writes.",
+        "pages.compat.existingBlocks",
+        "Existing blocks remain attached and are not deleted automatically by grapesjs_v1 writes.",
     );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_page_id, set_editing_page_id) = signal(Option::<String>::None);
     let (title, set_title) = signal(String::new());
     let (slug, set_slug) = signal(String::new());
-    let (project_data_text, set_project_data_text) =
-        signal(core::default_project_data_text(""));
+    let (project_data_text, set_project_data_text) = signal(core::default_project_data_text(""));
     let (channel_slugs_text, set_channel_slugs_text) = signal(String::new());
     let (locale, set_locale) = signal(default_locale.clone());
     let (publish_now, set_publish_now) = signal(false);
     let (body_format, set_body_format) = signal(core::GRAPESJS_FORMAT.to_string());
     let (body_updated_at, set_body_updated_at) = signal(Option::<String>::None);
-    let (legacy_blocks, set_legacy_blocks) = signal(Vec::<PageBlock>::new());
+    let (existing_blocks, set_existing_blocks) = signal(Vec::<PageBlock>::new());
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_issue, set_submit_issue) = signal(Option::<WritePathIssue>::None);
 
@@ -303,7 +302,7 @@ pub fn PagesAdmin() -> impl IntoView {
                 set_publish_now,
                 set_body_format,
                 set_body_updated_at,
-                set_legacy_blocks,
+                set_existing_blocks,
                 default_locale.as_str(),
             )
         }
@@ -364,7 +363,7 @@ pub fn PagesAdmin() -> impl IntoView {
                     set_publish_now.set(seed.publish_now);
                     set_body_format.set(seed.body_format);
                     set_body_updated_at.set(seed.body_updated_at);
-                    set_legacy_blocks.set(seed.legacy_blocks);
+                    set_existing_blocks.set(seed.existing_blocks);
                 }
                 Ok(None) => {
                     reset_page_form(
@@ -377,7 +376,7 @@ pub fn PagesAdmin() -> impl IntoView {
                         set_publish_now,
                         set_body_format,
                         set_body_updated_at,
-                        set_legacy_blocks,
+                        set_existing_blocks,
                         default_locale.as_str(),
                     );
                     set_submit_issue.set(Some(WritePathIssue::new(page_not_found_text.clone())));
@@ -393,7 +392,7 @@ pub fn PagesAdmin() -> impl IntoView {
                         set_publish_now,
                         set_body_format,
                         set_body_updated_at,
-                        set_legacy_blocks,
+                        set_existing_blocks,
                         default_locale.as_str(),
                     );
                     set_submit_issue.set(Some(core::write_path_issue_with_context(
@@ -420,7 +419,7 @@ pub fn PagesAdmin() -> impl IntoView {
             set_publish_now,
             set_body_format,
             set_body_updated_at,
-            set_legacy_blocks,
+            set_existing_blocks,
             effect_default_locale.as_str(),
         ),
     });
@@ -581,7 +580,7 @@ pub fn PagesAdmin() -> impl IntoView {
 
     let compatibility_warning = Signal::derive(move || {
         !body_format.get().eq_ignore_ascii_case(core::GRAPESJS_FORMAT)
-            || !legacy_blocks.get().is_empty()
+            || !existing_blocks.get().is_empty()
     });
 
     view! {
@@ -721,17 +720,17 @@ pub fn PagesAdmin() -> impl IntoView {
 
                                 <div class="mt-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
                                     <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                        {legacy_blocks_title.clone()}
+                                        {existing_blocks_title.clone()}
                                     </div>
                                     <Show
-                                        when=move || !legacy_blocks.get().is_empty()
+                                        when=move || !existing_blocks.get().is_empty()
                                         fallback=move || view! {
-                                            <p class="mt-2 text-xs text-muted-foreground">{no_legacy_blocks_text.clone()}</p>
+                                            <p class="mt-2 text-xs text-muted-foreground">{no_existing_blocks_text.clone()}</p>
                                         }
                                     >
                                         <ul class="mt-2 space-y-1 text-xs text-muted-foreground">
                                             {move || {
-                                                legacy_blocks
+                                                existing_blocks
                                                     .get()
                                                     .into_iter()
                                                     .map(|block| {
@@ -833,8 +832,8 @@ pub fn PagesAdmin() -> impl IntoView {
                                     <Show when=move || !body_format.get().eq_ignore_ascii_case(core::GRAPESJS_FORMAT)>
                                         <li>{compatibility_non_grapes.clone()}</li>
                                     </Show>
-                                    <Show when=move || !legacy_blocks.get().is_empty()>
-                                        <li>{compatibility_legacy_blocks.clone()}</li>
+                                    <Show when=move || !existing_blocks.get().is_empty()>
+                                        <li>{compatibility_existing_blocks.clone()}</li>
                                     </Show>
                                 </ul>
                             </div>
@@ -1199,7 +1198,7 @@ fn reset_page_form(
     set_publish_now: WriteSignal<bool>,
     set_body_format: WriteSignal<String>,
     set_body_updated_at: WriteSignal<Option<String>>,
-    set_legacy_blocks: WriteSignal<Vec<PageBlock>>,
+    set_existing_blocks: WriteSignal<Vec<PageBlock>>,
     default_locale: &str,
 ) {
     let seed = core::empty_edit_form_seed(default_locale);
@@ -1212,5 +1211,5 @@ fn reset_page_form(
     set_publish_now.set(seed.publish_now);
     set_body_format.set(seed.body_format);
     set_body_updated_at.set(seed.body_updated_at);
-    set_legacy_blocks.set(seed.legacy_blocks);
+    set_existing_blocks.set(seed.existing_blocks);
 }

@@ -13,8 +13,8 @@ use crate::dto::{
     ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
     CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, ReorderChannelResolutionRulesInput,
-    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
+    CreateChannelTargetInput, ReorderChannelResolutionRulesInput, UpdateChannelResolutionRuleInput,
+    UpdateChannelTargetInput,
 };
 use crate::entities::channel::{self, ActiveModel as ChannelActiveModel};
 use crate::entities::channel_module_binding::{
@@ -618,42 +618,51 @@ impl ChannelService {
             return Err(ChannelError::NotFound(rule_id));
         }
 
-        let mut next_definition = serde_json::from_value::<ChannelResolutionRuleDefinition>(
-            rule.definition.clone(),
-        )?
-        .validated()?;
+        let mut next_definition =
+            serde_json::from_value::<ChannelResolutionRuleDefinition>(rule.definition.clone())?
+                .validated()?;
 
         if has_definition_patch {
-            let mut host_equals = next_definition.predicates.iter().find_map(|predicate| {
-                match predicate {
-                    ResolutionPredicate::HostEquals(value) => Some(value.clone()),
-                    _ => None,
-                }
-            });
-            let mut host_suffix = next_definition.predicates.iter().find_map(|predicate| {
-                match predicate {
-                    ResolutionPredicate::HostSuffix(value) => Some(value.clone()),
-                    _ => None,
-                }
-            });
-            let mut oauth_app_id = next_definition.predicates.iter().find_map(|predicate| {
-                match predicate {
-                    ResolutionPredicate::OAuthAppEquals(value) => Some(*value),
-                    _ => None,
-                }
-            });
-            let mut surface = next_definition.predicates.iter().find_map(|predicate| {
-                match predicate {
-                    ResolutionPredicate::SurfaceIs(value) => Some(*value),
-                    _ => None,
-                }
-            });
-            let mut locale = next_definition.predicates.iter().find_map(|predicate| {
-                match predicate {
-                    ResolutionPredicate::LocaleEquals(value) => Some(value.clone()),
-                    _ => None,
-                }
-            });
+            let mut host_equals =
+                next_definition
+                    .predicates
+                    .iter()
+                    .find_map(|predicate| match predicate {
+                        ResolutionPredicate::HostEquals(value) => Some(value.clone()),
+                        _ => None,
+                    });
+            let mut host_suffix =
+                next_definition
+                    .predicates
+                    .iter()
+                    .find_map(|predicate| match predicate {
+                        ResolutionPredicate::HostSuffix(value) => Some(value.clone()),
+                        _ => None,
+                    });
+            let mut oauth_app_id =
+                next_definition
+                    .predicates
+                    .iter()
+                    .find_map(|predicate| match predicate {
+                        ResolutionPredicate::OAuthAppEquals(value) => Some(*value),
+                        _ => None,
+                    });
+            let mut surface =
+                next_definition
+                    .predicates
+                    .iter()
+                    .find_map(|predicate| match predicate {
+                        ResolutionPredicate::SurfaceIs(value) => Some(*value),
+                        _ => None,
+                    });
+            let mut locale =
+                next_definition
+                    .predicates
+                    .iter()
+                    .find_map(|predicate| match predicate {
+                        ResolutionPredicate::LocaleEquals(value) => Some(value.clone()),
+                        _ => None,
+                    });
 
             if let Some(channel_id) = input.action_channel_id {
                 let action_channel = channel::Entity::find_by_id(channel_id)
@@ -763,7 +772,10 @@ impl ChannelService {
             )));
         }
 
-        let existing_ids = rules.iter().map(|rule| rule.id).collect::<std::collections::HashSet<_>>();
+        let existing_ids = rules
+            .iter()
+            .map(|rule| rule.id)
+            .collect::<std::collections::HashSet<_>>();
         let mut seen = std::collections::HashSet::new();
         for rule_id in &input.rule_ids {
             if !existing_ids.contains(rule_id) {
@@ -1737,7 +1749,9 @@ mod tests {
                     priority: 10,
                     is_active: true,
                     definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http)],
+                        predicates: vec![ResolutionPredicate::SurfaceIs(
+                            crate::TargetSurface::Http,
+                        )],
                         action: ResolutionAction::ResolveToChannel { channel_id },
                     },
                 },
@@ -1869,7 +1883,9 @@ mod tests {
                     priority: 10,
                     is_active: true,
                     definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http)],
+                        predicates: vec![ResolutionPredicate::SurfaceIs(
+                            crate::TargetSurface::Http,
+                        )],
                         action: ResolutionAction::ResolveToChannel { channel_id },
                     },
                 },
@@ -1922,7 +1938,9 @@ mod tests {
                     priority: 10,
                     is_active: true,
                     definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::SurfaceIs(crate::TargetSurface::Http)],
+                        predicates: vec![ResolutionPredicate::SurfaceIs(
+                            crate::TargetSurface::Http,
+                        )],
                         action: ResolutionAction::ResolveToChannel { channel_id },
                     },
                 },
@@ -1976,7 +1994,9 @@ mod tests {
                     priority: 10,
                     is_active: true,
                     definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::HostEquals("shop.example.test".to_string())],
+                        predicates: vec![ResolutionPredicate::HostEquals(
+                            "shop.example.test".to_string(),
+                        )],
                         action: ResolutionAction::ResolveToChannel { channel_id },
                     },
                 },
@@ -1990,7 +2010,9 @@ mod tests {
                     priority: 20,
                     is_active: true,
                     definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::HostSuffix("example.test".to_string())],
+                        predicates: vec![ResolutionPredicate::HostSuffix(
+                            "example.test".to_string(),
+                        )],
                         action: ResolutionAction::ResolveToChannel { channel_id },
                     },
                 },
@@ -2057,7 +2079,9 @@ mod tests {
                     priority: 10,
                     is_active: true,
                     definition: ChannelResolutionRuleDefinition {
-                        predicates: vec![ResolutionPredicate::HostEquals("shop.example.test".to_string())],
+                        predicates: vec![ResolutionPredicate::HostEquals(
+                            "shop.example.test".to_string(),
+                        )],
                         action: ResolutionAction::ResolveToChannel { channel_id },
                     },
                 },

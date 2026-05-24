@@ -20,7 +20,6 @@ fn native_module_composition_endpoints_are_not_declared() {
     }
 }
 
-
 #[test]
 fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -121,7 +120,6 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "Ok(response.toggle_module)",
     );
 }
-
 
 #[test]
 fn module_composition_helpers_forward_auth_context_without_local_overrides() {
@@ -787,7 +785,13 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UPGRADE_MODULE_MUTATION",
                 "TOGGLE_MODULE_MUTATION",
             ],
-            required_payload_fields: &["InstallModuleVariables {", "slug,", "version,", "token,", "tenant_slug,"],
+            required_payload_fields: &[
+                "InstallModuleVariables {",
+                "slug,",
+                "version,",
+                "token,",
+                "tenant_slug,",
+            ],
         },
         Case {
             signature: "pub async fn uninstall_module(",
@@ -799,7 +803,12 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UPGRADE_MODULE_MUTATION",
                 "TOGGLE_MODULE_MUTATION",
             ],
-            required_payload_fields: &["UninstallModuleVariables {", "slug,", "token,", "tenant_slug,"],
+            required_payload_fields: &[
+                "UninstallModuleVariables {",
+                "slug,",
+                "token,",
+                "tenant_slug,",
+            ],
         },
         Case {
             signature: "pub async fn upgrade_module(",
@@ -811,7 +820,13 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UNINSTALL_MODULE_MUTATION",
                 "TOGGLE_MODULE_MUTATION",
             ],
-            required_payload_fields: &["UpgradeModuleVariables {", "slug,", "version,", "token,", "tenant_slug,"],
+            required_payload_fields: &[
+                "UpgradeModuleVariables {",
+                "slug,",
+                "version,",
+                "token,",
+                "tenant_slug,",
+            ],
         },
         Case {
             signature: "pub async fn toggle_module(",
@@ -837,10 +852,28 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
         let helper_body = extract_function_block(&content, case.signature)
             .unwrap_or_else(|| panic!("helper signature not found: {}", case.signature));
 
-        assert_eq!(helper_body.matches("request(").count(), 1, "{} must call request exactly once", case.signature);
-        assert_eq!(helper_body.matches(case.mutation).count(), 1, "{} must reference canonical mutation exactly once", case.signature);
-        assert!(helper_body.contains(case.typed_response), "{} must decode typed response", case.signature);
-        assert!(helper_body.contains(case.canonical_return), "{} must return canonical payload", case.signature);
+        assert_eq!(
+            helper_body.matches("request(").count(),
+            1,
+            "{} must call request exactly once",
+            case.signature
+        );
+        assert_eq!(
+            helper_body.matches(case.mutation).count(),
+            1,
+            "{} must reference canonical mutation exactly once",
+            case.signature
+        );
+        assert!(
+            helper_body.contains(case.typed_response),
+            "{} must decode typed response",
+            case.signature
+        );
+        assert!(
+            helper_body.contains(case.canonical_return),
+            "{} must return canonical payload",
+            case.signature
+        );
 
         for forbidden in case.foreign_mutations {
             assert!(
@@ -881,7 +914,6 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
         }
     }
 }
-
 
 #[test]
 fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
@@ -1004,7 +1036,6 @@ fn module_graphql_mutation_constants_have_stable_operation_shapes() {
         }
     }
 }
-
 
 fn assert_graphql_only_helper(
     content: &str,
@@ -1146,15 +1177,17 @@ fn extract_function_block_returns_none_when_body_brace_missing() {
     assert!(extract_function_block(source, "pub async fn toggle_module()").is_none());
 }
 
-
 #[test]
 fn runtime_manifest_hash_uses_shared_typed_hash_helper() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");
     let content = fs::read_to_string(&api_path).expect("read api.rs");
 
-    let helper_body = extract_function_block(&content, "fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String")
-        .expect("runtime_manifest_hash helper should exist");
+    let helper_body = extract_function_block(
+        &content,
+        "fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String",
+    )
+    .expect("runtime_manifest_hash helper should exist");
 
     assert!(
         helper_body.contains("rustok_api::manifest_hash::hash_manifest(manifest)"),

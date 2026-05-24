@@ -383,7 +383,9 @@ impl SeoService {
             let Some(url) = build_sitemap_submission_url(endpoint.as_str(), sitemap_index_url)
             else {
                 summary.failure_count += 1;
-                summary.failures.push(format!("invalid endpoint: {endpoint}"));
+                summary
+                    .failures
+                    .push(format!("invalid endpoint: {endpoint}"));
                 continue;
             };
             let request = SitemapSubmitEndpoint {
@@ -851,7 +853,6 @@ mod tests {
         assert!(status.files.is_empty());
     }
 
-
     #[tokio::test]
     async fn submit_sitemap_endpoints_empty_input_short_circuits_without_submissions() {
         let db = test_db().await;
@@ -942,10 +943,7 @@ mod tests {
         let db = test_db().await;
         let service = SeoService::new_memory(db);
         let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([
-            (
-                "https://example.com/ping?source=rustok".to_string(),
-                Ok(()),
-            ),
+            ("https://example.com/ping?source=rustok".to_string(), Ok(())),
             (
                 "https://example.com/ping?sitemap={sitemap_url}".to_string(),
                 Ok(()),
@@ -974,7 +972,6 @@ mod tests {
             ]
         );
     }
-
 
     #[tokio::test]
     async fn submit_sitemap_endpoints_preserves_valid_endpoint_order() {
@@ -1053,16 +1050,13 @@ mod tests {
         assert!(submitted.is_empty());
     }
 
-
     #[tokio::test]
     async fn submit_sitemap_endpoints_keeps_existing_sitemap_query_in_adapter_payload() {
         let db = test_db().await;
         let service = SeoService::new_memory(db);
         let endpoint = "https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml";
-        let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([(
-            endpoint.to_string(),
-            Ok(()),
-        )]));
+        let adapter =
+            TestSitemapSubmissionAdapter::new(HashMap::from([(endpoint.to_string(), Ok(()))]));
 
         let result = service
             .submit_sitemap_endpoints_with_adapter(
@@ -1076,21 +1070,20 @@ mod tests {
         let urls = adapter.submitted_request_urls().await;
         assert_eq!(
             urls,
-            vec!["https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml"
-                .to_string()]
+            vec![
+                "https://example.com/ping?sitemap=https://preset.example.com/sitemap.xml"
+                    .to_string()
+            ]
         );
     }
-
 
     #[tokio::test]
     async fn submit_sitemap_endpoints_preserves_case_insensitive_sitemap_query_key() {
         let db = test_db().await;
         let service = SeoService::new_memory(db);
         let endpoint = "https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml";
-        let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([(
-            endpoint.to_string(),
-            Ok(()),
-        )]));
+        let adapter =
+            TestSitemapSubmissionAdapter::new(HashMap::from([(endpoint.to_string(), Ok(()))]));
 
         let result = service
             .submit_sitemap_endpoints_with_adapter(
@@ -1104,8 +1097,10 @@ mod tests {
         let urls = adapter.submitted_request_urls().await;
         assert_eq!(
             urls,
-            vec!["https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml"
-                .to_string()]
+            vec![
+                "https://example.com/ping?SITEMAP=https://preset.example.com/sitemap.xml"
+                    .to_string()
+            ]
         );
     }
 

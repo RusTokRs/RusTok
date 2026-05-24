@@ -55,16 +55,13 @@ pub fn raw_body_format_summary(format: &str, char_count: usize, template: &str) 
         .replace("{count}", &char_count.to_string())
 }
 
-
 pub fn count_label(template: &str, count: u64) -> String {
     template.replace("{count}", &count.to_string())
 }
 
-
 pub fn open_link_label(prefix: &str, slug: &str) -> String {
     format!("{} {}", prefix, slug)
 }
-
 
 pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{}: {}", label, value)

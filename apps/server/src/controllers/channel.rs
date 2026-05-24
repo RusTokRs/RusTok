@@ -11,9 +11,9 @@ use rustok_channel::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
     ChannelResolutionPolicySetDetailResponse, ChannelResponse, ChannelService,
     ChannelTargetResponse, CreateChannelInput, CreateChannelResolutionPolicySetInput,
-    CreateChannelResolutionRuleInput, CreateChannelTargetInput,
-    ReorderChannelResolutionRulesInput, ResolutionAction, ResolutionPredicate, TargetSurface,
-    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
+    CreateChannelResolutionRuleInput, CreateChannelTargetInput, ReorderChannelResolutionRulesInput,
+    ResolutionAction, ResolutionPredicate, TargetSurface, UpdateChannelResolutionRuleInput,
+    UpdateChannelTargetInput,
 };
 use rustok_core::{ModuleRegistry, Permission};
 use serde::{Deserialize, Serialize};
@@ -665,26 +665,25 @@ pub fn routes() -> Routes {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_rule_definition, build_update_rule_input, CreateResolutionRuleRequest,
-    };
+    use super::{build_rule_definition, build_update_rule_input, CreateResolutionRuleRequest};
     use rustok_channel::{ResolutionPredicate, TargetSurface};
     use uuid::Uuid;
 
     #[test]
     fn build_rule_definition_returns_normalized_predicates() {
         let channel_id = Uuid::new_v4();
-        let (priority, is_active, definition) = build_rule_definition(CreateResolutionRuleRequest {
-            priority: 30,
-            is_active: true,
-            action_channel_id: channel_id,
-            host_equals: Some(" SHOP.EXAMPLE.TEST ".to_string()),
-            host_suffix: None,
-            oauth_app_id: None,
-            surface: Some("http".to_string()),
-            locale: Some(" RU_BY ".to_string()),
-        })
-        .expect("definition should be valid");
+        let (priority, is_active, definition) =
+            build_rule_definition(CreateResolutionRuleRequest {
+                priority: 30,
+                is_active: true,
+                action_channel_id: channel_id,
+                host_equals: Some(" SHOP.EXAMPLE.TEST ".to_string()),
+                host_suffix: None,
+                oauth_app_id: None,
+                surface: Some("http".to_string()),
+                locale: Some(" RU_BY ".to_string()),
+            })
+            .expect("definition should be valid");
 
         assert_eq!(priority, 30);
         assert!(is_active);

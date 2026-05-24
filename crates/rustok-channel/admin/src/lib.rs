@@ -15,8 +15,8 @@ use crate::i18n::t;
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,
     ChannelResolutionPolicySetDetail, CreateChannelPayload, CreateChannelTargetPayload,
-    CreateResolutionPolicySetPayload, CreateResolutionRulePayload,
-    ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
+    CreateResolutionPolicySetPayload, CreateResolutionRulePayload, ReorderResolutionRulesPayload,
+    UpdateResolutionRulePayload,
 };
 
 fn local_resource<S, Fut, T>(
@@ -631,19 +631,55 @@ fn PolicySetCard(
         "channel.policies.rules.emptyBody",
         "Add the first rule to connect request facts to a specific channel.",
     );
-    let edit_rule_title = t(ui_locale.as_deref(), "channel.policies.editRuleTitle", "Edit Rule");
-    let add_rule_title = t(ui_locale.as_deref(), "channel.policies.addRuleTitle", "Add Rule");
-    let save_rule_label = t(ui_locale.as_deref(), "channel.policies.saveRule", "Save Rule");
+    let edit_rule_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.editRuleTitle",
+        "Edit Rule",
+    );
+    let add_rule_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.addRuleTitle",
+        "Add Rule",
+    );
+    let save_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.saveRule",
+        "Save Rule",
+    );
     let add_rule_label = t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule");
     let edit_rule_label = t(ui_locale.as_deref(), "channel.policies.editRule", "Edit");
-    let delete_rule_label = t(ui_locale.as_deref(), "channel.policies.deleteRule", "Delete");
+    let delete_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.deleteRule",
+        "Delete",
+    );
     let move_up_label = t(ui_locale.as_deref(), "channel.policies.moveUp", "Move Up");
-    let move_down_label = t(ui_locale.as_deref(), "channel.policies.moveDown", "Move Down");
-    let enable_rule_label = t(ui_locale.as_deref(), "channel.policies.enableRule", "Enable");
-    let disable_rule_label = t(ui_locale.as_deref(), "channel.policies.disableRule", "Disable");
-    let inactive_rule_badge = t(ui_locale.as_deref(), "channel.policies.inactiveBadge", "Inactive");
+    let move_down_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.moveDown",
+        "Move Down",
+    );
+    let enable_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.enableRule",
+        "Enable",
+    );
+    let disable_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.disableRule",
+        "Disable",
+    );
+    let inactive_rule_badge = t(
+        ui_locale.as_deref(),
+        "channel.policies.inactiveBadge",
+        "Inactive",
+    );
     let cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
-    let any_surface_label = t(ui_locale.as_deref(), "channel.policies.surfaceAny", "any surface");
+    let any_surface_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.surfaceAny",
+        "any surface",
+    );
     let rules_ui_locale = ui_locale.clone();
 
     Effect::new(move |_| {
@@ -672,9 +708,13 @@ fn PolicySetCard(
 
         match selected_policy_rule_id {
             Some(rule_id) => {
-                if let Some(rule) = policy_rules_for_selection.iter().find(|rule| rule.id == rule_id) {
+                if let Some(rule) = policy_rules_for_selection
+                    .iter()
+                    .find(|rule| rule.id == rule_id)
+                {
                     editing_rule_id.set(Some(rule.id.clone()));
-                    let edit_form_state = policy_rule_edit_form_state(rule, &channels_for_selection);
+                    let edit_form_state =
+                        policy_rule_edit_form_state(rule, &channels_for_selection);
                     apply_policy_rule_form_state(
                         priority,
                         is_active,
@@ -791,9 +831,13 @@ fn PolicySetCard(
                             surface: optional_text(surface.get_untracked()),
                             locale: optional_text(locale.get_untracked()),
                         };
-                        let result =
-                            api::create_resolution_rule(token, tenant, policy_set_id.as_str(), &payload)
-                                .await;
+                        let result = api::create_resolution_rule(
+                            token,
+                            tenant,
+                            policy_set_id.as_str(),
+                            &payload,
+                        )
+                        .await;
 
                         match result {
                             Ok(rule) => {
@@ -2774,7 +2818,6 @@ fn resolution_outcome_badge_class(outcome: &ChannelResolutionOutcome) -> &'stati
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

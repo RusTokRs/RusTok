@@ -226,7 +226,7 @@ export async function getPost(
 }
 
 /**
- * Example (legacy): { bodyFormat: "markdown", body: "# Title" }
+ * Example (markdown): { bodyFormat: "markdown", body: "# Title" }
  * Example (rich): { bodyFormat: "rt_json_v1", contentJson: { version: "rt_json_v1", locale: "en", doc: { type: "doc", content: [] } }, body: "" }
  */
 export async function createPost(
@@ -246,7 +246,7 @@ export async function createPost(
 }
 
 /**
- * Example (legacy): { bodyFormat: "markdown", body: "Updated markdown" }
+ * Example (markdown): { bodyFormat: "markdown", body: "Updated markdown" }
  * Example (rich): { bodyFormat: "rt_json_v1", contentJson: { version: "rt_json_v1", locale: "en", doc: { type: "doc", content: [] } } }
  */
 export async function updatePost(

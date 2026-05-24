@@ -21,7 +21,9 @@ pub(crate) fn validate_tenant_settings(settings: &Value) -> Result<(), TenantErr
     }
 
     let size = serde_json::to_vec(settings)
-        .map_err(|err| TenantError::InvalidSettingsSchema(format!("unable to serialize settings: {err}")))?
+        .map_err(|err| {
+            TenantError::InvalidSettingsSchema(format!("unable to serialize settings: {err}"))
+        })?
         .len();
     if size > MAX_SETTINGS_SIZE_BYTES {
         return Err(TenantError::InvalidSettingsSchema(format!(
@@ -94,7 +96,8 @@ mod tests {
     #[test]
     fn rejects_non_object_root() {
         let settings = json!(["invalid"]);
-        let err = validate_tenant_settings(&settings).expect_err("schema must reject non-object root");
+        let err =
+            validate_tenant_settings(&settings).expect_err("schema must reject non-object root");
 
         assert!(err.to_string().contains("JSON object"));
     }
@@ -105,7 +108,8 @@ mod tests {
             "l1": {"l2": {"l3": {"l4": {"l5": {"l6": {"l7": {"l8": {"l9": true}}}}}}}}
         });
 
-        let err = validate_tenant_settings(&settings).expect_err("schema must reject excessive depth");
+        let err =
+            validate_tenant_settings(&settings).expect_err("schema must reject excessive depth");
         assert!(err.to_string().contains("nesting depth"));
     }
 
@@ -122,7 +126,8 @@ mod tests {
         let large = "x".repeat(17 * 1024);
         let settings = json!({"blob": large});
 
-        let err = validate_tenant_settings(&settings).expect_err("schema must reject oversized payload");
+        let err =
+            validate_tenant_settings(&settings).expect_err("schema must reject oversized payload");
         assert!(err.to_string().contains("payload size"));
     }
 }

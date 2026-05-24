@@ -172,7 +172,10 @@ fn normalize_server_fn_error_message(message: &str) -> ApiError {
     ApiError::Graphql(message.to_string())
 }
 
-#[cfg(all(test, not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))))]
+#[cfg(all(
+    test,
+    not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))
+))]
 mod map_server_fn_error_tests {
     use super::{
         combine_native_and_graphql_error, map_server_fn_error, normalize_server_fn_error_message,
@@ -197,7 +200,9 @@ mod map_server_fn_error_tests {
         let mapped = map_server_fn_error(ServerFnError::new(
             "GraphQL error: MODULE_HAS_DEPENDENTS: module 'checkout' has dependents",
         ));
-        assert!(matches!(mapped, GraphqlHttpError::Graphql(message) if message.contains("MODULE_HAS_DEPENDENTS")));
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message) if message.contains("MODULE_HAS_DEPENDENTS"))
+        );
     }
 
     #[test]
@@ -530,7 +535,9 @@ mod map_server_fn_error_tests {
     #[test]
     fn unknown_server_errors_fallback_to_graphql_variant() {
         let mapped = normalize_server_fn_error_message("internal adapter panic");
-        assert!(matches!(mapped, GraphqlHttpError::Graphql(message) if message == "internal adapter panic"));
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message) if message == "internal adapter panic")
+        );
     }
 
     #[test]

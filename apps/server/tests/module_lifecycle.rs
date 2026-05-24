@@ -124,7 +124,9 @@ impl RusToKModule for TestModule {
     async fn post_enable(&self, _ctx: ModuleContext<'_>) -> rustok_core::Result<()> {
         self.post_enable_calls.fetch_add(1, Ordering::SeqCst);
         if self.should_fail_post_enable {
-            return Err(rustok_core::Error::External("post enable failed".to_string()));
+            return Err(rustok_core::Error::External(
+                "post enable failed".to_string(),
+            ));
         }
         Ok(())
     }
@@ -132,7 +134,9 @@ impl RusToKModule for TestModule {
     async fn post_disable(&self, _ctx: ModuleContext<'_>) -> rustok_core::Result<()> {
         self.post_disable_calls.fetch_add(1, Ordering::SeqCst);
         if self.should_fail_post_disable {
-            return Err(rustok_core::Error::External("post disable failed".to_string()));
+            return Err(rustok_core::Error::External(
+                "post disable failed".to_string(),
+            ));
         }
         Ok(())
     }
@@ -516,7 +520,10 @@ async fn dependent_validation_failure_does_not_create_journal_row() {
         1,
         "pre-validation dependent failure must not create extra journal rows",
     );
-    assert_eq!(operations[0].status, ModuleOperationStatus::Committed.as_str());
+    assert_eq!(
+        operations[0].status,
+        ModuleOperationStatus::Committed.as_str()
+    );
     assert!(operations[0].requested_enabled);
 }
 
@@ -626,7 +633,10 @@ async fn noop_enable_for_already_enabled_module_does_not_create_extra_journal_ro
         1,
         "no-op enable transition must not create extra module_operations rows",
     );
-    assert_eq!(operations[0].status, ModuleOperationStatus::Committed.as_str());
+    assert_eq!(
+        operations[0].status,
+        ModuleOperationStatus::Committed.as_str()
+    );
 }
 
 #[tokio::test]
@@ -710,7 +720,10 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert_eq!(
+        failed_operation.status,
+        ModuleOperationStatus::Failed.as_str()
+    );
     assert!(
         !failed_operation.previous_effective_enabled,
         "post-enable failure must be recorded with previous_effective_enabled=false",
@@ -765,7 +778,10 @@ async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert_eq!(
+        failed_operation.status,
+        ModuleOperationStatus::Failed.as_str()
+    );
     assert!(
         failed_operation.previous_effective_enabled,
         "post-disable failure must be recorded with previous_effective_enabled=true",
@@ -839,7 +855,10 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
         .await
         .expect("query failed operation")
         .expect("failed operation exists");
-    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert_eq!(
+        failed_operation.status,
+        ModuleOperationStatus::Failed.as_str()
+    );
     assert!(failed_operation
         .error_message
         .as_deref()
@@ -942,7 +961,10 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         .await
         .expect("query failed operation")
         .expect("failed operation exists");
-    assert_eq!(failed_operation.status, ModuleOperationStatus::Failed.as_str());
+    assert_eq!(
+        failed_operation.status,
+        ModuleOperationStatus::Failed.as_str()
+    );
     assert!(failed_operation
         .error_message
         .as_deref()
@@ -976,9 +998,10 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         "enable + failed disable must produce exactly two lifecycle journal rows",
     );
 
-    let retry = ModuleLifecycleService::toggle_module(&db, &failing_registry, tenant_id, "search", false)
-        .await
-        .expect("retry disable after committed post-hook failure should be a no-op");
+    let retry =
+        ModuleLifecycleService::toggle_module(&db, &failing_registry, tenant_id, "search", false)
+            .await
+            .expect("retry disable after committed post-hook failure should be a no-op");
     assert!(!retry.enabled);
 
     let operations_after_retry = module_operations::Entity::find()

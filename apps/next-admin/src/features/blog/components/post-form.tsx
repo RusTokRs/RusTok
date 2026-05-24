@@ -33,7 +33,7 @@ const formSchema = z
     title: z.string().min(2, 'Title must be at least 2 characters.'),
     slug: z.string().optional(),
     locale: z.string().min(2),
-    bodyFormat: z.enum(['markdown', 'rt_json_v1']).default('markdown'),
+    bodyFormat: z.enum(['markdown', 'rt_json_v1']).default('rt_json_v1'),
     body: z.string().default(''),
     contentJson: z.string().optional(),
     excerpt: z.string().optional(),
@@ -112,7 +112,7 @@ export default function PostForm({
   const [migrationWarnings, setMigrationWarnings] = useState<string[]>(
     initialData?.body?.trim() && !initialData?.contentJson
       ? [
-          'Legacy markdown detected. Convert it to rt_json_v1 for rich editor features.'
+          'Markdown content detected. Convert it to rt_json_v1 for rich editor features.'
         ]
       : []
   );
@@ -121,7 +121,7 @@ export default function PostForm({
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: defaultLocale,
-    bodyFormat: initialData?.contentJson ? 'rt_json_v1' : 'markdown',
+    bodyFormat: initialData ? (initialData.contentJson ? 'rt_json_v1' : 'markdown') : 'rt_json_v1',
     body: initialData?.body ?? '',
     contentJson: initialData?.contentJson
       ? stringifyRtDoc(initialDoc, defaultLocale)
@@ -287,7 +287,7 @@ export default function PostForm({
             name='bodyFormat'
             label='Body format'
             options={[
-              { label: 'Markdown (legacy)', value: 'markdown' },
+              { label: 'Markdown', value: 'markdown' },
               { label: 'RT JSON v1 (rich editor)', value: 'rt_json_v1' }
             ]}
           />
@@ -327,7 +327,7 @@ export default function PostForm({
 
           {migrationWarnings.length > 0 && (
             <Alert>
-              <AlertTitle>Legacy content warning</AlertTitle>
+              <AlertTitle>Content format notice</AlertTitle>
               <AlertDescription>
                 <ul className='list-disc pl-4'>
                   {migrationWarnings.map((warning) => (

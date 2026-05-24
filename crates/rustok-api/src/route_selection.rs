@@ -511,7 +511,10 @@ mod tests {
         let sanitized = sanitize_admin_route_query(
             Some("channels"),
             None,
-            &query(&[("channel_id", "ch_01"), ("policy_rule_id", "policy_rule_01")]),
+            &query(&[
+                ("channel_id", "ch_01"),
+                ("policy_rule_id", "policy_rule_01"),
+            ]),
         );
 
         assert_eq!(

@@ -14,10 +14,11 @@ use crate::{
     dto::{
         AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelPaymentInput,
         CancelRefundInput, CapturePaymentInput, CompleteRefundInput, CreateFulfillmentInput,
-        CreateProductInput, CreateRefundInput, CreateShippingOptionInput,
+        CreateOrderReturnInput, CreateProductInput, CreateRefundInput, CreateShippingOptionInput,
         CreateShippingProfileInput, DeliverFulfillmentInput, DeliverOrderInput,
-        FulfillmentResponse, ListFulfillmentsInput, ListPaymentCollectionsInput, ListRefundsInput,
-        ListShippingProfilesInput, MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse,
+        FulfillmentResponse, ListFulfillmentsInput, ListOrderReturnsInput,
+        ListPaymentCollectionsInput, ListRefundsInput, ListShippingProfilesInput,
+        MarkPaidOrderInput, OrderResponse, OrderReturnResponse, PaymentCollectionResponse,
         ProductResponse, RefundResponse, ReopenFulfillmentInput, ReshipFulfillmentInput,
         ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse, ShippingProfileResponse,
         UpdateProductInput, UpdateShippingOptionInput, UpdateShippingProfileInput,
@@ -61,7 +62,10 @@ pub fn routes() -> Routes {
         .add("/orders/{id}/ship", axum::routing::post(ship_order))
         .add("/orders/{id}/deliver", axum::routing::post(deliver_order))
         .add("/orders/{id}/cancel", axum::routing::post(cancel_order))
-        .add("/orders/{id}/returns", axum::routing::post(create_order_return))
+        .add(
+            "/orders/{id}/returns",
+            axum::routing::post(create_order_return),
+        )
         .add("/returns", axum::routing::get(list_order_returns))
         .add(
             "/payment-collections",
@@ -195,7 +199,6 @@ pub struct ListRefundsParams {
     pub order_id: Option<Uuid>,
     pub status: Option<String>,
 }
-
 
 #[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct ListOrderReturnsParams {
@@ -756,7 +759,7 @@ pub async fn create_order_return(
         "Permission denied: orders:update required",
     )?;
 
-    let created = OrderService::new(ctx.db.clone())
+    let created = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
         .create_return(tenant.id, id, input)
         .await
         .map_err(map_order_error)?;
@@ -788,18 +791,19 @@ pub async fn list_order_returns(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (items, total) = OrderService::new(ctx.db.clone())
-        .list_returns(
-            tenant.id,
-            ListOrderReturnsInput {
-                page: pagination.page,
-                per_page: pagination.limit(),
-                order_id: params.order_id,
-                status: params.status,
-            },
-        )
-        .await
-        .map_err(map_order_error)?;
+    let (items, total) =
+        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+            .list_returns(
+                tenant.id,
+                ListOrderReturnsInput {
+                    page: pagination.page,
+                    per_page: pagination.limit(),
+                    order_id: params.order_id,
+                    status: params.status,
+                },
+            )
+            .await
+            .map_err(map_order_error)?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -2999,7 +3003,6 @@ mod tests {
         );
     }
 
-
     #[tokio::test]
     async fn admin_refund_transport_hides_foreign_tenant_refund() {
         let db = setup_test_db().await;
@@ -3286,7 +3289,10 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/admin/payment-collections/{}/refunds", collection.id))
+                    .uri(format!(
+                        "/admin/payment-collections/{}/refunds",
+                        collection.id
+                    ))
                     .header("content-type", "application/json")
                     .header("X-Tenant-ID", tenant_b.to_string())
                     .body(Body::from(

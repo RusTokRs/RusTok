@@ -1,15 +1,17 @@
 use crate::dto::{
-    BuilderCapabilityKind,
-    BuilderNodePropertiesInput, BuilderNodePropertiesResult, BuilderTreeInput, BuilderTreeResult,
-    PreviewPageBuilderInput, PreviewPageBuilderResult, PublishPageBuilderInput,
-    PublishPageBuilderResult,
+    BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
+    BuilderTreeInput, BuilderTreeResult, PreviewPageBuilderInput, PreviewPageBuilderResult,
+    PublishPageBuilderInput, PublishPageBuilderResult,
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
 
 #[async_trait]
 pub trait PageBuilderCapabilityService: Send + Sync {
-    async fn preview(&self, input: PreviewPageBuilderInput) -> PageBuilderServiceResult<PreviewPageBuilderResult>;
+    async fn preview(
+        &self,
+        input: PreviewPageBuilderInput,
+    ) -> PageBuilderServiceResult<PreviewPageBuilderResult>;
 
     async fn tree(&self, input: BuilderTreeInput) -> PageBuilderServiceResult<BuilderTreeResult>;
 
@@ -18,8 +20,10 @@ pub trait PageBuilderCapabilityService: Send + Sync {
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult>;
 
-    async fn publish(&self, input: PublishPageBuilderInput)
-        -> PageBuilderServiceResult<PublishPageBuilderResult>;
+    async fn publish(
+        &self,
+        input: PublishPageBuilderInput,
+    ) -> PageBuilderServiceResult<PublishPageBuilderResult>;
 }
 
 pub type PageBuilderServiceResult<T> = Result<T, PageBuilderServiceError>;
@@ -109,7 +113,10 @@ mod tests {
             })
         }
 
-        async fn tree(&self, input: BuilderTreeInput) -> PageBuilderServiceResult<BuilderTreeResult> {
+        async fn tree(
+            &self,
+            input: BuilderTreeInput,
+        ) -> PageBuilderServiceResult<BuilderTreeResult> {
             Ok(BuilderTreeResult {
                 page_id: input.page_id,
                 nodes: vec![],

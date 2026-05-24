@@ -99,15 +99,13 @@ impl From<PagesError> for RichError {
             }
             PagesError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
                 .with_user_message("You do not have permission to perform this action"),
-            PagesError::FeatureDisabled { feature } => {
-                RichError::new(
-                    ErrorKind::BusinessLogic,
-                    format!("Feature '{feature}' is disabled for this tenant"),
-                )
-                .with_user_message("This feature is disabled for the current tenant")
-                .with_field("feature", feature)
-                .with_error_code("FEATURE_DISABLED")
-            }
+            PagesError::FeatureDisabled { feature } => RichError::new(
+                ErrorKind::BusinessLogic,
+                format!("Feature '{feature}' is disabled for this tenant"),
+            )
+            .with_user_message("This feature is disabled for the current tenant")
+            .with_field("feature", feature)
+            .with_error_code("FEATURE_DISABLED"),
             PagesError::Content(content_err) => content_err.into(),
             PagesError::Rich(rich) => *rich,
         }

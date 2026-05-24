@@ -481,7 +481,10 @@ fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
     let health_counts = summarize_inventory_health_counts(variants);
     let non_healthy_total = health_counts.non_healthy_total();
     let healthy_total = variants.len().saturating_sub(non_healthy_total);
-    let total_quantity = variants.iter().map(|variant| variant.inventory_quantity).sum();
+    let total_quantity = variants
+        .iter()
+        .map(|variant| variant.inventory_quantity)
+        .sum();
 
     debug_assert_eq!(
         non_healthy_total + healthy_total,
@@ -547,7 +550,11 @@ mod tests {
     use super::*;
     use crate::model::InventoryVariant;
 
-    fn variant(in_stock: bool, inventory_policy: &str, inventory_quantity: i32) -> InventoryVariant {
+    fn variant(
+        in_stock: bool,
+        inventory_policy: &str,
+        inventory_quantity: i32,
+    ) -> InventoryVariant {
         InventoryVariant {
             id: "v".to_string(),
             sku: None,
@@ -646,7 +653,10 @@ mod tests {
         let healthy_count = healthy_count(&variants);
         let covered = summarize_inventory_health_counts(&variants).non_healthy_total();
         assert_eq!(covered, summary.variant_count - healthy_count);
-        assert_eq!(covered, summary.low_stock + summary.out_of_stock + summary.backorder);
+        assert_eq!(
+            covered,
+            summary.low_stock + summary.out_of_stock + summary.backorder
+        );
     }
 
     #[test]
@@ -700,7 +710,10 @@ mod tests {
         let summary = summarize_inventory(&variants);
         assert_eq!(summary.total_quantity, 0);
         assert_eq!(summary.variant_count, 4);
-        assert_eq!(summary.low_stock + summary.out_of_stock + summary.backorder, 3);
+        assert_eq!(
+            summary.low_stock + summary.out_of_stock + summary.backorder,
+            3
+        );
     }
 
     #[test]
@@ -730,14 +743,20 @@ mod tests {
         let out_of_stock = variant(false, "deny", 0);
         let backorder = variant(false, "continue", -2);
 
-        assert_eq!(inventory_health_state(&healthy), InventoryHealthState::Healthy);
+        assert_eq!(
+            inventory_health_state(&healthy),
+            InventoryHealthState::Healthy
+        );
         assert_eq!(inventory_health_label(None, &healthy), "Healthy");
         assert_eq!(
             inventory_health_badge(&healthy),
             "border-emerald-200 bg-emerald-50 text-emerald-700"
         );
 
-        assert_eq!(inventory_health_state(&low_stock), InventoryHealthState::LowStock);
+        assert_eq!(
+            inventory_health_state(&low_stock),
+            InventoryHealthState::LowStock
+        );
         assert_eq!(inventory_health_label(None, &low_stock), "Low stock");
         assert_eq!(
             inventory_health_badge(&low_stock),
@@ -945,7 +964,9 @@ fn inventory_health_badge(variant: &InventoryVariant) -> &'static str {
 fn inventory_health_label_for_state(locale: Option<&str>, state: InventoryHealthState) -> String {
     match state {
         InventoryHealthState::Backorder => t(locale, "inventory.health.backorder", "Backorder"),
-        InventoryHealthState::OutOfStock => t(locale, "inventory.health.outOfStock", "Out of stock"),
+        InventoryHealthState::OutOfStock => {
+            t(locale, "inventory.health.outOfStock", "Out of stock")
+        }
         InventoryHealthState::LowStock => t(locale, "inventory.health.lowStock", "Low stock"),
         InventoryHealthState::Healthy => t(locale, "inventory.health.healthy", "Healthy"),
     }

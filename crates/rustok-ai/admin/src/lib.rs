@@ -1221,7 +1221,6 @@ pub fn AiAdmin() -> impl IntoView {
         });
     };
 
-
     let can_submit_product_attributes = move || {
         let task_profile_id = selected_task_profile.get();
         let has_product_id = !product_attributes_product_id.get().trim().is_empty();
@@ -1253,14 +1252,11 @@ pub fn AiAdmin() -> impl IntoView {
             .get_untracked()
             .and_then(Result::ok)
             .map(|payload| {
-                payload
-                    .task_profiles
-                    .iter()
-                    .any(|profile| {
-                        profile.id == task_profile_id
-                            && profile.slug == "product_attributes"
-                            && profile.is_active
-                    })
+                payload.task_profiles.iter().any(|profile| {
+                    profile.id == task_profile_id
+                        && profile.slug == "product_attributes"
+                        && profile.is_active
+                })
             })
             .unwrap_or(false);
         if !selected_profile_is_product_attributes {
@@ -1284,7 +1280,8 @@ pub fn AiAdmin() -> impl IntoView {
         };
 
         let product_completed_template = product_attributes_completed_template.clone();
-        let product_attributes_session_query_writer = product_attributes_session_query_writer.clone();
+        let product_attributes_session_query_writer =
+            product_attributes_session_query_writer.clone();
         spawn_local(async move {
             let result = api::run_task_job(
                 product_attributes_title.get_untracked(),
@@ -3084,7 +3081,6 @@ fn product_task_payload(
     serde_json::to_string(&payload)
 }
 
-
 fn parse_csv_urls(value: String) -> Result<Vec<String>, serde_json::Error> {
     let entries = parse_csv(value);
     let mut parsed = Vec::with_capacity(entries.len());
@@ -3126,10 +3122,7 @@ fn product_attributes_task_payload(
     let source_description = source_description.map(|value| value.trim().to_string());
 
     if source_title.as_deref().unwrap_or_default().is_empty()
-        && source_description
-            .as_deref()
-            .unwrap_or_default()
-            .is_empty()
+        && source_description.as_deref().unwrap_or_default().is_empty()
     {
         return Err(serde_json::Error::io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -3199,7 +3192,6 @@ fn blog_task_payload(
     serde_json::to_string(&payload)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3218,7 +3210,6 @@ mod tests {
         );
         assert!(result.is_err());
     }
-
 
     #[test]
     fn product_attributes_payload_normalizes_category_slug() {

@@ -3,12 +3,12 @@ use std::sync::Arc;
 use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
-    CreateTenantInput, TenantError, TenantService, ToggleModuleInput, UpdateTenantInput,
     entities::{tenant, tenant_module},
+    CreateTenantInput, TenantError, TenantService, ToggleModuleInput, UpdateTenantInput,
 };
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, QueryOrder, Schema,
-    sea_query::TableCreateStatement,
+    sea_query::TableCreateStatement, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, QueryOrder, Schema,
 };
 
 async fn setup_db() -> DatabaseConnection {
@@ -19,7 +19,12 @@ async fn setup_db() -> DatabaseConnection {
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
 
-    create_entity_table(&db, &builder, schema.create_table_from_entity(tenant::Entity)).await;
+    create_entity_table(
+        &db,
+        &builder,
+        schema.create_table_from_entity(tenant::Entity),
+    )
+    .await;
     create_entity_table(
         &db,
         &builder,
@@ -95,7 +100,10 @@ async fn tenant_crud_flow() {
     assert_eq!(updated.name, "Acme Updated");
     assert_eq!(updated.domain.as_deref(), Some("shop.acme.example"));
     assert!(!updated.is_active);
-    assert_eq!(updated.settings["features"]["checkout"], serde_json::json!(true));
+    assert_eq!(
+        updated.settings["features"]["checkout"],
+        serde_json::json!(true)
+    );
 
     let (items, total) = service
         .list_tenants(1, 10)
@@ -232,19 +240,24 @@ async fn tenant_mutations_publish_outbox_events() {
         .expect("outbox events should load");
 
     assert_eq!(events.len(), 3);
-    assert!(events.iter().any(|event| event.event_type == "tenant.created"));
-    assert!(events.iter().any(|event| event.event_type == "tenant.updated"));
-    assert!(
-        events
-            .iter()
-            .any(|event| event.event_type == "tenant.module.toggled")
-    );
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tenant.created"));
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tenant.updated"));
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tenant.module.toggled"));
 
     let module_toggle_payload = events
         .iter()
         .find(|event| event.event_type == "tenant.module.toggled")
         .expect("tenant module toggle event must exist");
-    assert_eq!(module_toggle_payload.payload["event"]["data"]["module_slug"], "blog");
+    assert_eq!(
+        module_toggle_payload.payload["event"]["data"]["module_slug"],
+        "blog"
+    );
     assert_eq!(
         module_toggle_payload.payload["event"]["data"]["enabled"],
         serde_json::json!(true)

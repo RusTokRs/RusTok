@@ -378,7 +378,7 @@ mod tests {
             {
                 let dependency_index = names
                     .iter()
-                    .position(|candidate| candidate == dependency)
+                    .position(|candidate| candidate == &dependency)
                     .expect("dependency migration exists");
                 assert!(
                     dependency_index < migration_index,

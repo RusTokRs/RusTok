@@ -1688,7 +1688,6 @@ fn net_total(subtotal_amount: Decimal, adjustment_total: Decimal) -> Decimal {
     }
 }
 
-
 fn channel_tax_provider_id(metadata: &Value, channel_id: Option<Uuid>) -> Option<String> {
     let channel_id = channel_id?;
     let channel_key = channel_id.to_string();
@@ -2179,7 +2178,10 @@ mod tests {
                 channel_id.to_string(): "   "
             }
         });
-        assert_eq!(channel_tax_provider_id(&blank_metadata, Some(channel_id)), None);
+        assert_eq!(
+            channel_tax_provider_id(&blank_metadata, Some(channel_id)),
+            None
+        );
 
         let typed_legacy_metadata = json!({
             "channel_tax_provider_ids": {
@@ -2196,7 +2198,10 @@ mod tests {
                 channel_id.to_string(): {"unknown_key": "external_tax"}
             }
         });
-        assert_eq!(channel_tax_provider_id(&malformed_metadata, Some(channel_id)), None);
+        assert_eq!(
+            channel_tax_provider_id(&malformed_metadata, Some(channel_id)),
+            None
+        );
 
         let typed_object_metadata = json!({
             "channel_tax_provider_ids": {
@@ -2208,7 +2213,6 @@ mod tests {
             Some("external_tax")
         );
     }
-
 
     #[test]
     fn channel_tax_provider_id_prefers_provider_id_over_provider_alias() {

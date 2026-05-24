@@ -367,5 +367,8 @@ async fn same_manifest_keeps_hash_and_snapshot_stable_across_revisions() {
 
     assert_eq!(first.snapshot.manifest_hash, second.snapshot.manifest_hash);
     assert_eq!(first.build.manifest_hash, second.build.manifest_hash);
-    assert_eq!(first.build.manifest_snapshot, second.build.manifest_snapshot);
+    assert_eq!(
+        first.build.manifest_snapshot,
+        second.build.manifest_snapshot
+    );
 }

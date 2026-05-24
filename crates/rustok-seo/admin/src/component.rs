@@ -9,11 +9,11 @@ use crate::api;
 use crate::model::{
     SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoRedirectForm, SeoSettingsForm,
 };
-use rustok_seo::SeoBulkFieldPatchMode;
 use crate::sections::{
     SeoAdminHeader, SeoAdminTabs, SeoBulkPane, SeoBusyFooter, SeoDefaultsPane, SeoDiagnosticsPane,
     SeoRedirectsPane, SeoRobotsPane, SeoSitemapsPane,
 };
+use rustok_seo::SeoBulkFieldPatchMode;
 
 #[component]
 pub fn SeoAdmin() -> impl IntoView {

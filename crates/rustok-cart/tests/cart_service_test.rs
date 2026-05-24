@@ -49,8 +49,6 @@ async fn insert_shipping_option(
     .expect("shipping option should insert");
 }
 
-
-
 async fn insert_region(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -720,7 +718,10 @@ async fn channel_tax_provider_alias_is_ignored_without_channel_context() {
 
     assert_eq!(updated.tax_lines.len(), 1);
     assert_eq!(updated.tax_lines[0].provider_id, "region_default");
-    assert_eq!(updated.tax_lines[0].metadata["channel_id"], serde_json::json!(null));
+    assert_eq!(
+        updated.tax_lines[0].metadata["channel_id"],
+        serde_json::json!(null)
+    );
 }
 
 #[tokio::test]
@@ -1142,7 +1143,6 @@ async fn checkout_lifecycle_uses_checking_out_before_completion() {
     assert_eq!(completed.status, "completed");
 }
 
-
 #[tokio::test]
 async fn release_checkout_does_not_set_completed_at_and_complete_cart_does() {
     let service = setup().await;
@@ -1183,7 +1183,10 @@ async fn completed_checkout_rejects_release_and_reentry() {
     let completed = service.complete_cart(tenant_id, cart.id).await.unwrap();
     assert_eq!(completed.status, "completed");
 
-    let err = service.release_checkout(tenant_id, cart.id).await.unwrap_err();
+    let err = service
+        .release_checkout(tenant_id, cart.id)
+        .await
+        .unwrap_err();
     match err {
         CartError::InvalidTransition { from, to } => {
             assert_eq!(from, "completed");
@@ -1192,7 +1195,10 @@ async fn completed_checkout_rejects_release_and_reentry() {
         other => panic!("expected invalid transition, got {other:?}"),
     }
 
-    let err = service.begin_checkout(tenant_id, cart.id).await.unwrap_err();
+    let err = service
+        .begin_checkout(tenant_id, cart.id)
+        .await
+        .unwrap_err();
     match err {
         CartError::InvalidTransition { from, to } => {
             assert_eq!(from, "completed");

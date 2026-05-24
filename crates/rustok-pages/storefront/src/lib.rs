@@ -261,9 +261,6 @@ mod tests {
     use super::{core, PageBlock, PageDetail};
     use crate::model::PageBody;
 
-
-
-
     #[test]
     fn label_value_pair_formats_label_and_value() {
         assert_eq!(core::label_value_pair("locale", "en"), "locale: en");

@@ -38,7 +38,7 @@ export function PageBuilder({
   );
 
   const locale = initialBody?.locale ?? initialLocale ?? hostLocale;
-  const hasLegacyBlocks = initialBlocks.length > 0;
+  const hasExistingBlocks = initialBlocks.length > 0;
   const isExistingGrapesProject = initialBody?.format === GRAPESJS_FORMAT;
   const initialProjectData =
     isExistingGrapesProject && initialBody?.contentJson
@@ -180,7 +180,7 @@ export function PageBuilder({
           </div>
         </div>
 
-        {!isExistingGrapesProject || hasLegacyBlocks ? (
+        {!isExistingGrapesProject || hasExistingBlocks ? (
           <div className='rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100'>
             <div className='flex items-start gap-2'>
               <TriangleAlert className='mt-0.5 size-4 shrink-0' />
@@ -191,9 +191,9 @@ export function PageBuilder({
                     first save will switch its body format to `grapesjs_v1`.
                   </p>
                 ) : null}
-                {hasLegacyBlocks ? (
+                {hasExistingBlocks ? (
                   <p>
-                    Legacy block payload is still attached to this page (
+                    Existing block payload is still attached to this page (
                     {initialBlocks.length} blocks). It is left untouched for
                     now, so storefront migration can happen safely and
                     explicitly.

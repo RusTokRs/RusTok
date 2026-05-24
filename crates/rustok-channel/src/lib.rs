@@ -13,8 +13,8 @@ pub use dto::{
     ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
     CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, ReorderChannelResolutionRulesInput,
-    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
+    CreateChannelTargetInput, ReorderChannelResolutionRulesInput, UpdateChannelResolutionRuleInput,
+    UpdateChannelTargetInput,
 };
 pub use error::{ChannelError, ChannelResult};
 pub use policy::{

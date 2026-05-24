@@ -63,7 +63,10 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
         .expect("fba.builder_consumer.degraded_modes must be defined");
     for key in ["builder_disabled", "preview_disabled", "publish_disabled"] {
         assert!(
-            degraded_modes.get(key).and_then(toml::Value::as_str).is_some(),
+            degraded_modes
+                .get(key)
+                .and_then(toml::Value::as_str)
+                .is_some(),
             "missing degraded mode mapping: {key}"
         );
     }
@@ -73,7 +76,10 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
         .expect("fba.builder_consumer.toggle_profiles must be defined");
     for profile in ["all_on", "publish_off", "preview_off", "builder_off"] {
         assert!(
-            profiles.get(profile).and_then(toml::Value::as_array).is_some(),
+            profiles
+                .get(profile)
+                .and_then(toml::Value::as_array)
+                .is_some(),
             "missing toggle profile: {profile}"
         );
     }

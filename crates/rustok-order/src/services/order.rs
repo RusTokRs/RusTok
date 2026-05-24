@@ -1125,6 +1125,17 @@ fn normalize_tax_provider_id(value: &str) -> OrderResult<String> {
     Ok(normalized)
 }
 
+fn trim_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
 async fn load_line_item_titles<C>(
     conn: &C,
     line_items: &[entities::order_line_item::Model],
@@ -1208,6 +1219,7 @@ where
 
     Ok(default_locale)
 }
+impl OrderService {
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, order_id = %order_id))]
     pub async fn create_return(
         &self,
@@ -1224,8 +1236,8 @@ where
             id: Set(generate_id()),
             tenant_id: Set(tenant_id),
             order_id: Set(order_id),
-            reason: Set(input.reason.map(|value| value.trim().to_string())),
-            note: Set(input.note.map(|value| value.trim().to_string())),
+            reason: Set(trim_optional_text(input.reason)),
+            note: Set(trim_optional_text(input.note)),
             status: Set(RETURN_STATUS_PENDING.to_string()),
             metadata: Set(input.metadata),
             created_at: Set(now.into()),
@@ -1252,10 +1264,16 @@ where
             query = query.filter(entities::order_return::Column::OrderId.eq(order_id));
         }
         if let Some(status) = input.status {
-            query = query.filter(entities::order_return::Column::Status.eq(status.trim().to_ascii_lowercase()));
+            query = query.filter(
+                entities::order_return::Column::Status.eq(status.trim().to_ascii_lowercase()),
+            );
         }
         let paginator = query.paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let rows = paginator.fetch_page(page.saturating_sub(1)).await?;
-        Ok((rows.into_iter().map(map_order_return_response).collect(), total))
+        Ok((
+            rows.into_iter().map(map_order_return_response).collect(),
+            total,
+        ))
     }
+}
