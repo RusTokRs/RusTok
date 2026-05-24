@@ -75,6 +75,19 @@ const requiredKpiMentions = [
   "Docs guard",
 ];
 
+const packageJsonPath = "package.json";
+
+const requiredNpmScripts = [
+  "verify:ffa:ui:migration",
+  "verify:ffa:ui:migration:contract",
+  "verify:ffa:ui:migration:docs",
+];
+
+const requiredMigrationPipelineCommands = [
+  "npm run verify:ffa:ui:migration:contract",
+  "npm run verify:ffa:ui:migration:docs",
+];
+
 function assertFileExists(relPath) {
   const fullPath = path.join(repoRoot, relPath);
   if (!existsSync(fullPath)) {
@@ -156,7 +169,22 @@ function hasMarkdownLink(content, target) {
   return false;
 }
 
-function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
+
+function parsePackageJson() {
+  const fullPath = path.join(repoRoot, packageJsonPath);
+  if (!existsSync(fullPath)) {
+    throw new Error(`Отсутствует обязательный файл: ${packageJsonPath}`);
+  }
+
+  const raw = readFileSync(fullPath, "utf8");
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Не удалось распарсить ${packageJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function collectValidationErrors({ plan, connectivity, checklist, docsIndex, packageJson }) {
   const errors = [];
 
   const planHeadingIndex = new Map(
@@ -188,6 +216,23 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
     }
   });
 
+
+  const scripts = packageJson?.scripts ?? {};
+  requiredNpmScripts.forEach((scriptName) => {
+    if (typeof scripts[scriptName] !== "string" || scripts[scriptName].trim().length === 0) {
+      errors.push(`Не найден обязательный npm script в package.json: ${scriptName}`);
+    }
+  });
+
+  const migrationPipeline = scripts["verify:ffa:ui:migration"];
+  if (typeof migrationPipeline === "string") {
+    requiredMigrationPipelineCommands.forEach((command) => {
+      if (!migrationPipeline.includes(command)) {
+        errors.push(`Скрипт verify:ffa:ui:migration должен содержать команду: ${command}`);
+      }
+    });
+  }
+
   requiredIndexRefs.forEach((refPath) => {
     if (!hasMarkdownLink(docsIndex, refPath)) {
       errors.push(`Не найдена обязательная markdown-ссылка в docs/index.md: ${refPath}`);
@@ -199,7 +244,8 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
 
 try {
   const docs = readRequiredDocs();
-  const errors = collectValidationErrors(docs);
+  const packageJson = parsePackageJson();
+  const errors = collectValidationErrors({ ...docs, packageJson });
 
   if (errors.length > 0) {
     console.error("[verify-ffa-ui-migration-contract] FAIL");
