@@ -750,7 +750,7 @@ async fn active_runtime_platform_snapshot(
     let manifest = bootstrap_runtime_modules_manifest()?;
     let manifest_hash = runtime_manifest_hash(&manifest);
     let now = chrono::Utc::now();
-    let manifest_json = serde_json::to_value(&manifest)
+    let manifest_json = rustok_api::manifest_hash::canonical_manifest_snapshot_json(&manifest)
         .map_err(|err| server_error(format!("failed to encode platform manifest: {err}")))?;
     let insert = Statement::from_sql_and_values(
         backend,
@@ -1201,7 +1201,8 @@ mod runtime_manifest_hash_tests {
     #[test]
     fn runtime_manifest_hash_matches_canonical_snapshot_hash() {
         let manifest = sample_manifest();
-        let snapshot = serde_json::to_value(&manifest).expect("serialize manifest snapshot");
+        let snapshot = rustok_api::manifest_hash::canonical_manifest_snapshot_json(&manifest)
+            .expect("serialize manifest snapshot");
 
         assert_eq!(
             runtime_manifest_hash(&manifest),

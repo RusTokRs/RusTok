@@ -1,4 +1,6 @@
-use rustok_api::manifest_hash::{hash_manifest, hash_manifest_snapshot};
+use rustok_api::manifest_hash::{
+    canonical_manifest_snapshot_json, hash_manifest, hash_manifest_snapshot,
+};
 use rustok_core::ModuleRegistry;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr,
@@ -87,7 +89,7 @@ impl PlatformCompositionService {
         }
 
         let manifest = Self::bootstrap_manifest()?;
-        let manifest_json = serde_json::to_value(&manifest)
+        let manifest_json = canonical_manifest_snapshot_json(&manifest)
             .map_err(|err| PlatformCompositionError::Serialize(err.to_string()))?;
         let manifest_hash = Self::manifest_hash(&manifest);
         let now = chrono::Utc::now().into();
@@ -135,7 +137,7 @@ impl PlatformCompositionService {
         }
 
         let next_revision = current.revision + 1;
-        let manifest_json = serde_json::to_value(&manifest)
+        let manifest_json = canonical_manifest_snapshot_json(&manifest)
             .map_err(|err| PlatformCompositionError::Serialize(err.to_string()))?;
         let manifest_hash = Self::manifest_hash(&manifest);
         let result = PlatformStateEntity::update_many()
@@ -179,7 +181,7 @@ impl PlatformCompositionService {
     pub fn manifest_snapshot_json(
         manifest: &ModulesManifest,
     ) -> Result<serde_json::Value, PlatformCompositionError> {
-        serde_json::to_value(manifest)
+        canonical_manifest_snapshot_json(manifest)
             .map_err(|err| PlatformCompositionError::Serialize(err.to_string()))
     }
 

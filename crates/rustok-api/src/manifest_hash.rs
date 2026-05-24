@@ -1,8 +1,15 @@
 use sha2::Digest;
 
 pub fn hash_manifest<T: serde::Serialize>(manifest: &T) -> Result<String, serde_json::Error> {
-    let snapshot = serde_json::to_value(manifest)?;
+    let snapshot = canonical_manifest_snapshot_json(manifest)?;
     Ok(hash_manifest_snapshot(&snapshot))
+}
+
+pub fn canonical_manifest_snapshot_json<T: serde::Serialize>(
+    manifest: &T,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let snapshot = serde_json::to_value(manifest)?;
+    Ok(canonicalize_json_value(&snapshot))
 }
 
 pub fn hash_manifest_snapshot(snapshot: &serde_json::Value) -> String {
@@ -72,7 +79,7 @@ mod tests {
 
 #[cfg(test)]
 mod serialize_tests {
-    use super::hash_manifest;
+    use super::{canonical_manifest_snapshot_json, hash_manifest};
 
     #[test]
     fn hash_manifest_matches_snapshot_hash_for_serializable_input() {
@@ -82,6 +89,23 @@ mod serialize_tests {
             from_manifest,
             super::hash_manifest_snapshot(&manifest),
             "typed manifest hashing must use the same canonical snapshot contract"
+        );
+    }
+
+    #[test]
+    fn canonical_manifest_snapshot_json_sorts_nested_object_keys() {
+        let snapshot = canonical_manifest_snapshot_json(&serde_json::json!({
+            "b": {"z": 1, "a": 2},
+            "a": 0
+        }))
+        .expect("serialize manifest");
+
+        assert_eq!(
+            snapshot,
+            serde_json::json!({
+                "a": 0,
+                "b": {"a": 2, "z": 1}
+            })
         );
     }
 }
