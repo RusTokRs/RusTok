@@ -247,3 +247,67 @@ async fn update_grapesjs_body_returns_feature_disabled_when_builder_toggle_is_fa
         Err(PagesError::FeatureDisabled { feature }) if feature == "builder.enabled"
     ));
 }
+
+#[tokio::test]
+async fn create_markdown_body_is_allowed_when_builder_toggle_is_false() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    seed_pages_module_settings(&db, tenant_id, "{\"builder\":{\"enabled\":false}}").await;
+
+    let created = page_service
+        .create(
+            tenant_id,
+            security,
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Markdown page".to_string(),
+                    slug: Some("markdown-page".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    content: "# Hello".to_string(),
+                    format: Some("markdown".to_string()),
+                    content_json: None,
+                }),
+                blocks: None,
+                channel_slugs: None,
+                publish: false,
+            },
+        )
+        .await
+        .expect("markdown path should remain available when builder is disabled");
+
+    let body = created.body.expect("body should be present");
+    assert_eq!(body.format, "markdown");
+}
+
+#[tokio::test]
+async fn update_markdown_body_is_allowed_when_builder_toggle_is_false() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    let page = create_page(&page_service, tenant_id, security.clone()).await;
+    seed_pages_module_settings(&db, tenant_id, "{\"builder\":{\"enabled\":false}}").await;
+
+    let updated = page_service
+        .update(
+            tenant_id,
+            security,
+            page.id,
+            UpdatePageInput {
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    content: "Updated markdown body".to_string(),
+                    format: Some("markdown".to_string()),
+                    content_json: None,
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("markdown update path should remain available when builder is disabled");
+
+    let body = updated.body.expect("body should be present");
+    assert_eq!(body.format, "markdown");
+}
