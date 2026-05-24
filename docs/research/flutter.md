@@ -1147,6 +1147,26 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 
 **Правило перехода в `Phase 1`:** после merge `PR-A` и `PR-B` взять pilot-флоу `modules` (предпочтительно) или `blog`, и зафиксировать первое E2E-доказательство parity (login → module list/detail → обратно в shell) без feature-local transport-клиентов.
 
+#### Inline comments resolution log (update 2026-05-24)
+
+Чтобы снять замечания по предыдущему PR и избежать «плана ради плана», фиксируем обязательные выходы по каждому ближайшему шагу:
+
+- **PR-A считается закрытым только при наличии артефактов в репозитории**: snapshot schema, compatibility matrix и field changelog в одном месте документации трека.
+- **PR-B считается закрытым только при проверяемом CI-сигнале**: deterministic codegen + `git diff --exit-code` для generated-файлов после генерации.
+- **Переход в Phase 1 запрещён без evidence-блока**: ссылка на конкретный E2E прогон pilot-флоу (`modules`/`blog`) и отметка FFA-checklist без исключений.
+
+#### Concrete deliverables (Phase 2 execution board)
+
+| Deliverable | Owner zone | Verification command / signal | Status |
+|---|---|---|---|
+| `mobile_manifest` minimal schema snapshot | `rustok_mobile/tooling` + docs трека | schema snapshot обновлён и закоммичен | ⬜ Planned |
+| Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | матрица заполнена для всех contract-полей | ⬜ Planned |
+| Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
+| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ⬜ Planned |
+| Pilot E2E evidence (modules/blog) | integration tests / manual evidence | login → module list/detail → shell back | ⬜ Planned |
+
+**Execution rule:** каждый следующий PR в этом треке должен обновлять таблицу статусов выше и добавлять ссылку на проверяемое evidence (commit, CI job или test log).
+
 #### FFA-проверка для каждого PR в этом треке
 
 - [ ] Нет Flutter-specific API-контрактов поверх платформы (только consumption существующих platform contracts).
