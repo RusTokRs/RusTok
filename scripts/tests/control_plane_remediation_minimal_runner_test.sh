@@ -83,6 +83,11 @@ do
   fi
 done
 
+if ! rg -q "Control-plane remediation minimal verification: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
+  echo "success scenario missing total duration suffix" >&2
+  cat "$STEP_OUTPUT" >&2
+  exit 1
+fi
 
 # timeout mode: ensure step timeout wiring is active and surfaces timeout failure
 cat > "$FIXTURE_ROOT/fakebin/cargo" <<'SH'
@@ -122,6 +127,12 @@ fi
 
 if ! rg -q "Control-plane remediation minimal verification: FAIL" "$TIMEOUT_OUTPUT"; then
   echo "timeout scenario did not report fail summary" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "Elapsed: [0-9]{2}h:[0-9]{2}m:[0-9]{2}s" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report elapsed duration" >&2
   cat "$TIMEOUT_OUTPUT" >&2
   exit 1
 fi
