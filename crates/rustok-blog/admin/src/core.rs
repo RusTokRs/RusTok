@@ -142,6 +142,28 @@ pub fn should_show_archive_action(is_archived: bool) -> bool {
     !is_archived
 }
 
+pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {
+    match kind {
+        WritePathIssueKind::Validation => {
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        }
+        WritePathIssueKind::Sanitization => {
+            "rounded-xl border border-blue-300/60 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+        }
+        WritePathIssueKind::Runtime => {
+            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
+}
+
+pub fn issue_kind_label(kind: WritePathIssueKind) -> &'static str {
+    match kind {
+        WritePathIssueKind::Validation => "Validation",
+        WritePathIssueKind::Sanitization => "Sanitize",
+        WritePathIssueKind::Runtime => "Runtime",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,5 +268,11 @@ mod tests {
         );
         assert!(should_show_archive_action(false));
         assert!(!should_show_archive_action(true));
+        assert_eq!(
+            issue_banner_class(WritePathIssueKind::Validation),
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        );
+        assert_eq!(issue_kind_label(WritePathIssueKind::Runtime), "Runtime");
     }
 }
+use rustok_api::WritePathIssueKind;

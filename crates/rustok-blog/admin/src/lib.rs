@@ -8,7 +8,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext, WritePathIssue, WritePathIssueKind};
+use rustok_api::{AdminQueryKey, UiRouteContext, WritePathIssue};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
@@ -707,16 +707,12 @@ pub fn BlogAdmin() -> impl IntoView {
                                 submit_error
                                     .get()
                                     .as_ref()
-                                    .map(issue_banner_class)
+                                    .map(|issue| core::issue_banner_class(issue.kind))
                                     .unwrap_or("hidden")
                             }>
                                 {move || {
                                     submit_error.get().map(|issue| {
-                                        let label = match issue.kind {
-                                            WritePathIssueKind::Validation => "Validation".to_string(),
-                                            WritePathIssueKind::Sanitization => "Sanitize".to_string(),
-                                            WritePathIssueKind::Runtime => "Runtime".to_string(),
-                                        };
+                                        let label = core::issue_kind_label(issue.kind);
 
                                         view! {
                                             <span>
