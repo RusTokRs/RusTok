@@ -408,8 +408,7 @@ impl PageService {
                 input.status,
                 Some(rustok_content::entities::node::ContentStatus::Published)
             ) {
-                self.ensure_builder_enabled_for_page(tenant_id, page_id).await?;
-                self.ensure_builder_publish_enabled_for_page(tenant_id, page_id)
+                self.ensure_builder_publish_capabilities_for_page(tenant_id, page_id)
                     .await?;
             }
         }
@@ -519,8 +518,7 @@ impl PageService {
             Action::Publish,
             existing.author_id,
         )?;
-        self.ensure_builder_enabled_for_page(tenant_id, page_id).await?;
-        self.ensure_builder_publish_enabled_for_page(tenant_id, page_id)
+        self.ensure_builder_publish_capabilities_for_page(tenant_id, page_id)
             .await?;
         self.set_status(
             tenant_id,
@@ -556,14 +554,19 @@ impl PageService {
     }
 
     #[instrument(skip(self))]
-    pub async fn ensure_builder_preview_enabled_for_tenant(&self, tenant_id: Uuid) -> PagesResult<()> {
+    pub async fn ensure_builder_preview_enabled_for_tenant(
+        &self,
+        tenant_id: Uuid,
+    ) -> PagesResult<()> {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()
             .map(|m| is_builder_preview_enabled(&m.settings))
             .unwrap_or(true);
         if !enabled {
-            return Err(PagesError::feature_disabled(FEATURE_BUILDER_PREVIEW_ENABLED));
+            return Err(PagesError::feature_disabled(
+                FEATURE_BUILDER_PREVIEW_ENABLED,
+            ));
         }
         Ok(())
     }
@@ -579,7 +582,9 @@ impl PageService {
             .map(|m| is_builder_properties_enabled(&m.settings))
             .unwrap_or(true);
         if !enabled {
-            return Err(PagesError::feature_disabled(FEATURE_BUILDER_PROPERTIES_ENABLED));
+            return Err(PagesError::feature_disabled(
+                FEATURE_BUILDER_PROPERTIES_ENABLED,
+            ));
         }
         Ok(())
     }
@@ -681,7 +686,9 @@ impl PageService {
             .map(|m| is_builder_publish_enabled(&m.settings))
             .unwrap_or(true);
         if !enabled {
-            return Err(PagesError::feature_disabled(FEATURE_BUILDER_PUBLISH_ENABLED));
+            return Err(PagesError::feature_disabled(
+                FEATURE_BUILDER_PUBLISH_ENABLED,
+            ));
         }
         Ok(())
     }
@@ -703,9 +710,10 @@ impl PageService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        let page = self.find_page(tenant_id, page_id).await?;
-        let bodies = self.load_bodies(page.id).await?;
-        if page_uses_builder_capability(&bodies) {
+        if self
+            .page_uses_builder_capability_for_id(tenant_id, page_id)
+            .await?
+        {
             self.ensure_builder_enabled(tenant_id).await?;
         }
         Ok(())
@@ -716,12 +724,38 @@ impl PageService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        let page = self.find_page(tenant_id, page_id).await?;
-        let bodies = self.load_bodies(page.id).await?;
-        if page_uses_builder_capability(&bodies) {
+        if self
+            .page_uses_builder_capability_for_id(tenant_id, page_id)
+            .await?
+        {
             self.ensure_builder_publish_enabled(tenant_id).await?;
         }
         Ok(())
+    }
+
+    async fn ensure_builder_publish_capabilities_for_page(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<()> {
+        if self
+            .page_uses_builder_capability_for_id(tenant_id, page_id)
+            .await?
+        {
+            self.ensure_builder_enabled(tenant_id).await?;
+            self.ensure_builder_publish_enabled(tenant_id).await?;
+        }
+        Ok(())
+    }
+
+    async fn page_uses_builder_capability_for_id(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<bool> {
+        let page = self.find_page(tenant_id, page_id).await?;
+        let bodies = self.load_bodies(page.id).await?;
+        Ok(page_uses_builder_capability(&bodies))
     }
 
     async fn load_tenant_pages_module(
