@@ -182,6 +182,10 @@ pub fn should_publish_now(publish: bool) -> bool {
     publish
 }
 
+pub fn locale_arg(locale: &str) -> Option<String> {
+    Some(locale.to_string())
+}
+
 pub fn has_required_draft_fields(title: &str, body: &str) -> bool {
     !title.is_empty() && !body.is_empty()
 }
@@ -357,6 +361,7 @@ mod tests {
         assert!(next_publish_state(false));
         assert!(should_publish_now(true));
         assert!(!should_publish_now(false));
+        assert_eq!(locale_arg("en"), Some("en".to_string()));
         assert!(has_required_draft_fields("Title", "Body"));
         assert!(!has_required_draft_fields("", "Body"));
         assert!(!has_required_draft_fields("Title", ""));

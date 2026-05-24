@@ -313,7 +313,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         token_value,
                         tenant_value,
                         post_id.clone(),
-                        Some(post_locale.clone()),
+                        core::locale_arg(post_locale.as_str()),
                     )
                     .await
                 } else {
@@ -321,7 +321,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         token_value,
                         tenant_value,
                         post_id.clone(),
-                        Some(post_locale),
+                        core::locale_arg(post_locale.as_str()),
                     )
                     .await
                 };
@@ -377,7 +377,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 post_id.clone(),
-                Some(post_locale),
+                core::locale_arg(post_locale.as_str()),
             )
             .await
             {
