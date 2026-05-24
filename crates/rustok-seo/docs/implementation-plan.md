@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_c_iteration_planning
+- Current phase: phase_c1_execution_prep
 - Last checkpoint: Выполнен plan-sync с фактическим кодом `rustok-seo`: подтверждены typed schema input/write paths, diagnostics remediation flow и runtime foundation для sitemap submission endpoints (`sitemap_submission_endpoints` + bounded best-effort submit в `generate_sitemaps`).
-- Next step: Стартовать Iteration C1 — вынести submission path в явный adapter seam (без изменения public SEO contract) и закрыть regression coverage для success/failure endpoint fan-out.
+- Next step: Реализовать Iteration C1 — зафиксировать typed adapter seam `submit_sitemap_index` + endpoint aggregation и закрыть regression coverage для success/failure endpoint fan-out.
 - Open blockers: Для полноценного Google Indexing API/поисковых провайдеров нужен отдельный tenant-secret contract (вне текущего scope C1).
 - Hand-off notes for next agent: Не расширять C1 до cross-linking/media; сначала зафиксировать adapter seam + tests, затем переходить к C2/C3.
-- Last updated at (UTC): 2026-05-21T12:05:47Z
+- Last updated at (UTC): 2026-05-24T17:07:32Z
 
 ## Область работ
 
@@ -144,6 +144,20 @@
     - `cargo check -p rustok-storefront --config profile.dev.debug=0`
 
 - [ ] Расширять Next route coverage только вместе с появлением реальных storefront routes и после фиксации C1–C3 baseline.
+
+
+## Осталось сделать (оценка на 2026-05-24)
+
+- **Phase C — indexing и linking automation**: 3/3 итерации в статусе open (`C1`, `C2`, `C3`).
+- **Незавершённые checklist-пункты в Phase C**: **10**
+  - C1: 3 пункта
+  - C2: 3 пункта
+  - C3: 3 пункта
+  - Next coverage guardrail (расширение Next routes только после C1–C3): 1 пункт
+- **Quality backlog**: 3 open пункта (tests/docs/verification gates).
+- **Итого open пунктов в документе**: **13** (Phase C + Quality backlog).
+
+Приоритет исполнения: сначала C1 (adapter seam + tests), затем C2 (cross-link suggestions + diagnostics), затем C3 (image SEO hooks через `rustok-media`).
 
 ## Проверка
 
