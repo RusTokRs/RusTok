@@ -709,3 +709,10 @@ rollback-стратегии и Definition of Done по итерациям.
 
 - Закрыт Batch-2 пункт по общему hash builder: введён shared typed helper `hash_manifest` в `rustok-api` и переведены server/admin call-sites на единый hashing entrypoint без локального дублирования сериализации.
 - Execution backlog и Batch-2 checklist синхронизированы: пункт про end-to-end parity “один manifest -> один hash/ref/snapshot” отмечен как выполненный на основе существующего server integration coverage и нового shared helper contract.
+
+
+### Актуализация 2026-05-24 (итерация 46)
+
+- Запущен минимальный verification-набор для текущей ветки (`cargo fmt --all -- --check`, `cargo test -p migration`, `cargo test -p rustok-server module_lifecycle`, `cargo test -p rustok-server platform_composition`).
+- Полное выполнение verification-пакета заблокировано текущими pre-existing проблемами workspace: `cargo fmt --check` падает из-за синтаксической ошибки в `apps/server/src/controllers/channel.rs` (unexpected closing delimiter), а длительные server/migration test-команды не завершились в окне итерации из-за массовой перекомпиляции и file-lock contention.
+- Чекбокс `Минимальный verification набор ...` остаётся `[ ]` до зелёного прогона после устранения синтаксической ошибки и повторного запуска пакета.
