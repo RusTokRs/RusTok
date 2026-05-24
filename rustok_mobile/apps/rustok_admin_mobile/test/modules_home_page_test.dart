@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rustok_admin_mobile/registry/module_entry_adapter.dart';
+import 'package:rustok_admin_mobile/registry/registry_adaptation_summary.dart';
 import 'package:rustok_admin_mobile/routes/app_router.dart';
 
 void main() {
@@ -15,8 +16,10 @@ void main() {
       _wrap(
         const ModulesHomePage(
           moduleRoutes: <ModuleRouteEntry>[],
-          rejectedModuleEntries: 2,
-          rejectedChildEntries: 1,
+          adaptationSummary: RegistryAdaptationSummary(
+            hasWarnings: true,
+            message: 'Rejected modules: 2 · Rejected child pages: 1',
+          ),
         ),
       ),
     );
@@ -35,8 +38,10 @@ void main() {
       _wrap(
         const ModulesHomePage(
           moduleRoutes: <ModuleRouteEntry>[],
-          rejectedModuleEntries: 0,
-          rejectedChildEntries: 0,
+          adaptationSummary: RegistryAdaptationSummary(
+            hasWarnings: false,
+            message: 'Registry adaptation completed with no rejected entries.',
+          ),
         ),
       ),
     );
@@ -66,8 +71,10 @@ void main() {
       _wrap(
         const ModulesHomePage(
           moduleRoutes: routes,
-          rejectedModuleEntries: 0,
-          rejectedChildEntries: 0,
+          adaptationSummary: RegistryAdaptationSummary(
+            hasWarnings: false,
+            message: 'Registry adaptation completed with no rejected entries.',
+          ),
         ),
       ),
     );

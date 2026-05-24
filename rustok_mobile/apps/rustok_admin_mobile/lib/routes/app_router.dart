@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../app_shell/app_shell_page.dart';
 import '../registry/module_entry_adapter.dart';
+import '../registry/registry_adaptation_summary.dart';
 
 const _routeCodec = RouteCodec(
   RouteSanitizer({
@@ -16,6 +17,7 @@ const _routeCodec = RouteCodec(
 
 GoRouter buildRouter(ModuleRegistryAdaptationResult registryReport) {
   final moduleRoutes = registryReport.routes;
+  final summary = buildRegistryAdaptationSummary(registryReport);
   return GoRouter(
     initialLocation: modulesRootPath,
     routes: [
@@ -26,8 +28,7 @@ GoRouter buildRouter(ModuleRegistryAdaptationResult registryReport) {
             path: modulesRootPath,
             builder: (context, state) => ModulesHomePage(
               moduleRoutes: moduleRoutes,
-              rejectedModuleEntries: registryReport.rejectedModuleEntries,
-              rejectedChildEntries: registryReport.rejectedChildEntries,
+              adaptationSummary: summary,
             ),
             routes: [
               for (final routeEntry in moduleRoutes)
@@ -68,27 +69,25 @@ class ModulesHomePage extends StatelessWidget {
   const ModulesHomePage({
     super.key,
     required this.moduleRoutes,
-    required this.rejectedModuleEntries,
-    required this.rejectedChildEntries,
+    required this.adaptationSummary,
   });
 
   final List<ModuleRouteEntry> moduleRoutes;
-  final int rejectedModuleEntries;
-  final int rejectedChildEntries;
+  final RegistryAdaptationSummary adaptationSummary;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       children: [
         const ListTile(title: Text('RusTok Modules')),
-        if (rejectedModuleEntries > 0 || rejectedChildEntries > 0)
+        if (adaptationSummary.hasWarnings)
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: Theme.of(context).colorScheme.errorContainer,
             child: ListTile(
               title: const Text('Registry adaptation warnings'),
               subtitle: Text(
-                'Rejected modules: $rejectedModuleEntries · Rejected child pages: $rejectedChildEntries',
+                adaptationSummary.message,
               ),
             ),
           ),
