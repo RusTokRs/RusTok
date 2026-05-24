@@ -44,6 +44,7 @@ usage() {
     echo "  page-builder-toggle-profiles-consistency  Verify page-builder toggle profile flag combinations"
     echo "  page-builder-fba-baseline  Run full page-builder FBA baseline gate (parity + fallback + toggle consistency)"
     echo "  page-builder-consumer-readiness  Verify module-level consumer readiness for page-builder (uses PBC_MODULE)"
+    echo "  control-plane-remediation-minimal  Run control-plane remediation minimal verification bundle"
     echo ""
     echo "Without arguments, runs all scripts."
 }
@@ -77,6 +78,7 @@ SCRIPTS=(
     "verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
     "verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
     "verify-page-builder-consumer-readiness.mjs:Page Builder Consumer Readiness"
+    "run-control-plane-remediation-minimal.sh:Control Plane Remediation Minimal"
 )
 
 # Filter to selected script if specified
@@ -87,7 +89,8 @@ if [[ -n "$SELECTED_SCRIPT" ]]; then
         script_name="${script_file%.sh}"
         script_name="${script_name%.mjs}"
         script_name="${script_name#verify-}"
-        if [[ "$script_name" == "$SELECTED_SCRIPT" || "$script_file" == "$SELECTED_SCRIPT" ]]; then
+        alt_script_name="${script_name#run-}"
+        if [[ "$script_name" == "$SELECTED_SCRIPT" || "$alt_script_name" == "$SELECTED_SCRIPT" || "$script_file" == "$SELECTED_SCRIPT" ]]; then
             FILTERED+=("$entry")
         fi
     done

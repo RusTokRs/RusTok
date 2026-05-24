@@ -474,3 +474,49 @@ fi
 - [Forbidden Actions](../../docs/standards/forbidden-actions.md) — запреты с примерами
 - [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — ✅/❌ сравнения
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов
+
+
+## Control-plane remediation minimal bundle
+
+```bash
+./scripts/verify/run-control-plane-remediation-minimal.sh
+```
+
+Опционально для triage при известном pre-existing formatting drift:
+
+```bash
+RUSTOK_VERIFY_SKIP_FMT=1 ./scripts/verify/run-control-plane-remediation-minimal.sh
+```
+
+```bash
+./scripts/verify/verify-all.sh control-plane-remediation-minimal
+```
+
+Опционально можно ограничить длительность каждого шага:
+
+```bash
+RUSTOK_VERIFY_STEP_TIMEOUT=15m ./scripts/verify/run-control-plane-remediation-minimal.sh
+```
+
+
+## Control-plane remediation progress snapshot
+
+```bash
+python3 scripts/verify/report-control-plane-remediation-progress.py
+```
+
+Если путь к плану не существует, скрипт завершится с кодом `1` и сообщением `ERROR: remediation plan not found: ...`.
+
+Машиночитаемый формат (для CI-артефактов/ботов):
+
+```bash
+python3 scripts/verify/report-control-plane-remediation-progress.py --json
+```
+
+Чтобы использовать отчёт как gate (падать при наличии `[ ]`):
+
+```bash
+python3 scripts/verify/report-control-plane-remediation-progress.py --fail-on-pending
+```
+
+Код выхода `2` означает, что в плане остались pending-пункты.

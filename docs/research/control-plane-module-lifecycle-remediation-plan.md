@@ -696,7 +696,7 @@ rollback-стратегии и Definition of Done по итерациям.
 
 - [x] Закрыть общий hash builder для GraphQL/Leptos SSR/BuildService и end-to-end test
   “один manifest -> один hash/ref/snapshot” между surfaces (server integration tests `successful_enqueue_keeps_hash_parity_between_snapshot_and_build`, `successful_enqueue_keeps_manifest_snapshot_parity_with_hash`, `same_manifest_keeps_hash_and_snapshot_stable_across_revisions` + shared typed hash helper cutover).
-- [ ] Прогнать минимальный verification-набор плана на ветке и зафиксировать результат в чекбоксах.
+- [~] Прогнать минимальный verification-набор плана на ветке и зафиксировать результат в чекбоксах (добавлен единый runner `scripts/verify/run-control-plane-remediation-minimal.sh`; нужен зелёный прогон без pre-existing drift).
 
 ### Definition of Done для пакетного цикла
 
@@ -735,3 +735,68 @@ rollback-стратегии и Definition of Done по итерациям.
 - Закрыт operational-gate по dependabot directory contract: устранены дубли директорий `/apps/admin` и `/apps/storefront` в `.github/dependabot.yml`, после чего `scripts/ci/check-dependabot-directories.py` проходит зелёно.
 - Повторно подтверждены CI non-regression контракты для module platform: `cargo xtask validate-manifest` и `cargo xtask module validate` выполняются с PASS.
 - Release-gate чекбокс `CI-gates подтверждены как non-regression` переведён в `[x]`; незакрытым остаётся отдельный пункт про полный минимальный verification-набор (fmt/tests bundle).
+
+### Актуализация 2026-05-24 (итерация 50)
+
+- Повторный запуск `cargo fmt --all -- --check` снова не прошёл: зафиксирован масштабный rustfmt-drift в уже существующих файлах (`apps/admin`, `apps/server`, `crates/rustok-seo`, `crates/rustok-tenant`, и др.), без новых функциональных регрессий.
+- Параллельно повторно запущены `cargo xtask validate-manifest` и `cargo xtask module validate`; оба прогона упирались в длительную перекомпиляцию и lock contention (`Blocking waiting for file lock ...`) в рамках окна итерации.
+- Чекбокс минимального verification-набора сохраняется в `[ ]` до отдельного зелёного прогона fmt + server/migration bundle после стабилизации build-cache/lock-окна.
+
+
+### Актуализация 2026-05-24 (итерация 51)
+
+- Усилен operational runner `scripts/verify/run-control-plane-remediation-minimal.sh`: добавлен inter-process lock (`flock`) в `target/.control-plane-remediation-minimal.lock`, чтобы исключить параллельные запуски и снизить повторяемые `Blocking waiting for file lock ...` между итерациями.
+- Для ускоренного повторного прогона после pre-existing formatting drift добавлен управляемый флаг `RUSTOK_VERIFY_SKIP_FMT=1` (только для локального цикла triage; release-gate остаётся с обязательным fmt-check).
+- Batch-2 пункт verification остаётся `[~]` до полного зелёного прогона полного набора без skip-флагов.
+
+### Актуализация 2026-05-24 (итерация 52)
+
+- Для нового minimal runner добавлен smoke/guard тест `scripts/tests/control_plane_remediation_minimal_runner_test.sh` (syntax + lock-conflict path + skip-fmt path до шага migration).
+- `scripts/tests/README.md` и `scripts/verify/README.md` синхронизированы с новым runner/test entrypoint, чтобы operational usage и локальные проверки были воспроизводимыми.
+
+### Актуализация 2026-05-24 (итерация 53)
+
+- `verify-all` теперь поддерживает alias `control-plane-remediation-minimal` для точечного запуска нового bundle без ручного вызова файла runner.
+- Добавлен отдельный smoke-тест `scripts/tests/control_plane_remediation_verify_all_alias_test.sh`, подтверждающий корректный route alias -> runner path.
+
+### Актуализация 2026-05-24 (итерация 54)
+
+- Smoke-тесты для control-plane minimal runner переведены на изолированные fixture-сценарии (`mktemp` + fake `cargo`/`python3`), без зависимости от состояния текущего workspace и без тяжёлой перекомпиляции.
+- Alias-тест `verify-all -> control-plane-remediation-minimal` теперь проверяет полный PASS-path в fixture, включая финальный отчёт `All verification suites passed!`.
+
+### Актуализация 2026-05-24 (итерация 55)
+
+- Runner `run-control-plane-remediation-minimal.sh` усилен preflight-проверкой `flock` и поддержкой `RUSTOK_VERIFY_STEP_TIMEOUT` для ограничения длительности каждого шага в длинных CI/local прогонах.
+- `scripts/verify/README.md` дополнен примером timeout-конфигурации для reproducible long-run execution.
+
+### Актуализация 2026-05-24 (итерация 56)
+
+- Для runner smoke-test добавлен негативный timeout-сценарий (`RUSTOK_VERIFY_STEP_TIMEOUT=1s`), подтверждающий fail-fast поведение на затянутом шаге migration.
+
+### Актуализация 2026-05-24 (итерация 57)
+
+- Timeout smoke-test для minimal runner усилен инвариантом остановки pipeline: при `RUSTOK_VERIFY_STEP_TIMEOUT=1s` выполнение не должно переходить за шаг migration к `module lifecycle tests`.
+
+### Актуализация 2026-05-24 (итерация 58)
+
+- Alias smoke-test для `verify-all` расширен дополнительным селектором по имени файла (`run-control-plane-remediation-minimal.sh`), чтобы фиксировать parity между alias- и direct-selector путями.
+
+### Актуализация 2026-05-24 (итерация 59)
+
+- Добавлен утилитарный отчёт `scripts/verify/report-control-plane-remediation-progress.py`, который считает `[x]/[~]/[ ]` по remediation-плану и печатает top-элементы хвоста для batch-планирования следующей итерации.
+- Добавлен изолированный smoke-test `scripts/tests/control_plane_remediation_progress_report_test.sh` (fixture markdown + проверка expected counters), чтобы зафиксировать контракт отчёта.
+
+### Актуализация 2026-05-24 (итерация 60)
+
+- `report-control-plane-remediation-progress.py` получил явный fail-fast для отсутствующего файла плана (`exit 1` + `ERROR: remediation plan not found: ...`), чтобы CI/локальные раннеры не давали ложный PASS при неверном path.
+- Smoke-тест progress-report расширен негативным сценарием missing-plan path.
+
+### Актуализация 2026-05-24 (итерация 61)
+
+- Progress-report скрипт получил режим `--json` для машинного consumption в CI/ботах (counts + top pending/in-progress items).
+- Smoke-тест progress-report расширен проверкой JSON-output контракта.
+
+### Актуализация 2026-05-24 (итерация 62)
+
+- Для progress-report добавлен gate-режим `--fail-on-pending`: скрипт возвращает `exit 2`, если в плане есть `[ ]` пункты.
+- Smoke-тест progress-report обновлён проверкой exit-кода/сообщения для `--fail-on-pending`.
