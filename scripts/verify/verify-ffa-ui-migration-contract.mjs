@@ -7,11 +7,19 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function resolveRepoRoot(argv, env) {
+function parseCliArgs(argv) {
   let cliRoot;
+  let showHelp = false;
+  const unknownArgs = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+
+    if (arg === "--help" || arg === "-h") {
+      showHelp = true;
+      continue;
+    }
+
     if (arg.startsWith("--root=")) {
       cliRoot = arg.slice("--root=".length);
       continue;
@@ -20,9 +28,20 @@ function resolveRepoRoot(argv, env) {
     if (arg === "--root") {
       cliRoot = argv[index + 1];
       index += 1;
+      continue;
     }
+
+    unknownArgs.push(arg);
   }
 
+  return { cliRoot, showHelp, unknownArgs };
+}
+
+function printUsage() {
+  console.log("Usage: node scripts/verify/verify-ffa-ui-migration-contract.mjs [--root <path>|--root=<path>] [-h|--help]");
+}
+
+function resolveRepoRoot(cliRoot, env) {
   if (typeof cliRoot === "string" && cliRoot.trim().length > 0) {
     return path.resolve(cliRoot);
   }
@@ -34,7 +53,19 @@ function resolveRepoRoot(argv, env) {
   return path.resolve(__dirname, "../..");
 }
 
-const repoRoot = resolveRepoRoot(process.argv.slice(2), process.env);
+const cli = parseCliArgs(process.argv.slice(2));
+if (cli.showHelp) {
+  printUsage();
+  process.exit(0);
+}
+if (cli.unknownArgs.length > 0) {
+  console.error("[verify-ffa-ui-migration-contract] FAIL");
+  console.error(`Неизвестные аргументы: ${cli.unknownArgs.join(" ")}`);
+  printUsage();
+  process.exit(1);
+}
+
+const repoRoot = resolveRepoRoot(cli.cliRoot, process.env);
 
 const requiredDocs = [
   "docs/research/dioxus-ffa-ui-migration-plan.md",
@@ -181,7 +212,7 @@ function hasMarkdownLink(content, target) {
   }
 
   const referenceUsePattern = /\[[^\]]+\]\[([^\]]+)\]/g;
-  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^""]+[""])?$/gm;
+  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^"]+[""])?$/gm;
 
   const usedRefs = new Set();
   let useMatch;
@@ -214,7 +245,6 @@ function parsePackageJson() {
     throw new Error(`Не удалось распарсить ${packageJsonPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-
 
 function normalizeCommand(command) {
   return command.replace(/\s+/g, " ").trim();

@@ -206,3 +206,22 @@ ${result.stderr}`);
     fixture.cleanup();
   }
 });
+
+
+test("prints usage for --help", () => {
+  const result = spawnSync(process.execPath, [scriptPath, "--help"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Usage: node scripts\/verify\/verify-ffa-ui-migration-contract\.mjs/);
+});
+
+test("fails on unknown cli arguments", () => {
+  const result = spawnSync(process.execPath, [scriptPath, "--unknown-arg"], {
+    encoding: "utf8",
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Неизвестные аргументы/);
+});
