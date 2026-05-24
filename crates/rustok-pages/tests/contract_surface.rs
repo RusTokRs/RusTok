@@ -77,4 +77,44 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
             "missing toggle profile: {profile}"
         );
     }
+
+    let all_on = profiles
+        .get("all_on")
+        .and_then(toml::Value::as_array)
+        .expect("toggle profile all_on must be an array");
+    for expected in [
+        "builder.enabled=true",
+        "builder.preview.enabled=true",
+        "builder.properties.enabled=true",
+        "builder.publish.enabled=true",
+    ] {
+        assert!(
+            all_on
+                .iter()
+                .any(|item| item.as_str().is_some_and(|value| value == expected)),
+            "toggle profile all_on missing required switch: {expected}"
+        );
+    }
+
+    let publish_off = profiles
+        .get("publish_off")
+        .and_then(toml::Value::as_array)
+        .expect("toggle profile publish_off must be an array");
+    assert!(
+        publish_off.iter().any(|item| item
+            .as_str()
+            .is_some_and(|value| value == "builder.publish.enabled=false")),
+        "toggle profile publish_off must explicitly disable builder.publish.enabled"
+    );
+
+    let preview_off = profiles
+        .get("preview_off")
+        .and_then(toml::Value::as_array)
+        .expect("toggle profile preview_off must be an array");
+    assert!(
+        preview_off.iter().any(|item| item
+            .as_str()
+            .is_some_and(|value| value == "builder.preview.enabled=false")),
+        "toggle profile preview_off must explicitly disable builder.preview.enabled"
+    );
 }
