@@ -1,6 +1,7 @@
 mod api;
 mod i18n;
 mod model;
+mod transport;
 
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
@@ -65,7 +66,7 @@ pub fn ProductView() -> impl IntoView {
             channel_slug,
             quantity,
         )| async move {
-            api::fetch_storefront_products(
+            transport::fetch_products(
                 handle,
                 locale,
                 currency_code,

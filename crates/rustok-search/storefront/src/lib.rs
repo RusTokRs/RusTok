@@ -2,6 +2,7 @@ mod api;
 mod core;
 mod i18n;
 mod model;
+mod transport;
 
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
@@ -113,7 +114,7 @@ pub fn SearchView() -> impl IntoView {
                 if core::normalized_search_query(&query).is_none() {
                     Ok(None)
                 } else {
-                    api::fetch_storefront_search(
+                    transport::fetch_search(
                         query,
                         locale,
                         core::optional_text(&preset_key),
@@ -129,14 +130,14 @@ pub fn SearchView() -> impl IntoView {
         move || (search_input.get(), locale_for_suggestions.clone()),
         move |(query, locale)| async move {
             match core::suggestion_query(&query, 2) {
-                Some(trimmed) => api::fetch_storefront_suggestions(trimmed, locale).await,
+                Some(trimmed) => transport::fetch_suggestions(trimmed, locale).await,
                 None => Ok(Vec::new()),
             }
         },
     );
     let filter_presets = Resource::new(
         || (),
-        move |_| async move { api::fetch_storefront_filter_presets().await },
+        move |_| async move { transport::fetch_filter_presets().await },
     );
 
     view! {
@@ -596,7 +597,7 @@ fn track_result_click(
 
     ev.prevent_default();
     spawn_local(async move {
-        let _ = api::track_search_click(
+        let _ = transport::track_search_click(
             query_log_id,
             document_id,
             Some((index + 1) as i32),

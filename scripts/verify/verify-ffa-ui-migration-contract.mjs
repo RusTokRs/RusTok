@@ -12,22 +12,51 @@ const requiredDocs = [
   "docs/research/dioxus-ffa-ui-migration-plan.md",
   "docs/research/dioxus-ffa-pilot-connectivity-map.md",
   "docs/verification/ffa-ui-parity-checklist.md",
+  "docs/index.md",
 ];
 
-const requiredPlanSections = [
-  "## Фазы реализации",
-  "## Принцип исполнения backlog (одна задача за итерацию)",
-  "## Политика актуализации verification scripts",
-  "## Phase-gate критерии (обязательные переходы между фазами)",
-  "## KPI parity (измеримые пороги)",
+const requiredPlanHeadings = [
+  "Фазы реализации",
+  "Принцип исполнения backlog (одна задача за итерацию)",
+  "Политика актуализации verification scripts",
+  "Phase-gate критерии (обязательные переходы между фазами)",
+  "KPI parity (измеримые пороги)",
+  "RACI (кто принимает phase-gates)",
 ];
 
-const requiredChecklistItems = [
-  "- [ ] Native path (Leptos SSR/hydrate) работает для целевого сценария.",
-  "- [ ] GraphQL fallback работает для того же сценария.",
-  "- [ ] UI слой не владеет transport/business логикой.",
-  "- [ ] Доступ к transport идёт через core ports.",
-  "- [ ] Core слой не зависит от `leptos*`.",
+const requiredChecklistChecks = [
+  {
+    label: "native path checklist item",
+    pattern: /- \[[ xX]\] Native path \(Leptos SSR\/hydrate\) работает для целевого сценария\./,
+  },
+  {
+    label: "graphql fallback checklist item",
+    pattern: /- \[[ xX]\] GraphQL fallback работает для того же сценария\./,
+  },
+  {
+    label: "ui/business ownership checklist item",
+    pattern: /- \[[ xX]\] UI слой не владеет transport\/business логикой\./,
+  },
+  {
+    label: "transport-through-core checklist item",
+    pattern: /- \[[ xX]\] Доступ к transport идёт через core ports\./,
+  },
+  {
+    label: "core-leptos-independence checklist item",
+    pattern: /- \[[ xX]\] Core слой не зависит от `leptos\*`\./,
+  },
+  {
+    label: "ffa verify evidence checklist item",
+    pattern: /- \[[ xX]\] Выполнен `npm run verify:ffa:ui:migration`\./,
+  },
+];
+
+const requiredConnectivityMentions = ["rustok-pages", "rustok-search"];
+
+const requiredIndexRefs = [
+  "dioxus-ffa-ui-migration-plan.md",
+  "dioxus-ffa-pilot-connectivity-map.md",
+  "ffa-ui-parity-checklist.md",
 ];
 
 function assertFileExists(relPath) {
@@ -38,39 +67,123 @@ function assertFileExists(relPath) {
   return fullPath;
 }
 
-function assertContains(content, value, label) {
-  if (!content.includes(value)) {
-    throw new Error(`Не найден обязательный фрагмент (${label}): ${value}`);
+function normalizeMarkdown(content) {
+  return content.replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripCodeFences(content) {
+  return content.replace(/```[\s\S]*?```/g, "");
+}
+
+function stripHtmlComments(content) {
+  return content.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+
+function getMarkdownHeadings(content) {
+  return content
+    .split("\n")
+    .map((line, index) => {
+      const match = line.match(/^#{1,6}\s+(.*)$/);
+      return match ? { text: match[1].trim(), line: index + 1 } : null;
+    })
+    .filter(Boolean);
+}
+
+function readRequiredDocs() {
+  const [planPath, connectivityPath, checklistPath, docsIndexPath] = requiredDocs.map(assertFileExists);
+
+  return {
+    plan: normalizeMarkdown(readFileSync(planPath, "utf8")),
+    connectivity: normalizeMarkdown(readFileSync(connectivityPath, "utf8")),
+    checklist: normalizeMarkdown(readFileSync(checklistPath, "utf8")),
+    docsIndex: normalizeMarkdown(readFileSync(docsIndexPath, "utf8")),
+  };
+}
+
+function hasMarkdownLink(content, target) {
+  const normalizedContent = stripHtmlComments(stripCodeFences(content));
+  const escapedTarget = escapeRegExp(target);
+
+  const inlineLinkPattern = new RegExp(`\\[[^\\]]+\\]\\([^)]*${escapedTarget}[^)]*\\)`);
+  if (inlineLinkPattern.test(normalizedContent)) {
+    return true;
   }
+
+  const autoLinkPattern = new RegExp(`<[^>]*${escapedTarget}[^>]*>`);
+  if (autoLinkPattern.test(normalizedContent)) {
+    return true;
+  }
+
+  const referenceUsePattern = /\[[^\]]+\]\[([^\]]+)\]/g;
+  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^""]+[""])?$/gm;
+
+  const usedRefs = new Set();
+  let useMatch;
+  while ((useMatch = referenceUsePattern.exec(normalizedContent)) !== null) {
+    usedRefs.add(useMatch[1].toLowerCase());
+  }
+
+  let defMatch;
+  while ((defMatch = referenceDefPattern.exec(normalizedContent)) !== null) {
+    const ref = defMatch[1].toLowerCase();
+    const href = defMatch[2].replace(/^<|>$/g, "");
+    if (usedRefs.has(ref) && href.includes(target)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function collectValidationErrors({ plan, connectivity, checklist, docsIndex }) {
+  const errors = [];
+
+  const planHeadingIndex = new Map(
+    getMarkdownHeadings(plan).map((heading) => [heading.text, heading.line]),
+  );
+
+  requiredPlanHeadings.forEach((heading) => {
+    if (!planHeadingIndex.has(heading)) {
+      errors.push(`Не найден обязательный heading в migration plan: ${heading}`);
+    }
+  });
+
+  requiredChecklistChecks.forEach(({ label, pattern }) => {
+    if (!pattern.test(checklist)) {
+      errors.push(`Не найден обязательный checklist-паттерн (${label}) в docs/verification/ffa-ui-parity-checklist.md`);
+    }
+  });
+
+  const connectivityText = stripCodeFences(connectivity);
+  requiredConnectivityMentions.forEach((mention) => {
+    if (!connectivityText.includes(mention)) {
+      errors.push(`Не найден обязательный пилот в docs/research/dioxus-ffa-pilot-connectivity-map.md: ${mention}`);
+    }
+  });
+
+  requiredIndexRefs.forEach((refPath) => {
+    if (!hasMarkdownLink(docsIndex, refPath)) {
+      errors.push(`Не найдена обязательная markdown-ссылка в docs/index.md: ${refPath}`);
+    }
+  });
+
+  return errors.sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 try {
-  const planPath = assertFileExists(requiredDocs[0]);
-  const connectivityPath = assertFileExists(requiredDocs[1]);
-  const checklistPath = assertFileExists(requiredDocs[2]);
+  const docs = readRequiredDocs();
+  const errors = collectValidationErrors(docs);
 
-  const plan = readFileSync(planPath, "utf8");
-  const checklist = readFileSync(checklistPath, "utf8");
-  const connectivity = readFileSync(connectivityPath, "utf8");
-
-  requiredPlanSections.forEach((section) => {
-    assertContains(plan, section, "plan section");
-  });
-
-  requiredChecklistItems.forEach((item) => {
-    assertContains(checklist, item, "checklist item");
-  });
-
-  assertContains(
-    connectivity,
-    "rustok-pages",
-    "pilot connectivity map should include rustok-pages",
-  );
-  assertContains(
-    connectivity,
-    "rustok-search",
-    "pilot connectivity map should include rustok-search",
-  );
+  if (errors.length > 0) {
+    console.error("[verify-ffa-ui-migration-contract] FAIL");
+    errors.forEach((error) => console.error(`- ${error}`));
+    process.exit(1);
+  }
 
   console.log("[verify-ffa-ui-migration-contract] PASS");
   console.log("Проверены обязательные документы и baseline-контракты FFA migration.");

@@ -1,6 +1,7 @@
 mod api;
 mod i18n;
 mod model;
+mod transport;
 
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
@@ -34,7 +35,7 @@ pub fn RegionView() -> impl IntoView {
     let resource = Resource::new_blocking(
         move || (selected_region_id.clone(), selected_locale.clone()),
         move |(selected_region_id, locale)| async move {
-            api::fetch_storefront_regions(selected_region_id, locale).await
+            transport::fetch_regions(selected_region_id, locale).await
         },
     );
 

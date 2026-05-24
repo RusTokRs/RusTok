@@ -2,6 +2,7 @@ mod api;
 mod core;
 mod i18n;
 mod model;
+mod transport;
 
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
@@ -37,7 +38,7 @@ pub fn BlogView() -> impl IntoView {
 
     let posts_resource = Resource::new_blocking(
         move || (selected_slug.clone(), selected_locale.clone()),
-        move |(post_slug, locale)| async move { api::fetch_storefront_blog(post_slug, locale).await },
+        move |(post_slug, locale)| async move { transport::fetch_blog(post_slug, locale).await },
     );
 
     view! {
