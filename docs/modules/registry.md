@@ -63,6 +63,12 @@ capability crate-ов и host-приложений в RusToK.
 | `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
 | `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` |
 | `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` |
+| `customer` | admin | `in_progress` | `in_progress` | `crates/rustok-customer/docs/implementation-plan.md` |
+| `pricing` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pricing/docs/implementation-plan.md` |
+| `inventory` | admin | `in_progress` | `in_progress` | `crates/rustok-inventory/docs/implementation-plan.md` |
+| `order` | admin | `in_progress` | `in_progress` | `crates/rustok-order/docs/implementation-plan.md` |
+| `payment` | no module-owned UI | `in_progress` | `in_progress` | `crates/rustok-payment/docs/implementation-plan.md` |
+| `fulfillment` | admin | `in_progress` | `in_progress` | `crates/rustok-fulfillment/docs/implementation-plan.md` |
 
 ## Hotspot contract (DOC-12 / H1)
 

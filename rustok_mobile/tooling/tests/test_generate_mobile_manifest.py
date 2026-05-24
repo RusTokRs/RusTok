@@ -110,24 +110,126 @@ class GenerateMobileManifestTests(unittest.TestCase):
         self.assertIn('"route_segment": "blog"', payload)
         self.assertIn('"child_pages"', payload)
 
+    def test_scan_modules_raises_on_duplicate_route_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+            (root / "crates/mod-b").mkdir(parents=True)
 
-if __name__ == "__main__":
-    unittest.main()
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "blog"
+
+                    [provides.admin_ui]
+                    route_segment = "content"
+                    """
+                ).strip()
+            )
+            (root / "crates/mod-b/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "forum"
+
+                    [provides.admin_ui]
+                    route_segment = "content"
+                    """
+                ).strip()
+            )
 
 
-    def test_render_snapshot_contains_required_ffa_keys(self):
+            with self.assertRaises(ValueError) as ctx:
+                scan_modules(root)
+            self.assertIn("content", str(ctx.exception))
+            self.assertIn("already declared in", str(ctx.exception))
+
+    def test_scan_modules_includes_permissions_and_locale_namespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "blog"
+
+                    [provides.admin_ui]
+                    route_segment = "blog"
+                    locale_namespace = "content_blog"
+                    permissions = ["modules.read", "modules.read", " "]
+                    """
+                ).strip()
+            )
+
+            modules = scan_modules(root)
+            self.assertEqual(modules[0]["locale_namespace"], "content_blog")
+            self.assertEqual(modules[0]["permissions"], ["modules.read"])
+
+    def test_render_snapshot_uses_module_locale_namespace_fallback(self):
         payload = render_snapshot_json(
             [
                 {
                     "module_key": "rustok_blog",
-                    "route_segment": "blog",
+                    "module_slug": "blog",
+                    "route_segment": "content",
                     "nav_label": "Blog",
                     "icon": "article",
-                    "child_pages": [{"subpath": "posts", "title": "Posts"}],
+                    "permissions": ["blog.read"],
+                    "child_pages": [],
                 }
             ]
         )
-        self.assertIn('"module_slug": "blog"', payload)
-        self.assertIn('"surface_kind": "admin_mobile"', payload)
-        self.assertIn('"route_segment": "blog"', payload)
-        self.assertIn('"child_pages"', payload)
+        self.assertIn('"locale_namespace": "blog"', payload)
+        self.assertIn('"permissions": [', payload)
+        self.assertIn('"blog.read"', payload)
+
+    def test_scan_modules_normalizes_locale_namespace_and_sorts_permissions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "blog"
+
+                    [provides.admin_ui]
+                    route_segment = "blog"
+                    locale_namespace = "Content Blog"
+                    permissions = ["z.read", "a.read", "z.read"]
+                    """
+                ).strip()
+            )
+
+            modules = scan_modules(root)
+            self.assertEqual(modules[0]["locale_namespace"], "content_blog")
+            self.assertEqual(modules[0]["permissions"], ["a.read", "z.read"])
+
+    def test_scan_modules_normalizes_permissions_to_lowercase(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "blog"
+
+                    [provides.admin_ui]
+                    route_segment = "blog"
+                    permissions = ["Blog.Read", "BLOG.READ", "blog.write"]
+                    """
+                ).strip()
+            )
+
+            modules = scan_modules(root)
+            self.assertEqual(modules[0]["permissions"], ["blog.read", "blog.write"])
+
+
+if __name__ == "__main__":
+    unittest.main()

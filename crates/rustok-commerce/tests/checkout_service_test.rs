@@ -2069,6 +2069,117 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
 }
 
 #[tokio::test]
+async fn complete_checkout_rejects_reentry_for_checking_out_cart_without_artifacts() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                tax_provider_id: None,
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                country_tax_policies: None,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-reentry-guard-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: serde_json::json!({ "source": "checkout-reentry-guard-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-reentry-guard-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("CHK-REENTRY-1".to_string()),
+                title: "Checkout Reentry Guard Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let checking_out = cart_service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    assert_eq!(checking_out.status, "checking_out");
+
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-reentry-guard-test" }),
+            },
+        )
+        .await
+        .expect_err("re-entry from checking_out without artifacts must fail");
+
+    match error {
+        CheckoutError::InvalidTransition { from, to } => {
+            assert_eq!(from, "checking_out");
+            assert_eq!(to, "checking_out");
+        }
+        other => panic!("expected invalid transition, got {other:?}"),
+    }
+
+    let cart_after = cart_service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(cart_after.status, "checking_out");
+    assert!(cart_after.completed_at.is_none());
+}
+
+#[tokio::test]
 async fn checkout_failure_releases_cart_back_to_active() {
     let (db, cart_service, checkout, _) = setup().await;
     let tenant_id = Uuid::new_v4();

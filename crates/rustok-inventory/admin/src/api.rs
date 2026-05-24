@@ -77,6 +77,30 @@ fn graphql_url() -> String {
     }
 }
 
+
+fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn normalize_locale_filter(locale: Option<String>) -> Option<String> {
+    normalize_optional_trimmed(locale)
+}
+
+fn normalize_search_filter(search: Option<String>) -> Option<String> {
+    normalize_optional_trimmed(search)
+}
+
+fn normalize_status_filter(status: Option<String>) -> Option<String> {
+    normalize_optional_trimmed(status).map(|value| value.to_ascii_uppercase())
+}
+
 async fn request<V, T>(
     query: &str,
     variables: Option<V>,
@@ -122,11 +146,11 @@ pub async fn fetch_products(
         Some(TenantScopedVariables {
             tenant_id,
             extra: ProductsVariables {
-                locale,
+                locale: normalize_locale_filter(locale),
                 filter: ProductsFilter {
-                    status,
+                    status: normalize_status_filter(status),
                     vendor: None,
-                    search,
+                    search: normalize_search_filter(search),
                     page: Some(1),
                     per_page: Some(24),
                 },
@@ -150,11 +174,67 @@ pub async fn fetch_product(
         PRODUCT_QUERY,
         Some(TenantScopedVariables {
             tenant_id,
-            extra: ProductVariables { id, locale },
+            extra: ProductVariables {
+                id,
+                locale: normalize_locale_filter(locale),
+            },
         }),
         token,
         tenant_slug,
     )
     .await?;
     Ok(response.product)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        normalize_locale_filter, normalize_optional_trimmed, normalize_search_filter,
+        normalize_status_filter,
+    };
+
+    #[test]
+    fn normalize_optional_trimmed_keeps_non_blank_and_drops_blank_values() {
+        assert_eq!(
+            normalize_optional_trimmed(Some("  value  ".to_string())),
+            Some("value".to_string())
+        );
+        assert_eq!(normalize_optional_trimmed(Some("   ".to_string())), None);
+        assert_eq!(normalize_optional_trimmed(None), None);
+    }
+
+    #[test]
+    fn normalize_locale_filter_trims_and_drops_blank_values() {
+        assert_eq!(
+            normalize_locale_filter(Some("  de-DE  ".to_string())),
+            Some("de-DE".to_string())
+        );
+        assert_eq!(normalize_locale_filter(Some("   ".to_string())), None);
+        assert_eq!(normalize_locale_filter(None), None);
+    }
+
+    #[test]
+    fn normalize_search_filter_trims_and_drops_blank_values() {
+        assert_eq!(
+            normalize_search_filter(Some("  winter jacket  ".to_string())),
+            Some("winter jacket".to_string())
+        );
+        assert_eq!(normalize_search_filter(Some("   ".to_string())), None);
+        assert_eq!(normalize_search_filter(None), None);
+    }
+
+    #[test]
+    fn normalize_status_filter_trims_and_uppercases_values() {
+        assert_eq!(
+            normalize_status_filter(Some(" active ".to_string())),
+            Some("ACTIVE".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_status_filter_drops_blank_values() {
+        assert_eq!(normalize_status_filter(Some("   ".to_string())), None);
+        assert_eq!(normalize_status_filter(None), None);
+    }
 }

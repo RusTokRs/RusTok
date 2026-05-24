@@ -23,7 +23,7 @@
     "surface_kind": "admin_mobile",
     "route_segment": "channels",
     "permissions": [],
-    "locale_namespace": "channels",
+    "locale_namespace": "channel",
     "child_pages": [
       {
         "subpath": "apps",
@@ -58,7 +58,7 @@
     "surface_kind": "admin_mobile",
     "route_segment": "customers",
     "permissions": [],
-    "locale_namespace": "customers",
+    "locale_namespace": "customer",
     "child_pages": []
   },
   {
@@ -117,7 +117,7 @@
     "surface_kind": "admin_mobile",
     "route_segment": "orders",
     "permissions": [],
-    "locale_namespace": "orders",
+    "locale_namespace": "order",
     "child_pages": []
   },
   {
@@ -176,7 +176,7 @@
     "surface_kind": "admin_mobile",
     "route_segment": "regions",
     "permissions": [],
-    "locale_namespace": "regions",
+    "locale_namespace": "region",
     "child_pages": []
   },
   {
