@@ -118,6 +118,30 @@ pub fn row_is_busy_for_post(busy_key: Option<&str>, post_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn edit_action_label(is_editing: bool, editing_label: String, edit_label: String) -> String {
+    if is_editing {
+        editing_label
+    } else {
+        edit_label
+    }
+}
+
+pub fn publish_action_label(
+    is_published: bool,
+    unpublish_label: String,
+    publish_label: String,
+) -> String {
+    if is_published {
+        unpublish_label
+    } else {
+        publish_label
+    }
+}
+
+pub fn should_show_archive_action(is_archived: bool) -> bool {
+    !is_archived
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +228,23 @@ mod tests {
         );
         assert!(row_is_busy_for_post(Some("edit:42"), "42"));
         assert!(!row_is_busy_for_post(Some("edit:41"), "42"));
+        assert_eq!(
+            edit_action_label(true, "Editing".to_string(), "Edit".to_string()),
+            "Editing".to_string()
+        );
+        assert_eq!(
+            edit_action_label(false, "Editing".to_string(), "Edit".to_string()),
+            "Edit".to_string()
+        );
+        assert_eq!(
+            publish_action_label(true, "Unpublish".to_string(), "Publish".to_string()),
+            "Unpublish".to_string()
+        );
+        assert_eq!(
+            publish_action_label(false, "Unpublish".to_string(), "Publish".to_string()),
+            "Publish".to_string()
+        );
+        assert!(should_show_archive_action(false));
+        assert!(!should_show_archive_action(true));
     }
 }
