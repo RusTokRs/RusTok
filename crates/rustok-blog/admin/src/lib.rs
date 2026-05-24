@@ -189,7 +189,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_publish_now,
                         default_locale.as_str(),
                     );
-                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.loadPost",
@@ -281,7 +281,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     submit_query_writer.replace_value(AdminQueryKey::PostId.as_str(), post_id);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         &t(
                             submit_ui_locale.as_deref(),
                             "blog.error.savePost",
@@ -343,7 +343,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
+                        set_submit_error.set(Some(WritePathIssue::with_context(
                             &t(
                                 ui_locale.as_deref(),
                                 "blog.error.updateStatus",
@@ -394,7 +394,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.archivePost",
@@ -449,7 +449,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     ))));
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::new(core::error_with_context(
+                    set_submit_error.set(Some(WritePathIssue::with_context(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.deletePost",

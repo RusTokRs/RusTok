@@ -392,6 +392,39 @@ fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() 
 }
 
 #[test]
+fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    let graphql_error_shape_fragments = [
+        ".errors",
+        "graphQLErrors",
+        "extensions",
+        "reason_code",
+        "message.as_str()",
+        "errors.first()",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in graphql_error_shape_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse GraphQL error payload shape fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
 fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");
