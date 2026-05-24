@@ -80,6 +80,7 @@
 - [x] `rustok-pages` — выполнен первый slice декомпозиции: в `storefront` выделен `core` слой
   для selected-page presentation logic; Leptos UI делегирует эту логику в `core`.
 - [x] `rustok-search` — slices #1-#9 выполнены по storefront/admin core extraction plan.
+- [x] `rustok-blog` — storefront slice #1 завершён: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`, UI использует `core::*` без изменения dual-path transport контракта.
 
 ### Что уже сделано в `rustok-pages`
 
@@ -185,3 +186,8 @@
 - [x] Validate + module test evidence attached in trackers.
 - [x] Documentation double-check completed and synchronized.
 - [x] Pilot can be treated as baseline reference sample for following module slices.
+
+
+### Additional iteration evidence
+
+- blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` используется `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
