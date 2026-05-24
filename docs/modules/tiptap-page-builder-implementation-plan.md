@@ -540,7 +540,7 @@ Go/No-Go для перехода в следующую волну:
 - [ ] Зафиксировать UX-semantic для disabled publish capability (typed error + operator guidance + trace-id).
 
 **Артефакты Sprint 2:**
-- fallback regression report (admin + storefront);
+- fallback regression report (admin + storefront), включая baseline verify command: `node scripts/verify/verify-page-builder-fallback-profiles.mjs`;
 - incidents/alerts dry log по disable-сценариям;
 - обновлённый runbook переключений tenant-by-tenant.
 
