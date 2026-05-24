@@ -285,6 +285,96 @@ mod map_server_fn_error_tests {
     }
 
     #[test]
+    fn composition_runtime_taxonomy_matrix_is_forwarded_without_remapping() {
+        let cases = [
+            "REVISION_CONFLICT: Platform composition revision conflict: expected 7, current 11",
+            "INVALID_MODULE: module 'bad slug' is invalid",
+            "REQUIRED_MODULE: module 'pages' is required",
+            "UNKNOWN_DEPENDENCY: module 'checkout' references unknown dependency 'pricing'",
+            "INTERNAL_ERROR: failed to enqueue build",
+        ];
+
+        for case in cases {
+            let mapped = map_server_fn_error(ServerFnError::new(format!("GraphQL error: {case}")));
+            assert!(
+                matches!(mapped, GraphqlHttpError::Graphql(message) if message == case),
+                "expected composition taxonomy message to be forwarded unchanged for case {case}"
+            );
+        }
+    }
+
+    #[test]
+    fn composition_manifest_fragments_are_forwarded_without_local_parsing() {
+        let payload = "GraphQL error: REVISION_CONFLICT {\"extensions\":{\"code\":\"REVISION_CONFLICT\",\"manifest_ref\":\"platform_state:42\",\"manifest_revision\":42,\"expected_revision\":41}}";
+        let mapped = map_server_fn_error(ServerFnError::new(payload));
+
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message)
+                if message.contains("\"manifest_ref\":\"platform_state:42\"")
+                && message.contains("\"manifest_revision\":42")
+                && message.contains("\"expected_revision\":41")),
+            "expected manifest revision fragments to be forwarded unchanged without local parsing"
+        );
+    }
+
+    #[test]
+    fn graphql_prefixed_composition_payload_with_unauthorized_word_stays_graphql_variant() {
+        let mapped = map_server_fn_error(ServerFnError::new(
+            "GraphQL error: REVISION_CONFLICT: Unauthorized actor tried stale revision write",
+        ));
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message)
+                if message == "REVISION_CONFLICT: Unauthorized actor tried stale revision write"),
+            "GraphQL-prefixed composition payload must remain Graphql variant and not become Unauthorized transport error"
+        );
+    }
+
+    #[test]
+    fn graphql_prefixed_composition_payload_with_network_word_stays_graphql_variant() {
+        let mapped = map_server_fn_error(ServerFnError::new(
+            "GraphQL error: INTERNAL_ERROR: Network jitter during build enqueue",
+        ));
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message)
+                if message == "INTERNAL_ERROR: Network jitter during build enqueue"),
+            "GraphQL-prefixed composition payload must remain Graphql variant and not become Network transport error"
+        );
+    }
+
+    #[test]
+    fn lifecycle_and_composition_taxonomy_with_transport_words_keep_graphql_variant_matrix() {
+        let cases = [
+            "GraphQL error: UNKNOWN_MODULE: Unauthorized module slug access",
+            "GraphQL error: MODULE_HOOK_FAILED: Network post-hook timeout",
+            "GraphQL error: REVISION_CONFLICT: Unauthorized stale revision write",
+            "GraphQL error: INTERNAL_ERROR: Network build queue unavailable",
+        ];
+
+        for case in cases {
+            let mapped = map_server_fn_error(ServerFnError::new(case));
+            let expected = case.trim_start_matches("GraphQL error: ").to_string();
+            assert!(
+                matches!(mapped, GraphqlHttpError::Graphql(message) if message == expected),
+                "taxonomy payload `{case}` must stay Graphql variant even with transport-like words"
+            );
+        }
+    }
+
+    #[test]
+    fn graphql_prefixed_composition_extensions_with_transport_words_stay_graphql_variant() {
+        let payload = "GraphQL error: REVISION_CONFLICT {\"extensions\":{\"code\":\"REVISION_CONFLICT\",\"manifest_ref\":\"platform_state:44\",\"manifest_revision\":44,\"expected_revision\":43,\"detail\":\"Unauthorized actor during Network partition\"}}";
+        let mapped = map_server_fn_error(ServerFnError::new(payload));
+
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message)
+                if message.contains("\"code\":\"REVISION_CONFLICT\"")
+                && message.contains("\"manifest_ref\":\"platform_state:44\"")
+                && message.contains("Unauthorized actor during Network partition")),
+            "GraphQL-prefixed composition extensions payload must remain Graphql variant and preserve extension fragments verbatim"
+        );
+    }
+
+    #[test]
     fn maps_http_prefix_and_preserves_payload() {
         let mapped = normalize_server_fn_error_message("Http error: 409 conflict");
         assert!(matches!(mapped, GraphqlHttpError::Http(message) if message == "409 conflict"));
