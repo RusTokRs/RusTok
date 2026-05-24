@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #27 completed (admin default reset flow switched to shared `reset_form_action` callback in edit/effect branches, dual-path transport unchanged).
+- Last checkpoint: FFA slice #28 completed (admin delete success branch now reuses shared `reset_form_action` callback, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-24T20:45:00Z
+- Last updated at (UTC): 2026-05-24T21:20:00Z
 
 ## FFA/FBA status
 
@@ -150,6 +150,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 25: admin selected-post load fallback reset path deduplicated into one helper closure (`reset_form_to_defaults`) to keep UI effect branch thinner.
 - [x] Slice 26: admin delete-path reset predicate switched from inline `is_editing_post(...)` to `core::should_reset_form_after_delete(...)`.
 - [x] Slice 27: admin selected-post/effect default reset switched from inline `reset_form(...)` to shared `reset_form_action.run(())` callback.
+- [x] Slice 28: admin delete success branch reset switched from inline `reset_form(...)` to shared `reset_form_action.run(())` callback.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

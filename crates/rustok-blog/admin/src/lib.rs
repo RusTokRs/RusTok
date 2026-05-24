@@ -384,13 +384,13 @@ pub fn BlogAdmin() -> impl IntoView {
     });
 
     let delete_post_locale = ui_locale.clone();
-    let delete_post_default_locale = default_locale.clone();
+    let delete_post_reset_form_action = reset_form_action;
     let delete_query_writer = query_writer.clone();
     let delete_post = Callback::new(move |post_id: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = delete_post_locale.clone();
-        let default_locale = delete_post_default_locale.clone();
+        let reset_form_to_defaults = delete_post_reset_form_action;
         let delete_query_writer = delete_query_writer.clone();
         set_submit_error.set(None);
         set_busy_key.set(Some(core::busy_key_for_delete(post_id.as_str())));
@@ -403,18 +403,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         post_id.as_str(),
                     ) {
                         delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
-                        reset_form(
-                            set_editing_post_id,
-                            set_title,
-                            set_slug,
-                            set_excerpt,
-                            set_body,
-                            set_locale,
-                            set_body_format,
-                            set_tags_input,
-                            set_publish_now,
-                            default_locale.as_str(),
-                        );
+                        reset_form_to_defaults.run(());
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
