@@ -22,7 +22,8 @@ use submission_adapters::{
     SitemapSubmissionAdapter, SitemapSubmissionRuntime, SitemapSubmitEndpoint,
 };
 use submission_aggregation::{
-    push_submission_failure, SitemapSubmissionSummary, SITEMAP_SUBMIT_MAX_ERROR_LEN,
+    push_endpoint_status, push_submission_failure, SitemapSubmissionSummary,
+    SITEMAP_SUBMIT_MAX_ERROR_LEN,
 };
 
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
@@ -300,6 +301,9 @@ impl SeoService {
         tracing::debug!(
             success_count = summary.success_count,
             failure_count = summary.failure_count,
+            endpoint_status_count = summary.endpoint_statuses.len(),
+            endpoint_statuses = ?summary.endpoint_statuses,
+            omitted_endpoint_status_count = summary.omitted_endpoint_status_count,
             "SEO sitemap endpoint submission finished"
         );
         match summary.into_error() {
@@ -319,11 +323,14 @@ impl SeoService {
             failure_count: 0,
             failures: Vec::new(),
             omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
         };
         for endpoint in endpoints {
             let Some(url) = build_sitemap_submission_url(endpoint.as_str(), sitemap_index_url)
             else {
                 summary.failure_count += 1;
+                push_endpoint_status(&mut summary, format!("invalid endpoint `{endpoint}`"));
                 push_submission_failure(&mut summary, format!("invalid endpoint: {endpoint}"));
                 continue;
             };
@@ -332,9 +339,13 @@ impl SeoService {
                 request_url: url,
             };
             match adapter.submit_sitemap_index(request).await {
-                Ok(()) => summary.success_count += 1,
+                Ok(()) => {
+                    summary.success_count += 1;
+                    push_endpoint_status(&mut summary, format!("ok endpoint `{endpoint}`"));
+                }
                 Err(message) => {
                     summary.failure_count += 1;
+                    push_endpoint_status(&mut summary, format!("failed endpoint `{endpoint}`"));
                     push_submission_failure(&mut summary, message);
                 }
             }
@@ -343,13 +354,6 @@ impl SeoService {
     }
 }
 
-fn push_submission_failure(summary: &mut SitemapSubmissionSummary, message: String) {
-    if summary.failures.len() < SITEMAP_SUBMIT_MAX_FAILURE_DETAILS {
-        summary.failures.push(message);
-    } else {
-        summary.omitted_failure_count += 1;
-    }
-}
 
 fn disabled_sitemap_status() -> SeoSitemapStatusRecord {
     SeoSitemapStatusRecord {
@@ -1063,6 +1067,8 @@ mod tests {
             failure_count: 0,
             failures: Vec::new(),
             omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
         };
         assert_eq!(summary.into_error(), None);
     }
@@ -1074,6 +1080,8 @@ mod tests {
             failure_count: 1,
             failures: Vec::new(),
             omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
         };
 
         let message = summary.into_error().expect("error summary expected");
@@ -1090,12 +1098,95 @@ mod tests {
             failure_count: 1,
             failures: vec!["x".repeat(SITEMAP_SUBMIT_MAX_ERROR_LEN + 200)],
             omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
         };
         let message = summary.into_error().expect("error expected");
         assert!(message.len() <= SITEMAP_SUBMIT_MAX_ERROR_LEN + 3);
         assert!(message.ends_with("..."));
     }
 
+
+    #[test]
+    fn submission_summary_truncates_individual_failure_details_deterministically() {
+        let mut summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 1,
+            failures: Vec::new(),
+            omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
+        };
+        push_submission_failure(&mut summary, "x".repeat(1200));
+        assert_eq!(summary.failures.len(), 1);
+        assert!(summary.failures[0].len() <= 515);
+        assert!(summary.failures[0].ends_with("..."));
+    }
+
+
+
+    #[test]
+    fn submission_summary_truncation_handles_unicode_without_panics() {
+        let mut summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 1,
+            failures: Vec::new(),
+            omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
+        };
+
+        push_submission_failure(
+            &mut summary,
+            format!("ошибка endpoint: {}", "Ж".repeat(300)),
+        );
+        super::push_endpoint_status(
+            &mut summary,
+            format!("ok endpoint `{}`", "путь/".repeat(200)),
+        );
+
+        assert_eq!(summary.failures.len(), 1);
+        assert!(summary.failures[0].ends_with("..."));
+        assert!(std::str::from_utf8(summary.failures[0].as_bytes()).is_ok());
+
+        assert_eq!(summary.endpoint_statuses.len(), 1);
+        assert!(summary.endpoint_statuses[0].ends_with("..."));
+        assert!(std::str::from_utf8(summary.endpoint_statuses[0].as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn submission_summary_truncates_endpoint_status_entries_deterministically() {
+        let mut summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 0,
+            failures: Vec::new(),
+            omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
+        };
+        let long_status = format!("ok endpoint `{}`", "https://very-long-endpoint.example.com/".repeat(20));
+        super::push_endpoint_status(&mut summary, long_status);
+        assert_eq!(summary.endpoint_statuses.len(), 1);
+        assert!(summary.endpoint_statuses[0].len() <= 163);
+        assert!(summary.endpoint_statuses[0].ends_with("..."));
+    }
+
+    #[test]
+    fn submission_summary_omits_extra_endpoint_statuses_deterministically() {
+        let mut summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 0,
+            failures: Vec::new(),
+            omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
+        };
+        for idx in 0..40 {
+            super::push_endpoint_status(&mut summary, format!("status #{idx}"));
+        }
+        assert_eq!(summary.endpoint_statuses.len(), 24);
+        assert_eq!(summary.omitted_endpoint_status_count, 16);
+    }
     #[test]
     fn submission_summary_omits_extra_failure_details_deterministically() {
         let mut summary = SitemapSubmissionSummary {
@@ -1103,6 +1194,8 @@ mod tests {
             failure_count: 11,
             failures: Vec::new(),
             omitted_failure_count: 0,
+            endpoint_statuses: Vec::new(),
+            omitted_endpoint_status_count: 0,
         };
         for idx in 0..11 {
             push_submission_failure(&mut summary, format!("failure #{idx}"));
