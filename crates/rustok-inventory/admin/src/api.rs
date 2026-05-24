@@ -238,3 +238,29 @@ mod tests {
         assert_eq!(normalize_status_filter(None), None);
     }
 }
+
+
+#[cfg(test)]
+mod regression_tests {
+    use super::{normalize_optional_trimmed, normalize_status_filter};
+
+    #[test]
+    fn normalize_optional_trimmed_handles_tabs_and_newlines() {
+        assert_eq!(
+            normalize_optional_trimmed(Some("
+	  inventory  	".to_string())),
+            Some("inventory".to_string())
+        );
+        assert_eq!(normalize_optional_trimmed(Some("
+	  	".to_string())), None);
+    }
+
+    #[test]
+    fn normalize_status_filter_normalizes_mixed_case_and_whitespace() {
+        assert_eq!(
+            normalize_status_filter(Some("  aRcHiVeD
+".to_string())),
+            Some("ARCHIVED".to_string())
+        );
+    }
+}
