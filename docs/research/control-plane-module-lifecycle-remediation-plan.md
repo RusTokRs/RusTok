@@ -657,7 +657,7 @@ rollback-стратегии и Definition of Done по итерациям.
 
 ### 3) Документация
 
-- [ ] Central docs и локальные docs описывают фактический runtime contract.
+- [x] Central docs и локальные docs описывают фактический runtime contract (обновлены central `docs/architecture/modules.md`, `docs/modules/manifest.md` и локальные `apps/server/docs/README.md`, `apps/admin/docs/README.md` под DB-backed control-plane/lifecycle contract).
 - [x] ADR(ы) добавлены/обновлены при изменении архитектурного контракта.
 - [x] `docs/index.md` содержит ссылки на все новые/переименованные документы.
 
@@ -843,3 +843,10 @@ rollback-стратегии и Definition of Done по итерациям.
   чтобы устранить риск snapshot/hash drift между surfaces.
 - Чекбоксы P1.1/Iteration D `Полный canonical manifest snapshot serializer` переведены в `[x]`;
   незакрытым остаётся cross-surface parity хвост GraphQL/Leptos SSR и финальный минимальный verify bundle.
+
+
+### Актуализация 2026-05-24 (итерация 66)
+
+- Закрыт release-gate пункт документации: central и локальные документы синхронизированы с фактическим runtime contract control-plane.
+- В central docs зафиксированы DB-backed `platform_state` runtime source, atomic CAS+build enqueue и canonical SHA-256 snapshot/hash contract; в `apps/server`/`apps/admin` локальных docs закреплён GraphQL-only toggle entrypoint и отсутствие локального lifecycle SQL duplicate path.
+- На этом шаге незакрытым operational хвостом остаётся только полный зелёный прогон минимального verification-набора (fmt + test bundle).

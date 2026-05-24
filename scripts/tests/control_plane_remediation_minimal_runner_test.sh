@@ -39,9 +39,29 @@ exec /usr/bin/python3 "$@"
 SH
 chmod +x "$FIXTURE_ROOT/fakebin/python3"
 
+cat > "$FIXTURE_ROOT/fakebin/flock" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/bin/flock "$@"
+SH
+chmod +x "$FIXTURE_ROOT/fakebin/flock"
+
 RUNNER="$FIXTURE_ROOT/scripts/verify/run-control-plane-remediation-minimal.sh"
 
 bash -n "$RUNNER"
+
+# timeout preflight: timeout requested but binary missing from PATH must fail fast
+NO_TIMEOUT_OUTPUT="$(mktemp)"
+if (cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin" RUSTOK_VERIFY_STEP_TIMEOUT=1s "$RUNNER" >"$NO_TIMEOUT_OUTPUT" 2>&1); then
+  echo "runner unexpectedly succeeded without timeout binary" >&2
+  cat "$NO_TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+if ! rg -q "required tool is missing: timeout" "$NO_TIMEOUT_OUTPUT"; then
+  echo "runner did not report missing timeout preflight error" >&2
+  cat "$NO_TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
 
 # lock guard: pre-acquire lock and assert runner exits with lock message
 LOCK_FILE="$FIXTURE_ROOT/target/.control-plane-remediation-minimal.lock"
@@ -73,7 +93,8 @@ for pattern in \
   "==> manifest validation" \
   "==> module contract validation" \
   "==> dependabot directory contract" \
-  "Control-plane remediation minimal verification: PASS"
+  "Control-plane remediation minimal verification: PASS" \
+  "--> migration tests: PASS"
 do
   if ! rg -q "$pattern" "$STEP_OUTPUT"; then
     echo "expected pattern missing: $pattern" >&2
@@ -82,6 +103,17 @@ do
   fi
 done
 
+if ! rg -q "Control-plane remediation minimal verification: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
+  echo "success scenario missing total duration suffix" >&2
+  cat "$STEP_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "--> migration tests: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
+  echo "success scenario missing per-step duration suffix" >&2
+  cat "$STEP_OUTPUT" >&2
+  exit 1
+fi
 
 # timeout mode: ensure step timeout wiring is active and surfaces timeout failure
 cat > "$FIXTURE_ROOT/fakebin/cargo" <<'SH'
@@ -109,6 +141,36 @@ fi
 
 if rg -q "==> module lifecycle tests" "$TIMEOUT_OUTPUT"; then
   echo "timeout scenario unexpectedly progressed past migration step" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "Failed step: migration tests" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report failed step summary" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "Failed command: cargo test -p migration" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report failed command summary" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "Control-plane remediation minimal verification: FAIL" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report fail summary" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "Exit code: [0-9]+" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report exit code" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
+if ! rg -q "Elapsed: [0-9]{2}h:[0-9]{2}m:[0-9]{2}s" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report elapsed duration" >&2
   cat "$TIMEOUT_OUTPUT" >&2
   exit 1
 fi

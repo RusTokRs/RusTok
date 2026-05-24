@@ -579,7 +579,9 @@ pub fn PagesAdmin() -> impl IntoView {
     let project_parse_error = Signal::derive(move || parsed_project.get().err());
 
     let compatibility_warning = Signal::derive(move || {
-        !body_format.get().eq_ignore_ascii_case(core::GRAPESJS_FORMAT)
+        !body_format
+            .get()
+            .eq_ignore_ascii_case(core::GRAPESJS_FORMAT)
             || !existing_blocks.get().is_empty()
     });
 

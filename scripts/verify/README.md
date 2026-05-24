@@ -230,6 +230,7 @@ npm run verify:page-builder:consumer:forum
 
 Что проверяет:
 - `builder_contract_version` между `rustok-page-builder` (provider) и `rustok-pages` (consumer);
+- `consumer_min_version` в provider-манифесте и условие `consumer.builder_contract_version >= provider.consumer_min_version`;
 - `contract_version` в consumer-манифесте относительно версии provider.
 
 **Severity:** HIGH. Drift версий контракта блокирует безопасный rollout между Wave 0/Wave 1.

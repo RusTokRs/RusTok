@@ -191,5 +191,13 @@ mod tests {
             "1.0",
             "provider builder contract version drifted"
         );
+        assert_eq!(
+            provider
+                .get("consumer_min_version")
+                .and_then(toml::Value::as_str)
+                .expect("fba.provider.consumer_min_version is required"),
+            "1.0",
+            "provider consumer minimum version drifted"
+        );
     }
 }
