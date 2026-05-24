@@ -8,7 +8,7 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #19 completed (admin tags input formatting moved to `core`, dual-path transport unchanged).
+- Last checkpoint: FFA slice #24 completed (admin submit button label mapping moved to `core::submit_action_label`, dual-path transport unchanged).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
@@ -16,6 +16,17 @@ packages и module metadata синхронизированы.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
 - Last updated at (UTC): 2026-05-24T18:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract;
+  - native `#[server]` + GraphQL fallback остаются параллельными путями, removal/replace GraphQL не выполнялся;
+  - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract.
+- Last verified at (UTC): 2026-05-24T18:00:00Z
+- Owner: `rustok-blog` module team
 
 ## Область работ
 
