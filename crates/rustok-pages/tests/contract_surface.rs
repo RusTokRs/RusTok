@@ -147,17 +147,56 @@ fn pages_consumer_version_satisfies_provider_minimum() {
         .and_then(toml::Value::as_str)
         .expect("fba.builder_consumer.builder_contract_version is required");
 
-    fn semver_like_key(version: &str) -> Vec<u32> {
+    fn semver_like_key(version: &str) -> Result<Vec<u32>, String> {
         version
             .split('.')
-            .map(|segment| segment.parse::<u32>().unwrap_or(0))
+            .map(|segment| {
+                if segment.is_empty() || !segment.chars().all(|char| char.is_ascii_digit()) {
+                    return Err(format!(
+                        "invalid numeric version segment in '{version}' (segment='{segment}')"
+                    ));
+                }
+                segment.parse::<u32>().map_err(|error| {
+                    format!("failed to parse numeric segment '{segment}' in '{version}': {error}")
+                })
+            })
             .collect()
     }
 
+    let consumer_key = semver_like_key(consumer_version)
+        .expect("consumer builder_contract_version must contain numeric dot segments");
+    let provider_min_key = semver_like_key(provider_min)
+        .expect("provider consumer_min_version must contain numeric dot segments");
+
     assert!(
-        semver_like_key(consumer_version) >= semver_like_key(provider_min),
+        consumer_key >= provider_min_key,
         "pages builder_contract_version={} must be >= provider consumer_min_version={}",
         consumer_version,
         provider_min
+    );
+}
+
+#[test]
+fn semver_like_guard_rejects_non_numeric_segments() {
+    fn semver_like_key(version: &str) -> Result<Vec<u32>, String> {
+        version
+            .split('.')
+            .map(|segment| {
+                if segment.is_empty() || !segment.chars().all(|char| char.is_ascii_digit()) {
+                    return Err(format!(
+                        "invalid numeric version segment in '{version}' (segment='{segment}')"
+                    ));
+                }
+                segment.parse::<u32>().map_err(|error| {
+                    format!("failed to parse numeric segment '{segment}' in '{version}': {error}")
+                })
+            })
+            .collect()
+    }
+
+    let error = semver_like_key("1.x").expect_err("non-numeric segment must be rejected");
+    assert!(
+        error.contains("invalid numeric version segment"),
+        "error must explain numeric-segment requirement, got: {error}"
     );
 }
