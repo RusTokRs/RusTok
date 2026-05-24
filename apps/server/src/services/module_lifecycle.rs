@@ -236,6 +236,7 @@ impl ModuleLifecycleService {
                 err
             );
             Self::mark_operation_failed(db, operation.id, &format!("post-hook: {err}")).await?;
+            return Err(ToggleModuleError::PostHookFailed(err.to_string()));
         }
 
         Ok(module)
