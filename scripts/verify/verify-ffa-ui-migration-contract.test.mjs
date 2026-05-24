@@ -87,9 +87,14 @@ function withFixture({ pipeline, contractCommand, docsCommand }) {
   };
 }
 
-function runVerifier(root) {
-  return spawnSync(process.execPath, [scriptPath], {
-    env: { ...process.env, RUSTOK_VERIFY_ROOT: root },
+function runVerifier(root, options = {}) {
+  const args = [scriptPath];
+  if (options.useRootArg) {
+    args.push(`--root=${root}`);
+  }
+
+  return spawnSync(process.execPath, args, {
+    env: options.useRootArg ? process.env : { ...process.env, RUSTOK_VERIFY_ROOT: root },
     encoding: "utf8",
   });
 }
@@ -160,6 +165,22 @@ test("passes when docs script uses sh variant", () => {
   try {
     const result = runVerifier(fixture.root);
     assert.equal(result.status, 0, `Expected sh docs command fixture to succeed:
+${result.stdout}
+${result.stderr}`);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+
+test("passes when root is provided via --root argument", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+  });
+
+  try {
+    const result = runVerifier(fixture.root, { useRootArg: true });
+    assert.equal(result.status, 0, `Expected --root fixture to succeed:
 ${result.stdout}
 ${result.stderr}`);
   } finally {

@@ -6,9 +6,21 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = process.env.RUSTOK_VERIFY_ROOT
-  ? path.resolve(process.env.RUSTOK_VERIFY_ROOT)
-  : path.resolve(__dirname, "../..");
+
+function resolveRepoRoot(argv, env) {
+  const rootArg = argv.find((arg) => arg.startsWith("--root="));
+  if (rootArg) {
+    return path.resolve(rootArg.slice("--root=".length));
+  }
+
+  if (env.RUSTOK_VERIFY_ROOT) {
+    return path.resolve(env.RUSTOK_VERIFY_ROOT);
+  }
+
+  return path.resolve(__dirname, "../..");
+}
+
+const repoRoot = resolveRepoRoot(process.argv.slice(2), process.env);
 
 const requiredDocs = [
   "docs/research/dioxus-ffa-ui-migration-plan.md",
