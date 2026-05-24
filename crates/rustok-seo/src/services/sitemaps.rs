@@ -16,6 +16,79 @@ use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
 const SITEMAP_SUBMIT_MAX_ERROR_LEN: usize = 4000;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SitemapSubmitEndpoint {
+    endpoint: String,
+    request_url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SitemapSubmissionSummary {
+    success_count: usize,
+    failure_count: usize,
+    failures: Vec<String>,
+}
+
+impl SitemapSubmissionSummary {
+    fn into_error(self) -> Option<String> {
+        if self.failure_count == 0 {
+            return None;
+        }
+        let mut parts = vec![format!(
+            "sitemap submission finished with {} success(es) and {} failure(s)",
+            self.success_count, self.failure_count
+        )];
+        parts.extend(self.failures);
+        let mut message = parts.join("; ");
+        if message.len() > SITEMAP_SUBMIT_MAX_ERROR_LEN {
+            message.truncate(SITEMAP_SUBMIT_MAX_ERROR_LEN);
+            message.push_str("...");
+        }
+        Some(message)
+    }
+}
+
+#[async_trait::async_trait]
+trait SitemapSubmissionAdapter: Send + Sync {
+    async fn submit_sitemap_index(
+        &self,
+        endpoint: SitemapSubmitEndpoint,
+    ) -> Result<(), String>;
+}
+
+struct HttpSitemapSubmissionAdapter {
+    client: reqwest::Client,
+}
+
+#[async_trait::async_trait]
+impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
+    async fn submit_sitemap_index(
+        &self,
+        endpoint: SitemapSubmitEndpoint,
+    ) -> Result<(), String> {
+        let response = self
+            .client
+            .get(endpoint.request_url)
+            .send()
+            .await
+            .map_err(|error| {
+                format!(
+                    "request failed for endpoint `{}` with error: {error}",
+                    endpoint.endpoint
+                )
+            })?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "endpoint `{}` responded with status {}",
+                endpoint.endpoint,
+                response.status()
+            ))
+        }
+    }
+}
+
 impl SeoService {
     pub async fn generate_sitemaps(
         &self,
@@ -272,34 +345,48 @@ impl SeoService {
             .timeout(std::time::Duration::from_secs(SITEMAP_SUBMIT_TIMEOUT_SECS))
             .build()
             .map_err(|error| format!("failed to create sitemap submission client: {error}"))?;
-        let mut failures = Vec::new();
-        for endpoint in &settings.sitemap_submission_endpoints {
-            let Some(url) = build_sitemap_submission_url(endpoint.as_str(), sitemap_index_url.as_str())
+        let adapter = HttpSitemapSubmissionAdapter { client };
+        self.submit_sitemap_endpoints_with_adapter(
+            settings.sitemap_submission_endpoints.as_slice(),
+            sitemap_index_url.as_str(),
+            &adapter,
+        )
+        .await
+    }
+
+    async fn submit_sitemap_endpoints_with_adapter(
+        &self,
+        endpoints: &[String],
+        sitemap_index_url: &str,
+        adapter: &dyn SitemapSubmissionAdapter,
+    ) -> Result<(), String> {
+        let mut summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 0,
+            failures: Vec::new(),
+        };
+        for endpoint in endpoints {
+            let Some(url) = build_sitemap_submission_url(endpoint.as_str(), sitemap_index_url)
             else {
-                failures.push(format!("invalid endpoint: {endpoint}"));
+                summary.failure_count += 1;
+                summary.failures.push(format!("invalid endpoint: {endpoint}"));
                 continue;
             };
-            let response = client.get(url.clone()).send().await.map_err(|err| {
-                format!("request failed for endpoint `{endpoint}` with error: {err}")
-            });
-            match response {
-                Ok(response) if response.status().is_success() => {}
-                Ok(response) => failures.push(format!(
-                    "endpoint `{endpoint}` responded with status {}",
-                    response.status()
-                )),
-                Err(message) => failures.push(message),
+            let request = SitemapSubmitEndpoint {
+                endpoint: endpoint.clone(),
+                request_url: url,
+            };
+            match adapter.submit_sitemap_index(request).await {
+                Ok(()) => summary.success_count += 1,
+                Err(message) => {
+                    summary.failure_count += 1;
+                    summary.failures.push(message);
+                }
             }
         }
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            let mut message = failures.join("; ");
-            if message.len() > SITEMAP_SUBMIT_MAX_ERROR_LEN {
-                message.truncate(SITEMAP_SUBMIT_MAX_ERROR_LEN);
-                message.push_str("...");
-            }
-            Err(message)
+        match summary.into_error() {
+            Some(message) => Err(message),
+            None => Ok(()),
         }
     }
 }
@@ -429,7 +516,7 @@ pub(super) fn normalize_sitemap_submission_endpoints(values: &[String]) -> Vec<S
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_sitemap_submission_endpoints, render_robots_body};
+    use super::{normalize_sitemap_submission_endpoints, render_robots_body, SitemapSubmissionAdapter, SitemapSubmitEndpoint, SitemapSubmissionSummary};
     use crate::SeoService;
     use rustok_api::TenantContext;
     use rustok_tenant::entities::tenant_module;
@@ -438,7 +525,28 @@ mod tests {
         DatabaseConnection, DbBackend, Statement,
     };
     use serde_json::json;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
     use uuid::Uuid;
+
+    struct TestSitemapSubmissionAdapter {
+        outcomes: Arc<Mutex<HashMap<String, Result<(), String>>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl SitemapSubmissionAdapter for TestSitemapSubmissionAdapter {
+        async fn submit_sitemap_index(
+            &self,
+            endpoint: SitemapSubmitEndpoint,
+        ) -> Result<(), String> {
+            let outcomes = self.outcomes.lock().await;
+            outcomes
+                .get(endpoint.endpoint.as_str())
+                .cloned()
+                .unwrap_or(Ok(()))
+        }
+    }
 
     async fn test_db() -> DatabaseConnection {
         let db_url = format!(
@@ -697,5 +805,52 @@ mod tests {
         assert_eq!(status.status, None);
         assert_eq!(status.file_count, 0);
         assert!(status.files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn submit_sitemap_endpoints_reports_success_failure_and_invalid() {
+        let db = test_db().await;
+        let service = SeoService::new_memory(db);
+        let adapter = TestSitemapSubmissionAdapter {
+            outcomes: Arc::new(Mutex::new(HashMap::from([
+                (
+                    "https://ok.example.com/ping".to_string(),
+                    Ok(()),
+                ),
+                (
+                    "https://fail.example.com/ping".to_string(),
+                    Err("endpoint `https://fail.example.com/ping` responded with status 500 Internal Server Error".to_string()),
+                ),
+            ]))),
+        };
+
+        let result = service
+            .submit_sitemap_endpoints_with_adapter(
+                &[
+                    "https://ok.example.com/ping".to_string(),
+                    "https://fail.example.com/ping".to_string(),
+                    "invalid endpoint".to_string(),
+                ],
+                "https://store.example.com/sitemap.xml",
+                &adapter,
+            )
+            .await;
+
+        let message = result.expect_err("must return aggregate error");
+        assert!(message.contains("1 success(es) and 2 failure(s)"));
+        assert!(message.contains("endpoint `https://fail.example.com/ping` responded with status 500"));
+        assert!(message.contains("invalid endpoint: invalid endpoint"));
+    }
+
+    #[test]
+    fn submission_summary_truncates_bounded_error_message() {
+        let summary = SitemapSubmissionSummary {
+            success_count: 0,
+            failure_count: 1,
+            failures: vec!["x".repeat(SITEMAP_SUBMIT_MAX_ERROR_LEN + 200)],
+        };
+        let message = summary.into_error().expect("error expected");
+        assert!(message.len() <= SITEMAP_SUBMIT_MAX_ERROR_LEN + 3);
+        assert!(message.ends_with("..."));
     }
 }
