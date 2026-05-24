@@ -719,3 +719,50 @@ Go/No-Go для перехода в следующую волну:
 2. **FW-2 (fallback hardening):** подтвердить `builder_off/publish_off` без деградации forum read/moderation surfaces.
 3. **FW-3 (pilot):** включить 1–2 low-traffic tenant с evidence packet (metadata/fallback/observability/rollback).
 4. **FW-4 (promotion):** расширять rollout только после owner sign-off и SLO stability 24–72h.
+
+## 14. Актуализация порядка исполнения: “без хвостов” (single critical path)
+
+Чтобы пройтись по плану без накопления параллельных незакрытых веток, ниже фиксируется обязательный порядок исполнения.
+
+### 14.1 Правило приоритезации
+
+- До закрытия `Section 12 / Sprint 1–3` новые scope-расширения (включая FW-1..FW-4 для forum widgets) не стартуют в delivery, допускаются только как design-ready backlog.
+- Любая задача, которая не влияет на текущий wave-gate (`Wave 0 -> Wave 1`), получает статус `deferred`.
+- Считаем “хвостом” любую незакрытую задачу из текущего checkpoint, если по ней нет артефакта в evidence packet.
+
+### 14.2 Новый порядок (reordered execution queue)
+
+1. **P0 — Contract freeze + anti-drift (обязательный старт)**
+   - закрыть `builder_contract_version` + `consumer_min_version`;
+   - включить CI anti-drift gate без waiver.
+2. **P1 — Fallback hardening (до любых pilot шагов)**
+   - подтвердить `all_on/publish_off/preview_off/builder_off` без 5xx;
+   - зафиксировать typed error parity для Next/Leptos/Flutter.
+3. **P2 — Control-plane operability**
+   - dry-run atomic toggle change-set;
+   - обязательные before/after snapshots + decision log.
+4. **P3 — Observability & SLO gate**
+   - зафиксировать `preview p95`, `publish p95`, sanitize failure rate;
+   - подтвердить correlation-id chain `builder write -> pages publish -> storefront read`.
+5. **P4 — Wave 0 execution**
+   - выполнить internal wave и собрать полный evidence packet.
+6. **P5 — Wave 1 readiness / Go-NoGo**
+   - совместный owner sign-off Platform + Builder + Pages + Frontend;
+   - только после sign-off разрешается активация forum FW-1 в delivery.
+
+### 14.3 Явный deferred-список до закрытия P5
+
+- FW-1/FW-2/FW-3/FW-4 по forum widgets — **deferred** (кроме уточнения контрактов в документации).
+- Расширение rollout beyond pilot cohort — **deferred**.
+- Broad rollout / default-on сценарии — **deferred**.
+
+### 14.4 Критерий “без хвостов” для перехода к следующему пункту
+
+Переход с `P(n)` на `P(n+1)` разрешён только если одновременно выполнены:
+
+- [ ] все checklist-пункты текущего шага закрыты;
+- [ ] есть связанный evidence artifact (metadata/fallback/observability/rollback);
+- [ ] нет открытых critical risks (`PB-FBA-R1`, `PB-FBA-R2`);
+- [ ] `next action` в registry и локальных implementation-plan синхронизирован с новым шагом.
+
+Если хотя бы одно условие не выполнено — шаг остаётся `in_progress`, новые направления не открываются.
