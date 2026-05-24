@@ -1132,7 +1132,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 #### Ближайший execution backlog (Phase 2 → Phase 1)
 
 1. **Registry schema freeze (FFA-safe):** зафиксировать минимальный mobile registry contract (`module_slug`, `surface_kind`, `route_segment`, `child_pages`, `permissions`, `locale_namespace`) без Flutter-only полей.
-2. **Codegen pipeline:** добавить reproducible генерацию `mobile_manifest.g.dart` из manifest snapshot + CI-проверку diff generated-файлов.
+2. **Codegen pipeline:** добавить reproducible генерацию `mobile_manifest.g.dart` из manifest snapshot + CI-проверку diff generated-файлов (в работе: локальная verify-команда уже фиксирует stale-state для manifest + snapshot).
 3. **Host integration seam:** подключить registry через единый adapter-слой (`module_entry_adapter`) и убрать ручное перечисление модулей в shell routing/nav.
 4. **Pilot gate:** после стабилизации registry перевести `Phase 1 — Pilot module` в `🟡 In progress` и взять один модульный E2E-флоу (`modules` или `blog`) как контроль parity.
 
@@ -1162,7 +1162,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | `mobile_manifest` minimal schema snapshot | `rustok_mobile/tooling` + docs трека | schema snapshot обновлён и закоммичен | ✅ Done |
 | Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | матрица заполнена для всех contract-полей | ✅ Done |
 | Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
-| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ⬜ Planned |
+| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router; проверяется через unit/widget tests адаптера и home-shell рендера | ✅ Done |
 | Pilot E2E evidence (modules/blog) | integration tests / manual evidence | login → module list/detail → shell back | ⬜ Planned |
 
 #### PR-A evidence pack (registry contract freeze)
