@@ -19,6 +19,7 @@ on_error() {
   echo "Control-plane remediation minimal verification: FAIL" >&2
   echo "Failed step: ${CURRENT_STEP}" >&2
   echo "Failed command: ${CURRENT_COMMAND}" >&2
+  echo "Exit code: ${exit_code}" >&2
   echo "Elapsed: $(format_duration "${SECONDS}")" >&2
   exit "${exit_code}"
 }

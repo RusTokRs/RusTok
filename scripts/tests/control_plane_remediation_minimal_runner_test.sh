@@ -143,6 +143,12 @@ if ! rg -q "Control-plane remediation minimal verification: FAIL" "$TIMEOUT_OUTP
   exit 1
 fi
 
+if ! rg -q "Exit code: [0-9]+" "$TIMEOUT_OUTPUT"; then
+  echo "timeout scenario did not report exit code" >&2
+  cat "$TIMEOUT_OUTPUT" >&2
+  exit 1
+fi
+
 if ! rg -q "Elapsed: [0-9]{2}h:[0-9]{2}m:[0-9]{2}s" "$TIMEOUT_OUTPUT"; then
   echo "timeout scenario did not report elapsed duration" >&2
   cat "$TIMEOUT_OUTPUT" >&2
