@@ -142,6 +142,47 @@ class GenerateMobileManifestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Duplicate admin_ui.route_segment"):
                 scan_modules(root)
 
+    def test_scan_modules_includes_permissions_and_locale_namespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent(
+                    """
+                    [module]
+                    slug = "blog"
+
+                    [provides.admin_ui]
+                    route_segment = "blog"
+                    locale_namespace = "content_blog"
+                    permissions = ["modules.read", "modules.read", " "]
+                    """
+                ).strip()
+            )
+
+            modules = scan_modules(root)
+            self.assertEqual(modules[0]["locale_namespace"], "content_blog")
+            self.assertEqual(modules[0]["permissions"], ["modules.read"])
+
+    def test_render_snapshot_uses_module_locale_namespace_fallback(self):
+        payload = render_snapshot_json(
+            [
+                {
+                    "module_key": "rustok_blog",
+                    "module_slug": "blog",
+                    "route_segment": "content",
+                    "nav_label": "Blog",
+                    "icon": "article",
+                    "permissions": ["blog.read"],
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIn('"locale_namespace": "blog"', payload)
+        self.assertIn('"permissions": [', payload)
+        self.assertIn('"blog.read"', payload)
+
 
 if __name__ == "__main__":
     unittest.main()

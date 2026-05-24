@@ -79,6 +79,22 @@ class VerifyMobileManifestTests(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertIn("invalid subpath", error)
 
+    def test_validate_snapshot_schema_rejects_empty_locale_namespace(self):
+        error = _validate_snapshot_schema(
+            [
+                {
+                    "module_slug": "blog",
+                    "surface_kind": "admin_mobile",
+                    "route_segment": "blog",
+                    "permissions": [],
+                    "locale_namespace": "",
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIsNotNone(error)
+        self.assertIn("invalid locale_namespace", error)
+
 
 if __name__ == "__main__":
     unittest.main()

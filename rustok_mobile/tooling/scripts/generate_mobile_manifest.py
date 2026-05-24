@@ -67,6 +67,30 @@ def _pick_icon(slug: str) -> str:
     return "module"
 
 
+
+
+def _parse_permissions(admin_ui: dict[str, object]) -> list[str]:
+    raw = admin_ui.get("permissions")
+    if not isinstance(raw, list):
+        return []
+
+    permissions: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        permissions.append(value)
+    return permissions
+
+
+def _parse_locale_namespace(admin_ui: dict[str, object], module_slug: str) -> str:
+    raw = str(admin_ui.get("locale_namespace", "")).strip()
+    return raw or module_slug
+
 def _parse_child_pages(admin_ui: dict[str, object]) -> list[dict[str, str]]:
     pages_raw = admin_ui.get("child_pages")
     if not isinstance(pages_raw, list):
@@ -127,6 +151,8 @@ def scan_modules(repo_root: pathlib.Path) -> list[dict[str, object]]:
                 "nav_label": nav_label,
                 "icon": _pick_icon(slug),
                 "child_pages": _parse_child_pages(admin_ui),
+                "permissions": _parse_permissions(admin_ui),
+                "locale_namespace": _parse_locale_namespace(admin_ui, slug),
             }
         )
         used_segments.add(route_segment)
@@ -186,8 +212,8 @@ def to_snapshot(modules: list[dict[str, object]]) -> list[dict[str, object]]:
                 "module_slug": str(module.get("module_slug") or str(module["module_key"]).removeprefix("rustok_")),
                 "surface_kind": "admin_mobile",
                 "route_segment": route_segment,
-                "permissions": [],
-                "locale_namespace": route_segment,
+                "permissions": list(module.get("permissions", [])),
+                "locale_namespace": str(module.get("locale_namespace") or module.get("module_slug") or route_segment),
                 "child_pages": [
                     {
                         "subpath": str(page["subpath"]),

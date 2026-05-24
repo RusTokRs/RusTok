@@ -81,8 +81,8 @@ def _validate_snapshot_schema(entries: object) -> str | None:
 
         if surface_kind != "admin_mobile":
             return f"snapshot entry #{index} has unsupported surface_kind '{surface_kind}'"
-        if locale_namespace != route_segment:
-            return f"snapshot entry #{index} locale_namespace must equal route_segment"
+        if not isinstance(locale_namespace, str) or not locale_namespace.strip():
+            return f"snapshot entry #{index} has invalid locale_namespace"
         if not isinstance(permissions, list):
             return f"snapshot entry #{index} permissions must be an array"
         if not isinstance(child_pages, list):
