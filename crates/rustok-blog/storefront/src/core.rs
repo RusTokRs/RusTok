@@ -62,6 +62,10 @@ pub fn list_post_summary(
     (resolved_excerpt, href, resolved_open_label)
 }
 
+pub fn list_post_locale_meta(locale_label: &str, effective_locale: &str) -> String {
+    label_value_pair(locale_label, effective_locale)
+}
+
 pub fn fallback_slug(value: Option<String>, fallback: &str) -> String {
     fallback_text(value, fallback)
 }
@@ -272,6 +276,10 @@ mod tests {
                 "/store/modules/blog?slug=missing-slug".to_string(),
                 "Open missing-slug".to_string(),
             )
+        );
+        assert_eq!(
+            list_post_locale_meta("locale", "en"),
+            "locale: en".to_string()
         );
     }
 

@@ -243,6 +243,10 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                             "missing-slug",
                         );
                         let open_label = t(locale.as_deref(), "blog.list.open", "Open");
+                        let locale_meta = core::list_post_locale_meta(
+                            &t(locale.as_deref(), "blog.list.localeLabel", "locale"),
+                            post.effective_locale.as_str(),
+                        );
                         let (excerpt, href, open_label) = core::list_post_summary(
                             post.slug,
                             missing_slug_fallback.as_str(),
@@ -265,7 +269,7 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                                     {open_label}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
-                                    {core::label_value_pair(&t(locale.as_deref(), "blog.list.localeLabel", "locale"), post.effective_locale.as_str())}
+                                    {locale_meta}
                                 </p>
                             </article>
                         }
