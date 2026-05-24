@@ -961,6 +961,44 @@ mod tests {
         assert!(submitted.is_empty());
     }
 
+    #[tokio::test]
+    async fn submit_sitemap_endpoints_timeout_and_failure_messages_are_bounded() {
+        let db = test_db().await;
+        let service = SeoService::new_memory(db);
+        let adapter = TestSitemapSubmissionAdapter::new(HashMap::from([
+            (
+                "https://timeout.example.com/ping".to_string(),
+                Err(format!(
+                    "request failed for endpoint `https://timeout.example.com/ping` with error: {}",
+                    "operation timed out ".repeat(400)
+                )),
+            ),
+            (
+                "https://failure.example.com/ping".to_string(),
+                Err(format!(
+                    "endpoint `https://failure.example.com/ping` responded with status 503 and body: {}",
+                    "service unavailable ".repeat(400)
+                )),
+            ),
+        ]));
+
+        let result = service
+            .submit_sitemap_endpoints_with_adapter(
+                &[
+                    "https://timeout.example.com/ping".to_string(),
+                    "https://failure.example.com/ping".to_string(),
+                ],
+                "https://store.example.com/sitemap.xml",
+                &adapter,
+            )
+            .await;
+
+        let message = result.expect_err("aggregated bounded error expected");
+        assert!(message.contains("0 success(es) and 2 failure(s)"));
+        assert!(message.len() <= SITEMAP_SUBMIT_MAX_ERROR_LEN + 3);
+        assert!(message.ends_with("..."));
+    }
+
     #[test]
     fn submission_summary_truncates_bounded_error_message() {
         let summary = SitemapSubmissionSummary {
