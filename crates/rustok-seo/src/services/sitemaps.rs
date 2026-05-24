@@ -1137,6 +1137,21 @@ mod tests {
     }
 
     #[test]
+    fn submission_summary_with_failure_count_but_empty_details_still_returns_error() {
+        let summary = SitemapSubmissionSummary {
+            success_count: 2,
+            failure_count: 1,
+            failures: Vec::new(),
+        };
+
+        let message = summary.into_error().expect("error summary expected");
+        assert_eq!(
+            message,
+            "sitemap submission finished with 2 success(es) and 1 failure(s)"
+        );
+    }
+
+    #[test]
     fn submission_summary_truncates_bounded_error_message() {
         let summary = SitemapSubmissionSummary {
             success_count: 0,
