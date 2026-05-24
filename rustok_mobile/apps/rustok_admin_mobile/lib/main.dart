@@ -5,7 +5,8 @@ import 'app_shell/auth_bootstrap.dart';
 import 'registry/mobile_module_registry.dart';
 import 'routes/app_router.dart';
 
-final mobileRegistryProvider = Provider((ref) => buildMobileModuleRegistry());
+final mobileRegistryProvider =
+    Provider((ref) => buildAdaptedMobileModuleRegistry());
 
 void main() {
   runApp(const ProviderScope(child: RusTokAdminMobileApp()));

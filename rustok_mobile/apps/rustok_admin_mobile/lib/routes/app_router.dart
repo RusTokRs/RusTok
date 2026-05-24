@@ -1,4 +1,3 @@
-import 'package:app_module_contracts/app_module_contracts.dart';
 import 'package:app_route_contracts/app_route_contracts.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -15,8 +14,7 @@ const _routeCodec = RouteCodec(
   }),
 );
 
-GoRouter buildRouter(List<MobileModuleEntry> entries) {
-  final moduleRoutes = adaptModuleEntries(entries);
+GoRouter buildRouter(List<ModuleRouteEntry> moduleRoutes) {
 
   return GoRouter(
     initialLocation: modulesRootPath,
