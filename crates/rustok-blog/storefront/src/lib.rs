@@ -210,21 +210,20 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
 
-    let (items, empty_message) = core::published_posts_view_state(
+    let items = match core::published_posts_ready_items(
         items,
         t(
             locale.as_deref(),
             "blog.list.empty",
             "No published blog posts are available for storefront rendering yet.",
         ),
-    );
-    let items = match items {
-        Some(items) => core::published_posts_items_or_default(Some(items)),
-        None => {
+    ) {
+        Ok(items) => items,
+        Err(empty_message) => {
             return view! {
                 <article class="rounded-2xl border border-dashed border-border p-6">
                     <p class="text-sm text-muted-foreground">
-                        {empty_message.unwrap_or_default()}
+                        {empty_message}
                     </p>
                 </article>
             }

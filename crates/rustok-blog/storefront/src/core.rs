@@ -260,6 +260,19 @@ pub fn published_posts_items_or_default<T>(items: Option<Vec<T>>) -> Vec<T> {
     items.unwrap_or_default()
 }
 
+pub fn published_posts_ready_items<T>(
+    items: Vec<T>,
+    empty_message: String,
+) -> Result<Vec<T>, String> {
+    let (items, empty_message_opt) = published_posts_view_state(items, empty_message);
+    let ready_items = published_posts_items_or_default(items);
+    if has_items(ready_items.as_slice()) {
+        Ok(ready_items)
+    } else {
+        Err(empty_message_opt.unwrap_or_default())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,6 +554,18 @@ mod tests {
         assert_eq!(
             published_posts_items_or_default(Some(vec!["x".to_string()])),
             vec!["x".to_string()]
+        );
+    }
+
+    #[test]
+    fn published_posts_ready_items_maps_to_result() {
+        assert_eq!(
+            published_posts_ready_items(vec!["x".to_string()], "empty".to_string()),
+            Ok(vec!["x".to_string()])
+        );
+        assert_eq!(
+            published_posts_ready_items::<String>(vec![], "empty".to_string()),
+            Err("empty".to_string())
         );
     }
 }
