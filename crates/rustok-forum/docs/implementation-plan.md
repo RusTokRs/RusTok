@@ -7,10 +7,11 @@
 
 - Current phase: in_progress
 - Last checkpoint: План синхронизирован с central FBA-track для forum widget-driven consumer path (раздел 13 в `docs/modules/tiptap-page-builder-implementation-plan.md`).
-- Next step: Запустить FW-1 contract freeze для forum widgets (`topic_list/topic_detail/reply_stream`) и зафиксировать `data_contract_version`.
-- Open blockers: Для pilot Wave 1 требуется parity evidence Next/Leptos/Flutter + owner sign-off.
+- Next step: До закрытия `P5 / Wave 1 readiness` в центральном треке (`docs/modules/tiptap-page-builder-implementation-plan.md`, раздел 14.2) держать FW-1..FW-4 в статусе `deferred`; разрешены только contract/design-prep обновления в документации.
+- Open blockers: Activation delivery по FW-1..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs.
 - Last updated at (UTC): 2026-05-24T00:00:00Z
+- Last updated at (UTC): 2026-05-25T12:40:00Z
 
 ## Область работ
 
@@ -69,6 +70,13 @@
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
 
 ## Forum widget-driven backlog (FBA continuation)
+
+
+### Deferred policy (до закрытия P5 в central track)
+
+- [x] FW-1/FW-2/FW-3/FW-4 помечены как `deferred` для delivery-активностей.
+- [x] Разрешены только contract-design задачи: widget catalog/schema/error mapping в docs без runtime rollout.
+- [x] Любая попытка открыть tenant pilot для forum widgets до `P5` считается release-blocker.
 
 ### FW-1 — Contract freeze
 

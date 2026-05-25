@@ -73,11 +73,11 @@ SCRIPTS=(
     "verify-ui-i18n-parity.mjs:UI i18n Parity"
     "verify-flex-multilingual-contract.mjs:Flex Multilingual Contract"
     "verify-module-lifecycle-bypass-usage.mjs:Module Lifecycle Bypass Usage"
-    "verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
-    "verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"
-    "verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
-    "verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
-    "verify-page-builder-consumer-readiness.mjs:Page Builder Consumer Readiness"
+    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
+    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"
+    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
+    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
+    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs:Page Builder Consumer Readiness"
     "run-control-plane-remediation-minimal.sh:Control Plane Remediation Minimal"
 )
 
@@ -86,7 +86,7 @@ if [[ -n "$SELECTED_SCRIPT" ]]; then
     FILTERED=()
     for entry in "${SCRIPTS[@]}"; do
         script_file="${entry%%:*}"
-        script_name="${script_file%.sh}"
+        script_name="$(basename "${script_file%.sh}")"
         script_name="${script_name%.mjs}"
         script_name="${script_name#verify-}"
         alt_script_name="${script_name#run-}"
@@ -131,7 +131,7 @@ for entry in "${SCRIPTS[@]}"; do
     echo -e "${SEPARATOR}"
 
     if [[ "$script_file" == *.mjs ]]; then
-        if [[ "$script_file" == "verify-page-builder-consumer-readiness.mjs" ]]; then
+        if [[ "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs" ]]; then
             runner=(node "$script_path" "${PBC_MODULE:-pages}")
         else
             runner=(node "$script_path")

@@ -1181,6 +1181,8 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
   1) что уже закрыто в backend/page-builder плане;
   2) какой следующий шаг **заблокирован** до закрытия пунктов в `tiptap-page-builder-implementation-plan.md` и `rustok-pages` плане.
 
+- Актуальный dependency checkpoint (2026-05-25): central plan перешёл к `Section 8.5 / PB-FBA-1A..1D`; Flutter delivery остаётся в режиме contract-safe scaffolding до закрытия минимум `PB-FBA-1A` (contract freeze + CI anti-drift) и `PB-FBA-1B` (fallback evidence `all_on/publish_off/preview_off/builder_off`).
+
 
 Ниже — то, что в постановке **не указано**, поэтому в отчёте я дал только разумные варианты, а не жёсткие требования:
 

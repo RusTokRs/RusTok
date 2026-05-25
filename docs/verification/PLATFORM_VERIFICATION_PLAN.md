@@ -114,7 +114,7 @@
 ### Фаза 14. Локальный quality baseline
 
 - [ ] Пройти локальные проверки качества из [Плана верификации качества и эксплуатационной готовности](./platform-quality-operations-verification-plan.md).
-- [ ] Для изменений `page_builder/pages` дополнительно выполнить `node scripts/verify/verify-page-builder-fba-baseline.mjs` и приложить отчёт в release evidence.
+- [ ] Для изменений `page_builder/pages` дополнительно выполнить `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` и приложить отчёт в release evidence.
 
 ### Фаза 15. Observability и operational readiness
 

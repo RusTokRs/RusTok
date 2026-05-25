@@ -18,10 +18,12 @@
 - Last updated at (UTC): 2026-05-24T09:15:00Z
 - Last updated at (UTC): 2026-05-24T10:05:00Z
 - Last updated at (UTC): 2026-05-24T12:20:00Z
+- Last updated at (UTC): 2026-05-25T11:10:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitization/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind` и `PagesError::FeatureDisabled`.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
+- PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
 
 
 

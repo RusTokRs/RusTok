@@ -21,11 +21,11 @@
 ./scripts/verify/verify-deployment-profiles.sh
 node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
-node scripts/verify/verify-page-builder-contract-parity.mjs
-node scripts/verify/verify-page-builder-fallback-profiles.mjs
-node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
-node scripts/verify/verify-page-builder-fba-baseline.mjs
-node scripts/verify/verify-page-builder-consumer-readiness.mjs pages
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages
 ```
 
 ## Когда запускать
@@ -44,11 +44,11 @@ node scripts/verify/verify-page-builder-consumer-readiness.mjs pages
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
-| Проверка parity provider/consumer для page-builder контракта | `node scripts/verify/verify-page-builder-contract-parity.mjs` |
-| Проверка required fallback/toggle профилей page-builder | `node scripts/verify/verify-page-builder-fallback-profiles.mjs` |
-| Проверка консистентности значений в toggle профилях page-builder | `node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
-| Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node scripts/verify/verify-page-builder-fba-baseline.mjs` |
-| Проверка readiness consumer-модуля (`pages/forum`) | `node scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
+| Проверка parity provider/consumer для page-builder контракта | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
+| Проверка required fallback/toggle профилей page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
+| Проверка консистентности значений в toggle профилях page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
+| Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Проверка readiness consumer-модуля (`pages/forum`) | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
 
 Альтернативно те же проверки доступны через `npm run`:
 
@@ -265,8 +265,10 @@ npm run verify:page-builder:consumer:forum
 Что делает:
 - последовательно запускает:
   1) `verify-page-builder-contract-parity.mjs`,
-  2) `verify-page-builder-fallback-profiles.mjs`,
-  3) `verify-page-builder-toggle-profiles-consistency.mjs`;
+  2) `verify-page-builder-consumer-readiness.mjs <module-slug>` (по умолчанию `pages` в агрегаторе),
+  3) `verify-page-builder-fallback-profiles.mjs`,
+  4) `verify-page-builder-toggle-profiles-consistency.mjs`,
+  5) `verify-page-builder-terminology.mjs`.
 - возвращает non-zero exit code при падении любого шага.
 
 **Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.
