@@ -97,20 +97,27 @@ fn BlogShowcase(data: StorefrontBlogData) -> impl IntoView {
 fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let Some(post) = post else {
+        let empty_state = core::selected_post_empty_state_typed_view(
+            t(locale.as_deref(), "blog.selected.emptyTitle", "Pick a published post"),
+            t(
+                locale.as_deref(),
+                "blog.selected.emptyBody",
+                "Open a post from the list below with `?slug=` or publish one from the blog admin package.",
+            ),
+        );
         return view! {
             <article class="rounded-2xl border border-dashed border-border p-6">
                 <h3 class="text-lg font-semibold text-card-foreground">
-                    {t(locale.as_deref(), "blog.selected.emptyTitle", "Pick a published post")}
+                    {empty_state.title}
                 </h3>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "blog.selected.emptyBody", "Open a post from the list below with `?slug=` or publish one from the blog admin package.")}
+                    {empty_state.body}
                 </p>
             </article>
         }
         .into_any();
     };
 
-    let title = post.title;
     let effective_locale = post.effective_locale;
     let status = post.status;
     let (slug, excerpt, published_at) = core::selected_post_fallback_fields(
@@ -135,8 +142,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     );
     let tags = post.tags;
     let body_format = post.body_format;
-    let unknown_status_label = t(locale.as_deref(), "blog.selected.unknownStatus", "unknown");
-    let (slug_meta, locale_meta, published_meta, meta_separator) = core::selected_post_meta_row(
+    let selected_post_status = core::selected_post_status_view(
+        status,
+        t(locale.as_deref(), "blog.selected.unknownStatus", "unknown"),
+    );
+    let selected_post_meta = core::selected_post_meta_view(
         &t(locale.as_deref(), "blog.selected.slugLabel", "slug"),
         slug.as_str(),
         &t(locale.as_deref(), "blog.selected.localeLabel", "locale"),
@@ -158,29 +168,33 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
             "Stored in `{format}` format. Raw body length: {count} characters.",
         ),
     );
+    let selected_post_content = core::selected_post_content_view(excerpt, body);
+    let selected_post_header =
+        core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{slug_meta}</span>
-                <span>{meta_separator}</span>
-                <span>{locale_meta}</span>
-                <span>{meta_separator}</span>
-                <span>{published_meta}</span>
+                <span>{selected_post_header.meta.slug_meta}</span>
+                <span>{selected_post_header.meta.separator}</span>
+                <span>{selected_post_header.meta.locale_meta}</span>
+                <span>{selected_post_header.meta.separator}</span>
+                <span>{selected_post_header.meta.published_meta}</span>
             </div>
-            <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
+            <h3 class="mt-3 text-2xl font-semibold text-foreground">{selected_post_header.title}</h3>
             <div class="mt-3">
                 <BlogStatusBadge
-                    status=status
-                    unknown_label=unknown_status_label
+                    status=selected_post_header.status.status
+                    unknown_label=selected_post_header.status.unknown_label
                 />
             </div>
-            <p class="mt-3 text-sm text-muted-foreground">{excerpt}</p>
-            <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
-            {if let Some(tags) = core::selected_post_tag_items(tags) {
+            <p class="mt-3 text-sm text-muted-foreground">{selected_post_content.excerpt}</p>
+            <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">{selected_post_content.body}</p>
+            {if let Some(tags_view) = core::selected_post_tags_view(tags) {
                 view! {
                     <div class="mt-5 flex flex-wrap gap-2">
-                        {tags
+                        {tags_view
+                            .items
                             .into_iter()
                             .map(|tag| {
                                 view! {
@@ -209,6 +223,11 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
         core::route_segment_or_default(route_context.route_segment.as_ref().cloned(), "blog");
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
+    let header_view = core::published_posts_header_typed_view(
+        t(locale.as_deref(), "blog.list.title", "Published posts"),
+        total,
+        &t(locale.as_deref(), "blog.list.total", "total"),
+    );
 
     let items = match core::published_posts_ready_items(
         items,
@@ -220,11 +239,11 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
     ) {
         Ok(items) => items,
         Err(empty_message) => {
-            let (empty_message,) = core::published_posts_empty_state_view(empty_message);
+            let empty_state = core::published_posts_empty_state_typed_view(empty_message);
             return view! {
                 <article class="rounded-2xl border border-dashed border-border p-6">
                     <p class="text-sm text-muted-foreground">
-                        {empty_message}
+                        {empty_state.message}
                     </p>
                 </article>
             }
@@ -236,10 +255,10 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
         <div class="space-y-3">
             <div class="flex items-center justify-between gap-3">
                 <h3 class="text-lg font-semibold text-card-foreground">
-                    {t(locale.as_deref(), "blog.list.title", "Published posts")}
+                    {header_view.title}
                 </h3>
                 <span class="text-sm text-muted-foreground">
-                    {core::count_label(total, &t(locale.as_deref(), "blog.list.total", "total"))}
+                    {header_view.total_label}
                 </span>
             </div>
             <div class="grid gap-3 md:grid-cols-2">
@@ -255,7 +274,7 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                         );
                         let open_label = t(locale.as_deref(), "blog.list.open", "Open");
                         let locale_label = t(locale.as_deref(), "blog.list.localeLabel", "locale");
-                        let (status, excerpt, href, open_label, locale_meta) = core::list_post_card_view(
+                        let post_card_view = core::published_post_card_view(
                             post.slug,
                             missing_slug_fallback.as_str(),
                             post.excerpt,
@@ -269,18 +288,18 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
                                 <BlogStatusBadge
-                                    status=status
+                                    status=post_card_view.status
                                     unknown_label=unknown_status_label.clone()
                                 />
                                 <h4 class="mt-2 text-base font-semibold text-foreground">{post.title}</h4>
                                 <p class="mt-2 text-sm text-muted-foreground">
-                                    {excerpt}
+                                    {post_card_view.excerpt}
                                 </p>
-                                <a class="mt-3 inline-flex text-sm text-primary hover:underline" href=href>
-                                    {open_label}
+                                <a class="mt-3 inline-flex text-sm text-primary hover:underline" href=post_card_view.href>
+                                    {post_card_view.open_label}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
-                                    {locale_meta}
+                                    {post_card_view.locale_meta}
                                 </p>
                             </article>
                         }

@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #54 completed (storefront published-post empty-state handoff switched to `core::published_posts_empty_state_view(...)` tuple-based core payload, preserving dual-path transport contract and thin UI rendering branch).
+- Last checkpoint: FFA slice #66 completed (storefront published-post empty-state branch migrated to typed core view-model `PublishedPostsEmptyStateView` via `core::published_posts_empty_state_typed_view(...)`).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-25T03:25:00Z
+- Last updated at (UTC): 2026-05-25T17:05:00Z
 
 ## FFA/FBA status
 
@@ -177,6 +177,18 @@ packages и module metadata синхронизированы.
 - [x] Slice 52: storefront published-post ready-state mapping switched to `core::published_posts_ready_items(...)`.
 - [x] Slice 53: storefront published-post empty-state message handoff switched to `core::published_posts_empty_state_message(...)`.
 - [x] Slice 54: storefront published-post empty-state payload switched to `core::published_posts_empty_state_view(...)`.
+- [x] Slice 55: storefront published-post total counter label switched from direct `core::count_label(...)` usage in UI to dedicated `core::published_posts_total_label(...)` helper.
+- [x] Slice 56: storefront published-post list header view (`title + total`) switched from inline UI composition to `core::published_posts_header_view(...)`.
+- [x] Slice 57: storefront published-post header payload now precomputed before `view!`, removing inline `move` closure and keeping render tree strictly presentational.
+- [x] Slice 58: storefront selected-post empty-state payload (`title + body`) switched from inline i18n calls in UI to `core::selected_post_empty_state_view(...)`.
+- [x] Slice 59: storefront selected-post meta row now consumes typed payload `SelectedPostMetaView` from `core::selected_post_meta_view(...)` instead of local tuple destructuring.
+- [x] Slice 60: storefront selected-post tags branch now consumes typed payload `SelectedPostTagsView` from `core::selected_post_tags_view(...)` instead of raw optional vector mapping.
+- [x] Slice 61: storefront selected-post content fields now consume typed payload `SelectedPostContentView` from `core::selected_post_content_view(...)` instead of direct local excerpt/body rendering values.
+- [x] Slice 62: storefront selected-post status fields now consume typed payload `SelectedPostStatusView` from `core::selected_post_status_view(...)` instead of direct local status/unknown label values.
+- [x] Slice 63: storefront selected-post header fragment now consumes grouped typed payload `SelectedPostHeaderView` from `core::selected_post_header_view(...)` (title + meta + status).
+- [x] Slice 64: storefront published-post card fragment now consumes typed payload `PublishedPostCardView` from `core::published_post_card_view(...)` instead of tuple destructuring from `list_post_card_view(...)`.
+- [x] Slice 65: storefront empty-state/header fragments now consume typed payloads `SelectedPostEmptyStateView` and `PublishedPostsHeaderView` via `core::selected_post_empty_state_typed_view(...)` / `core::published_posts_header_typed_view(...)`.
+- [x] Slice 66: storefront published-post empty-state fragment now consumes typed payload `PublishedPostsEmptyStateView` via `core::published_posts_empty_state_typed_view(...)` instead of tuple destructuring from `published_posts_empty_state_view(...)`.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 
