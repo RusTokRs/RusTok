@@ -118,7 +118,6 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
         .into_any();
     };
 
-    let title = post.title;
     let effective_locale = post.effective_locale;
     let status = post.status;
     let (slug, excerpt, published_at) = core::selected_post_fallback_fields(
@@ -170,21 +169,23 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
         ),
     );
     let selected_post_content = core::selected_post_content_view(excerpt, body);
+    let selected_post_header =
+        core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{selected_post_meta.slug_meta}</span>
-                <span>{selected_post_meta.separator}</span>
-                <span>{selected_post_meta.locale_meta}</span>
-                <span>{selected_post_meta.separator}</span>
-                <span>{selected_post_meta.published_meta}</span>
+                <span>{selected_post_header.meta.slug_meta}</span>
+                <span>{selected_post_header.meta.separator}</span>
+                <span>{selected_post_header.meta.locale_meta}</span>
+                <span>{selected_post_header.meta.separator}</span>
+                <span>{selected_post_header.meta.published_meta}</span>
             </div>
-            <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
+            <h3 class="mt-3 text-2xl font-semibold text-foreground">{selected_post_header.title}</h3>
             <div class="mt-3">
                 <BlogStatusBadge
-                    status=selected_post_status.status
-                    unknown_label=selected_post_status.unknown_label
+                    status=selected_post_header.status.status
+                    unknown_label=selected_post_header.status.unknown_label
                 />
             </div>
             <p class="mt-3 text-sm text-muted-foreground">{selected_post_content.excerpt}</p>

@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #62 completed (storefront selected-post status payload (`status + unknown label`) migrated to typed core view-model `SelectedPostStatusView` via `core::selected_post_status_view(...)`).
+- Last checkpoint: FFA slice #63 completed (storefront selected-post header branch now consumes grouped typed payload `SelectedPostHeaderView` via `core::selected_post_header_view(...)`, bundling title+meta+status for a thinner render path).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-25T15:32:00Z
+- Last updated at (UTC): 2026-05-25T16:00:00Z
 
 ## FFA/FBA status
 
@@ -185,6 +185,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 60: storefront selected-post tags branch now consumes typed payload `SelectedPostTagsView` from `core::selected_post_tags_view(...)` instead of raw optional vector mapping.
 - [x] Slice 61: storefront selected-post content fields now consume typed payload `SelectedPostContentView` from `core::selected_post_content_view(...)` instead of direct local excerpt/body rendering values.
 - [x] Slice 62: storefront selected-post status fields now consume typed payload `SelectedPostStatusView` from `core::selected_post_status_view(...)` instead of direct local status/unknown label values.
+- [x] Slice 63: storefront selected-post header fragment now consumes grouped typed payload `SelectedPostHeaderView` from `core::selected_post_header_view(...)` (title + meta + status).
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

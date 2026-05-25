@@ -39,6 +39,12 @@ pub struct SelectedPostStatusView {
     pub unknown_label: String,
 }
 
+pub struct SelectedPostHeaderView {
+    pub title: String,
+    pub meta: SelectedPostMetaView,
+    pub status: SelectedPostStatusView,
+}
+
 pub fn selected_post_meta_view(
     slug_label: &str,
     slug: &str,
@@ -75,6 +81,18 @@ pub fn selected_post_status_view(status: String, unknown_label: String) -> Selec
     SelectedPostStatusView {
         status,
         unknown_label,
+    }
+}
+
+pub fn selected_post_header_view(
+    title: String,
+    meta: SelectedPostMetaView,
+    status: SelectedPostStatusView,
+) -> SelectedPostHeaderView {
+    SelectedPostHeaderView {
+        title,
+        meta,
+        status,
     }
 }
 
@@ -431,6 +449,25 @@ mod tests {
         let view = selected_post_status_view("published".to_string(), "unknown".to_string());
         assert_eq!(view.status, "published".to_string());
         assert_eq!(view.unknown_label, "unknown".to_string());
+    }
+
+    #[test]
+    fn selected_post_header_view_groups_title_meta_and_status() {
+        let header = selected_post_header_view(
+            "Hello".to_string(),
+            selected_post_meta_view(
+                "slug",
+                "hello-world",
+                "locale",
+                "en",
+                "published",
+                "2026-01-01T00:00:00Z",
+            ),
+            selected_post_status_view("published".to_string(), "unknown".to_string()),
+        );
+        assert_eq!(header.title, "Hello".to_string());
+        assert_eq!(header.meta.slug_meta, "slug: hello-world".to_string());
+        assert_eq!(header.status.status, "published".to_string());
     }
 
     #[test]
