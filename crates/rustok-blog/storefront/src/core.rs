@@ -25,6 +25,10 @@ pub struct SelectedPostMetaView {
     pub separator: &'static str,
 }
 
+pub struct SelectedPostTagsView {
+    pub items: Vec<String>,
+}
+
 pub fn selected_post_meta_view(
     slug_label: &str,
     slug: &str,
@@ -47,6 +51,10 @@ pub fn selected_post_meta_view(
         published_meta,
         separator,
     }
+}
+
+pub fn selected_post_tags_view(tags: Vec<String>) -> Option<SelectedPostTagsView> {
+    selected_post_tag_items(tags).map(|items| SelectedPostTagsView { items })
 }
 
 pub fn open_link_label(label: &str, slug: &str) -> String {
@@ -377,6 +385,14 @@ mod tests {
             "published: 2026-01-01T00:00:00Z".to_string()
         );
         assert_eq!(view.separator, "·");
+    }
+
+    #[test]
+    fn selected_post_tags_view_maps_non_empty_tags() {
+        assert!(selected_post_tags_view(vec![]).is_none());
+        let view = selected_post_tags_view(vec!["news".to_string(), "release".to_string()])
+            .expect("expected tags view");
+        assert_eq!(view.items, vec!["news".to_string(), "release".to_string()]);
     }
 
     #[test]

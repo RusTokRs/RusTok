@@ -185,10 +185,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
             </div>
             <p class="mt-3 text-sm text-muted-foreground">{excerpt}</p>
             <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
-            {if let Some(tags) = core::selected_post_tag_items(tags) {
+            {if let Some(tags_view) = core::selected_post_tags_view(tags) {
                 view! {
                     <div class="mt-5 flex flex-wrap gap-2">
-                        {tags
+                        {tags_view
+                            .items
                             .into_iter()
                             .map(|tag| {
                                 view! {
