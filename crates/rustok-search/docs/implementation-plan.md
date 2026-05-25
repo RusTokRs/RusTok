@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
+- Last checkpoint: FFA slice #10 completed (storefront/admin collection emptiness guards normalized through core::has_items(...), reducing inline UI branching drift).
 - Next step: Phase B pilot slice #1 — выделить первый `core` use-case в storefront/admin surfaces без изменения dual-path transport contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-23T00:00:00Z
+- Last updated at (UTC): 2026-05-25T19:05:00Z
 
 
 ## FFA/FBA status
@@ -98,3 +98,5 @@
 - [x] Slice 7: admin preview score-template value extraction switched to dedicated core helper (`score_value`).
 - [x] Slice 8: storefront/admin error message composition moved to core (`error_with_context`).
 - [x] Slice 9: storefront/admin score rendering unified to direct core helpers (`score_label`, `score_value`) without template/trim hacks.
+
+- [x] Slice 10: storefront/admin collection emptiness guards moved to shared core helper (`has_items`) for presets/suggestions and analytics/dictionaries empty-state branches.

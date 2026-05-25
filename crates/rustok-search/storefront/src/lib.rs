@@ -179,7 +179,7 @@ pub fn SearchView() -> impl IntoView {
                     </div>
                     <Suspense fallback=|| view! { <div class="mt-3 h-10 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || filter_presets.get().map(|result| match result {
-                            Ok(presets) if !presets.is_empty() => view! {
+                            Ok(presets) if core::has_items(presets.as_slice()) => view! {
                                 <PresetChips presets selected_preset set_selected_preset query=search_input.get() />
                             }.into_any(),
                             Ok(_) => ().into_any(),
@@ -204,7 +204,7 @@ pub fn SearchView() -> impl IntoView {
                         let load_suggestions_error = load_suggestions_error.clone();
                         Suspend::new(async move {
                             match suggestions.await {
-                                Ok(items) if !items.is_empty() => view! {
+                                Ok(items) if core::has_items(items.as_slice()) => view! {
                                     <SearchSuggestionList suggestions=items />
                                 }.into_any(),
                                 Ok(_) => view! {
@@ -444,7 +444,7 @@ fn SearchResults(
         ranking_profile,
         facets,
     } = payload;
-    let has_items = !items.is_empty();
+    let has_items = core::has_items(items.as_slice());
     let item_views = items
         .into_iter()
         .enumerate()
