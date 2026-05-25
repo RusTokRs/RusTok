@@ -299,6 +299,7 @@ fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy()
         "status",
         "operation",
         "retryable_issue",
+        "operation_issue",
     ];
 
     for signature in [

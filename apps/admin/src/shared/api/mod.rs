@@ -306,6 +306,26 @@ mod map_server_fn_error_tests {
     }
 
     #[test]
+    fn lifecycle_operation_issue_matrix_is_forwarded_without_local_interpretation() {
+        let cases = [("pre_hook_failed", false), ("post_hook_failed", true)];
+
+        for (operation_issue, retryable_issue) in cases {
+            let payload = format!(
+                "GraphQL error: MODULE_HOOK_FAILED {{\"extensions\":{{\"code\":\"MODULE_HOOK_FAILED\",\"status\":\"failed\",\"operation_issue\":\"{operation_issue}\",\"retryable_issue\":{retryable_issue},\"correlation_id\":\"3da9b560-4f3a-4c7b-b55f-c0e84e00b1ef\"}}}}"
+            );
+            let mapped = map_server_fn_error(ServerFnError::new(payload.clone()));
+
+            assert!(
+                matches!(mapped, GraphqlHttpError::Graphql(message)
+                    if message.contains(&format!("\"operation_issue\":\"{operation_issue}\""))
+                    && message.contains(&format!("\"retryable_issue\":{retryable_issue}"))
+                    && message.contains("\"status\":\"failed\"")),
+                "operation issue fragments must pass through unchanged for {operation_issue}"
+            );
+        }
+    }
+
+    #[test]
     fn lifecycle_taxonomy_extensions_are_forwarded_without_local_normalization() {
         let payload = "GraphQL error: MISSING_DEPENDENCIES {\"extensions\":{\"code\":\"MISSING_DEPENDENCIES\",\"reason_code\":\"dependency_missing\",\"requested_by\":\"admin:user-2\"}}";
         let mapped = map_server_fn_error(ServerFnError::new(payload));
