@@ -924,3 +924,42 @@ Notes: <known deviations or waivers>
 - `docs/research/flutter.md` (явный статус зависимостей mobile contract scaffolding).
 
 Несинхронные изменения считаются release-blocker для pilot-wave.
+
+### 8.5 Execution backlog (следующие 2 недели, без расширения scope)
+
+Статус на текущий sprint: `in_progress` (фокус только на `P0 -> P3` из раздела 14.2).
+
+#### Week 1 — закрыть P0/P1
+
+- [ ] **PB-FBA-1A / Contract freeze:**
+  - [ ] зафиксировать `builder_contract_version=v1` и `consumer_min_version` в machine-readable registry;
+  - [ ] приложить anti-drift diff-check в CI (`fail-fast` при несовместимости).
+- [ ] **PB-FBA-1B / Fallback hardening:**
+  - [ ] подтвердить smoke-профили `all_on/publish_off/preview_off/builder_off` без `5xx` на `admin list/read` и `storefront read`;
+  - [ ] собрать parity-таблицу typed errors для Next/Leptos/Flutter adapters.
+
+#### Week 2 — закрыть P2/P3
+
+- [ ] **PB-FBA-1C / Control-plane operability:**
+  - [ ] провести dry-run toggle change-set (tenant internal), сохранить `before/after` snapshots;
+  - [ ] оформить decision log (`keep|rollback`) с owner sign-off.
+- [ ] **PB-FBA-1D / Observability baseline:**
+  - [ ] зафиксировать baseline-метрики `preview p95`, `publish p95`, `sanitize failure rate`;
+  - [ ] приложить минимум 2 correlation trace (`builder write -> pages publish -> storefront read`).
+
+#### Артефакты, обязательные для checkpoint update
+
+1. `metadata snapshot` (provider/consumer versions + fallback profile mapping);
+2. `fallback smoke report` (`all_on`, `publish_off`, `preview_off`, `builder_off`);
+3. `toggle audit log` (change-set id, before/after, decision);
+4. `observability snapshot` (p95/error-rate/sanitize + traces).
+
+#### Жёсткие ограничения на период backlog
+
+- Запрещено открывать delivery по `FW-1..FW-4` до полного закрытия `P5` (раздел 14.2).
+- Любой waiver по anti-drift или fallback-check автоматически ставит статус Wave 1 readiness в `hold`.
+- Любой change в builder-contract без синхронного обновления:
+  - `crates/rustok-pages/docs/implementation-plan.md`;
+  - `docs/modules/registry.md`;
+  - `docs/research/flutter.md`;
+  считается release-blocker.
