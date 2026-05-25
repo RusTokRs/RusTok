@@ -517,6 +517,21 @@ mod map_server_fn_error_tests {
     }
 
     #[test]
+    fn graphql_prefixed_lifecycle_extensions_with_transport_words_stay_graphql_variant() {
+        let payload = "GraphQL error: MODULE_HOOK_FAILED {\"extensions\":{\"code\":\"MODULE_HOOK_FAILED\",\"status\":\"failed\",\"operation_issue\":\"pre_hook_failed\",\"retryable_issue\":false,\"detail\":\"Unauthorized actor during Network pre-hook probe\"}}";
+        let mapped = map_server_fn_error(ServerFnError::new(payload));
+
+        assert!(
+            matches!(mapped, GraphqlHttpError::Graphql(message)
+                if message.contains("\"code\":\"MODULE_HOOK_FAILED\"")
+                && message.contains("\"operation_issue\":\"pre_hook_failed\"")
+                && message.contains("\"retryable_issue\":false")
+                && message.contains("Unauthorized actor during Network pre-hook probe")),
+            "GraphQL-prefixed lifecycle extensions payload must remain Graphql variant and preserve hook issue fragments verbatim"
+        );
+    }
+
+    #[test]
     fn graphql_prefixed_taxonomy_payloads_with_transport_prefix_strings_stay_graphql_variant() {
         let cases = [
             "GraphQL error: REVISION_CONFLICT: Http error: 409 stale revision",
