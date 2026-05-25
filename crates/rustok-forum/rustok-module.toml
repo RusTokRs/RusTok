@@ -15,6 +15,7 @@ tags = ["community", "content", "discussions"]
 [dependencies]
 content = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
+page_builder = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "ForumModule"
@@ -56,3 +57,42 @@ nav_label = "Topics"
 subpath = "categories"
 title = "Forum Categories"
 nav_label = "Categories"
+
+[fba.builder_consumer]
+contract_version = "1.0"
+builder_contract_version = "1.0"
+
+[fba.builder_consumer.degraded_modes]
+builder_disabled = "forum_widgets_readonly_keep_forum_routes"
+preview_disabled = "forum_widget_preview_hidden_keep_forum_routes"
+publish_disabled = "forum_widget_publish_feature_disabled_keep_forum_routes"
+
+[fba.builder_consumer.toggle_profiles]
+all_on = [
+  "builder.enabled=true",
+  "builder.preview.enabled=true",
+  "builder.properties.enabled=true",
+  "builder.publish.enabled=true",
+  "builder.legacy_bridge_readonly=true",
+]
+publish_off = [
+  "builder.enabled=true",
+  "builder.preview.enabled=true",
+  "builder.properties.enabled=true",
+  "builder.publish.enabled=false",
+  "builder.legacy_bridge_readonly=true",
+]
+preview_off = [
+  "builder.enabled=true",
+  "builder.preview.enabled=false",
+  "builder.properties.enabled=true",
+  "builder.publish.enabled=false",
+  "builder.legacy_bridge_readonly=true",
+]
+builder_off = [
+  "builder.enabled=false",
+  "builder.preview.enabled=false",
+  "builder.properties.enabled=false",
+  "builder.publish.enabled=false",
+  "builder.legacy_bridge_readonly=true",
+]

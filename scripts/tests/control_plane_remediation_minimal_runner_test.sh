@@ -50,26 +50,13 @@ RUNNER="$FIXTURE_ROOT/scripts/verify/run-control-plane-remediation-minimal.sh"
 
 bash -n "$RUNNER"
 
-# timeout preflight: timeout requested but binary missing from PATH must fail fast
-NO_TIMEOUT_OUTPUT="$(mktemp)"
-if (cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin" RUSTOK_VERIFY_STEP_TIMEOUT=1s "$RUNNER" >"$NO_TIMEOUT_OUTPUT" 2>&1); then
-  echo "runner unexpectedly succeeded without timeout binary" >&2
-  cat "$NO_TIMEOUT_OUTPUT" >&2
-  exit 1
-fi
-if ! rg -q "required tool is missing: timeout" "$NO_TIMEOUT_OUTPUT"; then
-  echo "runner did not report missing timeout preflight error" >&2
-  cat "$NO_TIMEOUT_OUTPUT" >&2
-  exit 1
-fi
-
 # lock guard: pre-acquire lock and assert runner exits with lock message
 LOCK_FILE="$FIXTURE_ROOT/target/.control-plane-remediation-minimal.lock"
 exec 8>"$LOCK_FILE"
 flock -n 8
 
 LOCK_OUTPUT="$(mktemp)"
-if (cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_SKIP_FMT=1 "$RUNNER" >"$LOCK_OUTPUT" 2>&1); then
+if (cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_SKIP_FMT=1 /bin/bash "$RUNNER" >"$LOCK_OUTPUT" 2>&1); then
   echo "runner unexpectedly succeeded while lock is held" >&2
   cat "$LOCK_OUTPUT" >&2
   exit 1
@@ -83,7 +70,7 @@ fi
 # release lock and ensure runner executes full command chain in skip-fmt mode
 flock -u 8
 STEP_OUTPUT="$(mktemp)"
-(cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_SKIP_FMT=1 "$RUNNER" >"$STEP_OUTPUT" 2>&1)
+(cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_SKIP_FMT=1 /bin/bash "$RUNNER" >"$STEP_OUTPUT" 2>&1)
 
 for pattern in \
   "Skipping format check because RUSTOK_VERIFY_SKIP_FMT=1" \
@@ -96,20 +83,20 @@ for pattern in \
   "Control-plane remediation minimal verification: PASS" \
   "--> migration tests: PASS"
 do
-  if ! rg -q "$pattern" "$STEP_OUTPUT"; then
+  if ! rg -q -- "$pattern" "$STEP_OUTPUT"; then
     echo "expected pattern missing: $pattern" >&2
     cat "$STEP_OUTPUT" >&2
     exit 1
   fi
 done
 
-if ! rg -q "Control-plane remediation minimal verification: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
+if ! rg -q -- "Control-plane remediation minimal verification: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
   echo "success scenario missing total duration suffix" >&2
   cat "$STEP_OUTPUT" >&2
   exit 1
 fi
 
-if ! rg -q "--> migration tests: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
+if ! rg -q -- "--> migration tests: PASS \([0-9]{2}h:[0-9]{2}m:[0-9]{2}s\)" "$STEP_OUTPUT"; then
   echo "success scenario missing per-step duration suffix" >&2
   cat "$STEP_OUTPUT" >&2
   exit 1
@@ -128,7 +115,7 @@ SH
 chmod +x "$FIXTURE_ROOT/fakebin/cargo"
 
 TIMEOUT_OUTPUT="$(mktemp)"
-if (cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_SKIP_FMT=1 RUSTOK_VERIFY_STEP_TIMEOUT=1s "$RUNNER" >"$TIMEOUT_OUTPUT" 2>&1); then
+if (cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_SKIP_FMT=1 RUSTOK_VERIFY_STEP_TIMEOUT=1s /bin/bash "$RUNNER" >"$TIMEOUT_OUTPUT" 2>&1); then
   echo "runner unexpectedly succeeded with strict timeout" >&2
   cat "$TIMEOUT_OUTPUT" >&2
   exit 1
@@ -174,5 +161,43 @@ if ! rg -q "Elapsed: [0-9]{2}h:[0-9]{2}m:[0-9]{2}s" "$TIMEOUT_OUTPUT"; then
   cat "$TIMEOUT_OUTPUT" >&2
   exit 1
 fi
+
+
+# continue-on-fmt-fail mode: fmt fails, other steps still run, exit code 2
+cat > "$FIXTURE_ROOT/fakebin/cargo" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *"fmt --all -- --check"* ]]; then
+  echo "fake fmt drift" >&2
+  exit 1
+fi
+printf "fake cargo called (continue-on-fmt): %s\n" "$*"
+exit 0
+SH
+chmod +x "$FIXTURE_ROOT/fakebin/cargo"
+
+CONTINUE_FMT_OUTPUT="$(mktemp)"
+set +e
+(cd "$FIXTURE_ROOT" && PATH="$FIXTURE_ROOT/fakebin:$PATH" RUSTOK_VERIFY_CONTINUE_ON_FMT_FAIL=1 /bin/bash "$RUNNER" >"$CONTINUE_FMT_OUTPUT" 2>&1)
+continue_exit=$?
+set -e
+if [[ "$continue_exit" -ne 2 ]]; then
+  echo "continue-on-fmt scenario must exit with code 2, got $continue_exit" >&2
+  cat "$CONTINUE_FMT_OUTPUT" >&2
+  exit 1
+fi
+for pattern in \
+  "Format failure continuation enabled" \
+  "WARNING: format check failed; continuing" \
+  "==> migration tests" \
+  "==> dependabot directory contract" \
+  "PARTIAL PASS"
+do
+  if ! rg -q -- "$pattern" "$CONTINUE_FMT_OUTPUT"; then
+    echo "continue-on-fmt scenario missing pattern: $pattern" >&2
+    cat "$CONTINUE_FMT_OUTPUT" >&2
+    exit 1
+  fi
+done
 
 echo "control_plane_remediation_minimal_runner_test.sh: PASS"

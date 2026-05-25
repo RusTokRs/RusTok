@@ -347,7 +347,6 @@ impl SeoService {
     }
 }
 
-
 fn disabled_sitemap_status() -> SeoSitemapStatusRecord {
     SeoSitemapStatusRecord {
         enabled: false,
@@ -1089,13 +1088,14 @@ mod tests {
         assert!(message.ends_with("..."));
     }
 
-
-
     #[test]
     fn submission_summary_truncation_keeps_short_unicode_values_intact() {
         let mut summary = SitemapSubmissionSummary::default();
         push_submission_failure(&mut summary, "ошибка кратко".to_string());
-        super::push_endpoint_status(&mut summary, "ok endpoint `https://пример.рф/ping`".to_string());
+        super::push_endpoint_status(
+            &mut summary,
+            "ok endpoint `https://пример.рф/ping`".to_string(),
+        );
 
         assert_eq!(summary.failures, vec!["ошибка кратко".to_string()]);
         assert_eq!(
@@ -1129,9 +1129,6 @@ mod tests {
         assert!(summary.failures[0].len() <= 515);
         assert!(summary.failures[0].ends_with("..."));
     }
-
-
-
 
     #[test]
     fn submission_summary_into_error_unicode_truncation_is_safe() {
@@ -1174,7 +1171,10 @@ mod tests {
     #[test]
     fn submission_summary_truncates_endpoint_status_entries_deterministically() {
         let mut summary = SitemapSubmissionSummary::default();
-        let long_status = format!("ok endpoint `{}`", "https://very-long-endpoint.example.com/".repeat(20));
+        let long_status = format!(
+            "ok endpoint `{}`",
+            "https://very-long-endpoint.example.com/".repeat(20)
+        );
         super::push_endpoint_status(&mut summary, long_status);
         assert_eq!(summary.endpoint_statuses.len(), 1);
         assert!(summary.endpoint_statuses[0].len() <= 163);
@@ -1229,10 +1229,7 @@ mod tests {
             ..Default::default()
         };
         for idx in 0..80 {
-            super::push_endpoint_status(
-                &mut summary,
-                format!("{}-{}", "статус".repeat(100), idx),
-            );
+            super::push_endpoint_status(&mut summary, format!("{}-{}", "статус".repeat(100), idx));
         }
         push_submission_failure(&mut summary, format!("ошибка: {}", "Ж".repeat(10_000)));
 

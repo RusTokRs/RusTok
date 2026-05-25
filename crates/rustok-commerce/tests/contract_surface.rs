@@ -19,11 +19,11 @@ fn implementation_plan_tracks_checkout_guardrail_visibility() {
 #[test]
 fn ecommerce_module_plans_keep_ffa_fba_status_blocks() {
     for (module_slug, plan) in [
+        ("commerce", include_str!("../docs/implementation-plan.md")),
         (
-            "commerce",
-            include_str!("../docs/implementation-plan.md"),
+            "cart",
+            include_str!("../../rustok-cart/docs/implementation-plan.md"),
         ),
-        ("cart", include_str!("../../rustok-cart/docs/implementation-plan.md")),
         (
             "customer",
             include_str!("../../rustok-customer/docs/implementation-plan.md"),
@@ -32,7 +32,10 @@ fn ecommerce_module_plans_keep_ffa_fba_status_blocks() {
             "product",
             include_str!("../../rustok-product/docs/implementation-plan.md"),
         ),
-        ("region", include_str!("../../rustok-region/docs/implementation-plan.md")),
+        (
+            "region",
+            include_str!("../../rustok-region/docs/implementation-plan.md"),
+        ),
         (
             "pricing",
             include_str!("../../rustok-pricing/docs/implementation-plan.md"),
@@ -41,7 +44,10 @@ fn ecommerce_module_plans_keep_ffa_fba_status_blocks() {
             "inventory",
             include_str!("../../rustok-inventory/docs/implementation-plan.md"),
         ),
-        ("order", include_str!("../../rustok-order/docs/implementation-plan.md")),
+        (
+            "order",
+            include_str!("../../rustok-order/docs/implementation-plan.md"),
+        ),
         (
             "payment",
             include_str!("../../rustok-payment/docs/implementation-plan.md"),

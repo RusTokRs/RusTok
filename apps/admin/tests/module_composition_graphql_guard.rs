@@ -299,6 +299,7 @@ fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy()
         "status",
         "operation",
         "retryable_issue",
+        "operation_issue",
     ];
 
     for signature in [
@@ -905,6 +906,8 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
             "module_operations",
             "correlation_id",
             "requested_by",
+            "retryable_issue",
+            "operation_issue",
         ] {
             assert!(
                 !helper_body.contains(forbidden_fragment),
@@ -947,6 +950,8 @@ fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
         "requested_by",
         "correlation_id",
         "extensions.code",
+        "retryable_issue",
+        "operation_issue",
     ] {
         assert!(
             !helper_body.contains(forbidden),

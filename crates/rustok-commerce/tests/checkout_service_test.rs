@@ -2145,7 +2145,10 @@ async fn complete_checkout_rejects_reentry_for_checking_out_cart_without_artifac
         .await
         .unwrap();
 
-    let checking_out = cart_service.begin_checkout(tenant_id, cart.id).await.unwrap();
+    let checking_out = cart_service
+        .begin_checkout(tenant_id, cart.id)
+        .await
+        .unwrap();
     assert_eq!(checking_out.status, "checking_out");
 
     let error = checkout

@@ -77,7 +77,6 @@ fn graphql_url() -> String {
     }
 }
 
-
 fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let trimmed = value.trim();
@@ -186,7 +185,6 @@ pub async fn fetch_product(
     Ok(response.product)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -239,7 +237,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod regression_tests {
     use super::{normalize_optional_trimmed, normalize_status_filter};
@@ -247,19 +244,31 @@ mod regression_tests {
     #[test]
     fn normalize_optional_trimmed_handles_tabs_and_newlines() {
         assert_eq!(
-            normalize_optional_trimmed(Some("
-	  inventory  	".to_string())),
+            normalize_optional_trimmed(Some(
+                "
+	  inventory  	"
+                    .to_string()
+            )),
             Some("inventory".to_string())
         );
-        assert_eq!(normalize_optional_trimmed(Some("
-	  	".to_string())), None);
+        assert_eq!(
+            normalize_optional_trimmed(Some(
+                "
+	  	"
+                .to_string()
+            )),
+            None
+        );
     }
 
     #[test]
     fn normalize_status_filter_normalizes_mixed_case_and_whitespace() {
         assert_eq!(
-            normalize_status_filter(Some("  aRcHiVeD
-".to_string())),
+            normalize_status_filter(Some(
+                "  aRcHiVeD
+"
+                .to_string()
+            )),
             Some("ARCHIVED".to_string())
         );
     }

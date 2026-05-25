@@ -850,3 +850,31 @@ rollback-стратегии и Definition of Done по итерациям.
 - Закрыт release-gate пункт документации: central и локальные документы синхронизированы с фактическим runtime contract control-plane.
 - В central docs зафиксированы DB-backed `platform_state` runtime source, atomic CAS+build enqueue и canonical SHA-256 snapshot/hash contract; в `apps/server`/`apps/admin` локальных docs закреплён GraphQL-only toggle entrypoint и отсутствие локального lifecycle SQL duplicate path.
 - На этом шаге незакрытым operational хвостом остаётся только полный зелёный прогон минимального verification-набора (fmt + test bundle).
+
+
+### Актуализация 2026-05-25 (итерация 67)
+
+- Исправлены регрессии в `run-control-plane-remediation-minimal.sh`, обнаруженные после расширения triage-режима: шаги больше не помечаются как `PASS` при фактическом падении команды внутри `run_step`, а вывод pass-line стабилизирован через `printf --` для префиксов вида `--> ...`.
+- Исправлен fixture smoke-test `scripts/tests/control_plane_remediation_minimal_runner_test.sh`: pattern-matching по строкам, начинающимся с `--`, переведён на `rg -q --`, а сценарий `continue-on-fmt-fail` синхронизирован по ожидаемому `exit 2` и обязательным маркерам `PARTIAL PASS`.
+- Это закрывает отдельный operational-риск ложноположительного PASS в minimal bundle runner и возвращает deterministic/non-regression baseline для Batch-2 verification цикла.
+
+
+### Актуализация 2026-05-25 (итерация 68)
+
+- Устранён drift в operational docs: в `scripts/verify/README.md` удалён дублирующий блок `Control-plane remediation minimal bundle`, оставлен единый канонический раздел `Control-plane remediation minimal runner` с актуальными флагами (`SKIP_FMT`, `CONTINUE_ON_FMT_FAIL`, `STEP_TIMEOUT`).
+- Запущен повторный Batch-2 прогон minimal runner в режиме `RUSTOK_VERIFY_CONTINUE_ON_FMT_FAIL=1` для сбора полного сигнала по шагам после format-drift; pre-existing `cargo fmt --check` drift подтверждён, runner корректно продолжает pipeline вместо early stop.
+- Чекбокс полного зелёного minimal verification набора остаётся незакрытым до отдельного strict-прогона без triage-флагов.
+
+
+### Актуализация 2026-05-25 (итерация 69)
+
+- Выполнен strict-прогон `scripts/verify/run-control-plane-remediation-minimal.sh` без triage-флагов: runner завершился `FAIL` на шаге `format check` (`cargo fmt --all -- --check`, `exit 1`, ~6s).
+- Подтверждён, что блокером полного закрытия operational-gate остаётся pre-existing workspace rustfmt drift (без новых control-plane функциональных ошибок в самом runner).
+- Чекбокс `Минимальный verification набор из этого плана прогнан на ветке` сохраняется в `[ ]` до отдельного полного зелёного прогона после выравнивания formatting baseline.
+
+
+### Актуализация 2026-05-25 (итерация 70)
+
+- Для ускорения закрытия operational хвоста выполнено выравнивание rustfmt baseline по текущему drift-списку strict-runner: форматированы затронутые файлы `rustok-blog`, `rustok-commerce` tests, `rustok-inventory` admin API и `rustok-seo` sitemap services.
+- После форматирования strict-runner проходит шаг `format check` (`PASS`) и переходит к следующему этапу (`migration tests`), что подтверждает снятие format-blocker для данного набора файлов.
+- Для полного закрытия чекбокса минимального verification-набора остаётся дождаться завершения полного bundle-прогона (`migration + rustok-server tests + xtask/dependabot checks`) в отдельном run-окне.

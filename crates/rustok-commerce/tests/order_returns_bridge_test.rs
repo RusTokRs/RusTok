@@ -74,7 +74,6 @@ async fn commerce_test_schema_supports_order_returns_filters() {
     assert_eq!(filtered[0].reason.as_deref(), Some("damaged"));
 }
 
-
 #[tokio::test]
 async fn commerce_order_returns_listing_ignores_blank_status_filter() {
     let db = Database::connect("sqlite::memory:").await.unwrap();

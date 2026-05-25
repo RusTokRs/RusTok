@@ -45,15 +45,14 @@ const implPlan = fs.readFileSync(implPlanPath, "utf8");
 const hasConsumerManifestMarkers =
   moduleToml.includes("page_builder") || moduleToml.includes("builder_consumer");
 
-if (arg === "pages") {
-  if (!hasConsumerManifestMarkers) {
-    fail(`${arg}: no page-builder dependency/builder_consumer markers in manifest`);
-  }
-  const mustHaveManifestMarkers = ["contract_version", "builder_contract_version"];
-  for (const marker of mustHaveManifestMarkers) {
-    if (!moduleToml.includes(marker)) {
-      fail(`${arg}: manifest missing marker '${marker}'`);
-    }
+if (!hasConsumerManifestMarkers) {
+  fail(`${arg}: no page-builder dependency/builder_consumer markers in manifest`);
+}
+
+const mustHaveManifestMarkers = ["contract_version", "builder_contract_version"];
+for (const marker of mustHaveManifestMarkers) {
+  if (!moduleToml.includes(marker)) {
+    fail(`${arg}: manifest missing marker '${marker}'`);
   }
 }
 

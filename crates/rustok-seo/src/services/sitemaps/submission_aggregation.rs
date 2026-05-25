@@ -61,7 +61,10 @@ impl SitemapSubmissionSummary {
             ));
         }
         let message = parts.join("; ");
-        Some(truncate_with_ellipsis(message, SITEMAP_SUBMIT_MAX_ERROR_LEN))
+        Some(truncate_with_ellipsis(
+            message,
+            SITEMAP_SUBMIT_MAX_ERROR_LEN,
+        ))
     }
 }
 
@@ -75,7 +78,9 @@ pub(super) fn push_submission_failure(summary: &mut SitemapSubmissionSummary, me
 
 pub(super) fn push_endpoint_status(summary: &mut SitemapSubmissionSummary, status: String) {
     if summary.endpoint_statuses.len() < SITEMAP_SUBMIT_MAX_ENDPOINT_STATUSES {
-        summary.endpoint_statuses.push(truncate_endpoint_status(status));
+        summary
+            .endpoint_statuses
+            .push(truncate_endpoint_status(status));
     } else {
         summary.omitted_endpoint_status_count += 1;
     }

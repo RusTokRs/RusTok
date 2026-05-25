@@ -224,10 +224,12 @@ pub fn module_href(base: &str, slug: &str) -> String {
 }
 
 pub fn post_link(base: &str, slug: &str, open_label: &str) -> (String, String) {
-    (
-        module_href(base, slug),
-        open_link_label(open_label, slug),
-    )
+    (module_href(base, slug), open_link_label(open_label, slug))
+}
+
+pub fn post_link_typed_view(base: &str, slug: &str, open_label: &str) -> PostLinkView {
+    let (href, open_label) = post_link(base, slug, open_label);
+    PostLinkView { href, open_label }
 }
 
 pub fn post_link_typed_view(base: &str, slug: &str, open_label: &str) -> PostLinkView {
@@ -296,7 +298,75 @@ pub fn list_post_card_view(
         locale_label,
         effective_locale,
     );
-    (status, resolved_excerpt, href, resolved_open_label, locale_meta)
+    (
+        status,
+        resolved_excerpt,
+        href,
+        resolved_open_label,
+        locale_meta,
+    )
+}
+
+pub fn published_post_card_view(
+    slug: Option<String>,
+    missing_slug_fallback: &str,
+    excerpt: Option<String>,
+    excerpt_fallback: &str,
+    module_route_base: &str,
+    open_label: &str,
+    locale_label: &str,
+    effective_locale: &str,
+    status: String,
+) -> PublishedPostCardView {
+    let (status, excerpt, href, open_label, locale_meta) = list_post_card_view(
+        slug,
+        missing_slug_fallback,
+        excerpt,
+        excerpt_fallback,
+        module_route_base,
+        open_label,
+        locale_label,
+        effective_locale,
+        status,
+    );
+    PublishedPostCardView {
+        status,
+        excerpt,
+        href,
+        open_label,
+        locale_meta,
+    }
+}
+
+pub fn published_post_card_view(
+    slug: Option<String>,
+    missing_slug_fallback: &str,
+    excerpt: Option<String>,
+    excerpt_fallback: &str,
+    module_route_base: &str,
+    open_label: &str,
+    locale_label: &str,
+    effective_locale: &str,
+    status: String,
+) -> PublishedPostCardView {
+    let (status, excerpt, href, open_label, locale_meta) = list_post_card_view(
+        slug,
+        missing_slug_fallback,
+        excerpt,
+        excerpt_fallback,
+        module_route_base,
+        open_label,
+        locale_label,
+        effective_locale,
+        status,
+    );
+    PublishedPostCardView {
+        status,
+        excerpt,
+        href,
+        open_label,
+        locale_meta,
+    }
 }
 
 pub fn published_post_card_view(

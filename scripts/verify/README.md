@@ -266,8 +266,10 @@ npm run verify:page-builder:consumer:forum
 Что делает:
 - последовательно запускает:
   1) `verify-page-builder-contract-parity.mjs`,
-  2) `verify-page-builder-fallback-profiles.mjs`,
-  3) `verify-page-builder-toggle-profiles-consistency.mjs`;
+  2) `verify-page-builder-consumer-readiness.mjs <module-slug>` (по умолчанию `pages` в агрегаторе),
+  3) `verify-page-builder-fallback-profiles.mjs`,
+  4) `verify-page-builder-toggle-profiles-consistency.mjs`,
+  5) `verify-page-builder-terminology.mjs`.
 - возвращает non-zero exit code при падении любого шага.
 
 **Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.
@@ -477,29 +479,6 @@ fi
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов
 
 
-## Control-plane remediation minimal bundle
-
-```bash
-./scripts/verify/run-control-plane-remediation-minimal.sh
-```
-
-Опционально для triage при известном pre-existing formatting drift:
-
-```bash
-RUSTOK_VERIFY_SKIP_FMT=1 ./scripts/verify/run-control-plane-remediation-minimal.sh
-```
-
-```bash
-./scripts/verify/verify-all.sh control-plane-remediation-minimal
-```
-
-Опционально можно ограничить длительность каждого шага:
-
-```bash
-RUSTOK_VERIFY_STEP_TIMEOUT=15m ./scripts/verify/run-control-plane-remediation-minimal.sh
-```
-
-
 ## Control-plane remediation progress snapshot
 
 ```bash
@@ -521,3 +500,19 @@ python3 scripts/verify/report-control-plane-remediation-progress.py --fail-on-pe
 ```
 
 Код выхода `2` означает, что в плане остались pending-пункты.
+
+
+## Control-plane remediation minimal runner
+
+Точечный bundle remediation-плана можно запускать через:
+
+```bash
+./scripts/verify/run-control-plane-remediation-minimal.sh
+# или alias
+./scripts/verify/verify-all.sh control-plane-remediation-minimal
+```
+
+Полезные флаги окружения:
+- `RUSTOK_VERIFY_SKIP_FMT=1` — пропустить `cargo fmt --check` для triage-циклов.
+- `RUSTOK_VERIFY_CONTINUE_ON_FMT_FAIL=1` — при fail форматирования продолжить остальные шаги и завершиться кодом `2` (partial pass).
+- `RUSTOK_VERIFY_STEP_TIMEOUT=<duration>` — ограничить длительность каждого шага через `timeout`.

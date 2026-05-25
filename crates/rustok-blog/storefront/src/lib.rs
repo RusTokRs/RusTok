@@ -151,7 +151,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
         slug.as_str(),
         &t(locale.as_deref(), "blog.selected.localeLabel", "locale"),
         effective_locale.as_str(),
-        &t(locale.as_deref(), "blog.selected.publishedLabel", "published"),
+        &t(
+            locale.as_deref(),
+            "blog.selected.publishedLabel",
+            "published",
+        ),
         published_at.as_str(),
     );
     let body = core::summarized_body_or_fallback(
