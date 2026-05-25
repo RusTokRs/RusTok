@@ -459,7 +459,10 @@ mod tests {
         assert_eq!(seed.channel_slugs_text, "web, mobile");
         assert!(seed.publish_now);
         assert_eq!(seed.body_format, GRAPESJS_FORMAT);
-        assert_eq!(seed.body_updated_at.as_deref(), Some("2026-05-23T10:30:00Z"));
+        assert_eq!(
+            seed.body_updated_at.as_deref(),
+            Some("2026-05-23T10:30:00Z")
+        );
         assert_eq!(seed.existing_blocks.len(), 1);
     }
 

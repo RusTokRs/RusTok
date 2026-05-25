@@ -1,0 +1,247 @@
+[
+  {
+    "module_slug": "blog",
+    "surface_kind": "admin_mobile",
+    "route_segment": "blog",
+    "permissions": [],
+    "locale_namespace": "blog",
+    "child_pages": [
+      {
+        "subpath": "new",
+        "title": "Add Blog Post",
+        "nav_label": "Add Post"
+      },
+      {
+        "subpath": "posts",
+        "title": "All Blog Posts",
+        "nav_label": "All Posts"
+      }
+    ]
+  },
+  {
+    "module_slug": "channel",
+    "surface_kind": "admin_mobile",
+    "route_segment": "channels",
+    "permissions": [],
+    "locale_namespace": "channel",
+    "child_pages": [
+      {
+        "subpath": "apps",
+        "title": "Channel Apps",
+        "nav_label": "Apps"
+      },
+      {
+        "subpath": "targets",
+        "title": "Channel Targets",
+        "nav_label": "Targets"
+      }
+    ]
+  },
+  {
+    "module_slug": "comments",
+    "surface_kind": "admin_mobile",
+    "route_segment": "comments",
+    "permissions": [],
+    "locale_namespace": "comments",
+    "child_pages": []
+  },
+  {
+    "module_slug": "commerce",
+    "surface_kind": "admin_mobile",
+    "route_segment": "commerce",
+    "permissions": [],
+    "locale_namespace": "commerce",
+    "child_pages": []
+  },
+  {
+    "module_slug": "customer",
+    "surface_kind": "admin_mobile",
+    "route_segment": "customers",
+    "permissions": [],
+    "locale_namespace": "customer",
+    "child_pages": []
+  },
+  {
+    "module_slug": "forum",
+    "surface_kind": "admin_mobile",
+    "route_segment": "forum",
+    "permissions": [],
+    "locale_namespace": "forum",
+    "child_pages": [
+      {
+        "subpath": "categories",
+        "title": "Forum Categories",
+        "nav_label": "Categories"
+      },
+      {
+        "subpath": "topics",
+        "title": "Forum Topics",
+        "nav_label": "Topics"
+      }
+    ]
+  },
+  {
+    "module_slug": "fulfillment",
+    "surface_kind": "admin_mobile",
+    "route_segment": "fulfillment",
+    "permissions": [],
+    "locale_namespace": "fulfillment",
+    "child_pages": []
+  },
+  {
+    "module_slug": "index",
+    "surface_kind": "admin_mobile",
+    "route_segment": "index",
+    "permissions": [],
+    "locale_namespace": "index",
+    "child_pages": []
+  },
+  {
+    "module_slug": "inventory",
+    "surface_kind": "admin_mobile",
+    "route_segment": "inventory",
+    "permissions": [],
+    "locale_namespace": "inventory",
+    "child_pages": []
+  },
+  {
+    "module_slug": "media",
+    "surface_kind": "admin_mobile",
+    "route_segment": "media",
+    "permissions": [],
+    "locale_namespace": "media",
+    "child_pages": []
+  },
+  {
+    "module_slug": "order",
+    "surface_kind": "admin_mobile",
+    "route_segment": "orders",
+    "permissions": [],
+    "locale_namespace": "order",
+    "child_pages": []
+  },
+  {
+    "module_slug": "outbox",
+    "surface_kind": "admin_mobile",
+    "route_segment": "outbox",
+    "permissions": [],
+    "locale_namespace": "outbox",
+    "child_pages": []
+  },
+  {
+    "module_slug": "pages",
+    "surface_kind": "admin_mobile",
+    "route_segment": "pages",
+    "permissions": [],
+    "locale_namespace": "pages",
+    "child_pages": [
+      {
+        "subpath": "all",
+        "title": "All Pages",
+        "nav_label": "All Pages"
+      },
+      {
+        "subpath": "new",
+        "title": "Add Page",
+        "nav_label": "Add Page"
+      }
+    ]
+  },
+  {
+    "module_slug": "pricing",
+    "surface_kind": "admin_mobile",
+    "route_segment": "pricing",
+    "permissions": [],
+    "locale_namespace": "pricing",
+    "child_pages": []
+  },
+  {
+    "module_slug": "product",
+    "surface_kind": "admin_mobile",
+    "route_segment": "product",
+    "permissions": [],
+    "locale_namespace": "product",
+    "child_pages": []
+  },
+  {
+    "module_slug": "rbac",
+    "surface_kind": "admin_mobile",
+    "route_segment": "rbac",
+    "permissions": [],
+    "locale_namespace": "rbac",
+    "child_pages": []
+  },
+  {
+    "module_slug": "region",
+    "surface_kind": "admin_mobile",
+    "route_segment": "regions",
+    "permissions": [],
+    "locale_namespace": "region",
+    "child_pages": []
+  },
+  {
+    "module_slug": "search",
+    "surface_kind": "admin_mobile",
+    "route_segment": "search",
+    "permissions": [],
+    "locale_namespace": "search",
+    "child_pages": [
+      {
+        "subpath": "analytics",
+        "title": "Search Analytics",
+        "nav_label": "Analytics"
+      },
+      {
+        "subpath": "dictionaries",
+        "title": "Search Dictionaries",
+        "nav_label": "Dictionaries"
+      },
+      {
+        "subpath": "engines",
+        "title": "Search Engines",
+        "nav_label": "Engines"
+      },
+      {
+        "subpath": "playground",
+        "title": "Search Playground",
+        "nav_label": "Playground"
+      }
+    ]
+  },
+  {
+    "module_slug": "seo",
+    "surface_kind": "admin_mobile",
+    "route_segment": "seo",
+    "permissions": [],
+    "locale_namespace": "seo",
+    "child_pages": [
+      {
+        "subpath": "overview",
+        "title": "SEO Overview",
+        "nav_label": "Overview"
+      }
+    ]
+  },
+  {
+    "module_slug": "tenant",
+    "surface_kind": "admin_mobile",
+    "route_segment": "tenant",
+    "permissions": [],
+    "locale_namespace": "tenant",
+    "child_pages": []
+  },
+  {
+    "module_slug": "workflow",
+    "surface_kind": "admin_mobile",
+    "route_segment": "workflow",
+    "permissions": [],
+    "locale_namespace": "workflow",
+    "child_pages": [
+      {
+        "subpath": "templates",
+        "title": "Workflow Templates",
+        "nav_label": "Templates"
+      }
+    ]
+  }
+]

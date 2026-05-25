@@ -1264,9 +1264,10 @@ impl OrderService {
             query = query.filter(entities::order_return::Column::OrderId.eq(order_id));
         }
         if let Some(status) = input.status {
-            query = query.filter(
-                entities::order_return::Column::Status.eq(status.trim().to_ascii_lowercase()),
-            );
+            let normalized_status = status.trim().to_ascii_lowercase();
+            if !normalized_status.is_empty() {
+                query = query.filter(entities::order_return::Column::Status.eq(normalized_status));
+            }
         }
         let paginator = query.paginate(&self.db, per_page);
         let total = paginator.num_items().await?;

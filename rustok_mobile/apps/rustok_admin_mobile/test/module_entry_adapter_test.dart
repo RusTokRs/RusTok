@@ -25,6 +25,9 @@ void main() {
     expect(adapted, hasLength(1));
     final blog = adapted.first;
     expect(blog.routeSegment, 'blog');
+    expect(blog.surfaceKind, MobileSurfaceKind.admin);
+    expect(blog.localeNamespace, isNull);
+    expect(blog.permissions, isEmpty);
     expect(blog.path, '/modules/blog');
     expect(blog.navTitle, 'Blog');
     expect(blog.childRoutes, hasLength(2));
@@ -158,6 +161,25 @@ void main() {
     expect(report.routes, hasLength(1));
     expect(report.rejectedModuleEntries, 2);
     expect(report.rejectedChildEntries, 2);
+  });
+
+  test('preserves frozen registry metadata for FFA-safe host wiring', () {
+    final entries = <MobileModuleEntry>[
+      const MobileModuleEntry(
+        moduleKey: 'rustok_modules',
+        surfaceKind: MobileSurfaceKind.admin,
+        routeSegment: 'modules',
+        localeNamespace: 'modules',
+        permissions: ['modules.read', 'modules.write'],
+        nav: MobileNavMeta(title: 'Modules', icon: 'extension'),
+      ),
+    ];
+
+    final adapted = adaptModuleEntries(entries).single;
+
+    expect(adapted.surfaceKind, MobileSurfaceKind.admin);
+    expect(adapted.localeNamespace, 'modules');
+    expect(adapted.permissions, ['modules.read', 'modules.write']);
   });
 
 }

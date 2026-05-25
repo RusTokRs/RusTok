@@ -4,12 +4,22 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_c1_execution_prep
-- Last checkpoint: Выполнен plan-sync с фактическим кодом `rustok-seo`: подтверждены typed schema input/write paths, diagnostics remediation flow и runtime foundation для sitemap submission endpoints (`sitemap_submission_endpoints` + bounded best-effort submit в `generate_sitemaps`).
-- Next step: Реализовать Iteration C1 — зафиксировать typed adapter seam `submit_sitemap_index` + endpoint aggregation и закрыть regression coverage для success/failure endpoint fan-out.
-- Open blockers: Для полноценного Google Indexing API/поисковых провайдеров нужен отдельный tenant-secret contract (вне текущего scope C1).
-- Hand-off notes for next agent: Не расширять C1 до cross-linking/media; сначала зафиксировать adapter seam + tests, затем переходить к C2/C3.
-- Last updated at (UTC): 2026-05-24T17:07:32Z
+- Current phase: phase_c1_execution
+- Last checkpoint: Для C1 завершено разбиение `sitemaps` на 3 дочерних runtime-модуля и добавлен provider seam runtime object (`SitemapSubmissionRuntime`) с default strategy/factory wiring для HTTP adapter без изменения public `SeoSitemapStatusRecord`.
+- Next step: Довести C1.1 (telemetry-friendly aggregation + bounded errors) и C1.2 (regression matrix с deterministic truncation), затем закрыть C1 verification evidence и только после этого открывать provider-specific adapter extension points (Google Indexing API и др.) поверх `SitemapSubmissionRuntime`.
+- Open blockers: Для полноценных provider-specific adapters (Google Indexing API и др.) нужен отдельный tenant-secret contract и policy для secret rotation (вне текущего scope C1).
+- Hand-off notes for next agent: Целевое разбиение дочерних модулей для `sitemaps` = **3** (generation/adapters/aggregation); C2/C3 не трогать до полного закрытия C1 regression/verify.
+- Last updated at (UTC): 2026-05-24T23:10:00Z
+
+## FFA/FBA status block
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Last verification evidence:
+  - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
+  - `cargo check -p rustok-seo-admin --features ssr --config profile.dev.debug=0`
+  - `cargo check -p rustok-seo-admin-support --tests --config profile.dev.debug=0`
+- Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); transport boundary развивается через GraphQL + REST `/api/seo/page-context`.
 
 ## Область работ
 
@@ -118,9 +128,18 @@
 #### Phase C — indexing и linking automation
 
 - [ ] **Iteration C1 — external submission adapters (runtime seam + hardening)**
-  - [ ] Вынести текущий sitemap submit flow в typed adapter contract (`submit_sitemap_index`) с default HTTP adapter поверх уже существующих `sitemap_submission_endpoints`.
+  - [x] C1.0 Зафиксировать runtime interface `submit_sitemap_index` (trait/adapter seam) и default HTTP adapter wiring без breaking changes в существующем orchestrator flow.
+  - [x] Вынести текущий sitemap submit flow в typed adapter contract (`submit_sitemap_index`) с default HTTP adapter поверх уже существующих `sitemap_submission_endpoints`.
+  - [ ] C1.1 Ввести telemetry-friendly aggregation model (per-endpoint status + bounded error summary) и адаптировать внутренний статус sitemap job без изменения public `SeoSitemapStatusRecord`.
   - [ ] Добавить per-endpoint result aggregation (success/failure count + bounded error summary) без изменения существующего `SeoSitemapStatusRecord` public shape.
+  - [ ] C1.2 Добавить regression test matrix для endpoint fan-out и ограничить объём ошибок/timeout details deterministic truncation-правилом.
   - [ ] Покрыть adapter path regression tests: all-success, partial-failure, invalid endpoint skip, timeout/failure truncation.
+  - [ ] C1.3 Обновить docs/verification evidence для sitemap submit orchestration (что именно считается pass/fail по partial failures).
+  - Tactical rollout для следующей сессии:
+    1. Сначала добавить internal aggregation DTO + mapping в существующий `SeoSitemapStatusRecord` без изменения public shape.
+    2. Затем зафиксировать bounded truncation policy (`max_errors`, `max_timeout_details`) с deterministic ordering по endpoint.
+    3. После этого добавить tests для fan-out, partial failure, invalid endpoint skip и timeout truncation.
+    4. В финале синхронизировать verification gate в этом плане и локальном `README.md`.
   - Проверка инкремента:
     - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
     - `cargo test -p rustok-seo --lib sitemaps`
@@ -149,13 +168,13 @@
 ## Осталось сделать (оценка на 2026-05-24)
 
 - **Phase C — indexing и linking automation**: 3/3 итерации в статусе open (`C1`, `C2`, `C3`).
-- **Незавершённые checklist-пункты в Phase C**: **10**
-  - C1: 3 пункта
+- **Незавершённые checklist-пункты в Phase C**: **12**
+  - C1: 5 пунктов
   - C2: 3 пункта
   - C3: 3 пункта
   - Next coverage guardrail (расширение Next routes только после C1–C3): 1 пункт
-- **Quality backlog**: 3 open пункта (tests/docs/verification gates).
-- **Итого open пунктов в документе**: **13** (Phase C + Quality backlog).
+- **Quality backlog**: 2 open пункта (tests/docs полнота + verification gates синхронизация через C1.3).
+- **Итого open пунктов в документе**: **14** (Phase C + Quality backlog).
 
 Приоритет исполнения: сначала C1 (adapter seam + tests), затем C2 (cross-link suggestions + diagnostics), затем C3 (image SEO hooks через `rustok-media`).
 
@@ -181,4 +200,4 @@
 
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля (перенесено в C1.3 tactical track).

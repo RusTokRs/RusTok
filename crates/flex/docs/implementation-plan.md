@@ -7,12 +7,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: phase45_verification_followup
+- Last checkpoint: Plan sync завершён: flex подтверждён как capability-only ghost module с live standalone GraphQL/REST surfaces; открытым остаётся только full integration verification gate из-за внешнего compile-drift в rustok-product.
+- Next step: Закрыть Phase 4.5 verification debt: устранить compile-drift в `crates/rustok-product/src/services/catalog.rs`, затем прогнать `cargo test -p rustok-server --lib` + flex-targeted integration сценарии и зафиксировать evidence в этом плане.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-05-24T21:44:13Z
 
 ## Область работ
 

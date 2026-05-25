@@ -165,6 +165,7 @@ test_baseline_fails_on_contract_mismatch_fixture() {
     cat "$FAIL_OUTPUT_FILE"
     exit 1
   fi
+  grep -q "invalid numeric version segment" "$FAIL_OUTPUT_FILE"
 }
 
 test_verify_all_alias_runs_page_builder_baseline() {
@@ -180,9 +181,16 @@ test_verify_all_alias_runs_page_builder_baseline_for_forum_module() {
 }
 
 create_fixture_repo
+copy_verify_scripts
 trap cleanup_fixture_repo EXIT
 test_baseline_passes_on_isolated_fixture
 test_baseline_fails_on_contract_mismatch_fixture
+create_fixture_repo
+copy_verify_scripts
+test_baseline_fails_on_consumer_below_minimum_fixture
+create_fixture_repo
+copy_verify_scripts
+test_baseline_fails_on_invalid_version_format_fixture
 test_verify_all_alias_runs_page_builder_baseline
 test_verify_all_alias_runs_page_builder_baseline_for_forum_module
 

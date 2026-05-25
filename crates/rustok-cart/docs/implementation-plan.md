@@ -7,10 +7,10 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - Current phase: plan_sync
 - Last checkpoint: Recovery/versioning coverage around checkout lifecycle now includes `checking_out` re-entry guardrails, release/complete transition semantics, and completed-cart mutation fences for both typed promotions and generic adjustment writes.
-- Next step: Зафиксировать эти recovery/versioning guarantees в umbrella `rustok-commerce` docs и расширить transport-level regression checks, чтобы release/complete guards оставались видимыми вне cart service unit layer.
+- Next step: Продолжить cart backlog только в FFA/FBA-first режиме: storefront ownership, recovery/versioning guards и transport parity evidence закрывать в тех же инкрементах, чтобы не накапливать migration debt.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-21T12:30:00Z
+- Last updated at (UTC): 2026-05-24T20:10:00Z
 
 
 ## FFA/FBA status

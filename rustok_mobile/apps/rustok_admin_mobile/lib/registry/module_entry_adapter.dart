@@ -5,14 +5,20 @@ const modulesRootPath = '/modules';
 class ModuleRouteEntry {
   const ModuleRouteEntry({
     required this.moduleKey,
+    required this.surfaceKind,
     required this.routeSegment,
+    required this.localeNamespace,
+    required this.permissions,
     required this.path,
     required this.navTitle,
     required this.childRoutes,
   });
 
   final String moduleKey;
+  final MobileSurfaceKind surfaceKind;
   final String routeSegment;
+  final String? localeNamespace;
+  final List<String> permissions;
   final String path;
   final String navTitle;
   final List<ModuleChildRouteEntry> childRoutes;
@@ -94,7 +100,10 @@ ModuleRegistryAdaptationResult adaptModuleEntriesWithReport(
     adapted.add(
       ModuleRouteEntry(
         moduleKey: moduleKey,
+        surfaceKind: entry.surfaceKind,
         routeSegment: routeSegment,
+        localeNamespace: entry.localeNamespace,
+        permissions: List.unmodifiable(entry.permissions),
         path: basePath,
         navTitle: entry.nav.title,
         childRoutes: List.unmodifiable(childRoutes),

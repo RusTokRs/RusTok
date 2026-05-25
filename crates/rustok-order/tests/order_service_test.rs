@@ -377,6 +377,223 @@ async fn create_and_list_order_returns() {
 }
 
 #[tokio::test]
+async fn list_order_returns_clamps_per_page_upper_bound_to_100() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    for index in 0..101 {
+        service
+            .create_return(
+                tenant_id,
+                order.id,
+                CreateOrderReturnInput {
+                    reason: Some(format!("reason-{index}")),
+                    note: None,
+                    metadata: serde_json::json!({ "source": "per-page-upper-bound-test", "index": index }),
+                },
+            )
+            .await
+            .expect("return should be created");
+    }
+
+    let (rows, total) = service
+        .list_returns(
+            tenant_id,
+            ListOrderReturnsInput {
+                page: 1,
+                per_page: 1_000,
+                order_id: Some(order.id),
+                status: None,
+            },
+        )
+        .await
+        .expect("per_page upper bound should clamp");
+
+    assert_eq!(total, 101);
+    assert_eq!(rows.len(), 100, "per_page > 100 should clamp to 100 rows");
+}
+
+#[tokio::test]
+async fn list_order_returns_clamps_pagination_bounds() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "pagination-clamp-test-1" }),
+            },
+        )
+        .await
+        .expect("first return should be created");
+
+    service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("wrong-size".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "pagination-clamp-test-2" }),
+            },
+        )
+        .await
+        .expect("second return should be created");
+
+    let (rows_page1, total_page1) = service
+        .list_returns(
+            tenant_id,
+            ListOrderReturnsInput {
+                page: 0,
+                per_page: 0,
+                order_id: Some(order.id),
+                status: None,
+            },
+        )
+        .await
+        .expect("page/per_page lower bound should clamp");
+
+    assert_eq!(total_page1, 2);
+    assert_eq!(rows_page1.len(), 1, "per_page=0 should clamp to 1");
+
+    let (rows_page2, total_page2) = service
+        .list_returns(
+            tenant_id,
+            ListOrderReturnsInput {
+                page: 2,
+                per_page: 1,
+                order_id: Some(order.id),
+                status: None,
+            },
+        )
+        .await
+        .expect("second page should resolve");
+
+    assert_eq!(total_page2, 2);
+    assert_eq!(rows_page2.len(), 1);
+    assert_ne!(rows_page1[0].id, rows_page2[0].id);
+}
+
+#[tokio::test]
+async fn list_order_returns_ignores_blank_status_filter() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    let created_return = service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "blank-status-filter-test" }),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let (rows, total) = service
+        .list_returns(
+            tenant_id,
+            ListOrderReturnsInput {
+                page: 1,
+                per_page: 20,
+                order_id: Some(order.id),
+                status: Some("   ".to_string()),
+            },
+        )
+        .await
+        .expect("returns list should ignore blank status filter");
+
+    assert_eq!(total, 1);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, created_return.id);
+}
+
+#[tokio::test]
+async fn list_order_returns_applies_status_trim_and_tenant_isolation() {
+    let service = setup().await;
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order_a = service
+        .create_order(tenant_a, actor_id, create_order_input())
+        .await
+        .expect("tenant A order should be created");
+    let order_b = service
+        .create_order(tenant_b, actor_id, create_order_input())
+        .await
+        .expect("tenant B order should be created");
+
+    let return_a = service
+        .create_return(
+            tenant_a,
+            order_a.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "tenant-a" }),
+            },
+        )
+        .await
+        .expect("tenant A return should be created");
+
+    service
+        .create_return(
+            tenant_b,
+            order_b.id,
+            CreateOrderReturnInput {
+                reason: Some("wrong-size".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "tenant-b" }),
+            },
+        )
+        .await
+        .expect("tenant B return should be created");
+
+    let (rows, total) = service
+        .list_returns(
+            tenant_a,
+            ListOrderReturnsInput {
+                page: 1,
+                per_page: 20,
+                order_id: None,
+                status: Some("  PENDING  ".to_string()),
+            },
+        )
+        .await
+        .expect("tenant A filtered returns should load");
+
+    assert_eq!(total, 1);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, return_a.id);
+    assert_eq!(rows[0].order_id, order_a.id);
+}
+
+#[tokio::test]
 async fn localized_order_custom_fields_resolve_from_attached_values() {
     let db = setup_test_db().await;
     support::ensure_order_schema(&db).await;
