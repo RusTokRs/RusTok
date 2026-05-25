@@ -127,6 +127,7 @@ cleanup_fixture_repo() {
   rm -rf "$FIXTURE_ROOT"
   [[ -n "${FAIL_OUTPUT_FILE:-}" ]] && rm -f "$FAIL_OUTPUT_FILE"
   [[ -n "${VERIFY_ALL_OUTPUT_FILE:-}" ]] && rm -f "$VERIFY_ALL_OUTPUT_FILE"
+  [[ -n "${VERIFY_ALL_FORUM_OUTPUT_FILE:-}" ]] && rm -f "$VERIFY_ALL_FORUM_OUTPUT_FILE"
 }
 
 test_baseline_passes_on_isolated_fixture() {
@@ -230,10 +231,17 @@ test_verify_all_alias_runs_page_builder_baseline() {
   grep -q "PASS" "$VERIFY_ALL_OUTPUT_FILE"
 }
 
+test_verify_all_alias_runs_page_builder_baseline_for_forum_module() {
+  VERIFY_ALL_FORUM_OUTPUT_FILE="$(mktemp)"
+  (cd "$REPO_ROOT" && PBC_MODULE=forum "$VERIFY_DIR/verify-all.sh" page-builder-fba-baseline >"$VERIFY_ALL_FORUM_OUTPUT_FILE")
+  grep -q "PASS" "$VERIFY_ALL_FORUM_OUTPUT_FILE"
+}
+
 create_fixture_repo
 trap cleanup_fixture_repo EXIT
 test_baseline_passes_on_isolated_fixture
 test_baseline_fails_on_contract_mismatch_fixture
 test_verify_all_alias_runs_page_builder_baseline
+test_verify_all_alias_runs_page_builder_baseline_for_forum_module
 
-echo "page_builder_fba_verify_test.sh: PASS (fixture pass/fail + repo alias)"
+echo "page_builder_fba_verify_test.sh: PASS (fixture pass/fail + repo alias + forum module alias)"
