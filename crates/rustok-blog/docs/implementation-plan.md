@@ -8,14 +8,14 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #58 completed (storefront selected-post empty-state payload switched to `core::selected_post_empty_state_view(...)` tuple mapping, сохранив thin/presentational UI branch и dual-path transport contract).
+- Last checkpoint: FFA slice #59 completed (storefront selected-post meta row payload migrated from tuple destructuring to typed core view-model `SelectedPostMetaView` via `core::selected_post_meta_view(...)`).
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-25T13:56:00Z
+- Last updated at (UTC): 2026-05-25T14:24:00Z
 
 ## FFA/FBA status
 
@@ -181,6 +181,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 56: storefront published-post list header view (`title + total`) switched from inline UI composition to `core::published_posts_header_view(...)`.
 - [x] Slice 57: storefront published-post header payload now precomputed before `view!`, removing inline `move` closure and keeping render tree strictly presentational.
 - [x] Slice 58: storefront selected-post empty-state payload (`title + body`) switched from inline i18n calls in UI to `core::selected_post_empty_state_view(...)`.
+- [x] Slice 59: storefront selected-post meta row now consumes typed payload `SelectedPostMetaView` from `core::selected_post_meta_view(...)` instead of local tuple destructuring.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

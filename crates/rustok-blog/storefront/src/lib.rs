@@ -144,7 +144,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     let tags = post.tags;
     let body_format = post.body_format;
     let unknown_status_label = t(locale.as_deref(), "blog.selected.unknownStatus", "unknown");
-    let (slug_meta, locale_meta, published_meta, meta_separator) = core::selected_post_meta_row(
+    let selected_post_meta = core::selected_post_meta_view(
         &t(locale.as_deref(), "blog.selected.slugLabel", "slug"),
         slug.as_str(),
         &t(locale.as_deref(), "blog.selected.localeLabel", "locale"),
@@ -170,11 +170,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{slug_meta}</span>
-                <span>{meta_separator}</span>
-                <span>{locale_meta}</span>
-                <span>{meta_separator}</span>
-                <span>{published_meta}</span>
+                <span>{selected_post_meta.slug_meta}</span>
+                <span>{selected_post_meta.separator}</span>
+                <span>{selected_post_meta.locale_meta}</span>
+                <span>{selected_post_meta.separator}</span>
+                <span>{selected_post_meta.published_meta}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
             <div class="mt-3">

@@ -18,6 +18,37 @@ pub fn selected_post_empty_state_view(title: String, body: String) -> (String, S
     (title, body)
 }
 
+pub struct SelectedPostMetaView {
+    pub slug_meta: String,
+    pub locale_meta: String,
+    pub published_meta: String,
+    pub separator: &'static str,
+}
+
+pub fn selected_post_meta_view(
+    slug_label: &str,
+    slug: &str,
+    locale_label: &str,
+    effective_locale: &str,
+    published_label: &str,
+    published_at: &str,
+) -> SelectedPostMetaView {
+    let (slug_meta, locale_meta, published_meta, separator) = selected_post_meta_row(
+        slug_label,
+        slug,
+        locale_label,
+        effective_locale,
+        published_label,
+        published_at,
+    );
+    SelectedPostMetaView {
+        slug_meta,
+        locale_meta,
+        published_meta,
+        separator,
+    }
+}
+
 pub fn open_link_label(label: &str, slug: &str) -> String {
     format!("{label} {slug}")
 }
@@ -327,6 +358,25 @@ mod tests {
                 "Open a post from the list below.".to_string(),
             )
         );
+    }
+
+    #[test]
+    fn selected_post_meta_view_builds_meta_payload() {
+        let view = selected_post_meta_view(
+            "slug",
+            "hello-world",
+            "locale",
+            "en",
+            "published",
+            "2026-01-01T00:00:00Z",
+        );
+        assert_eq!(view.slug_meta, "slug: hello-world".to_string());
+        assert_eq!(view.locale_meta, "locale: en".to_string());
+        assert_eq!(
+            view.published_meta,
+            "published: 2026-01-01T00:00:00Z".to_string()
+        );
+        assert_eq!(view.separator, "·");
     }
 
     #[test]
