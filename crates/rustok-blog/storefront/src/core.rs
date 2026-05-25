@@ -67,6 +67,11 @@ pub struct PublishedPostsEmptyStateView {
     pub message: String,
 }
 
+pub struct StatusBadgeView {
+    pub label: String,
+    pub badge_css: &'static str,
+}
+
 pub fn published_posts_header_typed_view(
     title: String,
     total: u64,
@@ -392,6 +397,11 @@ pub fn status_badge_view(status: String, unknown_label: &str) -> (String, &'stat
     status_presentation(status.as_str(), unknown_label)
 }
 
+pub fn status_badge_typed_view(status: String, unknown_label: &str) -> StatusBadgeView {
+    let (label, badge_css) = status_badge_view(status, unknown_label);
+    StatusBadgeView { label, badge_css }
+}
+
 pub fn selected_post_tag_items(tags: Vec<String>) -> Option<Vec<String>> {
     if has_items(tags.as_slice()) {
         Some(tags)
@@ -503,6 +513,16 @@ mod tests {
     fn published_posts_empty_state_typed_view_builds_struct() {
         let view = published_posts_empty_state_typed_view("No items".to_string());
         assert_eq!(view.message, "No items".to_string());
+    }
+
+    #[test]
+    fn status_badge_typed_view_builds_struct() {
+        let view = status_badge_typed_view(" archived ".to_string(), "unknown");
+        assert_eq!(view.label, "archived".to_string());
+        assert_eq!(
+            view.badge_css,
+            "inline-flex rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground"
+        );
     }
 
     #[test]
