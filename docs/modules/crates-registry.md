@@ -128,3 +128,9 @@ Alloy остаётся capability-oriented слоем с permission-поверх
 - [Индекс документации по модулям](./_index.md)
 - [Контракт `rustok-module.toml`](./manifest.md)
 - [Шаблон документации модуля](../templates/module_contract.md)
+
+
+## Скрипты модулей и библиотек
+
+- Для каждого crate поддерживается локальная папка `scripts/` для crate-specific automation (verify/migration/generation/maintenance).
+- Корневой `scripts/` используется только для общих orchestration сценариев уровня платформы.

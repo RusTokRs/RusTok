@@ -296,3 +296,11 @@ Module-owned UI package не имеет права invent-ить свою locale
 3. Обновлён local `docs/implementation-plan.md`, если менялся roadmap или target state.
 4. Обновлён `docs/index.md`, если поменялась карта документации.
 5. Нет дублирующего нового документа, если подходящий уже существовал.
+
+
+## Scripts placement policy
+
+- Module-specific scripts must live near the module in `crates/<module>/scripts/` (or `apps/<app>/scripts/` for app-owned scripts).
+- Repository-level `scripts/` is reserved for cross-platform orchestration and multi-module runners.
+- If a script affects module runtime/public contracts, update both local module docs and central `docs/` references in the same change.
+
