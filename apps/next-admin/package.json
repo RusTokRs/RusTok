@@ -133,7 +133,7 @@
     "@types/react-dom": "^19.0.2",
     "@types/sort-by": "^1.2.3",
     "@types/uuid": "^11.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.59.4",
+    "@typescript-eslint/eslint-plugin": "^8.60.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
     "prettier": "3.8.3",
