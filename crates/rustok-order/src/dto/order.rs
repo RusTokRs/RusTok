@@ -108,6 +108,18 @@ pub struct CreateOrderReturnInput {
     pub metadata: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CompleteOrderReturnInput {
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CancelOrderReturnInput {
+    #[validate(length(max = 255))]
+    pub reason: Option<String>,
+    pub metadata: Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ListOrderReturnsInput {
     pub page: u64,

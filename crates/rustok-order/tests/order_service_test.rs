@@ -128,7 +128,7 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
 
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, name, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, description, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             rustok_core::generate_id().into(),
             tenant_id.into(),
@@ -144,7 +144,7 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
 
     let inserted = order_tax_line::Entity::find()
         .filter(order_tax_line::Column::OrderId.eq(created.id))
-        .filter(order_tax_line::Column::Name.eq("VAT backfill smoke"))
+        .filter(order_tax_line::Column::Description.eq("VAT backfill smoke"))
         .one(&db)
         .await
         .expect("tax line query should succeed")
@@ -154,7 +154,7 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
 
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, name, provider_id, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, description, provider_id, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             rustok_core::generate_id().into(),
             tenant_id.into(),
@@ -171,7 +171,7 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
 
     let explicit = order_tax_line::Entity::find()
         .filter(order_tax_line::Column::OrderId.eq(created.id))
-        .filter(order_tax_line::Column::Name.eq("VAT explicit provider"))
+        .filter(order_tax_line::Column::Description.eq("VAT explicit provider"))
         .one(&db)
         .await
         .expect("explicit provider tax line query should succeed")
@@ -776,5 +776,119 @@ async fn create_order_rejects_missing_required_custom_field() {
             );
         }
         other => panic!("expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn order_return_lifecycle_completes_and_rejects_second_transition() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    let created_return = service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "lifecycle-test" }),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let completed = service
+        .complete_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CompleteOrderReturnInput {
+                metadata: serde_json::json!({ "completed_by": "admin" }),
+            },
+        )
+        .await
+        .expect("return should complete");
+
+    assert_eq!(completed.status, "completed");
+    assert!(completed.completed_at.is_some());
+    assert_eq!(completed.metadata["source"], "lifecycle-test");
+    assert_eq!(completed.metadata["completed_by"], "admin");
+
+    let error = service
+        .cancel_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CancelOrderReturnInput {
+                reason: Some("duplicate".to_string()),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+    match error {
+        OrderError::InvalidTransition { from, to } => {
+            assert_eq!(from, "completed");
+            assert_eq!(to, "cancelled");
+        }
+        other => panic!("expected invalid return transition, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn order_return_lifecycle_cancels_and_show_is_tenant_scoped() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    let created_return = service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("wrong size".to_string()),
+                note: None,
+                metadata: serde_json::json!({ "source": "cancel-test" }),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let shown = service
+        .get_return(tenant_id, created_return.id)
+        .await
+        .expect("return should be readable by tenant");
+    assert_eq!(shown.id, created_return.id);
+
+    let cancelled = service
+        .cancel_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CancelOrderReturnInput {
+                reason: Some(" customer withdrew ".to_string()),
+                metadata: serde_json::json!({ "cancelled_by": "admin" }),
+            },
+        )
+        .await
+        .expect("return should cancel");
+    assert_eq!(cancelled.status, "cancelled");
+    assert_eq!(cancelled.reason.as_deref(), Some("customer withdrew"));
+    assert!(cancelled.cancelled_at.is_some());
+    assert_eq!(cancelled.metadata["source"], "cancel-test");
+    assert_eq!(cancelled.metadata["cancelled_by"], "admin");
+
+    let error = service
+        .get_return(other_tenant_id, created_return.id)
+        .await
+        .unwrap_err();
+    match error {
+        OrderError::OrderReturnNotFound(id) => assert_eq!(id, created_return.id),
+        other => panic!("expected scoped return not found, got {other:?}"),
     }
 }

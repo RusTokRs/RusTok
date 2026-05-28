@@ -1139,6 +1139,96 @@ impl CommerceMutation {
         Ok(order.into())
     }
 
+    async fn create_order_return(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        input: CreateOrderReturnInputObject,
+    ) -> Result<GqlOrderReturn> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .create_return(
+                tenant_id,
+                order_id,
+                crate::dto::CreateOrderReturnInput {
+                    reason: input.reason,
+                    note: input.note,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(item.into())
+    }
+
+    async fn complete_order_return(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CompleteOrderReturnInputObject,
+    ) -> Result<GqlOrderReturn> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .complete_return(
+                tenant_id,
+                id,
+                crate::dto::CompleteOrderReturnInput {
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(item.into())
+    }
+
+    async fn cancel_order_return(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CancelOrderReturnInputObject,
+    ) -> Result<GqlOrderReturn> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .cancel_return(
+                tenant_id,
+                id,
+                crate::dto::CancelOrderReturnInput {
+                    reason: input.reason,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(item.into())
+    }
+
     async fn authorize_payment_collection(
         &self,
         ctx: &Context<'_>,

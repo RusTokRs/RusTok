@@ -91,6 +91,11 @@ fn openapi_includes_admin_order_detail_contract_path() {
         "/admin/orders/{id}/ship",
         "/admin/orders/{id}/deliver",
         "/admin/orders/{id}/cancel",
+        "/admin/orders/{id}/returns",
+        "/admin/returns",
+        "/admin/returns/{id}",
+        "/admin/returns/{id}/complete",
+        "/admin/returns/{id}/cancel",
         "/admin/payment-collections",
         "/admin/payment-collections/{id}",
         "/admin/payment-collections/{id}/authorize",
@@ -177,6 +182,26 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
     assert_eq!(
         request_schema_ref(&spec, "/admin/orders/{id}/cancel", "post"),
         Some("#/components/schemas/CancelOrderInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/orders/{id}/returns", "post"),
+        Some("#/components/schemas/CreateOrderReturnInput".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/returns", "get", "200"),
+        Some("#/components/schemas/PaginatedResponse_OrderReturnResponse".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/returns/{id}", "get", "200"),
+        Some("#/components/schemas/OrderReturnResponse".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/returns/{id}/complete", "post"),
+        Some("#/components/schemas/CompleteOrderReturnInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/returns/{id}/cancel", "post"),
+        Some("#/components/schemas/CancelOrderReturnInput".to_string())
     );
     assert_eq!(
         response_schema_ref(&spec, "/admin/payment-collections", "get", "200"),

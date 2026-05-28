@@ -6,12 +6,12 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Current phase: post_order_returns_foundation
+- Last checkpoint: Slice 10.1 продвинут: `order_returns` получил tenant-scoped show/read contract, lifecycle `pending -> completed|cancelled`, validation/transition guards и admin REST/GraphQL transport parity через umbrella `rustok-commerce`.
+- Next step: Расширить returns foundation до item-level return lines и связать orchestration с refund/exchange decision tree без переноса payment logic в `rustok-order`.
+- Open blockers: серверный OpenAPI contract test под default features упирается в существующие compile errors вне order/commerce (`rustok-pages-admin`, server build service/module lifecycle/graphql mutations); targeted order lifecycle и `rustok-commerce` check проходят.
+- Hand-off notes for next agent: После item-level return lines обновить FFA/FBA evidence, README/admin docs и central registry в том же PR.
+- Last updated at (UTC): 2026-05-28T00:00:00Z
 
 ## FFA/FBA status
 
@@ -52,13 +52,13 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 ### 2. Post-order expansion
 
-- [~] развивать returns, refunds, exchanges и order changes как отдельный следующий слой; (started: `order_returns` storage + `OrderService::{create_return,list_returns}` foundation)
-- [ ] покрывать lifecycle transitions и failure semantics targeted tests;
+- [~] развивать returns, refunds, exchanges и order changes как отдельный следующий слой; (started: `order_returns` storage + `OrderService::{create_return,get_return,list_returns,complete_return,cancel_return}` foundation)
+- [x] покрывать lifecycle transitions и failure semantics targeted tests; (return lifecycle `pending -> completed|cancelled`, second-transition guard, tenant-scoped show)
 - [ ] удерживать compatibility с payment/fulfillment orchestration без размывания order ownership.
 
 ### 3. Operability
 
-- [ ] документировать новые order guarantees одновременно с изменением runtime surface;
+- [~] документировать новые order guarantees одновременно с изменением runtime surface; (returns lifecycle checkpoint зафиксирован; item-level return docs остаются next slice)
 - [ ] удерживать local docs и `README.md` синхронизированными;
 - [ ] обновлять umbrella commerce docs при изменении order/post-order scope.
 

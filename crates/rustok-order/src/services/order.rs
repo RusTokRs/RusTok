@@ -18,9 +18,10 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput, CreateOrderReturnInput,
-    CreateOrderTaxLineInput, ListOrderReturnsInput, ListOrdersInput, OrderAdjustmentResponse,
-    OrderLineItemResponse, OrderResponse, OrderReturnResponse, OrderTaxLineResponse,
+    CancelOrderReturnInput, CompleteOrderReturnInput, CreateOrderAdjustmentInput, CreateOrderInput,
+    CreateOrderLineItemInput, CreateOrderReturnInput, CreateOrderTaxLineInput,
+    ListOrderReturnsInput, ListOrdersInput, OrderAdjustmentResponse, OrderLineItemResponse,
+    OrderResponse, OrderReturnResponse, OrderTaxLineResponse,
 };
 use crate::entities;
 use crate::error::{OrderError, OrderResult};
@@ -32,6 +33,8 @@ const STATUS_SHIPPED: &str = "shipped";
 const STATUS_DELIVERED: &str = "delivered";
 const STATUS_CANCELLED: &str = "cancelled";
 const RETURN_STATUS_PENDING: &str = "pending";
+const RETURN_STATUS_COMPLETED: &str = "completed";
+const RETURN_STATUS_CANCELLED: &str = "cancelled";
 
 mod order_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("order_field_definitions");
@@ -1136,6 +1139,20 @@ fn trim_optional_text(value: Option<String>) -> Option<String> {
     })
 }
 
+fn merge_metadata_patch(existing: Option<Value>, patch: Value) -> Value {
+    if patch.is_null() {
+        return existing.unwrap_or_else(|| serde_json::json!({}));
+    }
+
+    match (existing, patch) {
+        (Some(Value::Object(mut existing)), Value::Object(patch)) => {
+            existing.extend(patch);
+            Value::Object(existing)
+        }
+        (_, patch) => patch,
+    }
+}
+
 async fn load_line_item_titles<C>(
     conn: &C,
     line_items: &[entities::order_line_item::Model],
@@ -1250,6 +1267,63 @@ impl OrderService {
         Ok(map_order_return_response(created))
     }
 
+    pub async fn get_return(
+        &self,
+        tenant_id: Uuid,
+        return_id: Uuid,
+    ) -> OrderResult<OrderReturnResponse> {
+        let row = self.load_return_model(tenant_id, return_id).await?;
+        Ok(map_order_return_response(row))
+    }
+
+    pub async fn complete_return(
+        &self,
+        tenant_id: Uuid,
+        return_id: Uuid,
+        input: CompleteOrderReturnInput,
+    ) -> OrderResult<OrderReturnResponse> {
+        input
+            .validate()
+            .map_err(|error| OrderError::Validation(error.to_string()))?;
+        self.transition_return(
+            tenant_id,
+            return_id,
+            RETURN_STATUS_PENDING,
+            RETURN_STATUS_COMPLETED,
+            input.metadata,
+            |active, now| {
+                active.completed_at = Set(Some(now.into()));
+            },
+        )
+        .await
+    }
+
+    pub async fn cancel_return(
+        &self,
+        tenant_id: Uuid,
+        return_id: Uuid,
+        input: CancelOrderReturnInput,
+    ) -> OrderResult<OrderReturnResponse> {
+        input
+            .validate()
+            .map_err(|error| OrderError::Validation(error.to_string()))?;
+        let reason = trim_optional_text(input.reason);
+        self.transition_return(
+            tenant_id,
+            return_id,
+            RETURN_STATUS_PENDING,
+            RETURN_STATUS_CANCELLED,
+            input.metadata,
+            move |active, now| {
+                active.cancelled_at = Set(Some(now.into()));
+                if reason.is_some() {
+                    active.reason = Set(reason.clone());
+                }
+            },
+        )
+        .await
+    }
+
     pub async fn list_returns(
         &self,
         tenant_id: Uuid,
@@ -1276,5 +1350,50 @@ impl OrderService {
             rows.into_iter().map(map_order_return_response).collect(),
             total,
         ))
+    }
+
+    async fn load_return_model(
+        &self,
+        tenant_id: Uuid,
+        return_id: Uuid,
+    ) -> OrderResult<entities::order_return::Model> {
+        entities::order_return::Entity::find_by_id(return_id)
+            .filter(entities::order_return::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(OrderError::OrderReturnNotFound(return_id))
+    }
+
+    async fn transition_return<F>(
+        &self,
+        tenant_id: Uuid,
+        return_id: Uuid,
+        expected_from: &str,
+        next_status: &str,
+        metadata_patch: Value,
+        mutate: F,
+    ) -> OrderResult<OrderReturnResponse>
+    where
+        F: FnOnce(&mut entities::order_return::ActiveModel, chrono::DateTime<Utc>),
+    {
+        let existing = self.load_return_model(tenant_id, return_id).await?;
+        if existing.status != expected_from {
+            return Err(OrderError::InvalidTransition {
+                from: existing.status,
+                to: next_status.to_string(),
+            });
+        }
+
+        let mut active: entities::order_return::ActiveModel = existing.into();
+        let now = Utc::now();
+        active.status = Set(next_status.to_string());
+        active.metadata = Set(merge_metadata_patch(
+            active.metadata.clone().take(),
+            metadata_patch,
+        ));
+        active.updated_at = Set(now.into());
+        mutate(&mut active, now);
+        let updated = active.update(&self.db).await?;
+        Ok(map_order_return_response(updated))
     }
 }

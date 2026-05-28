@@ -592,6 +592,30 @@ pub struct GqlOrderList {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlOrderReturn {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub order_id: Uuid,
+    pub reason: Option<String>,
+    pub note: Option<String>,
+    pub status: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub completed_at: Option<String>,
+    pub cancelled_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrderReturnList {
+    pub items: Vec<GqlOrderReturn>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlPaymentCollection {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -842,6 +866,14 @@ pub struct RefundsFilter {
 }
 
 #[derive(InputObject)]
+pub struct OrderReturnsFilter {
+    pub order_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
 pub struct FulfillmentsFilter {
     pub status: Option<String>,
     pub order_id: Option<Uuid>,
@@ -888,6 +920,24 @@ pub struct DeliverOrderInput {
 #[derive(InputObject)]
 pub struct CancelOrderInput {
     pub reason: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateOrderReturnInputObject {
+    pub reason: Option<String>,
+    pub note: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CompleteOrderReturnInputObject {
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CancelOrderReturnInputObject {
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -1800,6 +1850,24 @@ impl From<dto::OrderTaxLineResponse> for GqlOrderTaxLine {
             metadata: item.metadata.to_string(),
             created_at: item.created_at.to_rfc3339(),
             updated_at: item.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::OrderReturnResponse> for GqlOrderReturn {
+    fn from(value: dto::OrderReturnResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            order_id: value.order_id,
+            reason: value.reason,
+            note: value.note,
+            status: value.status,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            completed_at: value.completed_at.map(|value| value.to_rfc3339()),
+            cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
         }
     }
 }

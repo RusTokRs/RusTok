@@ -12,16 +12,17 @@ use uuid::Uuid;
 
 use crate::{
     dto::{
-        AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelPaymentInput,
-        CancelRefundInput, CapturePaymentInput, CompleteRefundInput, CreateFulfillmentInput,
-        CreateOrderReturnInput, CreateProductInput, CreateRefundInput, CreateShippingOptionInput,
-        CreateShippingProfileInput, DeliverFulfillmentInput, DeliverOrderInput,
-        FulfillmentResponse, ListFulfillmentsInput, ListOrderReturnsInput,
-        ListPaymentCollectionsInput, ListRefundsInput, ListShippingProfilesInput,
-        MarkPaidOrderInput, OrderResponse, OrderReturnResponse, PaymentCollectionResponse,
-        ProductResponse, RefundResponse, ReopenFulfillmentInput, ReshipFulfillmentInput,
-        ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse, ShippingProfileResponse,
-        UpdateProductInput, UpdateShippingOptionInput, UpdateShippingProfileInput,
+        AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelOrderReturnInput,
+        CancelPaymentInput, CancelRefundInput, CapturePaymentInput, CompleteOrderReturnInput,
+        CompleteRefundInput, CreateFulfillmentInput, CreateOrderReturnInput, CreateProductInput,
+        CreateRefundInput, CreateShippingOptionInput, CreateShippingProfileInput,
+        DeliverFulfillmentInput, DeliverOrderInput, FulfillmentResponse, ListFulfillmentsInput,
+        ListOrderReturnsInput, ListPaymentCollectionsInput, ListRefundsInput,
+        ListShippingProfilesInput, MarkPaidOrderInput, OrderResponse, OrderReturnResponse,
+        PaymentCollectionResponse, ProductResponse, RefundResponse, ReopenFulfillmentInput,
+        ReshipFulfillmentInput, ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse,
+        ShippingProfileResponse, UpdateProductInput, UpdateShippingOptionInput,
+        UpdateShippingProfileInput,
     },
     storefront_shipping::normalize_shipping_profile_slug,
     CatalogService, FulfillmentOrchestrationError, FulfillmentOrchestrationService,
@@ -67,6 +68,15 @@ pub fn routes() -> Routes {
             axum::routing::post(create_order_return),
         )
         .add("/returns", axum::routing::get(list_order_returns))
+        .add("/returns/{id}", axum::routing::get(show_order_return))
+        .add(
+            "/returns/{id}/complete",
+            axum::routing::post(complete_order_return),
+        )
+        .add(
+            "/returns/{id}/cancel",
+            axum::routing::post(cancel_order_return),
+        )
         .add(
             "/payment-collections",
             axum::routing::get(list_payment_collections),
@@ -489,7 +499,8 @@ pub async fn show_order(
         )
         .await
         .map_err(|err| match err {
-            rustok_order::error::OrderError::OrderNotFound(_) => Error::NotFound,
+            rustok_order::error::OrderError::OrderNotFound(_)
+            | rustok_order::error::OrderError::OrderReturnNotFound(_) => Error::NotFound,
             other => Error::BadRequest(other.to_string()),
         })?;
     let payment_collection = PaymentService::new(ctx.db.clone())
@@ -809,6 +820,106 @@ pub async fn list_order_returns(
         data: items,
         meta: super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
     }))
+}
+
+/// Show admin order return
+#[utoipa::path(
+    get,
+    path = "/admin/returns/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Return ID")),
+    responses(
+        (status = 200, description = "Return details", body = OrderReturnResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Return not found")
+    )
+)]
+pub async fn show_order_return(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<OrderReturnResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_READ],
+        "Permission denied: orders:read required",
+    )?;
+
+    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .get_return(tenant.id, id)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok(Json(item))
+}
+
+/// Complete admin order return
+#[utoipa::path(
+    post,
+    path = "/admin/returns/{id}/complete",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Return ID")),
+    request_body = CompleteOrderReturnInput,
+    responses(
+        (status = 200, description = "Return completed", body = OrderReturnResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Return not found")
+    )
+)]
+pub async fn complete_order_return(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CompleteOrderReturnInput>,
+) -> Result<Json<OrderReturnResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_UPDATE],
+        "Permission denied: orders:update required",
+    )?;
+
+    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .complete_return(tenant.id, id, input)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok(Json(item))
+}
+
+/// Cancel admin order return
+#[utoipa::path(
+    post,
+    path = "/admin/returns/{id}/cancel",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Return ID")),
+    request_body = CancelOrderReturnInput,
+    responses(
+        (status = 200, description = "Return cancelled", body = OrderReturnResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Return not found")
+    )
+)]
+pub async fn cancel_order_return(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CancelOrderReturnInput>,
+) -> Result<Json<OrderReturnResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_UPDATE],
+        "Permission denied: orders:update required",
+    )?;
+
+    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .cancel_return(tenant.id, id, input)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok(Json(item))
 }
 
 /// Create admin refund
@@ -1855,7 +1966,8 @@ fn map_payment_error(error: rustok_payment::error::PaymentError) -> Error {
 
 fn map_order_error(error: rustok_order::error::OrderError) -> Error {
     match error {
-        rustok_order::error::OrderError::OrderNotFound(_) => Error::NotFound,
+        rustok_order::error::OrderError::OrderNotFound(_)
+        | rustok_order::error::OrderError::OrderReturnNotFound(_) => Error::NotFound,
         other => Error::BadRequest(other.to_string()),
     }
 }

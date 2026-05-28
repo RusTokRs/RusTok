@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Зафиксированы checkout recovery/versioning guards в umbrella roadmap: checking_out re-entry fences, release/complete transition semantics и transport-visible regression coverage синхронизированы с cart boundary.
-- Next step: Вести Phase 10.1 returns foundation в FFA/FBA-first режиме для всей ecommerce family: каждый инкремент сразу закрывает module-owned UI ownership, boundary-ready contracts и transport parity evidence без deferred migration debt.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Current phase: post_order_returns_foundation
+- Last checkpoint: Phase 10.1 частично закрыт: returns foundation теперь имеет order-owned lifecycle service (`pending -> completed|cancelled`), tenant-scoped read contract, admin REST endpoints и GraphQL parity над тем же `OrderService`.
+- Next step: Продолжить Phase 10.1 item-level return lines и затем связать returns с refund/exchange decision tree в Phase 10.3/10.4 без host-owned logic.
+- Open blockers: OpenAPI contract test под default server features блокируется существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `rustok-order` lifecycle tests и `cargo check -p rustok-commerce` проходят.
+- Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
+- Last updated at (UTC): 2026-05-28T00:00:00Z
 
 
 ## FFA/FBA status
@@ -574,7 +574,7 @@ Deliverables:
 
 Execution slices (Phase 10):
 
-- [ ] Slice 10.1: returns foundation (`rustok-order` storage + service lifecycle + admin REST/GraphQL read/write transport).
+- [~] Slice 10.1: returns foundation (`rustok-order` storage + service lifecycle + admin REST/GraphQL read/write transport). Storage/read baseline был начат ранее; текущий срез добавил show/read, complete/cancel lifecycle, REST routes `/admin/returns/{id}`, `/admin/returns/{id}/complete`, `/admin/returns/{id}/cancel`, GraphQL `orderReturn(s)` + `create/complete/cancelOrderReturn`, OpenAPI registration и targeted lifecycle tests. Остаётся item-level return lines + refund/exchange orchestration coupling.
 - [x] Slice 10.2: refund transport parity expansion (store/customer-safe read-side + ownership/RBAC contract tests).
 - [ ] Slice 10.3: order-change groundwork (draft edit snapshot + preview/apply contract skeleton without host-owned logic).
 - [ ] Slice 10.4: exchanges/claims scope decision + parity matrix update in this plan and module docs.
