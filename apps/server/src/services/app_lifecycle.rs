@@ -472,7 +472,7 @@ mod tests {
         // Gracefully shut down background workers to avoid hanging tests
         if let Some(stop_handle) = ctx.shared_store.get_ref::<super::StopHandle>() {
             stop_handle.stop().await;
-        }
+        };
     }
 
     #[tokio::test]
@@ -517,6 +517,6 @@ mod tests {
         // Gracefully shut down background workers to avoid hanging tests
         if let Some(stop_handle) = ctx.shared_store.get_ref::<super::StopHandle>() {
             stop_handle.stop().await;
-        }
+        };
     }
 }

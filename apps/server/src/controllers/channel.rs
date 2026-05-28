@@ -665,7 +665,10 @@ pub fn routes() -> Routes {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_rule_definition, build_update_rule_input, CreateResolutionRuleRequest};
+    use super::{
+        build_rule_definition, build_update_rule_input, CreateResolutionRuleRequest,
+        UpdateResolutionRuleRequest,
+    };
     use rustok_channel::{ResolutionPredicate, TargetSurface};
     use uuid::Uuid;
 

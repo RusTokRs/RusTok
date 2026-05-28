@@ -23,7 +23,7 @@ use crate::models::release::{
 };
 use crate::modules::BuildExecutionPlan;
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
-use crate::services::platform_composition::hash_manifest_snapshot;
+use rustok_api::manifest_hash::hash_manifest_snapshot;
 
 #[derive(Debug, Clone)]
 pub struct BuildRequest {
@@ -704,7 +704,7 @@ fn compute_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::compute_manifest_snapshot_hash;
-    use crate::services::platform_composition::hash_manifest_snapshot;
+    use rustok_api::manifest_hash::hash_manifest_snapshot;
 
     #[test]
     fn build_service_uses_shared_manifest_snapshot_hash_builder() {

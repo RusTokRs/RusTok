@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use rustok_core::{ModuleContext, ModuleKind, ModuleRegistry, RusToKModule};
 use rustok_server::models::_entities::{module_operations, tenant_modules};
 use rustok_server::services::module_lifecycle::{
-    ModuleLifecycleService, ModuleOperationStatus, ToggleModuleError,
+    ModuleLifecycleService, ModuleOperationIssue, ModuleOperationRecoveryAction,
+    ModuleOperationRecoveryError, ModuleOperationStatus, ToggleModuleError,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
@@ -22,6 +23,55 @@ struct TestModule {
     disable_calls: Arc<AtomicUsize>,
     post_enable_calls: Arc<AtomicUsize>,
     post_disable_calls: Arc<AtomicUsize>,
+}
+
+struct FlakyPostHookModule {
+    slug: &'static str,
+    post_enable_calls: Arc<AtomicUsize>,
+}
+
+impl FlakyPostHookModule {
+    fn new(slug: &'static str) -> Self {
+        Self {
+            slug,
+            post_enable_calls: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+impl rustok_core::MigrationSource for FlakyPostHookModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
+    }
+}
+
+#[async_trait]
+impl RusToKModule for FlakyPostHookModule {
+    fn slug(&self) -> &'static str {
+        self.slug
+    }
+
+    fn name(&self) -> &'static str {
+        "flaky-post-hook-module"
+    }
+
+    fn description(&self) -> &'static str {
+        "test module with retryable post-hook"
+    }
+
+    fn version(&self) -> &'static str {
+        "0.1.0"
+    }
+
+    async fn post_enable(&self, _ctx: ModuleContext<'_>) -> rustok_core::Result<()> {
+        let previous_calls = self.post_enable_calls.fetch_add(1, Ordering::SeqCst);
+        if previous_calls == 0 {
+            return Err(rustok_core::Error::External(
+                "transient post enable failure".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 struct DependentModule {
@@ -160,8 +210,8 @@ impl RusToKModule for DependentModule {
         "0.1.0"
     }
 
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec![self.dependency]
+    fn dependencies(&self) -> &[&'static str] {
+        std::slice::from_ref(&self.dependency)
     }
 }
 
@@ -1020,4 +1070,123 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         1,
         "idempotent retry after committed post-disable failure must not invoke post-disable hook again",
     );
+}
+
+#[tokio::test]
+async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let module = FlakyPostHookModule::new("analytics");
+    let post_enable_calls = module.post_enable_calls.clone();
+    let registry = ModuleRegistry::new().register(module);
+
+    let err = ModuleLifecycleService::toggle_module_with_actor(
+        &db,
+        &registry,
+        tenant_id,
+        "analytics",
+        true,
+        Some("admin:first-attempt".to_string()),
+    )
+    .await
+    .expect_err("first post-enable attempt should fail");
+    assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("analytics"))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+
+    let plan = ModuleLifecycleService::module_operation_recovery_plan(&db, failed_operation.id)
+        .await
+        .expect("load recovery plan");
+    assert_eq!(plan.issue, ModuleOperationIssue::PostHookFailed);
+    assert!(plan.retryable);
+    assert_eq!(
+        plan.recommended_action,
+        ModuleOperationRecoveryAction::RetryPostHook
+    );
+    assert!(plan.correlation_id.is_some());
+
+    let retry_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
+        &db,
+        &registry,
+        failed_operation.id,
+        Some("admin:retry".to_string()),
+    )
+    .await
+    .expect("post-hook retry should succeed");
+
+    assert_eq!(
+        retry_operation.status,
+        ModuleOperationStatus::Committed.as_str()
+    );
+    assert_eq!(retry_operation.requested_by.as_deref(), Some("admin:retry"));
+    assert_eq!(retry_operation.requested_enabled, true);
+    assert_eq!(retry_operation.previous_effective_enabled, true);
+    assert!(retry_operation.error_message.is_none());
+    assert_ne!(retry_operation.id, failed_operation.id);
+    assert_ne!(
+        retry_operation.correlation_id,
+        failed_operation.correlation_id
+    );
+    assert_eq!(
+        post_enable_calls.load(Ordering::SeqCst),
+        2,
+        "explicit post-hook retry should invoke post_enable once more"
+    );
+
+    let operations = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("analytics"))
+        .all(&db)
+        .await
+        .expect("load analytics operations");
+    assert_eq!(operations.len(), 2);
+}
+
+#[tokio::test]
+async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
+    let db = setup_db().await;
+    let tenant_id = uuid::Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let registry = ModuleRegistry::new().register(TestModule::new("orders").with_enable_failure());
+    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "orders", true)
+        .await
+        .expect_err("pre-enable failure expected");
+    assert!(matches!(err, ToggleModuleError::PreHookFailed(_)));
+
+    let failed_operation = module_operations::Entity::find()
+        .filter(module_operations::Column::TenantId.eq(tenant_id))
+        .filter(module_operations::Column::ModuleSlug.eq("orders"))
+        .one(&db)
+        .await
+        .expect("query failed operation")
+        .expect("failed operation exists");
+
+    let plan = ModuleLifecycleService::module_operation_recovery_plan(&db, failed_operation.id)
+        .await
+        .expect("load recovery plan");
+    assert_eq!(plan.issue, ModuleOperationIssue::PreHookFailed);
+    assert!(!plan.retryable);
+    assert_eq!(
+        plan.recommended_action,
+        ModuleOperationRecoveryAction::RepeatToggle
+    );
+
+    let err = ModuleLifecycleService::retry_failed_post_hook_operation(
+        &db,
+        &registry,
+        failed_operation.id,
+        Some("admin:retry".to_string()),
+    )
+    .await
+    .expect_err("pre-hook failures are not post-hook retryable");
+    assert!(matches!(err, ModuleOperationRecoveryError::NotRetryable(_)));
 }

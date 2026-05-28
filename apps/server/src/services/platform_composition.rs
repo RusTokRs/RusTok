@@ -330,7 +330,7 @@ impl PlatformCompositionBuildService {
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::manifest_hash::{hash_manifest, hash_manifest_snapshot};
+    use rustok_api::manifest_hash::hash_manifest_snapshot;
 
     #[test]
     fn manifest_snapshot_hash_is_sha256_hex() {

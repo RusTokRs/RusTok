@@ -5,7 +5,7 @@ use rustok_server::services::build_service::NoopBuildEventPublisher;
 use rustok_server::services::platform_composition::{
     PlatformCompositionBuildError, PlatformCompositionBuildService, PlatformCompositionService,
 };
-use sea_orm::{Database, DatabaseConnection, DbBackend, EntityTrait, Statement};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, Statement};
 use std::sync::Arc;
 
 async fn setup_db(include_builds: bool) -> DatabaseConnection {
@@ -121,7 +121,10 @@ async fn assert_snapshot_unchanged(
         "manifest hash must stay unchanged for {context}"
     );
     assert_eq!(
-        state_after.manifest, seeded.manifest,
+        PlatformCompositionService::manifest_snapshot_json(&state_after.manifest)
+            .expect("serialize current manifest for comparison"),
+        PlatformCompositionService::manifest_snapshot_json(&seeded.manifest)
+            .expect("serialize seeded manifest for comparison"),
         "manifest payload must stay unchanged for {context}"
     );
 }
@@ -142,7 +145,7 @@ async fn stale_revision_does_not_enqueue_build() {
         .await
         .expect("seed active snapshot");
 
-    let err = PlatformCompositionBuildService::update_manifest_and_request_build(
+    let err = match PlatformCompositionBuildService::update_manifest_and_request_build(
         &db,
         publisher,
         &registry,
@@ -153,7 +156,10 @@ async fn stale_revision_does_not_enqueue_build() {
         "stale revision case".to_string(),
     )
     .await
-    .expect_err("must fail with revision conflict");
+    {
+        Ok(_) => panic!("must fail with revision conflict"),
+        Err(err) => err,
+    };
 
     assert!(matches!(
         err,
@@ -185,7 +191,7 @@ async fn build_insert_error_rolls_back_platform_revision() {
         .await
         .expect("seed active snapshot");
 
-    let err = PlatformCompositionBuildService::update_manifest_and_request_build(
+    let err = match PlatformCompositionBuildService::update_manifest_and_request_build(
         &db,
         publisher,
         &registry,
@@ -196,7 +202,10 @@ async fn build_insert_error_rolls_back_platform_revision() {
         "missing builds table".to_string(),
     )
     .await
-    .expect_err("build insert must fail without builds table");
+    {
+        Ok(_) => panic!("build insert must fail without builds table"),
+        Err(err) => err,
+    };
 
     assert!(matches!(err, PlatformCompositionBuildError::Build(_)));
 
@@ -221,7 +230,7 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
 
     let invalid_manifest = invalid_manifest_with_missing_dependency();
 
-    let err = PlatformCompositionBuildService::update_manifest_and_request_build(
+    let err = match PlatformCompositionBuildService::update_manifest_and_request_build(
         &db,
         publisher,
         &registry,
@@ -232,7 +241,10 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
         "invalid manifest should fail validation".to_string(),
     )
     .await
-    .expect_err("manifest validation should fail before transaction update");
+    {
+        Ok(_) => panic!("manifest validation should fail before transaction update"),
+        Err(err) => err,
+    };
 
     assert!(matches!(
         err,
@@ -339,9 +351,7 @@ async fn successful_enqueue_keeps_manifest_snapshot_parity_with_hash() {
     let db = setup_db(true).await;
     let result = enqueue_default_manifest(&db).await;
 
-    let persisted_snapshot: serde_json::Value =
-        serde_json::from_str(&result.build.manifest_snapshot)
-            .expect("manifest snapshot in build should be valid json");
+    let persisted_snapshot = result.build.manifest_snapshot.clone();
     let expected_snapshot =
         PlatformCompositionService::manifest_snapshot_json(&result.snapshot.manifest)
             .expect("serialize snapshot from platform state manifest");
