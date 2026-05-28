@@ -424,6 +424,17 @@ pub struct SeoSitemapStatusRecord {
 }
 
 #[derive(SimpleObject, Serialize, Deserialize, Debug, Clone)]
+pub struct SeoCrossLinkSuggestionRecord {
+    pub target_kind: SeoTargetSlug,
+    pub target_id: Uuid,
+    pub target_route: String,
+    pub anchor_hint: String,
+    pub destination_route: String,
+    pub confidence: i32,
+    pub source: String,
+}
+
+#[derive(SimpleObject, Serialize, Deserialize, Debug, Clone)]
 pub struct SeoRobotsPreviewRecord {
     pub body: String,
     pub public_url: String,

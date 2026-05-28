@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_c1_execution
-- Last checkpoint: Для C1 завершено разбиение `sitemaps` на 3 дочерних runtime-модуля и добавлен provider seam runtime object (`SitemapSubmissionRuntime`) с default strategy/factory wiring для HTTP adapter без изменения public `SeoSitemapStatusRecord`.
-- Next step: Довести C1.1 (telemetry-friendly aggregation + bounded errors) и C1.2 (regression matrix с deterministic truncation), затем закрыть C1 verification evidence и только после этого открывать provider-specific adapter extension points (Google Indexing API и др.) поверх `SitemapSubmissionRuntime`.
-- Open blockers: Для полноценных provider-specific adapters (Google Indexing API и др.) нужен отдельный tenant-secret contract и policy для secret rotation (вне текущего scope C1).
-- Hand-off notes for next agent: Целевое разбиение дочерних модулей для `sitemaps` = **3** (generation/adapters/aggregation); C2/C3 не трогать до полного закрытия C1 regression/verify.
-- Last updated at (UTC): 2026-05-24T23:10:00Z
+- Current phase: phase_c2_execution
+- Last checkpoint: C1 закрыт полностью: sitemap submission orchestration переведён на telemetry-friendly per-endpoint aggregation (`success/failure/timeout/invalid_endpoint`) с bounded partial-failure summary (`max_errors`, `max_timeout_details`) и deterministic ordering по endpoint без изменения public `SeoSitemapStatusRecord`; regression matrix для adapter path покрывает all-success, partial-failure, invalid-endpoint-skip и timeout/failure truncation.
+- Next step: Продолжать C2 (cross-linking foundation) от текущего read-only baseline: расширять suggestion heuristics, remediation UX и owner-module integration без автоматических HTML mutation.
+- Open blockers: Для полноценных provider-specific adapters (Google Indexing API и др.) нужен отдельный tenant-secret contract и policy для secret rotation; для production-grade cross-link relevance понадобятся owner-module signals beyond bulk summaries (вне текущего C2 foundation scope).
+- Hand-off notes for next agent: C1 verify/doc gates уже синхронизированы; в C2 держать read-only contract (`seoCrossLinkSuggestions` + `/api/seo/cross-link-suggestions`) и diagnostics `cross_link_gap` aggregates, не добавляя auto-link writer до отдельного quality track.
+- Last updated at (UTC): 2026-05-28T21:45:00Z
 
 ## FFA/FBA status block
 
@@ -17,9 +17,11 @@
 - FBA status: `in_progress`
 - Last verification evidence:
   - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
+  - `cargo test -p rustok-seo --lib sitemaps`
   - `cargo check -p rustok-seo-admin --features ssr --config profile.dev.debug=0`
+  - `cargo check -p rustok-server --lib --config profile.dev.debug=0`
   - `cargo check -p rustok-seo-admin-support --tests --config profile.dev.debug=0`
-- Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); transport boundary развивается через GraphQL + REST `/api/seo/page-context`.
+- Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); transport boundary развивается через GraphQL + REST `/api/seo/page-context` и read-only cross-link contract (`seoCrossLinkSuggestions` + `/api/seo/cross-link-suggestions`).
 
 ## Область работ
 
@@ -41,15 +43,16 @@
 - `rustok-seo-admin` разбит на `lib/component/model/api/i18n/sections` и больше не содержит central entity metadata editor;
 - owner-side SEO panels встроены в `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin`;
 - target extensibility идёт через `rustok-seo-targets` и runtime registration providers;
-- tenant templates и diagnostics уже являются first-class read/control-plane слоями; diagnostics покрывает issue aggregates, canonical redirect chains/loops и hreflang gaps;
+- tenant templates и diagnostics уже являются first-class read/control-plane слоями; diagnostics покрывает issue aggregates, canonical redirect chains/loops, hreflang gaps и `cross_link_gap` remediation hints;
+- read-only cross-link contract добавлен как foundation surface (`seoCrossLinkSuggestions` + `/api/seo/cross-link-suggestions`) с tenant/RBAC parity;
 - `SeoDocument.structured_data_blocks` больше не является raw JSON passthrough: JSON-LD нормализуется в typed schema blocks с `schema_kind`, `schema_type`, legacy `kind`, `source` и payload.
 
 ## Итог последней exploration-сессии
 
 - baseline runtime и control-plane для templates/bulk/diagnostics подтверждён как завершённый;
-- Phase C уже имеет production foundation для sitemap submit, но пока без явного provider seam и без расширенной telemetry/analytics детализации;
-- cross-linking и image SEO остаются следующими крупными инкрементами, требующими отдельного typed read contract и diagnostics coverage;
-- дополнительные SEO surface-расширения для Next/storefront не должны опережать реальное появление route ownership в host-приложениях.
+- C1 закрыт: sitemap submit имеет provider seam + telemetry-friendly per-endpoint aggregation и deterministic bounded partial-failure summary;
+- C2 foundation закрыт: read-only cross-link suggestions доступны через GraphQL/REST, diagnostics включает `cross_link_gap` issue code и remediation entrypoint в текущем SEO control-plane;
+- следующая крупная итерация Phase C — C3 (image SEO hooks), дополнительные SEO surface-расширения для Next/storefront не должны опережать реальное появление route ownership в host-приложениях.
 
 ## Этапы
 
@@ -127,27 +130,27 @@
 
 #### Phase C — indexing и linking automation
 
-- [ ] **Iteration C1 — external submission adapters (runtime seam + hardening)**
+- [x] **Iteration C1 — external submission adapters (runtime seam + hardening)**
   - [x] C1.0 Зафиксировать runtime interface `submit_sitemap_index` (trait/adapter seam) и default HTTP adapter wiring без breaking changes в существующем orchestrator flow.
   - [x] Вынести текущий sitemap submit flow в typed adapter contract (`submit_sitemap_index`) с default HTTP adapter поверх уже существующих `sitemap_submission_endpoints`.
-  - [ ] C1.1 Ввести telemetry-friendly aggregation model (per-endpoint status + bounded error summary) и адаптировать внутренний статус sitemap job без изменения public `SeoSitemapStatusRecord`.
-  - [ ] Добавить per-endpoint result aggregation (success/failure count + bounded error summary) без изменения существующего `SeoSitemapStatusRecord` public shape.
-  - [ ] C1.2 Добавить regression test matrix для endpoint fan-out и ограничить объём ошибок/timeout details deterministic truncation-правилом.
-  - [ ] Покрыть adapter path regression tests: all-success, partial-failure, invalid endpoint skip, timeout/failure truncation.
-  - [ ] C1.3 Обновить docs/verification evidence для sitemap submit orchestration (что именно считается pass/fail по partial failures).
-  - Tactical rollout для следующей сессии:
-    1. Сначала добавить internal aggregation DTO + mapping в существующий `SeoSitemapStatusRecord` без изменения public shape.
-    2. Затем зафиксировать bounded truncation policy (`max_errors`, `max_timeout_details`) с deterministic ordering по endpoint.
-    3. После этого добавить tests для fan-out, partial failure, invalid endpoint skip и timeout truncation.
-    4. В финале синхронизировать verification gate в этом плане и локальном `README.md`.
+  - [x] C1.1 Ввести telemetry-friendly aggregation model (per-endpoint status + bounded error summary) и адаптировать внутренний статус sitemap job без изменения public `SeoSitemapStatusRecord`.
+  - [x] Добавить per-endpoint result aggregation (success/failure count + bounded error summary) без изменения существующего `SeoSitemapStatusRecord` public shape.
+  - [x] C1.2 Добавить regression test matrix для endpoint fan-out и ограничить объём ошибок/timeout details deterministic truncation-правилом.
+  - [x] Покрыть adapter path regression tests: all-success, partial-failure, invalid endpoint skip, timeout/failure truncation.
+  - [x] C1.3 Обновить docs/verification evidence для sitemap submit orchestration (что именно считается pass/fail по partial failures).
+  - Tactical rollout (выполнено):
+    1. Добавлен internal aggregation DTO + mapping в существующий orchestration flow без изменения public shape `SeoSitemapStatusRecord`.
+    2. Зафиксирована bounded truncation policy (`max_errors`, `max_timeout_details`) с deterministic ordering по endpoint.
+    3. Добавлены regression tests для fan-out, partial failure, invalid endpoint skip и timeout/failure truncation.
+    4. Синхронизированы verification gates и локальные docs (`README.md`, `docs/README.md`, этот план).
   - Проверка инкремента:
     - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
     - `cargo test -p rustok-seo --lib sitemaps`
 
-- [ ] **Iteration C2 — cross-linking foundation (read-only suggestions first)**
-  - [ ] Добавить typed cross-link suggestions read model (target, anchor hint, destination route, confidence/source), не выполняя автоматических HTML mutation.
-  - [ ] Включить cross-link gaps в diagnostics (issue codes + aggregates) и дать remediation entrypoint через существующий SEO control-plane.
-  - [ ] Добавить GraphQL/REST read contract для suggestions с tenant/RBAC guard parity.
+- [x] **Iteration C2 — cross-linking foundation (read-only suggestions first)**
+  - [x] Добавить typed cross-link suggestions read model (target, anchor hint, destination route, confidence/source), не выполняя автоматических HTML mutation.
+  - [x] Включить cross-link gaps в diagnostics (issue codes + aggregates) и дать remediation entrypoint через существующий SEO control-plane.
+  - [x] Добавить GraphQL/REST read contract для suggestions с tenant/RBAC guard parity.
   - Проверка инкремента:
     - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
     - `cargo check -p rustok-seo-admin --features ssr --config profile.dev.debug=0`
@@ -165,18 +168,16 @@
 - [ ] Расширять Next route coverage только вместе с появлением реальных storefront routes и после фиксации C1–C3 baseline.
 
 
-## Осталось сделать (оценка на 2026-05-24)
+## Осталось сделать (оценка на 2026-05-28)
 
-- **Phase C — indexing и linking automation**: 3/3 итерации в статусе open (`C1`, `C2`, `C3`).
-- **Незавершённые checklist-пункты в Phase C**: **12**
-  - C1: 5 пунктов
-  - C2: 3 пункта
+- **Phase C — indexing и linking automation**: 1/3 итерации в статусе open (`C3`), `C1` и `C2` закрыты.
+- **Незавершённые checklist-пункты в Phase C**: **4**
   - C3: 3 пункта
   - Next coverage guardrail (расширение Next routes только после C1–C3): 1 пункт
-- **Quality backlog**: 2 open пункта (tests/docs полнота + verification gates синхронизация через C1.3).
-- **Итого open пунктов в документе**: **14** (Phase C + Quality backlog).
+- **Quality backlog**: 0 open пунктов (tests/docs и verification gates синхронизированы в рамках C1.3/C2 foundation).
+- **Итого open пунктов в документе**: **4**.
 
-Приоритет исполнения: сначала C1 (adapter seam + tests), затем C2 (cross-link suggestions + diagnostics), затем C3 (image SEO hooks через `rustok-media`).
+Приоритет исполнения: завершить C3 (image SEO hooks через `rustok-media`), после чего открывать расширение Next route coverage.
 
 ## Проверка
 
@@ -198,6 +199,6 @@
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля (перенесено в C1.3 tactical track).

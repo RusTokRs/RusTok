@@ -11,13 +11,15 @@
 - keep public forum topic SEO resolution channel-aware when a topic is restricted by forum channel access
 - resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
 - run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite
-- expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, and canonical redirect chain/loop detection
+- expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, and `cross_link_gap` hints with control-plane remediation entrypoints
 - normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
-- generate sitemap files and serve `robots.txt`
+- generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context
 - expose registry-backed SEO target descriptors through GraphQL `seoTargets` and REST `/api/seo/targets`
   with the same tenant/module-enabled gate and `seo:manage` admin permission contract
+- expose read-only cross-link suggestions through GraphQL `seoCrossLinkSuggestions` and REST `/api/seo/cross-link-suggestions`
+  with tenant/module checks and `seo:read|seo:manage` parity
 - provide shared SEO capability contracts that owner modules can embed into their own admin UI
 - expose admin and storefront read/write surfaces through GraphQL, HTTP, and Leptos server functions
 - require host runtimes to inject `ModuleRuntimeExtensions` for SEO target registry lookup; built-in registries are test-only helpers, not production fallback behavior
