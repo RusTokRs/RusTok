@@ -1,3 +1,4 @@
+import 'package:app_module_contracts/app_module_contracts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rustok_admin_mobile/registry/module_entry_adapter.dart';
@@ -53,9 +54,13 @@ void main() {
     const routes = <ModuleRouteEntry>[
       ModuleRouteEntry(
         moduleKey: 'rustok_blog',
+        surfaceKind: MobileSurfaceKind.admin,
         routeSegment: 'blog',
+        localeNamespace: null,
+        permissions: <String>[],
         path: '/modules/blog',
         navTitle: 'Blog',
+        navIcon: 'article',
         childRoutes: <ModuleChildRouteEntry>[
           ModuleChildRouteEntry(
             subpath: 'posts',

@@ -1123,7 +1123,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | ⬜ Planned | **Phase 5 — Offline/advanced sync (optional)** | Добавить офлайн-сценарии только после продуктового подтверждения требований. | [Open questions и ограничения](#open-questions-и-ограничения), [Риски и митигации](#риски-и-митигации) | Есть утверждённые offline requirements и реализована целевая стратегия sync/outbox. |
 
 
-#### Операционный статус плана (обновлено: 2026-05-24, FFA continuation)
+#### Операционный статус плана (обновлено: 2026-05-28, FFA continuation)
 
 - **FFA в плане отмечен:** ✅ Да. FFA-baseline явно зафиксирован в `Phase 0 — Foundation` и отдельно закреплён в anti-drift guardrail разделе.
 - **Текущий фокус выполнения:** `Phase 2 — Registry/codegen` (статус `🟡 In progress`) без изменения platform contract.
@@ -1163,6 +1163,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | Compatibility matrix (`required/optional/deprecated`) | `docs/research/flutter.md` | матрица заполнена для всех contract-полей | ✅ Done |
 | Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
 | Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ✅ Done |
+| Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav использует `nav.icon` из generated manifest и fallback по module metadata без ручного списка routes | ✅ Done |
 | Pilot E2E evidence (modules/blog) | integration tests / manual evidence | login → module list/detail → shell back | ⬜ Planned |
 
 #### PR-A evidence pack (registry contract freeze)

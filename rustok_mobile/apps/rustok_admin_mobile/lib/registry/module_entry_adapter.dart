@@ -11,6 +11,7 @@ class ModuleRouteEntry {
     required this.permissions,
     required this.path,
     required this.navTitle,
+    required this.navIcon,
     required this.childRoutes,
   });
 
@@ -21,6 +22,7 @@ class ModuleRouteEntry {
   final List<String> permissions;
   final String path;
   final String navTitle;
+  final String navIcon;
   final List<ModuleChildRouteEntry> childRoutes;
 }
 
@@ -106,6 +108,7 @@ ModuleRegistryAdaptationResult adaptModuleEntriesWithReport(
         permissions: List.unmodifiable(entry.permissions),
         path: basePath,
         navTitle: entry.nav.title,
+        navIcon: entry.nav.icon,
         childRoutes: List.unmodifiable(childRoutes),
       ),
     );

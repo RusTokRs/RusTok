@@ -15,6 +15,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 
 - Host app routing with `go_router` + `ShellRoute`.
 - Generated-manifest style module registry adapter (`mobile_manifest.g.dart`).
+- Manifest-driven navigation icon mapping with metadata fallbacks for generic module icons.
 - Shared route contracts with snake_case query key constraints.
 - Shared GraphQL transport context/header builders (tenant/locale non-blank validation in request context).
 - GraphQL client factory with HTTP/WebSocket split transport and subscription support.
@@ -55,6 +56,6 @@ python3 rustok_mobile/tooling/scripts/verify_mobile_manifest.py --repo-root /wor
 
 ## Next steps
 
-1. Replace generic icon mapping with module metadata mapping rules.
-2. Start first module package (`rustok_auth_mobile`) with real screens.
-3. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
+1. Start first module package (`rustok_auth_mobile`) with real screens.
+2. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
+3. Add deterministic generated-file checks to the mobile CI pipeline.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_shell/app_shell_page.dart';
+import '../registry/mobile_module_icons.dart';
 import '../registry/module_entry_adapter.dart';
 import '../registry/registry_adaptation_summary.dart';
 import 'registry_warnings_card.dart';
@@ -84,6 +85,7 @@ class ModulesHomePage extends StatelessWidget {
         RegistryWarningsCard(summary: adaptationSummary),
         for (final moduleRoute in moduleRoutes)
           ExpansionTile(
+            leading: Icon(iconForModuleRoute(moduleRoute)),
             title: Text(moduleRoute.navTitle),
             subtitle: Text(moduleRoute.path),
             children: [
@@ -120,7 +122,10 @@ class ModulePlaceholderPage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(iconForModuleRoute(moduleRoute), size: 48),
+          const SizedBox(height: 12),
           Text('Module: ${moduleRoute.moduleKey}'),
+          Text('Icon: ${moduleRoute.navIcon}'),
           Text('Location: ${selection.toLocation()}'),
         ],
       ),
@@ -144,6 +149,8 @@ class ModuleChildPlaceholderPage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(iconForModuleRoute(moduleRoute), size: 48),
+          const SizedBox(height: 12),
           Text('Module: ${moduleRoute.moduleKey}'),
           Text('Child page: ${childRoute.title}'),
           Text('Path: ${childRoute.path}'),

@@ -139,17 +139,6 @@ class GenerateMobileManifestTests(unittest.TestCase):
                 ).strip()
             )
 
-                    [provides.admin_ui]
-                    route_segment = "content"
-                    """
-                ).strip()
-            )
-            (root / "crates/mod-b/rustok-module.toml").write_text(
-                textwrap.dedent(
-                    """
-                    [module]
-                    slug = "forum"
-
             with self.assertRaises(ValueError) as ctx:
                 scan_modules(root)
             self.assertIn("content", str(ctx.exception))

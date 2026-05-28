@@ -30,6 +30,7 @@ void main() {
     expect(blog.permissions, isEmpty);
     expect(blog.path, '/modules/blog');
     expect(blog.navTitle, 'Blog');
+    expect(blog.navIcon, 'article');
     expect(blog.childRoutes, hasLength(2));
     expect(blog.childRoutes.first.subpath, 'new');
     expect(blog.childRoutes.first.path, '/modules/blog/new');
