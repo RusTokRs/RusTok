@@ -42,10 +42,17 @@ impl SitemapSubmissionAdapter for HttpSitemapSubmissionAdapter {
             .send()
             .await
             .map_err(|error| {
-                format!(
-                    "request failed for endpoint `{}` with error: {error}",
-                    endpoint.endpoint
-                )
+                if error.is_timeout() {
+                    format!(
+                        "request timeout for endpoint `{}`: {error}",
+                        endpoint.endpoint
+                    )
+                } else {
+                    format!(
+                        "request failed for endpoint `{}` with error: {error}",
+                        endpoint.endpoint
+                    )
+                }
             })?;
         if response.status().is_success() {
             Ok(())

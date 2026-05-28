@@ -17,7 +17,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    SeoError, SeoPageContext, SeoService, SeoTargetCapabilityKind, SeoTargetRegistryEntry,
+    SeoCrossLinkSuggestionRecord, SeoError, SeoPageContext, SeoService, SeoTargetCapabilityKind,
+    SeoTargetRegistryEntry,
 };
 
 #[derive(Debug, Deserialize)]
@@ -28,6 +29,12 @@ pub struct SeoPageContextQuery {
 #[derive(Debug, Deserialize)]
 pub struct SeoTargetsQuery {
     pub capability: Option<SeoTargetCapabilityKind>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SeoCrossLinkSuggestionsQuery {
+    pub locale: Option<String>,
+    pub per_target_limit: Option<i32>,
 }
 
 pub async fn page_context_json(
@@ -156,6 +163,32 @@ pub async fn targets_json(
     Ok(Json(service.target_registry_entries(query.capability)))
 }
 
+pub async fn cross_link_suggestions_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<SeoCrossLinkSuggestionsQuery>,
+) -> Result<Json<Vec<SeoCrossLinkSuggestionRecord>>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(
+        &auth,
+        &[Permission::SEO_READ, Permission::SEO_MANAGE],
+        "seo:read or seo:manage required",
+    )?;
+
+    let suggestions = service
+        .cross_link_suggestions(
+            &tenant,
+            query.locale.as_deref(),
+            query.per_target_limit.map(|value| value.max(1) as usize),
+        )
+        .await
+        .map_err(map_seo_http_error)?;
+
+    Ok(Json(suggestions))
+}
+
 pub fn routes() -> Routes {
     use axum::routing::get;
 
@@ -172,6 +205,7 @@ fn api_routes() -> Routes {
     Routes::new()
         .add("/page-context", get(page_context_json))
         .add("/targets", get(targets_json))
+        .add("/cross-link-suggestions", get(cross_link_suggestions_json))
         .add(
             "/bulk/jobs/{job_id}/artifacts/{artifact_id}",
             get(bulk_artifact_download),

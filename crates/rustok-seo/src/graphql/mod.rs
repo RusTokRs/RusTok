@@ -13,9 +13,9 @@ use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTar
 
 use crate::{
     SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
-    SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoDiagnosticsSummaryRecord, SeoError,
-    SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput, SeoRedirectRecord,
-    SeoRevisionRecord, SeoService, SeoSitemapStatusRecord,
+    SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoCrossLinkSuggestionRecord,
+    SeoDiagnosticsSummaryRecord, SeoError, SeoMetaInput, SeoMetaRecord, SeoPageContext,
+    SeoRedirectInput, SeoRedirectRecord, SeoRevisionRecord, SeoService, SeoSitemapStatusRecord,
 };
 
 const MODULE_SLUG: &str = "seo";
@@ -157,6 +157,29 @@ impl SeoQuery {
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
             .diagnostics_summary(tenant, locale.as_deref())
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_cross_link_suggestions(
+        &self,
+        ctx: &Context<'_>,
+        locale: Option<String>,
+        per_target_limit: Option<i32>,
+    ) -> Result<Vec<SeoCrossLinkSuggestionRecord>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(
+            ctx,
+            &[Permission::SEO_READ, Permission::SEO_MANAGE],
+            "seo:read or seo:manage required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .cross_link_suggestions(
+                tenant,
+                locale.as_deref(),
+                per_target_limit.map(|value| value.max(1) as usize),
+            )
             .await
             .map_err(map_seo_error)
     }
@@ -606,6 +629,12 @@ mod tests {
         Arc::new(extensions)
     }
 
+    fn empty_seo_registry_runtime_extensions() -> Arc<ModuleRuntimeExtensions> {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(Arc::new(crate::SeoTargetRegistry::default()));
+        Arc::new(extensions)
+    }
+
     #[tokio::test]
     async fn graphql_seo_page_context_matches_redirect_service_contract() {
         let db = test_db().await;
@@ -854,6 +883,72 @@ mod tests {
         assert_eq!(page["ownerModuleSlug"], "pages");
         assert_eq!(page["capabilities"]["bulk"], true);
         assert_eq!(page["capabilities"]["routing"], true);
+    }
+
+    #[tokio::test]
+    async fn graphql_cross_link_suggestions_require_auth_and_return_list() {
+        let db = test_db().await;
+        seed_tenant_modules_table(&db).await;
+        let tenant_id = Uuid::new_v4();
+        insert_enabled_seo_module(&db, tenant_id, json!({})).await;
+
+        let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
+            .data(db)
+            .data(event_bus())
+            .data(empty_seo_registry_runtime_extensions())
+            .data(tenant_context(tenant_id))
+            .finish();
+
+        let unauthenticated = schema
+            .execute(Request::new(
+                r#"
+                    query {
+                        seoCrossLinkSuggestions {
+                            targetKind
+                        }
+                    }
+                "#,
+            ))
+            .await;
+        assert_eq!(unauthenticated.errors.len(), 1);
+        assert!(
+            unauthenticated.errors[0]
+                .message
+                .contains("Authentication required"),
+            "missing auth should return GraphQL unauthenticated error: {:?}",
+            unauthenticated.errors
+        );
+
+        let authenticated = schema
+            .execute(
+                Request::new(
+                    r#"
+                        query {
+                            seoCrossLinkSuggestions {
+                                targetKind
+                                targetId
+                                targetRoute
+                                destinationRoute
+                                anchorHint
+                                confidence
+                                source
+                            }
+                        }
+                    "#,
+                )
+                .data(auth_context(tenant_id, vec![Permission::SEO_READ])),
+            )
+            .await;
+        assert!(
+            authenticated.errors.is_empty(),
+            "seoCrossLinkSuggestions GraphQL query should not error: {:?}",
+            authenticated.errors
+        );
+        let data = authenticated
+            .data
+            .into_json()
+            .expect("graphql cross-link suggestions should serialize");
+        assert_eq!(data["seoCrossLinkSuggestions"], json!([]));
     }
 
     #[tokio::test]

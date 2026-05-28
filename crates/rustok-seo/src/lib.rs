@@ -25,14 +25,15 @@ pub use dto::{
     SeoBulkItem, SeoBulkJobOperationKind, SeoBulkJobRecord, SeoBulkJobStatus,
     SeoBulkJsonFieldPatch, SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkPage,
     SeoBulkSelectionInput, SeoBulkSelectionMode, SeoBulkSelectionPreviewRecord, SeoBulkSource,
-    SeoBulkStringFieldPatch, SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord,
-    SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoDocument, SeoDocumentEffectiveState,
-    SeoFieldSource, SeoFieldState, SeoImageAsset, SeoLinkTag, SeoMetaInput, SeoMetaRecord,
-    SeoMetaTag, SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
-    SeoPageContext, SeoPagination, SeoRedirectDecision, SeoRedirectInput, SeoRedirectMatchType,
-    SeoRedirectRecord, SeoRevisionRecord, SeoRobots, SeoRobotsPreviewRecord, SeoRouteContext,
-    SeoSchemaBlockKind, SeoSitemapFileRecord, SeoSitemapStatusRecord, SeoStructuredDataBlock,
-    SeoTemplateRuleSet, SeoTwitterCard, SeoVerification, SeoVerificationTag,
+    SeoBulkStringFieldPatch, SeoCrossLinkSuggestionRecord, SeoDiagnosticCountRecord,
+    SeoDiagnosticIssueRecord, SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoDocument,
+    SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState, SeoImageAsset, SeoLinkTag,
+    SeoMetaInput, SeoMetaRecord, SeoMetaTag, SeoMetaTranslationInput, SeoMetaTranslationRecord,
+    SeoModuleSettings, SeoOpenGraph, SeoPageContext, SeoPagination, SeoRedirectDecision,
+    SeoRedirectInput, SeoRedirectMatchType, SeoRedirectRecord, SeoRevisionRecord, SeoRobots,
+    SeoRobotsPreviewRecord, SeoRouteContext, SeoSchemaBlockKind, SeoSitemapFileRecord,
+    SeoSitemapStatusRecord, SeoStructuredDataBlock, SeoTemplateRuleSet, SeoTwitterCard,
+    SeoVerification, SeoVerificationTag,
 };
 #[cfg(feature = "server")]
 pub use error::{SeoError, SeoResult};

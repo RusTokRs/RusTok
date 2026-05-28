@@ -14,6 +14,8 @@ use super::robots::schema_blocks_from_value;
 use super::SeoService;
 
 const MAX_EXPOSED_ISSUES: usize = 50;
+const CROSS_LINK_GAP_REMEDIATION_MESSAGE: &str = "No cross-link suggestions were generated for this target. Use seoCrossLinkSuggestions or GET /api/seo/cross-link-suggestions to review remediation candidates.";
+
 type CanonicalUsageEntry = (
     rustok_seo_targets::SeoTargetSlug,
     uuid::Uuid,
@@ -40,6 +42,9 @@ impl SeoService {
         let mut explicit_count = 0_i32;
         let mut generated_count = 0_i32;
         let mut fallback_count = 0_i32;
+        let cross_link_suggestion_counts = self
+            .cross_link_suggestions_by_target(tenant, locale.as_str(), None)
+            .await?;
 
         for provider in self
             .registry
@@ -227,6 +232,23 @@ impl SeoService {
                         SeoDiagnosticSeverity::Info,
                         &summary,
                         "Target still resolves through entity fallback instead of explicit or template SEO.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                if cross_link_suggestion_counts
+                    .get(&(summary.target_kind.clone(), summary.target_id))
+                    .copied()
+                    .unwrap_or_default()
+                    == 0
+                {
+                    issues.push(issue(
+                        "cross_link_gap",
+                        SeoDiagnosticSeverity::Info,
+                        &summary,
+                        CROSS_LINK_GAP_REMEDIATION_MESSAGE,
                         effective_canonical.clone(),
                         meta.source.clone(),
                         locale.as_str(),
@@ -507,7 +529,10 @@ fn count_by_key<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosticCou
 
 #[cfg(test)]
 mod tests {
-    use super::{redirect_lookup_route, trace_redirects, RedirectTrace};
+    use super::{
+        redirect_lookup_route, trace_redirects, RedirectTrace,
+        CROSS_LINK_GAP_REMEDIATION_MESSAGE,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -554,5 +579,11 @@ mod tests {
                 at: "/a".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn cross_link_gap_message_mentions_control_plane_entrypoints() {
+        assert!(CROSS_LINK_GAP_REMEDIATION_MESSAGE.contains("seoCrossLinkSuggestions"));
+        assert!(CROSS_LINK_GAP_REMEDIATION_MESSAGE.contains("/api/seo/cross-link-suggestions"));
     }
 }
