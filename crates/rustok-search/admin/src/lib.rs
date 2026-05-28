@@ -467,7 +467,7 @@ pub fn SearchAdmin() -> impl IntoView {
                                                         .update(|value| *value += 1);
                                                 }
                                                 Err(err) => set_settings_feedback.set(Some(
-                                                    format!("{}: {err}", save_settings_error_label),
+                                                    core::error_with_context(save_settings_error_label.as_str(), &err.to_string()),
                                                 )),
                                             }
                                             set_settings_busy.set(false);
@@ -824,7 +824,7 @@ fn playground_view(
                                 {presets.into_iter().map(|preset| view! { <option value=preset.key.clone()>{preset.label}</option> }).collect_view()}
                             </select>
                         }.into_any(),
-                        Err(err) => view! { <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("{}: {err}", load_presets_error_label.clone())}</div> }.into_any(),
+                        Err(err) => view! { <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{core::error_with_context(load_presets_error_label.as_str(), &err.to_string())}</div> }.into_any(),
                     })}
                 </Suspense>
             </label>
@@ -912,8 +912,8 @@ fn analytics_view(
                 <InfoCard title=t(locale_ref, "search.analytics.missingDocs.title", "Missing docs") value=diagnostics.missing_documents.to_string() detail=t(locale_ref, "search.analytics.missingDocs.detail", "Expected projection rows that are absent from search storage.") />
                 <InfoCard title=t(locale_ref, "search.analytics.orphanedDocs.title", "Orphaned docs") value=diagnostics.orphaned_documents.to_string() detail=t(locale_ref, "search.analytics.orphanedDocs.detail", "Projection rows without a matching content/product source row.") />
                 <InfoCard title=t(locale_ref, "search.analytics.maxLag.title", "Max lag") value=core::format_seconds(diagnostics.max_lag_seconds) detail=t(locale_ref, "search.analytics.maxLag.detail", "Largest observed lag in seconds.") />
-                <InfoCard title=t(locale_ref, "search.analytics.newestIndexed.title", "Newest indexed") value=diagnostics.newest_indexed_at.unwrap_or_else(|| t(locale_ref, "search.common.notIndexedYet", "not indexed yet")) detail=t(locale_ref, "search.analytics.newestIndexed.detail", "Most recent index write in rustok-search storage.") />
-                <InfoCard title=t(locale_ref, "search.analytics.oldestIndexed.title", "Oldest indexed") value=diagnostics.oldest_indexed_at.unwrap_or_else(|| t(locale_ref, "search.common.notIndexedYet", "not indexed yet")) detail=t(locale_ref, "search.analytics.oldestIndexed.detail", "Oldest surviving indexed document timestamp.") />
+                <InfoCard title=t(locale_ref, "search.analytics.newestIndexed.title", "Newest indexed") value=core::value_or_fallback(diagnostics.newest_indexed_at, t(locale_ref, "search.common.notIndexedYet", "not indexed yet").as_str()) detail=t(locale_ref, "search.analytics.newestIndexed.detail", "Most recent index write in rustok-search storage.") />
+                <InfoCard title=t(locale_ref, "search.analytics.oldestIndexed.title", "Oldest indexed") value=core::value_or_fallback(diagnostics.oldest_indexed_at, t(locale_ref, "search.common.notIndexedYet", "not indexed yet").as_str()) detail=t(locale_ref, "search.analytics.oldestIndexed.detail", "Oldest surviving indexed document timestamp.") />
             </div>
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1">
@@ -924,7 +924,7 @@ fn analytics_view(
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || search_analytics.get().map(|result| match result {
                             Ok(analytics) => analytics_panel(analytics, analytics_panel_locale.clone()).into_any(),
-                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_analytics_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{core::error_with_context(load_analytics_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                 </div>
@@ -935,7 +935,7 @@ fn analytics_view(
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || lagging_documents.get().map(|result| match result {
                             Ok(rows) => lagging_table(rows, lagging_table_locale.clone()).into_any(),
-                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_lagging_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{core::error_with_context(load_lagging_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                 </div>
@@ -946,7 +946,7 @@ fn analytics_view(
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || consistency_issues.get().map(|result| match result {
                             Ok(rows) => consistency_table(rows, consistency_table_locale.clone()).into_any(),
-                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_consistency_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{core::error_with_context(load_consistency_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                 </div>
@@ -1238,7 +1238,7 @@ fn consistency_table(
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at.unwrap_or_else(|| t(locale, "search.common.notIndexed", "not indexed"))}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::value_or_fallback(row.indexed_at, t(locale, "search.common.notIndexed", "not indexed").as_str())}</td>
                 </tr>
             }
         }).collect_view()}</tbody>
@@ -1378,7 +1378,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", synonym_save_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            synonym_save_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1404,7 +1407,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", stop_word_save_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            stop_word_save_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1452,7 +1458,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", pin_rule_save_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            pin_rule_save_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1475,7 +1484,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", synonym_remove_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            synonym_remove_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1498,7 +1510,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", stop_word_remove_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            stop_word_remove_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1522,7 +1537,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", pin_rule_remove_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            pin_rule_remove_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1607,7 +1625,7 @@ fn DictionariesView() -> impl IntoView {
                     Ok(snapshot) => dictionaries_tables(snapshot, busy, delete_synonym, delete_stop_word, delete_query_rule, ui_locale.clone()).into_any(),
                     Err(err) => view! {
                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                            {format!("{}: {err}", load_dictionaries_error_label)}
+                            {core::error_with_context(load_dictionaries_error_label.as_str(), &err.to_string())}
                         </div>
                     }.into_any(),
                 })}

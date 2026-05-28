@@ -6,7 +6,7 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Phase B pilot slice #12 moved admin preview summary/preset rendering and diagnostics fallback text helpers into `admin/src/core.rs` without changing native/GraphQL transport.
+- Last checkpoint: Phase B pilot slice #13 routed admin analytics/dictionaries error and timestamp fallback call sites through existing `admin/src/core.rs` helpers without changing native/GraphQL transport.
 - Next step: Continue Phase B with the next smallest search UI/state helper extraction while preserving dual-path parity.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -101,3 +101,4 @@
 - [x] Slice 10: admin relevance editor JSON formatting and ranking/filter preset extraction moved to core (`pretty_json_string`, `parse_json_for_editor`, `extract_ranking_profile_value`, `extract_surface_presets_json`).
 - [x] Slice 11: admin analytics/diagnostics metric formatting moved to core (`format_days`, `format_percent_fraction`, `format_milliseconds`, `format_decimal_1`, `format_seconds`, `document_source_path`).
 - [x] Slice 12: admin preview summary/preset rendering and diagnostics fallback text moved to core (`render_preview_summary`, `render_preview_preset`, `value_or_fallback`, `label_value_summary`).
+- [x] Slice 13: admin analytics/dictionaries error messages and timestamp fallbacks switched to existing core helpers (`error_with_context`, `value_or_fallback`).

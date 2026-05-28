@@ -194,3 +194,4 @@
 - `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
 - `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
 - `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #13 evidence: admin analytics/dictionaries error messages and timestamp fallbacks now use existing `admin/src/core.rs` helpers; transport split (`native #[server]` + GraphQL fallback) не менялся.
