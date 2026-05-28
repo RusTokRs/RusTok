@@ -51,10 +51,6 @@ pub fn score_label(score: f64) -> String {
     format!("score {:.3}", score)
 }
 
-pub fn score_value(score: f64) -> String {
-    format!("{:.3}", score)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,7 +88,6 @@ mod tests {
         assert_eq!(facet_display_name("source_module"), "source module");
         assert_eq!(facet_bucket_label("product", 42), "product (42)");
         assert_eq!(score_label(0.12345), "score 0.123");
-        assert_eq!(score_value(0.12345), "0.123");
         assert_eq!(
             snippet_or_fallback(None, "fallback"),
             "fallback".to_string()
@@ -185,10 +180,6 @@ mod tests {
 
 pub fn entity_source_label(entity_type: &str, source_module: &str) -> String {
     format!("{} | {}", entity_type, source_module)
-}
-
-pub fn source_entity_status_label(source_module: &str, entity_type: &str, status: &str) -> String {
-    format!("{}/{} ({})", source_module, entity_type, status)
 }
 
 pub fn error_with_context(context: &str, error: &str) -> String {

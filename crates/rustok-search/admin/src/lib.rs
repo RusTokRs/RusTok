@@ -37,7 +37,6 @@ struct SearchPreviewLabels {
     summary_template: String,
     preset_template: String,
     none_label: String,
-    score_template: String,
     no_snippet: String,
     no_target_url: String,
     open_result: String,
@@ -181,23 +180,34 @@ pub fn SearchAdmin() -> impl IntoView {
             set_settings_active_engine.set(bootstrap.search_settings_preview.active_engine.clone());
             set_settings_fallback_engine
                 .set(bootstrap.search_settings_preview.fallback_engine.clone());
-            set_settings_config.set(pretty_json_string(
+            set_settings_config.set(core::pretty_json_string(
                 &bootstrap.search_settings_preview.config,
             ));
-            if let Some(config) = parse_json_for_editor(&bootstrap.search_settings_preview.config) {
-                set_ranking_default_profile.set(extract_ranking_profile_value(&config, "default"));
-                set_ranking_preview_profile
-                    .set(extract_ranking_profile_value(&config, "search_preview"));
-                set_ranking_storefront_profile
-                    .set(extract_ranking_profile_value(&config, "storefront_search"));
-                set_ranking_admin_global_profile.set(extract_ranking_profile_value(
+            if let Some(config) =
+                core::parse_json_for_editor(&bootstrap.search_settings_preview.config)
+            {
+                set_ranking_default_profile
+                    .set(core::extract_ranking_profile_value(&config, "default"));
+                set_ranking_preview_profile.set(core::extract_ranking_profile_value(
+                    &config,
+                    "search_preview",
+                ));
+                set_ranking_storefront_profile.set(core::extract_ranking_profile_value(
+                    &config,
+                    "storefront_search",
+                ));
+                set_ranking_admin_global_profile.set(core::extract_ranking_profile_value(
                     &config,
                     "admin_global_search",
                 ));
-                set_preview_presets_config
-                    .set(extract_surface_presets_json(&config, "search_preview"));
-                set_storefront_presets_config
-                    .set(extract_surface_presets_json(&config, "storefront_search"));
+                set_preview_presets_config.set(core::extract_surface_presets_json(
+                    &config,
+                    "search_preview",
+                ));
+                set_storefront_presets_config.set(core::extract_surface_presets_json(
+                    &config,
+                    "storefront_search",
+                ));
             }
         }
     });
@@ -269,16 +279,11 @@ pub fn SearchAdmin() -> impl IntoView {
                 .await
                 {
                     Ok(result) => {
-                        let suffix = result
-                            .target_id
-                            .as_ref()
-                            .map(|id| format!(" for target {id}"))
-                            .unwrap_or_default();
-                        set_rebuild_feedback.set(Some(
-                            rebuild_queued_template
-                                .replace("{scope}", result.target_type.as_str())
-                                .replace("{suffix}", suffix.as_str()),
-                        ));
+                        set_rebuild_feedback.set(Some(core::render_rebuild_feedback(
+                            rebuild_queued_template.as_str(),
+                            result.target_type.as_str(),
+                            result.target_id.as_deref(),
+                        )));
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_rebuild_feedback.set(Some(core::error_with_context(
@@ -302,10 +307,10 @@ pub fn SearchAdmin() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <A href=format!("/modules/{route_segment}") attr:class=tab_class(!on_playground && !on_diagnostics && !on_dictionaries)>{overview_label.clone()}</A>
-                    <A href=format!("/modules/{route_segment}/playground") attr:class=tab_class(on_playground)>{playground_label.clone()}</A>
-                    <A href=format!("/modules/{route_segment}/analytics") attr:class=tab_class(on_diagnostics)>{analytics_label.clone()}</A>
-                    <A href=format!("/modules/{route_segment}/dictionaries") attr:class=tab_class(on_dictionaries)>{dictionaries_label.clone()}</A>
+                    <A href=core::module_overview_href(route_segment.as_str()) attr:class=core::tab_class(!on_playground && !on_diagnostics && !on_dictionaries)>{overview_label.clone()}</A>
+                    <A href=core::module_section_href(route_segment.as_str(), "playground") attr:class=core::tab_class(on_playground)>{playground_label.clone()}</A>
+                    <A href=core::module_section_href(route_segment.as_str(), "analytics") attr:class=core::tab_class(on_diagnostics)>{analytics_label.clone()}</A>
+                    <A href=core::module_section_href(route_segment.as_str(), "dictionaries") attr:class=core::tab_class(on_dictionaries)>{dictionaries_label.clone()}</A>
                 </div>
             </header>
 
@@ -359,15 +364,55 @@ pub fn SearchAdmin() -> impl IntoView {
                                     let save_settings_error_label =
                                         save_settings_error_label.clone();
                                     let config = settings_config.get_untracked();
-                                    let merged_config = match merge_relevance_editor_config(
+                                    let preview_presets_label = t(
                                         settings_locale.as_deref(),
-                                        &config,
-                                        &ranking_default_profile.get_untracked(),
-                                        &ranking_preview_profile.get_untracked(),
-                                        &ranking_storefront_profile.get_untracked(),
-                                        &ranking_admin_global_profile.get_untracked(),
-                                        &preview_presets_config.get_untracked(),
-                                        &storefront_presets_config.get_untracked(),
+                                        "search.relevance.previewPresets",
+                                        "Preview filter presets",
+                                    );
+                                    let storefront_presets_label = t(
+                                        settings_locale.as_deref(),
+                                        "search.relevance.storefrontPresets",
+                                        "Storefront filter presets",
+                                    );
+                                    let editor_array_json = t(
+                                        settings_locale.as_deref(),
+                                        "search.error.editorArrayJson",
+                                        "{label} must be valid JSON: {err}",
+                                    );
+                                    let editor_array_type = t(
+                                        settings_locale.as_deref(),
+                                        "search.error.editorArrayType",
+                                        "{label} must be a JSON array.",
+                                    );
+                                    let merged_config = match core::merge_relevance_editor_config(
+                                        core::RelevanceEditorConfigInput {
+                                            config_text: &config,
+                                            ranking_default: &ranking_default_profile.get_untracked(),
+                                            ranking_preview: &ranking_preview_profile.get_untracked(),
+                                            ranking_storefront: &ranking_storefront_profile.get_untracked(),
+                                            ranking_admin_global: &ranking_admin_global_profile.get_untracked(),
+                                            preview_presets: &preview_presets_config.get_untracked(),
+                                            storefront_presets: &storefront_presets_config.get_untracked(),
+                                        },
+                                        core::RelevanceEditorMessages {
+                                            invalid_settings_json: invalid_settings_json_label.as_str(),
+                                            settings_root_object: t(
+                                                settings_locale.as_deref(),
+                                                "search.error.settingsConfigRootObject",
+                                                "Settings config root must be a JSON object.",
+                                            )
+                                            .as_str(),
+                                            preview_presets_label: preview_presets_label.as_str(),
+                                            storefront_presets_label: storefront_presets_label.as_str(),
+                                            editor_array_json: editor_array_json.as_str(),
+                                            editor_array_type: editor_array_type.as_str(),
+                                            serialize_merged_settings: t(
+                                                settings_locale.as_deref(),
+                                                "search.error.serializeMergedSettings",
+                                                "Failed to serialize merged search settings config",
+                                            )
+                                            .as_str(),
+                                        },
                                     ) {
                                         Ok(config) => config,
                                         Err(err) => {
@@ -375,7 +420,7 @@ pub fn SearchAdmin() -> impl IntoView {
                                             return;
                                         }
                                     };
-                                    if parse_json_for_editor(&merged_config).is_none() {
+                                    if core::parse_json_for_editor(&merged_config).is_none() {
                                         set_settings_feedback
                                             .set(Some(invalid_settings_json_label.clone()));
                                         return;
@@ -411,43 +456,43 @@ pub fn SearchAdmin() -> impl IntoView {
                                                         .set(settings.active_engine.clone());
                                                     set_settings_fallback_engine
                                                         .set(settings.fallback_engine.clone());
-                                                    set_settings_config.set(pretty_json_string(
+                                                    set_settings_config.set(core::pretty_json_string(
                                                         &settings.config,
                                                     ));
                                                     if let Some(config) =
-                                                        parse_json_for_editor(&settings.config)
+                                                        core::parse_json_for_editor(&settings.config)
                                                     {
                                                         set_ranking_default_profile.set(
-                                                            extract_ranking_profile_value(
+                                                            core::extract_ranking_profile_value(
                                                                 &config, "default",
                                                             ),
                                                         );
                                                         set_ranking_preview_profile.set(
-                                                            extract_ranking_profile_value(
+                                                            core::extract_ranking_profile_value(
                                                                 &config,
                                                                 "search_preview",
                                                             ),
                                                         );
                                                         set_ranking_storefront_profile.set(
-                                                            extract_ranking_profile_value(
+                                                            core::extract_ranking_profile_value(
                                                                 &config,
                                                                 "storefront_search",
                                                             ),
                                                         );
                                                         set_ranking_admin_global_profile.set(
-                                                            extract_ranking_profile_value(
+                                                            core::extract_ranking_profile_value(
                                                                 &config,
                                                                 "admin_global_search",
                                                             ),
                                                         );
                                                         set_preview_presets_config.set(
-                                                            extract_surface_presets_json(
+                                                            core::extract_surface_presets_json(
                                                                 &config,
                                                                 "search_preview",
                                                             ),
                                                         );
                                                         set_storefront_presets_config.set(
-                                                            extract_surface_presets_json(
+                                                            core::extract_surface_presets_json(
                                                                 &config,
                                                                 "storefront_search",
                                                             ),
@@ -457,7 +502,7 @@ pub fn SearchAdmin() -> impl IntoView {
                                                         .update(|value| *value += 1);
                                                 }
                                                 Err(err) => set_settings_feedback.set(Some(
-                                                    format!("{}: {err}", save_settings_error_label),
+                                                    core::error_with_context(save_settings_error_label.as_str(), &err.to_string()),
                                                 )),
                                             }
                                             set_settings_busy.set(false);
@@ -568,7 +613,7 @@ fn overview_view(
                 <InfoCard title=t(locale, "search.overview.staleDocs.title", "Stale docs") value=bootstrap.search_diagnostics.stale_documents.to_string() detail=t(locale, "search.overview.staleDocs.detail", "Documents where indexed_at lags behind source updated_at.") />
                 <InfoCard title=t(locale, "search.overview.missingDocs.title", "Missing docs") value=bootstrap.search_diagnostics.missing_documents.to_string() detail=t(locale, "search.overview.missingDocs.detail", "Source rows that should exist in search_documents but do not.") />
                 <InfoCard title=t(locale, "search.overview.orphanedDocs.title", "Orphaned docs") value=bootstrap.search_diagnostics.orphaned_documents.to_string() detail=t(locale, "search.overview.orphanedDocs.detail", "Search documents that no longer have a matching source row.") />
-                <InfoCard title=t(locale, "search.overview.maxLag.title", "Max lag") value=format!("{}s", bootstrap.search_diagnostics.max_lag_seconds) detail=t(locale, "search.overview.maxLag.detail", "Worst-case lag between source update and search projection.") />
+                <InfoCard title=t(locale, "search.overview.maxLag.title", "Max lag") value=core::format_seconds(bootstrap.search_diagnostics.max_lag_seconds) detail=t(locale, "search.overview.maxLag.detail", "Worst-case lag between source update and search projection.") />
             </div>
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1">
@@ -582,7 +627,7 @@ fn overview_view(
                         <span class="text-sm font-medium text-card-foreground">{t(locale, "search.settings.activeEngine", "Active engine")}</span>
                         <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=settings_active_engine on:change=move |ev| set_settings_active_engine.set(event_target_value(&ev))>
                             {bootstrap.available_search_engines.iter().map(|engine| view! {
-                                <option value=engine.kind.clone()>{format!("{} ({})", engine.label, engine.kind)}</option>
+                                <option value=engine.kind.clone()>{core::engine_option_label(&engine.label, &engine.kind)}</option>
                             }).collect_view()}
                         </select>
                     </label>
@@ -590,7 +635,7 @@ fn overview_view(
                         <span class="text-sm font-medium text-card-foreground">{t(locale, "search.settings.fallbackEngine", "Fallback engine")}</span>
                         <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=settings_fallback_engine on:change=move |ev| set_settings_fallback_engine.set(event_target_value(&ev))>
                             {bootstrap.available_search_engines.iter().map(|engine| view! {
-                                <option value=engine.kind.clone()>{format!("{} ({})", engine.label, engine.kind)}</option>
+                                <option value=engine.kind.clone()>{core::engine_option_label(&engine.label, &engine.kind)}</option>
                             }).collect_view()}
                         </select>
                     </label>
@@ -788,7 +833,6 @@ fn playground_view(
         ),
         preset_template: t(locale_ref, "search.preview.preset", "preset = {preset}"),
         none_label: t(locale_ref, "search.common.none", "none"),
-        score_template: t(locale_ref, "search.preview.score", "score {score:.3}"),
         no_snippet: t(
             locale_ref,
             "search.preview.noSnippet",
@@ -815,7 +859,7 @@ fn playground_view(
                                 {presets.into_iter().map(|preset| view! { <option value=preset.key.clone()>{preset.label}</option> }).collect_view()}
                             </select>
                         }.into_any(),
-                        Err(err) => view! { <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("{}: {err}", load_presets_error_label.clone())}</div> }.into_any(),
+                        Err(err) => view! { <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{core::error_with_context(load_presets_error_label.as_str(), &err.to_string())}</div> }.into_any(),
                     })}
                 </Suspense>
             </label>
@@ -902,9 +946,9 @@ fn analytics_view(
                 <InfoCard title=t(locale_ref, "search.analytics.laggingDocs.title", "Lagging docs") value=diagnostics.stale_documents.to_string() detail=t(locale_ref, "search.analytics.laggingDocs.detail", "Documents where projection timestamps are behind source updates.") />
                 <InfoCard title=t(locale_ref, "search.analytics.missingDocs.title", "Missing docs") value=diagnostics.missing_documents.to_string() detail=t(locale_ref, "search.analytics.missingDocs.detail", "Expected projection rows that are absent from search storage.") />
                 <InfoCard title=t(locale_ref, "search.analytics.orphanedDocs.title", "Orphaned docs") value=diagnostics.orphaned_documents.to_string() detail=t(locale_ref, "search.analytics.orphanedDocs.detail", "Projection rows without a matching content/product source row.") />
-                <InfoCard title=t(locale_ref, "search.analytics.maxLag.title", "Max lag") value=format!("{}s", diagnostics.max_lag_seconds) detail=t(locale_ref, "search.analytics.maxLag.detail", "Largest observed lag in seconds.") />
-                <InfoCard title=t(locale_ref, "search.analytics.newestIndexed.title", "Newest indexed") value=diagnostics.newest_indexed_at.unwrap_or_else(|| t(locale_ref, "search.common.notIndexedYet", "not indexed yet")) detail=t(locale_ref, "search.analytics.newestIndexed.detail", "Most recent index write in rustok-search storage.") />
-                <InfoCard title=t(locale_ref, "search.analytics.oldestIndexed.title", "Oldest indexed") value=diagnostics.oldest_indexed_at.unwrap_or_else(|| t(locale_ref, "search.common.notIndexedYet", "not indexed yet")) detail=t(locale_ref, "search.analytics.oldestIndexed.detail", "Oldest surviving indexed document timestamp.") />
+                <InfoCard title=t(locale_ref, "search.analytics.maxLag.title", "Max lag") value=core::format_seconds(diagnostics.max_lag_seconds) detail=t(locale_ref, "search.analytics.maxLag.detail", "Largest observed lag in seconds.") />
+                <InfoCard title=t(locale_ref, "search.analytics.newestIndexed.title", "Newest indexed") value=core::value_or_fallback(diagnostics.newest_indexed_at, t(locale_ref, "search.common.notIndexedYet", "not indexed yet").as_str()) detail=t(locale_ref, "search.analytics.newestIndexed.detail", "Most recent index write in rustok-search storage.") />
+                <InfoCard title=t(locale_ref, "search.analytics.oldestIndexed.title", "Oldest indexed") value=core::value_or_fallback(diagnostics.oldest_indexed_at, t(locale_ref, "search.common.notIndexedYet", "not indexed yet").as_str()) detail=t(locale_ref, "search.analytics.oldestIndexed.detail", "Oldest surviving indexed document timestamp.") />
             </div>
             <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-1">
@@ -915,7 +959,7 @@ fn analytics_view(
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || search_analytics.get().map(|result| match result {
                             Ok(analytics) => analytics_panel(analytics, analytics_panel_locale.clone()).into_any(),
-                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_analytics_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{core::error_with_context(load_analytics_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                 </div>
@@ -926,7 +970,7 @@ fn analytics_view(
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || lagging_documents.get().map(|result| match result {
                             Ok(rows) => lagging_table(rows, lagging_table_locale.clone()).into_any(),
-                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_lagging_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{core::error_with_context(load_lagging_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                 </div>
@@ -937,7 +981,7 @@ fn analytics_view(
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || consistency_issues.get().map(|result| match result {
                             Ok(rows) => consistency_table(rows, consistency_table_locale.clone()).into_any(),
-                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_consistency_error.clone())}</div> }.into_any(),
+                            Err(err) => view! { <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{core::error_with_context(load_consistency_error.as_str(), &err.to_string())}</div> }.into_any(),
                         })}
                     </Suspense>
                 </div>
@@ -952,15 +996,15 @@ fn analytics_panel(analytics: SearchAnalyticsPayload, ui_locale: Option<String>)
     view! {
         <div class="space-y-6">
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <InfoCard title=t(locale, "search.analytics.summary.window.title", "Window") value=format!("{}d", summary.window_days) detail=t(locale, "search.analytics.summary.window.detail", "Rolling analytics lookback window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.window.title", "Window") value=core::format_days(summary.window_days) detail=t(locale, "search.analytics.summary.window.detail", "Rolling analytics lookback window.") />
                 <InfoCard title=t(locale, "search.analytics.summary.queries.title", "Queries") value=summary.total_queries.to_string() detail=t(locale, "search.analytics.summary.queries.detail", "All logged search queries in the current window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.ctr.title", "CTR") value=format!("{:.1}%", summary.click_through_rate * 100.0) detail=t(locale, "search.analytics.summary.ctr.detail", "Share of eligible successful queries that received at least one click.") />
-                <InfoCard title=t(locale, "search.analytics.summary.abandonment.title", "Abandonment") value=format!("{:.1}%", summary.abandonment_rate * 100.0) detail=t(locale, "search.analytics.summary.abandonment.detail", "Eligible successful queries that ended without any tracked click.") />
-                <InfoCard title=t(locale, "search.analytics.summary.zeroResultRate.title", "Zero-result rate") value=format!("{:.1}%", summary.zero_result_rate * 100.0) detail=t(locale, "search.analytics.summary.zeroResultRate.detail", "Share of successful queries that returned no results.") />
+                <InfoCard title=t(locale, "search.analytics.summary.ctr.title", "CTR") value=core::format_percent_fraction(summary.click_through_rate) detail=t(locale, "search.analytics.summary.ctr.detail", "Share of eligible successful queries that received at least one click.") />
+                <InfoCard title=t(locale, "search.analytics.summary.abandonment.title", "Abandonment") value=core::format_percent_fraction(summary.abandonment_rate) detail=t(locale, "search.analytics.summary.abandonment.detail", "Eligible successful queries that ended without any tracked click.") />
+                <InfoCard title=t(locale, "search.analytics.summary.zeroResultRate.title", "Zero-result rate") value=core::format_percent_fraction(summary.zero_result_rate) detail=t(locale, "search.analytics.summary.zeroResultRate.detail", "Share of successful queries that returned no results.") />
             </div>
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <InfoCard title=t(locale, "search.analytics.summary.avgLatency.title", "Avg latency") value=format!("{:.1} ms", summary.avg_took_ms) detail=t(locale, "search.analytics.summary.avgLatency.detail", "Average PostgreSQL search execution time.") />
-                <InfoCard title=t(locale, "search.analytics.summary.slowQueryRate.title", "Slow-query rate") value=format!("{:.1}%", summary.slow_query_rate * 100.0) detail=t(locale, "search.analytics.summary.slowQueryRate.detail", "Share of successful queries at or above the current slow-query threshold.") />
+                <InfoCard title=t(locale, "search.analytics.summary.avgLatency.title", "Avg latency") value=core::format_milliseconds(summary.avg_took_ms) detail=t(locale, "search.analytics.summary.avgLatency.detail", "Average PostgreSQL search execution time.") />
+                <InfoCard title=t(locale, "search.analytics.summary.slowQueryRate.title", "Slow-query rate") value=core::format_percent_fraction(summary.slow_query_rate) detail=t(locale, "search.analytics.summary.slowQueryRate.detail", "Share of successful queries at or above the current slow-query threshold.") />
                 <InfoCard title=t(locale, "search.analytics.summary.totalClicks.title", "Total clicks") value=summary.total_clicks.to_string() detail=t(locale, "search.analytics.summary.totalClicks.detail", "All tracked result clicks in the current window.") />
                 <InfoCard title=t(locale, "search.analytics.summary.abandonedQueries.title", "Abandoned queries") value=summary.abandonment_queries.to_string() detail=t(locale, "search.analytics.summary.abandonedQueries.detail", "Successful queries older than the click-eval window with no clicks.") />
                 <InfoCard title=t(locale, "search.analytics.summary.uniqueQueries.title", "Unique queries") value=summary.unique_queries.to_string() detail=t(locale, "search.analytics.summary.uniqueQueries.detail", "Distinct normalized queries observed in the window.") />
@@ -1016,18 +1060,17 @@ fn analytics_panel(analytics: SearchAnalyticsPayload, ui_locale: Option<String>)
 }
 
 fn preview_panel(payload: SearchPreviewPayload, labels: SearchPreviewLabels) -> impl IntoView {
-    let preview_summary = labels
-        .summary_template
-        .replace("{total}", payload.total.to_string().as_str())
-        .replace("{took_ms}", payload.took_ms.to_string().as_str())
-        .replace("{engine}", payload.engine.as_str())
-        .replace("{ranking_profile}", payload.ranking_profile.as_str());
-    let preview_preset = labels.preset_template.replace(
-        "{preset}",
-        payload
-            .preset_key
-            .as_deref()
-            .unwrap_or(labels.none_label.as_str()),
+    let preview_summary = core::render_preview_summary(
+        labels.summary_template.as_str(),
+        payload.total,
+        payload.took_ms,
+        payload.engine.as_str(),
+        payload.ranking_profile.as_str(),
+    );
+    let preview_preset = core::render_preview_preset(
+        labels.preset_template.as_str(),
+        payload.preset_key.as_deref(),
+        labels.none_label.as_str(),
     );
     view! { <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div><h2 class="text-lg font-semibold text-card-foreground">{labels.title.clone()}</h2><p class="text-sm text-muted-foreground">{preview_summary}</p><p class="mt-2 text-xs text-muted-foreground">{preview_preset}</p></div>
@@ -1071,10 +1114,10 @@ fn analytics_rows_table(
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}%", row.click_through_rate * 100.0)}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}%", row.abandonment_rate * 100.0)}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1} ms", row.avg_took_ms)}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}", row.avg_results)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_percent_fraction(row.click_through_rate)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_percent_fraction(row.abandonment_rate)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_milliseconds(row.avg_took_ms)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_decimal_1(row.avg_results)}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.last_seen_at}</td>
             </tr>
         }).collect_view()}</tbody>
@@ -1105,7 +1148,7 @@ fn intelligence_table(
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{format!("{:.1}%", row.click_through_rate * 100.0)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_percent_fraction(row.click_through_rate)}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.recommendation}</td>
             </tr>
         }).collect_view()}</tbody>
@@ -1185,7 +1228,7 @@ fn lagging_table(
                 <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
-                <td class="px-4 py-3 align-top"><span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{format!("{}s", row.lag_seconds)}</span></td>
+                <td class="px-4 py-3 align-top"><span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{core::format_seconds(row.lag_seconds)}</span></td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
             </tr>
@@ -1211,11 +1254,7 @@ fn consistency_table(
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.indexed", "Indexed")}</th>
         </tr></thead>
         <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
-            let badge_class = if row.issue_kind == "missing" {
-                "border-rose-200 bg-rose-50 text-rose-700"
-            } else {
-                "border-orange-200 bg-orange-50 text-orange-700"
-            };
+            let badge_class = core::consistency_issue_badge_class(&row.issue_kind);
             let issue_label = if row.issue_kind == "missing" {
                 t(locale, "search.issue.missing", "missing")
             } else {
@@ -1230,7 +1269,7 @@ fn consistency_table(
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at.unwrap_or_else(|| t(locale, "search.common.notIndexed", "not indexed"))}</td>
+                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::value_or_fallback(row.indexed_at, t(locale, "search.common.notIndexed", "not indexed").as_str())}</td>
                 </tr>
             }
         }).collect_view()}</tbody>
@@ -1370,7 +1409,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", synonym_save_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            synonym_save_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1396,7 +1438,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", stop_word_save_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            stop_word_save_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1444,7 +1489,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", pin_rule_save_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            pin_rule_save_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1467,7 +1515,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", synonym_remove_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            synonym_remove_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1490,7 +1541,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", stop_word_remove_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            stop_word_remove_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1514,7 +1568,10 @@ fn DictionariesView() -> impl IntoView {
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(format!("{}: {err}", pin_rule_remove_error_label)));
+                        set_feedback.set(Some(core::error_with_context(
+                            pin_rule_remove_error_label.as_str(),
+                            &err.to_string(),
+                        )));
                     }
                 }
                 set_busy.set(false);
@@ -1599,7 +1656,7 @@ fn DictionariesView() -> impl IntoView {
                     Ok(snapshot) => dictionaries_tables(snapshot, busy, delete_synonym, delete_stop_word, delete_query_rule, ui_locale.clone()).into_any(),
                     Err(err) => view! {
                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                            {format!("{}: {err}", load_dictionaries_error_label)}
+                            {core::error_with_context(load_dictionaries_error_label.as_str(), &err.to_string())}
                         </div>
                     }.into_any(),
                 })}
@@ -1739,7 +1796,7 @@ fn query_rules_table(
                     </td>
                     <td class="px-4 py-3 align-top">
                         <div class="font-medium text-card-foreground">{row.title}</div>
-                        <div class="mt-1 text-xs text-muted-foreground">{format!("{} / {} / {}", row.document_id, row.source_module, row.entity_type)}</div>
+                        <div class="mt-1 text-xs text-muted-foreground">{core::document_source_path(&row.document_id, &row.source_module, &row.entity_type)}</div>
                     </td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.pinned_position}</td>
                     <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
@@ -1758,22 +1815,25 @@ fn DiagnosticsCard(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let badge_class = match diagnostics.state.as_str() {
-        "healthy" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "inconsistent" => "border-rose-200 bg-rose-50 text-rose-700",
-        "lagging" => "border-amber-200 bg-amber-50 text-amber-700",
-        _ => "border-slate-200 bg-slate-50 text-slate-700",
-    };
+    let badge_class = core::diagnostics_state_badge_class(diagnostics.state.as_str());
     let state_label = match diagnostics.state.as_str() {
         "healthy" => t(locale, "search.state.healthy", "healthy"),
         "inconsistent" => t(locale, "search.state.inconsistent", "inconsistent"),
         "lagging" => t(locale, "search.state.lagging", "lagging"),
         other => other.to_string(),
     };
+    let newest_indexed = core::value_or_fallback(
+        diagnostics.newest_indexed_at,
+        t(locale, "search.common.notIndexedYet", "not indexed yet").as_str(),
+    );
+    let newest_indexed_summary = core::label_value_summary(
+        t(locale, "search.diagnostics.newestIndexed", "Newest indexed").as_str(),
+        newest_indexed.as_str(),
+    );
     view! { <article class="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t(locale, "search.diagnostics.indexState", "Index state")}</div>
         <div class="mt-3"><span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {badge_class}")>{state_label}</span></div>
-        <p class="mt-3 text-sm text-muted-foreground">{format!("{}: {}", t(locale, "search.diagnostics.newestIndexed", "Newest indexed"), diagnostics.newest_indexed_at.unwrap_or_else(|| t(locale, "search.common.notIndexedYet", "not indexed yet")))}</p>
+        <p class="mt-3 text-sm text-muted-foreground">{newest_indexed_summary}</p>
     </article> }
 }
 
@@ -1789,122 +1849,4 @@ where
 #[component]
 fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
     view! { <article class="rounded-xl border border-border bg-background p-4"><div class="text-sm font-semibold capitalize text-card-foreground">{core::facet_display_name(&facet.name)}</div><div class="mt-3 flex flex-wrap gap-2">{facet.buckets.into_iter().map(|bucket| view! { <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">{core::facet_bucket_label(&bucket.value, bucket.count)}</span> }).collect_view()}</div></article> }
-}
-
-fn pretty_json_string(value: &str) -> String {
-    parse_json_for_editor(value)
-        .and_then(|json| serde_json::to_string_pretty(&json).ok())
-        .unwrap_or_else(|| value.to_string())
-}
-
-fn parse_json_for_editor(value: &str) -> Option<serde_json::Value> {
-    serde_json::from_str(value).ok()
-}
-
-fn extract_ranking_profile_value(config: &serde_json::Value, surface: &str) -> String {
-    config
-        .get("ranking_profiles")
-        .and_then(|value| value.get(surface))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(match surface {
-            "admin_global_search" => "exact",
-            _ => "balanced",
-        })
-        .to_string()
-}
-
-fn extract_surface_presets_json(config: &serde_json::Value, surface: &str) -> String {
-    config
-        .get("filter_presets")
-        .and_then(|value| value.get(surface))
-        .and_then(|value| serde_json::to_string_pretty(value).ok())
-        .unwrap_or_else(|| "[]".to_string())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn merge_relevance_editor_config(
-    locale: Option<&str>,
-    config_text: &str,
-    ranking_default: &str,
-    ranking_preview: &str,
-    ranking_storefront: &str,
-    ranking_admin_global: &str,
-    preview_presets: &str,
-    storefront_presets: &str,
-) -> Result<String, String> {
-    let mut config = parse_json_for_editor(config_text).ok_or_else(|| {
-        t(
-            locale,
-            "search.error.invalidSettingsJson",
-            "Settings config must be valid JSON.",
-        )
-    })?;
-    let object = config.as_object_mut().ok_or_else(|| {
-        t(
-            locale,
-            "search.error.settingsConfigRootObject",
-            "Settings config root must be a JSON object.",
-        )
-    })?;
-
-    object.insert(
-        "ranking_profiles".to_string(),
-        serde_json::json!({
-            "default": ranking_default,
-            "search_preview": ranking_preview,
-            "storefront_search": ranking_storefront,
-            "admin_global_search": ranking_admin_global,
-        }),
-    );
-    object.insert(
-        "filter_presets".to_string(),
-        serde_json::json!({
-            "search_preview": parse_json_array_for_editor(locale, t(locale, "search.relevance.previewPresets", "Preview filter presets").as_str(), preview_presets)?,
-            "storefront_search": parse_json_array_for_editor(locale, t(locale, "search.relevance.storefrontPresets", "Storefront filter presets").as_str(), storefront_presets)?,
-        }),
-    );
-
-    serde_json::to_string_pretty(&config).map_err(|err| {
-        format!(
-            "{}: {err}",
-            t(
-                locale,
-                "search.error.serializeMergedSettings",
-                "Failed to serialize merged search settings config"
-            )
-        )
-    })
-}
-
-fn parse_json_array_for_editor(
-    locale: Option<&str>,
-    label: &str,
-    value: &str,
-) -> Result<serde_json::Value, String> {
-    let parsed: serde_json::Value = serde_json::from_str(value).map_err(|err| {
-        t(
-            locale,
-            "search.error.editorArrayJson",
-            "{label} must be valid JSON: {err}",
-        )
-        .replace("{label}", label)
-        .replace("{err}", err.to_string().as_str())
-    })?;
-    if !parsed.is_array() {
-        return Err(t(
-            locale,
-            "search.error.editorArrayType",
-            "{label} must be a JSON array.",
-        )
-        .replace("{label}", label));
-    }
-    Ok(parsed)
-}
-
-fn tab_class(active: bool) -> &'static str {
-    if active {
-        "inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-    } else {
-        "inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
-    }
 }

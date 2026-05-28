@@ -191,3 +191,10 @@
 ### Additional iteration evidence
 
 - blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` используется `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #13 evidence: admin analytics/dictionaries error messages and timestamp fallbacks now use existing `admin/src/core.rs` helpers; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #14 evidence: admin tab and diagnostics/consistency badge CSS class mapping moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #15 evidence: admin navigation href, engine option label and rebuild feedback rendering moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #16 evidence: admin relevance editor merge and JSON-array validation moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
