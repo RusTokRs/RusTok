@@ -1,4 +1,6 @@
 use leptos::prelude::*;
+#[cfg(feature = "ssr")]
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 #[allow(unused_imports)]
@@ -12,7 +14,7 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
     ToggleModuleResult,
 };
-use crate::shared::api::{combine_native_and_graphql_error, request, ApiError};
+use crate::shared::api::{api_base_url, combine_native_and_graphql_error, request, ApiError};
 
 pub const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
 pub const MODULE_REGISTRY_QUERY: &str = "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled ownership trustLevel recommendedAdminSurfaces showcaseAdminSurfaces } }";
@@ -195,6 +197,90 @@ pub struct RegistryPublishStatusContract {
     #[serde(default, rename = "governanceActions")]
     pub governance_actions: Vec<RegistryGovernanceActionLifecycle>,
     pub next_step: Option<String>,
+}
+
+#[cfg(feature = "ssr")]
+async fn registry_governance_get_native<T>(
+    path: String,
+    token: String,
+    tenant: String,
+) -> Result<T, ServerFnError>
+where
+    T: DeserializeOwned,
+{
+    registry_governance_http_request_native::<(), T>(
+        reqwest::Method::GET,
+        path,
+        token,
+        tenant,
+        None,
+    )
+    .await
+}
+
+#[cfg(feature = "ssr")]
+async fn registry_governance_request_native<B, T>(
+    method: reqwest::Method,
+    path: String,
+    token: String,
+    tenant: String,
+    body: &B,
+) -> Result<T, ServerFnError>
+where
+    B: Serialize + ?Sized,
+    T: DeserializeOwned,
+{
+    registry_governance_http_request_native(method, path, token, tenant, Some(body)).await
+}
+
+#[cfg(feature = "ssr")]
+async fn registry_governance_http_request_native<B, T>(
+    method: reqwest::Method,
+    path: String,
+    token: String,
+    tenant: String,
+    body: Option<&B>,
+) -> Result<T, ServerFnError>
+where
+    B: Serialize + ?Sized,
+    T: DeserializeOwned,
+{
+    let url = format!(
+        "{}{}",
+        api_base_url(),
+        if path.starts_with('/') {
+            path
+        } else {
+            format!("/{path}")
+        }
+    );
+    let client = reqwest::Client::new();
+    let mut request = client
+        .request(method, url)
+        .bearer_auth(token)
+        .header("X-Tenant-ID", tenant);
+
+    if let Some(body) = body {
+        request = request.json(body);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))?;
+
+    if !status.is_success() {
+        return Err(ServerFnError::new(format!(
+            "registry governance request failed with status {status}: {text}"
+        )));
+    }
+
+    serde_json::from_str(&text).map_err(|err| ServerFnError::new(err.to_string()))
 }
 
 #[cfg(feature = "ssr")]

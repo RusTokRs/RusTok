@@ -759,6 +759,8 @@ fn PolicySetCard(
         }
     });
 
+    let submit_query_writer = query_writer.clone();
+    let submit_create_form_state = create_form_state.clone();
     let on_submit_rule = move |ev: SubmitEvent| {
         ev.prevent_default();
         busy.set(true);
@@ -769,7 +771,8 @@ fn PolicySetCard(
             let (token, tenant, policy_set_id, policy_set_slug, ui_locale) =
                 submit_rule_ctx.get_value();
             let editing_rule_id_value = editing_rule_id.get_untracked();
-            let query_writer = query_writer.clone();
+            let query_writer = submit_query_writer.clone();
+            let create_form_state = submit_create_form_state.clone();
             async move {
                 match editing_rule_id_value {
                     Some(rule_id) => {
@@ -951,7 +954,9 @@ fn PolicySetCard(
                                 let rule_id = rule.id.clone();
                                 move || editing_rule_id.get().as_deref() == Some(rule_id.as_str())
                             });
-                            let rule_ids_for_reorder = rule_order.clone();
+                            let rule_ids_for_reorder_up = rule_order.clone();
+                            let rule_ids_for_reorder_down = rule_order.clone();
+                            let inactive_rule_badge = inactive_rule_badge.clone();
                             let can_move_up = index > 0;
                             let can_move_down = index + 1 < rule_order.len();
                             let token_for_up = token.clone();
@@ -1036,7 +1041,7 @@ fn PolicySetCard(
                                                         let policy_set_id = policy_set_id_for_up.clone();
                                                         let policy_set_slug = policy_set_slug_for_up.clone();
                                                         let ui_locale = ui_locale_for_up.clone();
-                                                        let rule_ids_for_reorder = rule_ids_for_reorder.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder_up.clone();
                                                         async move {
                                                             let Some(rule_ids) = reorder_rule_ids(rule_ids_for_reorder.as_slice(), index, true) else {
                                                                 busy.set(false);
@@ -1084,7 +1089,7 @@ fn PolicySetCard(
                                                         let policy_set_id = policy_set_id_for_down.clone();
                                                         let policy_set_slug = policy_set_slug_for_down.clone();
                                                         let ui_locale = ui_locale_for_down.clone();
-                                                        let rule_ids_for_reorder = rule_ids_for_reorder.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder_down.clone();
                                                         async move {
                                                             let Some(rule_ids) = reorder_rule_ids(rule_ids_for_reorder.as_slice(), index, false) else {
                                                                 busy.set(false);

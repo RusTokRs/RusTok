@@ -878,3 +878,10 @@ rollback-стратегии и Definition of Done по итерациям.
 - Для ускорения закрытия operational хвоста выполнено выравнивание rustfmt baseline по текущему drift-списку strict-runner: форматированы затронутые файлы `rustok-blog`, `rustok-commerce` tests, `rustok-inventory` admin API и `rustok-seo` sitemap services.
 - После форматирования strict-runner проходит шаг `format check` (`PASS`) и переходит к следующему этапу (`migration tests`), что подтверждает снятие format-blocker для данного набора файлов.
 - Для полного закрытия чекбокса минимального verification-набора остаётся дождаться завершения полного bundle-прогона (`migration + rustok-server tests + xtask/dependabot checks`) в отдельном run-окне.
+
+### Актуализация 2026-05-28 (итерация 71)
+
+- Strict-runner снова продвинут за форматирование: `cargo fmt --all -- --check` проходит после выравнивания `rustok-blog/storefront` formatting baseline и удаления случайных duplicate helper definitions в `core.rs`.
+- Закрыт следующий слой compile-blockers, проявившийся при `cargo test -p rustok-server module_lifecycle`: исправлены Leptos `Fn`/`FnMut` ownership regressions в module-owned admin UI (`rustok-pages/admin`, `rustok-channel/admin`) и восстановлена storefront native shipping-selection parity в `rustok-commerce/storefront` под актуальный `CartShippingSelectionInput` contract.
+- Для `apps/admin` восстановлены SSR native registry governance REST helpers (`GET`/mutation request через canonical `api_base_url`, bearer token и tenant header), чтобы registry publish decision server functions снова компилировались после удаления старых helper entrypoints.
+- Повторный `cargo test -p rustok-server module_lifecycle` дошёл до `rustok-admin` compilation и остановился на environment blocker `No space left on device`; функционального control-plane failure на этом шаге не обнаружено. Чекбокс минимального verification bundle остаётся `[ ]` до повторного strict-прогона после очистки/увеличения build storage.

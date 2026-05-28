@@ -107,6 +107,9 @@ pub fn PagesAdmin() -> impl IntoView {
         "pages.error.runtimeBadge",
         "Runtime",
     );
+    let validation_issue_label = StoredValue::new(validation_issue_label);
+    let sanitize_issue_label = StoredValue::new(sanitize_issue_label);
+    let runtime_issue_label = StoredValue::new(runtime_issue_label);
     let form_subtitle_text = t(
         route_context.locale.as_deref(),
         "pages.form.subtitle",
@@ -274,6 +277,9 @@ pub fn PagesAdmin() -> impl IntoView {
         "pages.compat.existingBlocks",
         "Existing blocks remain attached and are not deleted automatically by grapesjs_v1 writes.",
     );
+    let compatibility_title = StoredValue::new(compatibility_title);
+    let compatibility_non_grapes = StoredValue::new(compatibility_non_grapes);
+    let compatibility_existing_blocks = StoredValue::new(compatibility_existing_blocks);
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_page_id, set_editing_page_id) = signal(Option::<String>::None);
@@ -346,6 +352,8 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let default_locale = edit_default_locale.clone();
+        let page_not_found_text = page_not_found_text.clone();
+        let load_page_error_text = load_page_error_text.clone();
         set_submit_issue.set(None);
         set_busy_key.set(Some(core::busy_key_with_id("edit", &page_id)));
 
@@ -458,6 +466,7 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let editing_page = editing_page_id.get_untracked();
+        let save_page_error_text = save_page_error_text.clone();
         set_busy_key.set(Some(core::busy_key_for_save(editing_page.as_deref())));
 
         spawn_local(async move {
@@ -494,6 +503,7 @@ pub fn PagesAdmin() -> impl IntoView {
     let publish_page = Callback::new(move |(page_id, publish): (String, bool)| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let update_status_error_text = update_status_error_text.clone();
         set_submit_issue.set(None);
         set_busy_key.set(Some(core::busy_key_with_id("publish", &page_id)));
 
@@ -529,6 +539,8 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let delete_query_writer = delete_query_writer.clone();
+        let delete_page_error_text = delete_page_error_text.clone();
+        let delete_returned_false_text = delete_returned_false_text.clone();
         set_submit_issue.set(None);
         set_busy_key.set(Some(core::busy_key_with_id("delete", &page_id)));
 
@@ -829,13 +841,13 @@ pub fn PagesAdmin() -> impl IntoView {
 
                         <Show when=move || compatibility_warning.get()>
                             <div class="mt-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                                <div class="font-semibold">{compatibility_title.clone()}</div>
+                                <div class="font-semibold">{compatibility_title.get_value()}</div>
                                 <ul class="mt-2 list-disc space-y-1 pl-4">
                                     <Show when=move || !body_format.get().eq_ignore_ascii_case(core::GRAPESJS_FORMAT)>
-                                        <li>{compatibility_non_grapes.clone()}</li>
+                                        <li>{move || compatibility_non_grapes.get_value()}</li>
                                     </Show>
                                     <Show when=move || !existing_blocks.get().is_empty()>
-                                        <li>{compatibility_existing_blocks.clone()}</li>
+                                        <li>{move || compatibility_existing_blocks.get_value()}</li>
                                     </Show>
                                 </ul>
                             </div>
@@ -922,7 +934,10 @@ pub fn PagesAdmin() -> impl IntoView {
                                         .unwrap_or("hidden")
                                 }>
                                     {move || {
-                                        submit_issue.get().map(|issue| {
+                                        submit_issue.get().map(move |issue| {
+                                            let validation_issue_label = validation_issue_label.get_value();
+                                            let sanitize_issue_label = sanitize_issue_label.get_value();
+                                            let runtime_issue_label = runtime_issue_label.get_value();
                                             let label = core::issue_label(
                                                 issue.kind,
                                                 validation_issue_label.as_str(),
