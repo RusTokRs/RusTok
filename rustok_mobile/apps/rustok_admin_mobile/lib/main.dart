@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rustok_modules_mobile/rustok_modules_mobile.dart';
 
 import 'app_shell/auth_bootstrap.dart';
 import 'registry/mobile_module_registry.dart';
@@ -17,8 +18,11 @@ class RusTokAdminMobileApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(graphQlClientProvider);
-    final router = buildRouter(ref.watch(mobileRegistryReportProvider));
+    final graphQlClient = ref.watch(graphQlClientProvider);
+    final router = buildRouter(
+      ref.watch(mobileRegistryReportProvider),
+      modulesRepository: GraphQlModulesRepository(graphQlClient),
+    );
     return MaterialApp.router(
       title: 'RusTok Admin Mobile',
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.deepPurple),

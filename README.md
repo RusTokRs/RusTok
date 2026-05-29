@@ -263,6 +263,7 @@ Leptos apps (admin and storefront) use `#[server]` functions as their data layer
 | `apps/next-admin` | Next.js admin (headless path) |
 | `apps/next-frontend` | Next.js storefront (headless path) |
 | `rustok_mobile/apps/rustok_admin_mobile` | Flutter admin mobile host (headless/mobile path) |
+| `rustok_mobile/apps/rustok_frontend_mobile` | Flutter storefront mobile host (headless/mobile path) |
 
 ### Module taxonomy
 

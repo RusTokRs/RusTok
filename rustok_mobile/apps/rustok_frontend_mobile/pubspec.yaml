@@ -1,0 +1,22 @@
+name: rustok_frontend_mobile
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.1
+  go_router: ^17.2.3
+  graphql: ^5.2.3
+  app_graphql:
+    path: ../../packages/app_graphql
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

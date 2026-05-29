@@ -6,8 +6,10 @@ environment:
 
 workspace:
   - apps/rustok_admin_mobile
+  - apps/rustok_frontend_mobile
   - packages/app_core
   - packages/app_ui_kit
   - packages/app_graphql
   - packages/app_route_contracts
   - packages/app_module_contracts
+  - packages/rustok_modules_mobile

@@ -131,6 +131,7 @@
 - [Документация Next Admin](../apps/next-admin/docs/README.md)
 - [Документация Next Frontend](../apps/next-frontend/docs/README.md)
 - [Документация Flutter Admin Mobile](../rustok_mobile/apps/rustok_admin_mobile/README.md)
+- [Документация Flutter Frontend Mobile](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 
 ## Документация crate-ов
 

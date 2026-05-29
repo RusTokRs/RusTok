@@ -1,6 +1,8 @@
 import 'package:app_route_contracts/app_route_contracts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:rustok_modules_mobile/rustok_modules_mobile.dart';
 
 import '../app_shell/app_shell_page.dart';
 import '../registry/mobile_module_icons.dart';
@@ -17,7 +19,10 @@ const _routeCodec = RouteCodec(
   }),
 );
 
-GoRouter buildRouter(ModuleRegistryAdaptationResult registryReport) {
+GoRouter buildRouter(
+  ModuleRegistryAdaptationResult registryReport, {
+  required ModulesRepository modulesRepository,
+}) {
   final moduleRoutes = registryReport.routes;
   final summary = buildRegistryAdaptationSummary(registryReport);
   return GoRouter(
@@ -28,9 +33,27 @@ GoRouter buildRouter(ModuleRegistryAdaptationResult registryReport) {
         routes: [
           GoRoute(
             path: modulesRootPath,
-            builder: (context, state) => ModulesHomePage(
-              moduleRoutes: moduleRoutes,
-              adaptationSummary: summary,
+            builder: (context, state) => ProviderScope(
+              overrides: [
+                modulesRepositoryProvider.overrideWithValue(modulesRepository),
+              ],
+              child: ModulesMobileScreen(
+                header: ModulesHomePage(
+                  moduleRoutes: moduleRoutes,
+                  adaptationSummary: summary,
+                  shrinkWrap: true,
+                ),
+                resolveModulePath: (module) => _resolveModulePath(
+                  moduleRoutes,
+                  module.slug,
+                ),
+                onOpenModule: (context, module) {
+                  final path = _resolveModulePath(moduleRoutes, module.slug);
+                  if (path != null) {
+                    context.go(path);
+                  }
+                },
+              ),
             ),
             routes: [
               for (final routeEntry in moduleRoutes)
@@ -67,42 +90,66 @@ GoRouter buildRouter(ModuleRegistryAdaptationResult registryReport) {
   );
 }
 
+String? _resolveModulePath(List<ModuleRouteEntry> routes, String moduleSlug) {
+  final normalizedSlug = moduleSlug.trim().toLowerCase().replaceAll('-', '_');
+  if (normalizedSlug.isEmpty) {
+    return null;
+  }
+
+  final expectedModuleKey = 'rustok_$normalizedSlug';
+  for (final route in routes) {
+    if (route.moduleKey == expectedModuleKey ||
+        route.routeSegment == normalizedSlug ||
+        route.routeSegment.replaceAll('-', '_') == normalizedSlug) {
+      return route.path;
+    }
+  }
+
+  return null;
+}
+
 class ModulesHomePage extends StatelessWidget {
   const ModulesHomePage({
     super.key,
     required this.moduleRoutes,
     required this.adaptationSummary,
+    this.shrinkWrap = false,
   });
 
   final List<ModuleRouteEntry> moduleRoutes;
   final RegistryAdaptationSummary adaptationSummary;
+  final bool shrinkWrap;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        const ListTile(title: Text('RusTok Modules')),
-        RegistryWarningsCard(summary: adaptationSummary),
-        for (final moduleRoute in moduleRoutes)
-          ExpansionTile(
-            leading: Icon(iconForModuleRoute(moduleRoute)),
-            title: Text(moduleRoute.navTitle),
-            subtitle: Text(moduleRoute.path),
-            children: [
+    final children = <Widget>[
+      const ListTile(title: Text('RusTok Modules')),
+      RegistryWarningsCard(summary: adaptationSummary),
+      for (final moduleRoute in moduleRoutes)
+        ExpansionTile(
+          leading: Icon(iconForModuleRoute(moduleRoute)),
+          title: Text(moduleRoute.navTitle),
+          subtitle: Text(moduleRoute.path),
+          children: [
+            ListTile(
+              title: const Text('Open module root'),
+              onTap: () => context.go(moduleRoute.path),
+            ),
+            for (final child in moduleRoute.childRoutes)
               ListTile(
-                title: const Text('Open module root'),
-                onTap: () => context.go(moduleRoute.path),
+                title: Text(child.navLabel),
+                subtitle: Text(child.path),
+                onTap: () => context.go(child.path),
               ),
-              for (final child in moduleRoute.childRoutes)
-                ListTile(
-                  title: Text(child.navLabel),
-                  subtitle: Text(child.path),
-                  onTap: () => context.go(child.path),
-                ),
-            ],
-          ),
-      ],
-    );
+          ],
+        ),
+    ];
+
+    if (shrinkWrap) {
+      return Column(children: children);
+    }
+
+    return ListView(children: children);
   }
 }
 

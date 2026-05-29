@@ -1,11 +1,12 @@
 # Витрина: host и contract
 
-RusToK поддерживает два storefront host-приложения:
+RusToK поддерживает два web storefront host-приложения и отдельный mobile storefront host:
 
 - `apps/storefront` — основной Leptos SSR-first host;
-- `apps/next-frontend` — параллельный Next.js host.
+- `apps/next-frontend` — параллельный Next.js host;
+- `rustok_mobile/apps/rustok_frontend_mobile` — Flutter customer storefront mobile host.
 
-Обе реализации должны сохранять единый backend, routing, locale и module contract. Leptos storefront остаётся основным Rust SSR/hydrate host путём, Next.js storefront — headless-параллелью.
+Все реализации должны сохранять единый backend, routing, locale и module contract. Leptos storefront остаётся основным Rust SSR/hydrate host путём, Next.js storefront — headless-параллелью, Flutter storefront mobile — mobile/headless host без Flutter-only backend API.
 
 ## Host contract
 
@@ -33,13 +34,14 @@ RusToK поддерживает два storefront host-приложения:
 - Storefront использует backend preflight для canonical route resolution до рендера страницы.
 - Effective locale выбирается runtime/host слоем один раз и затем прокидывается в UI surface.
 - Query-based locale fallback допустим только как backward-compatible path; module-owned UI не должен вводить свою fallback-цепочку.
-- Route/query parity между `apps/storefront` и `apps/next-frontend` должна соблюдаться на уровне
+- Route/query parity между `apps/storefront`, `apps/next-frontend` и `rustok_frontend_mobile` должна соблюдаться на уровне
   key semantics и host contract, даже если конкретные helper implementations различаются.
 
-## Parity с Next.js storefront
+## Parity с Next.js и Flutter storefront
 
 - `apps/next-frontend` обязан сохранять parity с `apps/storefront` по route, auth, i18n и backend contracts.
-- Next.js storefront не должен дублировать storage или canonical-routing логику во frontend слое.
+- `rustok_frontend_mobile` обязан использовать тот же customer-facing storefront contract и не смешиваться с admin/operator mobile UX.
+- Next.js и Flutter storefront не должны дублировать storage или canonical-routing логику во frontend слое.
 - Source of truth для transport и canonical routing остаётся на backend стороне.
 
 ## Проверка
@@ -52,6 +54,7 @@ RusToK поддерживает два storefront host-приложения:
 
 - [Leptos storefront docs](../../apps/storefront/docs/README.md)
 - [Next.js storefront docs](../../apps/next-frontend/docs/README.md)
+- [Flutter storefront mobile docs](../../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 - [Контракты manifest-слоя](../modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI index](./README.md)

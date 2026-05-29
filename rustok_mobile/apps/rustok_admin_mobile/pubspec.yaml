@@ -20,6 +20,8 @@ dependencies:
     path: ../../packages/app_route_contracts
   app_ui_kit:
     path: ../../packages/app_ui_kit
+  rustok_modules_mobile:
+    path: ../../packages/rustok_modules_mobile
 
 dev_dependencies:
   flutter_test:
