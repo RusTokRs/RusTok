@@ -23,7 +23,7 @@ packages и module metadata синхронизированы.
 - FBA status: `in_progress`
 - Evidence:
   - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract;
-  - native `#[server]` + GraphQL fallback остаются параллельными путями, removal/replace GraphQL не выполнялся;
+  - native `#[server]` + GraphQL fallback остаются параллельными путями, GraphQL removal/replacement не выполнялся;
   - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract.
 - Last verified at (UTC): 2026-05-24T18:00:00Z
 - Owner: `rustok-blog` module team

@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
+- Last checkpoint: Storefront route/query normalization and pricing/seller view-model formatting moved into framework-agnostic `storefront/src/core.rs`; Leptos `ProductView` now remains a thin host-context/render adapter before transport.
 - Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Last updated at (UTC): 2026-05-29T00:00:00Z
 
 
 ## FFA/FBA status
@@ -40,6 +40,9 @@
 - module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
   подключён в manifest-driven storefront composition для published catalog
   discovery через native Leptos server functions с GraphQL fallback;
+- storefront UI начал FFA-декомпозицию: route/query normalization и pricing/seller
+  view-model helpers вынесены в framework-agnostic `storefront/src/core.rs`,
+  а Leptos слой остаётся thin render/host-context adapter поверх transport;
 - transport-level validation и public transport по-прежнему публикуются фасадом `rustok-commerce`.
 
 ## Этапы
@@ -62,6 +65,7 @@
 - [x] поднять module-owned admin UI пакет для product catalog surface;
 - [x] документировать новые catalog guarantees одновременно с изменением runtime surface;
 - [ ] удерживать local docs и `README.md` синхронизированными;
+- [x] вынести первый storefront FFA core slice для route/query state и pricing/seller view-model helpers;
 - [ ] обновлять consumer-module docs при изменении tag/deliverability integration rules.
 
 ## Проверка
