@@ -6,7 +6,7 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: Phase B pilot slices #17-18 moved admin preview route-query and empty-state row decisions into `admin/src/core.rs` without changing native/GraphQL transport.
+- Last checkpoint: Phase B pilot slice #18 replaced the weak empty-state helper with a framework-agnostic admin preview request builder in `admin/src/core.rs` without changing native/GraphQL transport.
 - Next step: Continue Phase B with the next smallest search UI/state helper extraction while preserving dual-path parity.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -20,7 +20,7 @@
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
-  - Phase B slices #17-18 extracted admin route-query update semantics and empty-state row checks into `admin/src/core.rs`; native/GraphQL transport was not modified.
+  - Phase B slices #17-18 extracted admin route-query update semantics and preview form/request normalization into `admin/src/core.rs`; native/GraphQL transport was not modified.
 - Last verified at (UTC): 2026-05-29T00:00:00Z
 - Owner: `rustok-search` module team
 
@@ -107,4 +107,4 @@
 - [x] Slice 15: admin navigation href, engine option label and rebuild feedback rendering moved to core (`module_overview_href`, `module_section_href`, `engine_option_label`, `rebuild_target_suffix`, `render_rebuild_feedback`).
 - [x] Slice 16: admin relevance editor merge and JSON-array validation moved to core (`RelevanceEditorConfigInput`, `RelevanceEditorMessages`, `merge_relevance_editor_config`, `parse_json_array_for_editor`).
 - [x] Slice 17: admin preview route-query update semantics moved to core (`RouteQueryUpdate`, `route_query_update`) without native/GraphQL transport changes.
-- [x] Slice 18: admin table empty-state decisions use core helper (`has_items`) instead of Leptos-local list checks.
+- [x] Slice 18: admin preview form/request normalization moved to core (`SearchPreviewFormInput`, `SearchPreviewRequest`, `build_search_preview_request`), replacing the weak empty-state helper slice.

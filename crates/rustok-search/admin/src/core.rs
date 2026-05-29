@@ -1,3 +1,5 @@
+use crate::model::SearchPreviewFilters;
+
 pub fn parse_csv(value: &str) -> Vec<String> {
     value
         .split(',')
@@ -38,6 +40,27 @@ pub enum RouteQueryUpdate {
     Replace(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPreviewFormInput<'a> {
+    pub query: &'a str,
+    pub entity_types: &'a str,
+    pub source_modules: &'a str,
+    pub statuses: &'a str,
+    pub ranking_profile: &'a str,
+    pub preset_key: &'a str,
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchPreviewRequest {
+    pub query: String,
+    pub locale: Option<String>,
+    pub ranking_profile: Option<String>,
+    pub preset_key: Option<String>,
+    pub filters: SearchPreviewFilters,
+    pub route_query_update: RouteQueryUpdate,
+}
+
 pub fn route_query_update(query: &str) -> RouteQueryUpdate {
     if query.trim().is_empty() {
         RouteQueryUpdate::Clear
@@ -46,8 +69,19 @@ pub fn route_query_update(query: &str) -> RouteQueryUpdate {
     }
 }
 
-pub fn has_items<T>(items: &[T]) -> bool {
-    !items.is_empty()
+pub fn build_search_preview_request(input: SearchPreviewFormInput<'_>) -> SearchPreviewRequest {
+    SearchPreviewRequest {
+        query: input.query.to_string(),
+        locale: input.locale,
+        ranking_profile: optional_text(input.ranking_profile),
+        preset_key: optional_text(input.preset_key),
+        filters: SearchPreviewFilters {
+            entity_types: parse_csv(input.entity_types),
+            source_modules: parse_csv(input.source_modules),
+            statuses: parse_csv(input.statuses),
+        },
+        route_query_update: route_query_update(input.query),
+    }
 }
 
 #[cfg(test)]
@@ -107,9 +141,37 @@ mod tests {
     }
 
     #[test]
-    fn has_items_reports_empty_state_without_ui_runtime() {
-        assert!(!has_items::<String>(&[]));
-        assert!(has_items(&["row"]));
+    fn search_preview_request_normalizes_form_state_without_ui_runtime() {
+        let request = build_search_preview_request(SearchPreviewFormInput {
+            query: " botas ",
+            entity_types: " product, blog ,, ",
+            source_modules: " catalog, cms ",
+            statuses: "published, draft",
+            ranking_profile: " balanced ",
+            preset_key: "  ",
+            locale: Some("ru".to_string()),
+        });
+
+        assert_eq!(request.query, " botas ");
+        assert_eq!(request.locale, Some("ru".to_string()));
+        assert_eq!(request.ranking_profile, Some("balanced".to_string()));
+        assert_eq!(request.preset_key, None);
+        assert_eq!(
+            request.route_query_update,
+            RouteQueryUpdate::Replace(" botas ".to_string())
+        );
+        assert_eq!(
+            request.filters.entity_types,
+            vec!["product".to_string(), "blog".to_string()]
+        );
+        assert_eq!(
+            request.filters.source_modules,
+            vec!["catalog".to_string(), "cms".to_string()]
+        );
+        assert_eq!(
+            request.filters.statuses,
+            vec!["published".to_string(), "draft".to_string()]
+        );
     }
 
     #[test]

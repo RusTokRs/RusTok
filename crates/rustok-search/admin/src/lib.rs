@@ -15,8 +15,8 @@ use crate::i18n::t;
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
     SearchConsistencyIssuePayload, SearchDiagnosticsPayload, SearchDictionarySnapshotPayload,
-    SearchFacetGroup, SearchFilterPresetPayload, SearchPreviewFilters, SearchPreviewPayload,
-    SearchQueryRulePayload, SearchStopWordPayload, SearchSynonymPayload,
+    SearchFacetGroup, SearchFilterPresetPayload, SearchPreviewPayload, SearchQueryRulePayload,
+    SearchStopWordPayload, SearchSynonymPayload,
 };
 
 fn local_resource<S, Fut, T>(
@@ -216,22 +216,36 @@ pub fn SearchAdmin() -> impl IntoView {
         ev.prevent_default();
         set_preview_error.set(None);
         set_busy.set(true);
-        let filters = SearchPreviewFilters {
-            entity_types: core::parse_csv(&entity_types.get_untracked()),
-            source_modules: core::parse_csv(&source_modules.get_untracked()),
-            statuses: core::parse_csv(&statuses.get_untracked()),
-        };
+        let query_value = query.get_untracked();
+        let entity_types_value = entity_types.get_untracked();
+        let source_modules_value = source_modules.get_untracked();
+        let statuses_value = statuses.get_untracked();
+        let ranking_profile_value = ranking_profile.get_untracked();
+        let preset_key_value = preset_key.get_untracked();
+        let preview_request = core::build_search_preview_request(core::SearchPreviewFormInput {
+            query: &query_value,
+            entity_types: &entity_types_value,
+            source_modules: &source_modules_value,
+            statuses: &statuses_value,
+            ranking_profile: &ranking_profile_value,
+            preset_key: &preset_key_value,
+            locale: initial_locale.clone(),
+        });
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
-            let query_value = query.get_untracked();
-            let ranking_profile_value = ranking_profile.get_untracked();
-            let preset_key_value = core::optional_text(&preset_key.get_untracked());
-            let locale_value = initial_locale.clone();
             let preview_error_label = preview_error_label.clone();
             let preview_query_writer = preview_query_writer.clone();
             async move {
-                match core::route_query_update(&query_value) {
+                let core::SearchPreviewRequest {
+                    query,
+                    locale,
+                    ranking_profile,
+                    preset_key,
+                    filters,
+                    route_query_update,
+                } = preview_request;
+                match route_query_update {
                     core::RouteQueryUpdate::Clear => {
                         preview_query_writer.clear_key(AdminQueryKey::Query.as_str());
                     }
@@ -242,10 +256,10 @@ pub fn SearchAdmin() -> impl IntoView {
                 match api::fetch_search_preview(
                     token_value,
                     tenant_value,
-                    query_value,
-                    locale_value,
-                    core::optional_text(&ranking_profile_value),
-                    preset_key_value,
+                    query,
+                    locale,
+                    ranking_profile,
+                    preset_key,
                     filters,
                 )
                 .await
@@ -1094,7 +1108,7 @@ fn analytics_rows_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
 
@@ -1131,7 +1145,7 @@ fn intelligence_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{t(locale, "search.analytics.intelligence.empty", "No query-intelligence candidates surfaced in the current window.")}</div> }.into_any();
     }
 
@@ -1213,7 +1227,7 @@ fn lagging_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{t(locale, "search.analytics.lagging.empty", "No lagging documents detected. Search projection is currently caught up.")}</p></div> }.into_any();
     }
     view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
@@ -1243,7 +1257,7 @@ fn consistency_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{t(locale, "search.analytics.consistency.empty", "No missing or orphaned search documents detected. Projection consistency is healthy.")}</p></div> }.into_any();
     }
     view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
@@ -1710,7 +1724,7 @@ fn synonyms_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale, "search.dictionary.synonymGroups.empty", "No synonym groups configured yet.")}</div> }.into_any();
     }
 
@@ -1744,7 +1758,7 @@ fn stop_words_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale, "search.dictionary.stopWords.empty", "No stop words configured yet.")}</div> }.into_any();
     }
 
@@ -1776,7 +1790,7 @@ fn query_rules_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    if !core::has_items(rows.as_slice()) {
+    if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale, "search.dictionary.pinRules.empty", "No pinned query rules configured yet.")}</div> }.into_any();
     }
 

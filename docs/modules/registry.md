@@ -57,7 +57,7 @@ capability crate-ов и host-приложений в RusToK.
 |---|---|---|---|---|
 | `pages` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pages/docs/implementation-plan.md` |
 | `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` |
-| `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slices #17-18: admin route-query and empty-state helpers in core) |
+| `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slices #17-18: admin route-query and preview request normalization in core) |
 | `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` |
 | `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` |
 | `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
