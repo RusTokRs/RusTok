@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: post_order_customer_returns_transport
-- Last checkpoint: Phase 10.2 продвинут: storefront customer-safe returns transport добавил `GET/POST /store/orders/{id}/returns` и GraphQL `storefrontReturns`, которые сначала проверяют customer-owned order boundary, а затем используют тот же `OrderService` item-level returns contract.
-- Next step: Связать returns с refund/exchange decision tree в Phase 10.3/10.4 без host-owned logic и добавить customer-facing create-return GraphQL mutation поверх того же ownership helper.
+- Current phase: post_order_customer_returns_graphql_mutation
+- Last checkpoint: Phase 10.2 дополнен: storefront customer-safe returns transport теперь покрывает REST `GET/POST /store/orders/{id}/returns`, GraphQL `storefrontReturns` и GraphQL mutation `createStorefrontOrderReturn`; все входы сначала проверяют customer-owned order boundary, а затем используют тот же `OrderService` item-level returns contract.
+- Next step: Связать returns с refund/exchange decision tree в Phase 10.3/10.4 без host-owned logic; общий GraphQL input mapping уже вынесен из admin/storefront adapters.
 - Open blockers: OpenAPI contract test под default server features блокируется существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `rustok-order` lifecycle tests и `cargo check -p rustok-commerce` проходят.
 - Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
-- Last updated at (UTC): 2026-05-29T16:56:17Z
+- Last updated at (UTC): 2026-05-29T18:00:00Z
 
 
 ## FFA/FBA status
@@ -17,7 +17,7 @@
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-05-29T16:56:17Z
+- Last verified at (UTC): 2026-05-29T18:00:00Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа

@@ -826,6 +826,31 @@ impl CommerceMutation {
         .into())
     }
 
+    async fn create_storefront_order_return(
+        &self,
+        ctx: &Context<'_>,
+        order_id: Uuid,
+        tenant_id: Option<Uuid>,
+        input: CreateOrderReturnInputObject,
+    ) -> Result<GqlOrderReturn> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+
+        ensure_storefront_order_access(db, event_bus, tenant_id, ctx, order_id).await?;
+
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .create_return(tenant_id, order_id, build_create_order_return_input(input)?)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(item.into())
+    }
+
     async fn create_storefront_payment_collection(
         &self,
         ctx: &Context<'_>,
@@ -1156,29 +1181,7 @@ impl CommerceMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let item = OrderService::new(db.clone(), event_bus.clone())
-            .create_return(
-                tenant_id,
-                order_id,
-                crate::dto::CreateOrderReturnInput {
-                    reason: input.reason,
-                    note: input.note,
-                    items: input
-                        .items
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|item| {
-                            Ok(crate::dto::CreateOrderReturnItemInput {
-                                line_item_id: item.line_item_id,
-                                quantity: item.quantity,
-                                reason: item.reason,
-                                note: item.note,
-                                metadata: parse_optional_metadata(item.metadata.as_deref())?,
-                            })
-                        })
-                        .collect::<Result<Vec<_>>>()?,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                },
-            )
+            .create_return(tenant_id, order_id, build_create_order_return_input(input)?)
             .await?;
 
         Ok(item.into())
@@ -2213,6 +2216,64 @@ fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> 
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_ascii_lowercase())
+}
+
+fn build_create_order_return_input(
+    input: CreateOrderReturnInputObject,
+) -> Result<crate::dto::CreateOrderReturnInput> {
+    Ok(crate::dto::CreateOrderReturnInput {
+        reason: input.reason,
+        note: input.note,
+        items: input
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| {
+                Ok(crate::dto::CreateOrderReturnItemInput {
+                    line_item_id: item.line_item_id,
+                    quantity: item.quantity,
+                    reason: item.reason,
+                    note: item.note,
+                    metadata: parse_optional_metadata(item.metadata.as_deref())?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+async fn ensure_storefront_order_access(
+    db: &sea_orm::DatabaseConnection,
+    event_bus: &rustok_outbox::TransactionalEventBus,
+    tenant_id: Uuid,
+    ctx: &Context<'_>,
+    order_id: Uuid,
+) -> Result<()> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let customer = CustomerService::new(db.clone())
+        .get_customer_by_user(tenant_id, auth.user_id)
+        .await
+        .map_err(|err| match err {
+            rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+                <FieldError as GraphQLError>::unauthenticated()
+            }
+            other => async_graphql::Error::new(other.to_string()),
+        })?;
+
+    let order = OrderService::new(db.clone(), event_bus.clone())
+        .get_order(tenant_id, order_id)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    if order.customer_id != Some(customer.id) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Order does not belong to the current customer",
+        ));
+    }
+
+    Ok(())
 }
 
 fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {

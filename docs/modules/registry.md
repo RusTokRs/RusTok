@@ -59,14 +59,14 @@ capability crate-ов и host-приложений в RusToK.
 | `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` (slice #71: admin form normalization uses shared UI helpers) |
 | `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slices #17-19: admin preview request normalization plus shared UI input/query helpers) |
 | `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` |
-| `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.2: customer-safe storefront returns REST/GraphQL transport) |
+| `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.2: customer-safe storefront returns REST/GraphQL list+create transport) |
 | `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
 | `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` (slice #1: нормализация admin-формы использует shared UI helper) |
 | `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` |
 | `customer` | admin | `in_progress` | `in_progress` | `crates/rustok-customer/docs/implementation-plan.md` |
 | `pricing` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pricing/docs/implementation-plan.md` |
 | `inventory` | admin | `in_progress` | `in_progress` | `crates/rustok-inventory/docs/implementation-plan.md` |
-| `order` | admin | `in_progress` | `in_progress` | `crates/rustok-order/docs/implementation-plan.md` (slice 10.2: storefront returns transport consumes order-owned item-level validation) |
+| `order` | admin | `in_progress` | `in_progress` | `crates/rustok-order/docs/implementation-plan.md` (slice 10.2: storefront returns REST/GraphQL list+create transport consumes order-owned item-level validation) |
 | `payment` | no module-owned UI | `in_progress` | `in_progress` | `crates/rustok-payment/docs/implementation-plan.md` |
 | `fulfillment` | admin | `in_progress` | `in_progress` | `crates/rustok-fulfillment/docs/implementation-plan.md` |
 | `seo` | admin + storefront contracts | `in_progress` | `in_progress` | `crates/rustok-seo/docs/implementation-plan.md` |
