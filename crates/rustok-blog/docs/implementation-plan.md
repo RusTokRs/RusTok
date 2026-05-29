@@ -8,7 +8,7 @@ packages и module metadata синхронизированы.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #70 completed (storefront core dedup baseline: duplicate typed helper definitions `post_link_typed_view` and `published_post_card_view` removed, keeping single canonical core helpers and preventing helper drift across UI surfaces).
+- Last checkpoint: FFA slice #71 moved admin post form normalization into `admin/src/core.rs` via `BlogPostFormInput` / `build_blog_post_draft` and reused shared `rustok-api` UI text/CSV helpers.
 - Next step: Зафиксировать evidence по parity checklist и выбрать следующий один use-case для admin/storefront core extraction без изменения transport-контракта.
 - Open blockers: None.
 - Hand-off notes for next agent:
@@ -193,6 +193,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 68: storefront post-link fragment now consumes typed payload `PostLinkView` via `core::post_link_typed_view(...)`; `list_post_summary(...)` switched from tuple link destructuring to typed link payload consumption.
 - [x] Slice 69: storefront published-posts readiness branch now consumes typed payload enum `PublishedPostsReadyView<T>` via `core::published_posts_ready_typed_view(...)` instead of matching `Result<Vec<_>, String>` in UI.
 - [x] Slice 70: storefront core helper dedup completed — removed duplicate definitions of `post_link_typed_view(...)` and `published_post_card_view(...)`, preserving single canonical typed helper path for published-post card/link mapping without transport contract changes.
+- [x] Slice 71: admin post form normalization moved to core (`BlogPostFormInput`, `build_blog_post_draft`) and now reuses shared `rustok-api` UI input helpers (`normalize_ui_text`, `parse_ui_csv`) without changing native/GraphQL transport.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

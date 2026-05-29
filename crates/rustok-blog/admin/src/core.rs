@@ -1,18 +1,13 @@
+use rustok_api::{normalize_ui_text, parse_ui_csv};
+
+use crate::model::BlogPostDraft;
+
 pub fn optional_text(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    normalize_ui_text(value)
 }
 
 pub fn parse_tags(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|tag| !tag.is_empty())
-        .map(ToString::to_string)
-        .collect()
+    parse_ui_csv(raw)
 }
 
 pub fn slugify(input: &str) -> String {
@@ -127,7 +122,7 @@ pub fn selected_post_request(
 }
 
 pub fn trimmed_text(value: &str) -> String {
-    value.trim().to_string()
+    normalize_ui_text(value).unwrap_or_default()
 }
 
 pub fn fallback_post_slug(value: Option<String>, fallback: &str) -> String {
@@ -221,6 +216,31 @@ pub fn locale_arg(locale: &str) -> Option<String> {
     Some(locale.to_string())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlogPostFormInput<'a> {
+    pub locale: &'a str,
+    pub title: &'a str,
+    pub slug: &'a str,
+    pub excerpt: &'a str,
+    pub body: &'a str,
+    pub body_format: &'a str,
+    pub publish: bool,
+    pub tags: &'a str,
+}
+
+pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
+    BlogPostDraft {
+        locale: trimmed_text(input.locale),
+        title: trimmed_text(input.title),
+        slug: trimmed_text(input.slug),
+        excerpt: trimmed_text(input.excerpt),
+        body: trimmed_text(input.body),
+        body_format: input.body_format.to_string(),
+        publish: input.publish,
+        tags: parse_tags(input.tags),
+    }
+}
+
 pub fn has_required_draft_fields(title: &str, body: &str) -> bool {
     !title.is_empty() && !body.is_empty()
 }
@@ -311,6 +331,36 @@ mod tests {
     fn parse_tags_trims_and_skips_empty() {
         assert_eq!(
             parse_tags("news, launch, , release"),
+            vec![
+                "news".to_string(),
+                "launch".to_string(),
+                "release".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn blog_post_draft_builder_normalizes_form_state_without_ui_runtime() {
+        let draft = build_blog_post_draft(BlogPostFormInput {
+            locale: " ru ",
+            title: "  Launch Notes  ",
+            slug: " launch-notes ",
+            excerpt: "  short summary  ",
+            body: "  body text  ",
+            body_format: "markdown",
+            publish: true,
+            tags: " news, launch ,, release ",
+        });
+
+        assert_eq!(draft.locale, "ru");
+        assert_eq!(draft.title, "Launch Notes");
+        assert_eq!(draft.slug, "launch-notes");
+        assert_eq!(draft.excerpt, "short summary");
+        assert_eq!(draft.body, "body text");
+        assert_eq!(draft.body_format, "markdown");
+        assert!(draft.publish);
+        assert_eq!(
+            draft.tags,
             vec![
                 "news".to_string(),
                 "launch".to_string(),

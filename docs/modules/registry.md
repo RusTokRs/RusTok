@@ -56,7 +56,7 @@ capability crate-ов и host-приложений в RusToK.
 | Module slug | UI surfaces | FFA status | FBA status | Source plan |
 |---|---|---|---|---|
 | `pages` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pages/docs/implementation-plan.md` |
-| `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` |
+| `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` (slice #71: admin form normalization uses shared UI helpers) |
 | `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slices #17-19: admin preview request normalization plus shared UI input/query helpers) |
 | `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` |
 | `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` |

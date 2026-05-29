@@ -13,7 +13,7 @@ use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::i18n::t;
-use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
+use crate::model::{BlogPostDetail, BlogPostListItem};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -202,16 +202,23 @@ pub fn BlogAdmin() -> impl IntoView {
         let submit_ui_locale = submit_ui_locale.clone();
         let submit_query_writer = submit_query_writer.clone();
 
-        let draft = BlogPostDraft {
-            locale: locale.get_untracked(),
-            title: core::trimmed_text(title.get_untracked().as_str()),
-            slug: core::trimmed_text(slug.get_untracked().as_str()),
-            excerpt: core::trimmed_text(excerpt.get_untracked().as_str()),
-            body: core::trimmed_text(body.get_untracked().as_str()),
-            body_format: body_format.get_untracked(),
+        let locale_value = locale.get_untracked();
+        let title_value = title.get_untracked();
+        let slug_value = slug.get_untracked();
+        let excerpt_value = excerpt.get_untracked();
+        let body_value = body.get_untracked();
+        let body_format_value = body_format.get_untracked();
+        let tags_value = tags_input.get_untracked();
+        let draft = core::build_blog_post_draft(core::BlogPostFormInput {
+            locale: &locale_value,
+            title: &title_value,
+            slug: &slug_value,
+            excerpt: &excerpt_value,
+            body: &body_value,
+            body_format: &body_format_value,
             publish: publish_now.get_untracked(),
-            tags: core::parse_tags(tags_input.get_untracked().as_str()),
-        };
+            tags: &tags_value,
+        });
 
         if !core::has_required_draft_fields(draft.title.as_str(), draft.body.as_str()) {
             set_submit_error.set(Some(WritePathIssue::new(t(
