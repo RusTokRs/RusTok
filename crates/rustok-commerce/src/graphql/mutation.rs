@@ -1164,6 +1164,94 @@ impl CommerceMutation {
         Ok(order.into())
     }
 
+    async fn create_order_change(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        input: CreateOrderChangeInputObject,
+    ) -> Result<GqlOrderChange> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let auth = ctx.data::<AuthContext>()?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .create_order_change(
+                tenant_id,
+                auth.user_id,
+                order_id,
+                build_create_order_change_input(input)?,
+            )
+            .await?;
+
+        Ok(item.into())
+    }
+
+    async fn apply_order_change(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: ApplyOrderChangeInputObject,
+    ) -> Result<GqlOrderChange> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .apply_order_change(
+                tenant_id,
+                id,
+                crate::dto::ApplyOrderChangeInput {
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(item.into())
+    }
+
+    async fn cancel_order_change(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: CancelOrderChangeInputObject,
+    ) -> Result<GqlOrderChange> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let item = OrderService::new(db.clone(), event_bus.clone())
+            .cancel_order_change(
+                tenant_id,
+                id,
+                crate::dto::CancelOrderChangeInput {
+                    reason: input.reason,
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(item.into())
+    }
+
     async fn create_order_return(
         &self,
         ctx: &Context<'_>,
@@ -2218,6 +2306,17 @@ fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> 
         .map(|value| value.to_ascii_lowercase())
 }
 
+fn build_create_order_change_input(
+    input: CreateOrderChangeInputObject,
+) -> Result<crate::dto::CreateOrderChangeInput> {
+    Ok(crate::dto::CreateOrderChangeInput {
+        change_type: input.change_type,
+        description: input.description,
+        preview: parse_json_payload(input.preview.as_str(), "Invalid JSON preview payload")?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
 fn build_create_order_return_input(
     input: CreateOrderReturnInputObject,
 ) -> Result<crate::dto::CreateOrderReturnInput> {
@@ -2274,6 +2373,10 @@ async fn ensure_storefront_order_access(
     }
 
     Ok(())
+}
+
+fn parse_json_payload(value: &str, message: &str) -> Result<Value> {
+    serde_json::from_str(value).map_err(|_| async_graphql::Error::new(message))
 }
 
 fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {

@@ -12,17 +12,18 @@ use uuid::Uuid;
 
 use crate::{
     dto::{
-        AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelOrderReturnInput,
-        CancelPaymentInput, CancelRefundInput, CapturePaymentInput, CompleteOrderReturnInput,
-        CompleteRefundInput, CreateFulfillmentInput, CreateOrderReturnInput, CreateProductInput,
+        ApplyOrderChangeInput, AuthorizePaymentInput, CancelFulfillmentInput,
+        CancelOrderChangeInput, CancelOrderInput, CancelOrderReturnInput, CancelPaymentInput,
+        CancelRefundInput, CapturePaymentInput, CompleteOrderReturnInput, CompleteRefundInput,
+        CreateFulfillmentInput, CreateOrderChangeInput, CreateOrderReturnInput, CreateProductInput,
         CreateRefundInput, CreateShippingOptionInput, CreateShippingProfileInput,
         DeliverFulfillmentInput, DeliverOrderInput, FulfillmentResponse, ListFulfillmentsInput,
-        ListOrderReturnsInput, ListPaymentCollectionsInput, ListRefundsInput,
-        ListShippingProfilesInput, MarkPaidOrderInput, OrderResponse, OrderReturnResponse,
-        PaymentCollectionResponse, ProductResponse, RefundResponse, ReopenFulfillmentInput,
-        ReshipFulfillmentInput, ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse,
-        ShippingProfileResponse, UpdateProductInput, UpdateShippingOptionInput,
-        UpdateShippingProfileInput,
+        ListOrderChangesInput, ListOrderReturnsInput, ListPaymentCollectionsInput,
+        ListRefundsInput, ListShippingProfilesInput, MarkPaidOrderInput, OrderChangeResponse,
+        OrderResponse, OrderReturnResponse, PaymentCollectionResponse, ProductResponse,
+        RefundResponse, ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
+        ShipOrderInput, ShippingOptionResponse, ShippingProfileResponse, UpdateProductInput,
+        UpdateShippingOptionInput, UpdateShippingProfileInput,
     },
     storefront_shipping::normalize_shipping_profile_slug,
     CatalogService, FulfillmentOrchestrationError, FulfillmentOrchestrationService,
@@ -66,6 +67,20 @@ pub fn routes() -> Routes {
         .add(
             "/orders/{id}/returns",
             axum::routing::post(create_order_return),
+        )
+        .add(
+            "/orders/{id}/changes",
+            axum::routing::post(create_order_change),
+        )
+        .add("/order-changes", axum::routing::get(list_order_changes))
+        .add("/order-changes/{id}", axum::routing::get(show_order_change))
+        .add(
+            "/order-changes/{id}/apply",
+            axum::routing::post(apply_order_change),
+        )
+        .add(
+            "/order-changes/{id}/cancel",
+            axum::routing::post(cancel_order_change),
         )
         .add("/returns", axum::routing::get(list_order_returns))
         .add("/returns/{id}", axum::routing::get(show_order_return))
@@ -216,6 +231,15 @@ pub struct ListOrderReturnsParams {
     pub pagination: Option<super::common::PaginationParams>,
     pub order_id: Option<Uuid>,
     pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ListOrderChangesParams {
+    #[serde(flatten)]
+    pub pagination: Option<super::common::PaginationParams>,
+    pub order_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub change_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -500,7 +524,8 @@ pub async fn show_order(
         .await
         .map_err(|err| match err {
             rustok_order::error::OrderError::OrderNotFound(_)
-            | rustok_order::error::OrderError::OrderReturnNotFound(_) => Error::NotFound,
+            | rustok_order::error::OrderError::OrderReturnNotFound(_)
+            | rustok_order::error::OrderError::OrderChangeNotFound(_) => Error::NotFound,
             other => Error::BadRequest(other.to_string()),
         })?;
     let payment_collection = PaymentService::new(ctx.db.clone())
@@ -916,6 +941,186 @@ pub async fn cancel_order_return(
 
     let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
         .cancel_return(tenant.id, id, input)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok(Json(item))
+}
+
+/// Create admin order change preview
+#[utoipa::path(
+    post,
+    path = "/admin/orders/{id}/changes",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Order ID")),
+    request_body = CreateOrderChangeInput,
+    responses(
+        (status = 201, description = "Order change created", body = OrderChangeResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    )
+)]
+pub async fn create_order_change(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CreateOrderChangeInput>,
+) -> Result<(StatusCode, Json<OrderChangeResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_UPDATE],
+        "Permission denied: orders:update required",
+    )?;
+
+    let actor_id = auth.user_id;
+    let created = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .create_order_change(tenant.id, actor_id, id, input)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// List admin order changes
+#[utoipa::path(
+    get,
+    path = "/admin/order-changes",
+    tag = "admin",
+    params(ListOrderChangesParams),
+    responses(
+        (status = 200, description = "Order changes", body = PaginatedResponse<OrderChangeResponse>),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_order_changes(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(params): Query<ListOrderChangesParams>,
+) -> Result<Json<PaginatedResponse<OrderChangeResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_READ],
+        "Permission denied: orders:read required",
+    )?;
+
+    let pagination = params.pagination.unwrap_or_default();
+    let (items, total) =
+        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+            .list_order_changes(
+                tenant.id,
+                ListOrderChangesInput {
+                    page: pagination.page,
+                    per_page: pagination.limit(),
+                    order_id: params.order_id,
+                    status: params.status,
+                    change_type: params.change_type,
+                },
+            )
+            .await
+            .map_err(map_order_error)?;
+
+    Ok(Json(PaginatedResponse {
+        data: items,
+        meta: super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
+    }))
+}
+
+/// Show admin order change
+#[utoipa::path(
+    get,
+    path = "/admin/order-changes/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Order change ID")),
+    responses(
+        (status = 200, description = "Order change details", body = OrderChangeResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order change not found")
+    )
+)]
+pub async fn show_order_change(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<OrderChangeResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_READ],
+        "Permission denied: orders:read required",
+    )?;
+
+    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .get_order_change(tenant.id, id)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok(Json(item))
+}
+
+/// Apply admin order change
+#[utoipa::path(
+    post,
+    path = "/admin/order-changes/{id}/apply",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Order change ID")),
+    request_body = ApplyOrderChangeInput,
+    responses(
+        (status = 200, description = "Order change applied", body = OrderChangeResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order change not found")
+    )
+)]
+pub async fn apply_order_change(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<ApplyOrderChangeInput>,
+) -> Result<Json<OrderChangeResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_UPDATE],
+        "Permission denied: orders:update required",
+    )?;
+
+    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .apply_order_change(tenant.id, id, input)
+        .await
+        .map_err(map_order_error)?;
+
+    Ok(Json(item))
+}
+
+/// Cancel admin order change
+#[utoipa::path(
+    post,
+    path = "/admin/order-changes/{id}/cancel",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Order change ID")),
+    request_body = CancelOrderChangeInput,
+    responses(
+        (status = 200, description = "Order change cancelled", body = OrderChangeResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order change not found")
+    )
+)]
+pub async fn cancel_order_change(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CancelOrderChangeInput>,
+) -> Result<Json<OrderChangeResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_UPDATE],
+        "Permission denied: orders:update required",
+    )?;
+
+    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .cancel_order_change(tenant.id, id, input)
         .await
         .map_err(map_order_error)?;
 
@@ -1967,7 +2172,8 @@ fn map_payment_error(error: rustok_payment::error::PaymentError) -> Error {
 fn map_order_error(error: rustok_order::error::OrderError) -> Error {
     match error {
         rustok_order::error::OrderError::OrderNotFound(_)
-        | rustok_order::error::OrderError::OrderReturnNotFound(_) => Error::NotFound,
+        | rustok_order::error::OrderError::OrderReturnNotFound(_)
+        | rustok_order::error::OrderError::OrderChangeNotFound(_) => Error::NotFound,
         other => Error::BadRequest(other.to_string()),
     }
 }
@@ -2197,10 +2403,11 @@ mod tests {
                     tax_lines: vec![
                         CreateOrderTaxLineInput {
                             line_item_index: Some(0),
-                            shipping_option_index: None,
+                            shipping_option_id: None,
                             rate: Decimal::from_str("19.00").expect("valid decimal"),
                             amount: Decimal::from_str("9.50").expect("valid decimal"),
-                            name: "VAT line item".to_string(),
+                            description: Some("VAT line item".to_string()),
+                            currency_code: "eur".to_string(),
                             provider_id: "region_default".to_string(),
                             metadata: json!({
                                 "tax_included": false,
@@ -2209,10 +2416,11 @@ mod tests {
                         },
                         CreateOrderTaxLineInput {
                             line_item_index: None,
-                            shipping_option_index: Some(0),
+                            shipping_option_id: None,
                             rate: Decimal::from_str("19.00").expect("valid decimal"),
                             amount: Decimal::from_str("1.00").expect("valid decimal"),
-                            name: "VAT shipping".to_string(),
+                            description: Some("VAT shipping".to_string()),
+                            currency_code: "eur".to_string(),
                             provider_id: "region_default".to_string(),
                             metadata: json!({
                                 "tax_included": false,
@@ -2221,10 +2429,11 @@ mod tests {
                         },
                         CreateOrderTaxLineInput {
                             line_item_index: None,
-                            shipping_option_index: None,
+                            shipping_option_id: None,
                             rate: Decimal::from_str("19.00").expect("valid decimal"),
                             amount: Decimal::from_str("0.50").expect("valid decimal"),
-                            name: "VAT order".to_string(),
+                            description: Some("VAT order".to_string()),
+                            currency_code: "eur".to_string(),
                             provider_id: "region_default".to_string(),
                             metadata: json!({
                                 "tax_included": false,
@@ -2607,10 +2816,11 @@ mod tests {
                     adjustments: Vec::new(),
                     tax_lines: vec![CreateOrderTaxLineInput {
                         line_item_index: Some(0),
-                        shipping_option_index: None,
+                        shipping_option_id: None,
                         rate: Decimal::from_str("10.00").expect("valid decimal"),
                         amount: Decimal::from_str("2.00").expect("valid decimal"),
-                        name: "VAT".to_string(),
+                        description: Some("VAT".to_string()),
+                        currency_code: "usd".to_string(),
                         provider_id: "region_default".to_string(),
                         metadata: json!({ "tax_included": false }),
                     }],

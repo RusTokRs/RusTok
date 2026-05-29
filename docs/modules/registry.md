@@ -59,7 +59,7 @@ capability crate-ов и host-приложений в RusToK.
 | `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` (slice #71: admin form normalization uses shared UI helpers) |
 | `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slices #17-19: admin preview request normalization plus shared UI input/query helpers) |
 | `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` |
-| `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.3: order-change storage/service skeleton started after storefront returns parity) |
+| `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.3: admin REST/OpenAPI + GraphQL order-change preview/apply/cancel transport added over order-owned service) |
 | `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
 | `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` (slice #1: нормализация admin-формы использует shared UI helper) |
 | `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront route/query state, selected-product view-model, and pricing/seller helpers moved into framework-agnostic core) |

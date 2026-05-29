@@ -92,6 +92,11 @@ fn openapi_includes_admin_order_detail_contract_path() {
         "/admin/orders/{id}/deliver",
         "/admin/orders/{id}/cancel",
         "/admin/orders/{id}/returns",
+        "/admin/orders/{id}/changes",
+        "/admin/order-changes",
+        "/admin/order-changes/{id}",
+        "/admin/order-changes/{id}/apply",
+        "/admin/order-changes/{id}/cancel",
         "/admin/returns",
         "/admin/returns/{id}",
         "/admin/returns/{id}/complete",
@@ -186,6 +191,26 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
     assert_eq!(
         request_schema_ref(&spec, "/admin/orders/{id}/returns", "post"),
         Some("#/components/schemas/CreateOrderReturnInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/orders/{id}/changes", "post"),
+        Some("#/components/schemas/CreateOrderChangeInput".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/order-changes", "get", "200"),
+        Some("#/components/schemas/PaginatedResponse_OrderChangeResponse".to_string())
+    );
+    assert_eq!(
+        response_schema_ref(&spec, "/admin/order-changes/{id}", "get", "200"),
+        Some("#/components/schemas/OrderChangeResponse".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/order-changes/{id}/apply", "post"),
+        Some("#/components/schemas/ApplyOrderChangeInput".to_string())
+    );
+    assert_eq!(
+        request_schema_ref(&spec, "/admin/order-changes/{id}/cancel", "post"),
+        Some("#/components/schemas/CancelOrderChangeInput".to_string())
     );
     assert_eq!(
         response_schema_ref(&spec, "/admin/returns", "get", "200"),
@@ -290,6 +315,11 @@ fn openapi_registers_store_cart_related_component_schemas() {
         "ShipOrderInput",
         "DeliverOrderInput",
         "CancelOrderInput",
+        "CreateOrderChangeInput",
+        "ApplyOrderChangeInput",
+        "CancelOrderChangeInput",
+        "OrderChangeResponse",
+        "PaginatedResponse_OrderChangeResponse",
         "AuthorizePaymentInput",
         "CapturePaymentInput",
         "CancelPaymentInput",

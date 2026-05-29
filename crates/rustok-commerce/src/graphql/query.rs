@@ -664,6 +664,80 @@ impl CommerceQuery {
         })
     }
 
+    async fn order_change(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<GqlOrderChange>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let item = match OrderService::new(db.clone(), event_bus.clone())
+            .get_order_change(tenant_id, id)
+            .await
+        {
+            Ok(item) => item,
+            Err(rustok_order::error::OrderError::OrderChangeNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        Ok(Some(item.into()))
+    }
+
+    async fn order_changes(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        filter: Option<OrderChangesFilter>,
+    ) -> Result<GqlOrderChangeList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let filter = filter.unwrap_or(OrderChangesFilter {
+            order_id: None,
+            status: None,
+            change_type: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+        let (items, total) = OrderService::new(db.clone(), event_bus.clone())
+            .list_order_changes(
+                tenant_id,
+                crate::dto::ListOrderChangesInput {
+                    page,
+                    per_page,
+                    order_id: filter.order_id,
+                    status: filter.status,
+                    change_type: filter.change_type,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlOrderChangeList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
     async fn order_return(
         &self,
         ctx: &Context<'_>,

@@ -592,6 +592,32 @@ pub struct GqlOrderList {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlOrderChange {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub order_id: Uuid,
+    pub created_by: Uuid,
+    pub change_type: String,
+    pub status: String,
+    pub description: Option<String>,
+    pub preview: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub applied_at: Option<String>,
+    pub cancelled_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrderChangeList {
+    pub items: Vec<GqlOrderChange>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlOrderReturn {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -889,6 +915,15 @@ pub struct RefundsFilter {
 }
 
 #[derive(InputObject)]
+pub struct OrderChangesFilter {
+    pub order_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub change_type: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
 pub struct OrderReturnsFilter {
     pub order_id: Option<Uuid>,
     pub status: Option<String>,
@@ -943,6 +978,25 @@ pub struct DeliverOrderInput {
 #[derive(InputObject)]
 pub struct CancelOrderInput {
     pub reason: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateOrderChangeInputObject {
+    pub change_type: String,
+    pub description: Option<String>,
+    pub preview: String,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct ApplyOrderChangeInputObject {
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CancelOrderChangeInputObject {
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -1883,6 +1937,26 @@ impl From<dto::OrderTaxLineResponse> for GqlOrderTaxLine {
             metadata: item.metadata.to_string(),
             created_at: item.created_at.to_rfc3339(),
             updated_at: item.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::OrderChangeResponse> for GqlOrderChange {
+    fn from(value: dto::OrderChangeResponse) -> Self {
+        Self {
+            id: value.id,
+            tenant_id: value.tenant_id,
+            order_id: value.order_id,
+            created_by: value.created_by,
+            change_type: value.change_type,
+            status: value.status,
+            description: value.description,
+            preview: value.preview.to_string(),
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+            applied_at: value.applied_at.map(|value| value.to_rfc3339()),
+            cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
         }
     }
 }

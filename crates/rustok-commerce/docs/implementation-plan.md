@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: post_order_change_groundwork
-- Last checkpoint: Phase 10.3 начат: `rustok-order` получил order-change groundwork (`order_changes` storage + `OrderService` preview/apply/cancel skeleton) без host-owned logic и без payment/fulfillment side effects; storefront returns REST/GraphQL list/create parity остаётся закрытой в предыдущем срезе.
-- Next step: добавить umbrella admin REST/GraphQL transport для order-change preview/apply/cancel и затем связать returns с refund/exchange decision tree без host-owned logic.
+- Current phase: post_order_change_transport
+- Last checkpoint: Phase 10.3 продолжен: umbrella `rustok-commerce` опубликовал admin REST/OpenAPI и GraphQL transport для order-change preview/apply/cancel поверх `OrderService` без host-owned logic; storage/service skeleton остаётся в `rustok-order`.
+- Next step: связать returns с refund/exchange decision tree без host-owned logic и затем принять exchanges/claims scope decision.
 - Open blockers: OpenAPI contract test под default server features блокируется существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `rustok-order` lifecycle tests и `cargo check -p rustok-commerce` проходят.
 - Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
-- Last updated at (UTC): 2026-05-29T18:45:00Z
+- Last updated at (UTC): 2026-05-29T19:10:33Z
 
 
 ## FFA/FBA status
@@ -17,7 +17,7 @@
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-05-29T18:45:00Z
+- Last verified at (UTC): 2026-05-29T19:10:33Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа
@@ -576,7 +576,7 @@ Execution slices (Phase 10):
 
 - [~] Slice 10.1: returns foundation (`rustok-order` storage + service lifecycle + admin REST/GraphQL read/write transport). Storage/read baseline был начат ранее; текущий срез добавил show/read, complete/cancel lifecycle, REST routes `/admin/returns/{id}`, `/admin/returns/{id}/complete`, `/admin/returns/{id}/cancel`, GraphQL `orderReturn(s)` + `create/complete/cancelOrderReturn`, OpenAPI registration и targeted lifecycle tests. Item-level return lines закрыты в текущем срезе через `order_return_items`; остаётся refund/exchange orchestration coupling.
 - [x] Slice 10.2: refund transport parity expansion (store/customer-safe read-side + ownership/RBAC contract tests).
-- [~] Slice 10.3: order-change groundwork (draft edit snapshot + preview/apply contract skeleton without host-owned logic). Started in `rustok-order`: `order_changes` storage/service skeleton with `pending -> applied|cancelled` lifecycle and service tests; umbrella transport remains next.
+- [~] Slice 10.3: order-change groundwork (draft edit snapshot + preview/apply contract skeleton without host-owned logic). Started in `rustok-order`: `order_changes` storage/service skeleton with `pending -> applied|cancelled` lifecycle and service tests. Текущий срез добавил umbrella admin REST routes `/admin/orders/{id}/changes`, `/admin/order-changes*`, lifecycle routes `apply/cancel`, OpenAPI contract registration и GraphQL parity roots `orderChange(s)` + mutations `create/apply/cancelOrderChange`; остаётся связать changes с refund/exchange orchestration.
 - [ ] Slice 10.4: exchanges/claims scope decision + parity matrix update in this plan and module docs.
 
 Обязательные проверки:

@@ -64,7 +64,8 @@
   `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.
 - Transport adapters validate permissions against `AuthContext.permissions`, then invoke
   commerce services or direct tenant-scoped SeaORM reads where the module still owns the
-  read-model assembly.
+  read-model assembly; post-order order-change preview/apply/cancel transport stays
+  backed by `rustok-order::OrderService` rather than host-owned logic.
 - Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
 
 ## Entry points

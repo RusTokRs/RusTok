@@ -90,6 +90,8 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn storefront_products(",
         "async fn payment_collections(",
         "async fn refunds(",
+        "async fn order_change(",
+        "async fn order_changes(",
         "async fn fulfillments(",
     ] {
         assert!(
@@ -111,6 +113,9 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn create_refund(",
         "async fn complete_refund(",
         "async fn cancel_refund(",
+        "async fn create_order_change(",
+        "async fn apply_order_change(",
+        "async fn cancel_order_change(",
         "async fn publish_product(",
         "async fn delete_product(",
     ] {
