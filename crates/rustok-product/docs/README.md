@@ -26,6 +26,10 @@
   синхронизированы с этим split: UI больше не показывает generic catalog
   `variants.prices` как resolved price, а держит отдельный pricing-module preview
   hook для `adminPricingProduct` / `storefrontPricingProduct`;
+- storefront FFA slice вынес route/query normalization, selected-product view-model
+  composition, pricing/seller labels и pricing deep-link state в
+  `storefront/src/core.rs`; Leptos `ProductView` остаётся host-context/render
+  adapter и вызывает transport через этот core state;
 - Общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 - canonical vocabulary и attach semantics для product tags живут в
   `rustok-taxonomy` + `product_tags`, а public contract использует first-class
@@ -49,8 +53,10 @@
 
 ## Интеграция
 
-- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella ustok-commerce;
-- transport, GraphQL и UI-поверхности публикуются через ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
+- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
+- transport, GraphQL и UI-поверхности публикуются через `rustok-commerce`, пока для домена не зафиксирован отдельный module-owned surface;
+- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
+ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
 - изменения cross-module контракта нужно синхронизировать с ustok-commerce и соседними split-модулями.
 
 ## SEO ownership
