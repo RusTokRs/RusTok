@@ -22,9 +22,10 @@ use uuid::Uuid;
 use crate::{
     dto::{
         AddCartLineItemInput, CartResponse, CompleteCheckoutInput, CompleteCheckoutResponse,
-        CreateCartInput, CustomerResponse, ListRefundsInput, OrderResponse,
-        PaymentCollectionResponse, RefundResponse, RegionResponse, ResolveStoreContextInput,
-        ShippingOptionResponse, StoreContextResponse, UpdateCartContextInput,
+        CreateCartInput, CreateOrderReturnInput, CustomerResponse, ListOrderReturnsInput,
+        ListRefundsInput, OrderResponse, OrderReturnResponse, PaymentCollectionResponse,
+        RefundResponse, RegionResponse, ResolveStoreContextInput, ShippingOptionResponse,
+        StoreContextResponse, UpdateCartContextInput,
     },
     entities::{product, product_translation, product_variant, variant_translation},
     search::product_translation_title_search_condition,
@@ -79,6 +80,10 @@ pub fn routes() -> Routes {
             axum::routing::post(create_payment_collection),
         )
         .add("/orders/{id}", axum::routing::get(get_order))
+        .add(
+            "/orders/{id}/returns",
+            axum::routing::get(list_order_returns).post(create_order_return),
+        )
         .add(
             "/orders/{id}/refunds",
             axum::routing::get(list_order_refunds),
@@ -987,6 +992,87 @@ pub async fn get_order(
     Ok(Json(order))
 }
 
+/// Create a return request for the current customer's order.
+#[utoipa::path(
+    post,
+    path = "/store/orders/{id}/returns",
+    tag = "store",
+    params(("id" = Uuid, Path, description = "Order ID")),
+    request_body = CreateOrderReturnInput,
+    responses(
+        (status = 201, description = "Return created", body = OrderReturnResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 404, description = "Order not found")
+    )
+)]
+pub async fn create_order_return(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+    auth: rustok_api::AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CreateOrderReturnInput>,
+) -> Result<(StatusCode, Json<OrderReturnResponse>)> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
+    ensure_customer_owns_order(&ctx, tenant.id, Some(&auth), id).await?;
+
+    let created = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .create_return(tenant.id, id, input)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// List return requests for the current customer's order.
+#[utoipa::path(
+    get,
+    path = "/store/orders/{id}/returns",
+    tag = "store",
+    params(
+        ("id" = Uuid, Path, description = "Order ID"),
+        PaginationParams,
+        ("status" = Option<String>, Query, description = "Optional return status filter")
+    ),
+    responses(
+        (status = 200, description = "Order returns", body = PaginatedResponse<OrderReturnResponse>),
+        (status = 401, description = "Authentication required"),
+        (status = 404, description = "Order not found")
+    )
+)]
+pub async fn list_order_returns(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+    auth: rustok_api::AuthContext,
+    Path(id): Path<Uuid>,
+    Query(params): Query<StoreOrderReturnsParams>,
+) -> Result<Json<PaginatedResponse<OrderReturnResponse>>> {
+    ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
+    ensure_customer_owns_order(&ctx, tenant.id, Some(&auth), id).await?;
+
+    let (items, total) =
+        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+            .list_returns(
+                tenant.id,
+                ListOrderReturnsInput {
+                    page: params.pagination.page,
+                    per_page: params.pagination.per_page,
+                    order_id: Some(id),
+                    status: params.status,
+                },
+            )
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    Ok(Json(PaginatedResponse {
+        data: items,
+        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), total),
+    }))
+}
+
 /// List refunds for the current customer's order
 #[utoipa::path(
     get,
@@ -1089,6 +1175,29 @@ async fn resolve_context_from_cart(
         Some(cart.currency_code.clone()),
     )
     .await
+}
+
+async fn ensure_customer_owns_order(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    auth: Option<&rustok_api::AuthContext>,
+    order_id: Uuid,
+) -> Result<()> {
+    let customer_id = current_customer_id(ctx, tenant_id, auth)
+        .await?
+        .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
+    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(ctx))
+        .get_order(tenant_id, order_id)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    if order.customer_id != Some(customer_id) {
+        return Err(Error::Unauthorized(
+            "Order does not belong to the current customer".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 async fn current_customer_id(
@@ -1793,6 +1902,13 @@ pub struct StoreListProductsParams {
     pub product_type: Option<String>,
     pub search: Option<String>,
     pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, IntoParams, ToSchema, Default)]
+pub struct StoreOrderReturnsParams {
+    #[serde(flatten)]
+    pub pagination: PaginationParams,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema, Default)]

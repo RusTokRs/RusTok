@@ -6,12 +6,12 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 ## Execution checkpoint
 
-- Current phase: post_order_returns_foundation
-- Last checkpoint: Slice 10.1 продвинут: `order_returns` получил item-level `order_return_items`, validation количества/принадлежности line-item к заказу, tenant-scoped show/list contract с lines и admin REST/GraphQL transport parity через umbrella `rustok-commerce`.
-- Next step: Связать returns orchestration с refund/exchange decision tree без переноса payment logic в `rustok-order` и добавить customer-safe ownership checks для item lines.
+- Current phase: post_order_customer_returns_transport
+- Last checkpoint: Slice 10.2 продвинут: umbrella `rustok-commerce` добавил customer-safe storefront REST/GraphQL list/create returns boundary поверх order-owned `OrderService`, сохраняя item-level validation внутри `rustok-order`.
+- Next step: Связать returns orchestration с refund/exchange decision tree без переноса payment logic в `rustok-order` и добавить customer-facing GraphQL create-return mutation в umbrella transport.
 - Open blockers: серверный OpenAPI contract test под default features упирается в существующие compile errors вне order/commerce (`rustok-pages-admin`, server build service/module lifecycle/graphql mutations); targeted order lifecycle и `rustok-commerce` check проходят.
 - Hand-off notes for next agent: После каждого returns/refund/exchange инкремента обновлять FFA/FBA evidence, README/admin docs и central registry в том же PR.
-- Last updated at (UTC): 2026-05-29T00:00:00Z
+- Last updated at (UTC): 2026-05-29T16:56:17Z
 
 ## FFA/FBA status
 
@@ -20,7 +20,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
-- Last verified at (UTC): 2026-05-24T00:00:00Z
+- Last verified at (UTC): 2026-05-29T16:56:17Z
 - Owner: `rustok-order` module team
 
 ## Область работ

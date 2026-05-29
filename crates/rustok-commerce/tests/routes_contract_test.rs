@@ -21,6 +21,7 @@ fn exposes_store_and_admin_route_groups() {
         "/store/carts/{id}/complete",
         "/store/payment-collections",
         "/store/orders/{id}",
+        "/store/orders/{id}/returns",
         "/store/orders/{id}/refunds",
         "/store/customers/me",
         "/admin/products",

@@ -366,6 +366,72 @@ impl CommerceQuery {
         Ok(customer.into())
     }
 
+    async fn storefront_returns(
+        &self,
+        ctx: &Context<'_>,
+        order_id: Uuid,
+        tenant_id: Option<Uuid>,
+        filter: Option<StorefrontReturnsFilter>,
+    ) -> Result<GqlOrderReturnList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+
+        let filter = filter.unwrap_or(StorefrontReturnsFilter {
+            status: None,
+            page: Some(1),
+            per_page: Some(20),
+        });
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
+
+        let Some(_order) = load_storefront_customer_order(
+            db,
+            event_bus,
+            tenant,
+            ctx,
+            tenant_id,
+            order_id,
+            locale.as_str(),
+        )
+        .await?
+        else {
+            return Ok(GqlOrderReturnList {
+                items: Vec::new(),
+                total: 0,
+                page,
+                per_page,
+                has_next: false,
+            });
+        };
+
+        let (items, total) = OrderService::new(db.clone(), event_bus.clone())
+            .list_returns(
+                tenant_id,
+                crate::dto::ListOrderReturnsInput {
+                    page,
+                    per_page,
+                    order_id: Some(order_id),
+                    status: filter.status,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlOrderReturnList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
     async fn storefront_refunds(
         &self,
         ctx: &Context<'_>,
