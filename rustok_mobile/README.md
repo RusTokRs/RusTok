@@ -4,7 +4,8 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 
 ## Structure
 
-- `apps/rustok_admin_mobile` — host Flutter app shell.
+- `apps/rustok_admin_mobile` — admin/operator host Flutter app shell.
+- `apps/rustok_frontend_mobile` — customer storefront host Flutter app shell.
 - `packages/app_core` — shared core primitives.
 - `packages/app_ui_kit` — design tokens and presentational widgets.
 - `packages/app_graphql` — GraphQL transport wiring.
@@ -23,6 +24,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Auth session scaffolding (`AuthSessionStore`, `AuthSessionManager`, in-memory store, refresh service contract).
 - Manifest generator script from `crates/*/rustok-module.toml`.
 - Phase 1 pilot modules package with GraphQL-backed list/detail shell navigation evidence.
+- Separate Flutter storefront mobile host scaffold with host-owned tenant/locale/GraphQL context.
 
 
 Host-level providers now resolve sessions via `AuthSessionManager` and `RefreshTokenService` before building the authenticated GraphQL client. The refresh flow uses an HTTP-only GraphQL client to avoid unnecessary WebSocket initialization during bootstrap. Provider wiring is isolated in `apps/rustok_admin_mobile/lib/app_shell/auth_bootstrap.dart`.
@@ -74,5 +76,6 @@ signal that exercises the generator CLI itself.
 ## Next steps
 
 1. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
-2. Expand the modules pilot from list/detail shell navigation to the first mutation-backed operator action.
-3. Add deterministic generated-file checks to the mobile CI pipeline.
+2. Expand the admin modules pilot from list/detail shell navigation to the first mutation-backed operator action.
+3. Add module-owned storefront mobile packages for catalog/cart surfaces.
+4. Add deterministic generated-file checks to the mobile CI pipeline.

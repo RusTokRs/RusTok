@@ -1126,8 +1126,8 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 #### Операционный статус плана (обновлено: 2026-05-29, Phase 1 pilot continuation)
 
 - **FFA в плане отмечен:** ✅ Да. FFA-baseline явно зафиксирован в `Phase 0 — Foundation` и отдельно закреплён в anti-drift guardrail разделе.
-- **Текущий фокус выполнения:** `Phase 1 — Pilot module` (статус `🟡 In progress`) поверх закрытого host adapter seam; `Phase 2 — Registry/codegen` остаётся в поддерживающем режиме без изменения platform contract.
-- **Следующая точка контроля:** расширить pilot-флоу `modules` от list/detail shell navigation к первому mutation-backed operator action, не добавляя feature-local transport-клиентов.
+- **Текущий фокус выполнения:** `Phase 1 — Pilot module` (статус `🟡 In progress`) поверх закрытого host adapter seam; `Phase 2 — Registry/codegen` остаётся в поддерживающем режиме без изменения platform contract. В отдельном host-треке добавлен `rustok_frontend_mobile` как customer storefront shell, чтобы не смешивать admin/operator и storefront UX.
+- **Следующая точка контроля:** расширить pilot-флоу `modules` от list/detail shell navigation к первому mutation-backed operator action, а storefront mobile — к первому module-owned catalog/cart package, не добавляя feature-local transport-клиентов.
 
 #### Ближайший execution backlog (Phase 1 pilot)
 
@@ -1167,6 +1167,18 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ✅ Done |
 | Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav использует `nav.icon` из generated manifest и fallback по module metadata без ручного списка routes | ✅ Done |
 | Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back | 🟡 In progress |
+
+#### PR-D evidence pack (Flutter storefront mobile host)
+
+**Storefront mobile host:** `rustok_mobile/apps/rustok_frontend_mobile`.
+
+Добавлен отдельный customer-facing Flutter host, потому что web storefront уже существует как `apps/storefront` + `apps/next-frontend`, а мобильный storefront не должен смешиваться с admin/operator приложением:
+- host-owned runtime context — `StorefrontRuntimeContext` и `storefrontGraphQlConfigProvider` собирают `tenantSlug`, `locale` и `/api/graphql` endpoint централизованно;
+- route contract — shell содержит `home/catalog/cart/profile` и reserved `/modules/:routeSegment` для будущих manifest-driven storefront packages;
+- FFA rule — новый host не вводит Flutter-only backend API и не копирует canonical routing/storage logic из web storefront;
+- evidence — `rustok_mobile/apps/rustok_frontend_mobile/test/storefront_router_test.dart` проверяет home runtime context, catalog route и generic module placeholder route.
+
+Следующий storefront mobile шаг: вынести catalog/cart в module-owned mobile packages и подключить их через generated storefront registry, синхронно с `docs/UI/storefront.md` и web storefront parity rules.
 
 #### PR-C evidence pack (Phase 1 pilot modules flow)
 
@@ -1234,8 +1246,9 @@ FFA-ограничение для этого шага: пакет `rustok_module
 ### Scope clarification: клиенты, а не третий web frontend
 
 Для текущего трека Flutter scope фиксируется так:
-- не создавать «третий web frontend» параллельно `apps/admin` / `apps/next-admin`;
+- не создавать «третий web frontend» параллельно `apps/admin` / `apps/next-admin` / `apps/storefront` / `apps/next-frontend`;
 - развивать **headless-клиенты** (mobile и desktop) как host-приложения поверх существующего backend-контракта;
+- держать admin/operator и customer storefront как отдельные Flutter host-приложения (`rustok_admin_mobile` и `rustok_frontend_mobile`), а не смешивать их навигацию и UX;
 - переиспользовать общий client-core (auth/session, tenant/locale context, GraphQL transport, route/query contracts) между mobile и desktop поверхностями.
 
 Это сохраняет platform parity и снижает стоимость сопровождения по сравнению с отдельным web-host fork.
@@ -1270,7 +1283,7 @@ FFA-ограничение для этого шага: пакет `rustok_module
 | Целевые платформы | **Уточнено** | Mobile-first (iOS + Android), затем desktop (macOS/Windows/Linux) на общем client-core; без запуска нового web-host |
 | Минимальные OS/SDK требования | **Не указано** | Брать актуальную stable-ветку Flutter и согласовать minima после freeze набора пакетов |
 | Offline support | **Не указано** | Стартовать без offline-first; только persisted cache + secure auth + drafts |
-| Тип мобильного приложения | **Не указано** | Судя по репозиторию, первичен **admin/operator mobile host**; storefront имеет смысл выносить отдельным приложением/пакетом позже |
+| Тип мобильного приложения | **Уточнено** | Admin/operator и customer storefront ведутся как отдельные host-приложения: `rustok_admin_mobile` и `rustok_frontend_mobile` |
 | Способ получения manifest/export для mobile registry | **Не указано** | На первом этапе — snapshot/codegen из RusTok repo; в долгую — backend/export endpoint |
 | Distribution model | **Не указано** | Internal/TestFlight/Play Internal на первых этапах |
 
