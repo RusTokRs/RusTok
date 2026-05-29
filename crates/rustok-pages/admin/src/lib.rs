@@ -13,7 +13,7 @@ use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::i18n::t;
-use crate::model::{CreatePageDraft, PageBlock, PageListItem};
+use crate::model::{PageBlock, PageListItem};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -416,7 +416,9 @@ pub fn PagesAdmin() -> impl IntoView {
     let initial_edit_page = edit_page;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| match selected_page_query.get() {
-        Some(page_id) if !page_id.trim().is_empty() => initial_edit_page.run(page_id),
+        Some(page_id) if core::optional_ui_text(page_id.as_str()).is_some() => {
+            initial_edit_page.run(page_id)
+        }
         _ => reset_page_form(
             set_editing_page_id,
             set_title,
@@ -446,19 +448,22 @@ pub fn PagesAdmin() -> impl IntoView {
             }
         };
 
-        let draft = CreatePageDraft {
-            locale: locale.get_untracked(),
-            title: title.get_untracked().trim().to_string(),
-            slug: slug.get_untracked().trim().to_string(),
-            body_content: String::new(),
-            body_format: core::GRAPESJS_FORMAT.to_string(),
-            body_content_json: project_data,
-            template: Some("default".to_string()),
-            channel_slugs: core::parse_channel_slugs(&channel_slugs_text.get_untracked()),
-            publish: publish_now.get_untracked(),
-        };
+        let locale_value = locale.get_untracked();
+        let title_value = title.get_untracked();
+        let slug_value = slug.get_untracked();
+        let channel_slugs_value = channel_slugs_text.get_untracked();
+        let draft = core::build_create_page_draft(
+            core::PageDraftFormInput {
+                locale: &locale_value,
+                title: &title_value,
+                slug: &slug_value,
+                channel_slugs: &channel_slugs_value,
+                publish: publish_now.get_untracked(),
+            },
+            project_data,
+        );
 
-        if draft.title.is_empty() || draft.slug.is_empty() {
+        if core::missing_required_page_field(&draft).is_some() {
             set_submit_issue.set(Some(WritePathIssue::new(required_fields_text.clone())));
             return;
         }
@@ -864,7 +869,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     prop:value=title
                                     on:input=move |ev| {
                                         let value = event_target_value(&ev);
-                                        if slug.get_untracked().trim().is_empty() {
+                                        if core::optional_ui_text(&slug.get_untracked()).is_none() {
                                             set_slug.set(core::slugify(value.as_str()));
                                         }
                                         set_title.set(value);

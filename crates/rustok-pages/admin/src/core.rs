@@ -1,6 +1,6 @@
-use crate::model::{PageBlock, PageDetail};
-use rustok_api::{WritePathIssue, WritePathIssueKind};
-use serde_json::{json, Value};
+use crate::model::{CreatePageDraft, PageBlock, PageDetail};
+use rustok_api::{WritePathIssue, WritePathIssueKind, normalize_ui_text, parse_ui_csv};
+use serde_json::{Value, json};
 
 pub const GRAPESJS_FORMAT: &str = "grapesjs_v1";
 
@@ -22,14 +22,63 @@ pub fn slugify(value: &str) -> String {
 }
 
 pub fn parse_channel_slugs(value: &str) -> Vec<String> {
-    let mut items = value
-        .split(',')
-        .map(|item| item.trim().to_ascii_lowercase())
-        .filter(|item| !item.is_empty())
+    let mut items = parse_ui_csv(value)
+        .into_iter()
+        .map(|item| item.to_ascii_lowercase())
         .collect::<Vec<_>>();
     items.sort();
     items.dedup();
     items
+}
+
+pub fn optional_ui_text(value: &str) -> Option<String> {
+    normalize_ui_text(value)
+}
+
+pub fn ui_text_or_default(value: &str) -> String {
+    normalize_ui_text(value).unwrap_or_default()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageRequiredField {
+    Title,
+    Slug,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageDraftFormInput<'a> {
+    pub locale: &'a str,
+    pub title: &'a str,
+    pub slug: &'a str,
+    pub channel_slugs: &'a str,
+    pub publish: bool,
+}
+
+pub fn build_create_page_draft(
+    input: PageDraftFormInput<'_>,
+    project_data: Value,
+) -> CreatePageDraft {
+    CreatePageDraft {
+        locale: ui_text_or_default(input.locale),
+        title: ui_text_or_default(input.title),
+        slug: ui_text_or_default(input.slug),
+        body_content: String::new(),
+        body_format: GRAPESJS_FORMAT.to_string(),
+        body_content_json: project_data,
+        template: Some("default".to_string()),
+        channel_slugs: parse_channel_slugs(input.channel_slugs),
+        publish: input.publish,
+    }
+}
+
+pub fn missing_required_page_field(draft: &CreatePageDraft) -> Option<PageRequiredField> {
+    if draft.title.is_empty() {
+        Some(PageRequiredField::Title)
+    } else if draft.slug.is_empty() {
+        Some(PageRequiredField::Slug)
+    } else {
+        None
+    }
 }
 
 pub fn error_with_context(context: &str, error: &str) -> String {
@@ -152,11 +201,11 @@ fn body_to_project_data(body: &crate::model::PageBody) -> Option<Value> {
 }
 
 pub fn default_project_data(title: &str) -> Value {
-    let normalized_title = title.trim();
-    let title = if normalized_title.is_empty() {
-        "New page"
-    } else {
+    let normalized_title = normalize_ui_text(title);
+    let title = if let Some(normalized_title) = normalized_title.as_deref() {
         normalized_title
+    } else {
+        "New page"
     };
 
     json!({
@@ -373,6 +422,53 @@ mod tests {
         assert_eq!(
             parse_channel_slugs(" web, mobile-app,WEB, , mobile-app "),
             vec!["mobile-app".to_string(), "web".to_string()]
+        );
+    }
+
+    #[test]
+    fn page_draft_builder_normalizes_form_state_without_ui_runtime() {
+        let project_data = default_project_data("Landing");
+        let draft = build_create_page_draft(
+            PageDraftFormInput {
+                locale: " en ",
+                title: " Landing ",
+                slug: " landing-page ",
+                channel_slugs: " web, MOBILE, web ",
+                publish: true,
+            },
+            project_data.clone(),
+        );
+
+        assert_eq!(draft.locale, "en");
+        assert_eq!(draft.title, "Landing");
+        assert_eq!(draft.slug, "landing-page");
+        assert_eq!(draft.body_format, GRAPESJS_FORMAT);
+        assert_eq!(draft.body_content_json, project_data);
+        assert_eq!(draft.template.as_deref(), Some("default"));
+        assert_eq!(
+            draft.channel_slugs,
+            vec!["mobile".to_string(), "web".to_string()]
+        );
+        assert!(draft.publish);
+        assert_eq!(missing_required_page_field(&draft), None);
+    }
+
+    #[test]
+    fn required_page_fields_reject_blank_title() {
+        let draft = build_create_page_draft(
+            PageDraftFormInput {
+                locale: "en",
+                title: " ",
+                slug: "landing",
+                channel_slugs: "web",
+                publish: false,
+            },
+            default_project_data(""),
+        );
+
+        assert_eq!(
+            missing_required_page_field(&draft),
+            Some(PageRequiredField::Title)
         );
     }
 
