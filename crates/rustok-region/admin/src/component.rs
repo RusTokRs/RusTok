@@ -5,7 +5,7 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
-use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionListItem};
+use crate::model::{RegionAdminBootstrap, RegionDetail, RegionListItem};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -133,7 +133,10 @@ pub fn RegionAdmin() -> impl IntoView {
                         set_countries,
                         set_metadata,
                     );
-                    set_error.set(Some(format!("{load_region_error_label}: {err}")));
+                    set_error.set(Some(crate::core::error_with_context(
+                        load_region_error_label.as_str(),
+                        &err.to_string(),
+                    )));
                 }
             }
             set_busy.set(false);
@@ -141,7 +144,7 @@ pub fn RegionAdmin() -> impl IntoView {
     });
     let initial_open_region = open_region;
     Effect::new(move |_| match selected_region_query.get() {
-        Some(region_id) if !region_id.trim().is_empty() => {
+        Some(region_id) if crate::core::optional_ui_text(region_id.as_str()).is_some() => {
             initial_open_region.run(region_id);
         }
         _ => {
@@ -166,34 +169,38 @@ pub fn RegionAdmin() -> impl IntoView {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
 
-        if name.get_untracked().trim().is_empty() {
-            set_error.set(Some(required_name_label.clone()));
-            return;
-        }
-        if currency_code.get_untracked().trim().is_empty() {
-            set_error.set(Some(required_currency_label.clone()));
-            return;
-        }
-        if countries.get_untracked().trim().is_empty() {
-            set_error.set(Some(required_countries_label.clone()));
-            return;
-        }
         let Some(submit_locale) = submit_ui_locale.clone() else {
             set_error.set(Some(locale_unavailable_label.clone()));
             return;
         };
-
-        let payload = RegionDraft {
-            name: name.get_untracked(),
-            locale: submit_locale,
-            currency_code: currency_code.get_untracked(),
-            tax_provider_id: tax_provider_id.get_untracked(),
-            tax_rate: tax_rate.get_untracked(),
+        let name_value = name.get_untracked();
+        let currency_code_value = currency_code.get_untracked();
+        let tax_provider_id_value = tax_provider_id.get_untracked();
+        let tax_rate_value = tax_rate.get_untracked();
+        let country_tax_policies_value = country_tax_policies.get_untracked();
+        let countries_value = countries.get_untracked();
+        let metadata_value = metadata.get_untracked();
+        let payload = crate::core::build_region_draft(crate::core::RegionFormInput {
+            name: &name_value,
+            locale: &submit_locale,
+            currency_code: &currency_code_value,
+            tax_provider_id: &tax_provider_id_value,
+            tax_rate: &tax_rate_value,
             tax_included: tax_included.get_untracked(),
-            country_tax_policies: country_tax_policies.get_untracked(),
-            countries: countries.get_untracked(),
-            metadata: metadata.get_untracked(),
-        };
+            country_tax_policies: &country_tax_policies_value,
+            countries: &countries_value,
+            metadata: &metadata_value,
+        });
+
+        if let Some(missing_field) = crate::core::missing_required_region_field(&payload) {
+            let error = match missing_field {
+                crate::core::RegionRequiredField::Name => required_name_label.clone(),
+                crate::core::RegionRequiredField::CurrencyCode => required_currency_label.clone(),
+                crate::core::RegionRequiredField::Countries => required_countries_label.clone(),
+            };
+            set_error.set(Some(error));
+            return;
+        }
         let editing_region_id = editing_id.get_untracked();
         let save_region_error_label = save_region_error_label.clone();
         set_busy.set(true);
@@ -223,7 +230,10 @@ pub fn RegionAdmin() -> impl IntoView {
                     set_refresh_nonce.update(|value| *value += 1);
                     submit_query_writer.replace_value(AdminQueryKey::RegionId.as_str(), detail_id);
                 }
-                Err(err) => set_error.set(Some(format!("{save_region_error_label}: {err}"))),
+                Err(err) => set_error.set(Some(crate::core::error_with_context(
+                    save_region_error_label.as_str(),
+                    &err.to_string(),
+                ))),
             }
 
             set_busy.set(false);

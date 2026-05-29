@@ -7,11 +7,11 @@
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
+- Last checkpoint: FFA slice #1 перенёс нормализацию admin-формы региона в `admin/src/core.rs` через `RegionFormInput` / `build_region_draft` и переиспользовал shared UI text helper из `rustok-api`.
+- Next step: Продолжить FFA-first sequencing следующим минимальным выделением admin/storefront state helper без нарушения native/GraphQL parity.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Last updated at (UTC): 2026-05-29T00:00:00Z
 
 
 ## FFA/FBA status
@@ -20,8 +20,9 @@
 - FBA status: `in_progress`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
-  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-05-24T00:00:00Z
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
+  - FFA slice #1 вынесла нормализацию admin-формы региона в module-local core и переиспользовала `rustok-api::normalize_ui_text` без изменений транспорта.
+- Last verified at (UTC): 2026-05-29T00:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
@@ -84,3 +85,7 @@
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+
+## FFA rollout tracker (rustok-region)
+
+- [x] Slice 1: нормализация admin-формы региона перенесена в core (`RegionFormInput`, `build_region_draft`) и переиспользует shared UI input helper (`normalize_ui_text`) из `rustok-api` без изменений native/GraphQL транспорта.
