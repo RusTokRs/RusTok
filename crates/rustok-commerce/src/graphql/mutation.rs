@@ -1289,16 +1289,38 @@ impl CommerceMutation {
             "Permission denied: orders:update required",
         )?;
 
+        if input.refund.is_some() {
+            require_commerce_permission(
+                ctx,
+                &[Permission::PAYMENTS_UPDATE],
+                "Permission denied: payments:update required",
+            )?;
+        }
+
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let item = OrderService::new(db.clone(), event_bus.clone())
-            .complete_return(
+        let order_service = OrderService::new(db.clone(), event_bus.clone());
+        let mut complete_input = crate::dto::CompleteOrderReturnInput {
+            resolution_type: input.resolution_type,
+            refund_id: input.refund_id,
+            order_change_id: input.order_change_id,
+            metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        };
+
+        if let Some(refund_input) = input.refund {
+            complete_input = build_refund_resolution_return_completion(
+                db,
+                &order_service,
                 tenant_id,
                 id,
-                crate::dto::CompleteOrderReturnInput {
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                },
+                complete_input,
+                refund_input,
             )
+            .await?;
+        }
+
+        let item = order_service
+            .complete_return(tenant_id, id, complete_input)
             .await?;
 
         Ok(item.into())
@@ -2304,6 +2326,90 @@ fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> 
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_ascii_lowercase())
+}
+
+async fn build_refund_resolution_return_completion(
+    db: &sea_orm::DatabaseConnection,
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    return_id: Uuid,
+    mut complete_input: crate::dto::CompleteOrderReturnInput,
+    refund_input: CompleteOrderReturnRefundInputObject,
+) -> Result<crate::dto::CompleteOrderReturnInput> {
+    if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+        return Err(async_graphql::Error::new(
+            "refund helper cannot be combined with explicit refund_id or order_change_id",
+        ));
+    }
+    if complete_input
+        .resolution_type
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("refund"))
+        == Some(false)
+    {
+        return Err(async_graphql::Error::new(
+            "refund helper requires resolution_type to be omitted or `refund`",
+        ));
+    }
+
+    let existing_return = order_service.get_return(tenant_id, return_id).await?;
+    let payment_service = PaymentService::new(db.clone());
+    let collection_id = match refund_input.payment_collection_id {
+        Some(collection_id) => {
+            let collection = payment_service
+                .get_collection(tenant_id, collection_id)
+                .await?;
+            if collection.order_id != Some(existing_return.order_id) {
+                return Err(async_graphql::Error::new(format!(
+                    "payment collection {collection_id} is not attached to order {}",
+                    existing_return.order_id
+                )));
+            }
+            collection_id
+        }
+        None => payment_service
+            .find_latest_collection_by_order(tenant_id, existing_return.order_id)
+            .await?
+            .map(|collection| collection.id)
+            .ok_or_else(|| {
+                async_graphql::Error::new(format!(
+                    "order {} has no payment collection for return refund",
+                    existing_return.order_id
+                ))
+            })?,
+    };
+
+    let refund = payment_service
+        .create_refund(
+            tenant_id,
+            collection_id,
+            crate::dto::CreateRefundInput {
+                amount: parse_decimal(&refund_input.amount)?,
+                reason: refund_input.reason,
+                metadata: parse_optional_metadata(refund_input.metadata.as_deref())?,
+            },
+        )
+        .await?;
+    let refund = if refund_input.complete.unwrap_or(false) {
+        payment_service
+            .complete_refund(
+                tenant_id,
+                refund.id,
+                crate::dto::CompleteRefundInput {
+                    metadata: serde_json::json!({
+                        "source": "order_return_completion",
+                        "return_id": return_id,
+                    }),
+                },
+            )
+            .await?
+    } else {
+        refund
+    };
+
+    complete_input.resolution_type = Some("refund".to_string());
+    complete_input.refund_id = Some(refund.id);
+    Ok(complete_input)
 }
 
 fn build_create_order_change_input(

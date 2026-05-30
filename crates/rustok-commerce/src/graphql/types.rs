@@ -625,6 +625,9 @@ pub struct GqlOrderReturn {
     pub reason: Option<String>,
     pub note: Option<String>,
     pub status: String,
+    pub resolution_type: Option<String>,
+    pub refund_id: Option<Uuid>,
+    pub order_change_id: Option<Uuid>,
     pub metadata: String,
     pub items: Vec<GqlOrderReturnItem>,
     pub created_at: String,
@@ -1018,7 +1021,20 @@ pub struct CreateOrderReturnItemInputObject {
 
 #[derive(InputObject)]
 pub struct CompleteOrderReturnInputObject {
+    pub resolution_type: Option<String>,
+    pub refund_id: Option<Uuid>,
+    pub order_change_id: Option<Uuid>,
+    pub refund: Option<CompleteOrderReturnRefundInputObject>,
     pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CompleteOrderReturnRefundInputObject {
+    pub payment_collection_id: Option<Uuid>,
+    pub amount: String,
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
+    pub complete: Option<bool>,
 }
 
 #[derive(InputObject)]
@@ -1970,6 +1986,9 @@ impl From<dto::OrderReturnResponse> for GqlOrderReturn {
             reason: value.reason,
             note: value.note,
             status: value.status,
+            resolution_type: value.resolution_type,
+            refund_id: value.refund_id,
+            order_change_id: value.order_change_id,
             metadata: value.metadata.to_string(),
             items: value.items.into_iter().map(Into::into).collect(),
             created_at: value.created_at.to_rfc3339(),

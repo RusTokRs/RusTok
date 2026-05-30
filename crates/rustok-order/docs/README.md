@@ -6,7 +6,7 @@
 
 - схема `orders`, `order_line_items`, `order_line_item_translations` и `order_adjustments` (localized line-item titles вынесены из base rows);
 - `OrderModule` и `OrderService`;
-- `order_returns` и `order_return_items` для order-owned post-order returns foundation;
+- `order_returns` и `order_return_items` для order-owned post-order returns foundation с resolution-ссылками на refund/order-change orchestration;
 - `order_changes` для draft/edit preview-apply skeleton без payment/fulfillment side effects;
 - write-side lifecycle заказа: `pending -> confirmed -> paid -> shipped -> delivered/cancelled`;
 - публикация order events через transactional outbox;
@@ -24,7 +24,7 @@
   `base/compare_at unit_price`, а savings остаются в `order_adjustments`;
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`;
 - admin UI ownership вынесен в `rustok-order/admin`;
-- returns foundation хранит item-level lines с validation количества и принадлежности line-item к заказу, но не переносит refund/exchange decision tree в order boundary;
+- returns foundation хранит item-level lines с validation количества и принадлежности line-item к заказу, а `resolution_type/refund_id/order_change_id` связывают completed return с refund/exchange orchestration без переноса payment logic в order boundary;
 - order-change skeleton хранит `preview`, `change_type`, lifecycle `pending -> applied|cancelled` и metadata, но пока не применяет cross-domain effects.
 
 ## Контракты событий

@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use rust_decimal::Decimal;
 use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, TenantContext};
 use rustok_core::Permission;
 use serde::{Deserialize, Serialize};
@@ -14,15 +15,15 @@ use crate::{
     dto::{
         ApplyOrderChangeInput, AuthorizePaymentInput, CancelFulfillmentInput,
         CancelOrderChangeInput, CancelOrderInput, CancelOrderReturnInput, CancelPaymentInput,
-        CancelRefundInput, CapturePaymentInput, CompleteOrderReturnInput, CompleteRefundInput,
-        CreateFulfillmentInput, CreateOrderChangeInput, CreateOrderReturnInput, CreateProductInput,
-        CreateRefundInput, CreateShippingOptionInput, CreateShippingProfileInput,
-        DeliverFulfillmentInput, DeliverOrderInput, FulfillmentResponse, ListFulfillmentsInput,
-        ListOrderChangesInput, ListOrderReturnsInput, ListPaymentCollectionsInput,
-        ListRefundsInput, ListShippingProfilesInput, MarkPaidOrderInput, OrderChangeResponse,
-        OrderResponse, OrderReturnResponse, PaymentCollectionResponse, ProductResponse,
-        RefundResponse, ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
-        ShipOrderInput, ShippingOptionResponse, ShippingProfileResponse, UpdateProductInput,
+        CancelRefundInput, CapturePaymentInput, CompleteRefundInput, CreateFulfillmentInput,
+        CreateOrderChangeInput, CreateOrderReturnInput, CreateProductInput, CreateRefundInput,
+        CreateShippingOptionInput, CreateShippingProfileInput, DeliverFulfillmentInput,
+        DeliverOrderInput, FulfillmentResponse, ListFulfillmentsInput, ListOrderChangesInput,
+        ListOrderReturnsInput, ListPaymentCollectionsInput, ListRefundsInput,
+        ListShippingProfilesInput, MarkPaidOrderInput, OrderChangeResponse, OrderResponse,
+        OrderReturnResponse, PaymentCollectionResponse, ProductResponse, RefundResponse,
+        ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput, ShipOrderInput,
+        ShippingOptionResponse, ShippingProfileResponse, UpdateProductInput,
         UpdateShippingOptionInput, UpdateShippingProfileInput,
     },
     storefront_shipping::normalize_shipping_profile_slug,
@@ -187,6 +188,27 @@ pub struct AdminOrderDetailResponse {
     pub order: OrderResponse,
     pub payment_collection: Option<PaymentCollectionResponse>,
     pub fulfillment: Option<FulfillmentResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompleteOrderReturnRefundInput {
+    pub payment_collection_id: Option<Uuid>,
+    pub amount: Decimal,
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+    #[serde(default)]
+    pub complete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AdminCompleteOrderReturnInput {
+    pub resolution_type: Option<String>,
+    pub refund_id: Option<Uuid>,
+    pub order_change_id: Option<Uuid>,
+    pub refund: Option<CompleteOrderReturnRefundInput>,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -885,7 +907,7 @@ pub async fn show_order_return(
     path = "/admin/returns/{id}/complete",
     tag = "admin",
     params(("id" = Uuid, Path, description = "Return ID")),
-    request_body = CompleteOrderReturnInput,
+    request_body = AdminCompleteOrderReturnInput,
     responses(
         (status = 200, description = "Return completed", body = OrderReturnResponse),
         (status = 401, description = "Unauthorized"),
@@ -897,7 +919,7 @@ pub async fn complete_order_return(
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-    Json(input): Json<CompleteOrderReturnInput>,
+    Json(input): Json<AdminCompleteOrderReturnInput>,
 ) -> Result<Json<OrderReturnResponse>> {
     ensure_permissions(
         &auth,
@@ -905,8 +927,89 @@ pub async fn complete_order_return(
         "Permission denied: orders:update required",
     )?;
 
-    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-        .complete_return(tenant.id, id, input)
+    if input.refund.is_some() {
+        ensure_permissions(
+            &auth,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+    }
+
+    let event_bus = transactional_event_bus_from_context(&ctx);
+    let order_service = OrderService::new(ctx.db.clone(), event_bus);
+    let mut complete_input = rustok_order::dto::CompleteOrderReturnInput {
+        resolution_type: input.resolution_type,
+        refund_id: input.refund_id,
+        order_change_id: input.order_change_id,
+        metadata: input.metadata,
+    };
+
+    if let Some(refund_input) = input.refund {
+        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+            return Err(Error::BadRequest(
+                "refund helper cannot be combined with explicit refund_id or order_change_id"
+                    .to_string(),
+            ));
+        }
+        if complete_input
+            .resolution_type
+            .as_deref()
+            .map(|value| value.trim().eq_ignore_ascii_case("refund"))
+            == Some(false)
+        {
+            return Err(Error::BadRequest(
+                "refund helper requires resolution_type to be omitted or `refund`".to_string(),
+            ));
+        }
+
+        let existing_return = order_service
+            .get_return(tenant.id, id)
+            .await
+            .map_err(map_order_error)?;
+        let payment_service = PaymentService::new(ctx.db.clone());
+        let collection_id = resolve_return_refund_collection_id(
+            &payment_service,
+            tenant.id,
+            existing_return.order_id,
+            refund_input.payment_collection_id,
+        )
+        .await?;
+        let refund = payment_service
+            .create_refund(
+                tenant.id,
+                collection_id,
+                CreateRefundInput {
+                    amount: refund_input.amount,
+                    reason: refund_input.reason,
+                    metadata: refund_input.metadata,
+                },
+            )
+            .await
+            .map_err(map_payment_error)?;
+        let refund = if refund_input.complete {
+            payment_service
+                .complete_refund(
+                    tenant.id,
+                    refund.id,
+                    CompleteRefundInput {
+                        metadata: serde_json::json!({
+                            "source": "order_return_completion",
+                            "return_id": id,
+                        }),
+                    },
+                )
+                .await
+                .map_err(map_payment_error)?
+        } else {
+            refund
+        };
+
+        complete_input.resolution_type = Some("refund".to_string());
+        complete_input.refund_id = Some(refund.id);
+    }
+
+    let item = order_service
+        .complete_return(tenant.id, id, complete_input)
         .await
         .map_err(map_order_error)?;
 
@@ -2159,6 +2262,37 @@ pub async fn cancel_fulfillment(
         .map_err(map_fulfillment_error)?;
 
     Ok(Json(fulfillment))
+}
+
+async fn resolve_return_refund_collection_id(
+    payment_service: &PaymentService,
+    tenant_id: Uuid,
+    order_id: Uuid,
+    explicit_collection_id: Option<Uuid>,
+) -> Result<Uuid> {
+    if let Some(collection_id) = explicit_collection_id {
+        let collection = payment_service
+            .get_collection(tenant_id, collection_id)
+            .await
+            .map_err(map_payment_error)?;
+        if collection.order_id != Some(order_id) {
+            return Err(Error::BadRequest(format!(
+                "payment collection {collection_id} is not attached to order {order_id}"
+            )));
+        }
+        return Ok(collection_id);
+    }
+
+    payment_service
+        .find_latest_collection_by_order(tenant_id, order_id)
+        .await
+        .map_err(map_payment_error)?
+        .map(|collection| collection.id)
+        .ok_or_else(|| {
+            Error::BadRequest(format!(
+                "order {order_id} has no payment collection for return refund"
+            ))
+        })
 }
 
 fn map_payment_error(error: rustok_payment::error::PaymentError) -> Error {

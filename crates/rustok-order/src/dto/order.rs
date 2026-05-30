@@ -155,6 +155,10 @@ pub struct CreateOrderReturnItemInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CompleteOrderReturnInput {
+    #[validate(length(max = 64))]
+    pub resolution_type: Option<String>,
+    pub refund_id: Option<Uuid>,
+    pub order_change_id: Option<Uuid>,
     pub metadata: Value,
 }
 
@@ -279,6 +283,9 @@ pub struct OrderReturnResponse {
     pub reason: Option<String>,
     pub note: Option<String>,
     pub status: String,
+    pub resolution_type: Option<String>,
+    pub refund_id: Option<Uuid>,
+    pub order_change_id: Option<Uuid>,
     pub metadata: Value,
     pub items: Vec<OrderReturnItemResponse>,
     pub created_at: DateTime<Utc>,

@@ -697,6 +697,106 @@ async fn create_order_return_rejects_cumulative_quantity_above_ordered_quantity(
 }
 
 #[tokio::test]
+async fn complete_order_return_rejects_unknown_resolution_type() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    let created_return = service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let error = service
+        .complete_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CompleteOrderReturnInput {
+                resolution_type: Some("replacement_without_exchange".to_string()),
+                refund_id: None,
+                order_change_id: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(error, OrderError::Validation(message) if message.contains("invalid return resolution_type"))
+    );
+}
+
+#[tokio::test]
+async fn complete_order_return_validates_resolution_link_requirements() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    let created_return = service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let error = service
+        .complete_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CompleteOrderReturnInput {
+                resolution_type: Some("refund".to_string()),
+                refund_id: None,
+                order_change_id: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, OrderError::Validation(message) if message.contains("requires refund_id"))
+    );
+
+    let error = service
+        .complete_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CompleteOrderReturnInput {
+                resolution_type: None,
+                refund_id: Some(Uuid::new_v4()),
+                order_change_id: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, OrderError::Validation(message) if message.contains("require resolution_type"))
+    );
+}
+
+#[tokio::test]
 async fn list_order_returns_clamps_per_page_upper_bound_to_100() {
     let service = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -1133,6 +1233,9 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
             tenant_id,
             created_return.id,
             rustok_order::dto::CompleteOrderReturnInput {
+                resolution_type: Some(" refund ".to_string()),
+                refund_id: Some(Uuid::new_v4()),
+                order_change_id: None,
                 metadata: serde_json::json!({ "completed_by": "admin" }),
             },
         )
@@ -1141,6 +1244,9 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
 
     assert_eq!(completed.status, "completed");
     assert!(completed.completed_at.is_some());
+    assert_eq!(completed.resolution_type.as_deref(), Some("refund"));
+    assert!(completed.refund_id.is_some());
+    assert_eq!(completed.order_change_id, None);
     assert_eq!(completed.metadata["source"], "lifecycle-test");
     assert_eq!(completed.metadata["completed_by"], "admin");
 
