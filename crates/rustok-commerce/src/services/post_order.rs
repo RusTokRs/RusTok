@@ -39,6 +39,7 @@ pub struct ReturnDecisionInput {
     pub action: String,
     pub refund: Option<ReturnRefundDecisionInput>,
     pub exchange: Option<ReturnExchangeDecisionInput>,
+    pub claim: Option<ReturnClaimDecisionInput>,
     pub metadata: Value,
 }
 
@@ -53,6 +54,14 @@ pub struct ReturnRefundDecisionInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ReturnExchangeDecisionInput {
+    #[validate(length(max = 2000))]
+    pub description: Option<String>,
+    pub preview: Value,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct ReturnClaimDecisionInput {
     #[validate(length(max = 2000))]
     pub description: Option<String>,
     pub preview: Value,
@@ -121,18 +130,35 @@ impl PostOrderOrchestrationService {
                         tenant_id,
                         actor_id,
                         order_id,
-                        CreateOrderChangeInput {
-                            change_type: "exchange".to_string(),
-                            description: exchange_input.description.clone(),
-                            preview: attach_return_context(
-                                exchange_input.preview.clone(),
-                                order_return.id,
-                            )?,
-                            metadata: attach_return_context(
-                                exchange_input.metadata.clone(),
-                                order_return.id,
-                            )?,
-                        },
+                        build_return_order_change_input(
+                            "exchange",
+                            exchange_input.description.clone(),
+                            exchange_input.preview.clone(),
+                            exchange_input.metadata.clone(),
+                            order_return.id,
+                        )?,
+                    )
+                    .await?;
+                (None, Some(order_change))
+            }
+            "claim" => {
+                let claim_input = input.decision.claim.as_ref().ok_or_else(|| {
+                    PostOrderOrchestrationError::Validation(
+                        "claim decision requires claim details".to_string(),
+                    )
+                })?;
+                let order_change = order_service
+                    .create_order_change(
+                        tenant_id,
+                        actor_id,
+                        order_id,
+                        build_return_order_change_input(
+                            "claim",
+                            claim_input.description.clone(),
+                            claim_input.preview.clone(),
+                            claim_input.metadata.clone(),
+                            order_return.id,
+                        )?,
                     )
                     .await?;
                 (None, Some(order_change))
@@ -215,8 +241,10 @@ fn normalize_decision_action(action: &str) -> PostOrderOrchestrationResult<Strin
         "none" | "return" | "return_only" => Ok("return_only".to_string()),
         "refund" => Ok("refund".to_string()),
         "exchange" => Ok("exchange".to_string()),
+        "claim" => Ok("claim".to_string()),
         _ => Err(PostOrderOrchestrationError::Validation(
-            "return decision action must be one of return_only, refund, exchange".to_string(),
+            "return decision action must be one of return_only, refund, exchange, claim"
+                .to_string(),
         )),
     }
 }
@@ -235,7 +263,27 @@ fn validate_decision_shape(
             "exchange details are only allowed for exchange decisions".to_string(),
         ));
     }
+    if action != "claim" && decision.claim.is_some() {
+        return Err(PostOrderOrchestrationError::Validation(
+            "claim details are only allowed for claim decisions".to_string(),
+        ));
+    }
     Ok(())
+}
+
+fn build_return_order_change_input(
+    change_type: &str,
+    description: Option<String>,
+    preview: Value,
+    metadata: Value,
+    return_id: Uuid,
+) -> PostOrderOrchestrationResult<CreateOrderChangeInput> {
+    Ok(CreateOrderChangeInput {
+        change_type: change_type.to_string(),
+        description,
+        preview: attach_return_context(preview, return_id)?,
+        metadata: attach_return_context(metadata, return_id)?,
+    })
 }
 
 fn attach_return_context(value: Value, return_id: Uuid) -> PostOrderOrchestrationResult<Value> {
