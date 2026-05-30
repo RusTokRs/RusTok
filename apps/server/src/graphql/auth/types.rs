@@ -1,4 +1,5 @@
 use async_graphql::{InputObject, SimpleObject};
+use rustok_core::Permission;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, InputObject)]
@@ -46,6 +47,17 @@ pub struct AuthUser {
     pub name: Option<String>,
     pub role: String,
     pub status: String,
+    pub permissions: Vec<String>,
+}
+
+pub(crate) fn auth_permission_strings(permissions: &[Permission]) -> Vec<String> {
+    let mut values = permissions
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
 }
 
 #[derive(Debug, Clone, SimpleObject)]

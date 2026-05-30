@@ -22,6 +22,7 @@
 - Expose shared multilingual contract fields on forum read surfaces:
   `requested_locale`, `effective_locale`, and `available_locales`.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
+- Publish the forum widget contract-freeze catalog/validation surfaces (`ForumWidgetContractService`, `/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`).
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
 - Publish the typed RBAC surface for `forum_categories:*`, `forum_topics:*`,

@@ -32,7 +32,10 @@ void main() {
       options: QueryOptions(document: gql('query BootstrapProbe { me { email } currentTenant { slug } }')),
       source: QueryResultSource.network,
       data: {
-        'me': {'email': 'operator@example.com'},
+        'me': {
+          'email': 'operator@example.com',
+          'permissions': ['modules:manage'],
+        },
         'currentTenant': {'slug': 'tenant-main'},
       },
     );
@@ -56,6 +59,8 @@ void main() {
     expect(value.isAuthenticated, isTrue);
     expect(value.userEmail, 'operator@example.com');
     expect(value.tenantSlug, 'tenant-main');
+    expect(value.grantedPermissions, ['modules:manage']);
+    expect(value.hasPermission('modules:manage'), isTrue);
   });
 
   test('throws when probe query returns GraphQL exception', () async {

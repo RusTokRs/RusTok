@@ -61,6 +61,7 @@ Shared foundation / support crates:
 - Registry artifacts больше не читаются и не записываются через прямой filesystem path внутри governance service: persisted state хранит только `artifact_storage_key`, upload/validation идут через `StorageService`, а `GET /v2/catalog/publish/{request_id}/artifact/download` уже работает как storage-backed private download route с presign-or-stream fallback.
 - Repo-side surface для текущего `module-system` считается закрытым для цели Admin-driven install/uninstall/upgrade/deploy с progress feedback; дальше остаётся поддерживать targeted verification и docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
 - GraphQL control-plane surface публикует read/write contract для lifecycle recovery: `moduleOperationRecoveryPlan` и `failedModuleOperationRecoveryPlans` отдают tenant-scoped retryability/action metadata из `module_operations`, а `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` выполняют recovery только через `ModuleLifecycleService` и `modules:manage`, без raw SQL/bypass rollback.
+- GraphQL auth surface `me.permissions` отдаёт request-scoped RBAC snapshot для headless/mobile UI gating; это не заменяет server-side permission enforcement на mutations/queries.
 - Гибридный product installer вводится через support crate `rustok-installer`:
   CLI `rustok-server install ...` и `/api/install/*` endpoints должны
   делегировать plan/state/receipt/preflight semantics в этот crate. Web wizard

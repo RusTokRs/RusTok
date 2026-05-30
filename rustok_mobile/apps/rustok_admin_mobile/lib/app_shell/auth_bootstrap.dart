@@ -70,6 +70,7 @@ const _bootstrapProbeDocument = r'''
     me {
       id
       email
+      permissions
     }
     currentTenant {
       id
@@ -78,7 +79,9 @@ const _bootstrapProbeDocument = r'''
   }
 ''';
 
-final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) async {
+final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((
+  ref,
+) async {
   final session = await ref.watch(authSessionProvider.future);
   if (session == null) {
     return const BootstrapProbeResult.unauthenticated();
@@ -115,8 +118,29 @@ final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((ref) as
   return BootstrapProbeResult.authenticated(
     userEmail: userEmail,
     tenantSlug: tenantSlug,
+    grantedPermissions: _readStringListField(
+      payload,
+      objectField: 'me',
+      listField: 'permissions',
+    ),
   );
 });
+
+List<String> _readStringListField(
+  Map<String, dynamic> payload, {
+  required String objectField,
+  required String listField,
+}) {
+  final nested = payload[objectField];
+  if (nested is! Map<String, dynamic>) {
+    return const <String>[];
+  }
+  final values = nested[listField];
+  if (values is! List) {
+    return const <String>[];
+  }
+  return List.unmodifiable(values.whereType<String>());
+}
 
 String? _readStringField(
   Map<String, dynamic> payload, {
@@ -136,6 +160,7 @@ class BootstrapProbeResult {
     required this.isAuthenticated,
     this.userEmail,
     this.tenantSlug,
+    this.grantedPermissions = const <String>[],
   });
 
   const BootstrapProbeResult.unauthenticated()
@@ -144,13 +169,20 @@ class BootstrapProbeResult {
   const BootstrapProbeResult.authenticated({
     String? userEmail,
     String? tenantSlug,
+    List<String> grantedPermissions = const <String>[],
   }) : this._(
          isAuthenticated: true,
          userEmail: userEmail,
          tenantSlug: tenantSlug,
+         grantedPermissions: grantedPermissions,
        );
 
   final bool isAuthenticated;
   final String? userEmail;
   final String? tenantSlug;
+  final List<String> grantedPermissions;
+
+  bool hasPermission(String permission) {
+    return grantedPermissions.contains(permission);
+  }
 }

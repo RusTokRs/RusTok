@@ -668,7 +668,19 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
     EventSchema {
         event_type: "seo.bulk.completed",
         version: 1,
-        description: "SEO bulk job reached a terminal state.",
+        description: "SEO bulk job completed without item failures.",
+        fields: SEO_BULK_COMPLETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "seo.bulk.partial",
+        version: 1,
+        description: "SEO bulk job reached a terminal state with mixed successes and failures.",
+        fields: SEO_BULK_COMPLETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "seo.bulk.failed",
+        version: 1,
+        description: "SEO bulk job reached a failed terminal state.",
         fields: SEO_BULK_COMPLETED_FIELDS,
     },
     EventSchema {

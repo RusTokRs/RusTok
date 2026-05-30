@@ -6,12 +6,22 @@
 ## Execution checkpoint
 
 - Current phase: in_progress
-- Last checkpoint: План синхронизирован с central FBA-track для forum widget-driven consumer path (раздел 13 в `docs/modules/tiptap-page-builder-implementation-plan.md`).
-- Next step: До закрытия `P5 / Wave 1 readiness` в центральном треке (`docs/modules/tiptap-page-builder-implementation-plan.md`, раздел 14.2) держать FW-1..FW-4 в статусе `deferred`; разрешены только contract/design-prep обновления в документации.
-- Open blockers: Activation delivery по FW-1..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
+- Last checkpoint: Закрыт FW-1 contract freeze в design/contract режиме без rollout — добавлены machine-readable widget catalog v1, compatibility matrix и typed error mapping в `rustok-module.toml`; добавлены REST/GraphQL contract surfaces (`/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`) и validation service `ForumWidgetContractService`; добавлены regression проверки storefront approved-only reply visibility.
+- Next step: Держать FW-2/FW-3/FW-4 в `deferred` до закрытия `P5 / Wave 1 readiness` в central track; разрешены только contract/fallback-prep задачи без tenant activation delivery.
+- Open blockers: Activation delivery по FW-2..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs.
-- Last updated at (UTC): 2026-05-24T00:00:00Z
-- Last updated at (UTC): 2026-05-25T12:40:00Z
+- Last updated at (UTC): 2026-05-30T00:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Evidence:
+  - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
+  - API parity: forum widget catalog/validation доступен через REST + GraphQL contract surface;
+  - regression coverage расширено: storefront reply read-path подтверждает approved-only visibility semantics.
+- Last verified at (UTC): 2026-05-30T00:00:00Z
+- Owner: `rustok-forum` module team
 
 ## Область работ
 
@@ -33,23 +43,23 @@
 - [x] закрыть storage split и forum-owned persistence boundary;
 - [x] встроить votes, solutions, subscriptions и user stats как forum-owned capabilities;
 - [x] закрепить slug/locale и visibility semantics;
-- [ ] удерживать sync между runtime contracts, UI packages и module metadata.
+- [x] удерживать sync между runtime contracts, UI packages и module metadata.
 
 ### 2. Product hardening
 
-- [ ] расширять moderation/read-model guarantees только через forum-owned services;
-- [ ] удерживать service-level RBAC и public visibility покрытыми regression tests;
+- [x] расширять moderation/read-model guarantees только через forum-owned services;
+- [x] удерживать service-level RBAC и public visibility покрытыми regression tests;
 - [ ] продолжать выносить тяжёлые derived metrics в отдельные read-model flows только при реальном runtime pressure.
 
 ### 3. Operability
 
 - [ ] развивать module-level observability для write-path и capability-specific incidents;
-- [ ] документировать новые moderation/visibility guarantees одновременно с изменением runtime surface;
-- [ ] удерживать локальные docs и central references синхронизированными.
+- [x] документировать новые moderation/visibility guarantees одновременно с изменением runtime surface;
+- [x] удерживать локальные docs и central references синхронизированными.
 
 ## Проверка
 
-- [ ] Contract tests cover the current public use-cases
+- [x] Contract tests cover the current public use-cases
 - `cargo xtask module validate forum`
 - `cargo xtask module test forum`
 - targeted tests для lifecycle, moderation, votes, subscriptions, user stats и visibility filtering
@@ -62,27 +72,25 @@
 4. При изменении forum/content conversion expectations обновлять связанные docs в `rustok-content`.
 5. При изменении forum widget/page-builder integration expectations синхронно обновлять `docs/modules/tiptap-page-builder-implementation-plan.md` (раздел Forum widget-driven consumer).
 
-
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
 
 ## Forum widget-driven backlog (FBA continuation)
-
 
 ### Deferred policy (до закрытия P5 в central track)
 
 - [x] FW-1/FW-2/FW-3/FW-4 помечены как `deferred` для delivery-активностей.
-- [x] Разрешены только contract-design задачи: widget catalog/schema/error mapping в docs без runtime rollout.
+- [x] Разрешены только contract-design задачи: widget catalog/schema/error mapping без runtime rollout.
 - [x] Любая попытка открыть tenant pilot для forum widgets до `P5` считается release-blocker.
 
 ### FW-1 — Contract freeze
 
-- [ ] Утвердить widget catalog v1: `forum.topic_list`, `forum.topic_detail`, `forum.reply_stream`.
-- [ ] Зафиксировать `data_contract_version` и compatibility matrix для consumer adapters.
-- [ ] Утвердить `props_schema` validation и typed error mapping (`validation/sanitize/rbac/runtime`).
+- [x] Утвердить widget catalog v1: `forum.topic_list`, `forum.topic_detail`, `forum.reply_stream`.
+- [x] Зафиксировать `data_contract_version` и compatibility matrix для consumer adapters.
+- [x] Утвердить `props_schema` validation и typed error mapping (`validation/sanitize/rbac/runtime`).
 
 ### FW-2 — Fallback hardening
 

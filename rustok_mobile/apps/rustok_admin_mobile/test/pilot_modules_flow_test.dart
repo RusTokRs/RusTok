@@ -39,6 +39,7 @@ void main() {
             (ref) async => const BootstrapProbeResult.authenticated(
               userEmail: 'operator@example.com',
               tenantSlug: 'default',
+              grantedPermissions: ['modules:manage'],
             ),
           ),
         ],
@@ -82,4 +83,38 @@ class _FakeModulesRepository implements ModulesRepository {
       showcaseAdminSurfaces: [],
     ),
   ];
+
+  @override
+  Future<ModuleToggleResult> toggleModule({
+    required String moduleSlug,
+    required bool enabled,
+  }) async {
+    return ModuleToggleResult(
+      moduleSlug: moduleSlug,
+      enabled: enabled,
+      settings: '{}',
+    );
+  }
+
+  @override
+  Future<List<ModuleOperationRecoveryPlan>> failedRecoveryPlans({
+    required String moduleSlug,
+    int limit = 1,
+  }) async {
+    return const <ModuleOperationRecoveryPlan>[];
+  }
+
+  @override
+  Future<ModuleOperationRecoveryPlan> retryFailedPostHook({
+    required String operationId,
+  }) async {
+    throw UnimplementedError('retry is not used by this test repository');
+  }
+
+  @override
+  Future<ModuleToggleResult> compensateFailedOperation({
+    required String operationId,
+  }) async {
+    throw UnimplementedError('compensation is not used by this test repository');
+  }
 }

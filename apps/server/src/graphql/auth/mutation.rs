@@ -1,13 +1,14 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::app::AppContext;
-use rustok_core::{i18n::translate, Locale};
+use rustok_core::{Locale, i18n::translate};
 
 use crate::auth::{auth_config_from_ctx, decode_invite_token, encode_password_reset_token};
-use crate::context::{infer_user_role_from_permissions, TenantContext};
+use crate::context::{TenantContext, infer_user_role_from_permissions};
 use crate::graphql::errors::{ErrorCode, GraphQLError};
 use crate::models::users;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
-use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
+use crate::services::email::{PasswordResetEmail, email_service_from_ctx, password_reset_url};
+use crate::services::rbac_service::RbacService;
 
 use crate::context::AuthContext;
 
@@ -51,6 +52,17 @@ fn locale_from_ctx(ctx: &Context<'_>) -> Locale {
     ctx.data::<Locale>().copied().unwrap_or_default()
 }
 
+async fn current_permission_strings(
+    app_ctx: &AppContext,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<Vec<String>> {
+    let permissions = RbacService::get_user_permissions(&app_ctx.db, &tenant_id, &user_id)
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    Ok(auth_permission_strings(&permissions))
+}
+
 #[derive(Default)]
 pub struct AuthMutation;
 
@@ -72,6 +84,8 @@ impl AuthMutation {
         .await
         .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
+        let permissions = current_permission_strings(app_ctx, tenant.id, user.id).await?;
+
         Ok(AuthPayload {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -83,6 +97,7 @@ impl AuthMutation {
                 name: user.name,
                 role: tokens.effective_role.to_string(),
                 status: user.status.to_string(),
+                permissions,
             },
         })
     }
@@ -102,6 +117,8 @@ impl AuthMutation {
         .await
         .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
+        let permissions = current_permission_strings(app_ctx, tenant.id, user.id).await?;
+
         Ok(AuthPayload {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -113,6 +130,7 @@ impl AuthMutation {
                 name: user.name,
                 role: tokens.effective_role.to_string(),
                 status: user.status.to_string(),
+                permissions,
             },
         })
     }
@@ -131,6 +149,8 @@ impl AuthMutation {
                 .await
                 .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
+        let permissions = current_permission_strings(app_ctx, tenant.id, user.id).await?;
+
         Ok(AuthPayload {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -142,6 +162,7 @@ impl AuthMutation {
                 name: user.name,
                 role: tokens.effective_role.to_string(),
                 status: user.status.to_string(),
+                permissions,
             },
         })
     }
@@ -226,6 +247,7 @@ impl AuthMutation {
             name: updated.name,
             role: infer_user_role_from_permissions(&auth.permissions).to_string(),
             status: updated.status.to_string(),
+            permissions: auth_permission_strings(&auth.permissions),
         })
     }
 
@@ -387,7 +409,7 @@ impl AuthMutation {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_auth_lifecycle_error, AuthLifecycleError};
+    use super::{AuthLifecycleError, map_auth_lifecycle_error};
     use rustok_core::i18n::Locale;
 
     #[test]

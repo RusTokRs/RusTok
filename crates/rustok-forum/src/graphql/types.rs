@@ -80,6 +80,46 @@ pub struct GqlForumUserStats {
     pub updated_at: String,
 }
 
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumWidgetCatalog {
+    pub catalog_version: String,
+    pub builder_contract_version: String,
+    pub consumer_min_version: String,
+    pub compatibility_matrix: Vec<GqlForumWidgetCompatibilityEntry>,
+    pub items: Vec<GqlForumWidgetCatalogItem>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumWidgetCompatibilityEntry {
+    pub provider_contract_version: String,
+    pub consumer_min_version: String,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumWidgetCatalogItem {
+    pub widget_type: String,
+    pub data_contract_version: String,
+    pub props_schema: Value,
+    pub capability_requirements: GqlForumWidgetCapabilityRequirements,
+    pub fallback_mode: String,
+    pub error_mapping: GqlForumWidgetErrorMapping,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumWidgetCapabilityRequirements {
+    pub preview: bool,
+    pub publish: bool,
+    pub moderation_view: bool,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumWidgetErrorMapping {
+    pub validation: String,
+    pub sanitize: String,
+    pub rbac: String,
+    pub runtime: String,
+}
+
 #[derive(InputObject)]
 pub struct CreateForumTopicInput {
     pub locale: String,

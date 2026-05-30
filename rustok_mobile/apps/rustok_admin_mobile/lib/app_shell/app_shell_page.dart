@@ -94,12 +94,13 @@ class _AuthContextBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final meEmail = data.userEmail ?? 'unknown';
     final tenantSlug = data.tenantSlug ?? 'unknown';
+    final permissionsCount = data.grantedPermissions.length;
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: ListTile(
         dense: true,
         title: Text('me: $meEmail'),
-        subtitle: Text('tenant: $tenantSlug'),
+        subtitle: Text('tenant: $tenantSlug · permissions: $permissionsCount'),
       ),
     );
   }

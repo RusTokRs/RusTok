@@ -15,7 +15,12 @@ tags = ["community", "content", "discussions"]
 [dependencies]
 content = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
-page_builder = { version_req = ">=0.1.0" }
+
+[dependencies.page_builder]
+version_req = ">=0.1.0"
+module = "page-builder"
+contract = "grapesjs_v1"
+contract_version = "1.0"
 
 [crate]
 entry_type = "ForumModule"
@@ -61,6 +66,36 @@ nav_label = "Categories"
 [fba.builder_consumer]
 contract_version = "1.0"
 builder_contract_version = "1.0"
+consumer_min_version = "1.0"
+catalog_version = "v1"
+
+[fba.builder_consumer.error_mapping]
+validation = "forum.widget.validation"
+sanitize = "forum.widget.sanitize"
+rbac = "forum.widget.rbac"
+runtime = "forum.widget.runtime"
+
+[[fba.builder_consumer.compatibility_matrix]]
+provider_contract_version = "1.0"
+consumer_min_version = "1.0"
+
+[fba.builder_consumer.widgets.topic_list]
+data_contract_version = "1.0"
+props_schema = "forum.topic_list.v1"
+capability_requirements = ["preview"]
+fallback_mode = "readonly"
+
+[fba.builder_consumer.widgets.topic_detail]
+data_contract_version = "1.0"
+props_schema = "forum.topic_detail.v1"
+capability_requirements = ["preview", "moderation_view"]
+fallback_mode = "degraded"
+
+[fba.builder_consumer.widgets.reply_stream]
+data_contract_version = "1.0"
+props_schema = "forum.reply_stream.v1"
+capability_requirements = ["preview", "moderation_view"]
+fallback_mode = "hidden"
 
 [fba.builder_consumer.degraded_modes]
 builder_disabled = "forum_widgets_readonly_keep_forum_routes"

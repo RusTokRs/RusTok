@@ -399,6 +399,26 @@ pub enum DomainEvent {
         failed_count: i32,
         idempotency_key: String,
     },
+    SeoBulkPartial {
+        job_id: Uuid,
+        target_kind: String,
+        locale: String,
+        status: String,
+        processed_count: i32,
+        succeeded_count: i32,
+        failed_count: i32,
+        idempotency_key: String,
+    },
+    SeoBulkFailed {
+        job_id: Uuid,
+        target_kind: String,
+        locale: String,
+        status: String,
+        processed_count: i32,
+        succeeded_count: i32,
+        failed_count: i32,
+        idempotency_key: String,
+    },
 
     // ════════════════════════════════════════════════════════════════
     // TENANT EVENTS
@@ -565,6 +585,8 @@ impl DomainEvent {
             Self::SeoSitemapGenerated { .. } => "seo.sitemap.generated",
             Self::SeoSitemapSubmitted { .. } => "seo.sitemap.submitted",
             Self::SeoBulkCompleted { .. } => "seo.bulk.completed",
+            Self::SeoBulkPartial { .. } => "seo.bulk.partial",
+            Self::SeoBulkFailed { .. } => "seo.bulk.failed",
 
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
@@ -678,6 +700,8 @@ impl DomainEvent {
             Self::SeoSitemapGenerated { .. } => 1,
             Self::SeoSitemapSubmitted { .. } => 1,
             Self::SeoBulkCompleted { .. } => 1,
+            Self::SeoBulkPartial { .. } => 1,
+            Self::SeoBulkFailed { .. } => 1,
 
             // Tenant events (v1)
             Self::TenantCreated { .. } => 1,
@@ -741,6 +765,8 @@ impl DomainEvent {
                 | Self::SeoSitemapGenerated { .. }
                 | Self::SeoSitemapSubmitted { .. }
                 | Self::SeoBulkCompleted { .. }
+                | Self::SeoBulkPartial { .. }
+                | Self::SeoBulkFailed { .. }
         )
     }
 }
@@ -1387,7 +1413,12 @@ impl ValidateEvent for DomainEvent {
                 ..
             } => {
                 validators::validate_not_nil_uuid("job_id", job_id)?;
-                validators::validate_range("endpoint_count", *endpoint_count as i64, 0, i32::MAX as i64)?;
+                validators::validate_range(
+                    "endpoint_count",
+                    *endpoint_count as i64,
+                    0,
+                    i32::MAX as i64,
+                )?;
                 if let Some(error) = error {
                     validators::validate_max_length("error", error, 2048)?;
                 }
@@ -1404,6 +1435,26 @@ impl ValidateEvent for DomainEvent {
                 succeeded_count,
                 failed_count,
                 idempotency_key,
+            }
+            | Self::SeoBulkPartial {
+                job_id,
+                target_kind,
+                locale,
+                status,
+                processed_count,
+                succeeded_count,
+                failed_count,
+                idempotency_key,
+            }
+            | Self::SeoBulkFailed {
+                job_id,
+                target_kind,
+                locale,
+                status,
+                processed_count,
+                succeeded_count,
+                failed_count,
+                idempotency_key,
             } => {
                 validators::validate_not_nil_uuid("job_id", job_id)?;
                 validators::validate_not_empty("target_kind", target_kind)?;
@@ -1412,9 +1463,24 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_max_length("locale", locale, 32)?;
                 validators::validate_not_empty("status", status)?;
                 validators::validate_max_length("status", status, 32)?;
-                validators::validate_range("processed_count", *processed_count as i64, 0, i32::MAX as i64)?;
-                validators::validate_range("succeeded_count", *succeeded_count as i64, 0, i32::MAX as i64)?;
-                validators::validate_range("failed_count", *failed_count as i64, 0, i32::MAX as i64)?;
+                validators::validate_range(
+                    "processed_count",
+                    *processed_count as i64,
+                    0,
+                    i32::MAX as i64,
+                )?;
+                validators::validate_range(
+                    "succeeded_count",
+                    *succeeded_count as i64,
+                    0,
+                    i32::MAX as i64,
+                )?;
+                validators::validate_range(
+                    "failed_count",
+                    *failed_count as i64,
+                    0,
+                    i32::MAX as i64,
+                )?;
                 validators::validate_not_empty("idempotency_key", idempotency_key)?;
                 validators::validate_max_length("idempotency_key", idempotency_key, 255)?;
                 Ok(())

@@ -39,9 +39,10 @@ GraphQL остаётся canonical UI-facing contract для:
 - Leptos hosts
 - Next.js hosts
 - module-owned UI packages
+- mobile/headless hosts, включая Flutter admin/frontend clients
 
 GraphQL должен собирать domain data через module/service layer, а не обходить
-ownership модулей через host-specific shortcuts.
+ownership модулей через host-specific shortcuts. Auth bootstrap для headless/mobile hosts использует `me.permissions` как UI-facing RBAC snapshot; server-side enforcement остаётся обязательным для самих mutations/queries.
 
 ## REST-поверхность
 

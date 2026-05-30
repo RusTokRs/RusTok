@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:rustok_modules_mobile/rustok_modules_mobile.dart';
 
 import '../app_shell/app_shell_page.dart';
+import '../app_shell/auth_bootstrap.dart';
 import '../registry/mobile_module_icons.dart';
 import '../registry/module_entry_adapter.dart';
 import '../registry/registry_adaptation_summary.dart';
 import 'registry_warnings_card.dart';
+
+const _modulesManagePermission = 'modules:manage';
 
 const _routeCodec = RouteCodec(
   RouteSanitizer({
@@ -37,21 +40,32 @@ GoRouter buildRouter(
               overrides: [
                 modulesRepositoryProvider.overrideWithValue(modulesRepository),
               ],
-              child: ModulesMobileScreen(
-                header: ModulesHomePage(
-                  moduleRoutes: moduleRoutes,
-                  adaptationSummary: summary,
-                  shrinkWrap: true,
-                ),
-                resolveModulePath: (module) => _resolveModulePath(
-                  moduleRoutes,
-                  module.slug,
-                ),
-                onOpenModule: (context, module) {
-                  final path = _resolveModulePath(moduleRoutes, module.slug);
-                  if (path != null) {
-                    context.go(path);
-                  }
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final canManageModules = ref
+                          .watch(authBootstrapProbeProvider)
+                          .valueOrNull
+                          ?.hasPermission(_modulesManagePermission) ??
+                      false;
+
+                  return ModulesMobileScreen(
+                    header: ModulesHomePage(
+                      moduleRoutes: moduleRoutes,
+                      adaptationSummary: summary,
+                      shrinkWrap: true,
+                    ),
+                    resolveModulePath: (module) => _resolveModulePath(
+                      moduleRoutes,
+                      module.slug,
+                    ),
+                    canManageModules: canManageModules,
+                    onOpenModule: (context, module) {
+                      final path = _resolveModulePath(moduleRoutes, module.slug);
+                      if (path != null) {
+                        context.go(path);
+                      }
+                    },
+                  );
                 },
               ),
             ),

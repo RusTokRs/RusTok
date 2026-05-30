@@ -23,6 +23,8 @@ class ModuleSummary {
   final List<String> recommendedAdminSurfaces;
   final List<String> showcaseAdminSurfaces;
 
+  bool get isOptional => kind.toLowerCase() == 'optional';
+
   factory ModuleSummary.fromJson(Map<String, dynamic> json) {
     return ModuleSummary(
       slug: _readString(json, 'moduleSlug'),

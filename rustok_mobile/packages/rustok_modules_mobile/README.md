@@ -5,24 +5,29 @@ Module-owned Flutter pilot package for the RusTok modules registry surface.
 ## Purpose
 
 This package provides the first Phase 1 mobile pilot flow from
-`docs/research/flutter.md`: a GraphQL-backed module registry list that is
-mounted by the `rustok_admin_mobile` host shell.
+`docs/research/flutter.md`: a GraphQL-backed module registry list plus the
+first mutation-backed operator toggle action with lifecycle recovery feedback
+and retry/compensation actions mounted by the `rustok_admin_mobile` host shell.
 
 ## Responsibilities
 
 - Own the mobile presentation for the modules registry pilot screen.
 - Keep module data access behind `ModulesRepository` so the host supplies the
   shared GraphQL client and auth/tenant/locale context.
-- Reuse the platform `moduleRegistry` GraphQL contract without introducing a
+- Reuse the platform `moduleRegistry`, `toggleModule`, and
+  `failedModuleOperationRecoveryPlans`, `retryFailedModuleOperationPostHook`, and
+  `compensateFailedModuleOperation` GraphQL contracts without introducing a
   Flutter-only API.
-- Expose retryable loading/error/empty states for host-level E2E evidence.
+- Expose retryable loading/error/empty states, action-level failure feedback,
+  post-hook recovery guidance, and retry/compensation actions for host-level E2E evidence.
 
 ## Interactions
 
 - `apps/rustok_admin_mobile` overrides `modulesRepositoryProvider` with
   `GraphQlModulesRepository` built from the host `graphQlClientProvider`.
 - The host resolves module detail navigation through the generated mobile
-  manifest routes.
+  manifest routes and passes the GraphQL-hydrated `modules:manage` permission
+  state into the action UI.
 - This package does not create its own auth, tenant, locale, or GraphQL client
   fallback chain.
 
@@ -30,7 +35,7 @@ mounted by the `rustok_admin_mobile` host shell.
 
 - `ModulesMobileScreen` — registry list UI.
 - `ModulesRepository` — data boundary for tests and host injection.
-- `GraphQlModulesRepository` — `moduleRegistry` GraphQL implementation.
+- `GraphQlModulesRepository` — `moduleRegistry`, `toggleModule`, and lifecycle recovery query/mutation implementation.
 - `modulesControllerProvider` — Riverpod async controller.
 
 ## Documentation

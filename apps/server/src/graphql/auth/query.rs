@@ -2,12 +2,12 @@ use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::app::AppContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-use crate::context::{infer_user_role_from_permissions, AuthContext, TenantContext};
+use crate::context::{AuthContext, TenantContext, infer_user_role_from_permissions};
 use crate::graphql::errors::GraphQLError;
 use crate::models::users;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 
-use super::types::{AuthUser, SessionItem, SessionsPayload};
+use super::types::{AuthUser, SessionItem, SessionsPayload, auth_permission_strings};
 
 const DEFAULT_SESSION_LIMIT: u64 = 50;
 
@@ -42,6 +42,7 @@ impl AuthQuery {
             name: user.name,
             role: infer_user_role_from_permissions(&auth.permissions).to_string(),
             status: user.status.to_string(),
+            permissions: auth_permission_strings(&auth.permissions),
         })
     }
 
