@@ -187,7 +187,7 @@ state и перевод operation в `committed` фиксируются одни
 Module-owned migrations могут объявлять ordering metadata рядом со своим exporter-ом; server migrator делает
 topological sort и считает missing dependency/cycle ошибкой runtime/test contract.
 
-### Итоговый contract после remediation control-plane/module lifecycle
+### Текущий contract control-plane/module lifecycle
 
 - Composition update выполняется только через server-owned orchestration: validation, `platform_state` CAS/revision update и build enqueue находятся в одном transaction boundary; `manifest_ref` имеет форму `platform_state:<revision>`, а `manifest_hash` считается через общий SHA-256 canonical snapshot helper.
 - Tenant module lifecycle имеет один production entrypoint — `ModuleLifecycleService::toggle_module_with_actor()`. Прямой model-level toggle и admin-side SQL/bypass не являются contract surface.

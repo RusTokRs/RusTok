@@ -6,8 +6,8 @@ Accepted.
 
 ## Контекст
 
-Текущий remediation track для control-plane/module lifecycle требует убрать частичный rollback
-(когда `enabled` флаг уже меняли, а hook падал) и зафиксировать единый recovery contract.
+Lifecycle control-plane/module lifecycle должен исключать частичный rollback
+(когда `enabled` флаг уже меняли, а hook падал) и иметь единый recovery contract.
 Без явного phase-model admin/runtime surfaces по-разному интерпретируют ошибки lifecycle hooks,
 а журнал `module_operations` нельзя надёжно использовать для retry/compensation.
 

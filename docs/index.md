@@ -116,7 +116,6 @@
 - [Fluid Backend Architecture для RusTok](./research/fluid-backend-architecture.md)
 - [Архитектура Flutter-приложения для RusTok](./research/flutter.md)
 - [Единый план реализации Fluid Backend Architecture](./research/fluid-backend-architecture-unified-plan.md)
-- [Historical input: deep research report (control plane/module lifecycle)](./research/deep-research-report%20(4).md)
 - [План FFA-рефакторинга UI и подготовки к Dioxus](./research/dioxus-ffa-ui-migration-plan.md)
 - [Карта связности пилотов FFA/Dioxus (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
 - [Checklist parity для FFA UI migration](./verification/ffa-ui-parity-checklist.md)
