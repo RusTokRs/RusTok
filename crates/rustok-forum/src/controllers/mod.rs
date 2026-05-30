@@ -5,6 +5,7 @@ pub mod categories;
 pub mod replies;
 pub mod topics;
 pub mod users;
+pub mod widgets;
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -71,6 +72,11 @@ pub fn routes() -> Routes {
         .add(
             "/replies/{reply_id}/vote",
             axum::routing::delete(replies::clear_reply_vote),
+        )
+        .add("/widgets/catalog", get(widgets::get_widget_catalog))
+        .add(
+            "/widgets/validate",
+            axum::routing::post(widgets::validate_widget_props),
         )
         .add("/users/{user_id}/stats", get(users::get_user_stats))
 }

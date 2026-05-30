@@ -22,8 +22,8 @@ pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use services::{
-    CategoryService, ModerationService, ReplyService, SubscriptionService, TopicService,
-    UserStatsService, VoteService,
+    CategoryService, ForumWidgetContractService, ModerationService, ReplyService,
+    SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 

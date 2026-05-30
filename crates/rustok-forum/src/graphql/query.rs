@@ -17,8 +17,9 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryService, ForumError, ForumResult, ReplyResponse, ReplyService,
-    TopicListItem, TopicResponse, TopicService, UserStatsService,
+    CategoryListItem, CategoryService, ForumError, ForumResult, ForumWidgetCatalogResponse,
+    ForumWidgetContractService, ReplyResponse, ReplyService, TopicListItem, TopicResponse,
+    TopicService, UserStatsService,
 };
 
 use super::types::*;
@@ -282,6 +283,17 @@ impl ForumQuery {
             solution_count: stats.solution_count,
             updated_at: stats.updated_at,
         })
+    }
+
+    async fn forum_widget_catalog(&self, ctx: &Context<'_>) -> Result<GqlForumWidgetCatalog> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+
+        Ok(map_widget_catalog(ForumWidgetContractService::catalog()))
     }
 
     async fn forum_storefront_categories(
@@ -718,6 +730,43 @@ fn map_reply_response(
     }
 }
 
+fn map_widget_catalog(catalog: ForumWidgetCatalogResponse) -> GqlForumWidgetCatalog {
+    GqlForumWidgetCatalog {
+        catalog_version: catalog.catalog_version,
+        builder_contract_version: catalog.builder_contract_version,
+        consumer_min_version: catalog.consumer_min_version,
+        compatibility_matrix: catalog
+            .compatibility_matrix
+            .into_iter()
+            .map(|entry| GqlForumWidgetCompatibilityEntry {
+                provider_contract_version: entry.provider_contract_version,
+                consumer_min_version: entry.consumer_min_version,
+            })
+            .collect(),
+        items: catalog
+            .items
+            .into_iter()
+            .map(|item| GqlForumWidgetCatalogItem {
+                widget_type: item.widget_type,
+                data_contract_version: item.data_contract_version,
+                props_schema: item.props_schema,
+                capability_requirements: GqlForumWidgetCapabilityRequirements {
+                    preview: item.capability_requirements.preview,
+                    publish: item.capability_requirements.publish,
+                    moderation_view: item.capability_requirements.moderation_view,
+                },
+                fallback_mode: item.fallback_mode,
+                error_mapping: GqlForumWidgetErrorMapping {
+                    validation: item.error_mapping.validation,
+                    sanitize: item.error_mapping.sanitize,
+                    rbac: item.error_mapping.rbac,
+                    runtime: item.error_mapping.runtime,
+                },
+            })
+            .collect(),
+    }
+}
+
 async fn load_author_profiles_map<I>(
     ctx: &Context<'_>,
     db: &DatabaseConnection,
@@ -878,11 +927,11 @@ mod tests {
     };
     use crate::{
         migrations, CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-        ReplyService, TopicService,
+        ModerationService, ReplyService, TopicService,
     };
     use async_graphql::{EmptyMutation, EmptySubscription, Schema};
     use rustok_api::{RequestContext, TenantContext};
-    use rustok_core::{MemoryTransport, SecurityContext};
+    use rustok_core::{MemoryTransport, SecurityContext, UserRole};
     use rustok_outbox::TransactionalEventBus;
     use rustok_taxonomy::entities::{
         taxonomy_term, taxonomy_term_alias, taxonomy_term_translation,
@@ -1257,5 +1306,126 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn storefront_replies_hide_pending_entries() {
+        let db = setup_forum_query_db().await;
+        ensure_forum_query_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let tenant_id = Uuid::new_v4();
+        enable_forum_module(&db, tenant_id).await;
+
+        let system = SecurityContext::system();
+        let moderator = SecurityContext::new(UserRole::Manager, Some(Uuid::new_v4()));
+        let category = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                system.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Moderated".to_string(),
+                    slug: "moderated".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: true,
+                },
+            )
+            .await
+            .expect("category should be created");
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .create(
+                tenant_id,
+                system.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Moderated thread".to_string(),
+                    slug: Some("moderated-thread".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    metadata: serde_json::json!({}),
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("topic should be created");
+
+        let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+        let approved_reply = reply_service
+            .create(
+                tenant_id,
+                system.clone(),
+                topic.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: "Approved candidate".to_string(),
+                    content_format: "markdown".to_string(),
+                    content_json: None,
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("first reply should be created");
+        let _pending_reply = reply_service
+            .create(
+                tenant_id,
+                system,
+                topic.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: "Pending candidate".to_string(),
+                    content_format: "markdown".to_string(),
+                    content_json: None,
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("second reply should be created");
+
+        ModerationService::new(db.clone(), event_bus.clone())
+            .approve_reply(tenant_id, approved_reply.id, topic.id, moderator)
+            .await
+            .expect("moderator should approve reply");
+
+        let schema = Schema::build(ForumQuery, EmptyMutation, EmptySubscription)
+            .data(db.clone())
+            .data(event_bus)
+            .data(tenant_context(tenant_id))
+            .data(request_context(tenant_id, None))
+            .finish();
+
+        let response = schema
+            .execute(format!(
+                "{{ forumStorefrontReplies(topicId: \"{}\") {{ pageInfo {{ totalCount }} items {{ id status }} }} }}",
+                topic.id
+            ))
+            .await;
+        assert!(
+            response.errors.is_empty(),
+            "storefront replies query should not error: {:?}",
+            response.errors
+        );
+
+        let data = response
+            .data
+            .into_json()
+            .expect("graphql data should be json");
+        assert_eq!(data["forumStorefrontReplies"]["pageInfo"]["totalCount"], 1);
+        let items = data["forumStorefrontReplies"]["items"]
+            .as_array()
+            .expect("items should be array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], approved_reply.id.to_string());
+        assert_eq!(items[0]["status"], "approved");
     }
 }

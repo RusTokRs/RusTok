@@ -829,10 +829,10 @@ Notes: <known deviations or waivers>
 
 ### 13.5 Очередь внедрения forum widgets после `pages`
 
-1. **FW-1 (contract freeze):** утвердить widget catalog v1 (`topic_list/topic_detail/reply_stream`) и schema validation.
-2. **FW-2 (fallback hardening):** подтвердить `builder_off/publish_off` без деградации forum read/moderation surfaces.
-3. **FW-3 (pilot):** включить 1–2 low-traffic tenant с evidence packet (metadata/fallback/observability/rollback).
-4. **FW-4 (promotion):** расширять rollout только после owner sign-off и SLO stability 24–72h.
+- [x] **FW-1 (contract freeze):** widget catalog v1 (`topic_list/topic_detail/reply_stream`), `data_contract_version`/compatibility matrix и typed error mapping зафиксированы как machine-readable contract (manifest + REST/GraphQL catalog surface), без rollout activation до `P5`.
+- [ ] **FW-2 (fallback hardening):** подтвердить `builder_off/publish_off` без деградации forum read/moderation surfaces.
+- [ ] **FW-3 (pilot):** включить 1–2 low-traffic tenant с evidence packet (metadata/fallback/observability/rollback).
+- [ ] **FW-4 (promotion):** расширять rollout только после owner sign-off и SLO stability 24–72h.
 
 ## 14. Актуализация порядка исполнения: “без хвостов” (single critical path)
 
@@ -840,7 +840,7 @@ Notes: <known deviations or waivers>
 
 ### 14.1 Правило приоритезации
 
-- До закрытия `Section 12 / Sprint 1–3` новые scope-расширения (включая FW-1..FW-4 для forum widgets) не стартуют в delivery, допускаются только как design-ready backlog.
+- До закрытия `Section 12 / Sprint 1–3` новые scope-расширения (включая FW-1..FW-4 для forum widgets) не стартуют в delivery, допускаются только к��к design-ready backlog.
 - Любая задача, которая не влияет на текущий wave-gate (`Wave 0 -> Wave 1`), получает статус `deferred`.
 - Считаем “хвостом” любую незакрытую задачу из текущего checkpoint, если по ней нет артефакта в evidence packet.
 
