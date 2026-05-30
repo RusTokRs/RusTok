@@ -1,4 +1,4 @@
-﻿# План реализации `rustok-region`
+# План реализации `rustok-region`
 
 Статус: region boundary выделен; модуль держит country/currency/tax baseline, storefront lookup contract и собственные module-owned admin/storefront UI.
 
@@ -6,12 +6,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: FFA slice #1 перенёс нормализацию admin-формы региона в `admin/src/core.rs` через `RegionFormInput` / `build_region_draft` и переиспользовал shared UI text helper из `rustok-api`.
-- Next step: Продолжить FFA-first sequencing следующим минимальным выделением admin/storefront state helper без нарушения native/GraphQL parity.
+- Current phase: ffa_storefront_transport_slice
+- Last checkpoint: FFA slice #3 разделила storefront transport facade на `native_server_adapter` и `graphql_adapter`, а selection resolution перенесла в `storefront/src/core.rs`, чтобы adapters не владели state policy.
+- Next step: Продолжить FFA-first sequencing следующим минимальным выделением typed transport error envelope/fallback evidence без нарушения native/GraphQL parity.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-29T00:00:00Z
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок; не возвращать selection/state policy в transport adapters и не менять порядок fallback без parity evidence.
+- Last updated at (UTC): 2026-05-30T01:00:00Z
 
 
 ## FFA/FBA status
@@ -21,8 +21,10 @@
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
-  - FFA slice #1 вынесла нормализацию admin-формы региона в module-local core и переиспользовала `rustok-api::normalize_ui_text` без изменений транспорта.
-- Last verified at (UTC): 2026-05-29T00:00:00Z
+  - FFA slice #1 вынесла нормализацию admin-формы региона в module-local core и переиспользовала `rustok-api::normalize_ui_text` без изменений транспорта;
+  - FFA slice #2 вынесла storefront route segment fallback, tax-provider fallback, country/tax summaries, policy-row formatting и selected-region metric view-model в `storefront/src/core.rs` с unit-тестами без Leptos runtime;
+  - FFA slice #3 ввела явный `transport/` facade с `native_server_adapter` и `graphql_adapter`, сохранила policy `NativeThenGraphql`, а resolution выбранного региона перенесла в core с unit-тестами.
+- Last verified at (UTC): 2026-05-30T01:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
@@ -39,7 +41,7 @@
 - tenant locale policy остаётся platform-level concern вне `rustok-region`;
 - storefront region transport всё ещё публикуется через `rustok-commerce`;
 - admin route для region list/detail/create/update теперь живёт в `rustok-region/admin` и использует native Leptos server functions поверх `RegionService`.
-- storefront route для region discovery теперь живёт в `rustok-region/storefront` и использует native Leptos server functions с GraphQL fallback поверх существующего `storefrontRegions` transport.
+- storefront route для region discovery теперь живёт в `rustok-region/storefront` и использует native Leptos server functions с GraphQL fallback поверх существующего `storefrontRegions` transport; route/tax/country presentation helpers и selection resolution живут в framework-agnostic storefront core, transport разделён на facade + native/GraphQL adapters, а Leptos component остаётся bind/render слоем.
 
 ## Этапы
 
@@ -89,3 +91,5 @@
 ## FFA rollout tracker (rustok-region)
 
 - [x] Slice 1: нормализация admin-формы региона перенесена в core (`RegionFormInput`, `build_region_draft`) и переиспользует shared UI input helper (`normalize_ui_text`) из `rustok-api` без изменений native/GraphQL транспорта.
+- [x] Slice 2: storefront route/tax/country summary helpers, policy-row formatting и selected-region metric view-model перенесены в `storefront/src/core.rs`; native/GraphQL transport не изменён, проверка: `cargo test -p rustok-region-storefront --lib`.
+- [x] Slice 3: storefront transport facade разделён на `transport/native_server_adapter.rs` и `transport/graphql_adapter.rs`, fallback policy явно закреплена как `NativeThenGraphql`, а selected-region resolution перенесён в core; проверка: `cargo test -p rustok-region-storefront --lib`.
