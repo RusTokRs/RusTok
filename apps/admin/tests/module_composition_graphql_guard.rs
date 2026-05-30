@@ -1246,6 +1246,114 @@ fn extract_function_block_returns_none_when_body_brace_missing() {
 }
 
 #[test]
+fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = crate_root
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let admin_api_path = crate_root.join("src/features/modules/api.rs");
+    let admin_api = fs::read_to_string(&admin_api_path).expect("read admin api.rs");
+    let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
+    let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
+    let shared_api_path = crate_root.join("src/shared/api/mod.rs");
+    let shared_api = fs::read_to_string(&shared_api_path).expect("read shared api.rs");
+    let server_mutations_path = repo_root.join("apps/server/src/graphql/mutations.rs");
+    let server_mutations =
+        fs::read_to_string(&server_mutations_path).expect("read server graphql mutations.rs");
+    let lifecycle_tests_path = repo_root.join("apps/server/tests/module_lifecycle.rs");
+    let lifecycle_tests =
+        fs::read_to_string(&lifecycle_tests_path).expect("read server module lifecycle tests");
+
+    for adapter_test in [
+        "lifecycle_runtime_taxonomy_matrix_is_forwarded_without_remapping",
+        "lifecycle_journal_metadata_fragments_are_forwarded_without_parsing",
+        "lifecycle_operation_status_matrix_is_forwarded_without_local_parsing",
+        "lifecycle_retryable_issue_fragments_are_forwarded_without_local_parsing",
+        "lifecycle_journal_actor_and_correlation_matrix_is_forwarded_without_local_remap",
+        "lifecycle_operation_issue_matrix_is_forwarded_without_local_interpretation",
+    ] {
+        assert!(
+            shared_api.contains(adapter_test),
+            "Leptos SSR adapter lifecycle parity test `{adapter_test}` must remain present"
+        );
+    }
+
+    for mapper_test in [
+        "toggle_error_mapping_sets_expected_error_codes",
+        "toggle_user_input_taxonomy_maps_only_to_bad_user_input_code",
+        "toggle_hook_failed_taxonomy_maps_only_to_module_hook_failed_code",
+        "toggle_internal_error_taxonomy_maps_only_to_internal_error_code",
+        "toggle_error_mapping_matrix_preserves_message_and_code_contract",
+        "toggle_hook_failed_pre_hook_sets_non_retryable_issue_extensions",
+        "toggle_hook_failed_post_hook_sets_retryable_issue_extensions",
+    ] {
+        assert!(
+            server_mutations.contains(mapper_test),
+            "server GraphQL lifecycle mapper test `{mapper_test}` must remain present"
+        );
+    }
+
+    for lifecycle_test in [
+        "successful_toggle_writes_committed_module_operation",
+        "successful_toggle_with_actor_persists_requested_by",
+        "toggle_without_actor_records_null_requested_by",
+        "hook_failure_with_actor_records_failed_operation_with_actor",
+        "hook_failure_without_actor_records_failed_operation_with_null_actor",
+        "post_enable_failure_keeps_committed_state_and_marks_failed_operation",
+        "post_disable_failure_keeps_committed_state_and_marks_failed_operation",
+        "dependency_validation_failure_does_not_create_journal_row",
+        "dependent_validation_failure_does_not_create_journal_row",
+        "unknown_module_failure_does_not_create_journal_row",
+        "core_module_disable_failure_does_not_create_journal_row",
+        "noop_disable_for_already_disabled_module_does_not_create_journal_row",
+        "noop_enable_for_already_enabled_module_does_not_create_extra_journal_row",
+    ] {
+        assert!(
+            lifecycle_tests.contains(lifecycle_test),
+            "server lifecycle journal metadata/parity test `{lifecycle_test}` must remain present"
+        );
+    }
+
+    let toggle_helper = extract_function_block(&admin_api, "pub async fn toggle_module(")
+        .expect("toggle_module helper should exist");
+    assert!(
+        toggle_helper.contains("TOGGLE_MODULE_MUTATION")
+            && toggle_helper.contains("Ok(response.toggle_module)"),
+        "admin toggle helper must continue to pass through canonical GraphQL lifecycle payload"
+    );
+    for forbidden in [
+        "UNKNOWN_MODULE",
+        "CORE_MODULE",
+        "MISSING_DEPENDENCIES",
+        "HAS_DEPENDENTS",
+        "MODULE_HOOK_FAILED",
+        "extensions.code",
+        "module_operations",
+        "correlation_id",
+        "requested_by",
+        ".map_err(",
+    ] {
+        assert!(
+            !toggle_helper.contains(forbidden),
+            "admin toggle helper must not parse server-owned lifecycle/journal fragment `{forbidden}`"
+        );
+    }
+
+    for recovery_ui_fragment in [
+        "failed_module_operation_recovery_plans(",
+        "retry_failed_module_operation_post_hook(",
+        "compensate_failed_module_operation(",
+        "Lifecycle recovery",
+    ] {
+        assert!(
+            modules_list.contains(recovery_ui_fragment),
+            "admin recovery UI must keep canonical lifecycle recovery fragment `{recovery_ui_fragment}`"
+        );
+    }
+}
+
+#[test]
 fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let repo_root = crate_root
