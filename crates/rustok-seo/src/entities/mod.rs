@@ -329,3 +329,32 @@ pub mod seo_bulk_job_artifact {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod seo_event_delivery {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "seo_event_deliveries")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub event_type: String,
+        pub idempotency_key: String,
+        pub source_kind: Option<String>,
+        pub source_id: Option<Uuid>,
+        pub status: String,
+        pub outbox_event_id: Option<Uuid>,
+        pub last_error: Option<String>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+        pub dispatched_at: Option<DateTimeWithTimeZone>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

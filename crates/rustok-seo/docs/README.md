@@ -111,7 +111,7 @@ Readiness score считается производным от issue set. Summar
 Текущий roadmap зафиксирован в `docs/implementation-plan.md` и выполняется батчами `D1..D9`.
 
 - `D1` закрыт: contract freeze, compatibility policy (`v1 additive only`) и rollout flags.
-- `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam.
+- `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam. Для D2 добавлены baseline events для meta/revision/redirect/sitemap/bulk и tracking skeleton `seo_event_deliveries`; transactional delivery writes остаются следующим шагом.
 - `D4-D5`: GraphQL/REST parity completion, migrations/backfill/replay policy.
 - `D6-D7`: Leptos admin + Next admin control-plane parity, storefront + Next runtime SEO parity.
 - `D8-D9`: verification matrix, runbooks, Definition of Ready/Done для следующего execution wave.

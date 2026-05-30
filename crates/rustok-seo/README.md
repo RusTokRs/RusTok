@@ -51,7 +51,7 @@
 
 Phase D is planned as a productionization and integration-parity wave:
 
-- typed SEO domain events + outbox delivery foundations
+- typed SEO domain events + outbox delivery foundations (baseline event variants and `seo_event_deliveries` skeleton are in place; transactional delivery writes are next)
 - SEO-to-index consumer seam with bounded retry/dead-letter behavior
 - GraphQL/REST control-plane parity completion (additive `v1` only)
 - expanded admin and storefront/Next host integrations

@@ -4,30 +4,27 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d1_contract_freeze`
-- Last checkpoint: Зафиксирован большой прогон Phase D (D1..D9) с contract freeze для GraphQL/REST/DTO, rollout-флагами и dependency-гейтами для `rustok-outbox`, `rustok-index`, admin/storefront/next-host интеграций.
-- Next step: Стартовать Batch D2 (typed SEO events + outbox foundation) и подготовить migration skeleton для event/idempotency tracking.
+- Current phase: `phase_d2_events_outbox_foundation`
+- Last checkpoint: Начат Batch D2: добавлены typed terminal bulk events (`completed`/`partial`/`failed`), scope-sensitive deterministic idempotency keys и migration/entity skeleton `seo_event_deliveries` для будущего delivery/index tracking.
+- Next step: Довести D2 до transactional outbox delivery tracking: записывать `seo_event_deliveries` рядом с publish path, связать записи с outbox envelope id и закрепить duplicate-emission guard integration tests для bulk jobs.
 - Open blockers:
-  - В этой VM отсутствует `cargo` в `PATH`, поэтому локальные verification gates не запускались вручную.
   - Для D2/D3 нужен синхронный contract sign-off между владельцами `rustok-seo`, `rustok-outbox` и `rustok-index`.
 - Hand-off notes for next agent:
   - Не обходить boundary `MediaImageDescriptor` и existing `SeoPageContext` contract.
   - REST/GraphQL расширять только additive-изменениями в стабильном `v1`.
   - В bulk loops не допускать duplicate event emission: один deterministic key на фактическое state transition.
-- Last updated at (UTC): 2026-05-28T23:58:00Z
+- Last updated at (UTC): 2026-05-30T00:00:00Z
 
 ## FFA/FBA status block
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - Last verification evidence:
-  - `cargo xtask module validate seo` *(blocked in this VM: `cargo` binary unavailable in PATH)*
-  - `cargo check -p rustok-media --tests --config profile.dev.debug=0` *(blocked in this VM: `cargo` binary unavailable in PATH)*
-  - `cargo check -p rustok-seo --tests --config profile.dev.debug=0` *(blocked in this VM: `cargo` binary unavailable in PATH)*
-  - `cargo check -p rustok-seo-admin --features ssr --config profile.dev.debug=0` *(blocked in this VM: `cargo` binary unavailable in PATH)*
-  - `cargo check -p rustok-seo-admin-support --tests --config profile.dev.debug=0` *(blocked in this VM: `cargo` binary unavailable in PATH)*
-  - `cargo check -p rustok-storefront --config profile.dev.debug=0` *(blocked in this VM: `cargo` binary unavailable in PATH)*
-  - `cargo check -p rustok-server --lib --config profile.dev.debug=0` *(blocked in this VM: `cargo` binary unavailable in PATH)*
+  - `cargo xtask module validate seo` *(pass, 2026-05-30)*
+  - `cargo check -p rustok-seo --tests --config profile.dev.debug=0` *(pass, 2026-05-30)*
+  - `cargo test -p rustok-seo services::events::tests --config profile.dev.debug=0` *(pass, 2026-05-30)*
+  - `cargo test -p rustok-events --test canonical_contracts --config profile.dev.debug=0` *(pass, 2026-05-30)*
+  - `cargo fmt --all -- --check` *(warning: repository-wide pre-existing rustfmt drift outside this SEO D2 patch remains)*
 - Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); transport boundary развивается через GraphQL + REST `/api/seo/page-context`, `/api/seo/cross-link-suggestions` и planned parity expansion в рамках Phase D.
 
 ## Область работ
@@ -54,7 +51,7 @@
 - `SeoDocument.structured_data_blocks` больше не raw JSON passthrough: JSON-LD нормализуется в typed schema blocks (`schema_kind`, `schema_type`, legacy `kind`, `source`, payload);
 - boundary contract C3 закреплён через `rustok-media::MediaImageDescriptor` -> `rustok-seo-targets::SeoTargetImageRecord`;
 - **open productionization gaps (Phase D):**
-  - typed SEO event model + outbox delivery/idempotency tracking пока не formalized;
+  - typed SEO event model baseline добавлен; delivery/idempotency tracking skeleton есть, но publish path ещё не пишет `seo_event_deliveries`;
   - direct SEO -> `rustok-index` consumer seam и retry/DLQ policy не доведены;
   - REST control-plane parity с GraphQL неполная (diagnostics summary/job detail/bulk status);
   - `apps/next-admin` и `apps/next-frontend` покрывают только baseline SEO integration, без полного runtime-driven control-plane/data-plane parity.
@@ -168,9 +165,9 @@
   - [x] Зафиксировать rollout-флаги для event/outbox/index/API/Next parity.
 
 - [ ] **Batch D2 — Backend domain: SEO events + outbox foundation**
-  - [ ] Ввести typed events для: meta upsert/publish/rollback, redirect upsert/disable, sitemap generated/submitted, bulk completed/partial/failed.
-  - [ ] Добавить deterministic idempotency key (`tenant_id + target_kind + target_id + revision_or_job_id`).
-  - [ ] Интегрировать emission path с `rustok-outbox` без duplicate emission в bulk loops.
+  - [x] Ввести typed events для: meta upsert/publish/rollback, redirect upsert/disable, sitemap generated/submitted, bulk completed/partial/failed.
+  - [x] Добавить deterministic idempotency key (`tenant_id + target_kind + target_id + revision_or_job_id`) и scope-sensitive keys для terminal bulk states.
+  - [ ] Интегрировать emission path с `rustok-outbox` без duplicate emission в bulk loops; schema/entity skeleton `seo_event_deliveries` подготовлен, write path ещё открыт.
 
 - [ ] **Batch D3 — Indexing integration seam (SEO -> rustok-index)**
   - [ ] Добавить consumer/adapter contract для selective invalidate/rebuild index documents.
@@ -213,9 +210,9 @@
 ## Осталось сделать (оценка на 2026-05-28)
 
 - **Phase C**: технически закрыт, guardrail по Next route coverage перенесён в D7 rollout criteria.
-- **Phase D**: D1 закрыт; D2–D9 открыты.
-- **Незавершённые batch-пункты в Phase D**: **8**.
-- **Quality backlog**: verification evidence по новым D-потокам ожидает CI/runner из-за отсутствия `cargo` локально.
+- **Phase D**: D1 закрыт; D2 частично выполнен (typed events/key baseline + tracking skeleton), D3–D9 открыты.
+- **Незавершённые batch-пункты в Phase D**: **8** (D2 остаётся open до transactional delivery tracking и duplicate-emission integration evidence).
+- **Quality backlog**: полная D2 integration evidence ожидает transactional delivery write path и duplicate-emission integration tests.
 - **Итого open batch-пунктов в документе**: **8**.
 
 Приоритет исполнения: D2 -> D3 -> D4 -> D5 как backend/control-plane foundation, затем D6/D7 host parity, затем D8/D9 verification + docs closeout.

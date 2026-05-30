@@ -43,7 +43,7 @@ pub(super) struct SitemapSubmissionTelemetrySnapshot {
 pub(super) struct SitemapSubmissionSummary {
     pub(super) success_count: usize,
     pub(super) failure_count: usize,
-    endpoint_results: Vec<SitemapSubmissionEndpointStatus>,
+    pub(super) endpoint_results: Vec<SitemapSubmissionEndpointStatus>,
 }
 
 impl SitemapSubmissionSummary {
