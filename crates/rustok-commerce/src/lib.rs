@@ -28,10 +28,9 @@ pub use services::{
     CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService,
     CreateReturnDecisionInput, CustomerService, FulfillmentService, InventoryService, OrderService,
     PaymentService, PostOrderOrchestrationError, PostOrderOrchestrationService, PricingService,
-    RegionService,
-    ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
-    ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
-    StoreContextService,
+    RegionService, ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
+    StoreContextError, StoreContextResult, StoreContextService,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 pub use state_machine::{

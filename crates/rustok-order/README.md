@@ -8,7 +8,7 @@
 
 - Own the order write-side schema, service, and status transitions.
 - Persist order snapshots and line items independently from catalog ownership.
-- Persist item-level return lines in `order_return_items` with order-owned quantity and line-item validation, plus resolution links (`resolution_type`, `refund_id`, `order_change_id`) that let refund/exchange orchestration attach without moving payment logic into order storage.
+- Persist item-level return lines in `order_return_items` with order-owned quantity and line-item validation, plus resolution links (`resolution_type`, `refund_id`, `order_change_id`) that let refund/exchange/claim orchestration attach without moving payment logic into order storage.
 - Persist `order_changes` draft/edit skeletons with preview/apply/cancel lifecycle metadata before transport orchestration is added.
 - Persist typed order adjustments as language-neutral promotion/discount snapshots.
 - Persist discounted order pricing as `base/compare-at` line-item prices plus
@@ -46,7 +46,7 @@
 - Receives shipping-scoped promotions through the same typed adjustment
   contract, so delivery discounts do not require a second implicit order total
   path.
-- Exposes returns as order-owned records with optional item-level lines and resolution references while refund/exchange execution remains outside the order write model.
+- Exposes returns as order-owned records with optional item-level lines and resolution references while refund/exchange/claim execution remains outside the order write model.
 - Exposes order-change preview/apply/cancel service primitives as an order-owned skeleton; cross-domain transport and payment/fulfillment side effects remain outside this module.
 - `apps/admin` consumes `rustok-order-admin` through manifest-driven composition,
   while GraphQL/REST order transport remains in `rustok-commerce`.

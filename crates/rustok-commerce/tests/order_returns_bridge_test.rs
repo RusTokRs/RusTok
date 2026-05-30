@@ -254,6 +254,7 @@ async fn commerce_post_order_decision_creates_return_bound_refund() {
                         metadata: serde_json::json!({"operator":"returns-desk"}),
                     }),
                     exchange: None,
+                    claim: None,
                     metadata: serde_json::json!({"flow":"refund"}),
                 },
             },
@@ -263,8 +264,14 @@ async fn commerce_post_order_decision_creates_return_bound_refund() {
 
     assert_eq!(decision.action, "refund");
     assert_eq!(decision.order_return.order_id, order.id);
+    assert_eq!(decision.order_return.status, "completed");
+    assert_eq!(
+        decision.order_return.resolution_type.as_deref(),
+        Some("refund")
+    );
     let refund = decision.refund.expect("refund should be created");
     assert_eq!(refund.payment_collection_id, collection.id);
+    assert_eq!(decision.order_return.refund_id, Some(refund.id));
     assert_eq!(refund.amount, Decimal::new(4200, 2));
     assert_eq!(
         refund.metadata["order_return_id"],
@@ -334,6 +341,7 @@ async fn commerce_post_order_decision_creates_return_bound_exchange_change() {
                         preview: serde_json::json!({"remove":["old-line"],"add":["new-line"]}),
                         metadata: serde_json::json!({"operator":"returns-desk"}),
                     }),
+                    claim: None,
                     metadata: serde_json::json!({"flow":"exchange"}),
                 },
             },
@@ -342,12 +350,110 @@ async fn commerce_post_order_decision_creates_return_bound_exchange_change() {
         .unwrap();
 
     assert_eq!(decision.action, "exchange");
+    assert_eq!(decision.order_return.status, "completed");
+    assert_eq!(
+        decision.order_return.resolution_type.as_deref(),
+        Some("exchange")
+    );
     assert!(decision.refund.is_none());
     let change = decision
         .order_change
         .expect("exchange change should be created");
     assert_eq!(change.order_id, order.id);
     assert_eq!(change.change_type, "exchange");
+    assert_eq!(decision.order_return.order_change_id, Some(change.id));
+    assert_eq!(
+        change.metadata["order_return_id"],
+        serde_json::json!(decision.order_return.id.to_string())
+    );
+    assert_eq!(
+        change.preview["order_return_id"],
+        serde_json::json!(decision.order_return.id.to_string())
+    );
+}
+
+#[tokio::test]
+async fn commerce_post_order_decision_creates_return_bound_claim_change() {
+    use rustok_commerce::{
+        CreateReturnDecisionInput, PostOrderOrchestrationService, ReturnClaimDecisionInput,
+        ReturnDecisionInput,
+    };
+
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    support::ensure_commerce_schema(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+
+    let order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: None,
+                    variant_id: None,
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("RET-CLAIM-1".to_string()),
+                    title: "Claim Return Candidate".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::new(2700, 2),
+                    metadata: serde_json::json!({"slot":5}),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({"source":"commerce-return-claim-decision-test"}),
+            },
+        )
+        .await
+        .unwrap();
+
+    let decision = PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus())
+        .create_return_decision(
+            tenant_id,
+            actor_id,
+            order.id,
+            CreateReturnDecisionInput {
+                return_request: CreateOrderReturnInput {
+                    reason: Some("damaged".to_string()),
+                    note: Some("claim for damaged inbound item".to_string()),
+                    items: Vec::new(),
+                    metadata: serde_json::json!({"source":"commerce-return-claim-decision-test"}),
+                },
+                decision: ReturnDecisionInput {
+                    action: "claim".to_string(),
+                    refund: None,
+                    exchange: None,
+                    claim: Some(ReturnClaimDecisionInput {
+                        description: Some("Operator claim review".to_string()),
+                        preview: serde_json::json!({"claim_type":"damaged_item","resolution":"review"}),
+                        metadata: serde_json::json!({"operator":"claims-desk"}),
+                    }),
+                    metadata: serde_json::json!({"flow":"claim"}),
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(decision.action, "claim");
+    assert_eq!(decision.order_return.status, "completed");
+    assert_eq!(
+        decision.order_return.resolution_type.as_deref(),
+        Some("claim")
+    );
+    assert!(decision.refund.is_none());
+    let change = decision
+        .order_change
+        .expect("claim change should be created");
+    assert_eq!(change.order_id, order.id);
+    assert_eq!(change.change_type, "claim");
+    assert_eq!(decision.order_return.order_change_id, Some(change.id));
     assert_eq!(
         change.metadata["order_return_id"],
         serde_json::json!(decision.order_return.id.to_string())
