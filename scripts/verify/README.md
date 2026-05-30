@@ -501,6 +501,14 @@ python3 scripts/verify/report-control-plane-remediation-progress.py --fail-on-pe
 
 Код выхода `2` означает, что в плане остались pending-пункты.
 
+Чтобы использовать отчёт как финальный gate полного закрытия (падать при наличии любых `[ ]` или `[~]`):
+
+```bash
+python3 scripts/verify/report-control-plane-remediation-progress.py --fail-on-open
+```
+
+Код выхода `3` означает, что план ещё не завершён: остались pending или in-progress пункты. В обычном выводе и JSON-представлении это также видно по `open` и `is_complete`.
+
 
 ## Control-plane remediation minimal runner
 

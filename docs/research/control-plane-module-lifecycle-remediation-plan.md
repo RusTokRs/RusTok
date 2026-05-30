@@ -916,3 +916,9 @@ rollback-стратегии и Definition of Done по итерациям.
 - Leptos admin recovery helpers подключены к host-owned UI: на странице modules появился блок `Lifecycle recovery`, который читает `failedModuleOperationRecoveryPlans`, показывает retryable post-hook failures и запускает `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` без native/raw-SQL bypass.
 - Guard `module_recovery_helpers_use_canonical_graphql_surface` усилен: теперь он проверяет не только API helpers, но и фактическое потребление recovery helpers в `modules_list.rs`, а также запрещает raw-SQL recovery bypass в UI layer.
 - Retryable post-hook issue хвост в checklist закрыт как read/write contract: server GraphQL surface + Leptos admin consumption + docs/guard покрывают recovery path. Открытыми остаются широкие parity/verification пункты: full GraphQL/Leptos SSR runtime-taxonomy matrix и полный minimal verification bundle без pre-existing workspace drift.
+
+### Актуализация 2026-05-30 (итерация 76)
+
+- Progress-report получил явный финальный completion gate: теперь он считает `open = [~] + [ ]`, печатает `is_complete` и поддерживает `--fail-on-open` (`exit 3`), чтобы точно отвечать “план завершён?” без ручного подсчёта хвостов.
+- Smoke-тест progress-report расширен проверками `open`/`is_complete`, `--fail-on-open` и complete-fixture сценария; документация `scripts/verify/README.md` описывает новый gate.
+- Текущий snapshot после итерации: `completed=100`, `in_progress=12`, `pending=2`, `open=14`, `is_complete=false`; значит план ещё не завершён. Закрытием плана будет `open=0` и успешный `--fail-on-open`.

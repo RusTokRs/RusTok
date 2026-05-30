@@ -32,6 +32,16 @@ if ! grep -q "pending: 1" <<<"$OUTPUT"; then
   echo "$OUTPUT" >&2
   exit 1
 fi
+if ! grep -q "open: 3" <<<"$OUTPUT"; then
+  echo "expected open count missing" >&2
+  echo "$OUTPUT" >&2
+  exit 1
+fi
+if ! grep -q "is_complete: false" <<<"$OUTPUT"; then
+  echo "expected incomplete marker missing" >&2
+  echo "$OUTPUT" >&2
+  exit 1
+fi
 
 
 JSON_OUTPUT="$(RUSTOK_REMEDIATION_PLAN_PATH="$PLAN_FIXTURE" python3 "$REPORT_SCRIPT" --json)"
@@ -42,6 +52,16 @@ if ! grep -q '"completed": 1' <<<"$JSON_OUTPUT"; then
 fi
 if ! grep -q '"in_progress": 2' <<<"$JSON_OUTPUT"; then
   echo "expected json in_progress count missing" >&2
+  echo "$JSON_OUTPUT" >&2
+  exit 1
+fi
+if ! grep -q '"open": 3' <<<"$JSON_OUTPUT"; then
+  echo "expected json open count missing" >&2
+  echo "$JSON_OUTPUT" >&2
+  exit 1
+fi
+if ! grep -q '"is_complete": false' <<<"$JSON_OUTPUT"; then
+  echo "expected json incomplete marker missing" >&2
   echo "$JSON_OUTPUT" >&2
   exit 1
 fi
@@ -69,5 +89,38 @@ if ! grep -q "FAIL: pending remediation items detected" /tmp/remediation_fail_on
   cat /tmp/remediation_fail_on_pending.out >&2
   exit 1
 fi
+
+set +e
+RUSTOK_REMEDIATION_PLAN_PATH="$PLAN_FIXTURE" python3 "$REPORT_SCRIPT" --fail-on-open >/tmp/remediation_fail_on_open.out 2>&1
+OPEN_FAIL_CODE=$?
+set -e
+if [[ "$OPEN_FAIL_CODE" -ne 3 ]]; then
+  echo "expected exit code 3 for --fail-on-open with in-progress/pending items, got $OPEN_FAIL_CODE" >&2
+  cat /tmp/remediation_fail_on_open.out >&2
+  exit 1
+fi
+if ! grep -q "FAIL: open remediation items detected" /tmp/remediation_fail_on_open.out; then
+  echo "expected fail-on-open message missing" >&2
+  cat /tmp/remediation_fail_on_open.out >&2
+  exit 1
+fi
+
+COMPLETE_FIXTURE="$FIXTURE_ROOT/complete-plan.md"
+cat > "$COMPLETE_FIXTURE" <<'MD'
+- [x] done one
+- [x] done two
+MD
+COMPLETE_OUTPUT="$(RUSTOK_REMEDIATION_PLAN_PATH="$COMPLETE_FIXTURE" python3 "$REPORT_SCRIPT")"
+if ! grep -q "open: 0" <<<"$COMPLETE_OUTPUT"; then
+  echo "expected complete open count missing" >&2
+  echo "$COMPLETE_OUTPUT" >&2
+  exit 1
+fi
+if ! grep -q "is_complete: true" <<<"$COMPLETE_OUTPUT"; then
+  echo "expected complete marker missing" >&2
+  echo "$COMPLETE_OUTPUT" >&2
+  exit 1
+fi
+RUSTOK_REMEDIATION_PLAN_PATH="$COMPLETE_FIXTURE" python3 "$REPORT_SCRIPT" --fail-on-open >/tmp/remediation_complete_gate.out 2>&1
 
 echo "control_plane_remediation_progress_report_test.sh: PASS"
