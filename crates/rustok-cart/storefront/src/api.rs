@@ -294,30 +294,6 @@ pub async fn fetch_storefront_cart_graphql(
     })
 }
 
-pub async fn decrement_storefront_cart_line_item(
-    cart_id: String,
-    line_item_id: String,
-    current_quantity: i32,
-) -> Result<(), ApiError> {
-    match decrement_storefront_cart_line_item_server(cart_id.clone(), line_item_id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            decrement_storefront_cart_line_item_graphql(cart_id, line_item_id, current_quantity)
-                .await
-        }
-    }
-}
-
-pub async fn remove_storefront_cart_line_item(
-    cart_id: String,
-    line_item_id: String,
-) -> Result<(), ApiError> {
-    match remove_storefront_cart_line_item_server(cart_id.clone(), line_item_id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(_) => remove_storefront_cart_line_item_graphql(cart_id, line_item_id).await,
-    }
-}
-
 pub async fn decrement_storefront_cart_line_item_server(
     cart_id: String,
     line_item_id: String,
