@@ -1,6 +1,7 @@
 pub mod checkout;
 pub mod context;
 mod fulfillment_orchestration;
+mod post_order;
 mod shipping_profile;
 
 pub use rustok_cart::services::cart;
@@ -17,6 +18,11 @@ pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub(crate) use fulfillment_orchestration::{
     FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+};
+pub use post_order::{
+    CreateReturnDecisionInput, PostOrderOrchestrationError, PostOrderOrchestrationResult,
+    PostOrderOrchestrationService, ReturnDecisionInput, ReturnDecisionResponse,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
 };
 pub use rustok_cart::CartService;
 pub use rustok_customer::CustomerService;

@@ -25,9 +25,11 @@ pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
-    CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService, CustomerService,
-    FulfillmentService, InventoryService, OrderService, PaymentService, PricingService,
-    RegionService, ShippingProfileService, StoreContextError, StoreContextResult,
+    CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService,
+    CreateReturnDecisionInput, CustomerService, FulfillmentService, InventoryService, OrderService,
+    PaymentService, PostOrderOrchestrationService, PricingService, RegionService,
+    ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
+    ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
     StoreContextService,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
