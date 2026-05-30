@@ -42,7 +42,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
   чтобы unit_price оставался согласован с pricing resolver;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`, без цикла зависимостей;
 - storefront cart inspection, safe decrement/remove write-side и seller-aware delivery-group snapshot уже вынесены в `rustok-cart/storefront`;
-- storefront package продолжил FFA-декомпозицию: pure cart UI policy и display/view-model mapping разложены по `storefront/src/core/{identifiers,policy,view_model,error}.rs`, Leptos layer живёт в `storefront/src/ui/leptos.rs` и использует `storefront/src/transport.rs`, а native-first/GraphQL fallback adapter остаётся в `storefront/src/api.rs`;
+- storefront package продолжил FFA-декомпозицию: pure cart UI policy и display/view-model mapping разложены по `storefront/src/core/{identifiers,policy,view_model,error}.rs`, Leptos layer живёт в `storefront/src/ui/leptos.rs` и использует facade в `storefront/src/transport/mod.rs`, native-first/GraphQL fallback orchestration живёт в `storefront/src/transport/`, а adapter calls остаются в `storefront/src/api.rs`;
 - channel/context/deliverability orchestration поверх cart по-прежнему выполняется на уровне umbrella-модуля.
 - targeted tests теперь явно фиксируют, что cart mutation paths `set_adjustments` и typed promotion apply-path отклоняются при `checking_out`, чтобы во время checkout не было конкурентной мутации pricing snapshot.
 
