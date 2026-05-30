@@ -63,6 +63,7 @@ pub struct RegionErrorEvidence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionErrorViewModel {
     pub status_code: RegionErrorStatusCode,
+    pub status_locale_key: &'static str,
     pub status_label: String,
     pub title: String,
     pub body: String,
@@ -80,6 +81,7 @@ pub fn region_error_view_model(
     graphql_label: String,
 ) -> RegionErrorViewModel {
     let status_code = region_error_status_code(&evidence);
+    let status_locale_key = region_error_status_descriptor(status_code).locale_key;
     let (status_label, body) = match status_code {
         RegionErrorStatusCode::NativeUnavailable => (native_status_label, native_unavailable_body),
         RegionErrorStatusCode::FallbackUnavailable => {
@@ -90,6 +92,7 @@ pub fn region_error_view_model(
 
     RegionErrorViewModel {
         status_code,
+        status_locale_key,
         status_label,
         title,
         body,
@@ -363,6 +366,10 @@ mod tests {
             RegionErrorStatusCode::FallbackUnavailable
         );
         assert_eq!(view_model.status_code.as_str(), "fallback_unavailable");
+        assert_eq!(
+            view_model.status_locale_key,
+            "region.error.status.fallbackUnavailable"
+        );
         assert_eq!(view_model.status_label, "Fallback unavailable");
         assert_eq!(view_model.title, "Failed to load");
         assert_eq!(view_model.body, "Native and GraphQL paths are unavailable.");
@@ -395,6 +402,10 @@ mod tests {
             RegionErrorStatusCode::NativeUnavailable
         );
         assert_eq!(view_model.status_code.as_str(), "native_unavailable");
+        assert_eq!(
+            view_model.status_locale_key,
+            "region.error.status.nativeUnavailable"
+        );
         assert_eq!(view_model.status_label, "Native unavailable");
         assert_eq!(view_model.body, "Native path is unavailable.");
         assert_eq!(

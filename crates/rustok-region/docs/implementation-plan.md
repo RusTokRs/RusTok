@@ -6,12 +6,12 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_storefront_error_contract_slice
-- Last checkpoint: FFA slice #7 закрепила host-visible error status descriptor contract: stable code + locale key для `native_unavailable` и `fallback_unavailable`, плюс central checklist evidence rule.
-- Next step: Продолжить FFA-first sequencing следующим минимальным выделением host-readable status evidence в smoke/checklist output без нарушения native/GraphQL parity.
+- Current phase: ffa_storefront_error_dom_evidence_slice
+- Last checkpoint: FFA slice #8 добавила host-readable DOM evidence для error status: `data-region-error-status` и `data-region-error-locale-key` на Leptos error adapter.
+- Next step: Продолжить FFA-first sequencing следующим минимальным выделением smoke/checklist output, проверяющим эти DOM attributes, без нарушения native/GraphQL parity.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок; не добавлять новые status codes без descriptor, locale key и central checklist evidence.
-- Last updated at (UTC): 2026-05-30T05:00:00Z
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок; host-visible status evidence должен оставаться синхронизированным с `RegionErrorStatusDescriptor` и locale bundles.
+- Last updated at (UTC): 2026-05-30T06:00:00Z
 
 
 ## FFA/FBA status
@@ -27,8 +27,9 @@
   - FFA slice #4 добавила сериализуемый `RegionTransportError`/`RegionTransportPath`, который сохраняет failed path, fallback_attempted и обе причины ошибки при падении native+GraphQL fallback;
   - FFA slice #5 добавила framework-agnostic `RegionErrorEvidence`/`RegionErrorViewModel`, conversion из transport envelope и Leptos `RegionErrorMessage` render adapter без прямого string-only error formatting;
   - FFA slice #6 добавила stable `RegionErrorStatusCode::as_str()` для machine-readable UI status и locale-aware status/body labels в storefront locale bundles;
-  - FFA slice #7 добавила `RegionErrorStatusDescriptor` / `REGION_ERROR_STATUS_DESCRIPTORS`, который связывает stable code с locale key, и обновила central FFA checklist для error/status evidence.
-- Last verified at (UTC): 2026-05-30T05:00:00Z
+  - FFA slice #7 добавила `RegionErrorStatusDescriptor` / `REGION_ERROR_STATUS_DESCRIPTORS`, который связывает stable code с locale key, и обновила central FFA checklist для error/status evidence;
+  - FFA slice #8 добавила host-readable DOM evidence в `RegionErrorMessage`: `data-region-error-status` и `data-region-error-locale-key` берутся из core view-model/descriptor mapping.
+- Last verified at (UTC): 2026-05-30T06:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
@@ -45,7 +46,7 @@
 - tenant locale policy остаётся platform-level concern вне `rustok-region`;
 - storefront region transport всё ещё публикуется через `rustok-commerce`;
 - admin route для region list/detail/create/update теперь живёт в `rustok-region/admin` и использует native Leptos server functions поверх `RegionService`.
-- storefront route для region discovery теперь живёт в `rustok-region/storefront` и использует native Leptos server functions с GraphQL fallback поверх существующего `storefrontRegions` transport; route/tax/country presentation helpers, selection resolution, error status classification и error view-model живут в framework-agnostic storefront core, transport разделён на facade + native/GraphQL adapters, ошибки transport проходят через typed envelope с fallback evidence, а Leptos component остаётся bind/render слоем.
+- storefront route для region discovery теперь живёт в `rustok-region/storefront` и использует native Leptos server functions с GraphQL fallback поверх существующего `storefrontRegions` transport; route/tax/country presentation helpers, selection resolution, error status classification, error DOM evidence и error view-model живут в framework-agnostic storefront core, transport разделён на facade + native/GraphQL adapters, ошибки transport проходят через typed envelope с fallback evidence, а Leptos component остаётся bind/render слоем.
 
 ## Этапы
 
@@ -101,3 +102,4 @@
 - [x] Slice 5: transport error envelope конвертируется в framework-agnostic `RegionErrorEvidence`/`RegionErrorViewModel`, а Leptos слой рендерит `RegionErrorMessage` без прямого string-only formatting; проверка: `cargo test -p rustok-region-storefront --lib`.
 - [x] Slice 6: `RegionErrorStatusCode` закрепляет stable `native_unavailable` / `fallback_unavailable`, status labels/body переведены через storefront locale bundles, а Leptos error adapter показывает machine-readable code + localized label; проверка: `cargo test -p rustok-region-storefront --lib`.
 - [x] Slice 7: `REGION_ERROR_STATUS_DESCRIPTORS` фиксирует host-visible mapping `stable_code -> locale_key`, а `docs/verification/ffa-ui-parity-checklist.md` требует evidence для изменённых error/status contracts; проверка: `cargo test -p rustok-region-storefront --lib`.
+- [x] Slice 8: `RegionErrorMessage` публикует host-readable DOM evidence (`data-region-error-status`, `data-region-error-locale-key`) из core view-model/descriptor mapping; проверка: `cargo test -p rustok-region-storefront --lib`.

@@ -99,8 +99,15 @@ pub fn RegionView() -> impl IntoView {
 
 #[component]
 fn RegionErrorMessage(error: core::RegionErrorViewModel) -> impl IntoView {
+    let status_code = error.status_code.as_str();
+    let status_locale_key = error.status_locale_key;
+
     view! {
-        <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div
+            class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            data-region-error-status=status_code
+            data-region-error-locale-key=status_locale_key
+        >
             <div class="flex flex-wrap items-center gap-2">
                 <span class="rounded-full border border-destructive/30 px-2 py-0.5 font-mono text-[0.68rem] uppercase tracking-[0.16em]">{error.status_code.as_str()}</span>
                 <span class="text-xs font-medium uppercase tracking-[0.16em]">{error.status_label}</span>

@@ -11,7 +11,7 @@ Leptos storefront UI package for the `rustok-region` module.
 - Exposes the typed region tax provider snapshot alongside currency and tax
   baseline data.
 - Uses native Leptos `#[server]` entry points in parallel with the existing GraphQL transport through an explicit `transport/` facade with native and GraphQL adapters. The facade returns a typed error envelope that preserves failed-path and fallback evidence.
-- Keeps route/tax/country summary formatting, selected-region resolution, error status/view-model mapping, and selected-region metric view-model helpers in `storefront/src/core.rs`, outside the Leptos render layer and transport adapters. Host-visible error statuses are `native_unavailable` (`region.error.status.nativeUnavailable`) and `fallback_unavailable` (`region.error.status.fallbackUnavailable`).
+- Keeps route/tax/country summary formatting, selected-region resolution, error status/view-model mapping, and selected-region metric view-model helpers in `storefront/src/core.rs`, outside the Leptos render layer and transport adapters. Host-visible error statuses are `native_unavailable` (`region.error.status.nativeUnavailable`) and `fallback_unavailable` (`region.error.status.fallbackUnavailable`), and the Leptos error adapter exposes them as `data-region-error-status` / `data-region-error-locale-key`.
 - Ships package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
 
 ## Entry Points
