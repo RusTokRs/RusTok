@@ -205,6 +205,31 @@ pub struct TenantModule {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ModuleOperationRecoveryPlan {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "tenantId")]
+    pub tenant_id: String,
+    #[serde(rename = "moduleSlug")]
+    pub module_slug: String,
+    #[serde(rename = "requestedEnabled")]
+    pub requested_enabled: bool,
+    #[serde(rename = "previousEffectiveEnabled")]
+    pub previous_effective_enabled: bool,
+    pub status: String,
+    pub issue: String,
+    pub retryable: bool,
+    #[serde(rename = "recommendedAction")]
+    pub recommended_action: String,
+    #[serde(rename = "correlationId")]
+    pub correlation_id: Option<String>,
+    #[serde(rename = "requestedBy")]
+    pub requested_by: Option<String>,
+    #[serde(rename = "errorMessage")]
+    pub error_message: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MarketplaceModule {
     pub slug: String,
     pub name: String,

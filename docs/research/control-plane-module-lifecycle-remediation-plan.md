@@ -904,3 +904,9 @@ rollback-стратегии и Definition of Done по итерациям.
 - Recovery contract для post-hook failures выведен во внешний GraphQL control-plane surface: добавлены tenant-scoped queries `moduleOperationRecoveryPlan` / `failedModuleOperationRecoveryPlans` и mutating entrypoints `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation`, которые используют только `ModuleLifecycleService` и существующий journal.
 - P0.3 recovery checklist синхронизирован: retry/compensation через journal, достаточность journal fields для recovery plan и external retryable post-hook contract переведены в `[x]`; оставшаяся Leptos admin задача — потреблять canonical GraphQL surface без локальной taxonomy/rollback.
 - Локальные docs `apps/server` и `apps/admin` обновлены: server фиксирует GraphQL read/write recovery surface, admin фиксирует запрет локального SQL/rollback и обязанность идти через canonical backend contract.
+
+### Актуализация 2026-05-30 (итерация 74)
+
+- Leptos admin начал потреблять внешний recovery contract через canonical GraphQL helpers в `apps/admin/src/features/modules/api.rs`: добавлены read-side helpers для `moduleOperationRecoveryPlan` / `failedModuleOperationRecoveryPlans` и write-side helpers для `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation`.
+- Добавлен repo-guard в `apps/admin/tests/module_composition_graphql_guard.rs`, который фиксирует наличие recovery GraphQL surface и запрещает native/raw-SQL recovery bypass helpers.
+- Локальная документация `apps/admin` синхронизирована: recovery теперь описан как доступный GraphQL-helper слой без локального rollback/taxonomy. Широкий operational хвост по полному minimal verification bundle остаётся открытым, чтобы не запускать долгую компиляцию в коротком run-окне.

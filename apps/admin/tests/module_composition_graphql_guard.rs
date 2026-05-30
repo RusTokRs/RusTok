@@ -1082,6 +1082,48 @@ fn assert_graphql_only_helper(
 }
 
 #[test]
+fn module_recovery_helpers_use_canonical_graphql_surface() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_path = crate_root.join("src/features/modules/api.rs");
+    let content = fs::read_to_string(&api_path).expect("read api.rs");
+
+    for required in [
+        "pub const MODULE_OPERATION_RECOVERY_PLAN_QUERY",
+        "moduleOperationRecoveryPlan(operationId: $operationId)",
+        "pub const FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY",
+        "failedModuleOperationRecoveryPlans(moduleSlug: $moduleSlug, limit: $limit)",
+        "pub const RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION",
+        "retryFailedModuleOperationPostHook(operationId: $operationId)",
+        "pub const COMPENSATE_FAILED_MODULE_OPERATION_MUTATION",
+        "compensateFailedModuleOperation(operationId: $operationId)",
+        "pub async fn module_operation_recovery_plan(",
+        "pub async fn failed_module_operation_recovery_plans(",
+        "pub async fn retry_failed_module_operation_post_hook(",
+        "pub async fn compensate_failed_module_operation(",
+    ] {
+        assert!(
+            content.contains(required),
+            "admin module recovery API must expose canonical GraphQL fragment `{required}`"
+        );
+    }
+
+    for forbidden in [
+        "retry_failed_module_operation_post_hook_native(",
+        "compensate_failed_module_operation_native(",
+        "module_operation_recovery_plan_native(",
+        "failed_module_operation_recovery_plans_native(",
+        "UPDATE tenant_modules",
+        "UPDATE module_operations",
+        "DELETE FROM module_operations",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "module recovery helpers must not reintroduce native/raw-SQL path `{forbidden}`"
+        );
+    }
+}
+
+#[test]
 fn module_composition_helper_signatures_are_unique() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let api_path = crate_root.join("src/features/modules/api.rs");

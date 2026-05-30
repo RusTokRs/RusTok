@@ -11,8 +11,8 @@ use crate::entities::module::model::{
     RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
-    ToggleModuleResult,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
+    ReleaseInfo, TenantModule, ToggleModuleResult,
 };
 use crate::shared::api::{api_base_url, combine_native_and_graphql_error, request, ApiError};
 
@@ -28,6 +28,10 @@ pub const ACTIVE_RELEASE_QUERY: &str = "query ActiveRelease { activeRelease { id
 pub const BUILD_HISTORY_QUERY: &str = "query BuildHistory($limit: Int!, $offset: Int!) { buildHistory(limit: $limit, offset: $offset) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const BUILD_PROGRESS_SUBSCRIPTION: &str = "subscription BuildProgress { buildProgress { buildId status stage progress releaseId errorMessage } }";
 pub const TOGGLE_MODULE_MUTATION: &str = "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) { toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) { moduleSlug enabled settings } }";
+pub const MODULE_OPERATION_RECOVERY_PLAN_QUERY: &str = "query ModuleOperationRecoveryPlan($operationId: UUID!) { moduleOperationRecoveryPlan(operationId: $operationId) { operationId tenantId moduleSlug requestedEnabled previousEffectiveEnabled status issue retryable recommendedAction correlationId requestedBy errorMessage } }";
+pub const FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY: &str = "query FailedModuleOperationRecoveryPlans($moduleSlug: String, $limit: Int) { failedModuleOperationRecoveryPlans(moduleSlug: $moduleSlug, limit: $limit) { operationId tenantId moduleSlug requestedEnabled previousEffectiveEnabled status issue retryable recommendedAction correlationId requestedBy errorMessage } }";
+pub const RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION: &str = "mutation RetryFailedModuleOperationPostHook($operationId: UUID!) { retryFailedModuleOperationPostHook(operationId: $operationId) { operationId tenantId moduleSlug requestedEnabled previousEffectiveEnabled status issue retryable recommendedAction correlationId requestedBy errorMessage } }";
+pub const COMPENSATE_FAILED_MODULE_OPERATION_MUTATION: &str = "mutation CompensateFailedModuleOperation($operationId: UUID!) { compensateFailedModuleOperation(operationId: $operationId) { moduleSlug enabled settings } }";
 pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
 pub const INSTALL_MODULE_MUTATION: &str = "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
@@ -125,6 +129,30 @@ pub struct BuildProgressEvent {
 pub struct ToggleModuleResponse {
     #[serde(rename = "toggleModule")]
     pub toggle_module: ToggleModuleResult,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ModuleOperationRecoveryPlanResponse {
+    #[serde(rename = "moduleOperationRecoveryPlan")]
+    pub module_operation_recovery_plan: Option<ModuleOperationRecoveryPlan>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FailedModuleOperationRecoveryPlansResponse {
+    #[serde(rename = "failedModuleOperationRecoveryPlans")]
+    pub failed_module_operation_recovery_plans: Vec<ModuleOperationRecoveryPlan>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RetryFailedModuleOperationPostHookResponse {
+    #[serde(rename = "retryFailedModuleOperationPostHook")]
+    pub retry_failed_module_operation_post_hook: ModuleOperationRecoveryPlan,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CompensateFailedModuleOperationResponse {
+    #[serde(rename = "compensateFailedModuleOperation")]
+    pub compensate_failed_module_operation: TenantModule,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -335,6 +363,19 @@ pub struct ToggleModuleVariables {
     #[serde(rename = "moduleSlug")]
     pub module_slug: String,
     pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ModuleOperationRecoveryPlanVariables {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FailedModuleOperationRecoveryPlansVariables {
+    #[serde(rename = "moduleSlug")]
+    pub module_slug: Option<String>,
+    pub limit: Option<i32>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -4656,6 +4697,67 @@ pub async fn toggle_module(
     )
     .await?;
     Ok(response.toggle_module)
+}
+
+pub async fn module_operation_recovery_plan(
+    operation_id: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<Option<ModuleOperationRecoveryPlan>, ApiError> {
+    let response: ModuleOperationRecoveryPlanResponse = request(
+        MODULE_OPERATION_RECOVERY_PLAN_QUERY,
+        ModuleOperationRecoveryPlanVariables { operation_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.module_operation_recovery_plan)
+}
+
+pub async fn failed_module_operation_recovery_plans(
+    module_slug: Option<String>,
+    limit: Option<i32>,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<Vec<ModuleOperationRecoveryPlan>, ApiError> {
+    let response: FailedModuleOperationRecoveryPlansResponse = request(
+        FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY,
+        FailedModuleOperationRecoveryPlansVariables { module_slug, limit },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.failed_module_operation_recovery_plans)
+}
+
+pub async fn retry_failed_module_operation_post_hook(
+    operation_id: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<ModuleOperationRecoveryPlan, ApiError> {
+    let response: RetryFailedModuleOperationPostHookResponse = request(
+        RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION,
+        ModuleOperationRecoveryPlanVariables { operation_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.retry_failed_module_operation_post_hook)
+}
+
+pub async fn compensate_failed_module_operation(
+    operation_id: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<TenantModule, ApiError> {
+    let response: CompensateFailedModuleOperationResponse = request(
+        COMPENSATE_FAILED_MODULE_OPERATION_MUTATION,
+        ModuleOperationRecoveryPlanVariables { operation_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.compensate_failed_module_operation)
 }
 
 pub async fn update_module_settings(
