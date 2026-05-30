@@ -15,7 +15,8 @@ use crate::{
     SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
     SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoCrossLinkSuggestionRecord,
     SeoDiagnosticsSummaryRecord, SeoError, SeoMetaInput, SeoMetaRecord, SeoPageContext,
-    SeoRedirectInput, SeoRedirectRecord, SeoRevisionRecord, SeoService, SeoSitemapStatusRecord,
+    SeoRedirectInput, SeoRedirectRecord, SeoRevisionRecord, SeoService, SeoSitemapJobRecord,
+    SeoSitemapStatusRecord,
 };
 
 const MODULE_SLUG: &str = "seo";
@@ -82,6 +83,42 @@ impl SeoQuery {
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
             .sitemap_status(tenant)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_sitemap_jobs(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+    ) -> Result<Vec<SeoSitemapJobRecord>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(
+            ctx,
+            &[Permission::SEO_READ, Permission::SEO_GENERATE],
+            "seo:read or seo:generate required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .list_sitemap_jobs(tenant.id, limit.unwrap_or(20).clamp(1, 100) as usize)
+            .await
+            .map_err(map_seo_error)
+    }
+
+    async fn seo_sitemap_job(
+        &self,
+        ctx: &Context<'_>,
+        job_id: Uuid,
+    ) -> Result<Option<SeoSitemapJobRecord>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_seo_permission(
+            ctx,
+            &[Permission::SEO_READ, Permission::SEO_GENERATE],
+            "seo:read or seo:generate required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        seo_service_from_graphql(ctx)?
+            .sitemap_job(tenant.id, job_id)
             .await
             .map_err(map_seo_error)
     }

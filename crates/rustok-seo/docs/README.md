@@ -18,6 +18,7 @@ Entity-specific SEO authoring не живёт в `rustok-seo-admin`: стран�
 - runtime adapter seam для sitemap submission с per-endpoint статусами и bounded partial-failure summary;
 - diagnostics read model: readiness score, issue list, issue aggregates и source counts, включая image descriptor quality issue codes `missing_image_alt` и `missing_image_size` для SEO-critical targets;
 - read-only cross-link suggestions (`seoCrossLinkSuggestions` / `/api/seo/cross-link-suggestions`) без автоматической HTML mutation;
+- REST control-plane parity endpoints для диагностики/карт сайта/bulk jobs: `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`;
 - shared capability registry через `rustok-seo-targets`;
 - support crates `rustok-seo-render` и `rustok-seo-admin-support`;
 - execution wave Phase D: typed SEO events/outbox/index seam, REST parity completion, admin/host integration parity, verification matrix и runbooks.
@@ -111,8 +112,8 @@ Readiness score считается производным от issue set. Summar
 Текущий roadmap зафиксирован в `docs/implementation-plan.md` и выполняется батчами `D1..D9`.
 
 - `D1` закрыт: contract freeze, compatibility policy (`v1 additive only`) и rollout flags.
-- `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam. Для D2 добавлены baseline events для meta/revision/redirect/sitemap/bulk и tracking skeleton `seo_event_deliveries`; transactional delivery writes остаются следующим шагом.
-- `D4-D5`: GraphQL/REST parity completion, migrations/backfill/replay policy.
+- `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam. D2 закрыт: publish path пишет `seo_event_deliveries`, связывает delivery с outbox envelope id и блокирует duplicate emission по idempotency key.
+- `D4-D5`: GraphQL/REST parity completion, migrations/backfill/replay policy (в D4 закрыты REST endpoints `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`).
 - `D6-D7`: Leptos admin + Next admin control-plane parity, storefront + Next runtime SEO parity.
 - `D8-D9`: verification matrix, runbooks, Definition of Ready/Done для следующего execution wave.
 

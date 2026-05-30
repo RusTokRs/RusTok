@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use axum::{
     extract::{Path, Query, State},
     http::{
@@ -17,8 +19,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    SeoCrossLinkSuggestionRecord, SeoError, SeoPageContext, SeoService, SeoTargetCapabilityKind,
-    SeoTargetRegistryEntry,
+    SeoBulkJobRecord, SeoBulkJobStatus, SeoCrossLinkSuggestionRecord, SeoDiagnosticCountRecord,
+    SeoDiagnosticIssueRecord, SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoError,
+    SeoPageContext, SeoService, SeoSitemapJobRecord, SeoSitemapStatusRecord,
+    SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTargetSlug,
 };
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +39,26 @@ pub struct SeoTargetsQuery {
 pub struct SeoCrossLinkSuggestionsQuery {
     pub locale: Option<String>,
     pub per_target_limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SeoDiagnosticsQuery {
+    pub locale: Option<String>,
+    pub severity: Option<SeoDiagnosticSeverity>,
+    pub code: Option<String>,
+    pub target_kind: Option<SeoTargetSlug>,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SeoSitemapJobsQuery {
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SeoBulkJobsQuery {
+    pub limit: Option<i32>,
+    pub status: Option<SeoBulkJobStatus>,
 }
 
 pub async fn page_context_json(
@@ -125,6 +149,132 @@ pub async fn sitemap_file(
         .into_response())
 }
 
+pub async fn diagnostics_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<SeoDiagnosticsQuery>,
+) -> Result<Json<SeoDiagnosticsSummaryRecord>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(
+        &auth,
+        &[Permission::SEO_READ, Permission::SEO_MANAGE],
+        "seo:read or seo:manage required",
+    )?;
+
+    let summary = service
+        .diagnostics_summary(&tenant, query.locale.as_deref())
+        .await
+        .map_err(map_seo_http_error)?;
+
+    Ok(Json(apply_diagnostics_filters(summary, &query)))
+}
+
+pub async fn sitemap_status_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+) -> Result<Json<SeoSitemapStatusRecord>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(
+        &auth,
+        &[Permission::SEO_READ, Permission::SEO_GENERATE],
+        "seo:read or seo:generate required",
+    )?;
+
+    let status = service
+        .sitemap_status(&tenant)
+        .await
+        .map_err(map_seo_http_error)?;
+    Ok(Json(status))
+}
+
+pub async fn sitemap_jobs_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<SeoSitemapJobsQuery>,
+) -> Result<Json<Vec<SeoSitemapJobRecord>>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(
+        &auth,
+        &[Permission::SEO_READ, Permission::SEO_GENERATE],
+        "seo:read or seo:generate required",
+    )?;
+
+    let jobs = service
+        .list_sitemap_jobs(tenant.id, query.limit.unwrap_or(20).clamp(1, 100) as usize)
+        .await
+        .map_err(map_seo_http_error)?;
+    Ok(Json(jobs))
+}
+
+pub async fn sitemap_job_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<SeoSitemapJobRecord>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(
+        &auth,
+        &[Permission::SEO_READ, Permission::SEO_GENERATE],
+        "seo:read or seo:generate required",
+    )?;
+
+    let job = service
+        .sitemap_job(tenant.id, job_id)
+        .await
+        .map_err(map_seo_http_error)?
+        .ok_or(Error::NotFound)?;
+    Ok(Json(job))
+}
+
+pub async fn bulk_jobs_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<SeoBulkJobsQuery>,
+) -> Result<Json<Vec<SeoBulkJobRecord>>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
+
+    let jobs = service
+        .list_bulk_jobs(
+            tenant.id,
+            query.limit.unwrap_or(20).clamp(1, 100) as usize,
+            query.status,
+        )
+        .await
+        .map_err(map_seo_http_error)?;
+
+    Ok(Json(jobs))
+}
+
+pub async fn bulk_job_json(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<SeoBulkJobRecord>> {
+    let service = seo_service_from_app_ctx(&ctx)?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
+    ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
+
+    let job = service
+        .bulk_job(tenant.id, job_id)
+        .await
+        .map_err(map_seo_http_error)?
+        .ok_or(Error::NotFound)?;
+
+    Ok(Json(job))
+}
+
 pub async fn bulk_artifact_download(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
@@ -204,8 +354,14 @@ fn api_routes() -> Routes {
 
     Routes::new()
         .add("/page-context", get(page_context_json))
+        .add("/diagnostics", get(diagnostics_json))
         .add("/targets", get(targets_json))
         .add("/cross-link-suggestions", get(cross_link_suggestions_json))
+        .add("/sitemaps/status", get(sitemap_status_json))
+        .add("/sitemaps/jobs", get(sitemap_jobs_json))
+        .add("/sitemaps/jobs/{job_id}", get(sitemap_job_json))
+        .add("/bulk/jobs", get(bulk_jobs_json))
+        .add("/bulk/jobs/{job_id}", get(bulk_job_json))
         .add(
             "/bulk/jobs/{job_id}/artifacts/{artifact_id}",
             get(bulk_artifact_download),
@@ -268,4 +424,151 @@ fn seo_service_from_app_ctx(ctx: &AppContext) -> Result<SeoService> {
         extensions.as_ref(),
     )
     .map_err(map_seo_http_error)
+}
+
+fn apply_diagnostics_filters(
+    summary: SeoDiagnosticsSummaryRecord,
+    query: &SeoDiagnosticsQuery,
+) -> SeoDiagnosticsSummaryRecord {
+    let code_filter = query
+        .code
+        .as_ref()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+
+    let mut issues = summary
+        .issues
+        .into_iter()
+        .filter(|issue| {
+            if let Some(severity) = query.severity {
+                if issue.severity != severity {
+                    return false;
+                }
+            }
+            if let Some(code) = code_filter.as_deref() {
+                if issue.code.to_ascii_lowercase() != code {
+                    return false;
+                }
+            }
+            if let Some(target_kind) = query.target_kind.as_ref() {
+                if issue.target_kind != *target_kind {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(limit) = query.limit {
+        issues.truncate(limit.clamp(1, 500) as usize);
+    }
+
+    let issue_count = issues.len() as i32;
+    let error_count = issues
+        .iter()
+        .filter(|issue| issue.severity == SeoDiagnosticSeverity::Error)
+        .count() as i32;
+    let warning_count = issues
+        .iter()
+        .filter(|issue| issue.severity == SeoDiagnosticSeverity::Warning)
+        .count() as i32;
+
+    SeoDiagnosticsSummaryRecord {
+        locale: summary.locale,
+        total_targets: summary.total_targets,
+        readiness_score: summary.readiness_score,
+        issue_count,
+        error_count,
+        warning_count,
+        generated_count: summary.generated_count,
+        explicit_count: summary.explicit_count,
+        fallback_count: summary.fallback_count,
+        issue_counts_by_code: count_issue_keys(issues.iter().map(|issue| issue.code.as_str())),
+        issue_counts_by_target_kind: count_issue_keys(
+            issues.iter().map(|issue| issue.target_kind.as_str()),
+        ),
+        issues,
+    }
+}
+
+fn count_issue_keys<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosticCountRecord> {
+    let mut counts = BTreeMap::<String, i32>::new();
+    for key in keys {
+        *counts.entry(key.to_string()).or_insert(0) += 1;
+    }
+
+    let mut result = counts
+        .into_iter()
+        .map(|(key, count)| SeoDiagnosticCountRecord { key, count })
+        .collect::<Vec<_>>();
+    result.sort_by(|left, right| right.count.cmp(&left.count).then_with(|| left.key.cmp(&right.key)));
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SeoTargetSlug;
+
+    #[test]
+    fn apply_diagnostics_filters_recomputes_issue_aggregates() {
+        let summary = SeoDiagnosticsSummaryRecord {
+            locale: "en-US".to_string(),
+            total_targets: 10,
+            readiness_score: 85,
+            issue_count: 2,
+            error_count: 1,
+            warning_count: 1,
+            generated_count: 4,
+            explicit_count: 3,
+            fallback_count: 3,
+            issue_counts_by_code: vec![],
+            issue_counts_by_target_kind: vec![],
+            issues: vec![
+                SeoDiagnosticIssueRecord {
+                    code: "missing_title".to_string(),
+                    severity: SeoDiagnosticSeverity::Error,
+                    target_kind: SeoTargetSlug::new("page").expect("slug"),
+                    target_id: Uuid::from_u128(1),
+                    target_label: "Page A".to_string(),
+                    route: "/a".to_string(),
+                    locale: "en-US".to_string(),
+                    message: "title missing".to_string(),
+                    canonical_url: Some("/a".to_string()),
+                    source: "fallback".to_string(),
+                },
+                SeoDiagnosticIssueRecord {
+                    code: "missing_description".to_string(),
+                    severity: SeoDiagnosticSeverity::Warning,
+                    target_kind: SeoTargetSlug::new("product").expect("slug"),
+                    target_id: Uuid::from_u128(2),
+                    target_label: "Product B".to_string(),
+                    route: "/b".to_string(),
+                    locale: "en-US".to_string(),
+                    message: "description missing".to_string(),
+                    canonical_url: Some("/b".to_string()),
+                    source: "generated".to_string(),
+                },
+            ],
+        };
+
+        let filtered = apply_diagnostics_filters(
+            summary,
+            &SeoDiagnosticsQuery {
+                locale: None,
+                severity: Some(SeoDiagnosticSeverity::Error),
+                code: None,
+                target_kind: None,
+                limit: None,
+            },
+        );
+
+        assert_eq!(filtered.issue_count, 1);
+        assert_eq!(filtered.error_count, 1);
+        assert_eq!(filtered.warning_count, 0);
+        assert_eq!(filtered.issue_counts_by_code.len(), 1);
+        assert_eq!(filtered.issue_counts_by_code[0].key, "missing_title");
+        assert_eq!(filtered.issue_counts_by_target_kind.len(), 1);
+        assert_eq!(filtered.issue_counts_by_target_kind[0].key, "page");
+    }
 }

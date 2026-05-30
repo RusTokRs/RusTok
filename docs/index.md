@@ -1,4 +1,4 @@
-﻿# RusTok: карта документации
+# RusTok: карта документации
 
 Этот файл является канонической точкой входа в документацию репозитория.
 С него нужно начинать работу по правилам [AGENTS.md](../AGENTS.md).
@@ -48,6 +48,7 @@
 - [GraphQL и Leptos server functions](./UI/graphql-architecture.md)
 - [Контракт storefront](./UI/storefront.md)
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
+- [SEO runtime/control-plane contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
 - [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
 - [Трек rich-text и визуального page builder](
   ./modules/tiptap-page-builder-implementation-plan.md)

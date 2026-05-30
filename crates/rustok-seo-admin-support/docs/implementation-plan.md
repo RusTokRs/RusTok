@@ -9,12 +9,12 @@
 - Next step: Закрыть D6.1 — reusable event/delivery status widgets + diagnostics remediation hints для owner-module admin surfaces.
 - Open blockers:
   - В этой VM отсутствует `cargo` в `PATH`, локальные проверки не запускались.
-  - Для end-to-end transport parity нужен согласованный REST contract из `rustok-seo` Batch D4.
+  - Для полной D6.1 observability/remediation UX всё ещё нужен owner-side UI wiring в `pages/product/blog/forum`.
 - Hand-off notes for next agent:
   - Не переносить ownership entity screens в central SEO hub.
   - Поддерживать host-locale contract без package-local fallback chains.
   - Все новые UI виджеты должны работать одинаково для `pages/product/blog/forum`.
-- Last updated at (UTC): 2026-05-28T23:58:00Z
+- Last updated at (UTC): 2026-05-30T12:00:00Z
 
 ## Цель
 

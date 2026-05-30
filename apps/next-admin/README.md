@@ -40,6 +40,7 @@ Use `localhost`, not `127.0.0.1`, in this Windows debug environment. The local l
 - Legacy feature folders under `src/features/*` may remain as compatibility implementation, but app routes and navigation registration must import them through `packages/*` entrypoints.
 - Starter-only dashboard routes that are not part of the RusTok admin contract should return `notFound()` instead of exposing placeholder UI. Current blocked starter routes include `billing`, `exclusive`, `workspaces`, and nested `workspaces/team`.
 - Implements the same typed snake_case route-selection contract as the Leptos admin host, but through local Next helpers instead of shared Rust code.
+- Shares SEO control-plane API adapters in `src/shared/api/seo.ts` with REST-first (rollout-gated) + GraphQL fallback reads for targets, diagnostics, sitemap jobs, and bulk jobs.
 
 ## Docs
 

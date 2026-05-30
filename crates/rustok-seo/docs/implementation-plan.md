@@ -4,16 +4,16 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d2_events_outbox_foundation`
-- Last checkpoint: Начат Batch D2: добавлены typed terminal bulk events (`completed`/`partial`/`failed`), scope-sensitive deterministic idempotency keys и migration/entity skeleton `seo_event_deliveries` для будущего delivery/index tracking.
-- Next step: Довести D2 до transactional outbox delivery tracking: записывать `seo_event_deliveries` рядом с publish path, связать записи с outbox envelope id и закрепить duplicate-emission guard integration tests для bulk jobs.
+- Current phase: `phase_d4_rest_parity_hardening`
+- Last checkpoint: Закрыт Batch D2: publish path пишет `seo_event_deliveries`, связывает delivery с outbox envelope id (`sys_events.id`) и блокирует duplicate emission по deterministic idempotency key; добавлены integration tests на duplicate guard для bulk terminal events. Параллельно продвинут D4: добавлены REST endpoints `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}` и GraphQL parity fields `seoSitemapJobs`/`seoSitemapJob`.
+- Next step: Закрыть D4 error-envelope unification и перейти к D3 SEO->index consumer seam (tenant/kind scoped reindex + retry/DLQ policy).
 - Open blockers:
-  - Для D2/D3 нужен синхронный contract sign-off между владельцами `rustok-seo`, `rustok-outbox` и `rustok-index`.
+  - Для D3 нужен синхронный contract sign-off между владельцами `rustok-seo`, `rustok-outbox` и `rustok-index`.
 - Hand-off notes for next agent:
   - Не обходить boundary `MediaImageDescriptor` и existing `SeoPageContext` contract.
   - REST/GraphQL расширять только additive-изменениями в стабильном `v1`.
-  - В bulk loops не допускать duplicate event emission: один deterministic key на фактическое state transition.
-- Last updated at (UTC): 2026-05-30T00:00:00Z
+  - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
+- Last updated at (UTC): 2026-05-30T12:00:00Z
 
 ## FFA/FBA status block
 
@@ -51,10 +51,10 @@
 - `SeoDocument.structured_data_blocks` больше не raw JSON passthrough: JSON-LD нормализуется в typed schema blocks (`schema_kind`, `schema_type`, legacy `kind`, `source`, payload);
 - boundary contract C3 закреплён через `rustok-media::MediaImageDescriptor` -> `rustok-seo-targets::SeoTargetImageRecord`;
 - **open productionization gaps (Phase D):**
-  - typed SEO event model baseline добавлен; delivery/idempotency tracking skeleton есть, но publish path ещё не пишет `seo_event_deliveries`;
+  - D2 закрыт: typed SEO event model и delivery/idempotency tracking live (`seo_event_deliveries` + outbox envelope linkage + duplicate guard);
   - direct SEO -> `rustok-index` consumer seam и retry/DLQ policy не доведены;
-  - REST control-plane parity с GraphQL неполная (diagnostics summary/job detail/bulk status);
-  - `apps/next-admin` и `apps/next-frontend` покрывают только baseline SEO integration, без полного runtime-driven control-plane/data-plane parity.
+  - REST control-plane parity в основном закрыта, но остаётся унификация error envelope между GraphQL/REST;
+  - `apps/next-admin` API helper расширен до control-plane read surfaces, но host UI observability/remediation widgets и Next storefront runtime parity остаются открытыми.
 
 ## Итог последней exploration-сессии
 
@@ -62,8 +62,10 @@
 - C1 закрыт: sitemap submit имеет adapter seam + telemetry-friendly per-endpoint aggregation;
 - C2 закрыт: read-only cross-link suggestions доступны через GraphQL/REST, diagnostics включает `cross_link_gap`;
 - C3 закрыт: `rustok-media` ↔ `rustok-seo` image boundary переведён на typed descriptors;
+- D2 закрыт: publish path пишет delivery tracker (`seo_event_deliveries`), связывает с outbox envelope id и держит duplicate guard по idempotency key;
+- D4 частично закрыт: REST control-plane parity endpoints и GraphQL `seoSitemapJobs`/`seoSitemapJob` live, open только error-envelope unification;
 - guardrail по Next route coverage остаётся deferred до появления реального route ownership surface;
-- для следующего execution wave зафиксирован Phase D (D1..D9) с приоритетом event/outbox/index, API parity и host integration completeness.
+- для следующего execution wave приоритет: D4 error envelope -> D3 index seam -> D5 migration/backfill policy.
 
 ## Контракт совместимости (Phase D freeze)
 
@@ -164,10 +166,10 @@
   - [x] Явно выделить breaking/non-breaking policy для GraphQL/REST/DTO.
   - [x] Зафиксировать rollout-флаги для event/outbox/index/API/Next parity.
 
-- [ ] **Batch D2 — Backend domain: SEO events + outbox foundation**
+- [x] **Batch D2 — Backend domain: SEO events + outbox foundation**
   - [x] Ввести typed events для: meta upsert/publish/rollback, redirect upsert/disable, sitemap generated/submitted, bulk completed/partial/failed.
   - [x] Добавить deterministic idempotency key (`tenant_id + target_kind + target_id + revision_or_job_id`) и scope-sensitive keys для terminal bulk states.
-  - [ ] Интегрировать emission path с `rustok-outbox` без duplicate emission в bulk loops; schema/entity skeleton `seo_event_deliveries` подготовлен, write path ещё открыт.
+  - [x] Интегрировать emission path с `rustok-outbox` без duplicate emission в bulk loops: publish path пишет `seo_event_deliveries`, связывает delivery с outbox envelope id и фиксирует duplicate guard integration tests для bulk terminal events.
 
 - [ ] **Batch D3 — Indexing integration seam (SEO -> rustok-index)**
   - [ ] Добавить consumer/adapter contract для selective invalidate/rebuild index documents.
@@ -175,9 +177,9 @@
   - [ ] Зафиксировать bounded retry + dead-letter policy для indexing failures.
 
 - [ ] **Batch D4 — GraphQL/REST parity completion**
-  - [ ] Добавить REST parity для diagnostics summary/filtering.
-  - [ ] Добавить REST для sitemap status/job detail.
-  - [ ] Добавить REST для bulk jobs list/detail/status (и preview endpoint при необходимости).
+  - [x] Добавить REST parity для diagnostics summary/filtering.
+  - [x] Добавить REST для sitemap status/job detail.
+  - [x] Добавить REST для bulk jobs list/detail/status (и preview endpoint при необходимости).
   - [ ] Унифицировать error envelope между GraphQL/REST (validation/config/not_found/permission).
 
 - [ ] **Batch D5 — Миграции и backfill**
@@ -189,7 +191,7 @@
 - [ ] **Batch D6 — Admin integrations (Leptos admin + next-admin)**
   - [ ] Расширить `rustok-seo/admin` observability блоком (events, delivery status, reindex actions, failure drilldown).
   - [ ] Расширить `rustok-seo-admin-support` reusable cards под diagnostics remediation и event status hints.
-  - [ ] Расширить `apps/next-admin/src/shared/api/seo.ts` до полного control-plane API.
+  - [x] Расширить `apps/next-admin/src/shared/api/seo.ts` до полного control-plane API (REST-first + GraphQL fallback для targets/diagnostics/sitemaps/bulk jobs).
 
 - [ ] **Batch D7 — Storefront + Next frontend integrations**
   - [ ] Довести Rust storefront `SeoPageContext` consume flow до uniform режима (`#[server]` + GraphQL fallback + telemetry).
@@ -207,15 +209,15 @@
   - [ ] Добавить runbooks: `SEO event backlog stuck`, `partial indexing failures`, `replay/reindex procedures`.
   - [ ] Зафиксировать Definition of Ready/Done для следующего execution wave.
 
-## Осталось сделать (оценка на 2026-05-28)
+## Осталось сделать (оценка на 2026-05-30)
 
 - **Phase C**: технически закрыт, guardrail по Next route coverage перенесён в D7 rollout criteria.
-- **Phase D**: D1 закрыт; D2 частично выполнен (typed events/key baseline + tracking skeleton), D3–D9 открыты.
-- **Незавершённые batch-пункты в Phase D**: **8** (D2 остаётся open до transactional delivery tracking и duplicate-emission integration evidence).
-- **Quality backlog**: полная D2 integration evidence ожидает transactional delivery write path и duplicate-emission integration tests.
-- **Итого open batch-пунктов в документе**: **8**.
+- **Phase D**: D1 и D2 закрыты; D4 частично закрыт (REST parity + GraphQL sitemap jobs), D3 и D5–D9 открыты.
+- **Незавершённые batch-пункты в Phase D**: **7** (открыты D3, D4, D5, D6, D7, D8, D9).
+- **Quality backlog**: закрыть D4 error-envelope unification и получить cross-module evidence по D3 index seam.
+- **Итого open batch-пунктов в документе**: **7**.
 
-Приоритет исполнения: D2 -> D3 -> D4 -> D5 как backend/control-plane foundation, затем D6/D7 host parity, затем D8/D9 verification + docs closeout.
+Приоритет исполнения: D4 (error envelope) -> D3 -> D5 как backend/control-plane foundation, затем D6/D7 host parity, затем D8/D9 verification + docs closeout.
 
 ## Проверка
 
@@ -240,6 +242,7 @@
 
 ## Quality backlog
 
+- [ ] Закрыть D4 error-envelope unification и зафиксировать parity evidence GraphQL/REST.
 - [ ] Закрыть D8 verification matrix с реальным CI evidence packet.
 - [ ] Зафиксировать D9 runbooks и operational remediation playbooks.
 - [ ] Обновлять execution checkpoint после каждого batch-инкремента Phase D.

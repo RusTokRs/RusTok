@@ -21,6 +21,9 @@
   with the same tenant/module-enabled gate and `seo:manage` admin permission contract
 - expose read-only cross-link suggestions through GraphQL `seoCrossLinkSuggestions` and REST `/api/seo/cross-link-suggestions`
   with tenant/module checks and `seo:read|seo:manage` parity
+- expose control-plane REST parity surfaces for diagnostics/sitemaps/bulk jobs:
+  `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`,
+  `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`
 - provide shared SEO capability contracts that owner modules can embed into their own admin UI
 - expose admin and storefront read/write surfaces through GraphQL, HTTP, and Leptos server functions
 - require host runtimes to inject `ModuleRuntimeExtensions` for SEO target registry lookup; built-in registries are test-only helpers, not production fallback behavior
@@ -51,9 +54,9 @@
 
 Phase D is planned as a productionization and integration-parity wave:
 
-- typed SEO domain events + outbox delivery foundations (baseline event variants and `seo_event_deliveries` skeleton are in place; transactional delivery writes are next)
+- typed SEO domain events + outbox delivery foundations (live `seo_event_deliveries` tracking with outbox envelope ids and duplicate-emission guard)
 - SEO-to-index consumer seam with bounded retry/dead-letter behavior
-- GraphQL/REST control-plane parity completion (additive `v1` only)
+- GraphQL/REST control-plane parity completion (additive `v1` only; REST diagnostics/sitemaps/bulk job parity endpoints are live)
 - expanded admin and storefront/Next host integrations
 - verification matrix and operational runbooks
 
