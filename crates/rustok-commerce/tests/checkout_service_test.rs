@@ -2170,11 +2170,10 @@ async fn complete_checkout_rejects_reentry_for_checking_out_cart_without_artifac
         .expect_err("re-entry from checking_out without artifacts must fail");
 
     match error {
-        CheckoutError::InvalidTransition { from, to } => {
-            assert_eq!(from, "checking_out");
-            assert_eq!(to, "checking_out");
+        CheckoutError::CheckoutInProgress(cart_id) => {
+            assert_eq!(cart_id, cart.id);
         }
-        other => panic!("expected invalid transition, got {other:?}"),
+        other => panic!("expected checkout-in-progress guard, got {other:?}"),
     }
 
     let cart_after = cart_service.get_cart(tenant_id, cart.id).await.unwrap();

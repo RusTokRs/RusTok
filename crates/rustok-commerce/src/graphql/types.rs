@@ -1057,6 +1057,7 @@ pub struct ReturnDecisionInputObject {
     pub action: String,
     pub refund: Option<ReturnRefundDecisionInputObject>,
     pub exchange: Option<ReturnExchangeDecisionInputObject>,
+    pub claim: Option<ReturnClaimDecisionInputObject>,
     pub metadata: Option<String>,
 }
 
@@ -1070,6 +1071,13 @@ pub struct ReturnRefundDecisionInputObject {
 
 #[derive(InputObject)]
 pub struct ReturnExchangeDecisionInputObject {
+    pub description: Option<String>,
+    pub preview: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct ReturnClaimDecisionInputObject {
     pub description: Option<String>,
     pub preview: Option<String>,
     pub metadata: Option<String>,

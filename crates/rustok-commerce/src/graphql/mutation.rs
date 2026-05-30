@@ -23,7 +23,7 @@ use crate::{
     },
     CartService, CatalogService, CheckoutService, CreateReturnDecisionInput, CustomerService,
     FulfillmentOrchestrationService, FulfillmentService, OrderService, PaymentService,
-    PostOrderOrchestrationService, PricingService, ReturnDecisionInput,
+    PostOrderOrchestrationService, PricingService, ReturnClaimDecisionInput, ReturnDecisionInput,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
     StoreContextService,
 };
@@ -2506,6 +2506,11 @@ fn build_create_return_decision_input(
                 .exchange
                 .map(build_return_exchange_decision_input)
                 .transpose()?,
+            claim: input
+                .decision
+                .claim
+                .map(build_return_claim_decision_input)
+                .transpose()?,
             metadata: parse_optional_metadata(input.decision.metadata.as_deref())?,
         },
     })
@@ -2527,6 +2532,17 @@ fn build_return_exchange_decision_input(
 ) -> Result<ReturnExchangeDecisionInput> {
     let preview = input.preview.unwrap_or_else(|| "{}".to_string());
     Ok(ReturnExchangeDecisionInput {
+        description: input.description,
+        preview: parse_json_payload(preview.as_str(), "Invalid JSON preview payload")?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+fn build_return_claim_decision_input(
+    input: ReturnClaimDecisionInputObject,
+) -> Result<ReturnClaimDecisionInput> {
+    let preview = input.preview.unwrap_or_else(|| "{}".to_string());
+    Ok(ReturnClaimDecisionInput {
         description: input.description,
         preview: parse_json_payload(preview.as_str(), "Invalid JSON preview payload")?,
         metadata: parse_optional_metadata(input.metadata.as_deref())?,

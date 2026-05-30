@@ -251,6 +251,16 @@ where
     .map_err(ApiError::from)
 }
 
+pub async fn fetch_storefront_cart(
+    selected_cart_id: Option<String>,
+    locale: Option<String>,
+) -> Result<StorefrontCartData, ApiError> {
+    match fetch_storefront_cart_server(selected_cart_id.clone(), locale.clone()).await {
+        Ok(data) => Ok(data),
+        Err(_) => fetch_storefront_cart_graphql(selected_cart_id, locale).await,
+    }
+}
+
 pub async fn fetch_storefront_cart_server(
     selected_cart_id: Option<String>,
     locale: Option<String>,
