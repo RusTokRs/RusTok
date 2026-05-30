@@ -24,7 +24,7 @@
   `base/compare_at unit_price`, а savings остаются в `order_adjustments`;
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`;
 - admin UI ownership вынесен в `rustok-order/admin`;
-- returns foundation хранит item-level lines с validation количества и принадлежности line-item к заказу, а `resolution_type/refund_id/order_change_id` связывают completed return с refund/exchange orchestration без переноса payment logic в order boundary;
+- returns foundation хранит item-level lines с validation количества и принадлежности line-item к заказу, а `resolution_type/refund_id/order_change_id` связывают completed return с refund/exchange/claim orchestration без переноса payment logic в order boundary;
 - order-change skeleton хранит `preview`, `change_type`, lifecycle `pending -> applied|cancelled` и metadata, но пока не применяет cross-domain effects.
 
 ## Контракты событий

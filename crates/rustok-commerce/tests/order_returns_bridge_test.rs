@@ -264,8 +264,14 @@ async fn commerce_post_order_decision_creates_return_bound_refund() {
 
     assert_eq!(decision.action, "refund");
     assert_eq!(decision.order_return.order_id, order.id);
+    assert_eq!(decision.order_return.status, "completed");
+    assert_eq!(
+        decision.order_return.resolution_type.as_deref(),
+        Some("refund")
+    );
     let refund = decision.refund.expect("refund should be created");
     assert_eq!(refund.payment_collection_id, collection.id);
+    assert_eq!(decision.order_return.refund_id, Some(refund.id));
     assert_eq!(refund.amount, Decimal::new(4200, 2));
     assert_eq!(
         refund.metadata["order_return_id"],
@@ -344,12 +350,18 @@ async fn commerce_post_order_decision_creates_return_bound_exchange_change() {
         .unwrap();
 
     assert_eq!(decision.action, "exchange");
+    assert_eq!(decision.order_return.status, "completed");
+    assert_eq!(
+        decision.order_return.resolution_type.as_deref(),
+        Some("exchange")
+    );
     assert!(decision.refund.is_none());
     let change = decision
         .order_change
         .expect("exchange change should be created");
     assert_eq!(change.order_id, order.id);
     assert_eq!(change.change_type, "exchange");
+    assert_eq!(decision.order_return.order_change_id, Some(change.id));
     assert_eq!(
         change.metadata["order_return_id"],
         serde_json::json!(decision.order_return.id.to_string())
@@ -430,12 +442,18 @@ async fn commerce_post_order_decision_creates_return_bound_claim_change() {
         .unwrap();
 
     assert_eq!(decision.action, "claim");
+    assert_eq!(decision.order_return.status, "completed");
+    assert_eq!(
+        decision.order_return.resolution_type.as_deref(),
+        Some("claim")
+    );
     assert!(decision.refund.is_none());
     let change = decision
         .order_change
         .expect("claim change should be created");
     assert_eq!(change.order_id, order.id);
     assert_eq!(change.change_type, "claim");
+    assert_eq!(decision.order_return.order_change_id, Some(change.id));
     assert_eq!(
         change.metadata["order_return_id"],
         serde_json::json!(decision.order_return.id.to_string())

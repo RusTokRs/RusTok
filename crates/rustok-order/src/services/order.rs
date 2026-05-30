@@ -39,6 +39,7 @@ const RETURN_STATUS_COMPLETED: &str = "completed";
 const RETURN_STATUS_CANCELLED: &str = "cancelled";
 const RETURN_RESOLUTION_REFUND: &str = "refund";
 const RETURN_RESOLUTION_EXCHANGE: &str = "exchange";
+const RETURN_RESOLUTION_CLAIM: &str = "claim";
 const RETURN_RESOLUTION_STORE_CREDIT: &str = "store_credit";
 const ORDER_CHANGE_STATUS_PENDING: &str = "pending";
 const ORDER_CHANGE_STATUS_APPLIED: &str = "applied";
@@ -982,11 +983,12 @@ fn normalize_return_resolution_type(value: Option<String>) -> OrderResult<Option
     };
     let normalized = value.to_ascii_lowercase();
     match normalized.as_str() {
-        RETURN_RESOLUTION_REFUND | RETURN_RESOLUTION_EXCHANGE | RETURN_RESOLUTION_STORE_CREDIT => {
-            Ok(Some(normalized))
-        }
+        RETURN_RESOLUTION_REFUND
+        | RETURN_RESOLUTION_EXCHANGE
+        | RETURN_RESOLUTION_CLAIM
+        | RETURN_RESOLUTION_STORE_CREDIT => Ok(Some(normalized)),
         _ => Err(OrderError::Validation(format!(
-            "invalid return resolution_type `{value}`; expected refund, exchange, or store_credit"
+            "invalid return resolution_type `{value}`; expected refund, exchange, claim, or store_credit"
         ))),
     }
 }
@@ -1020,6 +1022,18 @@ fn validate_return_resolution_links(
             if order_change_id.is_none() {
                 return Err(OrderError::Validation(
                     "exchange return resolution requires order_change_id".to_string(),
+                ));
+            }
+        }
+        Some(RETURN_RESOLUTION_CLAIM) => {
+            if order_change_id.is_none() {
+                return Err(OrderError::Validation(
+                    "claim return resolution requires order_change_id".to_string(),
+                ));
+            }
+            if refund_id.is_some() {
+                return Err(OrderError::Validation(
+                    "claim return resolution must not include refund_id".to_string(),
                 ));
             }
         }

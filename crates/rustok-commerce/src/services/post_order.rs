@@ -1,6 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_order::dto::{
-    CreateOrderChangeInput, CreateOrderReturnInput, OrderChangeResponse, OrderReturnResponse,
+    CompleteOrderReturnInput, CreateOrderChangeInput, CreateOrderReturnInput, OrderChangeResponse,
+    OrderReturnResponse,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::dto::{CreateRefundInput, ListPaymentCollectionsInput, RefundResponse};
@@ -101,13 +102,26 @@ impl PostOrderOrchestrationService {
         let action = normalize_decision_action(&input.decision.action)?;
         validate_decision_shape(&action, &input.decision)?;
 
+        let decision_metadata = input.decision.metadata.clone();
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
         let order_return = order_service
             .create_return(tenant_id, order_id, input.return_request)
             .await?;
 
-        let (refund, order_change) = match action.as_str() {
-            "return_only" => (None, None),
+        let (order_return, refund, order_change) = match action.as_str() {
+            "return_only" => {
+                let order_return = complete_return_decision(
+                    &order_service,
+                    tenant_id,
+                    order_return.id,
+                    None,
+                    None,
+                    None,
+                    decision_metadata.clone(),
+                )
+                .await?;
+                (order_return, None, None)
+            }
             "refund" => {
                 let refund_input = input.decision.refund.as_ref().ok_or_else(|| {
                     PostOrderOrchestrationError::Validation(
@@ -117,7 +131,17 @@ impl PostOrderOrchestrationService {
                 let refund = self
                     .create_refund_for_return(tenant_id, order_id, &order_return, refund_input)
                     .await?;
-                (Some(refund), None)
+                let order_return = complete_return_decision(
+                    &order_service,
+                    tenant_id,
+                    order_return.id,
+                    Some("refund"),
+                    Some(refund.id),
+                    None,
+                    decision_metadata.clone(),
+                )
+                .await?;
+                (order_return, Some(refund), None)
             }
             "exchange" => {
                 let exchange_input = input.decision.exchange.as_ref().ok_or_else(|| {
@@ -139,7 +163,17 @@ impl PostOrderOrchestrationService {
                         )?,
                     )
                     .await?;
-                (None, Some(order_change))
+                let order_return = complete_return_decision(
+                    &order_service,
+                    tenant_id,
+                    order_return.id,
+                    Some("exchange"),
+                    None,
+                    Some(order_change.id),
+                    decision_metadata.clone(),
+                )
+                .await?;
+                (order_return, None, Some(order_change))
             }
             "claim" => {
                 let claim_input = input.decision.claim.as_ref().ok_or_else(|| {
@@ -161,7 +195,17 @@ impl PostOrderOrchestrationService {
                         )?,
                     )
                     .await?;
-                (None, Some(order_change))
+                let order_return = complete_return_decision(
+                    &order_service,
+                    tenant_id,
+                    order_return.id,
+                    Some("claim"),
+                    None,
+                    Some(order_change.id),
+                    decision_metadata.clone(),
+                )
+                .await?;
+                (order_return, None, Some(order_change))
             }
             _ => unreachable!("validated action"),
         };
@@ -171,7 +215,7 @@ impl PostOrderOrchestrationService {
             order_return,
             refund,
             order_change,
-            metadata: normalize_object_or_empty(input.decision.metadata, "decision.metadata")?,
+            metadata: normalize_object_or_empty(decision_metadata, "decision.metadata")?,
         })
     }
 
@@ -269,6 +313,30 @@ fn validate_decision_shape(
         ));
     }
     Ok(())
+}
+
+async fn complete_return_decision(
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    return_id: Uuid,
+    resolution_type: Option<&str>,
+    refund_id: Option<Uuid>,
+    order_change_id: Option<Uuid>,
+    metadata: Value,
+) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+    order_service
+        .complete_return(
+            tenant_id,
+            return_id,
+            CompleteOrderReturnInput {
+                resolution_type: resolution_type.map(str::to_string),
+                refund_id,
+                order_change_id,
+                metadata: normalize_object_or_empty(metadata, "decision.metadata")?,
+            },
+        )
+        .await
+        .map_err(Into::into)
 }
 
 fn build_return_order_change_input(

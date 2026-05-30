@@ -797,6 +797,63 @@ async fn complete_order_return_validates_resolution_link_requirements() {
 }
 
 #[tokio::test]
+async fn complete_order_return_supports_claim_resolution_with_order_change() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    let order_change = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            CreateOrderChangeInput {
+                change_type: "claim".to_string(),
+                description: Some("Damaged item claim".to_string()),
+                preview: serde_json::json!({"claim_type":"damaged_item"}),
+                metadata: serde_json::json!({"source":"claim-resolution-test"}),
+            },
+        )
+        .await
+        .expect("claim order change should be created");
+    let created_return = service
+        .create_return(
+            tenant_id,
+            order.id,
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let completed = service
+        .complete_return(
+            tenant_id,
+            created_return.id,
+            rustok_order::dto::CompleteOrderReturnInput {
+                resolution_type: Some("claim".to_string()),
+                refund_id: None,
+                order_change_id: Some(order_change.id),
+                metadata: serde_json::json!({"resolved_by":"claims-desk"}),
+            },
+        )
+        .await
+        .expect("claim return should complete");
+
+    assert_eq!(completed.status, "completed");
+    assert_eq!(completed.resolution_type.as_deref(), Some("claim"));
+    assert_eq!(completed.order_change_id, Some(order_change.id));
+    assert_eq!(completed.refund_id, None);
+}
+
+#[tokio::test]
 async fn list_order_returns_clamps_per_page_upper_bound_to_100() {
     let service = setup().await;
     let tenant_id = Uuid::new_v4();
