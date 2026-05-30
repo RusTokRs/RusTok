@@ -661,6 +661,15 @@ pub struct GqlOrderReturnList {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlReturnDecision {
+    pub action: String,
+    pub order_return: GqlOrderReturn,
+    pub refund: Option<GqlRefund>,
+    pub order_change: Option<GqlOrderChange>,
+    pub metadata: String,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlPaymentCollection {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -1035,6 +1044,35 @@ pub struct CompleteOrderReturnRefundInputObject {
     pub reason: Option<String>,
     pub metadata: Option<String>,
     pub complete: Option<bool>,
+}
+
+#[derive(InputObject)]
+pub struct CreateReturnDecisionInputObject {
+    pub return_request: CreateOrderReturnInputObject,
+    pub decision: ReturnDecisionInputObject,
+}
+
+#[derive(InputObject)]
+pub struct ReturnDecisionInputObject {
+    pub action: String,
+    pub refund: Option<ReturnRefundDecisionInputObject>,
+    pub exchange: Option<ReturnExchangeDecisionInputObject>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct ReturnRefundDecisionInputObject {
+    pub payment_collection_id: Option<Uuid>,
+    pub amount: Option<String>,
+    pub reason: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct ReturnExchangeDecisionInputObject {
+    pub description: Option<String>,
+    pub preview: Option<String>,
+    pub metadata: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -1995,6 +2033,18 @@ impl From<dto::OrderReturnResponse> for GqlOrderReturn {
             updated_at: value.updated_at.to_rfc3339(),
             completed_at: value.completed_at.map(|value| value.to_rfc3339()),
             cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
+        }
+    }
+}
+
+impl From<crate::ReturnDecisionResponse> for GqlReturnDecision {
+    fn from(value: crate::ReturnDecisionResponse) -> Self {
+        Self {
+            action: value.action,
+            order_return: value.order_return.into(),
+            refund: value.refund.map(Into::into),
+            order_change: value.order_change.map(Into::into),
+            metadata: value.metadata.to_string(),
         }
     }
 }

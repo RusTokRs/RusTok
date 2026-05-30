@@ -22,6 +22,7 @@
 - Expose admin/manual post-order fulfillment creation over REST and GraphQL with typed `items[]`, seller-aware delivery-group consistency checks, and remaining-quantity validation against order line items.
 - Expose partial item-level `ship` / `deliver` adjustments over admin REST and GraphQL, with per-item shipped/delivered counters and a language-agnostic metadata-based audit trail.
 - Expose explicit admin `reopen` / `reship` fulfillment recovery operations over REST and GraphQL, so post-order delivery corrections do not rely on implicit status rewrites.
+- Expose admin return decision-tree transport over REST (`POST /admin/orders/{id}/returns/decision`) and GraphQL (`createOrderReturnDecision`) on top of `PostOrderOrchestrationService`, so `return_only` / `refund` / `exchange` orchestration stays service-owned.
 - Own the typed `shipping_profiles` registry and validate product/shipping-option references against active shipping profiles before write-path mutations are accepted.
 - Resolve the effective shipping profile as `variant -> product -> default`, persist it into cart/order line-item snapshots, and use those snapshots instead of live product metadata for checkout deliverability decisions.
 - Expose admin shipping-option management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `FulfillmentService`, so delivery compatibility and lifecycle are configurable without dropping to direct service calls.
@@ -64,8 +65,9 @@
   `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.
 - Transport adapters validate permissions against `AuthContext.permissions`, then invoke
   commerce services or direct tenant-scoped SeaORM reads where the module still owns the
-  read-model assembly; post-order order-change preview/apply/cancel transport stays
-  backed by `rustok-order::OrderService` rather than host-owned logic.
+  read-model assembly; post-order order-change preview/apply/cancel transport and
+  return decision-tree transport stay backed by module services (`rustok-order::OrderService`
+  and `PostOrderOrchestrationService`) rather than host-owned logic.
 - Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
 
 ## Entry points

@@ -114,6 +114,7 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn complete_refund(",
         "async fn cancel_refund(",
         "async fn create_order_change(",
+        "async fn create_order_return_decision(",
         "async fn apply_order_change(",
         "async fn cancel_order_change(",
         "async fn publish_product(",

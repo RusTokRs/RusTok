@@ -35,6 +35,7 @@ fn exposes_store_and_admin_route_groups() {
         "/admin/orders/{id}/deliver",
         "/admin/orders/{id}/cancel",
         "/admin/orders/{id}/returns",
+        "/admin/orders/{id}/returns/decision",
         "/admin/payment-collections",
         "/admin/payment-collections/{id}",
         "/admin/payment-collections/{id}/authorize",

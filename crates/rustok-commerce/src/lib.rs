@@ -27,7 +27,8 @@ pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
     CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService,
     CreateReturnDecisionInput, CustomerService, FulfillmentService, InventoryService, OrderService,
-    PaymentService, PostOrderOrchestrationService, PricingService, RegionService,
+    PaymentService, PostOrderOrchestrationError, PostOrderOrchestrationService, PricingService,
+    RegionService,
     ReturnDecisionInput, ReturnDecisionResponse, ReturnExchangeDecisionInput,
     ReturnRefundDecisionInput, ShippingProfileService, StoreContextError, StoreContextResult,
     StoreContextService,

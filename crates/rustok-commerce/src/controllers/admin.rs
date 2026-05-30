@@ -27,8 +27,10 @@ use crate::{
         UpdateShippingOptionInput, UpdateShippingProfileInput,
     },
     storefront_shipping::normalize_shipping_profile_slug,
-    CatalogService, FulfillmentOrchestrationError, FulfillmentOrchestrationService,
-    FulfillmentService, OrderService, PaymentService, ShippingProfileService,
+    CatalogService, CreateReturnDecisionInput, FulfillmentOrchestrationError,
+    FulfillmentOrchestrationService, FulfillmentService, OrderService, PaymentService,
+    PostOrderOrchestrationError, PostOrderOrchestrationService, ReturnDecisionResponse,
+    ShippingProfileService,
 };
 
 use super::{
@@ -68,6 +70,10 @@ pub fn routes() -> Routes {
         .add(
             "/orders/{id}/returns",
             axum::routing::post(create_order_return),
+        )
+        .add(
+            "/orders/{id}/returns/decision",
+            axum::routing::post(create_order_return_decision),
         )
         .add(
             "/orders/{id}/changes",
@@ -823,6 +829,55 @@ pub async fn create_order_return(
         .map_err(map_order_error)?;
 
     Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// Create admin order return and apply decision tree orchestration
+#[utoipa::path(
+    post,
+    path = "/admin/orders/{id}/returns/decision",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Order ID")),
+    request_body = CreateReturnDecisionInput,
+    responses(
+        (status = 201, description = "Return decision created", body = ReturnDecisionResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    )
+)]
+pub async fn create_order_return_decision(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CreateReturnDecisionInput>,
+) -> Result<(StatusCode, Json<ReturnDecisionResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_UPDATE],
+        "Permission denied: orders:update required",
+    )?;
+
+    if decision_requires_payments_update(
+        input.decision.action.as_str(),
+        input.decision.refund.is_some(),
+    ) {
+        ensure_permissions(
+            &auth,
+            &[Permission::PAYMENTS_UPDATE],
+            "Permission denied: payments:update required",
+        )?;
+    }
+
+    let service = PostOrderOrchestrationService::new(
+        ctx.db.clone(),
+        transactional_event_bus_from_context(&ctx),
+    );
+    let decision = service
+        .create_return_decision(tenant.id, auth.user_id, id, input)
+        .await
+        .map_err(map_post_order_orchestration_error)?;
+
+    Ok((StatusCode::CREATED, Json(decision)))
 }
 
 /// List admin order returns
@@ -2324,6 +2379,31 @@ fn map_fulfillment_orchestration_error(error: FulfillmentOrchestrationError) -> 
         FulfillmentOrchestrationError::OrderNotFound(_) => Error::NotFound,
         other => Error::BadRequest(other.to_string()),
     }
+}
+
+fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> Error {
+    match error {
+        PostOrderOrchestrationError::Order(
+            rustok_order::error::OrderError::OrderNotFound(_)
+            | rustok_order::error::OrderError::OrderReturnNotFound(_)
+            | rustok_order::error::OrderError::OrderChangeNotFound(_),
+        )
+        | PostOrderOrchestrationError::Payment(
+            rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)
+            | rustok_payment::error::PaymentError::RefundNotFound(_),
+        ) => Error::NotFound,
+        PostOrderOrchestrationError::Order(other) => Error::BadRequest(other.to_string()),
+        PostOrderOrchestrationError::Payment(other) => Error::BadRequest(other.to_string()),
+        PostOrderOrchestrationError::Validation(message) => Error::BadRequest(message),
+    }
+}
+
+fn decision_requires_payments_update(action: &str, has_refund_payload: bool) -> bool {
+    if has_refund_payload {
+        return true;
+    }
+
+    action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
 }
 
 fn map_shipping_profile_error(error: crate::CommerceError) -> Error {
@@ -5976,4 +6056,203 @@ mod tests {
             json!("reship")
         );
     }
+
+#[tokio::test]
+async fn admin_return_decision_transport_creates_exchange_order_change() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let tenant = TenantContext {
+        id: tenant_id,
+        name: "Admin Test Tenant".to_string(),
+        slug: format!("admin-test-{tenant_id}"),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
+    };
+    let auth = AuthContext {
+        user_id: actor_id,
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![Permission::ORDERS_UPDATE],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    };
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("ADMIN-RETURN-DECISION-EXCHANGE".to_string()),
+                    title: "Admin Return Decision Exchange".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("42.00").expect("valid decimal"),
+                    metadata: json!({ "source": "admin-return-decision" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: json!({ "source": "admin-return-decision" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let app = admin_transport_router(test_app_context(db), tenant, auth);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/admin/orders/{}/returns/decision", order.id))
+                .header("content-type", "application/json")
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .body(Body::from(
+                    json!({
+                        "return_request": {
+                            "reason": "wrong-size",
+                            "note": "operator-reviewed",
+                            "items": [
+                                {
+                                    "line_item_id": order.line_items[0].id,
+                                    "quantity": 1,
+                                    "reason": "wrong-size",
+                                    "metadata": { "source": "admin-return-decision" }
+                                }
+                            ],
+                            "metadata": { "source": "admin-return-decision" }
+                        },
+                        "decision": {
+                            "action": "exchange",
+                            "exchange": {
+                                "description": "Exchange for another size",
+                                "preview": { "swap": "new-size" },
+                                "metadata": { "operator": "returns-desk" }
+                            },
+                            "metadata": { "flow": "exchange" }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("request should succeed");
+
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("response body should read");
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "unexpected decision body: {}",
+        String::from_utf8_lossy(&body)
+    );
+
+    let payload: serde_json::Value =
+        serde_json::from_slice(&body).expect("response should be JSON");
+    assert_eq!(payload["action"], json!("exchange"));
+    assert_eq!(payload["order_return"]["order_id"], json!(order.id));
+    assert_eq!(payload["order_change"]["change_type"], json!("exchange"));
+    assert_eq!(
+        payload["order_change"]["metadata"]["order_return_id"],
+        payload["order_return"]["id"]
+    );
+    assert_eq!(payload["refund"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn admin_return_decision_transport_requires_payments_update_for_refund_action() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let tenant = TenantContext {
+        id: tenant_id,
+        name: "Admin Test Tenant".to_string(),
+        slug: format!("admin-test-{tenant_id}"),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
+    };
+    let auth = AuthContext {
+        user_id: actor_id,
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![Permission::ORDERS_UPDATE],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    };
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "usd".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("ADMIN-RETURN-DECISION-REFUND".to_string()),
+                    title: "Admin Return Decision Refund".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("12.00").expect("valid decimal"),
+                    metadata: json!({ "source": "admin-return-decision-permission" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: json!({ "source": "admin-return-decision-permission" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let app = admin_transport_router(test_app_context(db), tenant, auth);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/admin/orders/{}/returns/decision", order.id))
+                .header("content-type", "application/json")
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .body(Body::from(
+                    json!({
+                        "return_request": {
+                            "reason": "damaged",
+                            "metadata": { "source": "admin-return-decision-permission" }
+                        },
+                        "decision": {
+                            "action": "refund",
+                            "metadata": { "flow": "refund" }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
 }

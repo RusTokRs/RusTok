@@ -21,8 +21,10 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    CartService, CatalogService, CheckoutService, CustomerService, FulfillmentOrchestrationService,
-    FulfillmentService, OrderService, PaymentService, PricingService, ShippingProfileService,
+    CartService, CatalogService, CheckoutService, CreateReturnDecisionInput, CustomerService,
+    FulfillmentOrchestrationService, FulfillmentService, OrderService, PaymentService,
+    PostOrderOrchestrationService, PricingService, ReturnDecisionInput,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
     StoreContextService,
 };
 
@@ -1275,6 +1277,46 @@ impl CommerceMutation {
         Ok(item.into())
     }
 
+    async fn create_order_return_decision(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        input: CreateReturnDecisionInputObject,
+    ) -> Result<GqlReturnDecision> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        if graphql_decision_requires_payments_update(
+            input.decision.action.as_str(),
+            input.decision.refund.is_some(),
+        ) {
+            require_commerce_permission(
+                ctx,
+                &[Permission::PAYMENTS_UPDATE],
+                "Permission denied: payments:update required",
+            )?;
+        }
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let decision = PostOrderOrchestrationService::new(db.clone(), event_bus.clone())
+            .create_return_decision(
+                tenant_id,
+                auth.user_id,
+                order_id,
+                build_create_return_decision_input(input)?,
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(decision.into())
+    }
+
     async fn complete_order_return(
         &self,
         ctx: &Context<'_>,
@@ -2445,6 +2487,58 @@ fn build_create_order_return_input(
             .collect::<Result<Vec<_>>>()?,
         metadata: parse_optional_metadata(input.metadata.as_deref())?,
     })
+}
+
+fn build_create_return_decision_input(
+    input: CreateReturnDecisionInputObject,
+) -> Result<CreateReturnDecisionInput> {
+    Ok(CreateReturnDecisionInput {
+        return_request: build_create_order_return_input(input.return_request)?,
+        decision: ReturnDecisionInput {
+            action: input.decision.action,
+            refund: input
+                .decision
+                .refund
+                .map(build_return_refund_decision_input)
+                .transpose()?,
+            exchange: input
+                .decision
+                .exchange
+                .map(build_return_exchange_decision_input)
+                .transpose()?,
+            metadata: parse_optional_metadata(input.decision.metadata.as_deref())?,
+        },
+    })
+}
+
+fn build_return_refund_decision_input(
+    input: ReturnRefundDecisionInputObject,
+) -> Result<ReturnRefundDecisionInput> {
+    Ok(ReturnRefundDecisionInput {
+        payment_collection_id: input.payment_collection_id,
+        amount: parse_optional_decimal(input.amount.as_deref())?,
+        reason: input.reason,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+fn build_return_exchange_decision_input(
+    input: ReturnExchangeDecisionInputObject,
+) -> Result<ReturnExchangeDecisionInput> {
+    let preview = input.preview.unwrap_or_else(|| "{}".to_string());
+    Ok(ReturnExchangeDecisionInput {
+        description: input.description,
+        preview: parse_json_payload(preview.as_str(), "Invalid JSON preview payload")?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+fn graphql_decision_requires_payments_update(action: &str, has_refund_payload: bool) -> bool {
+    if has_refund_payload {
+        return true;
+    }
+
+    action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
 }
 
 async fn ensure_storefront_order_access(
