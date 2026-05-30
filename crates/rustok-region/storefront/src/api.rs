@@ -3,6 +3,7 @@ use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlReques
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+use crate::core::resolve_storefront_regions;
 use crate::model::{StorefrontRegion, StorefrontRegionsData};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,16 +129,6 @@ where
     .map_err(ApiError::from)
 }
 
-pub async fn fetch_storefront_regions(
-    selected_region_id: Option<String>,
-    locale: Option<String>,
-) -> Result<StorefrontRegionsData, ApiError> {
-    match fetch_storefront_regions_server(selected_region_id.clone(), locale.clone()).await {
-        Ok(data) => Ok(data),
-        Err(_) => fetch_storefront_regions_graphql(selected_region_id, locale).await,
-    }
-}
-
 pub async fn fetch_storefront_regions_server(
     selected_region_id: Option<String>,
     locale: Option<String>,
@@ -160,28 +151,6 @@ pub async fn fetch_storefront_regions_graphql(
         response.storefront_regions,
         selected_region_id,
     ))
-}
-
-fn resolve_storefront_regions(
-    regions: Vec<StorefrontRegion>,
-    selected_region_id: Option<String>,
-) -> StorefrontRegionsData {
-    let resolved_selected_region_id = selected_region_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .or_else(|| regions.first().map(|item| item.id.clone()));
-    let selected_region = resolved_selected_region_id
-        .as_ref()
-        .and_then(|selected_id| regions.iter().find(|item| &item.id == selected_id))
-        .cloned();
-
-    StorefrontRegionsData {
-        regions,
-        selected_region,
-        selected_region_id: resolved_selected_region_id,
-    }
 }
 
 #[cfg(feature = "ssr")]

@@ -113,8 +113,20 @@ const requiredChecklistChecks = [
     pattern: /- \[[ xX]\] Core слой не зависит от `leptos\*`\./,
   },
   {
+    label: "transport adapter roles checklist item",
+    pattern: /- \[[ xX]\] Transport adapters разделены по ролям: native и GraphQL fallback\./,
+  },
+  {
+    label: "host-visible error-status checklist item",
+    pattern: /- \[[ xX]\] Host-visible UI status\/error contracts имеют stable machine-readable codes и documented locale keys\./,
+  },
+  {
     label: "ffa verify evidence checklist item",
     pattern: /- \[[ xX]\] Выполнен `npm run verify:ffa:ui:migration`\./,
+  },
+  {
+    label: "error-status evidence checklist item",
+    pattern: /- \[[ xX]\] Для изменённых error\/status контрактов приложен список stable codes и locale keys\./,
   },
 ];
 
@@ -132,6 +144,32 @@ const requiredKpiMentions = [
   "Performance guard",
   "Contract guard",
   "Docs guard",
+];
+
+const requiredRegionErrorStatusContracts = [
+  {
+    stableCode: "native_unavailable",
+    localeKey: "region.error.status.nativeUnavailable",
+    enumVariant: "NativeUnavailable",
+  },
+  {
+    stableCode: "fallback_unavailable",
+    localeKey: "region.error.status.fallbackUnavailable",
+    enumVariant: "FallbackUnavailable",
+  },
+];
+
+const requiredRegionRouteDomAttributes = [
+  "data-region-route-query-key",
+  "data-region-route-query-value",
+];
+
+const regionStorefrontCorePath = "crates/rustok-region/storefront/src/core.rs";
+const regionStorefrontLibPath = "crates/rustok-region/storefront/src/lib.rs";
+const regionStorefrontReadmePath = "crates/rustok-region/storefront/README.md";
+const regionStorefrontLocalePaths = [
+  "crates/rustok-region/storefront/locales/en.json",
+  "crates/rustok-region/storefront/locales/ru.json",
 ];
 
 const packageJsonPath = "package.json";
@@ -158,6 +196,11 @@ function assertFileExists(relPath) {
     throw new Error(`Отсутствует обязательный документ: ${relPath}`);
   }
   return fullPath;
+}
+
+function readText(relPath) {
+  const fullPath = assertFileExists(relPath);
+  return readFileSync(fullPath, "utf8");
 }
 
 function normalizeMarkdown(content) {
@@ -250,6 +293,79 @@ function normalizeCommand(command) {
   return command.replace(/\s+/g, " ").trim();
 }
 
+function collectRegionErrorStatusContractErrors() {
+  const errors = [];
+  const core = readText(regionStorefrontCorePath);
+  const leptosUi = readText(regionStorefrontLibPath);
+  const storefrontReadme = readText(regionStorefrontReadmePath);
+  const locales = regionStorefrontLocalePaths.map((localePath) => ({
+    path: localePath,
+    content: readText(localePath),
+  }));
+
+  if (!core.includes("RegionErrorStatusDescriptor")) {
+    errors.push("Region storefront core должен содержать RegionErrorStatusDescriptor для host-visible status contract");
+  }
+
+  if (!core.includes("REGION_ERROR_STATUS_DESCRIPTORS")) {
+    errors.push("Region storefront core должен содержать REGION_ERROR_STATUS_DESCRIPTORS");
+  }
+
+  ["data-region-error-status", "data-region-error-locale-key"].forEach((attributeName) => {
+    if (!leptosUi.includes(attributeName)) {
+      errors.push(`Region storefront Leptos error adapter должен публиковать DOM attribute: ${attributeName}`);
+    }
+    if (!storefrontReadme.includes(attributeName)) {
+      errors.push(`Region storefront README должен документировать DOM attribute: ${attributeName}`);
+    }
+  });
+
+  [
+    "RegionRouteState",
+    "RegionRouteSelectionUpdate",
+    "SELECTED_REGION_QUERY_KEY",
+  ].forEach((contractName) => {
+    if (!core.includes(contractName)) {
+      errors.push(`Region storefront core должен содержать route/query contract: ${contractName}`);
+    }
+    if (!storefrontReadme.includes(contractName)) {
+      errors.push(`Region storefront README должен документировать route/query contract: ${contractName}`);
+    }
+  });
+
+  requiredRegionRouteDomAttributes.forEach((attributeName) => {
+    if (!leptosUi.includes(attributeName)) {
+      errors.push(`Region storefront Leptos route adapter должен публиковать DOM attribute: ${attributeName}`);
+    }
+    if (!storefrontReadme.includes(attributeName)) {
+      errors.push(`Region storefront README должен документировать route DOM attribute: ${attributeName}`);
+    }
+  });
+
+  requiredRegionErrorStatusContracts.forEach(({ stableCode, localeKey, enumVariant }) => {
+    if (!core.includes(`RegionErrorStatusCode::${enumVariant}`)) {
+      errors.push(`Region storefront core не содержит status enum variant: ${enumVariant}`);
+    }
+    if (!core.includes(`stable_code: "${stableCode}"`)) {
+      errors.push(`Region storefront core не содержит stable status code: ${stableCode}`);
+    }
+    if (!core.includes(`locale_key: "${localeKey}"`)) {
+      errors.push(`Region storefront core не содержит locale key mapping для ${stableCode}: ${localeKey}`);
+    }
+    if (!storefrontReadme.includes(stableCode) || !storefrontReadme.includes(localeKey)) {
+      errors.push(`Region storefront README должен документировать status contract: ${stableCode} -> ${localeKey}`);
+    }
+
+    locales.forEach(({ path: localePath, content }) => {
+      if (!content.includes(`"${localeKey}"`)) {
+        errors.push(`${localePath} должен содержать locale key для ${stableCode}: ${localeKey}`);
+      }
+    });
+  });
+
+  return errors;
+}
+
 function collectValidationErrors({ plan, connectivity, checklist, docsIndex, packageJson }) {
   const errors = [];
 
@@ -322,6 +438,8 @@ function collectValidationErrors({ plan, connectivity, checklist, docsIndex, pac
       errors.push(`Не найдена обязательная markdown-ссылка в docs/index.md: ${refPath}`);
     }
   });
+
+  errors.push(...collectRegionErrorStatusContractErrors());
 
   return errors.sort((a, b) => a.localeCompare(b, "ru"));
 }

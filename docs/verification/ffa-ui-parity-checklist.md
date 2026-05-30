@@ -30,6 +30,7 @@ Checklist используется как evidence для phase-gates `A -> B`, 
 - [ ] Доступ к transport идёт через core ports.
 - [ ] Core слой не зависит от `leptos*`.
 - [ ] Transport adapters разделены по ролям: native и GraphQL fallback.
+- [ ] Host-visible UI status/error contracts имеют stable machine-readable codes и documented locale keys.
 
 ### 3) i18n/tenant/request context
 
@@ -46,6 +47,7 @@ Checklist используется как evidence для phase-gates `A -> B`, 
   - [ ] `npm run verify:i18n:contract`
   - [ ] `npm.cmd run verify:storefront:routes`
 - [ ] Выполнен `npm run verify:ffa:ui:migration`.
+- [ ] Для изменённых error/status контрактов приложен список stable codes и locale keys.
 - [ ] В PR приложен фактический вывод проверок.
 
 ### 5) Documentation double-check
@@ -67,6 +69,7 @@ Checklist используется как evidence для phase-gates `A -> B`, 
 - Headless path: PASS/FAIL
 - Contract guard (GraphQL/REST retained): PASS/FAIL
 - Docs double-check: PASS/FAIL
+- Error/status contract (if changed): `<code>` -> `<locale key>`
 
 Commands:
 - cargo xtask module validate <slug>

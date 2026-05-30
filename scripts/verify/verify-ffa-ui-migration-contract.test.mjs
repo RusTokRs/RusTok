@@ -18,6 +18,8 @@ function withFixture({ pipeline, contractCommand, docsCommand }) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-ffa-verify-"));
   mkdirSync(path.join(root, "docs", "research"), { recursive: true });
   mkdirSync(path.join(root, "docs", "verification"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
 
   writeFileSync(
     path.join(root, "docs", "research", "dioxus-ffa-ui-migration-plan.md"),
@@ -51,7 +53,10 @@ function withFixture({ pipeline, contractCommand, docsCommand }) {
       "- [ ] UI слой не владеет transport/business логикой.",
       "- [ ] Доступ к transport идёт через core ports.",
       "- [ ] Core слой не зависит от `leptos*`.",
+      "- [ ] Transport adapters разделены по ролям: native и GraphQL fallback.",
+      "- [ ] Host-visible UI status/error contracts имеют stable machine-readable codes и documented locale keys.",
       "- [ ] Выполнен `npm run verify:ffa:ui:migration`.",
+      "- [ ] Для изменённых error/status контрактов приложен список stable codes и locale keys.",
     ].join("\n"),
   );
 
@@ -63,6 +68,48 @@ function withFixture({ pipeline, contractCommand, docsCommand }) {
       "[check](./verification/ffa-ui-parity-checklist.md)",
     ].join("\n"),
   );
+
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-region", "storefront", "src", "core.rs"),
+    [
+      "pub enum RegionErrorStatusCode { NativeUnavailable, FallbackUnavailable }",
+      "pub struct RegionErrorStatusDescriptor { pub stable_code: &'static str, pub locale_key: &'static str }",
+      "const REGION_ERROR_STATUS_DESCRIPTORS: [RegionErrorStatusDescriptor; 2] = [",
+      "  RegionErrorStatusDescriptor { stable_code: \"native_unavailable\", locale_key: \"region.error.status.nativeUnavailable\" },",
+      "  RegionErrorStatusDescriptor { stable_code: \"fallback_unavailable\", locale_key: \"region.error.status.fallbackUnavailable\" },",
+      "];",
+      "pub const SELECTED_REGION_QUERY_KEY: &str = \"region\";",
+      "pub struct RegionRouteState;",
+      "pub struct RegionRouteSelectionUpdate;",
+      "fn _uses_variants() { let _ = RegionErrorStatusCode::NativeUnavailable; let _ = RegionErrorStatusCode::FallbackUnavailable; }",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-region", "storefront", "src", "lib.rs"),
+    "data-region-error-status data-region-error-locale-key data-region-route-query-key data-region-route-query-value",
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-region", "storefront", "README.md"),
+    [
+      "native_unavailable region.error.status.nativeUnavailable",
+      "fallback_unavailable region.error.status.fallbackUnavailable",
+      "data-region-error-status data-region-error-locale-key data-region-route-query-key data-region-route-query-value",
+      "RegionRouteState RegionRouteSelectionUpdate SELECTED_REGION_QUERY_KEY",
+    ].join("\n"),
+  );
+
+  ["en", "ru"].forEach((locale) => {
+    writeFileSync(
+      path.join(root, "crates", "rustok-region", "storefront", "locales", `${locale}.json`),
+      JSON.stringify({
+        "region.error.status.nativeUnavailable": "Native unavailable",
+        "region.error.status.fallbackUnavailable": "Fallback unavailable",
+      }),
+    );
+  });
 
   writeFileSync(
     path.join(root, "package.json"),
