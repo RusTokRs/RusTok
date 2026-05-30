@@ -86,7 +86,7 @@ async-graphql = { version = "7.2.1", features = ["uuid", "chrono"] }
 base64 = "0.22"
 
 # IDs
-uuid = { version = "1.23.1", features = ["v4", "serde", "js"] }
+uuid = { version = "1.23.2", features = ["v4", "serde", "js"] }
 ulid = "1.1"
 
 # Serialization
