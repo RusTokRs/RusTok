@@ -179,7 +179,10 @@ Manifest hash — SHA-256 от canonical JSON полного snapshot, вклю�
 
 Tenant enable/disable должен проходить через `ModuleLifecycleService::toggle_module_with_actor()`: operation journal
 пишется до изменения tenant state, compat `on_enable`/`on_disable` hooks выполняются как pre-hooks, а успешное изменение
-state и перевод operation в `committed` фиксируются одним commit.
+state и перевод operation в `committed` фиксируются одним commit. GraphQL и Leptos SSR/admin surfaces
+не владеют lifecycle taxonomy или journal metadata: server GraphQL mapper публикует canonical error codes
+(`BAD_USER_INPUT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`) и recovery/journal fields, а Leptos SSR/admin
+слои только прокидывают payload без local remap.
 
 Module-owned migrations могут объявлять ordering metadata рядом со своим exporter-ом; server migrator делает
 topological sort и считает missing dependency/cycle ошибкой runtime/test contract.

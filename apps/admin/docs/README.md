@@ -69,7 +69,7 @@
 - `/modules` больше не читает legacy registry audit shape: lifecycle/event read-side работает только с typed payload (`stage_key`, nested `owner_transition`, structured principal objects) и не парсит historical `*_actor` keys.
 - Для `apps/admin` это считается конечным repo-side contract: дальше здесь не нужен новый client-owned lifecycle, а только targeted verification mapping и периодическая сверка `/modules` UX с server-driven policy surface.
 - Toggle/install/uninstall/upgrade module composition не должны иметь локальный SSR SQL lifecycle duplicate: host использует canonical server GraphQL/control-plane entrypoints, где CAS-update `platform_state` и build enqueue атомарны, а `manifest_ref`/`manifest_hash` берутся из server-side snapshot contract.
-- Для module toggle `apps/admin` держит GraphQL-only entrypoint contract (без native fallback toggle path): error taxonomy, dependency/core checks и journal semantics (`module_operations`) задаются server lifecycle service, а не локальной Leptos-логикой.
+- Для module toggle `apps/admin` держит GraphQL-only entrypoint contract (без native fallback toggle path): error taxonomy, dependency/core checks и journal semantics (`module_operations`) задаются server lifecycle service, а не локальной Leptos-логикой. Leptos SSR adapter и UI обязаны прокидывать `BAD_USER_INPUT`/`MODULE_HOOK_FAILED`/`INTERNAL_ERROR`, `correlation_id`, `requested_by`, `status`, `retryable_issue` и related recovery fields без client-side remap.
 
 ## Локальный debug-запуск
 

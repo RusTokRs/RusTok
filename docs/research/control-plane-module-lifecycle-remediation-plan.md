@@ -637,7 +637,7 @@ rollback-стратегии и Definition of Done по итерациям.
 - [x] Явная фиксация quality gates как non-regression contract.
 - [x] Проверка актуальности Dependabot directories.
 - [x] Единый источник coverage threshold.
-- [~] Синхронизация central/local docs + ADR updates (central/local docs по control-plane и lifecycle синхронизированы; ADR по hook semantics добавлен, остаётся финализировать parity coverage для полного закрытия этапов).
+- [x] Синхронизация central/local docs + ADR updates (central/local docs по control-plane/lifecycle/recovery/parity синхронизированы, ADR по hook semantics добавлен, docs guard фиксирует final parity contract).
 
 **Deliverables.**
 
@@ -946,3 +946,9 @@ rollback-стратегии и Definition of Done по итерациям.
 - Закрыт broad lifecycle/journal GraphQL↔Leptos parity хвост: admin guard `lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces` теперь связывает server GraphQL mapper matrix, Leptos SSR adapter passthrough matrix, server lifecycle journal integration coverage, GraphQL-only admin toggle helper и admin recovery UI consumption.
 - Чекбоксы по runtime taxonomy parity (`unknown/core/missing_dependency/has_dependents/hook_failed`), journal metadata parity и unified GraphQL vs Leptos SSR parity переведены в `[x]`; contract остаётся server-owned, admin/SSR layers только passthrough без local remap.
 - Текущий snapshot после итерации: `pending=1`, открыты только docs sync и полный minimal verification bundle; план ещё не завершён до `open=0` и зелёного `--fail-on-open`.
+
+### Актуализация 2026-05-30 (итерация 81)
+
+- Закрыт docs-sync хвост: central `docs/architecture/modules.md`, local `apps/server/docs/README.md` и `apps/admin/docs/README.md` теперь явно фиксируют final lifecycle parity contract — server-owned GraphQL taxonomy (`BAD_USER_INPUT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`), journal/recovery metadata, GraphQL-only admin toggle и запрет client-side remap.
+- `lifecycle_bypass_guard` получил docs guard `control_plane_lifecycle_docs_capture_final_parity_contract`, который не даёт central/local docs снова отстать от фактического control-plane lifecycle contract.
+- Текущий snapshot после итерации: открытым остаётся только minimal verification bundle (`pending=1`, `in_progress=1`), поэтому план ещё не завершён до зелёного короткого/полного verification window и `open=0`.

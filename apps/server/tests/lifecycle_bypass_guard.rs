@@ -325,6 +325,75 @@ fn lifecycle_hook_phases_adr_is_linked_from_indexes_and_backlog() {
 }
 
 #[test]
+fn control_plane_lifecycle_docs_capture_final_parity_contract() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let central_modules = fs::read_to_string(repo_root.join("docs/architecture/modules.md"))
+        .expect("docs/architecture/modules.md should be readable");
+    let server_docs = fs::read_to_string(repo_root.join("apps/server/docs/README.md"))
+        .expect("apps/server docs should be readable");
+    let admin_docs = fs::read_to_string(repo_root.join("apps/admin/docs/README.md"))
+        .expect("apps/admin docs should be readable");
+    let remediation = fs::read_to_string(
+        repo_root.join("docs/research/control-plane-module-lifecycle-remediation-plan.md"),
+    )
+    .expect("remediation plan should be readable");
+
+    for required in [
+        "ModuleLifecycleService::toggle_module_with_actor()",
+        "BAD_USER_INPUT",
+        "MODULE_HOOK_FAILED",
+        "INTERNAL_ERROR",
+        "Leptos SSR/admin",
+    ] {
+        assert!(
+            central_modules.contains(required),
+            "central module architecture docs must capture final lifecycle parity fragment `{required}`"
+        );
+    }
+
+    for required in [
+        "validated/running/committed/failed",
+        "GraphQL mapper",
+        "journal/recovery metadata",
+        "admin/SSR clients не должны remap",
+    ] {
+        assert!(
+            server_docs.contains(required),
+            "server local docs must capture final lifecycle contract fragment `{required}`"
+        );
+    }
+
+    for required in [
+        "GraphQL-only entrypoint contract",
+        "correlation_id",
+        "requested_by",
+        "retryable_issue",
+        "client-side remap",
+        "Lifecycle recovery",
+    ] {
+        assert!(
+            admin_docs.contains(required),
+            "admin local docs must capture final lifecycle parity fragment `{required}`"
+        );
+    }
+
+    for required in [
+        "docs sync",
+        "runtime taxonomy parity",
+        "journal metadata parity",
+        "GraphQL↔Leptos parity",
+    ] {
+        assert!(
+            remediation.contains(required),
+            "remediation plan must record final docs/parity status fragment `{required}`"
+        );
+    }
+}
+
+#[test]
 fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
