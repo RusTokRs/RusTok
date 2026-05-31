@@ -29,10 +29,17 @@ UX do not drift into one host.
 - `lib/main.dart` — app bootstrap and provider wiring.
 - `lib/app_shell/storefront_shell_page.dart` — mobile storefront shell.
 - `lib/app_shell/storefront_context.dart` — host-owned runtime context and GraphQL client configuration.
-- `lib/data/storefront_catalog_repository.dart` — host-owned catalog repository using the shared GraphQL client and existing storefront search surface.
+- `lib/data/storefront_catalog_repository.dart` — host-owned catalog/cart repository using the shared GraphQL client and existing `storefrontSearch`/`storefrontCart` surfaces.
 - `lib/registry/storefront_mobile_manifest.g.dart` — generated storefront registry from `provides.storefront_ui`.
 - `lib/registry/storefront_surface_registry.dart` — host adapter that maps generated storefront entries to mounted mobile package surfaces.
 - `lib/routes/storefront_router.dart` — route table, module-owned catalog/cart mounting, and generic manifest-backed module placeholders.
+
+## Runtime defines
+
+- `RUSTOK_STOREFRONT_SERVER_BASE_URL` — server base URL.
+- `RUSTOK_STOREFRONT_TENANT_SLUG` — tenant slug for shared GraphQL headers.
+- `RUSTOK_STOREFRONT_LOCALE` — host-selected effective locale.
+- `RUSTOK_STOREFRONT_CART_ID` — optional cart id for the canonical `storefrontCart` read path.
 
 ## Documentation
 

@@ -21,6 +21,20 @@ const storefrontMobileCatalogQuery = r'''
   }
 ''';
 
+const storefrontMobileCartQuery = r'''
+  query StorefrontMobileCart($id: UUID!) {
+    storefrontCart(id: $id) {
+      lineItems {
+        productId
+        title
+        quantity
+        totalPrice
+        currencyCode
+      }
+    }
+  }
+''';
+
 final hostStorefrontCatalogRepositoryProvider =
     Provider<StorefrontCatalogRepository>((ref) {
   final client = ref.watch(storefrontGraphQlClientProvider);
@@ -28,6 +42,7 @@ final hostStorefrontCatalogRepositoryProvider =
   return GraphQlStorefrontCatalogRepository(
     client: client,
     locale: runtime.locale,
+    cartId: runtime.cartId,
   );
 });
 
@@ -35,10 +50,12 @@ class GraphQlStorefrontCatalogRepository implements StorefrontCatalogRepository 
   const GraphQlStorefrontCatalogRepository({
     required GraphQLClient client,
     required this.locale,
+    this.cartId,
   }) : _client = client;
 
   final GraphQLClient _client;
   final String locale;
+  final String? cartId;
 
   @override
   Future<List<StorefrontProductSummary>> featuredProducts() async {
@@ -81,8 +98,64 @@ class GraphQlStorefrontCatalogRepository implements StorefrontCatalogRepository 
 
   @override
   Future<List<StorefrontCartLine>> cartLines() async {
-    return const <StorefrontCartLine>[];
+    final id = cartId?.trim();
+    if (id == null || id.isEmpty) {
+      return const <StorefrontCartLine>[];
+    }
+
+    final result = await _client.query(
+      QueryOptions(
+        document: gql(storefrontMobileCartQuery),
+        fetchPolicy: FetchPolicy.cacheAndNetwork,
+        variables: <String, dynamic>{'id': id},
+      ),
+    );
+
+    if (result.hasException) {
+      throw result.exception!;
+    }
+
+    final payload = result.data?['storefrontCart'];
+    if (payload is! Map<String, dynamic>) {
+      return const <StorefrontCartLine>[];
+    }
+
+    final items = payload['lineItems'];
+    if (items is! List) {
+      return const <StorefrontCartLine>[];
+    }
+
+    return List.unmodifiable(
+      items.whereType<Map<String, dynamic>>().map(_cartLineFromJson),
+    );
   }
+}
+
+StorefrontCartLine _cartLineFromJson(Map<String, dynamic> item) {
+  final productId = _readOptionalString(item, 'productId') ??
+      _readOptionalString(item, 'variantId') ??
+      _readString(item, 'title');
+  final quantity = item['quantity'];
+  return StorefrontCartLine(
+    productId: productId,
+    title: _readString(item, 'title'),
+    quantity: quantity is int ? quantity : 0,
+    priceLabel: _cartLinePriceLabel(item),
+  );
+}
+
+String _cartLinePriceLabel(Map<String, dynamic> item) {
+  final total = _readOptionalString(item, 'totalPrice') ??
+      _readOptionalString(item, 'total_price');
+  final currency = _readOptionalString(item, 'currencyCode') ??
+      _readOptionalString(item, 'currency_code');
+  if (total == null) {
+    return currency ?? '';
+  }
+  if (currency == null) {
+    return total;
+  }
+  return '$total $currency';
 }
 
 StorefrontProductSummary _productFromSearchItem(Map<String, dynamic> item) {
