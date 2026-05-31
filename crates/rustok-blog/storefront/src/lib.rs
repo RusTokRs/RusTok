@@ -14,29 +14,21 @@ use crate::model::{BlogPostDetail, BlogPostListItem, StorefrontBlogData};
 #[component]
 pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_slug =
-        core::selected_slug_or_default(read_route_query_value(&route_context, "slug"), "latest");
     let selected_locale = route_context.locale.clone();
-    let badge = t(selected_locale.as_deref(), "blog.badge", "blog");
-    let title = t(
-        selected_locale.as_deref(),
-        "blog.title",
-        "Stories published from the module package",
+    let route_state = core::build_storefront_route_state(
+        read_route_query_value(&route_context, core::SELECTED_POST_QUERY_KEY),
+        route_context.route_segment.as_ref().cloned(),
     );
-    let subtitle = t(
-        selected_locale.as_deref(),
-        "blog.subtitle",
-        "This storefront surface reads blog data through GraphQL with no host-specific blog wiring.",
-    );
-    let load_error = t(
-        selected_locale.as_deref(),
-        "blog.error.load",
-        "Failed to load blog storefront data",
-    );
+    let fetch_request = core::build_storefront_fetch_request(&route_state, selected_locale.clone());
+    let shell_view = core::build_storefront_shell_view_model(selected_locale.as_deref());
+    let badge = shell_view.badge;
+    let title = shell_view.title;
+    let subtitle = shell_view.subtitle;
+    let load_error = shell_view.load_error;
 
     let posts_resource = Resource::new_blocking(
-        move || (selected_slug.clone(), selected_locale.clone()),
-        move |(post_slug, locale)| async move { transport::fetch_blog(post_slug, locale).await },
+        move || fetch_request.clone(),
+        move |request| async move { transport::fetch_blog(request).await },
     );
 
     view! {
@@ -223,8 +215,10 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
 fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let route_segment =
-        core::route_segment_or_default(route_context.route_segment.as_ref().cloned(), "blog");
+    let route_segment = core::route_segment_or_default(
+        route_context.route_segment.as_ref().cloned(),
+        core::DEFAULT_ROUTE_SEGMENT,
+    );
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
     let header_view = core::published_posts_header_typed_view(

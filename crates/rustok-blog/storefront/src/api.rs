@@ -66,7 +66,7 @@ struct PostsFilter {
     per_page: u64,
 }
 
-fn configured_tenant_slug() -> Option<String> {
+pub(crate) fn configured_tenant_slug() -> Option<String> {
     [
         "RUSTOK_TENANT_SLUG",
         "NEXT_PUBLIC_TENANT_SLUG",
@@ -119,18 +119,6 @@ where
     )
     .await
     .map_err(ApiError::from)
-}
-
-pub async fn fetch_storefront_blog(
-    post_slug: String,
-    locale: Option<String>,
-) -> Result<StorefrontBlogData, ApiError> {
-    match fetch_storefront_blog_server(configured_tenant_slug(), post_slug.clone(), locale.clone())
-        .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => fetch_storefront_blog_graphql(post_slug, locale).await,
-    }
 }
 
 pub async fn fetch_storefront_blog_server(
