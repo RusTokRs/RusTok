@@ -61,7 +61,8 @@ void main() {
 
     router.go('$storefrontModulesRootPath/blog');
     await tester.pumpAndSettle();
-    expect(find.text('Module: blog'), findsOneWidget);
+    expect(find.text('Blog'), findsOneWidget);
+    expect(find.text('Manifest-driven storefront mobile surface.'), findsOneWidget);
   });
 }
 

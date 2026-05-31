@@ -13,6 +13,8 @@ dependencies:
   graphql: ^5.2.3
   app_graphql:
     path: ../../packages/app_graphql
+  app_module_contracts:
+    path: ../../packages/app_module_contracts
   rustok_catalog_mobile:
     path: ../../packages/rustok_catalog_mobile
 

@@ -60,10 +60,18 @@ def parse_args() -> argparse.Namespace:
         default=("rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json"),
         help="Path to generated registry snapshot JSON",
     )
+    parser.add_argument(
+        "--surface",
+        choices=("admin", "storefront"),
+        default="admin",
+        help="Manifest surface to verify. Defaults to admin.",
+    )
     return parser.parse_args()
 
 
-def _validate_snapshot_schema(entries: object) -> str | None:
+def _validate_snapshot_schema(
+    entries: object, *, expected_surface_kind: str = "admin_mobile"
+) -> str | None:
     if not isinstance(entries, list):
         return "snapshot root must be an array"
 
@@ -126,7 +134,7 @@ def _validate_snapshot_schema(entries: object) -> str | None:
 
         if not isinstance(surface_kind, str) or surface_kind != surface_kind.strip():
             return f"snapshot entry #{index} has invalid surface_kind"
-        if surface_kind != "admin_mobile":
+        if surface_kind != expected_surface_kind:
             return (
                 f"snapshot entry #{index} has unsupported surface_kind '{surface_kind}'"
             )
@@ -195,11 +203,12 @@ def _validate_snapshot_schema(entries: object) -> str | None:
     return None
 
 
-def _print_regeneration_command(repo_root: pathlib.Path) -> None:
+def _print_regeneration_command(repo_root: pathlib.Path, surface: str) -> None:
     print("Run:")
     print(
         "  python3 rustok_mobile/tooling/scripts/generate_mobile_manifest.py "
         f"--repo-root {repo_root}"
+        + (f" --surface {surface}" if surface != "admin" else "")
     )
 
 
@@ -210,6 +219,7 @@ def _print_stale_diff(
     current: str,
     expected: str,
     repo_root: pathlib.Path,
+    surface: str,
 ) -> None:
     print(f"ERROR: {label} is stale: {path}")
     print("Diff (current -> expected):")
@@ -221,7 +231,7 @@ def _print_stale_diff(
         lineterm="",
     ):
         print(line)
-    _print_regeneration_command(repo_root)
+    _print_regeneration_command(repo_root, surface)
 
 
 def main() -> int:
@@ -230,10 +240,13 @@ def main() -> int:
     manifest_path = pathlib.Path(args.manifest).resolve()
     snapshot_path = pathlib.Path(args.snapshot).resolve()
 
-    modules = scan_modules(repo_root)
+    modules = scan_modules(repo_root, surface=args.surface)
+    expected_surface_kind = f"{args.surface}_mobile"
     expected = render(modules)
     expected_snapshot_entries = to_snapshot(modules)
-    schema_error = _validate_snapshot_schema(expected_snapshot_entries)
+    schema_error = _validate_snapshot_schema(
+        expected_snapshot_entries, expected_surface_kind=expected_surface_kind
+    )
     if schema_error is not None:
         print(f"ERROR: generated snapshot schema is invalid: {schema_error}")
         return 1
@@ -250,6 +263,7 @@ def main() -> int:
             current=current,
             expected=expected,
             repo_root=repo_root,
+            surface=args.surface,
         )
         return 1
 
@@ -265,6 +279,7 @@ def main() -> int:
             current=snapshot_current,
             expected=expected_snapshot,
             repo_root=repo_root,
+            surface=args.surface,
         )
         return 1
 
@@ -274,7 +289,9 @@ def main() -> int:
         print(f"ERROR: snapshot is not valid JSON: {exc}")
         return 1
 
-    schema_error = _validate_snapshot_schema(parsed)
+    schema_error = _validate_snapshot_schema(
+        parsed, expected_surface_kind=expected_surface_kind
+    )
     if schema_error is not None:
         print(f"ERROR: snapshot schema invalid: {schema_error}")
         return 1

@@ -1,0 +1,83 @@
+[
+  {
+    "module_slug": "blog",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "blog",
+    "nav_icon": "article",
+    "permissions": [],
+    "locale_namespace": "blog",
+    "child_pages": []
+  },
+  {
+    "module_slug": "cart",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "cart",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "cart",
+    "child_pages": []
+  },
+  {
+    "module_slug": "commerce",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "commerce",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "commerce",
+    "child_pages": []
+  },
+  {
+    "module_slug": "forum",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "forum",
+    "nav_icon": "forum",
+    "permissions": [],
+    "locale_namespace": "forum",
+    "child_pages": []
+  },
+  {
+    "module_slug": "pages",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "pages",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "pages",
+    "child_pages": []
+  },
+  {
+    "module_slug": "pricing",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "pricing",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "pricing",
+    "child_pages": []
+  },
+  {
+    "module_slug": "product",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "products",
+    "nav_icon": "inventory_2",
+    "permissions": [],
+    "locale_namespace": "product",
+    "child_pages": []
+  },
+  {
+    "module_slug": "region",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "regions",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "region",
+    "child_pages": []
+  },
+  {
+    "module_slug": "search",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "search",
+    "nav_icon": "search",
+    "permissions": [],
+    "locale_namespace": "search",
+    "child_pages": []
+  }
+]

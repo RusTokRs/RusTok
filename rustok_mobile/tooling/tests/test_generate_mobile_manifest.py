@@ -118,6 +118,64 @@ class GenerateMobileManifestTests(unittest.TestCase):
         self.assertIn('"nav_icon": "article"', payload)
         self.assertIn('"child_pages"', payload)
 
+    def test_scan_modules_reads_storefront_surface(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            write_module_manifest(
+                root,
+                "mod-product",
+                """
+                [module]
+                slug = "product"
+                name = "Product"
+
+                [provides.admin_ui]
+                route_segment = "admin-products"
+                nav_label = "Admin Products"
+
+                [provides.storefront_ui]
+                route_segment = "products"
+                page_title = "Products"
+                """,
+            )
+
+            modules = scan_modules(root, surface="storefront")
+
+            self.assertEqual(len(modules), 1)
+            self.assertEqual(modules[0]["surface_kind"], "storefront")
+            self.assertEqual(modules[0]["route_segment"], "products")
+            self.assertEqual(modules[0]["nav_label"], "Products")
+
+    def test_render_storefront_surface_kind(self):
+        content = render(
+            [
+                {
+                    "module_key": "rustok_product",
+                    "module_slug": "product",
+                    "surface_kind": "storefront",
+                    "route_segment": "products",
+                    "nav_label": "Products",
+                    "icon": "inventory_2",
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIn("surfaceKind: MobileSurfaceKind.storefront", content)
+        payload = render_snapshot_json(
+            [
+                {
+                    "module_key": "rustok_product",
+                    "module_slug": "product",
+                    "surface_kind": "storefront",
+                    "route_segment": "products",
+                    "nav_label": "Products",
+                    "icon": "inventory_2",
+                    "child_pages": [],
+                }
+            ]
+        )
+        self.assertIn('"surface_kind": "storefront_mobile"', payload)
+
     def test_scan_modules_reads_legacy_pages_alias_for_child_pages(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

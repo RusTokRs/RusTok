@@ -28,6 +28,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - First mutation-backed modules operator action via the canonical `toggleModule` GraphQL mutation, gated by GraphQL-hydrated `me.permissions` capability context, with post-hook recovery feedback and retry/compensation actions.
 - Separate Flutter storefront mobile host scaffold with host-owned tenant/locale/GraphQL context.
 - Module-owned storefront catalog/cart mobile package mounted by `rustok_frontend_mobile` without package-local transport clients; catalog reads are wired through the host GraphQL client and existing storefront search surface.
+- Generated storefront mobile manifest from `provides.storefront_ui` with a dedicated snapshot and freshness checks.
 
 
 Host-level providers now resolve sessions via `AuthSessionManager` and `RefreshTokenService` before building the authenticated GraphQL client. The refresh flow uses an HTTP-only GraphQL client to avoid unnecessary WebSocket initialization during bootstrap. Provider wiring is isolated in `apps/rustok_admin_mobile/lib/app_shell/auth_bootstrap.dart`.
@@ -78,9 +79,31 @@ This command runs the generator into temporary files and compares those outputs
 with the committed manifest and snapshot. Use it when you need a CI-friendly
 signal that exercises the generator CLI itself.
 
+
+
+## Regenerate storefront mobile manifest
+
+```bash
+python3 rustok_mobile/tooling/scripts/generate_mobile_manifest.py \
+  --repo-root /workspace/RusTok \
+  --surface storefront \
+  --output rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_mobile_manifest.g.dart \
+  --snapshot-output rustok_mobile/tooling/snapshots/storefront_mobile_manifest.snapshot.json
+```
+
+## Verify storefront manifest freshness
+
+```bash
+python3 rustok_mobile/tooling/scripts/check_mobile_codegen.py \
+  --repo-root /workspace/RusTok \
+  --surface storefront \
+  --manifest rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_mobile_manifest.g.dart \
+  --snapshot rustok_mobile/tooling/snapshots/storefront_mobile_manifest.snapshot.json
+```
+
 ## Next steps
 
 1. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
 2. Add canonical shared-transport cart reads/writes when the product/cart GraphQL or REST surface is ready.
 3. Add deterministic generated-file checks to the mobile CI pipeline.
-4. Continue storefront parity with generated storefront registry wiring for module-owned packages.
+4. Use generated storefront registry entries for package discovery as more module-owned storefront packages are added.

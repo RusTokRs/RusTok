@@ -6,6 +6,7 @@ import 'package:rustok_catalog_mobile/rustok_catalog_mobile.dart';
 import '../app_shell/storefront_context.dart';
 import '../app_shell/storefront_shell_page.dart';
 import '../data/storefront_catalog_repository.dart';
+import '../registry/storefront_mobile_manifest.g.dart' as storefront_manifest;
 
 const homePath = '/';
 const catalogPath = '/catalog';
@@ -70,9 +71,13 @@ GoRouter buildStorefrontRouter({
           ),
           GoRoute(
             path: '$storefrontModulesRootPath/:routeSegment',
-            builder: (context, state) => StorefrontModulePlaceholderPage(
-              routeSegment: state.pathParameters['routeSegment'] ?? '',
-            ),
+            builder: (context, state) {
+              final routeSegment = state.pathParameters['routeSegment'] ?? '';
+              return StorefrontModulePlaceholderPage(
+                routeSegment: routeSegment,
+                title: _storefrontModuleTitle(routeSegment),
+              );
+            },
           ),
         ],
       ),
@@ -202,16 +207,35 @@ class StorefrontPlaceholderPage extends StatelessWidget {
 }
 
 class StorefrontModulePlaceholderPage extends StatelessWidget {
-  const StorefrontModulePlaceholderPage({super.key, required this.routeSegment});
+  const StorefrontModulePlaceholderPage({
+    super.key,
+    required this.routeSegment,
+    this.title,
+  });
 
   final String routeSegment;
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
     return StorefrontPlaceholderPage(
-      title: 'Module: $routeSegment',
-      description: 'Future module-owned storefront mobile surface.',
+      title: title ?? 'Module: $routeSegment',
+      description: 'Manifest-driven storefront mobile surface.',
       icon: Icons.extension_outlined,
     );
   }
+}
+
+String? _storefrontModuleTitle(String routeSegment) {
+  final normalized = routeSegment.trim().toLowerCase().replaceAll('_', '-');
+  if (normalized.isEmpty) {
+    return null;
+  }
+
+  for (final entry in storefront_manifest.generatedMobileManifest) {
+    if (entry.routeSegment.replaceAll('_', '-') == normalized) {
+      return entry.nav.title;
+    }
+  }
+  return null;
 }
